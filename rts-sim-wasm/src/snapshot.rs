@@ -6151,7 +6151,12 @@ mod sim_kernel_tests {
                 &is_projectile_type,
                 &is_armed,
                 &has_exploded,
+                &zero,
+                &zero,
                 &detonate_on_expiry,
+                &zero,
+                &zero,
+                &zero,
                 &has_payload,
                 &direct_hit,
                 &reflected,
@@ -6214,6 +6219,11 @@ mod sim_kernel_tests {
                 &one,
                 &zero,
                 &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
                 &one,
                 &zero,
                 &zero,
@@ -6250,6 +6260,69 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn projectile_terminal_consequence_can_detonate_on_water_transition() {
+        let one = [1_u8];
+        let zero = [0_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [0.0];
+        let ground_z = [-40.0];
+        let hp = [10.0];
+        let time_alive = [100.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1,
+                &one,
+                &one,
+                &one,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &one,
+                &one,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &one,
+                &one,
+                &zero,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
+            ),
+            1,
+        );
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_WATER);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_DETONATE,
+        );
+    }
+
+    #[test]
     pub(crate) fn projectile_terminal_consequence_water_compatible_shot_detonates_on_seabed() {
         let one = [1_u8];
         let zero = [0_u8];
@@ -6271,6 +6344,11 @@ mod sim_kernel_tests {
                 &one,
                 &one,
                 &one,
+                &zero,
+                &zero,
+                &one,
+                &zero,
+                &zero,
                 &zero,
                 &zero,
                 &one,
@@ -6339,7 +6417,12 @@ mod sim_kernel_tests {
                 &is_projectile_type,
                 &is_armed,
                 &has_exploded,
+                &zero,
+                &zero,
                 &detonate_on_expiry,
+                &zero,
+                &zero,
+                &zero,
                 &has_payload,
                 &zero,
                 &zero,
@@ -6406,7 +6489,12 @@ mod sim_kernel_tests {
                 &is_projectile_type,
                 &is_armed,
                 &has_exploded,
+                &zero,
+                &zero,
                 &detonate_on_expiry,
+                &zero,
+                &zero,
+                &zero,
                 &has_payload,
                 &zero,
                 &zero,
@@ -6466,6 +6554,11 @@ mod sim_kernel_tests {
                 &enabled,
                 &is_projectile_type,
                 &is_armed,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
                 &zero,
                 &zero,
                 &zero,
@@ -9260,7 +9353,13 @@ mod sim_kernel_tests {
         ax
     }
 
-    fn run_wind_air_fraction(water_fraction: f64) -> (f64, f64, f64) {
+    fn run_wind_air_fraction(
+        water_fraction: f64,
+        wind: (f64, f64, f64),
+        velocity: (f64, f64, f64),
+        air_friction: f64,
+        water_friction: f64,
+    ) -> (f64, f64, f64) {
         pool_init();
         let slot = pool_alloc_slot();
         {
@@ -9271,6 +9370,9 @@ mod sim_kernel_tests {
                 - clamped * UNIT_FORCE_TEST_GROUND_OFFSET * 2.0;
             p.ground_offset[i] = UNIT_FORCE_TEST_GROUND_OFFSET;
             p.inv_mass[i] = 1.0 / 2100.0;
+            p.vel_x[i] = velocity.0;
+            p.vel_y[i] = velocity.1;
+            p.vel_z[i] = velocity.2;
         }
 
         let slots = [slot];
@@ -9279,7 +9381,8 @@ mod sim_kernel_tests {
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
         rows[UF_ROW_NORMAL_Z] = 1.0;
-        rows[UF_ROW_AIR_FRICTION] = 4.0;
+        rows[UF_ROW_AIR_FRICTION] = air_friction;
+        rows[UF_ROW_WATER_FRICTION] = water_friction;
 
         assert_eq!(
             unit_force_step_batch(
@@ -9289,9 +9392,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
-                30.0,
-                -12.0,
-                6.0,
+                wind.0,
+                wind.1,
+                wind.2,
                 20.0,
                 150_000.0,
                 100.0,
@@ -9464,9 +9567,11 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn wind_drag_scales_by_above_water_fraction() {
         let _guard = lock_tests();
-        let air = run_wind_air_fraction(0.0);
-        let half = run_wind_air_fraction(0.5);
-        let submerged = run_wind_air_fraction(1.0);
+        let wind = (30.0, -12.0, 6.0);
+        let stationary = (0.0, 0.0, 0.0);
+        let air = run_wind_air_fraction(0.0, wind, stationary, 4.0, 0.0);
+        let half = run_wind_air_fraction(0.5, wind, stationary, 4.0, 0.0);
+        let submerged = run_wind_air_fraction(1.0, wind, stationary, 4.0, 0.0);
 
         assert!(air.0 > 0.0 && air.1 < 0.0 && air.2 > 0.0);
         assert!((half.0 - air.0 * 0.5).abs() < 1e-9);
@@ -9475,6 +9580,19 @@ mod sim_kernel_tests {
         assert!(submerged.0.abs() < 1e-12);
         assert!(submerged.1.abs() < 1e-12);
         assert!(submerged.2.abs() < 1e-12);
+
+        let moving = (18.0, -7.0, 3.0);
+        let still_water_drag = run_wind_air_fraction(
+            1.0,
+            (0.0, 0.0, 0.0),
+            moving,
+            4.0,
+            5.0,
+        );
+        let windy_water_drag = run_wind_air_fraction(1.0, wind, moving, 4.0, 5.0);
+        assert!((windy_water_drag.0 - still_water_drag.0).abs() < 1e-12);
+        assert!((windy_water_drag.1 - still_water_drag.1).abs() < 1e-12);
+        assert!((windy_water_drag.2 - still_water_drag.2).abs() < 1e-12);
     }
 
     #[test]

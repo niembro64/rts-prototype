@@ -70,15 +70,15 @@ export type UnitLocomotionPhysics = {
   water: UnitLocomotionFluidPhysics;
 };
 
-export type LocomotionMediumNavigation = 'air-only' | 'water-only' | 'air-and-water';
+export type UnitLocomotionMediumNavigation = 'air-only' | 'water-only' | 'air-and-water';
 
-export type LocomotionNavigationPolicy = {
+export type UnitLocomotionNavigationPolicy = {
   /** Whether this locomotion preset may deliberately route while supported
    *  by a ground contact patch. */
   allowOnGround: boolean;
   /** Fluid domains this preset may deliberately route through. Actual route
    *  capability still requires usable authored propulsion in that medium. */
-  allowInMedium: LocomotionMediumNavigation;
+  allowInMedium: UnitLocomotionMediumNavigation;
 };
 
 export type SurfaceProbeSetId = '1-point' | '5-points' | '8-points';
@@ -93,8 +93,8 @@ export type UnitLocomotion = {
    *  zero propulsion makes a medium inert, while concepts that do not apply
    *  to that medium are structurally absent. */
   physics: UnitLocomotionPhysics;
-  /** Type/preset-level navigation policy expanded from locomotionConfig.json. */
-  navigation: LocomotionNavigationPolicy;
+  /** Type/preset-level navigation policy expanded from unitLocomotionConfig.json. */
+  navigation: UnitLocomotionNavigationPolicy;
   /** Environmental failure policy, independent from propulsion/lift. */
   survival: {
     waterFatal: boolean;

@@ -1,8 +1,7 @@
 // LegRig3D — world-space leg rig for legged units (arachnid family).
 // Each foot is planted at a real WORLD XYZ point on terrain and stays
-// there until the body has first shortened, then nearly fully extends,
-// that leg in any direction. It then lifts and reaches toward a new
-// ground spot in the unit's movement direction. The visible leg is two cylinders
+// there until the body's moving rest sphere leaves that planted point.
+// It then returns toward rest with a capped velocity lookahead. The visible leg is two cylinders
 // (upper hip→knee + lower knee→foot) drawn through a shared
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
@@ -51,16 +50,7 @@ import {
 } from './LocomotionRigShared3D';
 import { clamp, clamp01 } from '../math';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
-import {
-  constrainLegStepDirectionOutward,
-  legFootTrailsMovement,
-  legStepCanRearm,
-  legStepNeedsReplant,
-  legStepNeedsSwing,
-  legSurfaceWithinReach,
-  legSwingArcHeight,
-  resolveLegStepDirection,
-} from './LegGait3D';
+import { legRestSphereNeedsStep, legSurfaceWithinReach } from './LegGait3D';
 
 /** Per-unit directional target radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -87,25 +77,21 @@ const STEP_CIRCLE_RADIUS_FRAC = 0.85;
  *    phaseShift01 = (sideIndex & 1) ^ (side === 1 ? 1 : 0)
  *
  *  The 0/1 result becomes the multiplier on stepRadius for the
- *  initial backward chassis-local offset (see initializeLegAt), then
- *  that offset is capped to the individual leg's usable reach. */
+ *  initial backward chassis-local offset (see initializeLegAt). */
 const PHASE_180_BACKWARD_FRACTION = 1.0;
 
-/** A triggered foot lands this far from the rest center in the unit's
- *  movement direction before the target ray is extended to the individual
- *  leg's near-straight physical reach. */
-const STEP_TARGET_RADIUS_FRACTION = 0.8;
-const STEP_DIRECTION_SPEED_EPSILON = 0.05;
-const STEP_MIN_HORIZONTAL_DISTANCE_RADIUS_FRACTION = 0.02;
-const STEP_MIN_HORIZONTAL_DISTANCE_FOOT_RADIUS_MULT = 0.35;
+/** Cap on the velocity-lookahead offset added to a grounded step target.
+ *  Keeping the target inside the rest sphere prevents high-speed motion from
+ *  landing a foot beyond the trigger and immediately starting another step. */
+const SNAP_LOOKAHEAD_MAX_FRACTION = 0.7;
 
 /** Watchdog: if the foot's distance-from-rest exceeds this many
- *  stepRadii DURING an in-flight step, retarget the step
- *  to a fresh target. Catches the case where the body's velocity
+ *  stepRadii DURING an in-flight slide, abort the slide so the normal
+ *  rest-sphere check can choose a fresh target. Catches the case where the body's velocity
  *  reversed mid-step (push → thrust the other way) and the
  *  in-flight target is now wrong relative to the body's actual
  *  motion. */
-const STEP_INTERRUPT_FRACTION = 2.0;
+const SLIDE_INTERRUPT_FRACTION = 2.0;
 
 // Vertical layout for legs. The planted foot state stays on the
 // terrain, but the rendered foot pad is lifted slightly so the lower
@@ -123,18 +109,7 @@ const FOOT_PAD_MIN_RADIUS = 1.1;
 const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
 const FOOT_PAD_GROUND_CLEARANCE = 0.35;
 const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
-// Authored rest poses can intentionally be almost straight (the Tick's
-// front legs are ~99.6% extended). Keep that silhouette close while reserving
-// a small but real reach margin between a terrain-projected landing and the
-// emergency replant trigger.
-const PLANTED_TARGET_REACH_FRACTION = 0.995;
-const PLANTED_REACH_TRIGGER_FRACTION = 0.995;
-const PLANTED_REARM_REACH_FRACTION = 0.94;
-const PLANTED_INITIAL_REACH_FRACTION = 0.93;
 const GROUND_ACQUIRE_REACH_FRACTION = 0.999;
-const STEP_SWING_HEIGHT_DISTANCE_FRACTION = 0.28;
-const STEP_SWING_HEIGHT_FOOT_RADIUS_MULT = 1.5;
-const STEP_SWING_HEIGHT_LEG_LENGTH_FRACTION = 0.24;
 const AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT = 0.7;
 const AIRBORNE_MAX_REACH_FRACTION = 0.96;
 const AIRBORNE_BASE_EXTENSION = 0.58;
@@ -162,12 +137,12 @@ const VISUAL_GROUND_RELEASE_BUFFER_MIN = 1.5;
 const VISUAL_GROUND_RELEASE_BUFFER_MAX = 8;
 const PLANTED_REACH_RELEASE_MARGIN = 1.04;
 
-// LEGS-radius debug viz: a wireframe SPHERE in world space at the hip,
-// scaled to the actual near-full-extension replant threshold.
-const reachSphereGeom = new THREE.WireframeGeometry(
+// LEGS-radius debug viz: a wireframe SPHERE in world space at the
+// authored rest center, scaled to stepRadius.
+const restSphereGeom = new THREE.WireframeGeometry(
   createPrimitiveSphereGeometry('debug', 'close'),
 );
-const reachSphereMat = new THREE.LineBasicMaterial({
+const restSphereMat = new THREE.LineBasicMaterial({
   color: COLORS.units.locomotion.leg.debugRestSphere.colorHex,
   transparent: true,
   opacity: COLORS.units.locomotion.leg.debugRestSphere.opacity,
@@ -177,8 +152,8 @@ const reachSphereMat = new THREE.LineBasicMaterial({
 /** State for a single leg. The foot is planted at a real WORLD XYZ
  *  point on the terrain — it stays at that exact ground spot
  *  regardless of how the body moves or yaws, just like a real foot
- *  pinned against the ground. The trigger test is the world-space
- *  hip-to-foot reach, guarded by a shortened-stance rearm latch. */
+ *  pinned against the ground. The trigger test is against the moving
+ *  world-space sphere centered on this leg's authored rest position. */
 export type LegContactState = 'planted' | 'stepping' | 'free';
 
 export type LegInstance = {
@@ -212,10 +187,6 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  /** False immediately after a full-extension landing. Becomes true only
-   *  after the hip shortens this leg inside the rearm threshold. */
-  replantArmed: boolean;
-  swingHeight: number;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -249,9 +220,8 @@ export type LegInstance = {
   upperThick: number;
   lowerThick: number;
   /** LEGS-radius debug viz: a wireframe SPHERE centered at this
-   *  leg's hip and scaled to its extension trigger. Lazy-built; hidden (not
-   *  destroyed) when off. */
-  reachSphere?: THREE.LineSegments;
+   *  leg's authored rest position. Lazy-built; hidden when off. */
+  restSphere?: THREE.LineSegments;
 };
 
 export type LegMesh = {
@@ -298,8 +268,6 @@ export type LegStateSnapshot = ReadonlyArray<{
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  replantArmed: boolean;
-  swingHeight: number;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -317,8 +285,6 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       startWorldX: leg.startWorldX, startWorldY: leg.startWorldY, startWorldZ: leg.startWorldZ,
       targetWorldX: leg.targetWorldX, targetWorldY: leg.targetWorldY, targetWorldZ: leg.targetWorldZ,
       contactState: leg.contactState,
-      replantArmed: leg.replantArmed,
-      swingHeight: leg.swingHeight,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
       initialized: leg.initialized,
@@ -344,8 +310,6 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.startWorldX = src.startWorldX; dst.startWorldY = src.startWorldY; dst.startWorldZ = src.startWorldZ;
     dst.targetWorldX = src.targetWorldX; dst.targetWorldY = src.targetWorldY; dst.targetWorldZ = src.targetWorldZ;
     dst.contactState = src.contactState;
-    dst.replantArmed = src.replantArmed;
-    dst.swingHeight = src.swingHeight;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
     dst.initialized = src.initialized;
@@ -422,8 +386,6 @@ export function buildLegs(
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
       contactState: 'free',
-      replantArmed: false,
-      swingHeight: 0,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
@@ -539,18 +501,10 @@ export function updateLegs(
 ): boolean {
   resetLegsAcrossPoseDiscontinuity(mesh, pose);
 
-  // World-planted feet. Each foot sits at a real world XYZ point on
-  // the terrain and stays there until the moving hip brings the leg back
-  // to its near-full reach threshold. A foot that just landed is disarmed; it must first
-  // shorten before a later near-full extension may lift it again.
-  //
-  // Why this avoids "under the body" and leg crossing:
-  //   - Rest position = hip + outward × restDistance, sitting OUTSIDE
-  //     the body silhouette by construction.
-  //   - Moving bodies place the target ahead in their travel direction.
-  //     Rotation-only extension uses the direction opposite the escaped foot.
-  //   - Terrain projection and per-leg reach are solved together so every
-  //     landing is nearly straight without exceeding physical reach.
+  // World-planted feet. Each foot stays at a real terrain point until the
+  // chassis-local rest sphere moves far enough that the foot exits it. This is
+  // the pre-today grounded gait: rest-region stepping rather than hip-extension
+  // latches or movement-directed full-extension targets.
   const stepRadius = mesh.stepRadius;
   const showViz = getLegsRadiusToggle();
   const wasVisualGrounded = mesh.visualGrounded;
@@ -620,20 +574,17 @@ export function updateLegs(
     const restWorldY = _worldOut.y;
     const restWorldZ = _worldOut.z;
 
-    // LEGS-radius viz: the actual near-full-extension trigger sphere,
-    // centered on this leg's moving hip. Lazy-build / cheap toggle.
+    // LEGS-radius viz: show the exact rest sphere used by the trigger.
     if (showViz) {
-      if (!leg.reachSphere) {
-        leg.reachSphere = new THREE.LineSegments(reachSphereGeom, reachSphereMat);
-        mesh.group.add(leg.reachSphere);
+      if (!leg.restSphere) {
+        leg.restSphere = new THREE.LineSegments(restSphereGeom, restSphereMat);
+        mesh.group.add(leg.restSphere);
       }
-      leg.reachSphere.visible = true;
-      leg.reachSphere.position.set(hipWorldX, hipWorldY, hipWorldZ);
-      leg.reachSphere.scale.setScalar(
-        tl * Math.max(c.extensionThreshold, PLANTED_REACH_TRIGGER_FRACTION),
-      );
-    } else if (leg.reachSphere) {
-      leg.reachSphere.visible = false;
+      leg.restSphere.visible = true;
+      leg.restSphere.position.set(restWorldX, restWorldY, restWorldZ);
+      leg.restSphere.scale.setScalar(stepRadius);
+    } else if (leg.restSphere) {
+      leg.restSphere.visible = false;
     }
 
     if (!leg.initialized) {
@@ -644,7 +595,7 @@ export function updateLegs(
 
     let startedTouchdownStep = false;
     if (touchingDown) {
-      beginLegStepTowardMotion(
+      beginLegStepToRest(
         leg,
         restLocalX,
         restLocalY,
@@ -660,82 +611,38 @@ export function updateLegs(
       startedTouchdownStep = true;
     }
 
-    // Full-extension gait latch. A landing is intentionally nearly straight,
-    // so it is disarmed at touchdown. The moving hip must first shorten the
-    // leg inside the rearm sphere before a later extension may start a step.
-    const stepRSq = stepRadius * stepRadius;
-    const plantedReachDx = leg.worldX - hipWorldX;
-    const plantedReachDy = leg.worldY - hipWorldY;
-    const plantedReachDz = leg.worldZ - hipWorldZ;
-    const plantedReachSq =
-      plantedReachDx * plantedReachDx +
-      plantedReachDy * plantedReachDy +
-      plantedReachDz * plantedReachDz;
-    if (
-      leg.contactState === 'planted' &&
-      !leg.replantArmed &&
-      (
-        legStepCanRearm(
-          plantedReachSq,
-          tl,
-          PLANTED_REARM_REACH_FRACTION,
-        ) || legFootTrailsMovement(
-          plantedReachDx,
-          plantedReachDz,
-          pose.velocityX,
-          pose.velocityZ,
-          STEP_DIRECTION_SPEED_EPSILON,
-        )
-      )
-    ) {
-      leg.replantArmed = true;
-    }
-
-    if (
-      !startedTouchdownStep &&
-      leg.contactState === 'planted' &&
-      legStepNeedsReplant(
-        plantedReachSq,
-        tl,
-        Math.max(c.extensionThreshold, PLANTED_REACH_TRIGGER_FRACTION),
-        leg.replantArmed,
-      )
-    ) {
-      beginLegStepTowardMotion(
-        leg,
-        restLocalX,
-        restLocalY,
-        restLocalZ,
-        vLocalForward,
-        vLocalLateral,
-        stepRadius,
-        pose,
-        entity.id,
-        mapWidth,
-        mapHeight,
-      );
-    }
-
-    // A real step advances through a lifted world-space arc. Otherwise
-    // the foot is planted and its stored world XYZ remains unchanged.
+    // Grounded feet follow the original cubic world-space slide. Otherwise the
+    // stored world XYZ is unchanged and the foot remains planted.
     if (leg.contactState === 'stepping') {
-      advanceLegStep(leg, dtMs);
+      advanceGroundedLegSlide(leg, dtMs);
     }
 
-    // Watchdog: if the foot is way outside the sphere mid-step
-    // (body changed direction during the step, or we're snapping
-    // to an old target the body has since outrun), retarget from its
-    // current airborne point without touching the ground.
-    const stepDx = leg.worldX - restWorldX;
-    const stepDy = leg.worldY - restWorldY;
-    const stepDz = leg.worldZ - restWorldZ;
-    const stepDistSq = stepDx * stepDx + stepDy * stepDy + stepDz * stepDz;
+    // REST-SPHERE TRIGGER. This one 3D distance test naturally covers body
+    // translation, yaw, and tilt because rest moves with the chassis while a
+    // planted foot remains fixed in world space.
+    const dx = leg.worldX - restWorldX;
+    const dy = leg.worldY - restWorldY;
+    const dz = leg.worldZ - restWorldZ;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    const stepRSq = stepRadius * stepRadius;
+
+    // If the chassis outruns or reverses away from an in-flight target, cancel
+    // that stale slide. The normal trigger below immediately selects a fresh
+    // rest-plus-lookahead target.
     if (
-      leg.contactState === 'stepping'
-      && !startedTouchdownStep
-      && stepDistSq > stepRSq * STEP_INTERRUPT_FRACTION * STEP_INTERRUPT_FRACTION
+      leg.contactState === 'stepping' &&
+      !startedTouchdownStep &&
+      distSq > stepRSq * SLIDE_INTERRUPT_FRACTION * SLIDE_INTERRUPT_FRACTION
     ) {
-      beginLegStepTowardMotion(
+      leg.contactState = 'planted';
+    }
+
+    if (
+      !startedTouchdownStep
+      && leg.contactState === 'planted'
+      && legRestSphereNeedsStep(distSq, stepRadius)
+    ) {
+      beginLegStepToRest(
         leg,
         restLocalX,
         restLocalY,
@@ -750,10 +657,8 @@ export function updateLegs(
       );
     }
 
-    // Emergency reach clamp for an in-flight discontinuity. Normal
-    // planted gait replants at its blueprint-aware extension threshold;
-    // this path is no longer allowed to manufacture a sliding "planted"
-    // endpoint around the moving hip.
+    // Clamp the rendered leg to physical reach. This does not move the stored
+    // planted point; it only prevents an impossible visual extension.
     const clampDx = leg.worldX - hipWorldX;
     const clampDy = leg.worldY - hipWorldY;
     const clampDz = leg.worldZ - hipWorldZ;
@@ -761,7 +666,7 @@ export function updateLegs(
     let footX = leg.worldX;
     let footY = leg.worldY;
     let footZ = leg.worldZ;
-    if (leg.contactState !== 'planted' && clampDistSq > tl * tl) {
+    if (clampDistSq > tl * tl) {
       const clampDist = Math.sqrt(clampDistSq);
       const scale = tl / clampDist;
       footX = hipWorldX + clampDx * scale;
@@ -833,8 +738,6 @@ function resetLegsAcrossPoseDiscontinuity(
     for (const leg of mesh.legs) {
       leg.initialized = false;
       leg.contactState = 'free';
-      leg.replantArmed = false;
-      leg.swingHeight = 0;
       leg.lerpProgress = 0;
     }
   }
@@ -868,66 +771,25 @@ function legSwingDurationMs(leg: LegInstance): number {
   return Math.max(MIN_LEG_SWING_DURATION_MS, d);
 }
 
-function beginLegStepTo(
+function beginGroundedLegSlideTo(
   leg: LegInstance,
   targetX: number,
   targetY: number,
   targetZ: number,
-  stepRadius: number,
-): boolean {
-  const horizontalDx = targetX - leg.worldX;
-  const horizontalDz = targetZ - leg.worldZ;
-  const minimumHorizontalDistance = Math.max(
-    stepRadius * STEP_MIN_HORIZONTAL_DISTANCE_RADIUS_FRACTION,
-    leg.footPadRadius * STEP_MIN_HORIZONTAL_DISTANCE_FOOT_RADIUS_MULT,
-  );
-  if (!legStepNeedsSwing(
-    horizontalDx * horizontalDx + horizontalDz * horizontalDz,
-    minimumHorizontalDistance,
-  )) {
-    leg.worldX = targetX;
-    leg.worldY = targetY;
-    leg.worldZ = targetZ;
-    leg.startWorldX = targetX;
-    leg.startWorldY = targetY;
-    leg.startWorldZ = targetZ;
-    leg.targetWorldX = targetX;
-    leg.targetWorldY = targetY;
-    leg.targetWorldZ = targetZ;
-    leg.contactState = 'planted';
-    leg.replantArmed = false;
-    leg.swingHeight = 0;
-    leg.lerpProgress = 1;
-    leg.initialized = true;
-    return false;
-  }
+): void {
   leg.startWorldX = leg.worldX;
   leg.startWorldY = leg.worldY;
   leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = targetX;
   leg.targetWorldY = targetY;
   leg.targetWorldZ = targetZ;
-  const horizontalDistance = Math.hypot(targetX - leg.worldX, targetZ - leg.worldZ);
-  const totalLength = totalLegLength(leg.config);
-  const maxSwingHeight = totalLength * STEP_SWING_HEIGHT_LEG_LENGTH_FRACTION;
-  const minSwingHeight = Math.min(
-    maxSwingHeight,
-    leg.footPadRadius * STEP_SWING_HEIGHT_FOOT_RADIUS_MULT,
-  );
-  leg.swingHeight = clamp(
-    horizontalDistance * STEP_SWING_HEIGHT_DISTANCE_FRACTION,
-    minSwingHeight,
-    maxSwingHeight,
-  );
   leg.contactState = 'stepping';
-  leg.replantArmed = false;
   leg.lerpProgress = 0;
   leg.lerpDuration = legSwingDurationMs(leg);
   leg.initialized = true;
-  return true;
 }
 
-function beginLegStepTowardMotion(
+function beginLegStepToRest(
   leg: LegInstance,
   restLocalX: number,
   restLocalY: number,
@@ -940,131 +802,36 @@ function beginLegStepTowardMotion(
   mapWidth: number,
   mapHeight: number,
 ): void {
-  const c = leg.config;
-  transformChassisToWorld(restLocalX, restLocalY, restLocalZ, pose, _worldOut);
-  const restWorldX = _worldOut.x;
-  const restWorldY = _worldOut.y;
-  const restWorldZ = _worldOut.z;
-  transformWorldVectorToChassis(
-    restWorldX - leg.worldX,
-    restWorldY - leg.worldY,
-    restWorldZ - leg.worldZ,
-    pose,
-    _stepDirection,
-  );
-  const hasRequestedDirection = resolveLegStepDirection(
-    vLocalForward,
-    vLocalLateral,
-    _stepDirection.x,
-    _stepDirection.z,
-    STEP_DIRECTION_SPEED_EPSILON,
-    _stepDirection,
-  );
-  const hasStrideDirection = hasRequestedDirection && constrainLegStepDirectionOutward(
-    _stepDirection.x,
-    _stepDirection.z,
-    Math.cos(c.snapTargetAngle),
-    Math.sin(c.snapTargetAngle),
-    _stepDirection,
-  );
-  const strideDistance = hasStrideDirection
-    ? stepRadius * STEP_TARGET_RADIUS_FRACTION
-    : 0;
-  const targetLocalX = restLocalX + _stepDirection.x * strideDistance;
-  const targetLocalZ = restLocalZ + _stepDirection.z * strideDistance;
-
+  const lookaheadT = legSwingDurationMs(leg) / 1000;
+  let offsetX = vLocalForward * lookaheadT;
+  let offsetZ = vLocalLateral * lookaheadT;
+  const offsetMagnitude = Math.hypot(offsetX, offsetZ);
+  const maximumOffset = stepRadius * SNAP_LOOKAHEAD_MAX_FRACTION;
+  if (offsetMagnitude > maximumOffset) {
+    const scale = maximumOffset / offsetMagnitude;
+    offsetX *= scale;
+    offsetZ *= scale;
+  }
   transformChassisToWorld(
-    targetLocalX,
+    restLocalX + offsetX,
     restLocalY,
-    targetLocalZ,
+    restLocalZ + offsetZ,
     pose,
     _worldOut,
   );
-  const candidateX = _worldOut.x;
-  const candidateZ = _worldOut.z;
-  transformChassisToWorld(c.attachOffsetX, leg.hipY, c.attachOffsetY, pose, _worldOut);
-  resolveReachableLegGroundTarget(
-    candidateX,
-    candidateZ,
-    _worldOut.x,
-    _worldOut.y,
-    _worldOut.z,
-    totalLegLength(c) * PLANTED_TARGET_REACH_FRACTION,
-    true,
-    mapWidth,
-    mapHeight,
-    entityId,
-    _stepTarget,
-  );
-  beginLegStepTo(
-    leg,
-    _stepTarget.x,
-    _stepTarget.y,
-    _stepTarget.z,
-    stepRadius,
-  );
-}
-
-/** Project the requested XZ onto terrain, then scale its hip-relative ray to
- *  the requested reach envelope. Steps extend to the envelope; initialization
- *  only pulls an invalid point inward.
- *  Re-sampling after the pull closes the old semantic gap where reach was
- *  checked against authored FOOT_Y but landing used a different terrain Y. */
-function resolveReachableLegGroundTarget(
-  candidateX: number,
-  candidateZ: number,
-  hipX: number,
-  hipY: number,
-  hipZ: number,
-  maximumReach: number,
-  extendToReach: boolean,
-  mapWidth: number,
-  mapHeight: number,
-  entityId: number,
-  out: { x: number; y: number; z: number },
-): void {
-  let targetX = candidateX;
-  let targetZ = candidateZ;
-  let targetY = getLocomotionSurfaceHeight(
+  const targetX = _worldOut.x;
+  const targetZ = _worldOut.z;
+  const targetY = getLocomotionSurfaceHeight(
     targetX,
     targetZ,
     mapWidth,
     mapHeight,
     entityId,
   );
-  const reachSq = Math.max(0, maximumReach) ** 2;
-  for (let pass = 0; pass < 3; pass++) {
-    const dx = targetX - hipX;
-    const dy = targetY - hipY;
-    const dz = targetZ - hipZ;
-    const horizontalSq = dx * dx + dz * dz;
-    const allowedHorizontalSq = Math.max(0, reachSq - dy * dy);
-    const alreadyValid = extendToReach
-      ? Math.abs(horizontalSq - allowedHorizontalSq) <= 1e-6
-      : horizontalSq <= allowedHorizontalSq + 1e-9;
-    if (alreadyValid) break;
-    if (horizontalSq <= 1e-12 || allowedHorizontalSq <= 0) {
-      targetX = hipX;
-      targetZ = hipZ;
-    } else {
-      const scale = Math.sqrt(allowedHorizontalSq / horizontalSq);
-      targetX = hipX + dx * scale;
-      targetZ = hipZ + dz * scale;
-    }
-    targetY = getLocomotionSurfaceHeight(
-      targetX,
-      targetZ,
-      mapWidth,
-      mapHeight,
-      entityId,
-    );
-  }
-  out.x = targetX;
-  out.y = targetY;
-  out.z = targetZ;
+  beginGroundedLegSlideTo(leg, targetX, targetY, targetZ);
 }
 
-function advanceLegStep(leg: LegInstance, dtMs: number): void {
+function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
   const duration = legSwingDurationMs(leg);
   leg.lerpDuration = duration;
   leg.lerpProgress += Math.max(0, dtMs) / duration;
@@ -1074,16 +841,12 @@ function advanceLegStep(leg: LegInstance, dtMs: number): void {
     leg.worldY = leg.targetWorldY;
     leg.worldZ = leg.targetWorldZ;
     leg.contactState = 'planted';
-    leg.swingHeight = 0;
     return;
   }
 
   const t = easeOutCubic(leg.lerpProgress);
   leg.worldX = leg.startWorldX + (leg.targetWorldX - leg.startWorldX) * t;
-  leg.worldY =
-    leg.startWorldY +
-    (leg.targetWorldY - leg.startWorldY) * t +
-    legSwingArcHeight(leg.lerpProgress, leg.swingHeight);
+  leg.worldY = leg.startWorldY + (leg.targetWorldY - leg.startWorldY) * t;
   leg.worldZ = leg.startWorldZ + (leg.targetWorldZ - leg.startWorldZ) * t;
 }
 
@@ -1189,8 +952,6 @@ function hasReachableGroundAtRest(
 const _worldOut = { x: 0, y: 0, z: 0 };
 const _chassisUp = { x: 0, y: 1, z: 0 };
 const _localVelocity = { x: 0, y: 0, z: 0 };
-const _stepDirection = { x: 0, y: 0, z: 0 };
-const _stepTarget = { x: 0, y: 0, z: 0 };
 const _footSurface: LocomotionFootSurfaceSample = {
   groundY: 0,
   visualFootY: 0,
@@ -1229,7 +990,7 @@ function updateUnsupportedLegPose(
   let needsFrame = airborneLegBodyActive(pose);
 
   for (const leg of mesh.legs) {
-    if (leg.reachSphere) leg.reachSphere.visible = false;
+    if (leg.restSphere) leg.restSphere.visible = false;
 
     const c = leg.config;
     const tl = totalLegLength(c);
@@ -1378,8 +1139,6 @@ function updateUnsupportedLegPose(
     leg.targetWorldY = targetFootY;
     leg.targetWorldZ = targetFootZ;
     leg.contactState = 'free';
-    leg.replantArmed = false;
-    leg.swingHeight = 0;
     leg.lerpProgress = 0;
 
     writeLegRenderPose(
@@ -1502,36 +1261,17 @@ function initializeLegAt(
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
   transformChassisToWorld(cx, cy, cz, pose, _worldOut);
-  const candidateX = _worldOut.x;
-  const candidateZ = _worldOut.z;
-  transformChassisToWorld(c.attachOffsetX, leg.hipY, c.attachOffsetY, pose, _worldOut);
-  resolveReachableLegGroundTarget(
-    candidateX,
-    candidateZ,
-    _worldOut.x,
-    _worldOut.y,
-    _worldOut.z,
-    totalLegLength(c) * PLANTED_INITIAL_REACH_FRACTION,
-    false,
+  leg.worldX = _worldOut.x;
+  leg.worldZ = _worldOut.z;
+  leg.worldY = getLocomotionSurfaceHeight(
+    leg.worldX,
+    leg.worldZ,
     mapWidth,
     mapHeight,
     entityId,
-    _stepTarget,
   );
-  leg.worldX = _stepTarget.x;
-  leg.worldY = _stepTarget.y;
-  leg.worldZ = _stepTarget.z;
   leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;
   leg.contactState = 'planted';
-  const initialDx = leg.worldX - _worldOut.x;
-  const initialDy = leg.worldY - _worldOut.y;
-  const initialDz = leg.worldZ - _worldOut.z;
-  leg.replantArmed = legStepCanRearm(
-    initialDx * initialDx + initialDy * initialDy + initialDz * initialDz,
-    totalLegLength(c),
-    PLANTED_REARM_REACH_FRACTION,
-  );
-  leg.swingHeight = 0;
   leg.initialized = true;
 }

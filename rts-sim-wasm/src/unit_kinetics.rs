@@ -80,7 +80,7 @@ pub fn quat_hover_orientation_step_batch(
 //  state that still lives on Entity/Unit objects.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UNIT_FORCE_BATCH_STRIDE: usize = 55;
+pub const UNIT_FORCE_BATCH_STRIDE: usize = 57;
 
 // ─────────────────────────────────────────────────────────────────
 //  Blueprint locomotion force profile table
@@ -388,6 +388,8 @@ pub(crate) const UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 51;
 pub(crate) const UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 52;
 pub(crate) const UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE: usize = 53;
 pub(crate) const UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 54;
+pub(crate) const UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE: usize = 55;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE: usize = 56;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -402,6 +404,8 @@ pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
 pub(crate) const UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 11;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 12;
 pub(crate) const UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 13;
+pub(crate) const UF_FLAG_HAS_AIR_SURFACE_LIFT_PROPOSED_FORCE: u32 = 1 << 14;
+pub(crate) const UF_FLAG_HAS_WATER_SURFACE_LIFT_PROPOSED_FORCE: u32 = 1 << 15;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
@@ -508,23 +512,17 @@ pub(crate) fn unit_force_randomized_surface_lift_force(
 
 #[inline]
 fn unit_force_full_medium_surface_lift(
-    lift_force_from_ground_surface: f64,
-    ground_surface_distance_response: f64,
-    lift_force_from_water_surface: f64,
-    water_surface_distance_response: f64,
+    proposed_force: f64,
     randomization_amount: f64,
     random_sample: f64,
     reference_mass: f64,
     thrust_multiplier: f64,
     force_scale: f64,
 ) -> f64 {
-    // Each physical source evaluates its nonlinear distance response first.
-    // The source contributions then share one medium-level randomization/EMA.
-    let combined_source_force = lift_force_from_ground_surface.max(0.0)
-        * ground_surface_distance_response.max(0.0)
-        + lift_force_from_water_surface.max(0.0) * water_surface_distance_response.max(0.0);
+    // Probes apply their source-specific authored lift before aggregation.
+    // Randomization/EMA remain medium-level operations after average/max.
     let randomized_force = unit_force_randomized_surface_lift_force(
-        combined_source_force,
+        proposed_force.max(0.0),
         randomization_amount,
         random_sample,
     );
@@ -552,8 +550,7 @@ pub fn unit_force_surface_lift_distance_response(
     minimum_distance_world: f64,
     distance_exponent: f64,
 ) -> f64 {
-    if !distance_to_surface_world.is_finite()
-        || !reference_distance_world.is_finite()
+    if !reference_distance_world.is_finite()
         || !minimum_distance_world.is_finite()
         || !distance_exponent.is_finite()
         || reference_distance_world <= 0.0
@@ -562,7 +559,15 @@ pub fn unit_force_surface_lift_distance_response(
     {
         return 0.0;
     }
-    let distance = distance_to_surface_world.max(minimum_distance_world);
+    // Every resolved probe owns a positive distance. Points at/below the
+    // surface and defensive non-finite inputs use the authored floor instead
+    // of becoming zero/ignored samples.
+    let raw_distance = if distance_to_surface_world.is_finite() {
+        distance_to_surface_world
+    } else {
+        minimum_distance_world
+    };
+    let distance = raw_distance.max(minimum_distance_world);
     let response = (reference_distance_world / distance).powf(distance_exponent);
     if response.is_finite() && response > 0.0 {
         response
@@ -799,8 +804,12 @@ fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
 }
 
 #[inline]
-fn unit_force_ground_surface_distance(pos_z: f64, ground_z: f64) -> f64 {
-    (pos_z - ground_z).max(0.5)
+fn unit_force_ground_surface_distance(
+    pos_z: f64,
+    ground_z: f64,
+    minimum_distance_world: f64,
+) -> f64 {
+    (pos_z - ground_z).max(minimum_distance_world)
 }
 
 #[inline]
@@ -817,7 +826,7 @@ fn unit_force_ground_surface_lift_distance_response(
         return sampled_distance_response.max(0.0);
     }
     unit_force_surface_lift_distance_response(
-        unit_force_ground_surface_distance(pos_z, ground_z),
+        unit_force_ground_surface_distance(pos_z, ground_z, minimum_distance_world),
         reference_distance_world,
         minimum_distance_world,
         distance_exponent,
@@ -1356,11 +1365,18 @@ pub fn unit_force_step_batch(
                 surface_lift_distance_exponent,
             );
             let rand_amount = rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_AMOUNT];
+            let proposed_force = if flag & UF_FLAG_HAS_AIR_SURFACE_LIFT_PROPOSED_FORCE != 0
+                && rows[base + UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE].is_finite()
+            {
+                rows[base + UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE].max(0.0)
+            } else {
+                rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE].max(0.0)
+                    * ground_surface_distance_response.max(0.0)
+                    + rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE].max(0.0)
+                        * water_surface_distance_response.max(0.0)
+            };
             let full_medium_surface_lift = unit_force_full_medium_surface_lift(
-                rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE],
-                ground_surface_distance_response,
-                rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE],
-                water_surface_distance_response,
+                proposed_force,
                 rand_amount,
                 rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE],
                 reference_mass,
@@ -1413,6 +1429,10 @@ pub fn unit_force_step_batch(
 
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];
             if (air_friction > 0.0 || air_quadratic_drag > 0.0) && body_mass > 0.0 {
+                // Wind belongs exclusively to the occupied air volume. The
+                // drag helper weights this air-relative velocity by
+                // air_fraction, so the wind contribution fades continuously
+                // at the waterline and is exactly zero when submerged.
                 let (fx, fy, fz) = unit_force_fluid_drag(
                     p.vel_x[slot] - wind_x,
                     p.vel_y[slot] - wind_y,
@@ -1464,11 +1484,15 @@ pub fn unit_force_step_batch(
                         )
                     };
                 let rand_amount = rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT];
+                let proposed_force = if flag & UF_FLAG_HAS_WATER_SURFACE_LIFT_PROPOSED_FORCE != 0
+                    && rows[base + UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE].is_finite()
+                {
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE].max(0.0)
+                } else {
+                    lift_force_from_ground_surface.max(0.0) * distance_response.max(0.0)
+                };
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(
-                    lift_force_from_ground_surface,
-                    distance_response,
-                    0.0,
-                    0.0,
+                    proposed_force,
                     rand_amount,
                     rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE],
                     reference_mass,
@@ -1506,6 +1530,9 @@ pub fn unit_force_step_batch(
 
             let water_friction = rows[base + UF_ROW_WATER_FRICTION];
             if (water_friction > 0.0 || water_quadratic_drag > 0.0) && body_mass > 0.0 {
+                // Water is currently a still medium. Never feed atmospheric
+                // wind into this relative velocity; future currents belong in
+                // a separate water-medium velocity field.
                 let (fx, fy, fz) = unit_force_fluid_drag(
                     p.vel_x[slot],
                     p.vel_y[slot],
@@ -1744,6 +1771,18 @@ mod tests {
     }
 
     #[test]
+    fn surface_lift_consumes_the_aggregated_proposed_force_directly() {
+        assert_near(
+            unit_force_full_medium_surface_lift(25.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+            25.0,
+        );
+        assert_near(
+            unit_force_full_medium_surface_lift(25.0, 0.2, 1.0, 1.0, 1.0, 1.0),
+            30.0,
+        );
+    }
+
+    #[test]
     fn ground_surface_lift_distance_response_uses_sampled_average_when_available() {
         let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
@@ -1798,7 +1837,23 @@ mod tests {
             ),
             (1.0_f64 / 10.0).sqrt(),
         );
-        assert_near(unit_force_ground_surface_distance(pos_z, body_ground), 40.0);
+        assert_near(
+            unit_force_ground_surface_distance(pos_z, body_ground, 0.5),
+            40.0,
+        );
+        assert_near(
+            unit_force_ground_surface_distance(body_ground - 10.0, body_ground, 0.75),
+            0.75,
+        );
+        let minimum_response = (1.0_f64 / 0.5).sqrt();
+        assert_near(
+            unit_force_surface_lift_distance_response(-10.0, 1.0, 0.5, 0.5),
+            minimum_response,
+        );
+        assert_near(
+            unit_force_surface_lift_distance_response(f64::NAN, 1.0, 0.5, 0.5),
+            minimum_response,
+        );
     }
 
     #[test]

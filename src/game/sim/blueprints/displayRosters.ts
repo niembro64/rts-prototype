@@ -70,7 +70,7 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
       cost: scaledTotalCost(bp.cost),
       energyCost: scaledCostPart(bp.cost.energy),
       metalCost: scaledCostPart(bp.cost.metal),
-      locomotion: bp.locomotion.type,
+      locomotion: bp.unitLocomotion.type,
     };
   }
   return display;

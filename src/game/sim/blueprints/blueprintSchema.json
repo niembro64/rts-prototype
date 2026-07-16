@@ -126,7 +126,7 @@
       "type": "object",
       "x-codegen": {
         "tsImport": {
-          "module": "./locomotionTypes",
+          "module": "./unitLocomotionTypes",
           "name": "UnitSuspensionConfig"
         },
         "rustType": "BlueprintJsonValue"
@@ -187,12 +187,121 @@
         "missile"
       ]
     },
-    "ProjectilePhysicsMedium": {
+    "ShotLocomotionMotionModel": {
       "enum": [
-        "air-only",
-        "water-only",
-        "air-and-water"
+        "ballistic",
+        "thrustGuided",
+        "constantSpeedGuided",
+        "terrainFollowing"
       ]
+    },
+    "ShotLocomotionTerminalOutcome": {
+      "enum": [
+        "detonate",
+        "despawn"
+      ]
+    },
+    "ShotLocomotionTransitionOutcome": {
+      "enum": [
+        "continue",
+        "continueBallistic",
+        "detonate",
+        "despawn"
+      ]
+    },
+    "ShotLocomotionMediumPhysics": {
+      "type": "object",
+      "required": [
+        "operational",
+        "propulsionForce",
+        "guidanceThrust",
+        "turnRate",
+        "velocityFrictionPer60HzFrame"
+      ],
+      "properties": {
+        "operational": { "type": "boolean" },
+        "propulsionForce": { "type": "number" },
+        "guidanceThrust": { "type": "number" },
+        "turnRate": { "type": "number" },
+        "velocityFrictionPer60HzFrame": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ShotLocomotionGroundPhysics": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["impact", "terrainFollowing"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ShotLocomotionMedia": {
+      "type": "object",
+      "required": ["air", "water", "ground"],
+      "properties": {
+        "air": { "$ref": "#/$defs/ShotLocomotionMediumPhysics" },
+        "water": { "$ref": "#/$defs/ShotLocomotionMediumPhysics" },
+        "ground": { "$ref": "#/$defs/ShotLocomotionGroundPhysics" }
+      },
+      "additionalProperties": false
+    },
+    "ShotLocomotionTransitions": {
+      "type": "object",
+      "required": ["enterWater", "exitWater"],
+      "properties": {
+        "enterWater": { "$ref": "#/$defs/ShotLocomotionTransitionOutcome" },
+        "exitWater": { "$ref": "#/$defs/ShotLocomotionTransitionOutcome" }
+      },
+      "additionalProperties": false
+    },
+    "ShotLocomotionTerminalPolicy": {
+      "type": "object",
+      "required": [
+        "entityImpact",
+        "groundContact",
+        "expiry",
+        "destroyed",
+        "reflectorImpact"
+      ],
+      "properties": {
+        "entityImpact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
+        "groundContact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
+        "expiry": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
+        "destroyed": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
+        "reflectorImpact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" }
+      },
+      "additionalProperties": false
+    },
+    "ShotLocomotion": {
+      "type": "object",
+      "required": [
+        "presetId",
+        "motionModel",
+        "maxLifespanMs",
+        "gravityForceMultiplier",
+        "guidanceDelayMs",
+        "media",
+        "transitions",
+        "terminal"
+      ],
+      "properties": {
+        "presetId": { "type": "string" },
+        "motionModel": { "$ref": "#/$defs/ShotLocomotionMotionModel" },
+        "maxLifespanMs": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "null" }
+          ]
+        },
+        "gravityForceMultiplier": { "type": "number" },
+        "guidanceDelayMs": { "type": "number" },
+        "media": { "$ref": "#/$defs/ShotLocomotionMedia" },
+        "transitions": { "$ref": "#/$defs/ShotLocomotionTransitions" },
+        "terminal": { "$ref": "#/$defs/ShotLocomotionTerminalPolicy" }
+      },
+      "additionalProperties": false
     },
     "ShieldSurfaceResponse": {
       "enum": [
@@ -556,16 +665,9 @@
         "mass",
         "health",
         "radius",
-        "detonateOnExpiry",
+        "shotLocomotionPresetId",
         "hitSound",
         "submunitions",
-        "homingTurnRate",
-        "homingThrust",
-        "homingDelayMs",
-        "propulsionForce",
-        "physicsMedium",
-        "gravityForceMultiplier",
-        "airFrictionPer60HzFrame",
         "smokeTrail"
       ],
       "properties": {
@@ -590,18 +692,8 @@
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
         },
-        "detonateOnExpiry": {
-          "type": "boolean"
-        },
-        "maxLifespan": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "shotLocomotionPresetId": {
+          "type": "string"
         },
         "hitSound": {
           "oneOf": [
@@ -622,55 +714,6 @@
               "type": "null"
             }
           ]
-        },
-        "homingTurnRate": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "homingThrust": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "homingDelayMs": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "propulsionForce": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "physicsMedium": {
-          "$ref": "#/$defs/ProjectilePhysicsMedium"
-        },
-        "gravityForceMultiplier": {
-          "type": "number"
-        },
-        "airFrictionPer60HzFrame": {
-          "type": "number"
         },
         "smokeTrail": {
           "oneOf": [
@@ -745,9 +788,7 @@
         "health",
         "launchForce",
         "radius",
-        "physicsMedium",
-        "gravityForceMultiplier",
-        "airFrictionPer60HzFrame"
+        "shotLocomotion"
       ],
       "properties": {
         "type": {
@@ -774,32 +815,8 @@
         "explosion": {
           "$ref": "#/$defs/ShotExplosion"
         },
-        "detonateOnExpiry": {
-          "type": "boolean"
-        },
-        "maxLifespan": {
-          "type": "number"
-        },
-        "homingTurnRate": {
-          "type": "number"
-        },
-        "homingThrust": {
-          "type": "number"
-        },
-        "homingDelayMs": {
-          "type": "number"
-        },
-        "propulsionForce": {
-          "type": "number"
-        },
-        "physicsMedium": {
-          "$ref": "#/$defs/ProjectilePhysicsMedium"
-        },
-        "gravityForceMultiplier": {
-          "type": "number"
-        },
-        "airFrictionPer60HzFrame": {
-          "type": "number"
+        "shotLocomotion": {
+          "$ref": "#/$defs/ShotLocomotion"
         },
         "trailLength": {
           "type": "number"
@@ -2026,7 +2043,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionPhysics": {
+    "UnitUnitLocomotionBlueprintPhysics": {
       "type": "object",
       "required": [
         "air",
@@ -2042,7 +2059,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionSurvivalPolicy": {
+    "UnitLocomotionSurvivalPolicy": {
       "type": "object",
       "required": [
         "waterFatal",
@@ -2221,7 +2238,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintWheels": {
+    "UnitLocomotionBlueprintWheels": {
       "type": "object",
       "required": [
         "type",
@@ -2240,10 +2257,10 @@
           "type": "string"
         },
         "physics": {
-          "$ref": "#/$defs/LocomotionPhysics"
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
         "survival": {
-          "$ref": "#/$defs/LocomotionSurvivalPolicy"
+          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2257,7 +2274,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintTreads": {
+    "UnitLocomotionBlueprintTreads": {
       "type": "object",
       "required": [
         "type",
@@ -2276,10 +2293,10 @@
           "type": "string"
         },
         "physics": {
-          "$ref": "#/$defs/LocomotionPhysics"
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
         "survival": {
-          "$ref": "#/$defs/LocomotionSurvivalPolicy"
+          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2293,7 +2310,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintLegs": {
+    "UnitLocomotionBlueprintLegs": {
       "type": "object",
       "required": [
         "type",
@@ -2312,10 +2329,10 @@
           "type": "string"
         },
         "physics": {
-          "$ref": "#/$defs/LocomotionPhysics"
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
         "survival": {
-          "$ref": "#/$defs/LocomotionSurvivalPolicy"
+          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2329,7 +2346,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintFlippers": {
+    "UnitLocomotionBlueprintFlippers": {
       "type": "object",
       "required": [
         "type",
@@ -2343,15 +2360,15 @@
       "properties": {
         "type": { "const": "flippers" },
         "physicsPresetId": { "type": "string" },
-        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
-        "survival": { "$ref": "#/$defs/LocomotionSurvivalPolicy" },
+        "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
+        "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
         "pathfindingBlueprintId": { "type": "string" },
         "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
         "config": { "$ref": "#/$defs/FlipperConfig" }
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintHover": {
+    "UnitLocomotionBlueprintHover": {
       "type": "object",
       "required": [
         "type",
@@ -2370,10 +2387,10 @@
           "type": "string"
         },
         "physics": {
-          "$ref": "#/$defs/LocomotionPhysics"
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
         "survival": {
-          "$ref": "#/$defs/LocomotionSurvivalPolicy"
+          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2387,7 +2404,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintFlying": {
+    "UnitLocomotionBlueprintFlying": {
       "type": "object",
       "required": [
         "type",
@@ -2406,10 +2423,10 @@
           "type": "string"
         },
         "physics": {
-          "$ref": "#/$defs/LocomotionPhysics"
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
         "survival": {
-          "$ref": "#/$defs/LocomotionSurvivalPolicy"
+          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2423,7 +2440,7 @@
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprintSwim": {
+    "UnitLocomotionBlueprintSwim": {
       "type": "object",
       "required": [
         "type",
@@ -2437,36 +2454,36 @@
       "properties": {
         "type": { "const": "swim" },
         "physicsPresetId": { "type": "string" },
-        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
-        "survival": { "$ref": "#/$defs/LocomotionSurvivalPolicy" },
+        "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
+        "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
         "pathfindingBlueprintId": { "type": "string" },
         "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
         "config": { "$ref": "#/$defs/SwimConfig" }
       },
       "additionalProperties": false
     },
-    "LocomotionBlueprint": {
+    "UnitLocomotionBlueprint": {
       "oneOf": [
         {
-          "$ref": "#/$defs/LocomotionBlueprintWheels"
+          "$ref": "#/$defs/UnitLocomotionBlueprintWheels"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintTreads"
+          "$ref": "#/$defs/UnitLocomotionBlueprintTreads"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintLegs"
+          "$ref": "#/$defs/UnitLocomotionBlueprintLegs"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintFlippers"
+          "$ref": "#/$defs/UnitLocomotionBlueprintFlippers"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintHover"
+          "$ref": "#/$defs/UnitLocomotionBlueprintHover"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintFlying"
+          "$ref": "#/$defs/UnitLocomotionBlueprintFlying"
         },
         {
-          "$ref": "#/$defs/LocomotionBlueprintSwim"
+          "$ref": "#/$defs/UnitLocomotionBlueprintSwim"
         }
       ]
     },
@@ -2873,7 +2890,7 @@
         "bodyShape",
         "hud",
         "legAttachHeightFrac",
-        "locomotion",
+        "unitLocomotion",
         "suspension",
         "builder",
         "dgun",
@@ -2946,8 +2963,8 @@
             }
           ]
         },
-        "locomotion": {
-          "$ref": "#/$defs/LocomotionBlueprint"
+        "unitLocomotion": {
+          "$ref": "#/$defs/UnitLocomotionBlueprint"
         },
         "suspension": {
           "oneOf": [

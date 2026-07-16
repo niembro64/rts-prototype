@@ -1346,7 +1346,12 @@ export interface SimWasm {
     isProjectileType: Uint8Array,
     isArmed: Uint8Array,
     hasExploded: Uint8Array,
+    detonateOnEntityImpact: Uint8Array,
+    detonateOnGroundContact: Uint8Array,
     detonateOnExpiry: Uint8Array,
+    detonateOnDestroyed: Uint8Array,
+    detonateOnReflectorImpact: Uint8Array,
+    detonateOnWaterTransition: Uint8Array,
     hasDetonationPayload: Uint8Array,
     directHitThisTick: Uint8Array,
     reflectedProjectile: Uint8Array,
@@ -3750,7 +3755,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 55;
+export const UNIT_FORCE_BATCH_STRIDE = 57;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4709,14 +4714,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandHotkeysContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
-        const { runLocomotionContractTest } = await import('../sim/blueprints/locomotionContractTest');
-        runLocomotionContractTest();
+        const { runUnitLocomotionContractTest } = await import('../sim/blueprints/unitLocomotionContractTest');
+        runUnitLocomotionContractTest();
         const { runPathfindingMobilityContractTest } = await import('../sim/pathfindingMobilityContractTest');
         runPathfindingMobilityContractTest();
-        const { runWaterLiftLocomotionContractTest } = await import('../sim/blueprints/waterLiftLocomotionContractTest');
-        runWaterLiftLocomotionContractTest();
-        const { runProjectileMotionContractTest } = await import('../sim/projectileMotionContractTest');
-        runProjectileMotionContractTest();
+        const { runUnitWaterLiftLocomotionContractTest } = await import('../sim/blueprints/unitWaterLiftLocomotionContractTest');
+        runUnitWaterLiftLocomotionContractTest();
+        const { runShotLocomotionContractTest } = await import('../sim/shotLocomotionContractTest');
+        runShotLocomotionContractTest();
         const { runShotArmingContractTest } = await import('../sim/combat/shotArmingContractTest');
         runShotArmingContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');

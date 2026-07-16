@@ -1,5 +1,5 @@
 import type {
-  LocomotionBlueprint,
+  UnitLocomotionBlueprint,
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type {
@@ -8,32 +8,32 @@ import type {
   UnitLocomotionGroundPhysics,
   UnitLocomotionMediumPhysics,
   UnitLocomotionPhysics,
-} from '@/types/locomotionTypes';
+} from '@/types/unitLocomotionTypes';
 import {
-  LOCOMOTION_MEDIUM_NAMES,
-  getLocomotionPreset,
-  type LocomotionPresetConfig,
-} from './locomotionPresetConfig';
+  UNIT_LOCOMOTION_MEDIUM_NAMES,
+  getUnitLocomotionPreset,
+  type UnitLocomotionPresetConfig,
+} from './unitLocomotionPresetConfig';
 import {
-  hasAnyLocomotionRouteCapability,
-  resolveLocomotionRouteCapabilities,
-} from './locomotionNavigation';
+  hasAnyUnitLocomotionRouteCapability,
+  resolveUnitLocomotionRouteCapabilities,
+} from './unitLocomotionNavigation';
 import {
-  assertLocomotionClosedUnitFraction,
-  assertLocomotionNonNegativeFinite,
-  assertLocomotionPositiveFinite,
-} from './locomotionValidation';
+  assertUnitLocomotionClosedUnitFraction,
+  assertUnitLocomotionNonNegativeFinite,
+  assertUnitLocomotionPositiveFinite,
+} from './unitLocomotionValidation';
 
 // Visual rig discriminants are deliberately separate from authoritative
 // physics presets. A wheels rig may use any preset and moves identically to
 // any other rig with the same expanded profile.
-const LOCOMOTION_TYPES = [
+const UNIT_LOCOMOTION_TYPES = [
   'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim',
 ] as const;
-type AuthoredFluidPhysics = NonNullable<LocomotionBlueprint['physics']['air']>;
+type AuthoredFluidPhysics = NonNullable<UnitLocomotionBlueprint['physics']['air']>;
 
 function createRuntimeGroundPhysics(
-  preset: LocomotionPresetConfig,
+  preset: UnitLocomotionPresetConfig,
 ): UnitLocomotionGroundPhysics {
   const authored = preset.physics.ground;
   return {
@@ -46,19 +46,19 @@ function createRuntimeGroundPhysics(
 function createRuntimeFluidPhysics(
   presetId: string,
   medium: 'air' | 'water',
-  presetPhysics: LocomotionPresetConfig['physics']['air'],
+  presetPhysics: UnitLocomotionPresetConfig['physics']['air'],
   authored: AuthoredFluidPhysics | undefined,
 ): UnitLocomotionFluidPhysics {
   if (authored === undefined) {
     throw new Error(
-      `Invalid locomotion ${presetId}.physics.${medium}: ` +
+      `Invalid unit locomotion ${presetId}.physics.${medium}: ` +
       'air and water lift objects must always be explicitly authored',
     );
   }
   for (const key of Object.keys(authored)) {
     if (key !== 'lift') {
       throw new Error(
-        `Invalid locomotion ${presetId}.physics.${medium}.${key}: moved to locomotionConfig.json`,
+        `Invalid unit locomotion ${presetId}.physics.${medium}.${key}: moved to unitLocomotionConfig.json`,
       );
     }
   }
@@ -71,40 +71,40 @@ function createRuntimeFluidPhysics(
     Object.prototype.hasOwnProperty.call(authoredLift, 'gravityCounterRatio');
   if (medium === 'air' && (!hasGroundLift || !hasWaterSurfaceLift)) {
     throw new Error(
-      `Invalid locomotion ${presetId}.physics.air.lift: air lift must explicitly author both ` +
+      `Invalid unit locomotion ${presetId}.physics.air.lift: air lift must explicitly author both ` +
       'liftForceFromGroundSurface and liftForceFromWaterSurface',
     );
   }
   if (medium === 'water' && hasWaterSurfaceLift) {
     throw new Error(
-      `Invalid locomotion ${presetId}.physics.water.lift.liftForceFromWaterSurface: ` +
+      `Invalid unit locomotion ${presetId}.physics.water.lift.liftForceFromWaterSurface: ` +
       'water lift may only be sourced from the ground surface',
     );
   }
   if (medium === 'water' && !hasGroundLift) {
     throw new Error(
-      `Invalid locomotion ${presetId}.physics.water.lift: ` +
+      `Invalid unit locomotion ${presetId}.physics.water.lift: ` +
       'liftForceFromGroundSurface must always be explicitly authored, using 0 when inactive',
     );
   }
   if (!hasGravityCounter) {
     throw new Error(
-      `Invalid locomotion ${presetId}.physics.${medium}.lift: ` +
+      `Invalid unit locomotion ${presetId}.physics.${medium}.lift: ` +
       'gravityCounterRatio must always be explicitly authored, using 0 when inactive',
     );
   }
   const liftForceFromGroundSurface = authoredLift?.liftForceFromGroundSurface ?? 0;
-  assertLocomotionNonNegativeFinite(
+  assertUnitLocomotionNonNegativeFinite(
     `${presetId}.physics.${medium}.liftForceFromGroundSurface`,
     liftForceFromGroundSurface,
   );
   const liftForceFromWaterSurface = authoredLift?.liftForceFromWaterSurface ?? 0;
-  assertLocomotionNonNegativeFinite(
+  assertUnitLocomotionNonNegativeFinite(
     `${presetId}.physics.${medium}.liftForceFromWaterSurface`,
     liftForceFromWaterSurface,
   );
   const gravityCounterRatio = authoredLift?.gravityCounterRatio ?? 0;
-  assertLocomotionClosedUnitFraction(
+  assertUnitLocomotionClosedUnitFraction(
     `${presetId}.physics.${medium}.gravityCounterRatio`,
     gravityCounterRatio,
   );
@@ -126,11 +126,11 @@ function createRuntimeFluidPhysics(
 
 function createRuntimeLocomotionPhysics(
   presetId: string,
-  preset: LocomotionPresetConfig,
-  authored: LocomotionBlueprint['physics'],
+  preset: UnitLocomotionPresetConfig,
+  authored: UnitLocomotionBlueprint['physics'],
 ): UnitLocomotionPhysics {
   if (!authored || typeof authored !== 'object') {
-    throw new Error(`Invalid locomotion ${presetId}.physics: missing physics object`);
+    throw new Error(`Invalid unit locomotion ${presetId}.physics: missing physics object`);
   }
   return {
     ground: createRuntimeGroundPhysics(preset),
@@ -150,13 +150,13 @@ function createRuntimePathfindingConfig(
 }
 
 export function createUnitLocomotion(
-  locomotion: LocomotionBlueprint,
+  locomotion: UnitLocomotionBlueprint,
 ): UnitLocomotion {
   const { type, physicsPresetId, survival } = locomotion;
-  if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
-    throw new Error(`Invalid locomotion visual rig type "${String(type)}"`);
+  if (!(UNIT_LOCOMOTION_TYPES as readonly string[]).includes(type)) {
+    throw new Error(`Invalid unit locomotion visual rig type "${String(type)}"`);
   }
-  const preset = getLocomotionPreset(physicsPresetId);
+  const preset = getUnitLocomotionPreset(physicsPresetId);
   const physics = createRuntimeLocomotionPhysics(physicsPresetId, preset, locomotion.physics);
   const navigation = { ...preset.navigation };
   const runtime: UnitLocomotion = {
@@ -172,16 +172,16 @@ export function createUnitLocomotion(
     surfaceProbeSetId: preset.physics.surfaceProbeSetId,
     pathfinding: createRuntimePathfindingConfig(locomotion.pathfinding),
   };
-  if (!hasAnyLocomotionRouteCapability(resolveLocomotionRouteCapabilities(runtime))) {
+  if (!hasAnyUnitLocomotionRouteCapability(resolveUnitLocomotionRouteCapabilities(runtime))) {
     throw new Error(
-      `Invalid locomotion ${physicsPresetId}: preset navigation and physical authority allow no route domain`,
+      `Invalid unit locomotion ${physicsPresetId}: preset navigation and physical authority allow no route domain`,
     );
   }
-  assertLocomotionClosedUnitFraction(
+  assertUnitLocomotionClosedUnitFraction(
     `${physicsPresetId}.survival.fatalSubmergedFraction`,
     survival.fatalSubmergedFraction,
   );
-  assertLocomotionNonNegativeFinite(
+  assertUnitLocomotionNonNegativeFinite(
     `${physicsPresetId}.survival.fatalExposureSeconds`,
     survival.fatalExposureSeconds,
   );
@@ -229,10 +229,10 @@ export function cloneUnitLocomotion(
   };
 }
 
-export function getLocomotionPrimaryDrivePhysics(
+export function getUnitLocomotionPrimaryDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
-  const capabilities = resolveLocomotionRouteCapabilities(locomotion);
+  const capabilities = resolveUnitLocomotionRouteCapabilities(locomotion);
   if (capabilities.allowInAir) return locomotion.physics.air;
   if (capabilities.allowInWater && !capabilities.allowOnGround) {
     return locomotion.physics.water;
@@ -240,18 +240,18 @@ export function getLocomotionPrimaryDrivePhysics(
   return locomotion.physics.ground;
 }
 
-export function getLocomotionGroundDrivePhysics(
+export function getUnitLocomotionGroundDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
   return locomotion.physics.ground;
 }
 
-export function getLocomotionBestDrivePhysics(
+export function getUnitLocomotionBestDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
-  let best = getLocomotionPrimaryDrivePhysics(locomotion);
+  let best = getUnitLocomotionPrimaryDrivePhysics(locomotion);
   let bestScore = best.propulsion.driveForce * best.propulsion.forceCoupling;
-  for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+  for (const medium of UNIT_LOCOMOTION_MEDIUM_NAMES) {
     const candidate = locomotion.physics[medium];
     const score = candidate.propulsion.driveForce * candidate.propulsion.forceCoupling;
     if (score > bestScore) {
@@ -269,14 +269,14 @@ type LocomotionForceProfile = {
   coupledForceMagnitude: number;
 };
 
-export function getLocomotionForceProfile(
+export function getUnitLocomotionForceProfile(
   physics: UnitLocomotionMediumPhysics,
   referenceMass: number,
   thrustMultiplier: number,
   forceScale: number,
 ): LocomotionForceProfile {
-  assertLocomotionPositiveFinite('referenceMass', referenceMass);
-  assertLocomotionPositiveFinite('forceScale', forceScale);
+  assertUnitLocomotionPositiveFinite('referenceMass', referenceMass);
+  assertUnitLocomotionPositiveFinite('forceScale', forceScale);
   const rawDriveForce = physics.propulsion.driveForce * thrustMultiplier;
   const coupledDriveForce = rawDriveForce * physics.propulsion.forceCoupling;
   return {

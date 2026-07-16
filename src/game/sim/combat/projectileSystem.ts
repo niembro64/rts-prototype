@@ -60,14 +60,15 @@ import { spatialGrid } from '../SpatialGrid';
 import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import {
-  getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
+  getProjectileMediumDragCoefficient,
+  getProjectileMediumFrictionPer60HzFrame,
   getProjectileHomingEngagementScale,
   getProjectileHomingThrustAcceleration,
   getProjectileMediumHoldCounterGravityAcceleration,
   getProjectilePropulsionAcceleration,
   getProjectileRocketCounterGravityCarryAcceleration,
-} from '../projectileMotion';
+} from '../shotLocomotionMotion';
 import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
@@ -85,7 +86,10 @@ import {
   turretBlueprintIdToCode,
 } from '../../../types/network';
 import { WATER_LEVEL } from '../Terrain';
-import { projectilePhysicsAppliesAtHeight } from '../projectileMedium';
+import {
+  getShotLocomotionMaxTurnRate,
+  getShotLocomotionMediumAtHeight,
+} from '../shotLocomotion';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -470,13 +474,15 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   const profile = proj.config.shotProfile.runtime;
   if (!profile.isProjectile) return false;
   const shot = proj.config.shot as ProjectileShot;
-  if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== NO_ENTITY_ID) return false;
+  if (shot.shotLocomotion.motionModel !== 'ballistic' || proj.homingTargetId !== NO_ENTITY_ID) {
+    return false;
+  }
   if (proj.maxHits !== 1) return false;
   // Packed pool's batch kernel hardcodes GRAVITY; any shot that wants a
   // different gravity must run through the per-projectile JS path.
-  if (shot.gravityForceMultiplier !== 1) return false;
+  if (shot.shotLocomotion.gravityForceMultiplier !== 1) return false;
   if (getProjectileAirFrictionPer60HzFrame(shot) > 0) return false;
-  if (getProjectilePropulsionAcceleration(shot) > 0) return false;
+  if (getProjectilePropulsionAcceleration(shot, shot.shotLocomotion.media.air) > 0) return false;
   return true;
 }
 
@@ -948,7 +954,7 @@ export function fireTurrets(
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
-            homingTurnRate: projShot.homingTurnRate ?? undefined,
+            homingTurnRate: getShotLocomotionMaxTurnRate(projShot.shotLocomotion) || undefined,
           };
           spawnEvents.push(spawnEvent);
           queueLaunchVelocityFinalization(
@@ -1201,7 +1207,11 @@ export function fireTurrets(
           }
           // The projectile's authored homing turn rate is installed at
           // creation; the firing tick only seeds the initial target lock.
-          if (projectileComponent !== null && (projShot.homingTurnRate ?? 0) > 0 && targetingTargetId !== -1) {
+          if (
+            projectileComponent !== null &&
+            getShotLocomotionMaxTurnRate(projShot.shotLocomotion) > 0 &&
+            targetingTargetId !== -1
+          ) {
             projectileComponent.homingTargetId = targetingTargetId;
           }
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
@@ -1228,10 +1238,10 @@ export function fireTurrets(
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
-            targetEntityId: ((projShot.homingTurnRate ?? 0) > 0 && targetingTargetId !== -1)
+            targetEntityId: (getShotLocomotionMaxTurnRate(projShot.shotLocomotion) > 0 && targetingTargetId !== -1)
               ? targetingTargetId
               : undefined,
-            homingTurnRate: projShot.homingTurnRate ?? undefined,
+            homingTurnRate: getShotLocomotionMaxTurnRate(projShot.shotLocomotion) || undefined,
           };
           spawnEvents.push(spawnEvent);
           queueLaunchVelocityFinalization(
@@ -1582,13 +1592,17 @@ function _updateTravelingProjectilesJS(
       dgunProjectile !== null &&
       dgunProjectile.isDGun === true;
     const shotConfig = proj.config.shot as ProjectileShot;
-    const projectileGravity = GRAVITY * shotConfig.gravityForceMultiplier;
-    const mediumPhysicsActive = projectilePhysicsAppliesAtHeight(
-      shotConfig.physicsMedium,
+    const shotLocomotion = shotConfig.shotLocomotion;
+    const projectileGravity = GRAVITY * shotLocomotion.gravityForceMultiplier;
+    const mediumPhysics = getShotLocomotionMediumAtHeight(
+      shotLocomotion,
       position.z,
       WATER_LEVEL,
     );
-    let policyFlags = isDGunWave ? TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW : 0;
+    const mediumPhysicsActive = mediumPhysics.operational;
+    let policyFlags = shotLocomotion.media.ground.mode === 'terrainFollowing'
+      ? TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW
+      : 0;
 
     // Per-tick acceleration. Gravity and thrust combine before
     // integration so guided / terrain-follow projectiles spend engine
@@ -1598,7 +1612,7 @@ function _updateTravelingProjectilesJS(
     let aNetY = 0;
     let aNetZ = -projectileGravity;
     const propulsionAccel = mediumPhysicsActive
-      ? getProjectilePropulsionAcceleration(shotConfig)
+      ? getProjectilePropulsionAcceleration(shotConfig, mediumPhysics)
       : 0;
     if (propulsionAccel > 0) {
       const speed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
@@ -1623,7 +1637,7 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
     _travelingProjectileAirDragCoefficient[index] = mediumPhysicsActive
-      ? getProjectileAirDragCoefficient(shotConfig)
+      ? getProjectileMediumDragCoefficient(shotConfig, mediumPhysics)
       : 0;
     _travelingProjectileInvMass[index] = shotConfig.mass > 1e-6 ? 1 / shotConfig.mass : 0;
     _travelingProjectileGravity[index] = projectileGravity;
@@ -1636,16 +1650,19 @@ function _updateTravelingProjectilesJS(
       timeAliveBeforeStep,
       dtMs,
     );
-    const maxHomingThrustAccel = getProjectileHomingThrustAcceleration(shotConfig);
+    const maxHomingThrustAccel = getProjectileHomingThrustAcceleration(
+      shotConfig,
+      mediumPhysics,
+    );
     const canCarryRocketCounterGravity =
-      shotConfig.type === 'rocket' &&
+      shotLocomotion.motionModel === 'thrustGuided' &&
       maxHomingThrustAccel > 0 &&
       projectileGravity > 0;
     let guidedTargetCarriesGravity = false;
     if (
       mediumPhysicsActive &&
       !isDGunWave &&
-      (shotConfig.homingTurnRate ?? 0) > 0 &&
+      mediumPhysics.turnRate > 0 &&
       (homingEngagementScale > 0 || canCarryRocketCounterGravity)
     ) {
       const previousHomingTargetId = proj.homingTargetId;
@@ -1671,6 +1688,7 @@ function _updateTravelingProjectilesJS(
         guidedTargetCarriesGravity = true;
         aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
           shotConfig,
+          mediumPhysics,
           homingEngagementScale,
           projectileGravity,
         );
@@ -1749,19 +1767,22 @@ function _updateTravelingProjectilesJS(
           _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
           _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
           _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] =
-            (proj.homingTurnRate ?? 0) * homingEngagementScale;
+            mediumPhysics.turnRate * homingEngagementScale;
           _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] =
             maxHomingThrustAccel * homingEngagementScale;
           _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
           _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
-            getProjectileAirFrictionPer60HzFrame(shot);
+            getProjectileMediumFrictionPer60HzFrame(mediumPhysics);
           _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
-          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] = shot.type === 'missile' ? 1 : 0;
+          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] =
+            shotLocomotion.motionModel === 'constantSpeedGuided' ? 1 : 0;
         }
       }
     }
     aNetZ += getProjectileMediumHoldCounterGravityAcceleration(
       shotConfig,
+      mediumPhysics,
+      position.z <= WATER_LEVEL,
       mediumPhysicsActive,
       guidedTargetCarriesGravity,
       projectileGravity,

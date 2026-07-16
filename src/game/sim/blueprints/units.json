@@ -56,7 +56,7 @@
     "deathSound": {
       "$audio": "event.death.unitJackal"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
       "survival": {
@@ -167,7 +167,7 @@
     "deathSound": {
       "$audio": "event.death.unitLynx"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
       "survival": {
@@ -285,7 +285,7 @@
     "deathSound": {
       "$audio": "event.death.unitDaddy"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {
@@ -417,7 +417,7 @@
     "deathSound": {
       "$audio": "event.death.unitBadger"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
       "survival": {
@@ -527,7 +527,7 @@
     "deathSound": {
       "$audio": "event.death.unitMongoose"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
       "survival": {
@@ -636,7 +636,7 @@
     "deathSound": {
       "$audio": "event.death.unitTick"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {
@@ -768,7 +768,7 @@
     "deathSound": {
       "$audio": "event.death.unitMammoth"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
       "survival": {
@@ -896,7 +896,7 @@
     "deathSound": {
       "$audio": "event.death.unitFormik"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {
@@ -1122,7 +1122,7 @@
     "deathSound": {
       "$audio": "event.death.unitWidow"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {
@@ -1253,7 +1253,7 @@
     "deathSound": {
       "$audio": "event.death.unitHippo"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "amphibiousTreads",
       "survival": {
@@ -1396,7 +1396,7 @@
     "deathSound": {
       "$audio": "event.death.unitHippo"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "flippers",
       "physicsPresetId": "flippers",
       "survival": {
@@ -1540,7 +1540,7 @@
     "deathSound": {
       "$audio": "event.death.unitHippo"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "swim",
       "physicsPresetId": "swim",
       "survival": {
@@ -1671,7 +1671,7 @@
     "deathSound": {
       "$audio": "event.death.unitTarantula"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {
@@ -1808,7 +1808,7 @@
     "deathSound": {
       "$audio": "event.death.unitLoris"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
       "survival": {
@@ -1915,7 +1915,7 @@
     "deathSound": {
       "$audio": "event.death.unitBee"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
       "survival": {
@@ -2050,7 +2050,7 @@
     "deathSound": {
       "$audio": "event.death.unitDragonfly"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
       "survival": {
@@ -2213,7 +2213,7 @@
     "deathSound": {
       "$audio": "event.death.unitConstructionDrone"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
       "survival": {
@@ -2329,7 +2329,7 @@
     "deathSound": {
       "$audio": "event.death.unitEagle"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
       "survival": {
@@ -2474,7 +2474,7 @@
     "deathSound": {
       "$audio": "event.death.unitEagle"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
       "survival": {
@@ -2638,7 +2638,7 @@
     "deathSound": {
       "$audio": "event.death.unitEagle"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
       "survival": {
@@ -2787,7 +2787,7 @@
     "deathSound": {
       "$audio": "event.death.unitTick"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
       "survival": {
@@ -2921,7 +2921,7 @@
     "deathSound": {
       "$audio": "event.death.unitDragonfly"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
       "survival": {
@@ -3109,7 +3109,7 @@
     "deathSound": {
       "$audio": "event.death.unitCommander"
     },
-    "locomotion": {
+    "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
       "survival": {

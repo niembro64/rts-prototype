@@ -23,7 +23,8 @@ import towersJson from '../sim/blueprints/towers.json';
 import turretsJson from '../sim/blueprints/turrets.json';
 import unitRosterJson from '../sim/blueprints/unitRoster.json';
 import unitsJson from '../sim/blueprints/units.json';
-import locomotionConfigJson from '../sim/locomotionConfig.json';
+import unitLocomotionConfigJson from '../sim/unitLocomotionConfig.json';
+import shotLocomotionConfigJson from '../sim/shotLocomotionConfig.json';
 import shotProfileConfigJson from '../sim/shotProfileConfig.json';
 import surfaceProbeConfigJson from '../sim/surfaceProbeConfig.json';
 import {
@@ -111,7 +112,8 @@ const GAMEPLAY_CONFIG_CONTENT = {
   buildConfig: buildConfigJson,
   combatConfig: combatConfigJson,
   economyConfig: economyConfigJson,
-  locomotionConfig: locomotionConfigJson,
+  unitLocomotionConfig: unitLocomotionConfigJson,
+  shotLocomotionConfig: shotLocomotionConfigJson,
   metalDepositConfig: metalDepositConfigJson,
   physicsTuningConfig: physicsTuningConfigJson,
   realBattleConfig: realBattleConfigJson,

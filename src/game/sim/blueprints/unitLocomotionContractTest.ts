@@ -1,39 +1,54 @@
-import type { LocomotionBlueprint } from './types';
+import type { UnitLocomotionBlueprint } from './types';
 import type {
   UnitLocomotion,
   UnitLocomotionFluidPhysics,
   UnitLocomotionGroundPhysics,
-} from '@/types/locomotionTypes';
+} from '@/types/unitLocomotionTypes';
 import {
   cloneUnitLocomotion,
   createUnitLocomotion,
-} from '../locomotion';
-import { getSurfaceLiftDistanceResponse } from '../surfaceLiftDistanceResponse';
+} from '../unitLocomotion';
+import {
+  getSurfaceLiftDistanceResponse,
+  getSurfaceLiftProbeDistance,
+  getSurfaceLiftProbeForceMultiplier,
+} from '../surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../surfaceLiftGroundSupport';
 import {
+  accumulateSurfaceProbeProposedForce,
   accumulateSurfaceProbeResponse,
+  finalizeSurfaceProbeProposedForce,
   finalizeSurfaceProbeResponse,
   isSurfaceProbeAggregation,
   surfaceProbeUsesWaterSurface,
 } from '../surfaceProbeAggregation';
-import { resolveLocomotionRouteCapabilities } from '../locomotionNavigation';
+import { resolveUnitLocomotionRouteCapabilities } from '../unitLocomotionNavigation';
 import {
-  LOCOMOTION_FRICTION_BY_MEDIUM,
-  LOCOMOTION_MEDIUM_NAMES,
-  getLocomotionEffectiveFriction,
-  getLocomotionPreset,
-  type LocomotionPresetConfig,
-} from '../locomotionPresetConfig';
+  UNIT_LOCOMOTION_FORCE_SCALE,
+  UNIT_LOCOMOTION_FRICTION_BY_MEDIUM,
+  UNIT_LOCOMOTION_MEDIUM_NAMES,
+  getUnitLocomotionEffectiveFriction,
+  getUnitLocomotionPreset,
+  type UnitLocomotionPresetConfig,
+} from '../unitLocomotionPresetConfig';
 import {
   forEachSurfaceProbePoint,
   getSurfaceProbePointCount,
 } from '../surfaceProbeSets';
 import { getShotBlueprint, getTurretBlueprint, getUnitBlueprint, getUnitLocomotion } from './index';
 import { getAllUnitBlueprints } from './units';
-import rawLocomotionConfig from '../locomotionConfig.json';
+import rawLocomotionConfig from '../unitLocomotionConfig.json';
 import { deterministicMath as DMath } from '../deterministicMath';
+import { getShotLocomotionPreset } from '../shotLocomotion';
+import {
+  GRAVITY,
+  UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
+  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
+  UNIT_MASS_MULTIPLIER,
+  UNIT_THRUST_MULTIPLIER_GAME,
+} from '@/config';
 
-type AuthoredFluidPhysics = NonNullable<LocomotionBlueprint['physics']['air']>;
+type AuthoredFluidPhysics = NonNullable<UnitLocomotionBlueprint['physics']['air']>;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -48,12 +63,12 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
   );
 }
 
-function cloneLocomotionBlueprint(locomotion: LocomotionBlueprint): LocomotionBlueprint {
-  return JSON.parse(JSON.stringify(locomotion)) as LocomotionBlueprint;
+function cloneUnitLocomotionBlueprint(locomotion: UnitLocomotionBlueprint): UnitLocomotionBlueprint {
+  return JSON.parse(JSON.stringify(locomotion)) as UnitLocomotionBlueprint;
 }
 
 function expectLocomotionError(
-  blueprint: LocomotionBlueprint,
+  blueprint: UnitLocomotionBlueprint,
   expectedMessagePart: string,
 ): void {
   try {
@@ -72,11 +87,18 @@ function expectLocomotionError(
 
 function assertSurfaceLiftDefaultsMatchConfig(): void {
   const {
+    distanceMeasurement,
     referenceDistanceWorld,
     minimumDistanceWorld,
     distanceExponent,
     probeAggregation,
+    nearSurfaceAvoidance,
   } = rawLocomotionConfig.surfaceLiftDefaults;
+  assertEqual(
+    distanceMeasurement,
+    'body-clearance',
+    'surface probes measure authored hull clearance rather than body-center altitude',
+  );
   assertContract(
     Number.isFinite(referenceDistanceWorld) && referenceDistanceWorld > 0,
     'surfaceLiftDefaults.referenceDistanceWorld must be positive',
@@ -103,6 +125,38 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     DMath.pow(referenceDistanceWorld / minimumDistanceWorld, distanceExponent),
     'surface lift clamps distance before applying the shared power law',
   );
+  const minimumDistanceResponse = DMath.pow(
+    referenceDistanceWorld / minimumDistanceWorld,
+    distanceExponent,
+  );
+  for (const invalidProbeDistance of [0, -1, Number.NEGATIVE_INFINITY, Number.NaN]) {
+    assertEqual(
+      getSurfaceLiftDistanceResponse(invalidProbeDistance),
+      minimumDistanceResponse,
+      `probe distance ${String(invalidProbeDistance)} resolves through the configured positive minimum`,
+    );
+  }
+  assertEqual(
+    getSurfaceLiftProbeDistance(25, 5, 10),
+    10,
+    'body-clearance probe distance subtracts the authored body-center height',
+  );
+  const avoidanceClearance =
+    nearSurfaceAvoidance.clearanceWorld + 20 * nearSurfaceAvoidance.bodyRadiusMultiplier;
+  assertEqual(
+    getSurfaceLiftProbeForceMultiplier(avoidanceClearance, 20),
+    getSurfaceLiftDistanceResponse(avoidanceClearance),
+    'near-surface avoidance is zero at its configured clearance threshold',
+  );
+  assertEqual(
+    getSurfaceLiftProbeForceMultiplier(minimumDistanceWorld, 20),
+    minimumDistanceResponse + nearSurfaceAvoidance.maximumAdditionalResponse,
+    'a dangerously close probe receives the configured capped additional response',
+  );
+  assertContract(
+    getSurfaceLiftProbeForceMultiplier(minimumDistanceWorld, 20) / 8 >= 32,
+    'one dangerously close or buried probe retains extreme authority after an eight-probe average',
+  );
   const averageAggregate = accumulateSurfaceProbeResponse(
     accumulateSurfaceProbeResponse(0, 0.25, 'average'),
     0.75,
@@ -122,6 +176,28 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     finalizeSurfaceProbeResponse(maxAggregate, 2, 'max'),
     0.75,
     'max probe aggregation selects the strongest nonlinear per-probe response',
+  );
+  const firstProposedForce = 100 * 0.25;
+  const secondProposedForce = 10 * 0.75;
+  const proposedForceSum = accumulateSurfaceProbeProposedForce(
+    accumulateSurfaceProbeProposedForce(0, firstProposedForce, 'average'),
+    secondProposedForce,
+    'average',
+  );
+  assertEqual(
+    finalizeSurfaceProbeProposedForce(proposedForceSum, 2, 'average'),
+    16.25,
+    'average aggregation operates after each probe applies its authored force',
+  );
+  const proposedForceMax = accumulateSurfaceProbeProposedForce(
+    accumulateSurfaceProbeProposedForce(0, firstProposedForce, 'max'),
+    secondProposedForce,
+    'max',
+  );
+  assertEqual(
+    finalizeSurfaceProbeProposedForce(proposedForceMax, 2, 'max'),
+    25,
+    'max aggregation selects the strongest complete per-probe force proposal',
   );
   assertContract(
     !surfaceProbeUsesWaterSurface(0, 0) && surfaceProbeUsesWaterSurface(-1, 0),
@@ -145,7 +221,7 @@ function assertSurfaceLiftGroundSupportContract(): void {
 function assertAllLiftObjectsAreExplicit(): void {
   for (const unit of getAllUnitBlueprints()) {
     const id = unit.unitBlueprintId;
-    const { air, water } = unit.locomotion.physics;
+    const { air, water } = unit.unitLocomotion.physics;
     assertContract(air !== undefined, `${id} explicitly authors physics.air`);
     assertContract(water !== undefined, `${id} explicitly authors physics.water`);
     assertContract(
@@ -197,21 +273,21 @@ function assertSurfaceProbeLayouts(): void {
   );
   for (const presetId of ['wheels', 'treads', 'legs']) {
     assertEqual(
-      getLocomotionPreset(presetId).physics.surfaceProbeSetId,
+      getUnitLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '1-point',
       `${presetId} uses center sampling`,
     );
   }
   for (const presetId of ['amphibiousTreads', 'swim']) {
     assertEqual(
-      getLocomotionPreset(presetId).physics.surfaceProbeSetId,
+      getUnitLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '5-points',
       `${presetId} uses footprint sampling`,
     );
   }
   for (const presetId of ['flippers', 'hover', 'flying']) {
     assertEqual(
-      getLocomotionPreset(presetId).physics.surfaceProbeSetId,
+      getUnitLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '8-points',
       `${presetId} preserves lookahead sampling`,
     );
@@ -219,13 +295,13 @@ function assertSurfaceProbeLayouts(): void {
 }
 
 function assertMobilityTuningIntent(): void {
-  const wheels = getLocomotionPreset('wheels').physics;
-  const treads = getLocomotionPreset('treads').physics;
-  const legs = getLocomotionPreset('legs').physics;
-  const flippers = getLocomotionPreset('flippers').physics;
-  const swim = getLocomotionPreset('swim').physics;
-  const hover = getLocomotionPreset('hover').physics;
-  const flying = getLocomotionPreset('flying').physics;
+  const wheels = getUnitLocomotionPreset('wheels').physics;
+  const treads = getUnitLocomotionPreset('treads').physics;
+  const legs = getUnitLocomotionPreset('legs').physics;
+  const flippers = getUnitLocomotionPreset('flippers').physics;
+  const swim = getUnitLocomotionPreset('swim').physics;
+  const hover = getUnitLocomotionPreset('hover').physics;
+  const flying = getUnitLocomotionPreset('flying').physics;
 
   assertContract(
     wheels.ground.propulsion.driveForce > 0 && wheels.ground.contact.surfaceGrip >= 0.55,
@@ -239,10 +315,10 @@ function assertMobilityTuningIntent(): void {
     legs.ground.propulsion.driveForce > 0 && legs.ground.contact.surfaceGrip >= 1,
     'legs keep ground drive without weakening contact grip',
   );
-  assertEqual(
-    flippers.ground.propulsion.driveForce,
-    legs.ground.propulsion.driveForce,
-    'flippers inherit leg-family ground propulsion',
+  assertContract(
+    flippers.ground.propulsion.driveForce < legs.ground.propulsion.driveForce &&
+      flippers.ground.contact.surfaceGrip < legs.ground.contact.surfaceGrip,
+    'flippers deliberately trade leg-family land drive and grip for swimming authority',
   );
   assertContract(
     flying.air.resistance.directionalScale.forward >= 0.5 &&
@@ -254,6 +330,19 @@ function assertMobilityTuningIntent(): void {
     flying.air.propulsion.forceCoupling >= 3,
     'flying speed tuning must not remove air turn authority',
   );
+  for (const [label, fluid, expectedEma] of [
+    ['flippers.water', flippers.water, 0.97],
+    ['swim.air', swim.air, 0.97],
+    ['swim.water', swim.water, 0.97],
+    ['hover.air', hover.air, 0.3],
+    ['flying.air', flying.air, 0.97],
+  ] as const) {
+    assertContract(
+      fluid.surfaceLiftResponse.randomizationAmount === 0.99 &&
+        fluid.surfaceLiftResponse.ema === expectedEma,
+      `${label} preserves the historical randomized, smoothed surface-lift tuning`,
+    );
+  }
   for (const [label, fluid] of [
     ['flippers.water', flippers.water],
     ['swim.water', swim.water],
@@ -261,25 +350,23 @@ function assertMobilityTuningIntent(): void {
     ['flying.air', flying.air],
   ] as const) {
     assertContract(
-      fluid.surfaceLiftResponse.randomizationAmount === 0 &&
-        fluid.surfaceLiftResponse.ema <= 0.1 &&
-        fluid.resistance.directionalScale.vertical >= 4,
-      `${label} keeps the stable, strongly damped surface-lift tuning`,
+      fluid.resistance.directionalScale.vertical >= 4,
+      `${label} keeps its strongly damped vertical resistance tuning`,
     );
   }
 }
 
 function assertGlobalFrictionContract(): void {
-  for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+  for (const medium of UNIT_LOCOMOTION_MEDIUM_NAMES) {
     assertEqual(
-      LOCOMOTION_FRICTION_BY_MEDIUM[medium],
+      UNIT_LOCOMOTION_FRICTION_BY_MEDIUM[medium],
       rawLocomotionConfig.mediumDefaults[medium].resistance.linearFriction,
-      `${medium} global friction follows locomotionConfig.json`,
+      `${medium} global friction follows unitLocomotionConfig.json`,
     );
   }
   for (const presetId of Object.keys(rawLocomotionConfig.presets)) {
-    const preset = getLocomotionPreset(presetId);
-    for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+    const preset = getUnitLocomotionPreset(presetId);
+    for (const medium of UNIT_LOCOMOTION_MEDIUM_NAMES) {
       const physics = preset.physics[medium];
       assertContract(
         physics.resistance.frictionMultiplier >= 0 &&
@@ -291,24 +378,24 @@ function assertGlobalFrictionContract(): void {
         `${presetId}.${medium} does not duplicate global friction`,
       );
       assertContract(
-        getLocomotionEffectiveFriction(medium, physics) <=
-          LOCOMOTION_FRICTION_BY_MEDIUM[medium],
+        getUnitLocomotionEffectiveFriction(medium, physics) <=
+          UNIT_LOCOMOTION_FRICTION_BY_MEDIUM[medium],
         `${presetId}.${medium} effective friction cannot exceed its global medium value`,
       );
     }
   }
   assertEqual(
-    getLocomotionEffectiveFriction('air', getLocomotionPreset('swim').physics.air),
+    getUnitLocomotionEffectiveFriction('air', getUnitLocomotionPreset('swim').physics.air),
     1,
     'swim preserves its effective air friction',
   );
   assertEqual(
-    getLocomotionEffectiveFriction('water', getLocomotionPreset('flippers').physics.water),
+    getUnitLocomotionEffectiveFriction('water', getUnitLocomotionPreset('flippers').physics.water),
     5,
     'flippers preserve their effective water friction',
   );
   assertEqual(
-    getLocomotionEffectiveFriction('water', getLocomotionPreset('swim').physics.water),
+    getUnitLocomotionEffectiveFriction('water', getUnitLocomotionPreset('swim').physics.water),
     2.5,
     'swim preserves its effective water friction',
   );
@@ -316,7 +403,7 @@ function assertGlobalFrictionContract(): void {
 
 function assertRuntimeGroundMatchesPreset(
   runtime: UnitLocomotionGroundPhysics,
-  preset: LocomotionPresetConfig['physics']['ground'],
+  preset: UnitLocomotionPresetConfig['physics']['ground'],
   label: string,
 ): void {
   assertEqual(JSON.stringify(runtime), JSON.stringify(preset), `${label} follows its ground preset`);
@@ -325,18 +412,18 @@ function assertRuntimeGroundMatchesPreset(
 function assertRuntimeFluidMatchesSources(
   runtime: UnitLocomotionFluidPhysics,
   authored: AuthoredFluidPhysics | undefined,
-  preset: LocomotionPresetConfig['physics']['air'],
+  preset: UnitLocomotionPresetConfig['physics']['air'],
   label: string,
 ): void {
   assertEqual(
     JSON.stringify(runtime.propulsion),
     JSON.stringify(preset.propulsion),
-    `${label} propulsion follows locomotionConfig.json`,
+    `${label} propulsion follows unitLocomotionConfig.json`,
   );
   assertEqual(
     JSON.stringify(runtime.resistance),
     JSON.stringify(preset.resistance),
-    `${label} resistance follows locomotionConfig.json`,
+    `${label} resistance follows unitLocomotionConfig.json`,
   );
   assertEqual(
     runtime.lift.liftForceFromGroundSurface,
@@ -356,18 +443,18 @@ function assertRuntimeFluidMatchesSources(
   assertEqual(
     runtime.lift.randomizationAmount,
     preset.surfaceLiftResponse.randomizationAmount,
-    `${label} lift randomization follows locomotionConfig.json`,
+    `${label} lift randomization follows unitLocomotionConfig.json`,
   );
   assertEqual(
     runtime.lift.ema,
     preset.surfaceLiftResponse.ema,
-    `${label} lift EMA follows locomotionConfig.json`,
+    `${label} lift EMA follows unitLocomotionConfig.json`,
   );
 }
 
 function assertPathfindingMatchesAuthored(
   runtime: UnitLocomotion['pathfinding'],
-  authored: LocomotionBlueprint['pathfinding'],
+  authored: UnitLocomotionBlueprint['pathfinding'],
   label: string,
 ): void {
   assertEqual(
@@ -390,8 +477,8 @@ function assertPathfindingMatchesAuthored(
 function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLocomotion {
   const unitBlueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
-  const authored = unitBlueprint.locomotion;
-  const typeConfig = getLocomotionPreset(authored.physicsPresetId);
+  const authored = unitBlueprint.unitLocomotion;
+  const typeConfig = getUnitLocomotionPreset(authored.physicsPresetId);
 
   assertEqual(locomotion.type, authored.type, `${unitBlueprintId} locomotion type follows unit JSON`);
   assertEqual(
@@ -429,27 +516,27 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
   assertEqual(
     locomotion.idleAirDrive,
     typeConfig.physics.idleAirDrive,
-    `${unitBlueprintId} idle air drive follows locomotionConfig.json`,
+    `${unitBlueprintId} idle air drive follows unitLocomotionConfig.json`,
   );
   assertEqual(
     locomotion.forwardForceRequiresFacing,
     typeConfig.physics.forwardForceRequiresFacing,
-    `${unitBlueprintId} forward force gate follows locomotionConfig.json`,
+    `${unitBlueprintId} forward force gate follows unitLocomotionConfig.json`,
   );
   assertEqual(
     locomotion.driveForceScalesWithFacing,
     typeConfig.physics.driveForceScalesWithFacing,
-    `${unitBlueprintId} facing force scaling follows locomotionConfig.json`,
+    `${unitBlueprintId} facing force scaling follows unitLocomotionConfig.json`,
   );
   assertEqual(
     locomotion.maintainFullThrustAtWaypoints,
     typeConfig.physics.maintainFullThrustAtWaypoints,
-    `${unitBlueprintId} waypoint thrust mode follows locomotionConfig.json`,
+    `${unitBlueprintId} waypoint thrust mode follows unitLocomotionConfig.json`,
   );
   assertEqual(
     locomotion.surfaceProbeSetId,
     typeConfig.physics.surfaceProbeSetId,
-    `${unitBlueprintId} surface probe set follows locomotionConfig.json`,
+    `${unitBlueprintId} surface probe set follows unitLocomotionConfig.json`,
   );
   assertPathfindingMatchesAuthored(locomotion.pathfinding, authored.pathfinding, unitBlueprintId);
   return locomotion;
@@ -463,7 +550,7 @@ function assertClonedLocomotionMatchesSource(
   assertEqual(JSON.stringify(clone), JSON.stringify(source), `${label} clone preserves runtime locomotion`);
 }
 
-export function runLocomotionContractTest(): void {
+export function runUnitLocomotionContractTest(): void {
   assertSurfaceLiftDefaultsMatchConfig();
   assertSurfaceLiftGroundSupportContract();
   assertAllLiftObjectsAreExplicit();
@@ -473,7 +560,7 @@ export function runLocomotionContractTest(): void {
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
-  const hippoRoutes = resolveLocomotionRouteCapabilities(hippoLocomotion);
+  const hippoRoutes = resolveUnitLocomotionRouteCapabilities(hippoLocomotion);
   assertContract(hippoRoutes.allowOnGround, 'Hippo allows on-ground routes');
   assertContract(hippoRoutes.allowInWater, 'Hippo allows in-water routes');
   assertContract(!hippoRoutes.allowInAir, 'Hippo does not allow in-air routes');
@@ -481,7 +568,7 @@ export function runLocomotionContractTest(): void {
   assertClonedLocomotionMatchesSource(clonedHippoLocomotion, hippoLocomotion, 'Hippo');
 
   const eagleLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
-  const eagleRoutes = resolveLocomotionRouteCapabilities(eagleLocomotion);
+  const eagleRoutes = resolveUnitLocomotionRouteCapabilities(eagleLocomotion);
   assertContract(!eagleRoutes.allowOnGround, 'Eagle does not allow on-ground routes');
   assertContract(!eagleRoutes.allowInWater, 'Eagle does not allow in-water routes');
   assertContract(eagleRoutes.allowInAir, 'Eagle allows in-air routes');
@@ -489,7 +576,7 @@ export function runLocomotionContractTest(): void {
 
   const jackalBlueprint = getUnitBlueprint('unitJackal');
   const nonAmphibiousLocomotion = assertRuntimeLocomotionMatchesSources('unitJackal');
-  const jackalRoutes = resolveLocomotionRouteCapabilities(nonAmphibiousLocomotion);
+  const jackalRoutes = resolveUnitLocomotionRouteCapabilities(nonAmphibiousLocomotion);
   assertContract(jackalRoutes.allowOnGround, 'Jackal allows on-ground routes');
   assertContract(
     !jackalRoutes.allowInWater,
@@ -501,7 +588,7 @@ export function runLocomotionContractTest(): void {
     nonAmphibiousLocomotion,
     'Jackal',
   );
-  const lynxRoutes = resolveLocomotionRouteCapabilities(
+  const lynxRoutes = resolveUnitLocomotionRouteCapabilities(
     assertRuntimeLocomotionMatchesSources('unitLynx'),
   );
   assertContract(
@@ -526,7 +613,7 @@ export function runLocomotionContractTest(): void {
   const seaTurtleLocomotion = assertRuntimeLocomotionMatchesSources('unitSeaTurtle');
   const seaTurtleBlueprint = getUnitBlueprint('unitSeaTurtle');
   assertEqual(
-    seaTurtleBlueprint.locomotion.type,
+    seaTurtleBlueprint.unitLocomotion.type,
     'flippers',
     'Sea Turtle owns the independent flipper visual rig',
   );
@@ -547,16 +634,58 @@ export function runLocomotionContractTest(): void {
     'flippers use the normalized Sea Turtle coupled water drive',
   );
   assertContract(
-    seaTurtleWaterDrive < seaTurtleGroundDrive,
-    'Sea Turtle water propulsion accounts for the absence of a ground-grip force cap',
+    seaTurtleWaterDrive > seaTurtleGroundDrive,
+    'Sea Turtle couples more drive force through water than through dry-land flippers',
+  );
+  assertContract(
+    seaTurtleLocomotion.physics.ground.contact.surfaceGrip <= 0.15,
+    'Sea Turtle flippers have low dry-land grip so land speed stays below swim speed',
+  );
+  const seaTurtlePhysicsMass = seaTurtleBlueprint.mass * UNIT_MASS_MULTIPLIER;
+  const driveAcceleration = (driveForce: number, forceCoupling: number): number =>
+    driveForce * forceCoupling * UNIT_THRUST_MULTIPLIER_GAME *
+    UNIT_LOCOMOTION_FORCE_REFERENCE_MASS / UNIT_LOCOMOTION_FORCE_SCALE *
+    1_000_000 / seaTurtlePhysicsMass;
+  const groundDriveAcceleration = Math.min(
+    driveAcceleration(
+      seaTurtleLocomotion.physics.ground.propulsion.driveForce,
+      seaTurtleLocomotion.physics.ground.propulsion.forceCoupling,
+    ),
+    GRAVITY * seaTurtleLocomotion.physics.ground.contact.surfaceGrip,
+  );
+  const groundDamp = DMath.pow(
+    1 - UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
+    seaTurtleLocomotion.physics.ground.contact.tangentDamping,
+  );
+  const groundEquilibriumSpeed =
+    groundDriveAcceleration * groundDamp / (60 * (1 - groundDamp));
+  const waterDriveAcceleration = driveAcceleration(
+    seaTurtleLocomotion.physics.water.propulsion.driveForce,
+    seaTurtleLocomotion.physics.water.propulsion.forceCoupling,
+  );
+  const waterForwardScale = seaTurtleLocomotion.physics.water.resistance.directionalScale.forward;
+  const waterLinearDrag =
+    getUnitLocomotionEffectiveFriction('water', seaTurtleLocomotion.physics.water) *
+    waterForwardScale;
+  const waterQuadraticDrag =
+    seaTurtleLocomotion.physics.water.resistance.quadraticDrag * waterForwardScale;
+  const waterEquilibriumSpeed = waterQuadraticDrag > 0
+    ? (
+        DMath.sqrt(waterLinearDrag * waterLinearDrag + 4 * waterQuadraticDrag * waterDriveAcceleration) -
+        waterLinearDrag
+      ) / (2 * waterQuadraticDrag)
+    : waterDriveAcceleration / waterLinearDrag;
+  assertContract(
+    waterEquilibriumSpeed > groundEquilibriumSpeed,
+    `Sea Turtle swim equilibrium speed (${waterEquilibriumSpeed}) must exceed land speed (${groundEquilibriumSpeed})`,
   );
   assertContract(
     seaTurtleLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      seaTurtleLocomotion.physics.water.lift.randomizationAmount === 0 &&
-      seaTurtleLocomotion.physics.water.lift.ema > 0,
-    'Sea Turtle water lift owns active upward force and responsive, noise-free EMA smoothing',
+      seaTurtleLocomotion.physics.water.lift.randomizationAmount === 0.99 &&
+      seaTurtleLocomotion.physics.water.lift.ema === 0.97,
+    'Sea Turtle water lift preserves its historical randomized, strongly smoothed response',
   );
-  const seaTurtleRoutes = resolveLocomotionRouteCapabilities(seaTurtleLocomotion);
+  const seaTurtleRoutes = resolveUnitLocomotionRouteCapabilities(seaTurtleLocomotion);
   assertContract(
     seaTurtleRoutes.allowOnGround && seaTurtleRoutes.allowInWater && !seaTurtleRoutes.allowInAir,
     'flippers route on ground and in water, never through air',
@@ -564,7 +693,7 @@ export function runLocomotionContractTest(): void {
   const orcaLocomotion = assertRuntimeLocomotionMatchesSources('unitOrca');
   const orcaBlueprint = getUnitBlueprint('unitOrca');
   assertEqual(
-    orcaBlueprint.locomotion.type,
+    orcaBlueprint.unitLocomotion.type,
     'swim',
     'Orca owns the independent swim visual rig',
   );
@@ -585,11 +714,13 @@ export function runLocomotionContractTest(): void {
     'the dedicated torpedo turret emits the dedicated torpedo shot',
   );
   assertEqual(
-    getShotBlueprint('shotTorpedo').physicsMedium,
-    'water-only',
+    getShotLocomotionPreset(
+      getShotBlueprint('shotTorpedo').shotLocomotionPresetId,
+    ).media.water.operational,
+    true,
     'the dedicated torpedo shot remains water-only',
   );
-  const orcaRoutes = resolveLocomotionRouteCapabilities(orcaLocomotion);
+  const orcaRoutes = resolveUnitLocomotionRouteCapabilities(orcaLocomotion);
   assertContract(
     !orcaRoutes.allowOnGround && orcaRoutes.allowInWater && !orcaRoutes.allowInAir,
     'Orca routes only through the water medium',
@@ -602,9 +733,9 @@ export function runLocomotionContractTest(): void {
   );
   assertContract(
     orcaLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      orcaLocomotion.physics.water.lift.randomizationAmount === 0 &&
-      orcaLocomotion.physics.water.lift.ema > 0,
-    'Orca water lift owns active upward force and responsive, noise-free EMA smoothing',
+      orcaLocomotion.physics.water.lift.randomizationAmount === 0.99 &&
+      orcaLocomotion.physics.water.lift.ema === 0.97,
+    'Orca water lift preserves its historical randomized, strongly smoothed response',
   );
   const eagleAirLiftLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
   assertContract(
@@ -613,8 +744,8 @@ export function runLocomotionContractTest(): void {
     'air lift explicitly owns independent ground-surface and water-surface force sources',
   );
 
-  const incompleteAirLift = cloneLocomotionBlueprint(
-    getUnitBlueprint('unitEagle').locomotion,
+  const incompleteAirLift = cloneUnitLocomotionBlueprint(
+    getUnitBlueprint('unitEagle').unitLocomotion,
   );
   delete incompleteAirLift.physics.air?.lift.liftForceFromWaterSurface;
   expectLocomotionError(
@@ -623,8 +754,8 @@ export function runLocomotionContractTest(): void {
       'liftForceFromWaterSurface',
   );
 
-  const missingAirObject = cloneLocomotionBlueprint(
-    getUnitBlueprint('unitHippo').locomotion,
+  const missingAirObject = cloneUnitLocomotionBlueprint(
+    getUnitBlueprint('unitHippo').unitLocomotion,
   );
   delete (missingAirObject.physics as { air?: AuthoredFluidPhysics }).air;
   expectLocomotionError(
@@ -632,8 +763,8 @@ export function runLocomotionContractTest(): void {
     'air and water lift objects must always be explicitly authored',
   );
 
-  const invalidWaterSurfaceLift = cloneLocomotionBlueprint(
-    getUnitBlueprint('unitOrca').locomotion,
+  const invalidWaterSurfaceLift = cloneUnitLocomotionBlueprint(
+    getUnitBlueprint('unitOrca').unitLocomotion,
   );
   const invalidWaterLift = invalidWaterSurfaceLift.physics.water?.lift;
   assertContract(invalidWaterLift !== undefined, 'Orca authors a water lift object');
@@ -643,14 +774,14 @@ export function runLocomotionContractTest(): void {
     'water lift may only be sourced from the ground surface',
   );
   assertEqual(
-    hippoBlueprint.locomotion.type,
+    hippoBlueprint.unitLocomotion.type,
     'treads',
     'Hippo remains the amphibious tread unit',
   );
 
-  const strayUnitMediumConfig = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
+  const strayUnitMediumConfig = cloneUnitLocomotionBlueprint(hippoBlueprint.unitLocomotion);
   (strayUnitMediumConfig.physics.water as AuthoredFluidPhysics & {
     propulsion: { driveForce: number };
   }).propulsion = { driveForce: 1 };
-  expectLocomotionError(strayUnitMediumConfig, 'moved to locomotionConfig.json');
+  expectLocomotionError(strayUnitMediumConfig, 'moved to unitLocomotionConfig.json');
 }

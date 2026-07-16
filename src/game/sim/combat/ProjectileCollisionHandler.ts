@@ -35,9 +35,10 @@ import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { normalizeAngle } from '../../math';
 import {
-  getAirProjectileWaterEntryFraction,
-  projectileCanOperateInWater,
-} from '../projectileMedium';
+  getShotWaterSurfaceCrossingFraction,
+  getShotLocomotionMaxTurnRate,
+  shotLocomotionCanOperateInWater,
+} from '../shotLocomotion';
 
 
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
@@ -86,6 +87,7 @@ const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionProjectileRemoveIds = new Set<EntityId>();
 const _collisionWaterSurfaceImpactIds = new Set<EntityId>();
+const _collisionWaterSurfaceDetonateIds = new Set<EntityId>();
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
@@ -174,7 +176,12 @@ const _terminalEnabled = new Uint8Array(1);
 const _terminalIsProjectileType = new Uint8Array(1);
 const _terminalIsArmed = new Uint8Array(1);
 const _terminalHasExploded = new Uint8Array(1);
+const _terminalDetonateOnEntityImpact = new Uint8Array(1);
+const _terminalDetonateOnGroundContact = new Uint8Array(1);
 const _terminalDetonateOnExpiry = new Uint8Array(1);
+const _terminalDetonateOnDestroyed = new Uint8Array(1);
+const _terminalDetonateOnReflectorImpact = new Uint8Array(1);
+const _terminalDetonateOnWaterTransition = new Uint8Array(1);
 const _terminalHasDetonationPayload = new Uint8Array(1);
 const _terminalDirectHitThisTick = new Uint8Array(1);
 const _terminalReflectedProjectile = new Uint8Array(1);
@@ -457,30 +464,32 @@ function computeProjectileReflectorHits(
 }
 
 /**
- * Stop air-only projectiles at the first water-surface crossing before any
- * reflector or damage sweep is evaluated. The terminal classifier owns the
- * resulting harmless splash/removal; this pass only shortens the swept path.
+ * Stop shots whose locomotion terminates on a water transition at the exact
+ * swept surface crossing. The terminal classifier decides detonation/splash.
  */
-function clipAirProjectilesToWaterSurface(
+function clipTerminalWaterTransitions(
   world: WorldState,
   projectiles: readonly Entity[],
 ): void {
   _collisionWaterSurfaceImpactIds.clear();
+  _collisionWaterSurfaceDetonateIds.clear();
   for (let i = 0; i < projectiles.length; i++) {
     const entity = projectiles[i];
     const proj = entity.projectile;
-    if (
-      proj === null ||
-      proj.projectileType !== 'projectile' ||
-      !isProjectileShot(proj.config.shot) ||
-      proj.config.shot.physicsMedium !== 'air-only'
-    ) {
+    if (proj === null || proj.projectileType !== 'projectile' || !isProjectileShot(proj.config.shot)) {
       continue;
     }
     const previousX = proj.collisionStartX ?? proj.prevX ?? entity.transform.x;
     const previousY = proj.collisionStartY ?? proj.prevY ?? entity.transform.y;
     const previousZ = proj.collisionStartZ ?? proj.prevZ ?? entity.transform.z;
-    const fraction = getAirProjectileWaterEntryFraction(
+    const enteringWater = previousZ > WATER_LEVEL && entity.transform.z <= WATER_LEVEL;
+    const exitingWater = previousZ <= WATER_LEVEL && entity.transform.z > WATER_LEVEL;
+    if (!enteringWater && !exitingWater) continue;
+    const outcome = enteringWater
+      ? proj.config.shot.shotLocomotion.transitions.enterWater
+      : proj.config.shot.shotLocomotion.transitions.exitWater;
+    if (outcome === 'continue' || outcome === 'continueBallistic') continue;
+    const fraction = getShotWaterSurfaceCrossingFraction(
       previousZ,
       entity.transform.z,
       WATER_LEVEL,
@@ -493,6 +502,7 @@ function clipAirProjectilesToWaterSurface(
     entity.transform.y = impactY;
     entity.transform.z = WATER_LEVEL;
     _collisionWaterSurfaceImpactIds.add(entity.id);
+    if (outcome === 'detonate') _collisionWaterSurfaceDetonateIds.add(entity.id);
   }
 }
 
@@ -718,6 +728,8 @@ export function resetCollisionBuffers(): void {
   _collisionDeathContexts.clear();
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
+  _collisionWaterSurfaceImpactIds.clear();
+  _collisionWaterSurfaceDetonateIds.clear();
   _collisionDespawnEvents.length = 0;
   _collisionSimEvents.length = 0;
   _collisionNewProjectiles.length = 0;
@@ -879,7 +891,7 @@ function spawnSubmunitions(
       // the original shooter's turret launch origin.
       fromParentDetonation: true,
       homingTurnRate: isProjectileShot(childCfg.shot)
-        ? childCfg.shot.homingTurnRate ?? undefined
+        ? getShotLocomotionMaxTurnRate(childCfg.shot.shotLocomotion) || undefined
         : undefined,
     });
   }
@@ -1109,7 +1121,21 @@ function classifyProjectileTerminalConsequence(
   _terminalIsProjectileType[0] = proj.projectileType === 'projectile' ? 1 : 0;
   _terminalIsArmed[0] = proj.isArmed ? 1 : 0;
   _terminalHasExploded[0] = proj.hasExploded ? 1 : 0;
-  _terminalDetonateOnExpiry[0] = runtimeProfile.detonateOnExpiry ? 1 : 0;
+  const shotLocomotion = isProjectileShot(config.shot)
+    ? config.shot.shotLocomotion
+    : null;
+  _terminalDetonateOnEntityImpact[0] =
+    shotLocomotion?.terminal.entityImpact === 'detonate' ? 1 : 0;
+  _terminalDetonateOnGroundContact[0] =
+    shotLocomotion?.terminal.groundContact === 'detonate' ? 1 : 0;
+  _terminalDetonateOnExpiry[0] =
+    shotLocomotion?.terminal.expiry === 'detonate' ? 1 : 0;
+  _terminalDetonateOnDestroyed[0] =
+    shotLocomotion?.terminal.destroyed === 'detonate' ? 1 : 0;
+  _terminalDetonateOnReflectorImpact[0] =
+    shotLocomotion?.terminal.reflectorImpact === 'detonate' ? 1 : 0;
+  _terminalDetonateOnWaterTransition[0] =
+    _collisionWaterSurfaceDetonateIds.has(projEntity.id) ? 1 : 0;
   _terminalHasDetonationPayload[0] =
     runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions ? 1 : 0;
   _terminalDirectHitThisTick[0] = directHitThisTick ? 1 : 0;
@@ -1119,7 +1145,8 @@ function classifyProjectileTerminalConsequence(
   _terminalWaterAtImpact[0] = isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
   _terminalWaterSurfaceImpact[0] = waterSurfaceImpact ? 1 : 0;
   _terminalWaterCompatible[0] =
-    isProjectileShot(config.shot) && projectileCanOperateInWater(config.shot.physicsMedium)
+    isProjectileShot(config.shot) &&
+      shotLocomotionCanOperateInWater(config.shot.shotLocomotion)
       ? 1
       : 0;
   _terminalPosX[0] = x;
@@ -1140,7 +1167,12 @@ function classifyProjectileTerminalConsequence(
     _terminalIsProjectileType,
     _terminalIsArmed,
     _terminalHasExploded,
+    _terminalDetonateOnEntityImpact,
+    _terminalDetonateOnGroundContact,
     _terminalDetonateOnExpiry,
+    _terminalDetonateOnDestroyed,
+    _terminalDetonateOnReflectorImpact,
+    _terminalDetonateOnWaterTransition,
     _terminalHasDetonationPayload,
     _terminalDirectHitThisTick,
     _terminalReflectedProjectile,
@@ -1221,6 +1253,7 @@ export function checkProjectileCollisions(
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
   _collisionWaterSurfaceImpactIds.clear();
+  _collisionWaterSurfaceDetonateIds.clear();
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
@@ -1240,7 +1273,7 @@ export function checkProjectileCollisions(
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
   refreshProjectileCollisionTurretMounts(world, dtMs);
-  clipAirProjectilesToWaterSurface(world, projectileEntities);
+  clipTerminalWaterTransitions(world, projectileEntities);
   computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {

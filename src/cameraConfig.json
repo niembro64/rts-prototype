@@ -95,7 +95,7 @@
       "terrain": "terrain-3d-water"
     },
     "rotate": {
-      "screen": "screen-center",
+      "screen": "cursor",
       "terrain": "terrain-3d-water"
     },
     "pan": {

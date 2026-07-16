@@ -7,7 +7,7 @@ import type { BarrelShape } from './config';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
 import type { EntityId, PlayerId } from './entityTypes';
-import type { UnitSuspensionConfig } from './locomotionTypes';
+import type { UnitSuspensionConfig } from './unitLocomotionTypes';
 
 export type TurretRangeVolume = 'turret-range-cylinder-normal' | 'turret-range-bottom-unbounded' | 'turret-range-top-and-bottom-unbounded' | 'turret-range-sphere';
 
@@ -21,7 +21,53 @@ export type SensorCapabilityConfig = {
 
 export type ProjectileShotKind = 'plasma' | 'rocket' | 'missile';
 
-export type ProjectilePhysicsMedium = 'air-only' | 'water-only' | 'air-and-water';
+export type ShotLocomotionMotionModel = 'ballistic' | 'thrustGuided' | 'constantSpeedGuided' | 'terrainFollowing';
+
+export type ShotLocomotionTerminalOutcome = 'detonate' | 'despawn';
+
+export type ShotLocomotionTransitionOutcome = 'continue' | 'continueBallistic' | 'detonate' | 'despawn';
+
+export type ShotLocomotionMediumPhysics = {
+  operational: boolean;
+  propulsionForce: number;
+  guidanceThrust: number;
+  turnRate: number;
+  velocityFrictionPer60HzFrame: number;
+};
+
+export type ShotLocomotionGroundPhysics = {
+  mode: 'impact' | 'terrainFollowing';
+};
+
+export type ShotLocomotionMedia = {
+  air: ShotLocomotionMediumPhysics;
+  water: ShotLocomotionMediumPhysics;
+  ground: ShotLocomotionGroundPhysics;
+};
+
+export type ShotLocomotionTransitions = {
+  enterWater: ShotLocomotionTransitionOutcome;
+  exitWater: ShotLocomotionTransitionOutcome;
+};
+
+export type ShotLocomotionTerminalPolicy = {
+  entityImpact: ShotLocomotionTerminalOutcome;
+  groundContact: ShotLocomotionTerminalOutcome;
+  expiry: ShotLocomotionTerminalOutcome;
+  destroyed: ShotLocomotionTerminalOutcome;
+  reflectorImpact: ShotLocomotionTerminalOutcome;
+};
+
+export type ShotLocomotion = {
+  presetId: string;
+  motionModel: ShotLocomotionMotionModel;
+  maxLifespanMs: number | null;
+  gravityForceMultiplier: number;
+  guidanceDelayMs: number;
+  media: ShotLocomotionMedia;
+  transitions: ShotLocomotionTransitions;
+  terminal: ShotLocomotionTerminalPolicy;
+};
 
 export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
@@ -130,17 +176,9 @@ export type ProjectileShotBlueprint = {
   mass: number;
   health: number;
   radius: EntityRadiusConfig;
-  detonateOnExpiry: boolean;
-  maxLifespan?: number | null;
+  shotLocomotionPresetId: string;
   hitSound: SoundEntry | null;
   submunitions: SubmunitionSpec | null;
-  homingTurnRate: number | null;
-  homingThrust: number | null;
-  homingDelayMs: number | null;
-  propulsionForce: number | null;
-  physicsMedium: ProjectilePhysicsMedium;
-  gravityForceMultiplier: number;
-  airFrictionPer60HzFrame: number;
   smokeTrail: SmokeTrailSpec | null;
 };
 
@@ -167,15 +205,7 @@ export type ProjectileShot = {
   launchForce: number;
   radius: EntityRadiusConfig;
   explosion?: ShotExplosion;
-  detonateOnExpiry?: boolean;
-  maxLifespan?: number;
-  homingTurnRate?: number;
-  homingThrust?: number;
-  homingDelayMs?: number;
-  propulsionForce?: number;
-  physicsMedium: ProjectilePhysicsMedium;
-  gravityForceMultiplier: number;
-  airFrictionPer60HzFrame: number;
+  shotLocomotion: ShotLocomotion;
   trailLength?: number;
   submunitions?: SubmunitionSpec;
   smokeTrail?: SmokeTrailSpec;
@@ -489,12 +519,12 @@ export type LocomotionFluidBodyPhysics = {
   lift: LocomotionLiftPhysics;
 };
 
-export type LocomotionPhysics = {
+export type UnitUnitLocomotionBlueprintPhysics = {
   air: LocomotionFluidBodyPhysics;
   water: LocomotionFluidBodyPhysics;
 };
 
-export type LocomotionSurvivalPolicy = {
+export type UnitLocomotionSurvivalPolicy = {
   waterFatal: boolean;
   fatalSubmergedFraction: number;
   fatalExposureSeconds: number;
@@ -547,77 +577,77 @@ export type FlyingConfig = {
   jetCount?: 1 | 2;
 };
 
-export type LocomotionBlueprintWheels = {
+export type UnitLocomotionBlueprintWheels = {
   type: 'wheels';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: WheelConfig;
 };
 
-export type LocomotionBlueprintTreads = {
+export type UnitLocomotionBlueprintTreads = {
   type: 'treads';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: TreadConfig;
 };
 
-export type LocomotionBlueprintLegs = {
+export type UnitLocomotionBlueprintLegs = {
   type: 'legs';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: LegConfig;
 };
 
-export type LocomotionBlueprintFlippers = {
+export type UnitLocomotionBlueprintFlippers = {
   type: 'flippers';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: FlipperConfig;
 };
 
-export type LocomotionBlueprintHover = {
+export type UnitLocomotionBlueprintHover = {
   type: 'hover';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: HoverConfig;
 };
 
-export type LocomotionBlueprintFlying = {
+export type UnitLocomotionBlueprintFlying = {
   type: 'flying';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: FlyingConfig;
 };
 
-export type LocomotionBlueprintSwim = {
+export type UnitLocomotionBlueprintSwim = {
   type: 'swim';
   physicsPresetId: string;
-  physics: LocomotionPhysics;
-  survival: LocomotionSurvivalPolicy;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
   config: SwimConfig;
 };
 
-export type LocomotionBlueprint = LocomotionBlueprintWheels | LocomotionBlueprintTreads | LocomotionBlueprintLegs | LocomotionBlueprintFlippers | LocomotionBlueprintHover | LocomotionBlueprintFlying | LocomotionBlueprintSwim;
+export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSwim;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';
@@ -744,7 +774,7 @@ export type UnitBlueprint = {
   bodyShape: UnitBodyShape;
   hud: EntityHudBlueprint;
   legAttachHeightFrac: number | null;
-  locomotion: LocomotionBlueprint;
+  unitLocomotion: UnitLocomotionBlueprint;
   suspension: UnitSuspensionConfig | null;
   builder: UnitBuilderConfig | null;
   dgun: UnitDgunConfig | null;

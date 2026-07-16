@@ -327,8 +327,8 @@ function factoryResumeRepeatUnitBlueprintId(entity: Entity): string | null | und
 function firstBlueprintIdByLocomotionType(): Map<UnitLocomotion['type'], string> {
   const idsByType = new Map<UnitLocomotion['type'], string>();
   for (const bp of getAllUnitBlueprints()) {
-    if (!idsByType.has(bp.locomotion.type)) {
-      idsByType.set(bp.locomotion.type, bp.unitBlueprintId);
+    if (!idsByType.has(bp.unitLocomotion.type)) {
+      idsByType.set(bp.unitLocomotion.type, bp.unitBlueprintId);
     }
   }
   return idsByType;

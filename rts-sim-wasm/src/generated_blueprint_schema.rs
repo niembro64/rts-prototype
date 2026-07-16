@@ -69,10 +69,73 @@ pub enum ProjectileShotKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ProjectilePhysicsMedium {
-    AirOnly,
-    WaterOnly,
-    AirAndWater,
+pub enum ShotLocomotionMotionModel {
+    Ballistic,
+    ThrustGuided,
+    ConstantSpeedGuided,
+    TerrainFollowing,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShotLocomotionTerminalOutcome {
+    Detonate,
+    Despawn,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShotLocomotionTransitionOutcome {
+    Continue,
+    ContinueBallistic,
+    Detonate,
+    Despawn,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotionMediumPhysics {
+    pub operational: bool,
+    pub propulsionForce: f64,
+    pub guidanceThrust: f64,
+    pub turnRate: f64,
+    pub velocityFrictionPer60HzFrame: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotionGroundPhysics {
+    pub mode: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotionMedia {
+    pub air: ShotLocomotionMediumPhysics,
+    pub water: ShotLocomotionMediumPhysics,
+    pub ground: ShotLocomotionGroundPhysics,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotionTransitions {
+    pub enterWater: ShotLocomotionTransitionOutcome,
+    pub exitWater: ShotLocomotionTransitionOutcome,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotionTerminalPolicy {
+    pub entityImpact: ShotLocomotionTerminalOutcome,
+    pub groundContact: ShotLocomotionTerminalOutcome,
+    pub expiry: ShotLocomotionTerminalOutcome,
+    pub destroyed: ShotLocomotionTerminalOutcome,
+    pub reflectorImpact: ShotLocomotionTerminalOutcome,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShotLocomotion {
+    pub presetId: String,
+    pub motionModel: ShotLocomotionMotionModel,
+    pub maxLifespanMs: Option<f64>,
+    pub gravityForceMultiplier: f64,
+    pub guidanceDelayMs: f64,
+    pub media: ShotLocomotionMedia,
+    pub transitions: ShotLocomotionTransitions,
+    pub terminal: ShotLocomotionTerminalPolicy,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -224,17 +287,9 @@ pub struct ProjectileShotBlueprint {
     pub mass: f64,
     pub health: f64,
     pub radius: EntityRadiusConfig,
-    pub detonateOnExpiry: bool,
-    pub maxLifespan: Option<f64>,
+    pub shotLocomotionPresetId: String,
     pub hitSound: Option<BlueprintJsonValue>,
     pub submunitions: Option<SubmunitionSpec>,
-    pub homingTurnRate: Option<f64>,
-    pub homingThrust: Option<f64>,
-    pub homingDelayMs: Option<f64>,
-    pub propulsionForce: Option<f64>,
-    pub physicsMedium: ProjectilePhysicsMedium,
-    pub gravityForceMultiplier: f64,
-    pub airFrictionPer60HzFrame: f64,
     pub smokeTrail: Option<SmokeTrailSpec>,
 }
 
@@ -271,15 +326,7 @@ pub struct ProjectileShot {
     pub launchForce: f64,
     pub radius: EntityRadiusConfig,
     pub explosion: Option<ShotExplosion>,
-    pub detonateOnExpiry: Option<bool>,
-    pub maxLifespan: Option<f64>,
-    pub homingTurnRate: Option<f64>,
-    pub homingThrust: Option<f64>,
-    pub homingDelayMs: Option<f64>,
-    pub propulsionForce: Option<f64>,
-    pub physicsMedium: ProjectilePhysicsMedium,
-    pub gravityForceMultiplier: f64,
-    pub airFrictionPer60HzFrame: f64,
+    pub shotLocomotion: ShotLocomotion,
     pub trailLength: Option<f64>,
     pub submunitions: Option<SubmunitionSpec>,
     pub smokeTrail: Option<SmokeTrailSpec>,
@@ -689,13 +736,13 @@ pub struct LocomotionFluidBodyPhysics {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionPhysics {
+pub struct UnitUnitLocomotionBlueprintPhysics {
     pub air: LocomotionFluidBodyPhysics,
     pub water: LocomotionFluidBodyPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionSurvivalPolicy {
+pub struct UnitLocomotionSurvivalPolicy {
     pub waterFatal: bool,
     pub fatalSubmergedFraction: f64,
     pub fatalExposureSeconds: f64,
@@ -756,91 +803,91 @@ pub struct FlyingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintWheels {
+pub struct UnitLocomotionBlueprintWheels {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: WheelConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintTreads {
+pub struct UnitLocomotionBlueprintTreads {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: TreadConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintLegs {
+pub struct UnitLocomotionBlueprintLegs {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: LegConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintFlippers {
+pub struct UnitLocomotionBlueprintFlippers {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: FlipperConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintHover {
+pub struct UnitLocomotionBlueprintHover {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: HoverConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintFlying {
+pub struct UnitLocomotionBlueprintFlying {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: FlyingConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionBlueprintSwim {
+pub struct UnitLocomotionBlueprintSwim {
     pub r#type: String,
     pub physicsPresetId: String,
-    pub physics: LocomotionPhysics,
-    pub survival: LocomotionSurvivalPolicy,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: SwimConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LocomotionBlueprint {
-    LocomotionBlueprintWheels(LocomotionBlueprintWheels),
-    LocomotionBlueprintTreads(LocomotionBlueprintTreads),
-    LocomotionBlueprintLegs(LocomotionBlueprintLegs),
-    LocomotionBlueprintFlippers(LocomotionBlueprintFlippers),
-    LocomotionBlueprintHover(LocomotionBlueprintHover),
-    LocomotionBlueprintFlying(LocomotionBlueprintFlying),
-    LocomotionBlueprintSwim(LocomotionBlueprintSwim),
+pub enum UnitLocomotionBlueprint {
+    UnitLocomotionBlueprintWheels(UnitLocomotionBlueprintWheels),
+    UnitLocomotionBlueprintTreads(UnitLocomotionBlueprintTreads),
+    UnitLocomotionBlueprintLegs(UnitLocomotionBlueprintLegs),
+    UnitLocomotionBlueprintFlippers(UnitLocomotionBlueprintFlippers),
+    UnitLocomotionBlueprintHover(UnitLocomotionBlueprintHover),
+    UnitLocomotionBlueprintFlying(UnitLocomotionBlueprintFlying),
+    UnitLocomotionBlueprintSwim(UnitLocomotionBlueprintSwim),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1002,7 +1049,7 @@ pub struct UnitBlueprint {
     pub bodyShape: UnitBodyShape,
     pub hud: EntityHudBlueprint,
     pub legAttachHeightFrac: Option<f64>,
-    pub locomotion: LocomotionBlueprint,
+    pub unitLocomotion: UnitLocomotionBlueprint,
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,
     pub dgun: Option<UnitDgunConfig>,

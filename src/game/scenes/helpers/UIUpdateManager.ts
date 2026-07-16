@@ -20,7 +20,7 @@ import {
   getUnitBlueprint,
   getUnitLocomotion,
 } from '../../sim/blueprints';
-import { getLocomotionPrimaryDrivePhysics } from '../../sim/locomotion';
+import { getUnitLocomotionPrimaryDrivePhysics } from '../../sim/unitLocomotion';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
@@ -490,7 +490,7 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       }
       const queuedIntentCount = getQueuedActionIntentCount(entity.unit.actions);
       if (queuedIntentCount > 0) details.push({ label: 'Queued', value: `${queuedIntentCount}` });
-      details.push({ label: 'Move', value: bp.locomotion.type });
+      details.push({ label: 'Move', value: bp.unitLocomotion.type });
       const range = maxWeaponRange(entity);
       if (range !== null) details.push({ label: 'Range', value: fmtStat(range) });
       return details;
@@ -1443,7 +1443,7 @@ export function buildUnitStatsOverlayInfo(
       costEnergy = bp.cost.energy * COST_MULTIPLIER;
       costMetal = bp.cost.metal * COST_MULTIPLIER;
       const runtimeLocomotion = getUnitLocomotion(unitBlueprintId);
-      const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtimeLocomotion);
+      const primaryPhysics = getUnitLocomotionPrimaryDrivePhysics(runtimeLocomotion);
       locomotion = {
         type: runtimeLocomotion.type,
         driveForce: primaryPhysics.propulsion.driveForce,

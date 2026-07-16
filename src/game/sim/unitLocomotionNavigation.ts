@@ -1,18 +1,18 @@
 import type {
-  LocomotionMediumNavigation,
+  UnitLocomotionMediumNavigation,
   UnitLocomotion,
   UnitLocomotionFluidPhysics,
   UnitLocomotionMediumPhysics,
-} from '@/types/locomotionTypes';
+} from '@/types/unitLocomotionTypes';
 
-export const LOCOMOTION_MEDIUM_NAVIGATION_VALUES = [
+export const UNIT_LOCOMOTION_MEDIUM_NAVIGATION_VALUES = [
   'air-only',
   'water-only',
   'air-and-water',
-] as const satisfies readonly LocomotionMediumNavigation[];
+] as const satisfies readonly UnitLocomotionMediumNavigation[];
 
 const MEDIUM_POLICY: Record<
-  LocomotionMediumNavigation,
+  UnitLocomotionMediumNavigation,
   Readonly<{ air: boolean; water: boolean }>
 > = {
   'air-only': { air: true, water: false },
@@ -20,16 +20,16 @@ const MEDIUM_POLICY: Record<
   'air-and-water': { air: true, water: true },
 };
 
-export type LocomotionRouteCapabilities = Readonly<{
+export type UnitLocomotionRouteCapabilities = Readonly<{
   allowOnGround: boolean;
   allowInAir: boolean;
   allowInWater: boolean;
 }>;
 
-export function isLocomotionMediumNavigation(
+export function isUnitLocomotionMediumNavigation(
   value: unknown,
-): value is LocomotionMediumNavigation {
-  return (LOCOMOTION_MEDIUM_NAVIGATION_VALUES as readonly unknown[]).includes(value);
+): value is UnitLocomotionMediumNavigation {
+  return (UNIT_LOCOMOTION_MEDIUM_NAVIGATION_VALUES as readonly unknown[]).includes(value);
 }
 
 function hasHorizontalRouteAuthority(physics: UnitLocomotionMediumPhysics): boolean {
@@ -44,9 +44,9 @@ function hasAirLiftAuthority(physics: UnitLocomotionFluidPhysics): boolean {
 
 /** Resolve the single effective route-domain contract used by pathfinding,
  * validation, UI diagnostics, and primary-drive selection. */
-export function resolveLocomotionRouteCapabilities(
+export function resolveUnitLocomotionRouteCapabilities(
   locomotion: UnitLocomotion,
-): LocomotionRouteCapabilities {
+): UnitLocomotionRouteCapabilities {
   const mediumPolicy = MEDIUM_POLICY[locomotion.navigation.allowInMedium];
   return {
     allowOnGround:
@@ -61,8 +61,8 @@ export function resolveLocomotionRouteCapabilities(
   };
 }
 
-export function hasAnyLocomotionRouteCapability(
-  capabilities: LocomotionRouteCapabilities,
+export function hasAnyUnitLocomotionRouteCapability(
+  capabilities: UnitLocomotionRouteCapabilities,
 ): boolean {
   return capabilities.allowOnGround || capabilities.allowInAir || capabilities.allowInWater;
 }

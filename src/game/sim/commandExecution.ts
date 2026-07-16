@@ -56,9 +56,10 @@ import type {
 import type { CombatFireState, Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
 import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
+import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { LOCOMOTION_FORCE_SCALE } from './locomotionPresetConfig';
+import { UNIT_LOCOMOTION_FORCE_SCALE } from './unitLocomotionPresetConfig';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   isBallisticArcWeapon,
@@ -788,7 +789,7 @@ function unitFormationAcceleration(entity: Entity, world: WorldState): number {
   return sim.unitEffectiveDriveAcceleration(
     body.slot,
     world.thrustMultiplier,
-    LOCOMOTION_FORCE_SCALE,
+    UNIT_LOCOMOTION_FORCE_SCALE,
     UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
     UNIT_MASS_MULTIPLIER,
   );
@@ -1668,7 +1669,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     turretIndex: dgunIdx,
     barrelIndex: 0,
     isDGun: true,
-    homingTurnRate: dgunShot.homingTurnRate ?? undefined,
+    homingTurnRate: getShotLocomotionMaxTurnRate(dgunShot.shotLocomotion) || undefined,
   });
 
   // Emit audio event at the authoritative projectile spawn.

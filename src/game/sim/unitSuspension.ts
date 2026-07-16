@@ -4,7 +4,7 @@ import type { Unit } from './types';
 import type {
   UnitSuspensionConfig,
   UnitSuspensionState,
-} from '@/types/locomotionTypes';
+} from '@/types/unitLocomotionTypes';
 
 const SUSPENSION_REST_EPSILON = 0.01;
 const SUSPENSION_REST_VELOCITY_EPSILON = 0.05;

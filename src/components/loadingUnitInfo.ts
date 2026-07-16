@@ -11,14 +11,14 @@ import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
-import { getLocomotionPrimaryDrivePhysics } from '@/game/sim/locomotion';
-import { getLocomotionEffectiveFriction } from '@/game/sim/locomotionPresetConfig';
+import { getUnitLocomotionPrimaryDrivePhysics } from '@/game/sim/unitLocomotion';
+import { getUnitLocomotionEffectiveFriction } from '@/game/sim/unitLocomotionPresetConfig';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   ShotBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';
-import type { UnitLocomotion } from '@/types/locomotionTypes';
+import type { UnitLocomotion } from '@/types/unitLocomotionTypes';
 import type {
   EmissionConfig,
   ProjectileShot,
@@ -237,9 +237,9 @@ function buildEconomySection(
 
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
-  const locomotion = blueprint.locomotion;
+  const locomotion = blueprint.unitLocomotion;
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
-  const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtime);
+  const primaryPhysics = getUnitLocomotionPrimaryDrivePhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
     stat('Drive force', fmt(primaryPhysics.propulsion.driveForce)),
@@ -371,14 +371,25 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
     );
     if (shot.type === 'laser') children.push(stat('Duration', ms(shot.duration)));
   } else {
+    const shotLocomotion = shot.shotLocomotion;
+    const maxLifespanMs = shotLocomotion.maxLifespanMs;
+    const maxTurnRate = Math.max(
+      shotLocomotion.media.air.turnRate,
+      shotLocomotion.media.water.turnRate,
+    );
+    const maxGuidanceThrust = Math.max(
+      shotLocomotion.media.air.guidanceThrust,
+      shotLocomotion.media.water.guidanceThrust,
+    );
     children.push(
       stat('Mass', fmt(shot.mass)),
       stat('Launch force', fmt(shot.launchForce)),
       stat('Visual radius', fmt(shot.radius.other)),
       stat('Hitbox radius', fmt(shot.radius.hitbox)),
       stat('Collision radius', fmt(shot.radius.collision)),
-      stat('TTL', shot.maxLifespan === undefined ? 'impact/ground only' : ms(shot.maxLifespan)),
-      stat('Detonate on expiry', yesNo(shot.detonateOnExpiry === true)),
+      stat('Locomotion', `${shotLocomotion.motionModel} (${shotLocomotion.presetId})`),
+      stat('TTL', maxLifespanMs === null ? 'impact/ground only' : ms(maxLifespanMs)),
+      stat('Detonate on expiry', yesNo(shotLocomotion.terminal.expiry === 'detonate')),
     );
     if (shot.explosion) {
       children.push(node('Explosion', `${fmt(shot.explosion.damage)} damage`, undefined, [
@@ -388,10 +399,10 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
     } else {
       children.push(stat('Explosion', 'none'));
     }
-    if (shot.homingTurnRate !== undefined || shot.homingThrust !== undefined) {
+    if (maxTurnRate > 0 || maxGuidanceThrust > 0) {
       children.push(node('Homing', 'guided', undefined, [
-        stat('Turn rate', shot.homingTurnRate === undefined ? 'none' : `${fmt(shot.homingTurnRate, 2)} rad/s`),
-        stat('Thrust', shot.homingThrust === undefined ? 'none' : fmt(shot.homingThrust)),
+        stat('Turn rate', maxTurnRate > 0 ? `${fmt(maxTurnRate, 2)} rad/s` : 'none'),
+        stat('Thrust', maxGuidanceThrust > 0 ? fmt(maxGuidanceThrust) : 'none'),
       ]));
     }
     if (shot.submunitions) {
@@ -411,7 +422,7 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
 function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoNode[] {
   const items: LoadingUnitInfoNode[] = [];
   const air = locomotion.physics.air;
-  const airFriction = getLocomotionEffectiveFriction('air', air);
+  const airFriction = getUnitLocomotionEffectiveFriction('air', air);
   if (
     air.propulsion.driveForce > 0 ||
     airFriction > 0 ||
@@ -441,7 +452,7 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   }
 
   const water = locomotion.physics.water;
-  const waterFriction = getLocomotionEffectiveFriction('water', water);
+  const waterFriction = getUnitLocomotionEffectiveFriction('water', water);
   if (
     water.propulsion.driveForce > 0 ||
     waterFriction > 0 ||
@@ -555,11 +566,11 @@ function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
 function summarizeUnitRole(blueprint: UnitBlueprint, weaponCount: number): string {
   if (blueprint.builder) return 'builder / support';
   if (weaponCount === 0) return 'utility';
-  if (blueprint.locomotion.type === 'flying') return 'air strike';
-  if (blueprint.locomotion.type === 'swim') return 'underwater assault';
-  if (blueprint.locomotion.type === 'hover') return 'hover skirmisher';
-  if (blueprint.locomotion.type === 'legs') return 'walker assault';
-  if (blueprint.locomotion.type === 'treads') return 'armored assault';
+  if (blueprint.unitLocomotion.type === 'flying') return 'air strike';
+  if (blueprint.unitLocomotion.type === 'swim') return 'underwater assault';
+  if (blueprint.unitLocomotion.type === 'hover') return 'hover skirmisher';
+  if (blueprint.unitLocomotion.type === 'legs') return 'walker assault';
+  if (blueprint.unitLocomotion.type === 'treads') return 'armored assault';
   return 'wheeled combat';
 }
 

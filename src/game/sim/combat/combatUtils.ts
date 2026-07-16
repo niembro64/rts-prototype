@@ -401,8 +401,10 @@ export function getEntityAcceleration3d(
   } else if (entity.projectile) {
     const projShot = entity.projectile.config.shot;
     const gravMul =
-      projShot && 'gravityForceMultiplier' in projShot
-        ? projShot.gravityForceMultiplier
+      isProjectileShot(projShot)
+        ? projShot.shotLocomotion.gravityForceMultiplier
+        : 'gravityForceMultiplier' in projShot
+          ? projShot.gravityForceMultiplier
         : 1;
     out.x = 0;
     out.y = 0;

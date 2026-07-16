@@ -35,7 +35,7 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
     radius: shot.radius,
     deathExplosionRadius: explosionRadius,
     maxLifespan: getShotMaxLifespan(shot),
-    detonateOnExpiry: shot.detonateOnExpiry === true,
+    detonateOnExpiry: shot.shotLocomotion.terminal.expiry === 'detonate',
     hasExplosion: explosionRadius > 0,
     hasSubmunitions: !!shot.submunitions,
   };

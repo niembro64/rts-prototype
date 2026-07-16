@@ -1,0 +1,121 @@
+{
+  "presets": {
+    "ballisticDrag003": {
+      "motionModel": "ballistic",
+      "maxLifespanMs": null,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0.003 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "ballisticDrag002": {
+      "motionModel": "ballistic",
+      "maxLifespanMs": null,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0.002 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "ballisticDrag0025": {
+      "motionModel": "ballistic",
+      "maxLifespanMs": null,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0.0025 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "ballisticDrag004": {
+      "motionModel": "ballistic",
+      "maxLifespanMs": null,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0.004 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "ballisticDrag006": {
+      "motionModel": "ballistic",
+      "maxLifespanMs": null,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0.006 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "terrainFollowing" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "guidedRocketLight": {
+      "motionModel": "thrustGuided",
+      "maxLifespanMs": 10000,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 3000,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 350, "guidanceThrust": 1000, "turnRate": 20, "velocityFrictionPer60HzFrame": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "constantSpeedMissileFast": {
+      "motionModel": "constantSpeedGuided",
+      "maxLifespanMs": 500,
+      "gravityForceMultiplier": 0,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 1.2, "velocityFrictionPer60HzFrame": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "constantSpeedMissileLong": {
+      "motionModel": "constantSpeedGuided",
+      "maxLifespanMs": 6000,
+      "gravityForceMultiplier": 0,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0.3, "velocityFrictionPer60HzFrame": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "despawn", "exitWater": "continue" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "guidedTorpedo": {
+      "motionModel": "thrustGuided",
+      "maxLifespanMs": 9000,
+      "gravityForceMultiplier": 1,
+      "guidanceDelayMs": 0,
+      "media": {
+        "air": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
+        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "turnRate": 4, "velocityFrictionPer60HzFrame": 0 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "despawn", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    }
+  }
+}

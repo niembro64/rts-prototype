@@ -1,6 +1,7 @@
 {
   "shotPlasmaOther": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag003",
     "shotBlueprintId": "shotPlasmaOther",
     "name": "Heavy Plasma",
     "mass": 5,
@@ -10,18 +11,10 @@
       "hitbox": 3.2,
       "collision": 4
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaOther"
     },
     "submunitions": null,
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -44,6 +37,7 @@
   },
   "shotPlasmaLight": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag002",
     "shotBlueprintId": "shotPlasmaLight",
     "name": "Light Plasma",
     "mass": 4,
@@ -53,18 +47,10 @@
       "hitbox": 1.6,
       "collision": 2
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaLight"
     },
     "submunitions": null,
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.002,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -87,6 +73,7 @@
   },
   "shotPlasmaMedium": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag0025",
     "shotBlueprintId": "shotPlasmaMedium",
     "name": "Medium Plasma",
     "mass": 10,
@@ -96,18 +83,10 @@
       "hitbox": 2.4,
       "collision": 3
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaMedium"
     },
     "submunitions": null,
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.0025,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -130,6 +109,7 @@
   },
   "shotRocketLight": {
     "type": "rocket",
+    "shotLocomotionPresetId": "guidedRocketLight",
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
     "mass": 6,
@@ -139,19 +119,10 @@
       "hitbox": 1.6,
       "collision": 2
     },
-    "detonateOnExpiry": true,
-    "maxLifespan": 10000,
     "hitSound": {
       "$audio": "event.hit.shotRocketLight"
     },
     "submunitions": null,
-    "homingTurnRate": 20,
-    "homingThrust": 1000,
-    "homingDelayMs": 3000,
-    "propulsionForce": 350,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -174,6 +145,7 @@
   },
   "shotMissileFast": {
     "type": "missile",
+    "shotLocomotionPresetId": "constantSpeedMissileFast",
     "shotBlueprintId": "shotMissileFast",
     "name": "Fast Missile",
     "mass": 3,
@@ -183,19 +155,10 @@
       "hitbox": 2,
       "collision": 2
     },
-    "detonateOnExpiry": true,
-    "maxLifespan": 500,
     "hitSound": {
       "$audio": "event.hit.shotMissileFast"
     },
     "submunitions": null,
-    "homingTurnRate": 1.2,
-    "homingThrust": null,
-    "homingDelayMs": 0,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 0,
-    "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -218,6 +181,7 @@
   },
   "shotMissileLong": {
     "type": "missile",
+    "shotLocomotionPresetId": "constantSpeedMissileLong",
     "shotBlueprintId": "shotMissileLong",
     "name": "Long Missile",
     "mass": 6,
@@ -227,19 +191,10 @@
       "hitbox": 2,
       "collision": 3
     },
-    "detonateOnExpiry": true,
-    "maxLifespan": 6000,
     "hitSound": {
       "$audio": "event.hit.shotMissileFast"
     },
     "submunitions": null,
-    "homingTurnRate": 0.3,
-    "homingThrust": null,
-    "homingDelayMs": 0,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 0,
-    "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -262,6 +217,7 @@
   },
   "shotPlasmaHeavy": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag003",
     "shotBlueprintId": "shotPlasmaHeavy",
     "name": "Heavy Plasma",
     "mass": 30,
@@ -271,18 +227,10 @@
       "hitbox": 3.2,
       "collision": 4
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaHeavy"
     },
     "submunitions": null,
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -305,6 +253,7 @@
   },
   "shotMortarMedium": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag004",
     "shotBlueprintId": "shotMortarMedium",
     "name": "Medium Mortar Shell",
     "mass": 90,
@@ -314,7 +263,6 @@
       "hitbox": 6.4,
       "collision": 8
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
     },
@@ -325,13 +273,6 @@
       "randomSpreadSpeedVertical": 0,
       "reflectedVelocityDamper": 0.3
     },
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -354,6 +295,7 @@
   },
   "shotMortarHeavy": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag004",
     "shotBlueprintId": "shotMortarHeavy",
     "name": "Heavy Mortar Shell",
     "mass": 140,
@@ -363,7 +305,6 @@
       "hitbox": 8,
       "collision": 10
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
     },
@@ -374,13 +315,6 @@
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.3
     },
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -403,6 +337,7 @@
   },
   "shotPlasmaDisruptor": {
     "type": "plasma",
+    "shotLocomotionPresetId": "ballisticDrag006",
     "shotBlueprintId": "shotPlasmaDisruptor",
     "name": "Disruptor Plasma",
     "mass": 30,
@@ -412,18 +347,10 @@
       "hitbox": 20,
       "collision": 25
     },
-    "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaDisruptor"
     },
     "submunitions": null,
-    "homingTurnRate": null,
-    "homingThrust": null,
-    "homingDelayMs": null,
-    "propulsionForce": null,
-    "physicsMedium": "air-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0.006,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -446,6 +373,7 @@
   },
   "shotTorpedo": {
     "type": "rocket",
+    "shotLocomotionPresetId": "guidedTorpedo",
     "shotBlueprintId": "shotTorpedo",
     "name": "Torpedo",
     "mass": 12,
@@ -455,19 +383,10 @@
       "hitbox": 2.4,
       "collision": 3.5
     },
-    "detonateOnExpiry": false,
-    "maxLifespan": 9000,
     "hitSound": {
       "$audio": "event.hit.shotRocketLight"
     },
     "submunitions": null,
-    "homingTurnRate": 4,
-    "homingThrust": 10000,
-    "homingDelayMs": 0,
-    "propulsionForce": 2400,
-    "physicsMedium": "water-only",
-    "gravityForceMultiplier": 1,
-    "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
     "base": {
       "cost": {

@@ -154,7 +154,7 @@ export function buildLocomotion(
   } catch {
     return undefined;
   }
-  const loc = bp.locomotion;
+  const loc = bp.unitLocomotion;
   if (!loc) return undefined;
   if (!featureVisibleAtDetail('locomotion', detailLevel)) return undefined;
 

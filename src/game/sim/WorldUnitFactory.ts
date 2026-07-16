@@ -18,7 +18,7 @@ import type {
 } from './types';
 import type { WorldSupportSurface } from './supportSurface';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
-import { cloneUnitLocomotion } from './locomotion';
+import { cloneUnitLocomotion } from './unitLocomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { cloneUnitSupportSurface } from './unitSupportSurface';

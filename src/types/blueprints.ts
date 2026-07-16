@@ -34,7 +34,7 @@ export type {
   RayBlueprint,
   LockOnInclusionObject,
   LockOnRequiresTargetLockedOntoSelf,
-  LocomotionBlueprint,
+  UnitLocomotionBlueprint,
   
   PathfindingBlueprint,
   

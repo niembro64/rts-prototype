@@ -32,7 +32,7 @@ export type {
   PathfindingBlueprint,
   UnitBodyShape,
   
-  LocomotionBlueprint,
+  UnitLocomotionBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';
 

@@ -10,7 +10,7 @@ import type { TurretBlueprintId } from '../../../types/blueprintIds';
 import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
-import { createUnitLocomotion } from '../locomotion';
+import { createUnitLocomotion } from '../unitLocomotion';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS,  } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { PATHFINDING_BLUEPRINTS } from './pathfinding';
@@ -18,7 +18,7 @@ import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
-import type { LockOnInclusionObject, LocomotionBlueprint } from './types';
+import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -32,8 +32,8 @@ import {
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
 
-type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusionObject> & {
-  locomotion: Omit<LocomotionBlueprint, 'pathfinding'>;
+type JsonUnitBlueprint = Omit<UnitBlueprint, 'unitLocomotion' | keyof LockOnInclusionObject> & {
+  unitLocomotion: Omit<UnitLocomotionBlueprint, 'pathfinding'>;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
@@ -45,44 +45,44 @@ const UNIT_EXPLICIT_FIELDS = [
   'builder',
   'dgun',
   'deathSound',
-  'locomotion',
+  'unitLocomotion',
 ] as const;
 
 function resolveInlineLocomotion(
   unitBlueprintId: string,
-  locomotion: JsonUnitBlueprint['locomotion'],
-): LocomotionBlueprint {
-  if (!locomotion || !locomotion.type) {
-    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: missing locomotion`);
+  unitLocomotion: JsonUnitBlueprint['unitLocomotion'],
+): UnitLocomotionBlueprint {
+  if (!unitLocomotion || !unitLocomotion.type) {
+    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: missing unitLocomotion`);
   }
-  if (!locomotion.pathfindingBlueprintId) {
+  if (!unitLocomotion.pathfindingBlueprintId) {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: locomotion missing pathfindingBlueprintId`,
+      `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion missing pathfindingBlueprintId`,
     );
   }
-  const pathfinding = PATHFINDING_BLUEPRINTS[locomotion.pathfindingBlueprintId];
+  const pathfinding = PATHFINDING_BLUEPRINTS[unitLocomotion.pathfindingBlueprintId];
   if (!pathfinding) {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: unknown locomotion.pathfindingBlueprintId "${locomotion.pathfindingBlueprintId}"`,
+      `Invalid unit blueprint ${unitBlueprintId}: unknown unitLocomotion.pathfindingBlueprintId "${unitLocomotion.pathfindingBlueprintId}"`,
     );
   }
-  if (!locomotion.physics || typeof locomotion.physics !== 'object') {
+  if (!unitLocomotion.physics || typeof unitLocomotion.physics !== 'object') {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: locomotion missing physics`,
+      `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion missing physics`,
     );
   }
   if (
-    'maxSlopeDeg' in locomotion.physics &&
-    (locomotion.physics as { maxSlopeDeg?: unknown }).maxSlopeDeg !== undefined
+    'maxSlopeDeg' in unitLocomotion.physics &&
+    (unitLocomotion.physics as { maxSlopeDeg?: unknown }).maxSlopeDeg !== undefined
   ) {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.maxSlopeDeg is derived from authoritative physics`,
+      `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion physics.maxSlopeDeg is derived from authoritative physics`,
     );
   }
   const resolved = {
-    ...locomotion,
+    ...unitLocomotion,
     pathfinding,
-  } as LocomotionBlueprint;
+  } as UnitLocomotionBlueprint;
   createUnitLocomotion(resolved);
   return resolved;
 }
@@ -97,7 +97,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
     assertNoInlineLockOnInclusionFields(`unit blueprint ${id}`, blueprint);
-    const locomotion = resolveInlineLocomotion(id, blueprint.locomotion);
+    const unitLocomotion = resolveInlineLocomotion(id, blueprint.unitLocomotion);
     const base = normalizeEntityBaseLedgerFromAliases(
       `unit blueprint ${id}`,
       blueprint.base,
@@ -125,7 +125,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
       ...blueprint,
       base,
       ...getUnitLockOnInclusions(id),
-      locomotion,
+      unitLocomotion,
     };
   }
 
@@ -292,8 +292,8 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
-  if (bp.locomotion.type === 'legs') {
-    const legs = bp.locomotion.config.leftSide;
+  if (bp.unitLocomotion.type === 'legs') {
+    const legs = bp.unitLocomotion.config.leftSide;
     if (!Array.isArray(legs) || legs.length === 0) {
       throw new Error(
         `Invalid leg layout for ${bp.unitBlueprintId}: leftSide must define at least one leg`,
@@ -334,7 +334,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   // Mount-finiteness only — cross-blueprint turret-ID validation runs
   // in blueprints/index.ts where both UNIT_BLUEPRINTS and
   // TURRET_BLUEPRINTS are visible.
-  const isAirborne = bp.locomotion.type === 'hover' || bp.locomotion.type === 'flying';
+  const isAirborne = bp.unitLocomotion.type === 'hover' || bp.unitLocomotion.type === 'flying';
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
     const mount = turret.mount;
@@ -431,7 +431,7 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
 
 export function getUnitLocomotion(id: string): UnitLocomotion {
   const unitBlueprint = getUnitBlueprint(id);
-  return createUnitLocomotion(unitBlueprint.locomotion);
+  return createUnitLocomotion(unitBlueprint.unitLocomotion);
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {

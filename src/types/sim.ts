@@ -27,7 +27,7 @@ import type {
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import { NO_ENTITY_ID, type EntityId, type PlayerId } from './entityTypes';
-import type { UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
+import type { UnitLocomotion, UnitSuspensionState } from './unitLocomotionTypes';
 import type { ResourceCost } from './economyTypes';
 import type {
   ActiveProjectileShot,
@@ -59,7 +59,7 @@ export type {
 } from './combatTypes';
 export type { EntityId, PlayerId } from './entityTypes';
 export { NO_ENTITY_ID } from './entityTypes';
-export type { UnitLocomotion } from './locomotionTypes';
+export type { UnitLocomotion } from './unitLocomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 export type {
@@ -81,6 +81,14 @@ export type {
   ProjectileShot,
   ProjectileType,
   ShotConfig,
+  ShotLocomotion,
+  ShotLocomotionMedia,
+  ShotLocomotionMediumPhysics,
+  ShotLocomotionMotionModel,
+  ShotLocomotionTerminalOutcome,
+  ShotLocomotionTerminalPolicy,
+  ShotLocomotionTransitionOutcome,
+  ShotLocomotionTransitions,
   ShotProfile,
   ShotRuntimeProfile,
   ShotVisualProfile,

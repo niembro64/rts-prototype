@@ -602,7 +602,7 @@ function buildPreviewLocomotion(
   blueprint: UnitBlueprint,
   materials: PreviewUnitMaterials,
 ): PreviewLocomotionRig | null {
-  const locomotion = blueprint.locomotion;
+  const locomotion = blueprint.unitLocomotion;
   const radius = blueprint.radius.other;
   switch (locomotion.type) {
     case 'treads':
@@ -698,7 +698,7 @@ function buildPreviewLegs(
   blueprint: UnitBlueprint,
   legMaterial: THREE.Material,
 ): THREE.Group {
-  const locomotion = blueprint.locomotion;
+  const locomotion = blueprint.unitLocomotion;
   if (locomotion.type !== 'legs') return new THREE.Group();
   const radius = blueprint.radius.other;
   const chassisLift = getChassisLiftY(blueprint, radius);

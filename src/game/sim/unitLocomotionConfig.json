@@ -1,10 +1,18 @@
 {
   "forceScale": 150000,
   "surfaceLiftDefaults": {
+    "distanceMeasurement": "body-clearance",
     "referenceDistanceWorld": 1,
     "minimumDistanceWorld": 0.5,
     "distanceExponent": 0.5,
-    "probeAggregation": "average"
+    "probeAggregation": "average",
+    "nearSurfaceAvoidance": {
+      "clearanceWorld": 12,
+      "bodyRadiusMultiplier": 0.25,
+      "gain": 8,
+      "distanceExponent": 3,
+      "maximumAdditionalResponse": 256
+    }
   },
   "mediumDefaults": {
     "ground": {
@@ -234,14 +242,14 @@
         "surfaceProbeSetId": "8-points",
         "ground": {
           "propulsion": {
-            "driveForce": 885,
+            "driveForce": 250,
             "forceCoupling": 1
           },
           "resistance": {
             "frictionMultiplier": 1
           },
           "contact": {
-            "surfaceGrip": 1,
+            "surfaceGrip": 0.15,
             "tangentDamping": 1
           }
         },
@@ -281,8 +289,8 @@
             "angularDrag": 4
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0,
-            "ema": 0.1
+            "randomizationAmount": 0.99,
+            "ema": 0.97
           }
         },
         "idleAirDrive": false
@@ -327,8 +335,8 @@
             "angularDrag": 1
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0,
-            "ema": 0
+            "randomizationAmount": 0.99,
+            "ema": 0.97
           }
         },
         "water": {
@@ -347,8 +355,8 @@
             "angularDrag": 3
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0,
-            "ema": 0.1
+            "randomizationAmount": 0.99,
+            "ema": 0.97
           }
         },
         "idleAirDrive": false
@@ -360,8 +368,8 @@
         "allowInMedium": "water-only"
       },
       "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": true,
+        "forwardForceRequiresFacing": false,
+        "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": false,
         "surfaceProbeSetId": "1-point",
         "ground": {
@@ -459,8 +467,8 @@
             "angularDrag": 1
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0,
-            "ema": 0.1
+            "randomizationAmount": 0.99,
+            "ema": 0.3
           }
         },
         "water": {
@@ -525,8 +533,8 @@
             "angularDrag": 3
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0,
-            "ema": 0.1
+            "randomizationAmount": 0.99,
+            "ema": 0.97
           }
         },
         "water": {

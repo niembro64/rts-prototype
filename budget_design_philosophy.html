@@ -654,26 +654,49 @@
 
       <h3>Rockets and missiles are separate guided shot policies</h3>
       <p>
-        <code>rocket</code> and <code>missile</code> are both guided
-        <code>shot</code> variants, but they do not move the same way. A
-        rocket is thrust-driven: it may author a <code>propulsionForce</code>
-        and a <code>homingThrust</code>, and its guidance enters the physics
-        step as bounded acceleration. A missile is constant-speed guided: it
-        authors no <code>propulsionForce</code> and no <code>homingThrust</code>.
-        Its homing turn rotates the velocity vector toward the inherited target
+        <code>rocket</code> and <code>missile</code> remain presentation and
+        interaction families; authoritative movement comes from the shot's
+        expanded <code>shotLocomotion</code> preset. A thrust-guided preset may
+        author per-medium propulsion force and guidance thrust, and its guidance
+        enters the physics step as bounded acceleration. A constant-speed-guided
+        preset authors neither force. Its homing turn instead rotates the velocity
+        vector toward the inherited target
         while preserving the speed magnitude it already has. Missile tuning
         therefore lives in launch speed, turn rate, lifetime, and target
         inheritance rather than forward acceleration.
       </p>
       <p>
-        Constant-speed missiles are an explicit authored motion policy, not a
-        hidden rocket shortcut. To preserve speed exactly in the current
-        integrator, missile blueprints use no <code>propulsionForce</code>, no
-        <code>homingThrust</code>, zero air drag, and zero
-        <code>gravityForceMultiplier</code>. A future guided munition that
+        Constant-speed guidance is an explicit shot-locomotion policy, not a
+        hidden shortcut selected from the shot's visual family. To preserve speed
+        exactly in the current integrator, its operational medium profile uses no
+        propulsion force, no guidance thrust, zero velocity friction, and zero
+        gravity multiplier. A future guided munition that
         should sag under gravity or accelerate under thrust should be authored
         as a rocket-style thrust-guided shot or as a new named guidance policy,
         not by smuggling propulsion terms into <code>missile</code>.
+      </p>
+      <h3>Shot locomotion owns movement domains and terminal decisions</h3>
+      <p>
+        Every travelling shot expands one <code>shotLocomotionPresetId</code>
+        into a complete runtime profile. Air and water each state whether the
+        shot is operational there and own their propulsion, guidance, turn-rate,
+        and resistance values. Ground is a contact domain: ordinary shots impact
+        it, while an explicit terrain-following mode may travel along it. Water
+        entry and exit are authored transitions, so a shell may despawn at the
+        surface, a torpedo may continue underwater and become ballistic when it
+        breaches, and a future munition may detonate on either crossing.
+      </p>
+      <p>
+        Shot locomotion also decides the terminal outcome for entity impact,
+        ground contact, expiry, destruction, and reflector impact: detonate or
+        despawn. It does not apply damage. The shot body's
+        <code>base.deathExplosion</code> remains the single payload authority;
+        combat executes that payload only when locomotion returns a detonation.
+        Target feasibility reads the same expanded profile as flight. Ballistic
+        presets use the ballistic solver, while powered and constant-speed
+        presets use their active medium, launch speed, engine authority, and
+        lifetime reach envelope. A weapon may never reject or admit a target by
+        predicting a different motion model from the one its fired shot runs.
       </p>
       <p>
         The current named split is deliberate: <code>shotRocketLight</code>
@@ -747,7 +770,7 @@
         <li>Ground contact is spring and friction behavior against terrain, not a clamp disguised as physics.</li>
       </ul>
 
-      <h3>Locomotion is arrival control, not waypoint seeking</h3>
+      <h3>Unit locomotion is arrival control, not waypoint seeking</h3>
       <p>
         Movement should not be a magnetic pull toward the next waypoint. A position-only seek
         controller looks acceptable on slow, high-friction units, but it breaks down as soon as a
@@ -881,7 +904,7 @@
         <li>Hover and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
       </ul>
 
-      <h3>Locomotion is one fully-abstracted force profile across ground, air, and water</h3>
+      <h3>Unit locomotion is one fully-abstracted force profile across ground, air, and water</h3>
       <p>
         A unit&rsquo;s locomotion is not a closed set of discriminated chassis types
         (&ldquo;this is a wheeled unit,&rdquo; &ldquo;this is a flyer&rdquo;) that each
@@ -973,7 +996,12 @@
         <code>fAir</code> while water friction, gravity counter, surface lift, and water drive grow by
         <code>fWater</code>, plus ground if it touches bottom. Sampling fractional occupancy at
         the water line and adding ground whenever there is contact is the whole medium rule &mdash;
-        there is no per-chassis branch deciding &ldquo;this unit type ignores water.&rdquo; A
+        atmospheric wind is part of the air-relative term and is therefore weighted by
+        <code>fAir</code>; it cannot push a fully submerged unit, while water resistance remains
+        relative to still water until an explicit current field exists. Thus an amphibious unit
+        such as Sea Turtle can author weak, low-grip land propulsion and stronger swimming
+        propulsion without a chassis-specific movement branch. There is no
+        per-chassis branch deciding &ldquo;this unit type ignores water.&rdquo; A
         unit ignores water by authoring zero water terms, and the same medium-sampling code
         runs for every unit.
       </p>
@@ -1020,6 +1048,11 @@
       <p>
         Source-explicit lift has no target height and no hidden spring. Each source&rsquo;s universal distance response is
         <code>(referenceDistance / max(distanceToSupport, minimumDistance)) ^ distanceExponent</code>.
+        Every probe that resolves a surface therefore owns a strictly positive distance: zero,
+        negative (the body is below the sampled surface), or defensive non-finite distances all
+        resolve to the globally authored <code>minimumDistanceWorld</code>, never to a zero or
+        ignored distance. Whether a physical source exists at that horizontal point remains a
+        separate question; for example, an exposed-water source still does not exist over dry land.
         Ground-surface lift measures the highest supporting solid independently of medium. Air&rsquo;s
         water-surface source measures exposed water independently; it is zero over dry terrain.
         The
@@ -1759,7 +1792,7 @@
         contracts cannot bleed into one another.
       </p>
 
-      <h3>Locomotion is part of the unit, not a separate piece</h3>
+      <h3>Unit locomotion is part of the unit, not a separate piece</h3>
       <p>
         Locomotion is <em>not</em> a standalone atomic piece. A unit&rsquo;s movement &mdash; its
         profile (mass, thrust, friction, damping, turn authority, contact model, vertical
@@ -1792,7 +1825,7 @@
       </ul>
       <p>
         What survives unchanged is locomotion as a <em>behavior</em> and as a <em>visual</em>: the
-        unit still answers the arrival-control question (see <strong>Locomotion is arrival control,
+        unit still answers the arrival-control question (see <strong>Unit locomotion is arrival control,
         not waypoint seeking</strong>) and still drives a wheel/tread/leg/hover rig (see
         <strong>Locomotion Visuals Are Frontend</strong>). Those are properties of the unit, computed
         from the unit&rsquo;s own state &mdash; not the contract of a separate entity that has to be
@@ -1824,7 +1857,7 @@
         <em>at</em> zero is kind-specific &mdash; a shot detonates, a host body dies and takes its
         mounted turrets with it &mdash; but turrets themselves have no independent health pool. (A
         unit&rsquo;s locomotion has no health of its own either; it is part of the body and dies with it
-        &mdash; see <strong>Locomotion is part of the unit</strong>.)</li>
+        &mdash; see <strong>Unit locomotion is part of the unit</strong>.)</li>
         <li><strong>death explosion</strong> &mdash; a <code>{ radius, force, damage }</code> blast
         the entity detonates the moment its health reaches zero. Every entity explodes when it dies
         (see <strong>Every death is an explosion</strong>); within the radius the blast applies an
@@ -2211,7 +2244,7 @@
       </p>
       <ul class="rule-list">
         <li><code>includeLockOnLevel0FriendsAndEnemies</code> admits whole ownership relationships before scoring. Valid high-level entries are <code>friendly_entities</code> and <code>enemy_entities</code>; a relationship that is not listed is never lockable.</li>
-        <li><code>includeLockOnLevel0Entities</code> admits whole target categories before scoring. Valid high-level entries are <code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, and <code>shots</code> &mdash; every addressable entity kind, so any kind can be added and, by omission, any kind is excluded by default. (There is no <code>locomotions</code> entry: a unit&rsquo;s locomotion is part of its body, not a targetable entity &mdash; see <strong>Locomotion is part of the unit</strong>.)</li>
+        <li><code>includeLockOnLevel0Entities</code> admits whole target categories before scoring. Valid high-level entries are <code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, and <code>shots</code> &mdash; every addressable entity kind, so any kind can be added and, by omission, any kind is excluded by default. (There is no <code>locomotions</code> entry: a unit&rsquo;s locomotion is part of its body, not a targetable entity &mdash; see <strong>Unit locomotion is part of the unit</strong>.)</li>
         <li><code>includeLockOnLevel1Units</code> narrows an already-included unit family to only the named unit blueprints; an empty list applies no name restriction.</li>
         <li><code>includeLockOnLevel1Towers</code> narrows an already-included tower family to only the named tower blueprints.</li>
         <li><code>includeLockOnLevel1Buildings</code> narrows an already-included building family to only the named building blueprints.</li>
@@ -3268,7 +3301,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one fully-abstracted preset profile expanded onto every runtime unit &mdash; ground/air/water propulsion and resistance, ground-only contact, fluid-only directional drag and surface-lift response, plus unit-authored air/water lift &mdash; not a closed set of chassis code paths or per-unit drive tuning. Absolute linear-friction rates live once per physical medium; preset multipliers may only reduce them. Air and water share one inverse-distance lift equation but name physical sources explicitly: water can lift from the ground surface, while air can lift independently from ground and exposed water. Evaluate and average each source response, add its force contribution, then randomise and EMA the combined full-medium force before multiplying directly by occupied-medium fraction. The loader validates the authored hierarchy and compiles it into fixed flat numeric rows at the Rust/WASM boundary, preserving hot-loop data locality without duplicating the authored model. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and zero drive force or force coupling declares that locomotion cannot push on that medium. Units author mass, so bodies sharing one preset accelerate differently through force divided by mass. See <strong>Locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
+        <li>Make locomotion one fully-abstracted preset profile expanded onto every runtime unit &mdash; ground/air/water propulsion and resistance, ground-only contact, fluid-only directional drag and surface-lift response, plus unit-authored air/water lift &mdash; not a closed set of chassis code paths or per-unit drive tuning. Absolute linear-friction rates live once per physical medium; preset multipliers may only reduce them. Air and water share one inverse-distance lift equation but name physical sources explicitly: water can lift from the ground surface, while air can lift independently from ground and exposed water. Evaluate and average each source response, add its force contribution, then randomise and EMA the combined full-medium force before multiplying directly by occupied-medium fraction. The loader validates the authored hierarchy and compiles it into fixed flat numeric rows at the Rust/WASM boundary, preserving hot-loop data locality without duplicating the authored model. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and zero drive force or force coupling declares that locomotion cannot push on that medium. Units author mass, so bodies sharing one preset accelerate differently through force divided by mass. See <strong>Unit locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

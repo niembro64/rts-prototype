@@ -20,6 +20,7 @@ import {
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { sanitizeShotArmingRadius } from './combat/shotArming';
+import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
 
 export type CreateProjectileProvenance = {
   /** Runtime emission blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
@@ -101,7 +102,7 @@ export class WorldProjectileFactory {
     const maxLifespan = config.shotProfile.runtime.maxLifespan;
     const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
     const homingTurnRate = isProjectileShot(config.shot)
-      ? config.shot.homingTurnRate ?? null
+      ? getShotLocomotionMaxTurnRate(config.shot.shotLocomotion) || null
       : null;
 
     // Always single hit (DGun overrides maxHits to Infinity after creation).

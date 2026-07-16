@@ -1,4 +1,4 @@
-import type { SurfaceProbeSetId } from '@/types/locomotionTypes';
+import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
 import rawSurfaceProbeConfig from './surfaceProbeConfig.json';
 
 export const SURFACE_PROBE_SET_IDS = ['1-point', '5-points', '8-points'] as const;

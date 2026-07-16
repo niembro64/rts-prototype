@@ -31,6 +31,14 @@ export type {
   ProjectileType,
   
   ShotConfig,
+  ShotLocomotion,
+  ShotLocomotionMedia,
+  ShotLocomotionMediumPhysics,
+  ShotLocomotionMotionModel,
+  ShotLocomotionTerminalOutcome,
+  ShotLocomotionTerminalPolicy,
+  ShotLocomotionTransitionOutcome,
+  ShotLocomotionTransitions,
   ShotProfile,
   ShotRuntimeProfile,
   ShotVisualProfile,
@@ -98,7 +106,8 @@ export function getShotMaxLifespan(emission: EmissionConfig, fallbackLifespan: n
   if (emission.type === 'beam') return Infinity;
   if (emission.type === 'laser') return emission.duration;
   if (emission.type === 'plasma' || emission.type === 'rocket' || emission.type === 'missile') {
-    return Number.isFinite(emission.maxLifespan) ? emission.maxLifespan! : Infinity;
+    const maxLifespanMs = emission.shotLocomotion.maxLifespanMs;
+    return Number.isFinite(maxLifespanMs) ? maxLifespanMs! : Infinity;
   }
   return fallbackLifespan;
 }

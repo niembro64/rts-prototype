@@ -140,7 +140,7 @@ export function getDebrisUnitProfile(
   const staticFragments: DebrisStaticFragment[] = [];
 
   // --- Locomotion ---
-  const loc = bp.locomotion;
+  const loc = bp.unitLocomotion;
   if (loc?.type === 'treads') {
     // Each side's full tread slab — same size the 3D locomotion draws.
     const cfg = loc.config;

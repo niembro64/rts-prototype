@@ -9690,7 +9690,12 @@ pub fn projectile_terminal_consequence_batch(
     is_projectile_type: &[u8],
     is_armed: &[u8],
     has_exploded: &[u8],
+    detonate_on_entity_impact: &[u8],
+    detonate_on_ground_contact: &[u8],
     detonate_on_expiry: &[u8],
+    detonate_on_destroyed: &[u8],
+    detonate_on_reflector_impact: &[u8],
+    detonate_on_water_transition: &[u8],
     has_detonation_payload: &[u8],
     direct_hit_this_tick: &[u8],
     reflected_projectile: &[u8],
@@ -9719,7 +9724,12 @@ pub fn projectile_terminal_consequence_batch(
         || is_projectile_type.len() < n
         || is_armed.len() < n
         || has_exploded.len() < n
+        || detonate_on_entity_impact.len() < n
+        || detonate_on_ground_contact.len() < n
         || detonate_on_expiry.len() < n
+        || detonate_on_destroyed.len() < n
+        || detonate_on_reflector_impact.len() < n
+        || detonate_on_water_transition.len() < n
         || has_detonation_payload.len() < n
         || direct_hit_this_tick.len() < n
         || reflected_projectile.len() < n
@@ -9775,7 +9785,8 @@ pub fn projectile_terminal_consequence_batch(
             let mut next_hp = hp[i];
             let mut flags = 0_u32;
             let mut next_z = pos_z[i];
-            if water_surface_impact[i] != 0 {
+            let terminal_water_entry = water_surface_impact[i] != 0;
+            if terminal_water_entry && detonate_on_water_transition[i] == 0 {
                 next_hp = 0.0;
                 flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
                     | PROJECTILE_TERMINAL_FLAG_REMOVE
@@ -9785,6 +9796,10 @@ pub fn projectile_terminal_consequence_batch(
                 out_flags[i] = flags;
                 processed += 1;
                 continue;
+            }
+            if terminal_water_entry {
+                next_hp = 0.0;
+                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
             }
             if hit_ground {
                 next_hp = 0.0;
@@ -9800,7 +9815,11 @@ pub fn projectile_terminal_consequence_batch(
             out_hp[i] = next_hp;
             out_z[i] = next_z;
 
-            if hit_ground && water_at_impact[i] != 0 && water_compatible[i] == 0 {
+            if hit_ground
+                && water_at_impact[i] != 0
+                && water_compatible[i] == 0
+                && detonate_on_water_transition[i] == 0
+            {
                 flags |= PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
                 out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
                 out_flags[i] = flags;
@@ -9808,9 +9827,11 @@ pub fn projectile_terminal_consequence_batch(
                 continue;
             }
 
-            if expired || hit_ground || terminal_reflector || health_zero {
+            if expired || hit_ground || terminal_reflector || terminal_water_entry || health_zero {
                 flags |= PROJECTILE_TERMINAL_FLAG_REMOVE;
-                out_reason[i] = if terminal_reflector {
+                out_reason[i] = if terminal_water_entry {
+                    PROJECTILE_TERMINAL_REASON_WATER
+                } else if terminal_reflector {
                     PROJECTILE_TERMINAL_REASON_REFLECTOR
                 } else if hit_ground {
                     PROJECTILE_TERMINAL_REASON_GROUND
@@ -9820,8 +9841,24 @@ pub fn projectile_terminal_consequence_batch(
                     PROJECTILE_TERMINAL_REASON_HEALTH_ZERO
                 };
 
-                let will_detonate =
-                    health_zero && armed && !already_exploded && has_detonation_payload[i] != 0;
+                let policy_detonates = if terminal_water_entry {
+                    detonate_on_water_transition[i] != 0
+                } else if terminal_reflector {
+                    detonate_on_reflector_impact[i] != 0
+                } else if hit_ground {
+                    detonate_on_ground_contact[i] != 0
+                } else if expired {
+                    detonate_on_expiry[i] != 0
+                } else if direct_hit_this_tick[i] != 0 {
+                    detonate_on_entity_impact[i] != 0
+                } else {
+                    detonate_on_destroyed[i] != 0
+                };
+                let will_detonate = health_zero
+                    && policy_detonates
+                    && armed
+                    && !already_exploded
+                    && has_detonation_payload[i] != 0;
                 if will_detonate {
                     flags |= PROJECTILE_TERMINAL_FLAG_DETONATE;
                 } else if armed && !already_exploded {

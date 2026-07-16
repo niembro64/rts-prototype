@@ -37,7 +37,13 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { getProjectileAirFrictionPer60HzFrame } from '../projectileMotion';
+import { getProjectileMediumFrictionPer60HzFrame } from '../shotLocomotionMotion';
+import {
+  getPoweredShotReachabilityDistance,
+  getShotLocomotionMediumAtHeight,
+  shotLocomotionUsesBallisticFeasibility,
+} from '../shotLocomotion';
+import { WATER_LEVEL } from '../Terrain';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
@@ -638,15 +644,16 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (weaponRequiresNonObstructedLineOfSight(turret)) f |= CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS;
   const angle = turret.config.aimStyle.angleType;
   const shot = turret.config.shot;
-  const rocketLikeShot =
+  const ballisticShot =
     shot !== null &&
     isProjectileShot(shot) &&
-    (shot.type === 'rocket' || shot.type === 'missile');
+    shotLocomotionUsesBallisticFeasibility(shot.shotLocomotion);
   if (
-    rocketLikeShot ||
-    angle === 'ballisticArcLow' ||
-    angle === 'ballisticArcLowOnlyUnder' ||
-    angle === 'ballisticArcHigh'
+    ballisticShot && (
+      angle === 'ballisticArcLow' ||
+      angle === 'ballisticArcLowOnlyUnder' ||
+      angle === 'ballisticArcHigh'
+    )
   ) {
     f |= CT_TURRET_CFG_NEEDS_BALLISTIC;
   }
@@ -691,6 +698,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
+const _shotLaunchMediumMount = { x: 0, y: 0, z: 0 };
 
 function stampCombatTargetingEntityInto(
   targeting: CombatTargetingApi,
@@ -882,21 +890,63 @@ function stampCombatTargetingEntityInto(
         : angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW;
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
     const projectileMass = projectileShot ? projectileShot.mass : 0;
-    const projectileAirFrictionPer60HzFrame = projectileShot
-      ? getProjectileAirFrictionPer60HzFrame(projectileShot)
+    // worldPos is a downstream cache and is still unset on a freshly spawned
+    // host. Resolve the current authoritative mount before choosing the shot's
+    // launch medium, otherwise an underwater first tick looks like air and a
+    // torpedo's powered-reach cap collapses to zero.
+    const launchMount = projectileShot
+      ? resolveWeaponWorldMount(
+          entity,
+          t,
+          i,
+          rotCos,
+          rotSin,
+          {
+            currentTick: world.getTick(),
+            unitGroundZ: groundZ,
+            surfaceN,
+          },
+          _shotLaunchMediumMount,
+        )
+      : undefined;
+    const launchMedium = projectileShot
+      ? getShotLocomotionMediumAtHeight(
+          projectileShot.shotLocomotion,
+          launchMount!.z,
+          WATER_LEVEL,
+        )
+      : undefined;
+    const projectileAirFrictionPer60HzFrame = launchMedium
+      ? getProjectileMediumFrictionPer60HzFrame(launchMedium)
       : 0;
     let maxTimeSec = 0;
     if (projectileShot) {
       const lifeMs = getShotMaxLifespan(projectileShot);
       maxTimeSec = Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
     }
-    const fireMaxAcq = rangeEdgeSq(ranges.fire.max, 'acquire');
-    const fireMaxRel = rangeEdgeSq(ranges.fire.max, 'release');
+    const poweredReach = projectileShot === undefined
+      ? Infinity
+      : getPoweredShotReachabilityDistance(
+          projectileShot.shotLocomotion,
+          launchMedium!,
+          projectileSpeed,
+          projectileMass,
+        );
+    const poweredReachSq = poweredReach * poweredReach;
+    const fireMaxAcq = Math.min(rangeEdgeSq(ranges.fire.max, 'acquire'), poweredReachSq);
+    const fireMaxRel = Math.min(rangeEdgeSq(ranges.fire.max, 'release'), poweredReachSq);
     const fireMinAcq = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'acquire') : 0;
     const fireMinRel = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'release') : 0;
-    const trackingAcq = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'acquire') : 0;
-    const trackingRel = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'release') : 0;
-    const outermostAcq = ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire;
+    const trackingAcq = ranges.tracking
+      ? Math.min(rangeEdgeSq(ranges.tracking, 'acquire'), poweredReachSq)
+      : 0;
+    const trackingRel = ranges.tracking
+      ? Math.min(rangeEdgeSq(ranges.tracking, 'release'), poweredReachSq)
+      : 0;
+    const outermostAcq = Math.min(
+      ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire,
+      poweredReach,
+    );
 
     targeting.setTurret(
       slot, i,

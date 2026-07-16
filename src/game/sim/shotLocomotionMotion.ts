@@ -1,4 +1,5 @@
 import type { ProjectileShot } from './types';
+import type { ShotLocomotionMediumPhysics } from '@/types/shotTypes';
 import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
 import { deterministicMath } from './deterministicMath';
 
@@ -12,12 +13,22 @@ let cachedMass = Number.NaN;
 let cachedAirDragCoefficient = 0;
 
 export function getProjectileAirFrictionPer60HzFrame(shot: ProjectileShot): number {
-  const friction = shot.airFrictionPer60HzFrame;
+  const friction = shot.shotLocomotion.media.air.velocityFrictionPer60HzFrame;
   return Number.isFinite(friction) && friction > 0 ? friction : 0;
 }
 
-export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
-  const friction = getProjectileAirFrictionPer60HzFrame(shot);
+export function getProjectileMediumFrictionPer60HzFrame(
+  medium: ShotLocomotionMediumPhysics,
+): number {
+  const friction = medium.velocityFrictionPer60HzFrame;
+  return Number.isFinite(friction) && friction > 0 ? friction : 0;
+}
+
+export function getProjectileMediumDragCoefficient(
+  shot: ProjectileShot,
+  medium: ShotLocomotionMediumPhysics,
+): number {
+  const friction = getProjectileMediumFrictionPer60HzFrame(medium);
   const mass = shot.mass;
   if (friction === cachedAirFrictionPer60HzFrame && mass === cachedMass) {
     return cachedAirDragCoefficient;
@@ -28,8 +39,15 @@ export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
   return cachedAirDragCoefficient;
 }
 
-export function getProjectilePropulsionAcceleration(shot: ProjectileShot): number {
-  const force = shot.propulsionForce ?? 0;
+export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
+  return getProjectileMediumDragCoefficient(shot, shot.shotLocomotion.media.air);
+}
+
+export function getProjectilePropulsionAcceleration(
+  shot: ProjectileShot,
+  medium: ShotLocomotionMediumPhysics,
+): number {
+  const force = medium.propulsionForce;
   if (!Number.isFinite(force) || force <= 0) return 0;
   const mass = shot.mass;
   if (!Number.isFinite(mass) || mass <= MIN_PROPULSION_SPEED) return 0;
@@ -37,9 +55,10 @@ export function getProjectilePropulsionAcceleration(shot: ProjectileShot): numbe
 }
 
 export function getProjectileHomingThrustAcceleration(
-  shot: { homingThrust?: number | null; mass: number },
+  shot: { mass: number },
+  medium: ShotLocomotionMediumPhysics,
 ): number {
-  const force = shot.homingThrust ?? 0;
+  const force = medium.guidanceThrust;
   if (!Number.isFinite(force) || force <= 0) return 0;
   const mass = shot.mass;
   if (!Number.isFinite(mass) || mass <= MIN_PROPULSION_SPEED) return 0;
@@ -47,13 +66,14 @@ export function getProjectileHomingThrustAcceleration(
 }
 
 export function getProjectileRocketCounterGravityCarryAcceleration(
-  shot: { type: ProjectileShot['type']; homingThrust?: number | null; mass: number },
+  shot: ProjectileShot,
+  medium: ShotLocomotionMediumPhysics,
   homingEngagementScale: number,
   projectileGravity: number,
 ): number {
-  if (shot.type !== 'rocket') return 0;
+  if (shot.shotLocomotion.motionModel !== 'thrustGuided') return 0;
   if (!Number.isFinite(projectileGravity) || projectileGravity <= 0) return 0;
-  const maxThrustAccel = getProjectileHomingThrustAcceleration(shot);
+  const maxThrustAccel = getProjectileHomingThrustAcceleration(shot, medium);
   if (maxThrustAccel <= 0) return 0;
   const steeringScale = Number.isFinite(homingEngagementScale)
     ? Math.min(1, Math.max(0, homingEngagementScale))
@@ -62,12 +82,9 @@ export function getProjectileRocketCounterGravityCarryAcceleration(
 }
 
 export function getProjectileMediumHoldCounterGravityAcceleration(
-  shot: {
-    physicsMedium: ProjectileShot['physicsMedium'];
-    type: ProjectileShot['type'];
-    homingThrust?: number | null;
-    mass: number;
-  },
+  shot: ProjectileShot,
+  medium: ShotLocomotionMediumPhysics,
+  isWaterMedium: boolean,
   mediumPhysicsActive: boolean,
   guidedTargetAlreadyCarriesGravity: boolean,
   projectileGravity: number,
@@ -75,8 +92,9 @@ export function getProjectileMediumHoldCounterGravityAcceleration(
   if (
     !mediumPhysicsActive ||
     guidedTargetAlreadyCarriesGravity ||
-    shot.physicsMedium !== 'water-only' ||
-    shot.type !== 'rocket' ||
+    !isWaterMedium ||
+    !shot.shotLocomotion.media.water.operational ||
+    shot.shotLocomotion.motionModel !== 'thrustGuided' ||
     !Number.isFinite(projectileGravity) ||
     projectileGravity <= 0
   ) {
@@ -84,16 +102,16 @@ export function getProjectileMediumHoldCounterGravityAcceleration(
   }
   return Math.min(
     projectileGravity,
-    getProjectileHomingThrustAcceleration(shot),
+    getProjectileHomingThrustAcceleration(shot, medium),
   );
 }
 
 export function getProjectileHomingEngagementScale(
-  shot: { homingDelayMs?: number | null },
+  shot: ProjectileShot,
   timeAliveBeforeStepMs: number,
   dtMs: number,
 ): number {
-  const delayMs = shot.homingDelayMs ?? 0;
+  const delayMs = shot.shotLocomotion.guidanceDelayMs;
   if (!Number.isFinite(delayMs) || delayMs <= 0) return 1;
   if (!Number.isFinite(timeAliveBeforeStepMs)) return 0;
   const stepMs = Number.isFinite(dtMs) && dtMs > 0 ? dtMs : 0;
@@ -106,12 +124,13 @@ export function getProjectileHomingEngagementScale(
 
 export function addProjectileForwardPropulsionAcceleration(
   shot: ProjectileShot,
+  medium: ShotLocomotionMediumPhysics,
   velocityX: number,
   velocityY: number,
   velocityZ: number,
   out: { x: number; y: number; z: number },
 ): boolean {
-  const accel = getProjectilePropulsionAcceleration(shot);
+  const accel = getProjectilePropulsionAcceleration(shot, medium);
   if (accel <= 0) return false;
   const speed = deterministicMath.hypot(velocityX, velocityY, velocityZ);
   if (!Number.isFinite(speed) || speed <= MIN_PROPULSION_SPEED) return false;

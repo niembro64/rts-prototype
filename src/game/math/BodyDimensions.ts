@@ -60,7 +60,7 @@ function getBodyCenterLocalY(
  *  authored unit center is a hard contract shared by simulation,
  *  targeting, chassis rendering, and locomotion. */
 export function getChassisLiftY(
-  blueprint: Pick<UnitBlueprint, 'locomotion' | 'bodyShape' | 'bodyCenterHeight'> | undefined,
+  blueprint: Pick<UnitBlueprint, 'unitLocomotion' | 'bodyShape' | 'bodyCenterHeight'> | undefined,
   unitRadius: number,
 ): number {
   if (!blueprint) return 0;

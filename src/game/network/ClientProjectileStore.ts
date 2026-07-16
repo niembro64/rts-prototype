@@ -7,6 +7,7 @@ import type {
 } from './NetworkManager';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
+import { getShotLocomotionMaxTurnRate } from '../sim/shotLocomotion';
 import {
   codeToShotBlueprintId,
   codeToProjectileType,
@@ -697,7 +698,7 @@ export class ClientProjectileStore {
     const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
     const spawnHomingTurnRate = spawn.homingTurnRate;
     const homingTurnRate = isProjectileShot(config.shot)
-      ? config.shot.homingTurnRate ?? (
+      ? getShotLocomotionMaxTurnRate(config.shot.shotLocomotion) || (
           Number.isFinite(spawnHomingTurnRate) && spawnHomingTurnRate !== null && spawnHomingTurnRate > 0
             ? spawnHomingTurnRate
             : null
@@ -821,7 +822,7 @@ export class ClientProjectileStore {
     const hasHomingTurnRate = (flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0;
     const spawnHomingTurnRate = hasHomingTurnRate ? values[base + 24] : null;
     const homingTurnRate = isProjectileShot(config.shot)
-      ? config.shot.homingTurnRate ?? (
+      ? getShotLocomotionMaxTurnRate(config.shot.shotLocomotion) || (
           Number.isFinite(spawnHomingTurnRate) && spawnHomingTurnRate !== null && spawnHomingTurnRate > 0
             ? spawnHomingTurnRate
             : null

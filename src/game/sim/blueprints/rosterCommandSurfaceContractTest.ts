@@ -584,8 +584,8 @@ export function runRosterCommandSurfaceContractTest(): void {
         'towerFabricator BAR-grid factory cells must preserve vehicle, bot, and air pages from BAR final labGrids assignments',
       );
       assertContract(
-        UNIT_BLUEPRINTS.unitConstructionDrone.locomotion.type === 'hover' &&
-          UNIT_BLUEPRINTS.unitConstructionDrone.locomotion.pathfindingBlueprintId === 'airborneAnywhere' &&
+        UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.type === 'hover' &&
+          UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.pathfindingBlueprintId === 'airborneAnywhere' &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT * 2] === 'unitConstructionDrone',
         'towerFabricator BAR-grid factory cells must place the airborne construction drone in the armap/armca air-constructor slot',
       );

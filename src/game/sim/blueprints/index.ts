@@ -32,6 +32,7 @@ import { getShieldMaterial } from './shieldMaterials';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
+import { getShotLocomotionPreset } from '../shotLocomotion';
 import type {
   ShotBlueprint,
   RayBlueprint,
@@ -527,12 +528,8 @@ function deriveShotExplosion(
   return { radius: blast.radius, damage: blast.damage, force: blast.force };
 }
 
-/** Build a ShotConfig from a ShotBlueprint + turret blueprint data.
- *
- *  `homingTurnRate` lives on the SHOT BLUEPRINT (it's a property of
- *  the rocket, not the turret), so it doesn't appear here as a
- *  parameter — `buildShotConfig` pulls it directly from
- *  `shotBlueprint.homingTurnRate` for plasma/rocket shots. */
+/** Build a runtime shot from immutable body/payload facts plus the expanded
+ *  shot-locomotion preset. Launch force remains turret-owned initial impulse. */
 function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce: number,
@@ -546,17 +543,7 @@ function buildShotConfig(
     launchForce,
     radius: shotBlueprint.radius,
     explosion: deriveShotExplosion(shotBlueprint.base.deathExplosion),
-    detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
-    maxLifespan: Number.isFinite(shotBlueprint.maxLifespan)
-      ? shotBlueprint.maxLifespan!
-      : undefined,
-    homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
-    homingThrust: shotBlueprint.homingThrust ?? undefined,
-    homingDelayMs: shotBlueprint.homingDelayMs ?? undefined,
-    propulsionForce: shotBlueprint.propulsionForce ?? undefined,
-    physicsMedium: shotBlueprint.physicsMedium,
-    gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
-    airFrictionPer60HzFrame: shotBlueprint.airFrictionPer60HzFrame,
+    shotLocomotion: getShotLocomotionPreset(shotBlueprint.shotLocomotionPresetId),
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
   };
