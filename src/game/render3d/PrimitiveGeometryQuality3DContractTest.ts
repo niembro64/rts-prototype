@@ -1,11 +1,13 @@
 import type * as THREE from 'three';
 import {
   PRIMITIVE_GEOMETRY_QUALITY,
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCircleGeometry,
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveRingGeometry,
   createPrimitiveSphereGeometry,
+  createPrimitiveTetrahedronGeometry,
   createPrimitiveTorusGeometry,
   getSharedPrimitiveRingGeometry,
   getSharedPrimitiveSphereGeometry,
@@ -167,4 +169,14 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
   const sharedRingC = getSharedPrimitiveRingGeometry('hud', 'mid', 1, 1.15);
   assertContract(sharedRingA === sharedRingB, 'shared ring cache reuses identical keys');
   assertContract(sharedRingA !== sharedRingC, 'shared ring cache separates tiers');
+
+  const lowLegSegment = createExtrudedEquilateralTriangleGeometry();
+  assertContract(
+    triangleCount(lowLegSegment) === 8,
+    'low leg segment is an eight-triangle equilateral triangular prism',
+  );
+  lowLegSegment.dispose();
+  const lowLegJoint = createPrimitiveTetrahedronGeometry();
+  assertContract(triangleCount(lowLegJoint) === 4, 'low leg joint is a four-face tetrahedron');
+  lowLegJoint.dispose();
 }

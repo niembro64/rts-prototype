@@ -3,6 +3,7 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 const PHI = (1 + Math.sqrt(5)) / 2;
@@ -28,11 +29,24 @@ for (let i = 0; i < rawIcosahedronVertices.length; i++) rawIcosahedronVertices[i
 export const ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS: readonly THREE.Vector3[] =
   rawIcosahedronVertices;
 
-const bodyGeom = createPrimitiveSphereGeometry('unitBody', 'close');
-const smallSphereGeom = createPrimitiveSphereGeometry('unitDetail', 'mid');
-const neckGeom = createPrimitiveCylinderGeometry('unitDetail', 'close');
-const noseConeGeom = createPrimitiveConeGeometry('unitDetail', 'close');
+const bodyGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+const detailSphereGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+const neckGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+const noseConeGeomByTier = new Map<PrimitiveGeometryTier, THREE.ConeGeometry>();
 const finGeom = new THREE.BoxGeometry(1, 1, 1);
+
+function tierGeom<T extends THREE.BufferGeometry>(
+  cache: Map<PrimitiveGeometryTier, T>,
+  tier: PrimitiveGeometryTier,
+  create: () => T,
+): T {
+  let geometry = cache.get(tier);
+  if (!geometry) {
+    geometry = create();
+    cache.set(tier, geometry);
+  }
+  return geometry;
+}
 
 const canopyMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
 
@@ -71,13 +85,18 @@ function addCylinderBetween(
   by: number,
   bz: number,
   radius: number,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const dx = bx - ax;
   const dy = by - ay;
   const dz = bz - az;
   const length = Math.hypot(dx, dy, dz);
   if (length <= 0) return;
-  const mesh = new THREE.Mesh(neckGeom, material);
+  const mesh = new THREE.Mesh(
+    tierGeom(neckGeomByTier, geometryTier, () =>
+      createPrimitiveCylinderGeometry('unitDetail', geometryTier)),
+    material,
+  );
   mesh.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
   mesh.scale.set(radius, length, radius);
   scratchDir.set(dx / length, dy / length, dz / length);
@@ -97,19 +116,38 @@ export function buildAlbatrosChassis(
   parent: THREE.Group,
   primaryMat: THREE.Material,
   entityId: number,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
 
   // Fuselage tube, tail cone seat to nose seat.
-  addCylinderBetween(parent, meshes, primaryMat, entityId, -0.80, 0.31, 0, 0.60, 0.31, 0, 0.17);
+  addCylinderBetween(
+    parent, meshes, primaryMat, entityId,
+    -0.80, 0.31, 0, 0.60, 0.31, 0, 0.17, geometryTier,
+  );
   // Rounded nose cap; tip reaches past the forward turret mount (x=0.8).
-  addMesh(parent, meshes, smallSphereGeom, primaryMat, entityId, [0.60, 0.31, 0], [0.22, 0.17, 0.17]);
+  const detailSphereGeom = tierGeom(
+    detailSphereGeomByTier, geometryTier,
+    () => createPrimitiveSphereGeometry('unitDetail', geometryTier),
+  );
+  addMesh(parent, meshes, detailSphereGeom, primaryMat, entityId, [0.60, 0.31, 0], [0.22, 0.17, 0.17]);
   // Tapered tail cone, pointing rearward.
-  addMesh(parent, meshes, noseConeGeom, primaryMat, entityId, [-0.87, 0.31, 0], [0.15, 0.16, 0.15], [0, 0, Math.PI / 2]);
+  addMesh(
+    parent, meshes,
+    tierGeom(noseConeGeomByTier, geometryTier, () =>
+      createPrimitiveConeGeometry('unitDetail', geometryTier)),
+    primaryMat, entityId, [-0.87, 0.31, 0], [0.15, 0.16, 0.15],
+    [0, 0, Math.PI / 2],
+  );
   // Dark glass cockpit canopy ahead of the mid turret.
-  addMesh(parent, meshes, smallSphereGeom, canopyMat, entityId, [0.34, 0.46, 0], [0.14, 0.07, 0.11]);
+  addMesh(parent, meshes, detailSphereGeom, canopyMat, entityId, [0.34, 0.46, 0], [0.14, 0.07, 0.11]);
   // Belly panel uses the same body tone as the LOD proxy.
-  addMesh(parent, meshes, bodyGeom, primaryMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13]);
+  addMesh(
+    parent, meshes,
+    tierGeom(bodyGeomByTier, geometryTier, () =>
+      createPrimitiveSphereGeometry('unitBody', geometryTier)),
+    primaryMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13],
+  );
   // Swept vertical stabilizer over the tail cone.
   addMesh(parent, meshes, finGeom, primaryMat, entityId, [-0.76, 0.50, 0], [0.22, 0.26, 0.03], [0, 0, 0.45]);
 

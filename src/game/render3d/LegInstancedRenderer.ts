@@ -39,8 +39,11 @@ import * as THREE from 'three';
 import { createShellMaterial } from './ShellMaterial';
 import { disposeMesh } from './threeUtils';
 import {
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  createPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
@@ -346,8 +349,11 @@ function buildInstancedCylinderGeom(
   thickBuf: THREE.InstancedBufferAttribute,
   colorBuf: THREE.InstancedBufferAttribute,
   fadeBuf: THREE.InstancedBufferAttribute,
+  geometryTier: PrimitiveGeometryTier,
 ): THREE.InstancedBufferGeometry {
-  const base = createPrimitiveCylinderGeometry('locomotion', 'mid');
+  const base = geometryTier === 'far'
+    ? createExtrudedEquilateralTriangleGeometry()
+    : createPrimitiveCylinderGeometry('locomotion', geometryTier);
   const inst = new THREE.InstancedBufferGeometry();
   inst.index = base.index;
   inst.setAttribute('position', base.attributes.position);
@@ -393,7 +399,7 @@ class CylinderPool {
   // pitfall documented in detail.
   private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
     this.startBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -410,6 +416,7 @@ class CylinderPool {
 
     const geom = buildInstancedCylinderGeom(
       this.startBuf, this.endBuf, this.thickBuf, this.colorBuf, this.fadeBuf,
+      geometryTier,
     );
     const material = makeInstancedLegMaterial(shell);
     this.mesh = new THREE.Mesh(geom, material);
@@ -611,9 +618,11 @@ class JointSpherePool {
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
     this.shell = shell;
-    const geom = createPrimitiveSphereGeometry('locomotion', 'mid');
+    const geom = geometryTier === 'far'
+      ? createPrimitiveTetrahedronGeometry()
+      : createPrimitiveSphereGeometry('locomotion', geometryTier);
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial(shell);
@@ -764,9 +773,11 @@ class FootPadPool {
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
     this.shell = shell;
-    const geom = createPrimitiveSphereGeometry('locomotion', 'close');
+    const geom = geometryTier === 'far'
+      ? createPrimitiveTetrahedronGeometry()
+      : createPrimitiveSphereGeometry('locomotion', geometryTier);
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial(shell);
@@ -908,24 +919,35 @@ class FootPadPool {
 }
 
 export class LegInstancedRenderer {
-  private upper: CylinderPool;
-  private lower: CylinderPool;
-  private joints: JointSpherePool;
-  private pads: FootPadPool;
-  private shellUpper: CylinderPool;
-  private shellLower: CylinderPool;
-  private shellJoints: JointSpherePool;
-  private shellPads: FootPadPool;
+  private readonly parent: THREE.Group;
+  private readonly pools = new Map<string, {
+    upper: CylinderPool;
+    lower: CylinderPool;
+    joints: JointSpherePool;
+    pads: FootPadPool;
+  }>();
 
   constructor(parent: THREE.Group) {
-    this.upper = new CylinderPool(parent, false);
-    this.lower = new CylinderPool(parent, false);
-    this.joints = new JointSpherePool(parent, false);
-    this.pads = new FootPadPool(parent, false);
-    this.shellUpper = new CylinderPool(parent, true);
-    this.shellLower = new CylinderPool(parent, true);
-    this.shellJoints = new JointSpherePool(parent, true);
-    this.shellPads = new FootPadPool(parent, true);
+    this.parent = parent;
+  }
+
+  private poolKey(tier: PrimitiveGeometryTier, shell: boolean): string {
+    return `${tier}:${shell ? 'shell' : 'solid'}`;
+  }
+
+  private pool(tier: PrimitiveGeometryTier, shell: boolean) {
+    const key = this.poolKey(tier, shell);
+    let pools = this.pools.get(key);
+    if (!pools) {
+      pools = {
+        upper: new CylinderPool(this.parent, shell, tier),
+        lower: new CylinderPool(this.parent, shell, tier),
+        joints: new JointSpherePool(this.parent, shell, tier),
+        pads: new FootPadPool(this.parent, shell, tier),
+      };
+      this.pools.set(key, pools);
+    }
+    return pools;
   }
 
   /** Allocate an upper-cylinder slot. Returns -1 if the pool is
@@ -935,51 +957,51 @@ export class LegInstancedRenderer {
    *  this slot is moved — the caller MUST update its stored slot
    *  index in the callback or subsequent updates will write the wrong
    *  buffer entries. */
-  allocUpper(shell: boolean, color: number, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellUpper : this.upper).alloc(color, onRelocate);
+  allocUpper(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier, shell).upper.alloc(color, onRelocate);
   }
-  allocLower(shell: boolean, color: number, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellLower : this.lower).alloc(color, onRelocate);
+  allocLower(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier, shell).lower.alloc(color, onRelocate);
   }
   /** Allocate a joint-sphere slot (used by the full leg style for hip / knee).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
-  allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellJoints : this.joints).alloc(color, onRelocate);
+  allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier, shell).joints.alloc(color, onRelocate);
   }
-  allocFootPad(shell: boolean, color: number, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellPads : this.pads).alloc(color, onRelocate);
-  }
-
-  freeUpper(slot: number, shell = false): void { (shell ? this.shellUpper : this.upper).free(slot); }
-  freeLower(slot: number, shell = false): void { (shell ? this.shellLower : this.lower).free(slot); }
-  freeJoint(slot: number, shell = false): void { (shell ? this.shellJoints : this.joints).free(slot); }
-  freeFootPad(slot: number, shell = false): void { (shell ? this.shellPads : this.pads).free(slot); }
-
-  fadeUpper(slot: number, fade: number, shell = false): void {
-    (shell ? this.shellUpper : this.upper).fade(slot, fade);
-  }
-  fadeLower(slot: number, fade: number, shell = false): void {
-    (shell ? this.shellLower : this.lower).fade(slot, fade);
-  }
-  fadeJoint(slot: number, fade: number, shell = false): void {
-    (shell ? this.shellJoints : this.joints).fade(slot, fade);
-  }
-  fadeFootPad(slot: number, fade: number, shell = false): void {
-    (shell ? this.shellPads : this.pads).fade(slot, fade);
+  allocFootPad(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier, shell).pads.alloc(color, onRelocate);
   }
 
-  translateUpper(slot: number, dx: number, dy: number, dz: number, shell = false): void {
-    (shell ? this.shellUpper : this.upper).translate(slot, dx, dy, dz);
+  freeUpper(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).upper.free(slot); }
+  freeLower(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).lower.free(slot); }
+  freeJoint(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).joints.free(slot); }
+  freeFootPad(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).pads.free(slot); }
+
+  fadeUpper(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).upper.fade(slot, fade);
   }
-  translateLower(slot: number, dx: number, dy: number, dz: number, shell = false): void {
-    (shell ? this.shellLower : this.lower).translate(slot, dx, dy, dz);
+  fadeLower(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).lower.fade(slot, fade);
   }
-  translateJoint(slot: number, dx: number, dy: number, dz: number, shell = false): void {
-    (shell ? this.shellJoints : this.joints).translate(slot, dx, dy, dz);
+  fadeJoint(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).joints.fade(slot, fade);
   }
-  translateFootPad(slot: number, dx: number, dy: number, dz: number, shell = false): void {
-    (shell ? this.shellPads : this.pads).translate(slot, dx, dy, dz);
+  fadeFootPad(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).pads.fade(slot, fade);
+  }
+
+  translateUpper(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).upper.translate(slot, dx, dy, dz);
+  }
+  translateLower(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).lower.translate(slot, dx, dy, dz);
+  }
+  translateJoint(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).joints.translate(slot, dx, dy, dz);
+  }
+  translateFootPad(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).pads.translate(slot, dx, dy, dz);
   }
 
   updateUpper(
@@ -988,8 +1010,9 @@ export class LegInstancedRenderer {
     ex: number, ey: number, ez: number,
     thick: number,
     shell = false,
+    tier: PrimitiveGeometryTier = 'close',
   ): void {
-    (shell ? this.shellUpper : this.upper).update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier, shell).upper.update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   updateLower(
@@ -998,16 +1021,17 @@ export class LegInstancedRenderer {
     ex: number, ey: number, ez: number,
     thick: number,
     shell = false,
+    tier: PrimitiveGeometryTier = 'close',
   ): void {
-    (shell ? this.shellLower : this.lower).update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier, shell).lower.update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   /** Per-frame write for one joint sphere — encodes world position
    *  and radius (uniform scale) into the slot's instanceMatrix. The
    *  radius is constant per joint, so most frames this is the same
    *  value; the matrix compose is cheap and lets the API stay flat. */
-  updateJoint(slot: number, x: number, y: number, z: number, radius: number, shell = false): void {
-    (shell ? this.shellJoints : this.joints).update(slot, x, y, z, radius);
+  updateJoint(slot: number, x: number, y: number, z: number, radius: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier, shell).joints.update(slot, x, y, z, radius);
   }
 
   /** Per-frame write for one flattened foot pad. Normal is in Three.js
@@ -1020,8 +1044,9 @@ export class LegInstancedRenderer {
     halfHeight: number,
     normalX: number, normalY: number, normalZ: number,
     shell = false,
+    tier: PrimitiveGeometryTier = 'close',
   ): void {
-    (shell ? this.shellPads : this.pads).update(
+    this.pool(tier, shell).pads.update(
       slot,
       x, y, z,
       radius,
@@ -1033,24 +1058,21 @@ export class LegInstancedRenderer {
   /** Upload dirty per-instance spans — call once per frame after every
    *  leg has been updated. The actual GPU upload happens at the next render. */
   flush(): void {
-    this.upper.flush();
-    this.lower.flush();
-    this.joints.flush();
-    this.pads.flush();
-    this.shellUpper.flush();
-    this.shellLower.flush();
-    this.shellJoints.flush();
-    this.shellPads.flush();
+    for (const pools of this.pools.values()) {
+      pools.upper.flush();
+      pools.lower.flush();
+      pools.joints.flush();
+      pools.pads.flush();
+    }
   }
 
   destroy(): void {
-    this.upper.destroy();
-    this.lower.destroy();
-    this.joints.destroy();
-    this.pads.destroy();
-    this.shellUpper.destroy();
-    this.shellLower.destroy();
-    this.shellJoints.destroy();
-    this.shellPads.destroy();
+    for (const pools of this.pools.values()) {
+      pools.upper.destroy();
+      pools.lower.destroy();
+      pools.joints.destroy();
+      pools.pads.destroy();
+    }
+    this.pools.clear();
   }
 }

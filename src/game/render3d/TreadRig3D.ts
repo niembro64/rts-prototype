@@ -72,13 +72,21 @@ const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
-const wheelGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
+const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 
 function getTreadEndGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
   let geom = treadEndGeomByTier.get(tier);
   if (!geom) {
     geom = createPrimitiveCylinderGeometry('locomotion', tier);
     treadEndGeomByTier.set(tier, geom);
+  }
+  return geom;
+}
+function getWheelGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geom = wheelGeomByTier.get(tier);
+  if (!geom) {
+    geom = createPrimitiveCylinderGeometry('locomotion', tier);
+    wheelGeomByTier.set(tier, geom);
   }
   return geom;
 }
@@ -225,7 +233,7 @@ export function buildTreads(
       for (let i = 0; i < wheelCount; i++) {
         const t = (i + 0.5) / wheelCount;
         const x = -length / 2 + t * length;
-        const w = new THREE.Mesh(wheelGeom, wheelMat);
+        const w = new THREE.Mesh(getWheelGeom(geometryTier), wheelMat);
         w.rotation.x = Math.PI / 2;
         w.scale.set(wheelR, width * 1.05, wheelR);
         w.position.set(x, TREAD_Y, 0);

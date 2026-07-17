@@ -7,10 +7,10 @@
 // the ends, discrete RUNGS pick the geometry segment tier and which named
 // features are built:
 //
-//   GLYPH (0)  point-sprite proxy, zero triangles
-//   FAR   (1)  'far' segment tier, primary barrel only, static locomotion
-//   MID   (2)  'mid' segment tier, no joint spheres / muzzle trim
-//   CLOSE (3)  'close' segment tier, full authored presentation
+//   GLYPH (0)  point-sprite proxy for non-unit entities
+//   FAR   (1)  low-poly geometry, full authored unit silhouette and rig
+//   MID   (2)  medium-poly geometry, full authored unit silhouette and rig
+//   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
 //
 // Features snap to rung boundaries on purpose: one hysteresis covers every
 // transition and a whole zoom sweep costs at most three mesh transitions
@@ -401,20 +401,13 @@ export function geometryTierForDetail(level: number): PrimitiveGeometryTier {
 }
 
 export function turretStyleForDetail(level: number, ceiling: TurretStyle): TurretStyle {
-  return detailRungForLevel(level) === DETAIL_RUNG_GLYPH ? 'none' : ceiling;
+  void level;
+  return ceiling;
 }
 
 export function legStyleForDetail(level: number, ceiling: LegStyle): LegStyle {
-  switch (detailRungForLevel(level)) {
-    case DETAIL_RUNG_CLOSE: return ceiling;
-    case DETAIL_RUNG_MID: return minLegStyle(ceiling, 'animated');
-    case DETAIL_RUNG_FAR: return minLegStyle(ceiling, 'simple');
-    default: return 'none';
-  }
-}
-
-function minLegStyle(a: LegStyle, b: LegStyle): LegStyle {
-  return LEG_STYLE_ORDER.indexOf(a) <= LEG_STYLE_ORDER.indexOf(b) ? a : b;
+  void level;
+  return ceiling;
 }
 
 export function projectileStyleForDetail(
@@ -433,11 +426,13 @@ export function beamStyleForDetail(level: number, ceiling: BeamStyle): BeamStyle
 }
 
 export function unitShapeForDetail(level: number, ceiling: UnitShape): UnitShape {
-  return detailRungForLevel(level) === DETAIL_RUNG_GLYPH ? 'circles' : ceiling;
+  void level;
+  return ceiling;
 }
 
 export function treadsAnimatedForDetail(level: number, ceiling: boolean): boolean {
-  return ceiling && featureVisibleAtDetail('locomotionAnimated', level);
+  void level;
+  return ceiling;
 }
 
 // ── Effect spawn scales (continuous in L) ───────────────────────────
@@ -481,30 +476,9 @@ export function unitDetailBand(level: number, gfx: GraphicsConfig): number {
   );
 }
 
-/** Per-entity graphics config for a detail level: the user's global
- *  settings are the ceiling; detail only ever scales DOWN. Returns the
- *  input object untouched when nothing sheds. */
+/** Per-entity graphics config for a detail level. Unit LOD is geometry-only:
+ *  authored rigs/styles stay intact and the geometry tier changes elsewhere. */
 export function unitDetailGraphicsConfig(gfx: GraphicsConfig, level: number): GraphicsConfig {
-  const legs = legStyleForDetail(level, gfx.legs);
-  const turretStyle = turretStyleForDetail(level, gfx.turretStyle);
-  const unitShape = unitShapeForDetail(level, gfx.unitShape);
-  const chassisDetail = gfx.chassisDetail && featureVisibleAtDetail('chassisDetail', level);
-  const treadsAnimated = treadsAnimatedForDetail(level, gfx.treadsAnimated);
-  if (
-    legs === gfx.legs &&
-    turretStyle === gfx.turretStyle &&
-    unitShape === gfx.unitShape &&
-    chassisDetail === gfx.chassisDetail &&
-    treadsAnimated === gfx.treadsAnimated
-  ) {
-    return gfx;
-  }
-  return {
-    ...gfx,
-    turretStyle,
-    legs,
-    unitShape,
-    chassisDetail,
-    treadsAnimated,
-  };
+  void level;
+  return gfx;
 }

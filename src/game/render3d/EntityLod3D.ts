@@ -13,9 +13,11 @@ import {
   DETAIL_RADIUS_FLOOR_BEAM,
   DETAIL_RADIUS_FLOOR_PROJECTILE,
   DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   type DetailRung,
   detailLevelForRadiusDistance,
+  detailLevelForRung,
   detailRungForLevel,
   detailRungWithHysteresis,
 } from './EntityDetailLevel3D';
@@ -47,6 +49,24 @@ function finitePositiveOr(value: number, fallback: number): number {
 
 function entityLodEnabled(): boolean {
   return ENTITY_LOD_ENABLED;
+}
+
+/** Units always retain real low-poly geometry. Buildings and other entity
+ * families may still use the point-sprite proxy at extreme distance. */
+function isUnitGeometryHost(entity: Entity): boolean {
+  return entity.unit != null;
+}
+
+function clampUnitDetailLevel(entity: Entity, level: number): number {
+  return isUnitGeometryHost(entity)
+    ? Math.max(level, detailLevelForRung(DETAIL_RUNG_FAR))
+    : level;
+}
+
+function clampUnitDetailRung(entity: Entity, rung: DetailRung): DetailRung {
+  return isUnitGeometryHost(entity) && rung < DETAIL_RUNG_FAR
+    ? DETAIL_RUNG_FAR
+    : rung;
 }
 
 function cameraFovYRad(camera: THREE.Camera): number {
@@ -368,12 +388,16 @@ export class EntityLodState3D {
   entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-    if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-    return detailLevelForRadiusDistance(
+    if (lodMode === 'low') {
+      return isUnitGeometryHost(entity)
+        ? detailLevelForRung(DETAIL_RUNG_FAR)
+        : DETAIL_LEVEL_GLYPH;
+    }
+    return clampUnitDetailLevel(entity, detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
       view.fovYRad,
-    );
+    ));
   }
 
   /**
@@ -384,18 +408,22 @@ export class EntityLodState3D {
   entityDetailRungForView(view: RenderViewState3D, entity: Entity): DetailRung {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
-    if (lodMode === 'low') return DETAIL_RUNG_GLYPH;
+    if (lodMode === 'low') {
+      return isUnitGeometryHost(entity) ? DETAIL_RUNG_FAR : DETAIL_RUNG_GLYPH;
+    }
 
     const entityId = entity.id;
     if (canIndexClientEntityId(entityId)) {
       const frame = this.rungFrameByIndexedEntityId[entityId];
       const stored = this.rungByIndexedEntityId[entityId];
-      if (frame === this.frame && stored !== undefined) return stored;
+      if (frame === this.frame && stored !== undefined) {
+        return clampUnitDetailRung(entity, stored);
+      }
       const level = this.entityDetailLevelForView(view, entity);
-      const rung = stored !== undefined && frame !== undefined &&
+      const rung = clampUnitDetailRung(entity, stored !== undefined && frame !== undefined &&
         this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
         ? detailRungWithHysteresis(stored, level)
-        : detailRungForLevel(level);
+        : detailRungForLevel(level));
       this.trackIndexedEntityCache(
         entityId,
         this.rungIndexedEntityIds,
@@ -408,12 +436,14 @@ export class EntityLodState3D {
 
     const frame = this.rungFrameByEntityId.get(entityId);
     const stored = this.rungByEntityId.get(entityId);
-    if (frame === this.frame && stored !== undefined) return stored;
+    if (frame === this.frame && stored !== undefined) {
+      return clampUnitDetailRung(entity, stored);
+    }
     const level = this.entityDetailLevelForView(view, entity);
-    const rung = stored !== undefined && frame !== undefined &&
+    const rung = clampUnitDetailRung(entity, stored !== undefined && frame !== undefined &&
       this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
       ? detailRungWithHysteresis(stored, level)
-      : detailRungForLevel(level);
+      : detailRungForLevel(level));
     this.rungByEntityId.set(entityId, rung);
     this.rungFrameByEntityId.set(entityId, this.frame);
     return rung;
@@ -424,6 +454,10 @@ export class EntityLodState3D {
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
+    if (isUnitGeometryHost(entity)) {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -465,6 +499,10 @@ export class EntityLodState3D {
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
+    if (isUnitGeometryHost(entity)) {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -500,12 +538,16 @@ export class EntityLodState3D {
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-    if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-    return detailLevelForRadiusDistance(
+    if (lodMode === 'low') {
+      return isUnitGeometryHost(entity)
+        ? detailLevelForRung(DETAIL_RUNG_FAR)
+        : DETAIL_LEVEL_GLYPH;
+    }
+    return clampUnitDetailLevel(entity, detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
-    );
+    ));
   }
 
   entityUsesLowLodDistance(

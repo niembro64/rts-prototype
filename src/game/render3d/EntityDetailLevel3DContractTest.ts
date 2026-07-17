@@ -269,21 +269,21 @@ export function runEntityDetailLevel3DContractTest(): void {
     turretStyleForDetail(detailLevelForRung(DETAIL_RUNG_FAR), 'full') === 'full',
     'far rung keeps the turret (cluster collapse is the barrelSecondary feature)',
   );
-  assertContract(turretStyleForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'none', 'glyph removes turrets');
+  assertContract(turretStyleForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'full', 'unit low geometry keeps turrets');
   assertContract(legStyleForDetail(DETAIL_LEVEL_FULL, 'full') === 'full', 'full keeps leg ceiling');
   assertContract(
-    legStyleForDetail(detailLevelForRung(DETAIL_RUNG_MID), 'full') === 'animated',
-    'mid rung caps legs at animated (sheds joint spheres)',
+    legStyleForDetail(detailLevelForRung(DETAIL_RUNG_MID), 'full') === 'full',
+    'mid rung keeps the full authored leg rig',
   );
   assertContract(
-    legStyleForDetail(detailLevelForRung(DETAIL_RUNG_FAR), 'full') === 'simple',
-    'far rung caps legs at simple',
+    legStyleForDetail(detailLevelForRung(DETAIL_RUNG_FAR), 'full') === 'full',
+    'far rung keeps the full authored leg rig',
   );
   assertContract(
     legStyleForDetail(detailLevelForRung(DETAIL_RUNG_MID), 'simple') === 'simple',
     'leg ladder never raises the user ceiling',
   );
-  assertContract(legStyleForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'none', 'glyph removes legs');
+  assertContract(legStyleForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'full', 'unit low geometry keeps legs');
   assertContract(projectileStyleForDetail(DETAIL_LEVEL_FULL, 'full') === 'full', 'full keeps projectile ceiling');
   assertContract(projectileStyleForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'dot', 'glyph uses projectile dots');
   assertContract(beamStyleForDetail(DETAIL_LEVEL_FULL, 'complex') === 'complex', 'full keeps beam ceiling');
@@ -293,7 +293,7 @@ export function runEntityDetailLevel3DContractTest(): void {
   );
   assertContract(beamStyleForDetail(DETAIL_LEVEL_GLYPH, 'complex') === 'simple', 'glyph uses simple beams');
   assertContract(unitShapeForDetail(DETAIL_LEVEL_FULL, 'full') === 'full', 'full keeps unit shape ceiling');
-  assertContract(unitShapeForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'circles', 'glyph uses circle bodies');
+  assertContract(unitShapeForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'full', 'unit low geometry keeps authored bodies');
 
   // ── Effect spawn scales: continuous, monotonic ────────────────────
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full smoke is full scale');
@@ -323,19 +323,8 @@ export function runEntityDetailLevel3DContractTest(): void {
     unitDetailGraphicsConfig(FULL_GFX, DETAIL_LEVEL_FULL) === FULL_GFX,
     'full detail returns the existing graphics config object',
   );
-  const midGfx = unitDetailGraphicsConfig(FULL_GFX, detailLevelForRung(DETAIL_RUNG_MID));
-  assertContract(midGfx.legs === 'animated', 'mid unit config caps legs at animated');
-  assertContract(midGfx.treadsAnimated, 'mid unit config keeps tread animation');
-  assertContract(midGfx.chassisDetail, 'mid unit config keeps chassis detail');
-  const farGfx = unitDetailGraphicsConfig(FULL_GFX, detailLevelForRung(DETAIL_RUNG_FAR));
-  assertContract(farGfx.legs === 'simple', 'far unit config caps legs at simple');
-  assertContract(!farGfx.treadsAnimated, 'far unit config freezes treads to the static slab');
-  assertContract(!farGfx.chassisDetail, 'far unit config disables chassis detail');
-  const lowGfx = unitDetailGraphicsConfig(FULL_GFX, DETAIL_LEVEL_GLYPH);
-  assertContract(lowGfx !== FULL_GFX, 'glyph returns a reduced graphics config');
-  assertContract(lowGfx.turretStyle === 'none', 'glyph unit config removes turrets');
-  assertContract(lowGfx.legs === 'none', 'glyph unit config removes legs');
-  assertContract(lowGfx.unitShape === 'circles', 'glyph unit config uses circles');
-  assertContract(!lowGfx.chassisDetail, 'glyph unit config disables chassis detail');
-  assertContract(!lowGfx.treadsAnimated, 'glyph unit config disables tread animation');
+  for (const rung of ALL_RUNGS) {
+    const resolved = unitDetailGraphicsConfig(FULL_GFX, detailLevelForRung(rung));
+    assertContract(resolved === FULL_GFX, `rung ${rung} preserves the authored unit rig config`);
+  }
 }

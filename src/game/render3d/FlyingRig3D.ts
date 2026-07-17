@@ -16,7 +16,10 @@ import type {
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
@@ -48,8 +51,16 @@ function buildWingPanelGeom(lateralSign: -1 | 1, sweepFrac: number): THREE.Buffe
 }
 
 const wingGeomCache = new Map<string, THREE.BufferGeometry>();
-const jetGeom = createPrimitiveCylinderGeometry('locomotion', 'close', 1, 1, 1, 1, true);
-jetGeom.rotateZ(Math.PI / 2);
+const jetGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+function getJetGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geometry = jetGeomByTier.get(tier);
+  if (!geometry) {
+    geometry = createPrimitiveCylinderGeometry('locomotion', tier, 1, 1, 1, 1, true);
+    geometry.rotateZ(Math.PI / 2);
+    jetGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
 const wingMats = new Map<number, THREE.MeshBasicMaterial>();
 const jetMats = new Map<number, THREE.MeshBasicMaterial>();
 const _jetWorldPos = new THREE.Vector3();
@@ -104,6 +115,7 @@ export function buildFlyingRig(
   smokeUseId: FlyingSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): FlyingMesh {
   const group = new THREE.Group();
   const smokeProfile = getSmokeProfile(smokeUseId);
@@ -160,7 +172,10 @@ export function buildFlyingRig(
     const jetGroup = new THREE.Group();
     jetGroup.position.set(jetX, jetY, lateralOffset);
 
-    const nozzle = new THREE.Mesh(jetGeom, getFlyingMat(jetMats, JET_COLOR, ownerId));
+    const nozzle = new THREE.Mesh(
+      getJetGeom(geometryTier),
+      getFlyingMat(jetMats, JET_COLOR, ownerId),
+    );
     nozzle.scale.set(jetLength, jetRadius, jetRadius);
     jetGroup.add(nozzle);
 

@@ -27,6 +27,7 @@ import {
 import {
   createPrimitiveCylinderGeometry,
   getSharedPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 /** One mesh that makes up a unit body. Positions and scales are in
@@ -75,19 +76,19 @@ export type BodyGeomEntry = {
 // A single unit sphere is reused across every smooth body part — sphere
 // positioning and non-uniform scaling turn it into the final spheroid
 // without needing a separate BufferGeometry per body shape.
-let _unitSphere: THREE.SphereGeometry | null = null;
-function getUnitSphere(): THREE.SphereGeometry {
-  if (!_unitSphere) _unitSphere = getSharedPrimitiveSphereGeometry('unitBody', 'close');
-  return _unitSphere;
+function getUnitSphere(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
+  return getSharedPrimitiveSphereGeometry('unitBody', tier);
 }
 
-let _unitCylinder: THREE.CylinderGeometry | null = null;
-function getUnitCylinder(): THREE.CylinderGeometry {
-  if (!_unitCylinder) {
-    _unitCylinder = createPrimitiveCylinderGeometry('unitBody', 'close', 1, 1, 1, 1);
-    _unitCylinder.rotateZ(-Math.PI / 2);
+const unitCylinders = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+function getUnitCylinder(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geometry = unitCylinders.get(tier);
+  if (!geometry) {
+    geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 1, 1, 1);
+    geometry.rotateZ(-Math.PI / 2);
+    unitCylinders.set(tier, geometry);
   }
-  return _unitCylinder;
+  return geometry;
 }
 
 // Unit cone — radiusTop=1, radiusBottom=0 so the tip is at −Y. Same
@@ -95,13 +96,15 @@ function getUnitCylinder(): THREE.CylinderGeometry {
 // puts the tip at −X (the rearward end of any body part using this
 // geometry) and the radius-1 base at +X. Composite parts scale by
 // (lengthFrac, radiusFrac, radiusFrac) just like cylinders.
-let _unitCone: THREE.CylinderGeometry | null = null;
-function getUnitCone(): THREE.CylinderGeometry {
-  if (!_unitCone) {
-    _unitCone = createPrimitiveCylinderGeometry('unitBody', 'close', 1, 0, 1, 1);
-    _unitCone.rotateZ(-Math.PI / 2);
+const unitCones = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+function getUnitCone(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geometry = unitCones.get(tier);
+  if (!geometry) {
+    geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 0, 1, 1);
+    geometry.rotateZ(-Math.PI / 2);
+    unitCones.set(tier, geometry);
   }
-  return _unitCone;
+  return geometry;
 }
 
 /** Polygon extrusion height (unit-radius-1). Uses the inscribed-circle
@@ -112,44 +115,44 @@ function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
 }
 
-function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
   const halfHeight = circleYFrac(part.radiusFrac, part.yFrac);
   const centerY = part.centerYFrac ?? halfHeight;
   return {
-    geometry: getUnitSphere(),
+    geometry: getUnitSphere(tier),
     x: part.offsetForward ?? 0, y: centerY, z: part.offsetLateral ?? 0,
     scaleX: part.radiusFrac, scaleY: halfHeight, scaleZ: part.radiusFrac,
   };
 }
 
-function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
   return {
-    geometry: getUnitSphere(),
+    geometry: getUnitSphere(tier),
     x: part.offsetForward ?? 0, y: part.yFrac, z: part.offsetLateral ?? 0,
     scaleX: part.xFrac, scaleY: part.yFrac, scaleZ: part.zFrac,
   };
 }
 
-function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; pitchRad?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; pitchRad?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
   const y = part.centerYFrac ?? part.radiusFrac;
   return {
-    geometry: getUnitCylinder(),
+    geometry: getUnitCylinder(tier),
     x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
     scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
     rotZ: part.pitchRad,
   };
 }
 
-function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
   const y = part.centerYFrac ?? part.radiusFrac;
   return {
-    geometry: getUnitCone(),
+    geometry: getUnitCone(tier),
     x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
     scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
   };
 }
 
-function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
+function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomEntry {
   const topY = getBodyTopFrac(spec);
   if (spec.kind === 'polygon') {
     const h = spec.heightFrac;
@@ -211,11 +214,11 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
     };
   }
   if (spec.kind === 'circle') {
-    const part = buildCircleSpec(spec);
+    const part = buildCircleSpec(spec, tier);
     return { parts: [part], topY, isSmooth: true };
   }
   if (spec.kind === 'oval') {
-    const part = buildOvalSpec(spec);
+    const part = buildOvalSpec(spec, tier);
     return { parts: [part], topY, isSmooth: true };
   }
   // composite: each segment is its own sphere/spheroid/cylinder.
@@ -223,17 +226,17 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
   let isSmooth = true;
   for (const p of spec.parts) {
     if (p.kind === 'circle') {
-      const part = buildCircleSpec(p);
+      const part = buildCircleSpec(p, tier);
       parts.push(part);
     } else if (p.kind === 'oval') {
-      const part = buildOvalSpec(p);
+      const part = buildOvalSpec(p, tier);
       parts.push(part);
     } else if (p.kind === 'cone') {
-      const part = buildConeSpec(p);
+      const part = buildConeSpec(p, tier);
       parts.push(part);
       isSmooth = false;
     } else {
-      const part = buildCylinderSpec(p);
+      const part = buildCylinderSpec(p, tier);
       parts.push(part);
       isSmooth = false;
     }
@@ -247,11 +250,14 @@ const CACHE: Map<string, BodyGeomEntry> = new Map();
  *  Returned parts live in unit-radius-1 space; call sites scale the
  *  chassis parent group by the unit's render radius so each part's
  *  offset and scale both multiply uniformly. */
-export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
-  const key = getUnitBodyShapeKey(bodyShape);
+export function getBodyGeom(
+  bodyShape: UnitBodyShape,
+  tier: PrimitiveGeometryTier = 'close',
+): BodyGeomEntry {
+  const key = `${tier}:${getUnitBodyShapeKey(bodyShape)}`;
   const cached = CACHE.get(key);
   if (cached) return cached;
-  const entry = buildEntry(bodyShape);
+  const entry = buildEntry(bodyShape, tier);
   CACHE.set(key, entry);
   return entry;
 }
@@ -477,14 +483,16 @@ function pushOvalEdges(
 }
 
 export function disposeBodyGeoms(): void {
+  const disposed = new Set<THREE.BufferGeometry>();
   for (const entry of CACHE.values()) {
     for (const part of entry.parts) {
-      if (part.geometry !== _unitSphere) part.geometry.dispose();
+      if (!disposed.has(part.geometry)) {
+        part.geometry.dispose();
+        disposed.add(part.geometry);
+      }
     }
   }
   CACHE.clear();
-  if (_unitSphere) {
-    _unitSphere.dispose();
-    _unitSphere = null;
-  }
+  unitCylinders.clear();
+  unitCones.clear();
 }

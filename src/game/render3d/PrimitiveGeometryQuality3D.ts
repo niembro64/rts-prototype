@@ -490,6 +490,48 @@ export function createPrimitiveCylinderGeometry(
   );
 }
 
+/** Lowest-cost leg segment: a capped triangular prism whose cross-section is
+ * an equilateral triangle. Its local axis is +Y, matching every other leg
+ * segment geometry, so the existing world-space IK transforms apply without
+ * any LOD-specific pose code. */
+export function createExtrudedEquilateralTriangleGeometry(
+  radius = 1,
+  height = 1,
+): THREE.BufferGeometry {
+  const halfHeight = height / 2;
+  const ring = [0, 1, 2].map((index) => {
+    const angle = Math.PI / 2 + index * Math.PI * 2 / 3;
+    return [Math.cos(angle) * radius, Math.sin(angle) * radius] as const;
+  });
+  const vertices: number[] = [];
+  const push = (a: number, ay: number, b: number, by: number, c: number, cy: number): void => {
+    vertices.push(ring[a][0], ay, ring[a][1]);
+    vertices.push(ring[b][0], by, ring[b][1]);
+    vertices.push(ring[c][0], cy, ring[c][1]);
+  };
+  // One triangle per cap, then two triangles for each rectangular side.
+  push(2, halfHeight, 1, halfHeight, 0, halfHeight);
+  push(0, -halfHeight, 1, -halfHeight, 2, -halfHeight);
+  for (let side = 0; side < 3; side++) {
+    const next = (side + 1) % 3;
+    push(side, -halfHeight, next, halfHeight, next, -halfHeight);
+    push(side, -halfHeight, side, halfHeight, next, halfHeight);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(16 * 3), 2));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** Lowest-cost joint/foot solid. Detail 0 keeps the same joint transforms and
+ * footprint scaling, substituting only four triangular faces for a sphere. */
+export function createPrimitiveTetrahedronGeometry(
+  radius = 1,
+): THREE.TetrahedronGeometry {
+  return new THREE.TetrahedronGeometry(radius, 0);
+}
+
 export function createPrimitiveConeGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',

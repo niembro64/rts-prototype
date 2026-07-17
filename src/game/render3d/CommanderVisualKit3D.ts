@@ -5,14 +5,15 @@ import type { TurretMesh } from './TurretMesh3D';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 const COMMANDER_LENS_COLOR = COLORS.units.unitCommander.lens.colorHex;
 
 export class CommanderVisualKit3D {
   private readonly boxGeom = new THREE.BoxGeometry(1, 1, 1);
-  private readonly cylinderGeom = createPrimitiveCylinderGeometry('unitDetail', 'close');
-  private readonly domeGeom = createPrimitiveSphereGeometry('unitDetail', 'close');
+  private readonly cylinderGeoms = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+  private readonly domeGeoms = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
   private readonly lensMat = new THREE.MeshBasicMaterial({
     color: COMMANDER_LENS_COLOR,
     transparent: true,
@@ -20,7 +21,25 @@ export class CommanderVisualKit3D {
     depthWrite: false,
   });
 
-  buildKit(primaryMat: THREE.Material): THREE.Group {
+  private cylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+    let geometry = this.cylinderGeoms.get(tier);
+    if (!geometry) {
+      geometry = createPrimitiveCylinderGeometry('unitDetail', tier);
+      this.cylinderGeoms.set(tier, geometry);
+    }
+    return geometry;
+  }
+
+  private domeGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
+    let geometry = this.domeGeoms.get(tier);
+    if (!geometry) {
+      geometry = createPrimitiveSphereGeometry('unitDetail', tier);
+      this.domeGeoms.set(tier, geometry);
+    }
+    return geometry;
+  }
+
+  buildKit(primaryMat: THREE.Material, geometryTier: PrimitiveGeometryTier): THREE.Group {
     const kit = new THREE.Group();
     const hazardMat = getConstructionHazardMaterial();
     const addBox = (
@@ -38,7 +57,7 @@ export class CommanderVisualKit3D {
       x: number, y: number, z: number,
       radiusX: number, height: number, radiusZ: number,
     ): void => {
-      const mesh = new THREE.Mesh(this.cylinderGeom, material);
+      const mesh = new THREE.Mesh(this.cylinderGeom(geometryTier), material);
       mesh.position.set(x, y, z);
       mesh.scale.set(radiusX, height, radiusZ);
       kit.add(mesh);
@@ -53,7 +72,7 @@ export class CommanderVisualKit3D {
     addBox(primaryMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
     addBox(primaryMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
 
-    const sensor = new THREE.Mesh(this.domeGeom, this.lensMat);
+    const sensor = new THREE.Mesh(this.domeGeom(geometryTier), this.lensMat);
     sensor.position.set(0.18, 1.36, 0);
     sensor.scale.set(0.12, 0.12, 0.12);
     kit.add(sensor);
@@ -69,9 +88,10 @@ export class CommanderVisualKit3D {
     tm: TurretMesh,
     isDgunTurret: boolean,
     primaryMat: THREE.Material,
+    geometryTier: PrimitiveGeometryTier,
   ): void {
     const headRadius = tm.headRadius ?? 6;
-    const collar = new THREE.Mesh(this.cylinderGeom, primaryMat);
+    const collar = new THREE.Mesh(this.cylinderGeom(geometryTier), primaryMat);
     collar.position.set(0, Math.max(1.2, headRadius * 0.16), 0);
     collar.scale.set(
       headRadius * 1.18,
@@ -108,8 +128,8 @@ export class CommanderVisualKit3D {
 
   dispose(): void {
     this.boxGeom.dispose();
-    this.cylinderGeom.dispose();
-    this.domeGeom.dispose();
+    for (const geometry of this.cylinderGeoms.values()) geometry.dispose();
+    for (const geometry of this.domeGeoms.values()) geometry.dispose();
     this.lensMat.dispose();
   }
 }

@@ -170,7 +170,9 @@ export function buildLocomotion(
       return mesh;
     }
     case 'wheels': {
-      const mesh = buildWheels(unitGroup, unitRadius, loc.config, ownerId);
+      const mesh = buildWheels(
+        unitGroup, unitRadius, loc.config, ownerId, geometryTier,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -180,6 +182,7 @@ export function buildLocomotion(
         worldGroup, unitRadius, loc.config,
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
         legRenderer, ownerId,
+        geometryTier,
       );
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
@@ -217,6 +220,7 @@ export function buildLocomotion(
         flyingSmokeUseId(bp.unitBlueprintId),
         entity.id,
         ownerId,
+        geometryTier,
       );
       mesh.group.position.y -= airborneLiftY;
       mesh.geometryKey = geometryKey;

@@ -49,7 +49,10 @@ import {
   transformWorldVectorToChassis,
 } from './LocomotionRigShared3D';
 import { clamp, clamp01 } from '../math';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import { legRestSphereNeedsStep, legSurfaceWithinReach } from './LegGait3D';
 
 /** Per-unit directional target radius as a fraction of the unit's LONGEST
@@ -174,6 +177,9 @@ export type LegInstance = {
   /** Which LegInstancedRenderer pool this leg allocated from. Construction
    *  units now use the normal pool instead of the transparent shell pool. */
   shellPool: boolean;
+  /** Geometry pool selected at build time. Pose/IK state is identical across
+   * tiers; only the shared primitive mesh differs. */
+  geometryTier: PrimitiveGeometryTier;
 
   /** Current foot world position. Y is sampled from terrain — when
    *  the foot is planted this XYZ doesn't change at
@@ -327,6 +333,7 @@ export function buildLegs(
   legAttachHeightFrac: number | null,
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): LegMesh | undefined {
   if (legStyle === 'none') return undefined;
 
@@ -382,6 +389,7 @@ export function buildLegs(
       hipY,
       phaseShift01,
       shellPool,
+      geometryTier,
       worldX: 0, worldY: 0, worldZ: 0,
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
@@ -406,14 +414,24 @@ export function buildLegs(
     // LegInstancedRenderer pools. Each alloc registers a relocator
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
-    leg.upperSlot = legRenderer.allocUpper(shellPool, legColor, (s) => { leg.upperSlot = s; });
+    leg.upperSlot = legRenderer.allocUpper(
+      shellPool, legColor, (s) => { leg.upperSlot = s; }, geometryTier,
+    );
     if (legStyle === 'animated' || legStyle === 'full') {
-      leg.lowerSlot = legRenderer.allocLower(shellPool, legColor, (s) => { leg.lowerSlot = s; });
+      leg.lowerSlot = legRenderer.allocLower(
+        shellPool, legColor, (s) => { leg.lowerSlot = s; }, geometryTier,
+      );
     }
-    leg.footPadSlot = legRenderer.allocFootPad(shellPool, legColor, (s) => { leg.footPadSlot = s; });
+    leg.footPadSlot = legRenderer.allocFootPad(
+      shellPool, legColor, (s) => { leg.footPadSlot = s; }, geometryTier,
+    );
     if (legStyle === 'full') {
-      leg.hipJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.hipJointSlot = s; });
-      leg.kneeJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.kneeJointSlot = s; });
+      leg.hipJointSlot = legRenderer.allocJoint(
+        shellPool, legColor, (s) => { leg.hipJointSlot = s; }, geometryTier,
+      );
+      leg.kneeJointSlot = legRenderer.allocJoint(
+        shellPool, legColor, (s) => { leg.kneeJointSlot = s; }, geometryTier,
+      );
     }
 
     legs.push(leg);
@@ -451,22 +469,22 @@ export function buildLegs(
  *  this rig back to the shared LegInstancedRenderer pools. */
 export function freeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer): void {
   for (const leg of mesh.legs) {
-    legRenderer.freeUpper(leg.upperSlot, leg.shellPool);
-    legRenderer.freeLower(leg.lowerSlot, leg.shellPool);
-    legRenderer.freeJoint(leg.hipJointSlot, leg.shellPool);
-    legRenderer.freeJoint(leg.kneeJointSlot, leg.shellPool);
-    legRenderer.freeFootPad(leg.footPadSlot, leg.shellPool);
+    legRenderer.freeUpper(leg.upperSlot, leg.shellPool, leg.geometryTier);
+    legRenderer.freeLower(leg.lowerSlot, leg.shellPool, leg.geometryTier);
+    legRenderer.freeJoint(leg.hipJointSlot, leg.shellPool, leg.geometryTier);
+    legRenderer.freeJoint(leg.kneeJointSlot, leg.shellPool, leg.geometryTier);
+    legRenderer.freeFootPad(leg.footPadSlot, leg.shellPool, leg.geometryTier);
   }
 }
 
 export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, fade: number): void {
   const clamped = Math.max(0, Math.min(1, fade));
   for (const leg of mesh.legs) {
-    legRenderer.fadeUpper(leg.upperSlot, clamped, leg.shellPool);
-    legRenderer.fadeLower(leg.lowerSlot, clamped, leg.shellPool);
-    legRenderer.fadeJoint(leg.hipJointSlot, clamped, leg.shellPool);
-    legRenderer.fadeJoint(leg.kneeJointSlot, clamped, leg.shellPool);
-    legRenderer.fadeFootPad(leg.footPadSlot, clamped, leg.shellPool);
+    legRenderer.fadeUpper(leg.upperSlot, clamped, leg.shellPool, leg.geometryTier);
+    legRenderer.fadeLower(leg.lowerSlot, clamped, leg.shellPool, leg.geometryTier);
+    legRenderer.fadeJoint(leg.hipJointSlot, clamped, leg.shellPool, leg.geometryTier);
+    legRenderer.fadeJoint(leg.kneeJointSlot, clamped, leg.shellPool, leg.geometryTier);
+    legRenderer.fadeFootPad(leg.footPadSlot, clamped, leg.shellPool, leg.geometryTier);
   }
 }
 
@@ -478,11 +496,11 @@ export function translateLegSlots(
   dz: number,
 ): void {
   for (const leg of mesh.legs) {
-    legRenderer.translateUpper(leg.upperSlot, dx, dy, dz, leg.shellPool);
-    legRenderer.translateLower(leg.lowerSlot, dx, dy, dz, leg.shellPool);
-    legRenderer.translateJoint(leg.hipJointSlot, dx, dy, dz, leg.shellPool);
-    legRenderer.translateJoint(leg.kneeJointSlot, dx, dy, dz, leg.shellPool);
-    legRenderer.translateFootPad(leg.footPadSlot, dx, dy, dz, leg.shellPool);
+    legRenderer.translateUpper(leg.upperSlot, dx, dy, dz, leg.shellPool, leg.geometryTier);
+    legRenderer.translateLower(leg.lowerSlot, dx, dy, dz, leg.shellPool, leg.geometryTier);
+    legRenderer.translateJoint(leg.hipJointSlot, dx, dy, dz, leg.shellPool, leg.geometryTier);
+    legRenderer.translateJoint(leg.kneeJointSlot, dx, dy, dz, leg.shellPool, leg.geometryTier);
+    legRenderer.translateFootPad(leg.footPadSlot, dx, dy, dz, leg.shellPool, leg.geometryTier);
   }
 }
 
@@ -1181,6 +1199,7 @@ function writeLegRenderPose(
       footX, footY, footZ,
       leg.upperThick,
       leg.shellPool,
+      leg.geometryTier,
     );
   } else {
     const knee = kneeFromIK(
@@ -1195,6 +1214,7 @@ function writeLegRenderPose(
       knee.x, knee.y, knee.z,
       leg.upperThick,
       leg.shellPool,
+      leg.geometryTier,
     );
     legRenderer.updateLower(
       leg.lowerSlot,
@@ -1202,6 +1222,7 @@ function writeLegRenderPose(
       footX, footY, footZ,
       leg.lowerThick,
       leg.shellPool,
+      leg.geometryTier,
     );
     if (leg.hipJointSlot >= 0) {
       legRenderer.updateJoint(
@@ -1209,6 +1230,7 @@ function writeLegRenderPose(
         hipWorldX, hipWorldY, hipWorldZ,
         leg.hipJointRadius,
         leg.shellPool,
+        leg.geometryTier,
       );
     }
     if (leg.kneeJointSlot >= 0) {
@@ -1217,6 +1239,7 @@ function writeLegRenderPose(
         knee.x, knee.y, knee.z,
         leg.kneeJointRadius,
         leg.shellPool,
+        leg.geometryTier,
       );
     }
   }
@@ -1227,6 +1250,7 @@ function writeLegRenderPose(
     leg.footPadHalfHeight,
     footNormalX, footNormalY, footNormalZ,
     leg.shellPool,
+    leg.geometryTier,
   );
 }
 

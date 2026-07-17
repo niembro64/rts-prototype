@@ -16,6 +16,7 @@ import {
   simPositionUsesLowLodDistance3D,
 } from './EntityLod3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
+import { DETAIL_RUNG_FAR } from './EntityDetailLevel3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -130,6 +131,23 @@ export function runEntityLod3DContractTest(): void {
 
     const groundUnit = entityAt(301, 0, 0, 0);
     groundUnit.unit = { locomotion: { type: 'wheels' } } as NonNullable<Entity['unit']>;
+    setLodMode('low');
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit),
+      'LOW mode keeps units as real low-poly geometry',
+    );
+    assertContract(
+      bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_FAR,
+      'LOW mode selects the far geometry tier for units',
+    );
+    setLodMode('auto');
+    groundUnit.transform.y = -10000;
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit),
+      'AUTO mode keeps very distant units as real low-poly geometry',
+    );
     assertContract(
       entityLodProxyGlyph3D(groundUnit) === ENTITY_LOD_PROXY_GLYPH_CIRCLE,
       'ground combat units use the default circular proxy glyph',

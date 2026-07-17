@@ -128,7 +128,8 @@ export class UnitMeshBuilder3D {
     const bodyShape =
       unitGfx.unitShape === 'circles' ? LOW_DETAIL_UNIT_BODY_SHAPE : authoredBodyShape;
     const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
-    const bodyEntry = getBodyGeom(bodyShape);
+    const geometryTier = geometryTierForDetail(detailLevel);
+    const bodyEntry = getBodyGeom(bodyShape, geometryTier);
     const primaryMat = this.getPrimaryMat(ownerId);
 
     const yawGroup = new THREE.Group();
@@ -148,7 +149,6 @@ export class UnitMeshBuilder3D {
     let smoothChassisSlots: number[] | undefined;
     let polyChassisSlot: number | undefined;
 
-    const geometryTier = geometryTierForDetail(detailLevel);
     if (
       useInstancedChassis &&
       bodyEntry.isSmooth &&
@@ -173,7 +173,7 @@ export class UnitMeshBuilder3D {
 
     if (isAlbatros) {
       chassisMeshes.push(
-        ...buildAlbatrosChassis(chassis, primaryMat, entity.id),
+        ...buildAlbatrosChassis(chassis, primaryMat, entity.id, geometryTier),
       );
     } else if (!smoothChassisSlots && polyChassisSlot === undefined) {
       for (const part of bodyEntry.parts) {
@@ -189,7 +189,7 @@ export class UnitMeshBuilder3D {
     liftGroup.add(chassis);
 
     if (entity.commander) {
-      const commanderKit = this.commanderVisualKit.buildKit(primaryMat);
+      const commanderKit = this.commanderVisualKit.buildKit(primaryMat, geometryTier);
       commanderKit.userData.entityId = entity.id;
       commanderKit.traverse((obj) => {
         obj.userData.entityId = entity.id;
@@ -294,6 +294,7 @@ export class UnitMeshBuilder3D {
       visual.ringRadius,
       primaryMat,
       visual.ringOrientation,
+      geometryTierForDetail(detailLevel),
     );
     ring.position.set(
       visual.localOffsetX,
@@ -356,6 +357,7 @@ export class UnitMeshBuilder3D {
           turretMesh,
           turret.config.turretBlueprintId === commanderDgunTurretBlueprintId,
           this.getPrimaryMat(ownerId),
+          geometryTierForDetail(detailLevel),
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;

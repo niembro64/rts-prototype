@@ -30,7 +30,10 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 // Movement-position EMA tau for the per-tire suspension lift. Drives
 // the wheel toward the floor-clamp target each frame; long enough
@@ -48,7 +51,15 @@ const WHEEL_OMEGA_SETTLED_EPSILON = 0.02;
 const WHEEL_COLOR = COLORS.units.locomotion.wheel.tire.colorHex;
 const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
-const wheelGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
+const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+function getWheelGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geometry = wheelGeomByTier.get(tier);
+  if (!geometry) {
+    geometry = createPrimitiveCylinderGeometry('locomotion', tier);
+    wheelGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 
 /** Per-tire chassis-local mount, plus the four canonical visual state
@@ -109,6 +120,7 @@ export function buildWheels(
   r: number,
   cfg: WheelConfig,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): WheelMesh {
   // Wheeled units get four real cylindrical wheels — not the four
   // small tread-slabs the previous renderer used. The cylinder's
@@ -140,7 +152,10 @@ export function buildWheels(
       // rotation, world lateral). Spin animation rotates this mesh
       // around its own +Y, which after the parent's rotation.x is
       // the lateral axis in the unit's frame.
-      const tire = new THREE.Mesh(wheelGeom, getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId));
+      const tire = new THREE.Mesh(
+        getWheelGeom(geometryTier),
+        getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId),
+      );
       tire.scale.set(wheelR, tireWidth, wheelR);
       wheelGroup.add(tire);
       group.add(wheelGroup);

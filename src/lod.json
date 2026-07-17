@@ -44,11 +44,11 @@
       "shieldPanels": "far",
       "beamGlow": "mid",
       "buildingDetail": "mid",
-      "chassisDetail": "mid",
-      "barrelSecondary": "mid",
+      "chassisDetail": "far",
+      "barrelSecondary": "far",
       "projectileGlow": "mid",
-      "locomotionAnimated": "mid",
-      "muzzleDetail": "close"
+      "locomotionAnimated": "far",
+      "muzzleDetail": "far"
     },
     "visualFeatureMinRung": {
       "building": {
@@ -64,8 +64,8 @@
     },
     "animation": {
       "comment": "Live per-frame animation shedding (no mesh rebuild). Below unitAnimationMinRung, barrel spin freezes and locomotion rigs (tread scroll, wheel spin, leg gait, floor clamps) update every locomotionFarFrameStride frames with accumulated dt instead of every frame. Building animators (wind/extractor/radar/solar) freeze below buildingAnimationMinRung.",
-      "unitAnimationMinRung": "mid",
-      "locomotionFarFrameStride": 4,
+      "unitAnimationMinRung": "far",
+      "locomotionFarFrameStride": 1,
       "buildingAnimationMinRung": "mid"
     },
     "effectSpawnScale": {
