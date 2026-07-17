@@ -45,6 +45,26 @@ type LoadedEnvironmentAsset = {
   unitHeight: number;
 };
 
+export type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
+
+/** Medium/Low environment geometry deliberately drops texture maps, but its
+ *  base hues must remain identical to the canonical textured High assets. */
+export function environmentLodFlatMaterialSpec(
+  role: EnvironmentLodFlatColorRole,
+): Readonly<{ key: string; color: number; map: null }> {
+  return role === 'wood'
+    ? {
+        key: 'environmentLod.flat.wood',
+        color: FOREST_SPRUCE2_WOOD_COLOR,
+        map: null,
+      }
+    : {
+        key: 'environmentLod.flat.foliage',
+        color: FOREST_SPRUCE2_LEAF_COLOR,
+        map: null,
+      };
+}
+
 type EnvironmentPropRenderer3DOptions = {
   mapWidth: number;
   mapHeight: number;
@@ -321,10 +341,7 @@ export class EnvironmentPropRenderer3D {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.computeVertexNormals();
-    const material = this.sharedMaterial(
-      'randomEnvironment.forestSpruce2.grass-leaves',
-      FOREST_SPRUCE2_LEAF_COLOR,
-    );
+    const material = this.environmentLodFlatMaterial('foliage');
     material.side = THREE.DoubleSide;
     material.needsUpdate = true;
     this.fogOfWarShade.patchMaterial(material);
@@ -341,20 +358,11 @@ export class EnvironmentPropRenderer3D {
     const height = asset.unitHeight;
     const radius = height
       * (asset.spec.defaultRadius / Math.max(1, asset.spec.defaultHeight));
-    const trunkMaterial = asset.spec.palette === 'forestTree'
-      ? this.sharedMaterial(
-          'randomEnvironment.forestSpruce2.tree-trunk',
-          FOREST_SPRUCE2_WOOD_COLOR,
-          getTreeTrunkTexture(),
-        )
-      : this.sharedMaterial('lowTree.trunk', COLORS.environment.lowTree.trunk.colorHex);
-    const leafMaterial = asset.spec.palette === 'forestTree'
-      ? this.sharedMaterial(
-          'randomEnvironment.forestSpruce2.tree-leaves',
-          FOREST_SPRUCE2_LEAF_COLOR,
-          getTreeLeafTexture(),
-        )
-      : this.sharedMaterial('lowTree.leaves', COLORS.environment.lowTree.leaves.colorHex);
+    // Every authored tree uses the same canonical wood/foliage palette at
+    // High. Medium and Low keep those exact base colors but intentionally
+    // omit the bark/leaf texture maps.
+    const trunkMaterial = this.environmentLodFlatMaterial('wood');
+    const leafMaterial = this.environmentLodFlatMaterial('foliage');
     this.fogOfWarShade.patchMaterial(trunkMaterial);
     this.fogOfWarShade.patchMaterial(leafMaterial);
 
@@ -493,6 +501,17 @@ export class EnvironmentPropRenderer3D {
       this.materialCache.set(key, material);
     }
     return material;
+  }
+
+  private environmentLodFlatMaterial(
+    role: EnvironmentLodFlatColorRole,
+  ): THREE.MeshLambertMaterial {
+    const spec = environmentLodFlatMaterialSpec(role);
+    return this.sharedMaterial(
+      spec.key,
+      spec.color,
+      spec.map ?? undefined,
+    );
   }
 
   private buildNodes(): void {

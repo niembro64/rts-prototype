@@ -11,7 +11,7 @@
 // draw per segment.
 
 import * as THREE from 'three';
-import type { Entity } from '../sim/types';
+import type { BeamPoint, Entity } from '../sim/types';
 import { isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -57,7 +57,8 @@ const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xd7f4ff;
-const DEFAULT_IMPOSTER_SEGMENT_OPACITY = 0.24;
+const DEFAULT_IMPOSTER_SEGMENT_OPACITY = 0.68;
+const DEFAULT_IMPOSTER_MIN_SCREEN_RADIUS_PX = 0.9;
 
 type TurretMountResolver = {
   getTurretMountWorldState(
@@ -75,11 +76,17 @@ type BeamImposterSegmentConfig = {
   enabled: boolean;
   color: number;
   opacity: number;
+  minScreenRadiusPx: number;
+};
+
+type BeamStaggeredPathUpdateConfig = {
+  bucketCount: number;
 };
 
 type BeamConfigFile = {
   openEndedLine?: Partial<OpenEndedLineConfig>;
   imposterSegment?: Partial<BeamImposterSegmentConfig>;
+  staggeredPathUpdates?: Partial<BeamStaggeredPathUpdateConfig>;
 };
 
 type BeamEmissionLodResolver = (entity: Entity) => boolean;
@@ -143,6 +150,8 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
 };
 
 const configuredImposterOpacity = rawBeamConfig.imposterSegment?.opacity;
+const configuredImposterMinScreenRadiusPx =
+  rawBeamConfig.imposterSegment?.minScreenRadiusPx;
 
 const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
   enabled: rawBeamConfig.imposterSegment?.enabled ?? true,
@@ -153,7 +162,73 @@ const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
     configuredImposterOpacity <= 1
     ? configuredImposterOpacity
     : DEFAULT_IMPOSTER_SEGMENT_OPACITY,
+  minScreenRadiusPx:
+    typeof configuredImposterMinScreenRadiusPx === 'number' &&
+    Number.isFinite(configuredImposterMinScreenRadiusPx) &&
+    configuredImposterMinScreenRadiusPx > 0
+      ? configuredImposterMinScreenRadiusPx
+      : DEFAULT_IMPOSTER_MIN_SCREEN_RADIUS_PX,
 };
+
+/** Keep the Low solid cylinder at a minimum projected radius. This converts
+ *  the screen-space target back into world units at the segment midpoint;
+ *  without it, a valid far cylinder eventually becomes sub-pixel and looks
+ *  indistinguishable from being culled. */
+export function beamImposterWorldRadiusForSegment(
+  view: RenderViewState3D | undefined,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  authoredRadius: number,
+  minScreenRadiusPx: number = BEAM_IMPOSTER_SEGMENT_CONFIG.minScreenRadiusPx,
+): number {
+  if (!view || !(view.viewportHeightPx > 0) || !(minScreenRadiusPx > 0)) {
+    return authoredRadius;
+  }
+  const midX = (ax + bx) * 0.5;
+  const midY = (ay + by) * 0.5;
+  const midZ = (az + bz) * 0.5;
+  const dx = view.cameraX - midX;
+  const dy = view.cameraY - midZ;
+  const dz = view.cameraZ - midY;
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const worldRadiusForScreenTarget =
+    minScreenRadiusPx * distance * 2 * Math.tan(view.fovYRad * 0.5) /
+    view.viewportHeightPx;
+  return Math.max(authoredRadius, worldRadiusForScreenTarget);
+}
+
+const configuredBeamUpdateBucketCount =
+  rawBeamConfig.staggeredPathUpdates?.bucketCount ?? 3;
+
+/** Number of deterministic refresh phases in the beam path update ring.
+ *  One disables staggering; larger values trade per-beam refresh rate for
+ *  smoother aggregate work and remove synchronized path jumps. */
+export const BEAM_UPDATE_BUCKET_COUNT = THREE.MathUtils.clamp(
+  Math.round(Number.isFinite(configuredBeamUpdateBucketCount)
+    ? configuredBeamUpdateBucketCount
+    : 3),
+  1,
+  8,
+);
+
+/** Stable pseudo-random bucket assignment. Entity IDs never change during a
+ *  beam's life, unlike array indices, so insertion/removal cannot reshuffle
+ *  every live beam onto a new refresh frame. */
+export function beamUpdateBucketForEntityId(
+  entityId: number,
+  bucketCount: number = BEAM_UPDATE_BUCKET_COUNT,
+): number {
+  const count = Number.isFinite(bucketCount)
+    ? Math.max(1, Math.round(bucketCount))
+    : 1;
+  let hash = entityId | 0;
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d);
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 0x846ca68b);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) % count;
+}
 
 const BEAM_VISUAL_LAYERS: readonly {
   config: BeamVisualConfig;
@@ -172,6 +247,20 @@ type BeamVisualLayer = {
   activeSegmentCount: number;
   readonly endpointMesh: THREE.InstancedMesh;
   activeEndpointCount: number;
+};
+
+type CachedBeamPoint = Pick<
+  BeamPoint,
+  'x' | 'y' | 'z' | 'reflectorEntityId' | 'reflectorKind'
+>;
+
+type CachedBeamPath = {
+  readonly points: CachedBeamPoint[];
+  baseStartX: number;
+  baseStartY: number;
+  baseStartZ: number;
+  endpointDamageable: boolean | null;
+  lastSeenFrame: number;
 };
 
 function createBeamVisualLayer(
@@ -262,6 +351,8 @@ export class BeamRenderer3D {
   private scope: ViewportFootprint;
   private lastContentVersion = -1;
   private lastScopeVersion = -1;
+  private beamUpdateFrameIndex = -1;
+  private readonly cachedPathByEntityId = new Map<number, CachedBeamPath>();
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private readonly segmentPoseScratch = createBeamSegmentPoseScratch3D();
@@ -384,15 +475,99 @@ export class BeamRenderer3D {
     return true;
   }
 
-  private isOpenEndedLinePath(proj: NonNullable<Entity['projectile']>): boolean {
-    if (proj.endpointDamageable !== false) return false;
-    const points = proj.points;
-    if (!points || points.length < 2) return false;
+  private isOpenEndedLinePath(path: CachedBeamPath): boolean {
+    if (path.endpointDamageable !== false) return false;
+    const points = path.points;
+    if (points.length < 2) return false;
     const endPoint = points[points.length - 1];
     return (
       endPoint.reflectorEntityId === null &&
       endPoint.reflectorKind === null
     );
+  }
+
+  private refreshCachedPath(
+    path: CachedBeamPath,
+    proj: NonNullable<Entity['projectile']>,
+    sourcePoints: readonly BeamPoint[],
+    snapToTurret: boolean,
+    turretMountResolver: TurretMountResolver | undefined,
+  ): void {
+    for (let i = 0; i < sourcePoints.length; i++) {
+      const source = sourcePoints[i];
+      let point = path.points[i];
+      if (!point) {
+        point = {
+          x: 0,
+          y: 0,
+          z: 0,
+          reflectorEntityId: null,
+          reflectorKind: null,
+        };
+        path.points[i] = point;
+      }
+      point.x = source.x;
+      point.y = source.y;
+      point.z = source.z;
+      point.reflectorEntityId = source.reflectorEntityId;
+      point.reflectorKind = source.reflectorKind;
+    }
+    path.points.length = sourcePoints.length;
+    path.endpointDamageable = proj.endpointDamageable;
+
+    const startPoint = sourcePoints[0];
+    path.baseStartX = startPoint.x;
+    path.baseStartY = startPoint.y;
+    path.baseStartZ = startPoint.z;
+    if (snapToTurret && turretMountResolver) {
+      const turretIdx = proj.config.turretIndex ?? 0;
+      const mount = turretMountResolver.getTurretMountWorldState(
+        proj.sourceEntityId,
+        turretIdx,
+      );
+      if (mount) {
+        path.baseStartX = mount.x;
+        path.baseStartY = mount.y;
+        path.baseStartZ = mount.z;
+      }
+    }
+  }
+
+  private cachedPathFor(
+    entityId: number,
+    proj: NonNullable<Entity['projectile']>,
+    sourcePoints: readonly BeamPoint[],
+    activeUpdateBucket: number,
+    snapToTurret: boolean,
+    turretMountResolver: TurretMountResolver | undefined,
+  ): CachedBeamPath {
+    let path = this.cachedPathByEntityId.get(entityId);
+    const isNew = path === undefined;
+    if (!path) {
+      path = {
+        points: [],
+        baseStartX: sourcePoints[0].x,
+        baseStartY: sourcePoints[0].y,
+        baseStartZ: sourcePoints[0].z,
+        endpointDamageable: proj.endpointDamageable,
+        lastSeenFrame: this.beamUpdateFrameIndex,
+      };
+      this.cachedPathByEntityId.set(entityId, path);
+    }
+    if (
+      isNew ||
+      beamUpdateBucketForEntityId(entityId) === activeUpdateBucket
+    ) {
+      this.refreshCachedPath(
+        path,
+        proj,
+        sourcePoints,
+        snapToTurret,
+        turretMountResolver,
+      );
+    }
+    path.lastSeenFrame = this.beamUpdateFrameIndex;
+    return path;
   }
 
   private hasActiveVisuals(): boolean {
@@ -417,11 +592,19 @@ export class BeamRenderer3D {
     isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
     view?: RenderViewState3D,
   ): void {
-    if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
+    if (
+      projectiles.length === 0 &&
+      !this.hasActiveVisuals() &&
+      this.cachedPathByEntityId.size === 0
+    ) return;
     tickBeamWaveTime();
+    this.beamUpdateFrameIndex = (this.beamUpdateFrameIndex + 1) & 0x3fffffff;
+    const activeUpdateBucket =
+      this.beamUpdateFrameIndex % BEAM_UPDATE_BUCKET_COUNT;
     const snapToTurret = BEAM_SNAP_ORIGIN_TO_TURRET && !!turretMountResolver;
     const scopeVersion = this.scope.getVersion();
     if (
+      BEAM_UPDATE_BUCKET_COUNT === 1 &&
       !snapToTurret &&
       contentVersion !== undefined &&
       contentVersion === this.lastContentVersion &&
@@ -446,8 +629,17 @@ export class BeamRenderer3D {
       if (!pt || !isRayType(pt)) continue;
 
       const proj = e.projectile!;
-      const points = proj.points;
-      if (!points || points.length < 2) continue;
+      const sourcePoints = proj.points;
+      if (!sourcePoints || sourcePoints.length < 2) continue;
+      const path = this.cachedPathFor(
+        e.id,
+        proj,
+        sourcePoints,
+        activeUpdateBucket,
+        snapToTurret,
+        turretMountResolver,
+      );
+      const points = path.points;
       const startPoint = points[0];
       const endPoint = points[points.length - 1];
       // Scope gate before segment placement. Off-screen beam segments
@@ -481,26 +673,16 @@ export class BeamRenderer3D {
       // Per-segment alpha is held at 1.0 — the wave shader handles all
       // brightness modulation via mix(LOW_ALPHA, HIGH_ALPHA, pulse).
       const lastIdx = points.length - 1;
-      const openEndedLine = OPEN_ENDED_LINE_CONFIG.extendToInfinity && this.isOpenEndedLinePath(proj);
+      const openEndedLine =
+        OPEN_ENDED_LINE_CONFIG.extendToInfinity && this.isOpenEndedLinePath(path);
 
       // Sim's points[0] sits at the turret mount center; snap-to-turret
       // re-anchors to the live mount so the start tracks the turret
       // smoothly between snapshots. This is both the logical and visual
       // start of the beam.
-      let baseStartX = startPoint.x;
-      let baseStartY = startPoint.y;
-      let baseStartZ = startPoint.z;
-      if (snapToTurret) {
-        const turretIdx = proj.config.turretIndex ?? 0;
-        const mount = turretMountResolver!.getTurretMountWorldState(
-          proj.sourceEntityId, turretIdx,
-        );
-        if (mount) {
-          baseStartX = mount.x;
-          baseStartY = mount.y;
-          baseStartZ = mount.z;
-        }
-      }
+      const baseStartX = path.baseStartX;
+      const baseStartY = path.baseStartY;
+      const baseStartZ = path.baseStartZ;
 
       for (let i = 0; i < lastIdx; i++) {
         const a = points[i];
@@ -540,11 +722,17 @@ export class BeamRenderer3D {
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (useImposterSegments) {
           if (imposterSegIdx < BEAM_IMPOSTER_SEGMENT_CAP) {
+            const imposterRadius = beamImposterWorldRadiusForSegment(
+              view,
+              ax, ay, az,
+              bx, by, bz,
+              cylRadius,
+            );
             this.writeImposterSegment(
               imposterSegIdx,
               ax, ay, az,
               bx, by, bz,
-              cylRadius,
+              imposterRadius,
               segLen,
             );
             imposterSegIdx++;
@@ -580,7 +768,7 @@ export class BeamRenderer3D {
         }
       }
 
-      if (!useImposterSegments && proj.endpointDamageable !== false) {
+      if (!useImposterSegments && path.endpointDamageable !== false) {
         if (useMediumSegments && mediumEndpointIdx < BEAM_ENDPOINT_CAP) {
           const damageSphereRadius = Math.max(
             ENDPOINT_MIN_RADIUS,
@@ -612,6 +800,12 @@ export class BeamRenderer3D {
           }
           endpointIdx++;
         }
+      }
+    }
+
+    for (const [entityId, path] of this.cachedPathByEntityId) {
+      if (path.lastSeenFrame !== this.beamUpdateFrameIndex) {
+        this.cachedPathByEntityId.delete(entityId);
       }
     }
 
@@ -670,6 +864,7 @@ export class BeamRenderer3D {
   }
 
   destroy(): void {
+    this.cachedPathByEntityId.clear();
     disposeMesh(this.imposterSegmentMesh);
     disposeMesh(this.mediumLayer.segmentMesh);
     disposeMesh(this.mediumLayer.endpointMesh);

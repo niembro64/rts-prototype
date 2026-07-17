@@ -178,7 +178,6 @@ export class RtsScene3DRenderPhase {
     line: [],
     burnMark: [],
   };
-  private readonly nearLineProjectiles: Entity[] = [];
   private readonly nearBurnMarkProjectiles: Entity[] = [];
   private readonly nearSmokeTrailProjectiles: Entity[] = [];
   private readonly nearCommanderSprays: SprayTarget[] = [];
@@ -434,10 +433,9 @@ export class RtsScene3DRenderPhase {
     phaseNow = performance.now();
     timings.entityPacketMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
-    const lineProjectiles = this.filterNearLodProjectiles(
-      projectileLists.line,
-      this.nearLineProjectiles,
-    );
+    // Beams own a real Low imposter segment, so they must reach the beam
+    // renderer at every distance. Its LOD resolver selects fidelity there.
+    const lineProjectiles = projectileLists.line;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,

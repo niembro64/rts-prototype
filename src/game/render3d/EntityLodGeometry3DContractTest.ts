@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  FOREST_SPRUCE2_WOOD_COLOR,
+} from '@/config';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
   BUILDING_BLUEPRINT_IDS,
@@ -42,6 +46,9 @@ import {
   composeProjectileTailPose3D,
 } from './ProjectileRenderer3D';
 import {
+  BEAM_UPDATE_BUCKET_COUNT,
+  beamImposterWorldRadiusForSegment,
+  beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
@@ -73,6 +80,7 @@ import {
   applyEntityLodVisualState3D,
   captureEntityLodVisualState3D,
 } from './EntityLodVisualState3D';
+import { environmentLodFlatMaterialSpec } from './EnvironmentPropRenderer3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
 const DETAIL_LEVELS = [
@@ -973,6 +981,43 @@ function runEmissionRegistryContracts(): void {
 }
 
 function runEmissionPoseContracts(): void {
+  assertContract(
+    BEAM_UPDATE_BUCKET_COUNT > 1,
+    'beam path updates use more than one stagger bucket',
+  );
+  const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
+  for (let entityId = 1; entityId <= 256; entityId++) {
+    const bucket = beamUpdateBucketForEntityId(entityId);
+    assertContract(
+      bucket === beamUpdateBucketForEntityId(entityId),
+      `beam ${entityId} keeps a stable update bucket`,
+    );
+    bucketPopulation[bucket]++;
+  }
+  assertContract(
+    bucketPopulation.every((population) => population > 0),
+    'beam update hash distributes live IDs across every ring bucket',
+  );
+  const farImposterRadius = beamImposterWorldRadiusForSegment(
+    {
+      viewportHeightPx: 1080,
+      cameraX: 0,
+      cameraY: 0,
+      cameraZ: 0,
+      forwardX: 0,
+      forwardY: 0,
+      forwardZ: -1,
+      fovYRad: Math.PI / 4,
+    },
+    -10, -10000, 0,
+    10, -10000, 0,
+    0.35,
+  );
+  assertContract(
+    farImposterRadius > 0.35,
+    'far beam imposter expands enough to retain its minimum screen radius',
+  );
+
   const reflectedPath = [
     new THREE.Vector3(3, 5, 7),
     new THREE.Vector3(17, -2, 11),
@@ -1064,12 +1109,30 @@ function runReferenceGeometryCountContracts(): void {
   assertSame('finite shield sphere geometry ladder', shieldCounts, [288, 120, 36]);
 }
 
+function runEnvironmentLodMaterialContracts(): void {
+  const wood = environmentLodFlatMaterialSpec('wood');
+  const foliage = environmentLodFlatMaterialSpec('foliage');
+  assertContract(
+    wood.color === FOREST_SPRUCE2_WOOD_COLOR && wood.map === null,
+    'Medium/Low tree wood uses the canonical flat wood color without a texture',
+  );
+  assertContract(
+    foliage.color === FOREST_SPRUCE2_LEAF_COLOR && foliage.map === null,
+    'Medium/Low tree foliage and grass use the canonical flat foliage color without a texture',
+  );
+  assertContract(
+    wood.key !== foliage.key,
+    'Medium/Low wood and foliage cache as separate flat materials',
+  );
+}
+
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 23, 'visual roster covers all 23 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 6, 'visual roster covers all 6 buildings');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.towers.length === 4, 'visual roster covers all 4 towers');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
+    runEnvironmentLodMaterialContracts();
     runReferenceGeometryCountContracts();
     const bodyCounts = runBodyContracts(material);
     const locomotionCounts = runLocomotionContracts();

@@ -14,7 +14,11 @@
   "imposterSegment": {
     "enabled": true,
     "color": 14152959,
-    "opacity": 0.24
+    "opacity": 0.68,
+    "minScreenRadiusPx": 0.9
+  },
+  "staggeredPathUpdates": {
+    "bucketCount": 3
   },
   "openEndedLine": {
     "extendToInfinity": false,
