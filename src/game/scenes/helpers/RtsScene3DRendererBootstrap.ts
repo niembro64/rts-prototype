@@ -39,6 +39,8 @@ import {
   getTerrainMeshMaximumHeight,
 } from '../../sim/Terrain';
 import type { RtsScene3DCameraFramingSystem } from './RtsScene3DCameraFramingSystem';
+import type { GameConnection } from '@/types/game';
+import type { EntityId } from '@/types/sim';
 
 type RtsScene3DRendererBootstrapOptions = {
   threeApp: ThreeApp;
@@ -49,6 +51,7 @@ type RtsScene3DRendererBootstrapOptions = {
   mapHeight: number;
   playerCount: number;
   metalDeposits: readonly MetalDeposit[];
+  gameConnection: GameConnection;
 };
 
 type RtsScene3DRendererBootstrapResult = {
@@ -92,6 +95,7 @@ export function bootstrapRtsScene3DRenderers(
     mapHeight,
     playerCount,
     metalDeposits,
+    gameConnection,
   } = options;
 
   // One shared overlay-line system drives every ground line/ring (selection,
@@ -186,10 +190,19 @@ export function bootstrapRtsScene3DRenderers(
     (x, z) => getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight),
   );
   const areaDragRenderer = new AreaDrag3D(threeApp.world, overlayLineSystem);
+  const surfaceLiftProbeDebugSource =
+    gameConnection.setSurfaceLiftProbeDebugEntityIds !== undefined &&
+    gameConnection.getSurfaceLiftProbeDebugFrame !== undefined
+      ? {
+          setEntityIds: (entityIds: readonly EntityId[]) =>
+            gameConnection.setSurfaceLiftProbeDebugEntityIds!(entityIds),
+          getFrame: (entityId: EntityId) =>
+            gameConnection.getSurfaceLiftProbeDebugFrame!(entityId),
+        }
+      : null;
   const airLiftProbeOverlay = new SurfaceLiftProbeOverlay3D(
     threeApp.world,
-    mapWidth,
-    mapHeight,
+    surfaceLiftProbeDebugSource,
   );
   const lineDragRenderer = new LineDrag3D(threeApp.world, overlayLineSystem);
   const buildGhostRenderer = new BuildGhost3D(

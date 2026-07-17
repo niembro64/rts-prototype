@@ -513,6 +513,7 @@ pub(crate) fn unit_force_randomized_surface_lift_force(
 #[inline]
 fn unit_force_full_medium_surface_lift(
     proposed_force: f64,
+    force_multiplier: f64,
     randomization_amount: f64,
     random_sample: f64,
     reference_mass: f64,
@@ -520,9 +521,10 @@ fn unit_force_full_medium_surface_lift(
     force_scale: f64,
 ) -> f64 {
     // Probes apply their source-specific authored lift before aggregation.
-    // Randomization/EMA remain medium-level operations after average/max.
+    // The shared multiplier and randomization/EMA remain medium-level
+    // operations after average/max.
     let randomized_force = unit_force_randomized_surface_lift_force(
-        proposed_force.max(0.0),
+        proposed_force.max(0.0) * force_multiplier.max(0.0),
         randomization_amount,
         random_sample,
     );
@@ -540,23 +542,15 @@ fn unit_force_full_medium_surface_lift(
     }
 }
 
-/** Canonical dimensionless power-law response shared by air and water
- * surface lift. Force magnitude is deliberately not an input: authored force
- * strength and distance response are independent physical quantities. */
+/** Canonical reciprocal-distance response shared by air and water surface
+ * lift. Force magnitude is deliberately not an input: authored force strength
+ * and distance response are independent physical quantities. */
 #[wasm_bindgen]
 pub fn unit_force_surface_lift_distance_response(
     distance_to_surface_world: f64,
-    reference_distance_world: f64,
     minimum_distance_world: f64,
-    distance_exponent: f64,
 ) -> f64 {
-    if !reference_distance_world.is_finite()
-        || !minimum_distance_world.is_finite()
-        || !distance_exponent.is_finite()
-        || reference_distance_world <= 0.0
-        || minimum_distance_world <= 0.0
-        || distance_exponent <= 0.0
-    {
+    if !minimum_distance_world.is_finite() || minimum_distance_world <= 0.0 {
         return 0.0;
     }
     // Every resolved probe owns a positive distance. Points at/below the
@@ -568,7 +562,7 @@ pub fn unit_force_surface_lift_distance_response(
         minimum_distance_world
     };
     let distance = raw_distance.max(minimum_distance_world);
-    let response = (reference_distance_world / distance).powf(distance_exponent);
+    let response = 1.0 / distance;
     if response.is_finite() && response > 0.0 {
         response
     } else {
@@ -576,8 +570,8 @@ pub fn unit_force_surface_lift_distance_response(
     }
 }
 
-#[inline]
-pub(crate) fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
+#[wasm_bindgen]
+pub fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
     if !pos_z.is_finite() {
         return 0.0;
     }
@@ -818,18 +812,14 @@ fn unit_force_ground_surface_lift_distance_response(
     ground_z: f64,
     sampled_distance_response: f64,
     has_sampled_distance_response: bool,
-    reference_distance_world: f64,
     minimum_distance_world: f64,
-    distance_exponent: f64,
 ) -> f64 {
     if has_sampled_distance_response && sampled_distance_response.is_finite() {
         return sampled_distance_response.max(0.0);
     }
     unit_force_surface_lift_distance_response(
         unit_force_ground_surface_distance(pos_z, ground_z, minimum_distance_world),
-        reference_distance_world,
         minimum_distance_world,
-        distance_exponent,
     )
 }
 
@@ -839,9 +829,7 @@ fn unit_force_water_surface_lift_distance_response(
     ground_z: f64,
     sampled_distance_response: f64,
     has_sampled_distance_response: bool,
-    reference_distance_world: f64,
     minimum_distance_world: f64,
-    distance_exponent: f64,
 ) -> f64 {
     if has_sampled_distance_response && sampled_distance_response.is_finite() {
         return sampled_distance_response.max(0.0);
@@ -851,9 +839,7 @@ fn unit_force_water_surface_lift_distance_response(
     }
     unit_force_surface_lift_distance_response(
         pos_z - TERRAIN_WATER_LEVEL,
-        reference_distance_world,
         minimum_distance_world,
-        distance_exponent,
     )
 }
 
@@ -1031,9 +1017,8 @@ pub fn unit_force_step_batch(
     drive_alignment_zero_force_dot: f64,
     drive_alignment_full_force_dot: f64,
     drive_alignment_response_exponent: f64,
-    surface_lift_reference_distance_world: f64,
     surface_lift_minimum_distance_world: f64,
-    surface_lift_distance_exponent: f64,
+    surface_lift_force_multiplier: f64,
 ) -> u32 {
     if slots.len() < count
         || flags.len() < count
@@ -1052,6 +1037,11 @@ pub fn unit_force_step_batch(
     let wind_x = if wind_x.is_finite() { wind_x } else { 0.0 };
     let wind_y = if wind_y.is_finite() { wind_y } else { 0.0 };
     let wind_z = if wind_z.is_finite() { wind_z } else { 0.0 };
+    let surface_lift_force_multiplier = if surface_lift_force_multiplier.is_finite() {
+        surface_lift_force_multiplier.max(0.0)
+    } else {
+        0.0
+    };
 
     for i in 0..count {
         out_flags[i] = 0;
@@ -1351,18 +1341,14 @@ pub fn unit_force_step_batch(
                 ground_z,
                 rows[base + UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE],
                 flag & UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
-                surface_lift_reference_distance_world,
                 surface_lift_minimum_distance_world,
-                surface_lift_distance_exponent,
             );
             let water_surface_distance_response = unit_force_water_surface_lift_distance_response(
                 p.pos_z[slot],
                 ground_z,
                 rows[base + UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE],
                 flag & UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
-                surface_lift_reference_distance_world,
                 surface_lift_minimum_distance_world,
-                surface_lift_distance_exponent,
             );
             let rand_amount = rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_AMOUNT];
             let proposed_force = if flag & UF_FLAG_HAS_AIR_SURFACE_LIFT_PROPOSED_FORCE != 0
@@ -1377,6 +1363,7 @@ pub fn unit_force_step_batch(
             };
             let full_medium_surface_lift = unit_force_full_medium_surface_lift(
                 proposed_force,
+                surface_lift_force_multiplier,
                 rand_amount,
                 rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE],
                 reference_mass,
@@ -1478,9 +1465,7 @@ pub fn unit_force_step_batch(
                         let distance_to_surface = p.pos_z[slot] - ground_z;
                         unit_force_surface_lift_distance_response(
                             distance_to_surface,
-                            surface_lift_reference_distance_world,
                             surface_lift_minimum_distance_world,
-                            surface_lift_distance_exponent,
                         )
                     };
                 let rand_amount = rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT];
@@ -1493,6 +1478,7 @@ pub fn unit_force_step_batch(
                 };
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(
                     proposed_force,
+                    surface_lift_force_multiplier,
                     rand_amount,
                     rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE],
                     reference_mass,
@@ -1771,47 +1757,42 @@ mod tests {
     }
 
     #[test]
-    fn surface_lift_consumes_the_aggregated_proposed_force_directly() {
+    fn surface_lift_scales_the_aggregate_before_randomization() {
         assert_near(
-            unit_force_full_medium_surface_lift(25.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+            unit_force_full_medium_surface_lift(25.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0),
             25.0,
         );
         assert_near(
-            unit_force_full_medium_surface_lift(25.0, 0.2, 1.0, 1.0, 1.0, 1.0),
-            30.0,
+            unit_force_full_medium_surface_lift(25.0, 2.0, 0.2, 1.0, 1.0, 1.0, 1.0),
+            60.0,
         );
     }
 
     #[test]
-    fn ground_surface_lift_distance_response_uses_sampled_average_when_available() {
+    fn ground_surface_lift_distance_response_uses_sampled_response_when_available() {
         let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
-        let sampled_average_distance_response =
-            0.5 * (1.0_f64 / 20.0).sqrt() + 0.5 * (1.0_f64 / 40.0).sqrt();
+        let sampled_distance_response = 0.5 * (1.0 / 20.0) + 0.5 * (1.0 / 40.0);
 
         assert_near(
             unit_force_ground_surface_lift_distance_response(
                 pos_z,
                 body_ground,
-                sampled_average_distance_response,
+                sampled_distance_response,
                 true,
-                1.0,
-                0.5,
                 0.5,
             ),
-            sampled_average_distance_response,
+            sampled_distance_response,
         );
         assert_near(
             unit_force_ground_surface_lift_distance_response(
                 pos_z,
                 body_ground,
-                sampled_average_distance_response,
+                sampled_distance_response,
                 false,
-                1.0,
-                0.5,
                 0.5,
             ),
-            (1.0_f64 / 40.0).sqrt(),
+            1.0 / 40.0,
         );
         assert_near(
             unit_force_ground_surface_lift_distance_response(
@@ -1819,23 +1800,19 @@ mod tests {
                 body_ground,
                 f64::NAN,
                 true,
-                1.0,
-                0.5,
                 0.5,
             ),
-            (1.0_f64 / 40.0).sqrt(),
+            1.0 / 40.0,
         );
         assert_near(
             unit_force_ground_surface_lift_distance_response(
                 TERRAIN_WATER_LEVEL - 10.0,
                 TERRAIN_WATER_LEVEL - 20.0,
-                (1.0_f64 / 10.0).sqrt(),
+                1.0 / 10.0,
                 true,
-                1.0,
-                0.5,
                 0.5,
             ),
-            (1.0_f64 / 10.0).sqrt(),
+            1.0 / 10.0,
         );
         assert_near(
             unit_force_ground_surface_distance(pos_z, body_ground, 0.5),
@@ -1845,13 +1822,13 @@ mod tests {
             unit_force_ground_surface_distance(body_ground - 10.0, body_ground, 0.75),
             0.75,
         );
-        let minimum_response = (1.0_f64 / 0.5).sqrt();
+        let minimum_response = 1.0 / 0.5;
         assert_near(
-            unit_force_surface_lift_distance_response(-10.0, 1.0, 0.5, 0.5),
+            unit_force_surface_lift_distance_response(-10.0, 0.5),
             minimum_response,
         );
         assert_near(
-            unit_force_surface_lift_distance_response(f64::NAN, 1.0, 0.5, 0.5),
+            unit_force_surface_lift_distance_response(f64::NAN, 0.5),
             minimum_response,
         );
     }
@@ -1864,11 +1841,9 @@ mod tests {
                 TERRAIN_WATER_LEVEL - 20.0,
                 f64::NAN,
                 false,
-                1.0,
-                0.5,
                 0.5,
             ),
-            (1.0_f64 / 10.0).sqrt(),
+            1.0 / 10.0,
         );
         assert_near(
             unit_force_water_surface_lift_distance_response(
@@ -1876,8 +1851,6 @@ mod tests {
                 TERRAIN_WATER_LEVEL + 1.0,
                 f64::NAN,
                 false,
-                1.0,
-                0.5,
                 0.5,
             ),
             0.0,

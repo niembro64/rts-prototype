@@ -81,13 +81,10 @@ export function statBarStyle(
   return { width: `${fillRatio * 100}%`, backgroundColor: rgbCss(rgb) };
 }
 
-/**
- * Inverted stat bar for ms durations: green at 0, yellow at half budget, red at budget.
- * Budget defaults to 16.67ms (60fps frame budget).
- */
-export function msBarStyle(
+/** Inverted utilization bar: green at 0, yellow at half budget, red at budget. */
+export function budgetBarStyle(
   value: number,
-  budget = 1000 / 60,
+  budget: number,
 ): { width: string; backgroundColor: string } {
   const ratio = Math.min(Math.max(value / budget, 0), 1);
   let rgb: readonly [number, number, number];
@@ -99,6 +96,14 @@ export function msBarStyle(
     rgb = mixRgb(STAT_BAR_RGB.mid, STAT_BAR_RGB.low, t);
   }
   return { width: `${ratio * 100}%`, backgroundColor: rgbCss(rgb) };
+}
+
+/** Inverted duration bar using a 16.67 ms (60 fps) budget by default. */
+export function msBarStyle(
+  value: number,
+  budget = 1000 / 60,
+): { width: string; backgroundColor: string } {
+  return budgetBarStyle(value, budget);
 }
 
 export function getPlayerColor(playerId: PlayerId): string {

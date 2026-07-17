@@ -1,23 +1,19 @@
 import * as THREE from 'three';
 import { getAirLiftProbeDebug } from '@/clientBarConfig';
-import { WATER_LEVEL, getTerrainBedHeight, isWaterAt } from '../sim/Terrain';
 import type { Entity } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { createWorldSupportSurface } from '../sim/supportSurface';
-import { resolveSurfaceLiftGroundZ } from '../sim/surfaceLiftGroundSupport';
 import {
   type SurfaceProbePointRole,
-  forEachSurfaceProbePoint,
   getSurfaceProbePointCount,
 } from '../sim/surfaceProbeSets';
-import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
+import type { EntityId } from '@/types/sim';
+import type { SurfaceLiftProbeDebugFrame } from '@/types/game';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
 
 const INITIAL_INSTANCE_CAPACITY = 16;
-const THRUST_DIRECTION_EPSILON_SQ = 0.0001;
 const MARKER_RADIUS = 5;
 const GROUND_LINE_RADIUS = 3.5;
 const WATER_LINE_RADIUS = 0.35;
@@ -26,6 +22,11 @@ const RENDER_ORDER = 92;
 const FORWARD_PROBE_COLOR = new THREE.Color(0x36e6ff);
 const BODY_PROBE_COLOR = new THREE.Color(0xffd447);
 const DIRECT_PROBE_COLOR = new THREE.Color(0xff7a36);
+
+export type SurfaceLiftProbeDebugSource = {
+  setEntityIds: (entityIds: readonly EntityId[]) => void;
+  getFrame: (entityId: EntityId) => SurfaceLiftProbeDebugFrame | undefined;
+};
 
 export class SurfaceLiftProbeOverlay3D {
   private readonly root = new THREE.Group();
@@ -52,7 +53,7 @@ export class SurfaceLiftProbeOverlay3D {
     toneMapped: false,
   });
   private readonly groundLineMaterial = new THREE.MeshBasicMaterial({
-    color: 0x050505,
+    color: 0x8b5a2b,
     transparent: true,
     opacity: 0.82,
     depthTest: false,
@@ -60,14 +61,13 @@ export class SurfaceLiftProbeOverlay3D {
     toneMapped: false,
   });
   private readonly waterLineMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff2020,
+    color: 0x2389da,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.72,
     depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
-  private readonly supportScratch = createWorldSupportSurface();
   private readonly dummy = new THREE.Object3D();
   private markerMesh: THREE.InstancedMesh | null = null;
   private groundLineMesh: THREE.InstancedMesh | null = null;
@@ -76,8 +76,7 @@ export class SurfaceLiftProbeOverlay3D {
 
   constructor(
     private readonly parentWorld: THREE.Group,
-    private readonly mapWidth: number,
-    private readonly mapHeight: number,
+    private readonly debugSource: SurfaceLiftProbeDebugSource | null,
   ) {
     this.root.visible = false;
     this.ensureCapacity(INITIAL_INSTANCE_CAPACITY);
@@ -86,6 +85,7 @@ export class SurfaceLiftProbeOverlay3D {
 
   update(selectedUnits: readonly Entity[]): void {
     if (!getAirLiftProbeDebug()) {
+      this.debugSource?.setEntityIds([]);
       this.hide();
       return;
     }
@@ -98,9 +98,19 @@ export class SurfaceLiftProbeOverlay3D {
       }
     }
     if (instanceCount === 0) {
+      this.debugSource?.setEntityIds([]);
       this.hide();
       return;
     }
+
+    const debugSource = this.debugSource;
+    if (debugSource === null) {
+      this.hide();
+      return;
+    }
+    const probeEntityIds = new Array<EntityId>(probeUnits.length);
+    for (let i = 0; i < probeUnits.length; i++) probeEntityIds[i] = probeUnits[i].id;
+    debugSource.setEntityIds(probeEntityIds);
 
     this.ensureCapacity(instanceCount);
     const markers = this.markerMesh;
@@ -113,64 +123,42 @@ export class SurfaceLiftProbeOverlay3D {
     let waterLineCursor = 0;
     for (let i = 0; i < probeUnits.length; i++) {
       const entity = probeUnits[i];
-      const unit = entity.unit;
-      if (unit === null) continue;
-      const direction = probeDirection(entity);
-      if (direction === null) continue;
-      const probeRadius = unitProbeRadius(unit);
-      const bodyY = entity.transform.z;
-      if (!Number.isFinite(bodyY)) continue;
-      forEachSurfaceProbePoint(
-        unit.locomotion.surfaceProbeSetId,
-        entity.transform.x,
-        entity.transform.y,
-        direction.x,
-        direction.y,
-        probeRadius,
-        (x, z, role) => {
-          if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-
-          const support = sampleLocomotionSupportSurface(
-            x,
-            z,
-            this.mapWidth,
-            this.mapHeight,
-            undefined,
-            undefined,
-            entity.id,
-            this.supportScratch,
-          );
-          const groundY = resolveSurfaceLiftGroundZ(
-            support,
-            getTerrainBedHeight(x, z, this.mapWidth, this.mapHeight),
-          );
-          const color = probeColor(role);
-          this.writeMarkerInstance(markers, markerCursor, x, bodyY, z, color);
-          markerCursor++;
-          if (this.writeLineInstance(
+      const frame = debugSource.getFrame(entity.id);
+      if (frame === undefined) continue;
+      for (let sampleIndex = 0; sampleIndex < frame.samples.length; sampleIndex++) {
+        const sample = frame.samples[sampleIndex];
+        const { x, y: z, bodyZ: bodyY } = sample;
+        if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(bodyY)) continue;
+        this.writeMarkerInstance(markers, markerCursor, x, bodyY, z, probeColor(sample.role));
+        markerCursor++;
+        if (
+          sample.usesGroundDistance &&
+          this.writeLineInstance(
             groundLines,
             groundLineCursor,
             x,
             bodyY,
             z,
-            groundY,
-          )) {
-            groundLineCursor++;
-          }
-          if (isWaterAt(x, z, this.mapWidth, this.mapHeight)) {
-            if (this.writeLineInstance(
-              waterLines,
-              waterLineCursor,
-              x,
-              bodyY,
-              z,
-              WATER_LEVEL,
-            )) {
-              waterLineCursor++;
-            }
-          }
-        },
-      );
+            bodyY - sample.groundDistanceWorld,
+          )
+        ) {
+          groundLineCursor++;
+        }
+        if (
+          sample.usesWaterDistance &&
+          sample.waterDistanceWorld !== null &&
+          this.writeLineInstance(
+            waterLines,
+            waterLineCursor,
+            x,
+            bodyY,
+            z,
+            bodyY - sample.waterDistanceWorld,
+          )
+        ) {
+          waterLineCursor++;
+        }
+      }
     }
 
     markers.count = markerCursor;
@@ -187,6 +175,7 @@ export class SurfaceLiftProbeOverlay3D {
   }
 
   destroy(): void {
+    this.debugSource?.setEntityIds([]);
     this.parentWorld.remove(this.root);
     this.markerGeometry.dispose();
     this.groundLineGeometry.dispose();
@@ -289,44 +278,8 @@ function unitShouldShowSurfaceLiftProbes(entity: Entity): boolean {
     unit.locomotion.physics.water.lift.liftForceFromGroundSurface > 0;
 }
 
-function unitProbeRadius(unit: NonNullable<Entity['unit']>): number {
-  return firstFinitePositive(unit.radius.collision, unit.radius.hitbox, unit.radius.other, 10);
-}
-
-function firstFinitePositive(...values: Array<number | null | undefined>): number {
-  for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-  }
-  return 0;
-}
-
 function probeColor(role: SurfaceProbePointRole): THREE.Color {
   if (role === 'center') return DIRECT_PROBE_COLOR;
   if (role === 'forward') return FORWARD_PROBE_COLOR;
   return BODY_PROBE_COLOR;
-}
-
-function probeDirection(entity: Entity): { x: number; y: number } | null {
-  const unit = entity.unit;
-  if (unit === null) return null;
-  const yaw = Number.isFinite(entity.transform.rotation) ? entity.transform.rotation : 0;
-  const dirX = Number.isFinite(unit.thrustDirX) ? unit.thrustDirX : 0;
-  const dirY = Number.isFinite(unit.thrustDirY) ? unit.thrustDirY : 0;
-  const lenSq = dirX * dirX + dirY * dirY;
-  if (!unit.locomotion.forwardForceRequiresFacing) {
-    if (lenSq > THRUST_DIRECTION_EPSILON_SQ) {
-      const invLen = 1 / Math.sqrt(lenSq);
-      return { x: dirX * invLen, y: dirY * invLen };
-    }
-    const velX = Number.isFinite(unit.velocityX) ? unit.velocityX : 0;
-    const velY = Number.isFinite(unit.velocityY) ? unit.velocityY : 0;
-    const velLenSq = velX * velX + velY * velY;
-    if (velLenSq > THRUST_DIRECTION_EPSILON_SQ) {
-      const invLen = 1 / Math.sqrt(velLenSq);
-      return { x: velX * invLen, y: velY * invLen };
-    }
-  }
-  return { x: Math.cos(yaw), y: Math.sin(yaw) };
 }

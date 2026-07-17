@@ -1,11 +1,18 @@
 import { getSimWasm } from '../sim-wasm/init';
-import {
-  SURFACE_LIFT_DISTANCE_EXPONENT,
-  SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-  SURFACE_LIFT_REFERENCE_DISTANCE_WORLD,
-} from './unitLocomotionPresetConfig';
+import { SURFACE_LIFT_MINIMUM_DISTANCE_WORLD } from './unitLocomotionPresetConfig';
 
-/** Shared air/water inverse-distance response. The canonical power-law
+/** Exact signed-altitude clamp used before the inverse-distance response. */
+export function getSurfaceLiftDistanceToSurfaceWorld(bodyZ: number, surfaceZ: number): number {
+  if (!Number.isFinite(bodyZ) || !Number.isFinite(surfaceZ)) {
+    return SURFACE_LIFT_MINIMUM_DISTANCE_WORLD;
+  }
+  const altitude = bodyZ - surfaceZ;
+  return Number.isFinite(altitude)
+    ? Math.max(SURFACE_LIFT_MINIMUM_DISTANCE_WORLD, altitude)
+    : SURFACE_LIFT_MINIMUM_DISTANCE_WORLD;
+}
+
+/** Shared air/water inverse-distance response. The canonical reciprocal
  * implementation lives in Rust so probes and the native force kernel use
  * exactly the same deterministic equation. */
 export function getSurfaceLiftDistanceResponse(distanceToSurfaceWorld: number): number {
@@ -17,8 +24,6 @@ export function getSurfaceLiftDistanceResponse(distanceToSurfaceWorld: number): 
   }
   return sim.unitForceSurfaceLiftDistanceResponse(
     distanceToSurfaceWorld,
-    SURFACE_LIFT_REFERENCE_DISTANCE_WORLD,
     SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-    SURFACE_LIFT_DISTANCE_EXPONENT,
   );
 }

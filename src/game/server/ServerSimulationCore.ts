@@ -27,7 +27,7 @@ import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/project
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm } from '../sim-wasm/init';
 import { applyEntityHoldPose } from '../sim/entityHolds';
-import type { PresentationFrameEvent } from '@/types/game';
+import type { PresentationFrameEvent, SurfaceLiftProbeDebugFrame } from '@/types/game';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -111,6 +111,14 @@ export class ServerSimulationCore {
     return () => this.presentationFrameListeners.delete(listener);
   }
 
+  setSurfaceLiftProbeDebugEntityIds(entityIds: readonly EntityId[]): void {
+    this.unitForceSystem.setSurfaceLiftProbeDebugEntityIds(entityIds);
+  }
+
+  getSurfaceLiftProbeDebugFrame(entityId: EntityId): SurfaceLiftProbeDebugFrame | undefined {
+    return this.unitForceSystem.getSurfaceLiftProbeDebugFrame(entityId);
+  }
+
   getCanonicalStateHash(): CanonicalServerStateHash {
     return hashCanonicalServerState(this);
   }
@@ -120,6 +128,7 @@ export class ServerSimulationCore {
   }
 
   resetSessionState(): void {
+    this.unitForceSystem.setSurfaceLiftProbeDebugEntityIds([]);
     this.simulation.resetSessionState();
     this.factoryConstructionTurretSystem.reset();
   }
@@ -138,6 +147,7 @@ export class ServerSimulationCore {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.unitForceSystem.setSurfaceLiftProbeDebugEntityIds([]);
     this.presentationFrameListeners.clear();
     getSimWasm()?.presentation.clear();
     this.physics.dispose();

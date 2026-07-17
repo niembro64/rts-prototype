@@ -6,6 +6,9 @@ import {
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
+  PLASMA_DETAIL_HYSTERESIS_LEVEL,
+  PLASMA_HIGH_RUNG_MIN_LEVEL,
+  PLASMA_MEDIUM_RUNG_MIN_LEVEL,
   beamStyleForDetail,
   debrisSpawnScaleForDetail,
   detailLevelForRung,
@@ -18,6 +21,8 @@ import {
   featureVisibleAtDetail,
   geometryTierForDetail,
   legStyleForDetail,
+  plasmaDetailRungForLevel,
+  plasmaDetailRungWithHysteresis,
   projectileStyleForDetail,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
@@ -181,6 +186,41 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(
     detailRungWithHysteresis(DETAIL_RUNG_GLYPH, DETAIL_LEVEL_FULL) === DETAIL_RUNG_CLOSE,
     'a glyph-latched entity at full level jumps straight to close',
+  );
+
+  // Plasma keeps its richer meshes farther out than the shared entity ladder.
+  assertContract(
+    PLASMA_HIGH_RUNG_MIN_LEVEL < detailRungMinLevel(DETAIL_RUNG_CLOSE),
+    'plasma high resolution extends beyond the general close rung',
+  );
+  assertContract(
+    PLASMA_MEDIUM_RUNG_MIN_LEVEL < detailRungMinLevel(DETAIL_RUNG_MID) / 2,
+    'plasma medium resolution extends substantially beyond the general mid rung',
+  );
+  assertContract(
+    plasmaDetailRungForLevel(0) === DETAIL_RUNG_FAR,
+    'zero-detail plasma still resolves to its real low-triangle mesh',
+  );
+  assertContract(
+    plasmaDetailRungWithHysteresis(
+      DETAIL_RUNG_CLOSE,
+      PLASMA_HIGH_RUNG_MIN_LEVEL - PLASMA_DETAIL_HYSTERESIS_LEVEL / 2,
+    ) === DETAIL_RUNG_CLOSE,
+    'plasma high remains latched inside its downgrade margin',
+  );
+  assertContract(
+    plasmaDetailRungWithHysteresis(
+      DETAIL_RUNG_MID,
+      PLASMA_MEDIUM_RUNG_MIN_LEVEL - PLASMA_DETAIL_HYSTERESIS_LEVEL * 1.5,
+    ) === DETAIL_RUNG_FAR,
+    'plasma medium downgrades after clearing its farther low threshold',
+  );
+  assertContract(
+    plasmaDetailRungWithHysteresis(
+      DETAIL_RUNG_FAR,
+      PLASMA_MEDIUM_RUNG_MIN_LEVEL + PLASMA_DETAIL_HYSTERESIS_LEVEL * 1.5,
+    ) === DETAIL_RUNG_MID,
+    'plasma low upgrades only after clearing the medium margin',
   );
 
   // ── Features: monotonic ladder, all-on at full, all-off at glyph ──

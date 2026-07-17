@@ -21,8 +21,8 @@ export type CameraViewMode = 'overhead' | 'ta' | 'spring';
  *                    still preserving distance and pitch.
  *  Only active while exactly one unit is selected. */
 export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
-/** Main camera vertical field of view, in degrees. Preset buttons use the
- *  configured common values, while BAR hotkeys adjust this in 5-degree steps. */
+/** Main camera vertical field of view, in degrees. BAR hotkeys may adjust
+ *  the configured value in 5-degree steps at runtime. */
 export type CameraFovDegrees = number;
 /** Renderer entity LOD policy. AUTO switches between HIGH and LOW at the
  *  configured camera distance. HIGH keeps full meshes. LOW forces proxies. */
@@ -55,12 +55,14 @@ export type EntityHudType =
   | 'shot';
 /** The three per-entity HUD elements that can be toggled. */
 export type EntityHudElement = 'name' | 'healthBar' | 'buildBars';
-/** Global tri-state controlling HUD elements on the CURRENT SELECTION,
- *  overriding the per-type entity-HUD toggles for selected entities.
- *    always      — always show selection HUD elements.
- *    never       — never show them.
- *    whenNotFull — show bars only when the entity is damaged or under
- *                  construction. */
+/** Tri-state controlling enabled HUD elements on the CURRENT SELECTION.
+ *  Per-type toggles remain the first gate.
+ *    always      — show enabled selection bars even when full.
+ *    never       — suppress enabled selection bars and names (hover can
+ *                  still force the health bar for direct inspection).
+ *    whenNotFull — show enabled bars only when damaged or under
+ *                  construction; enabled names remain visible because
+ *                  they have no fullness state. */
 export type SelectionHudMode = 'always' | 'never' | 'whenNotFull';
 export type SoundCategory =
   | 'fire'
@@ -90,6 +92,15 @@ export type EntityHudToggles = Record<
   EntityHudType,
   Record<EntityHudElement, boolean>
 >;
+
+/** Soft presentation budgets used only to scale CLIENT-bar utilization
+ *  meters. They are tuning targets, not renderer-enforced limits. */
+export type ClientTelemetryBudgets = {
+  readonly drawCallsPerFrame: number;
+  readonly trianglesPerFrame: number;
+  readonly bufferUploadCallsPerFrame: number;
+  readonly bufferUploadBytesPerFrame: number;
+};
 
 export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
@@ -163,4 +174,5 @@ export type ClientBarConfig = {
   /** Global tri-state for HUD elements on the current selection.
    *  ALL / OFF / DMG (whenNotFull). */
   readonly selectionHudMode: LabeledOptionsConfig<SelectionHudMode>;
+  readonly telemetryBudgets: ClientTelemetryBudgets;
 };

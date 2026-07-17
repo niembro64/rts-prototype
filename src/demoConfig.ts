@@ -23,6 +23,16 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
   return config;
 }
 
+function validatedInitialUnitSpawnHeightAboveSurface(): number {
+  const value = demoConfig.initialUnitSpawnHeightAboveSurface;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      'demoConfig.initialUnitSpawnHeightAboveSurface must be a finite, non-negative number',
+    );
+  }
+  return value;
+}
+
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: demoConfig.playerCount,
@@ -120,6 +130,13 @@ export const DEMO_CONFIG = {
    * tighter team grouping at spawn.
    */
   centerSpawnSectorFraction: demoConfig.centerSpawnSectorFraction,
+
+  /**
+   * DEMO BATTLE opening-wave body-center height above the local terrain or
+   * water surface. Random sampling chooses (x, y), then this fixed clearance
+   * determines z before the unit's physics body is created.
+   */
+  initialUnitSpawnHeightAboveSurface: validatedInitialUnitSpawnHeightAboveSurface(),
 
   /**
    * Minimum sim-unit clearance from any water cell when picking an

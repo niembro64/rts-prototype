@@ -47,6 +47,7 @@
   "aiInverseCostWeighting": true,
   "centerSpawnRadius": 0.2,
   "centerSpawnSectorFraction": 0.6,
+  "initialUnitSpawnHeightAboveSurface": 300,
   "centerSpawnWaterBufferPx": 40,
   "centerSpawnWaterMaxAttempts": 32,
   "buildingSolarCount": 3,

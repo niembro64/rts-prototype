@@ -15,6 +15,12 @@
       "mid": 0.32,
       "close": 0.62
     },
+    "plasmaRungMinLevel": {
+      "comment": "Plasma-only visual rungs. Lower values keep the richer projectile mesh visible farther from the camera. HIGH now extends modestly beyond the general close rung; MEDIUM extends roughly twice as far before falling to the four-triangle LOW mesh.",
+      "medium": 0.08,
+      "high": 0.52,
+      "hysteresis": 0.03
+    },
     "hysteresisLevel": 0.05,
     "rebuildBudgetPerFrame": {
       "units": 24,

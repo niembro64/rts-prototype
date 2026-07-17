@@ -1,9 +1,9 @@
 {
   "forceScale": 150000,
   "surfaceLiftDefaults": {
-    "referenceDistanceWorld": 1,
-    "minimumDistanceWorld": 0.001,
-    "distanceExponent": 0.5
+    "minimumDistanceWorld": 10,
+    "forceMultiplier": 15,
+    "probeAggregation": "average"
   },
   "mediumDefaults": {
     "ground": {
@@ -444,7 +444,7 @@
         },
         "air": {
           "propulsion": {
-            "driveForce": 20,
+            "driveForce": 40,
             "forceCoupling": 0.2
           },
           "resistance": {
@@ -459,7 +459,7 @@
           },
           "surfaceLiftResponse": {
             "randomizationAmount": 0.99,
-            "ema": 0.3
+            "ema": 0.97
           }
         },
         "water": {
@@ -510,7 +510,7 @@
         },
         "air": {
           "propulsion": {
-            "driveForce": 15,
+            "driveForce": 30,
             "forceCoupling": 3
           },
           "resistance": {

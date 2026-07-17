@@ -42,7 +42,7 @@ import physicsTuningConfigJson from './physicsTuningConfig.json';
 import cameraConfigJson from './cameraConfig.json';
 import realBattleConfigJson from './realBattleConfig.json';
 import backgroundBattleConfigJson from './backgroundBattleConfig.json';
-import type { CameraFovDegrees } from './types/client';
+import type { CameraFovDegrees, CameraSmoothMode } from './types/client';
 import type { EntityHudBlueprint } from './types/blueprints';
 import type { DemoBattleWaypointType } from './demoConfig';
 import { COLORS } from './colorsConfig';
@@ -750,6 +750,10 @@ export const ENTITY_HUD_FADE_END_DISTANCE_FRAC = entityHudConfigJson.fadeEndDist
  *  feel like a wider-angle lens. This is lens FOV, not the orbit
  *  camera's pitch angle against the terrain. */
 export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
+
+/** Orbit-camera EMA time constant for each configured smoothing mode. */
+export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
+  Readonly<Record<CameraSmoothMode, number>>;
 
 /** Maximum zoom level (zoomed in). When camera constraints use
  *  zoomInLimit='zoom-max', this becomes the closest orbit distance via

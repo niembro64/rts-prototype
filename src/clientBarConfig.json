@@ -56,8 +56,8 @@
   },
   "legsRadius": { "demoDefault": false, "realDefault": false },
   "cameraSmooth": {
-    "demoDefault": "mid",
-    "realDefault": "mid",
+    "demoDefault": "fast",
+    "realDefault": "fast",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
@@ -82,6 +82,12 @@
       { "value": 60, "label": "60" },
       { "value": 120, "label": "120" }
     ]
+  },
+  "telemetryBudgets": {
+    "drawCallsPerFrame": 1000,
+    "trianglesPerFrame": 2000000,
+    "bufferUploadCallsPerFrame": 256,
+    "bufferUploadBytesPerFrame": 8388608
   },
   "waterBoundaryMode": {
     "demoDefault": "floating-square",

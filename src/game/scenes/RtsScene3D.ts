@@ -427,6 +427,7 @@ export class RtsScene3D {
       mapHeight: this.mapHeight,
       playerCount: this.playerIds.length,
       metalDeposits: this.metalDeposits,
+      gameConnection: this.gameConnection,
     });
     this.entityRenderer = renderers.entityRenderer;
     this.beamRenderer = renderers.beamRenderer;

@@ -10,6 +10,7 @@ import {
 } from '../unitLocomotion';
 import {
   getSurfaceLiftDistanceResponse,
+  getSurfaceLiftDistanceToSurfaceWorld,
 } from '../surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../surfaceLiftGroundSupport';
 import {
@@ -22,6 +23,8 @@ import {
   UNIT_LOCOMOTION_FORCE_SCALE,
   UNIT_LOCOMOTION_FRICTION_BY_MEDIUM,
   UNIT_LOCOMOTION_MEDIUM_NAMES,
+  SURFACE_LIFT_FORCE_MULTIPLIER,
+  SURFACE_LIFT_PROBE_AGGREGATION_MODE,
   getUnitLocomotionEffectiveFriction,
   getUnitLocomotionPreset,
   type UnitLocomotionPresetConfig,
@@ -81,41 +84,54 @@ function expectLocomotionError(
 }
 
 function assertSurfaceLiftDefaultsMatchConfig(): void {
-  assertContract(
-    !('probeAggregation' in rawLocomotionConfig.surfaceLiftDefaults),
-    'surface lift preserves its historical hardcoded average instead of an average/max setting',
-  );
   const {
-    referenceDistanceWorld,
     minimumDistanceWorld,
-    distanceExponent,
+    forceMultiplier,
+    probeAggregation,
   } = rawLocomotionConfig.surfaceLiftDefaults;
-  assertContract(
-    Number.isFinite(referenceDistanceWorld) && referenceDistanceWorld > 0,
-    'surfaceLiftDefaults.referenceDistanceWorld must be positive',
-  );
   assertContract(
     Number.isFinite(minimumDistanceWorld) && minimumDistanceWorld > 0,
     'surfaceLiftDefaults.minimumDistanceWorld must be positive',
   );
   assertContract(
-    Number.isFinite(distanceExponent) && distanceExponent > 0 && distanceExponent <= 1,
-    'surfaceLiftDefaults.distanceExponent must be finite in (0, 1]',
+    Number.isFinite(forceMultiplier) && forceMultiplier > 0,
+    'surfaceLiftDefaults.forceMultiplier must be positive',
+  );
+  assertContract(
+    probeAggregation === 'average' || probeAggregation === 'max',
+    'surfaceLiftDefaults.probeAggregation must select average or max',
+  );
+  assertEqual(
+    SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+    probeAggregation,
+    'runtime surface lift aggregation mode follows config',
+  );
+  assertEqual(
+    SURFACE_LIFT_FORCE_MULTIPLIER,
+    forceMultiplier,
+    'runtime surface lift force multiplier follows config',
   );
   assertEqual(
     getSurfaceLiftDistanceResponse(4),
-    DMath.pow(referenceDistanceWorld / 4, distanceExponent),
-    'surface lift uses the configured power-law distance response',
+    1 / 4,
+    'surface lift is the reciprocal of probe distance',
   );
   assertEqual(
     getSurfaceLiftDistanceResponse(minimumDistanceWorld / 2),
-    DMath.pow(referenceDistanceWorld / minimumDistanceWorld, distanceExponent),
-    'surface lift clamps distance before applying the shared power law',
+    1 / minimumDistanceWorld,
+    'surface lift clamps distance before taking its reciprocal',
   );
-  const minimumDistanceResponse = DMath.pow(
-    referenceDistanceWorld / minimumDistanceWorld,
-    distanceExponent,
+  assertEqual(
+    getSurfaceLiftDistanceToSurfaceWorld(25, 5),
+    20,
+    'probe debug and force response share the signed body-to-surface distance',
   );
+  assertEqual(
+    getSurfaceLiftDistanceToSurfaceWorld(5, 25),
+    minimumDistanceWorld,
+    'probe debug and force response share the minimum-distance clamp below a surface',
+  );
+  const minimumDistanceResponse = 1 / minimumDistanceWorld;
   for (const invalidProbeDistance of [0, -1, Number.NEGATIVE_INFINITY, Number.NaN]) {
     assertEqual(
       getSurfaceLiftDistanceResponse(invalidProbeDistance),
@@ -123,16 +139,26 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
       `probe distance ${String(invalidProbeDistance)} resolves through the configured positive minimum`,
     );
   }
-  const firstProposedForce = 100 * 0.25;
-  const secondProposedForce = 10 * 0.75;
-  const proposedForceSum = accumulateSurfaceProbeProposedForce(
-    accumulateSurfaceProbeProposedForce(0, firstProposedForce),
-    secondProposedForce,
+  const hotProbeForce = 100;
+  const averageAggregate = accumulateSurfaceProbeProposedForce(
+    accumulateSurfaceProbeProposedForce(0, hotProbeForce, 'average'),
+    0,
+    'average',
   );
   assertEqual(
-    finalizeSurfaceProbeProposedForce(proposedForceSum, 2),
-    16.25,
-    'the historical hardcoded average operates after each probe applies its authored force',
+    finalizeSurfaceProbeProposedForce(averageAggregate, 2, 'average'),
+    hotProbeForce / 2,
+    'average mode is the arithmetic mean of proposed probe forces',
+  );
+  const maxAggregate = accumulateSurfaceProbeProposedForce(
+    accumulateSurfaceProbeProposedForce(0, hotProbeForce, 'max'),
+    hotProbeForce / 2,
+    'max',
+  );
+  assertEqual(
+    finalizeSurfaceProbeProposedForce(maxAggregate, 2, 'max'),
+    hotProbeForce,
+    'max mode is the strict strongest proposed probe force',
   );
   assertContract(
     !surfaceProbeUsesWaterSurface(0, 0) && surfaceProbeUsesWaterSurface(-1, 0),

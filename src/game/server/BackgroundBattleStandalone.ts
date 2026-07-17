@@ -137,6 +137,7 @@ function spawnUnit(
   y: number,
   waypoints: readonly MultiLegWaypoint[],
   allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
+  initialZ: number | undefined = undefined,
 ): Entity | null {
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (waypoints.length === 0) return null;
@@ -152,6 +153,7 @@ function spawnUnit(
   // tick later.
   if (!unitBlueprintId) return null;
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitBlueprintId);
+  if (initialZ !== undefined) unit.transform.z = initialZ;
 
   const firstWp = waypoints[0];
   setUnitFacingYaw(unit, DMath.atan2(firstWp.y - y, firstWp.x - x));
@@ -320,6 +322,8 @@ export function spawnBackgroundUnitsStandalone(
         // once the initial wave makes contact.
         const targetX = cx - (spawn.x - cx);
         const targetY = cy - (spawn.y - cy);
+        const initialZ = world.getGroundZ(spawn.x, spawn.y) +
+          DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
 
         const unit = spawnUnit(
           world, physics, playerId, spawn.x, spawn.y,
@@ -328,6 +332,7 @@ export function spawnBackgroundUnitsStandalone(
             { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
           ],
           centerBattleAllowedUnitBlueprintIds,
+          initialZ,
         );
         if (unit) spawned.push(unit);
       }

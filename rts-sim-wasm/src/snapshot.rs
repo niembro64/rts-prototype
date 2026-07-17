@@ -8765,9 +8765,7 @@ mod sim_kernel_tests {
     const UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT: f64 = -1.0;
     const UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT: f64 = 1.0;
     const UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT: f64 = 6.0;
-    const UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE: f64 = 1.0;
     const UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE: f64 = 0.5;
-    const UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT: f64 = 0.5;
 
     fn step_unit_force_test(
         slots: &[u32],
@@ -8794,9 +8792,8 @@ mod sim_kernel_tests {
             UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
             UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
             UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-            UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
             UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-            UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+            1.0,
         )
     }
 
@@ -8857,9 +8854,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -8926,9 +8922,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -8989,9 +8984,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -9054,9 +9048,8 @@ mod sim_kernel_tests {
                     UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                     UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                     UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                    UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                     UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                    UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                    1.0,
                 ),
                 1,
             );
@@ -9162,9 +9155,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -9224,9 +9216,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -9286,9 +9277,8 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
-                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
                 UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
-                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
+                1.0,
             ),
             1,
         );
@@ -9744,7 +9734,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
         rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
         rows[UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
-            unit_force_surface_lift_distance_response(16.0, 1.0, 0.5, 0.5);
+            unit_force_surface_lift_distance_response(16.0, 0.5);
 
         assert_eq!(
             step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),

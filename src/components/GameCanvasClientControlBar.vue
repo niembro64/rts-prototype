@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { CLIENT_CONFIG, LOD_MODE_OPTIONS } from '../clientBarConfig';
-import { GOOD_TPS } from '../config';
+import { GOOD_TPS, ZOOM_MAX_MAP_CENTER_DISTANCE } from '../config';
 import {
   COMMAND_HOTKEY_DISPLAY_LABELS,
   COMMAND_HOTKEY_IDS,
@@ -23,7 +23,13 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
 import type { LodMode, PathingDebugUnitId } from '../types/client';
-import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
+import {
+  budgetBarStyle,
+  fmt4,
+  fmtBytes4,
+  msBarStyle,
+  statBarStyle,
+} from './uiUtils';
 
 const COMMAND_HOTKEY_PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
   prototype: 'PROTO',
@@ -50,6 +56,7 @@ const LOD_MODE_TITLES: Record<LodMode, string> = {
 };
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
+const TELEMETRY_BUDGETS = CLIENT_CONFIG.telemetryBudgets;
 const PATHING_DEBUG_UNIT_OPTIONS: readonly {
   readonly value: PathingDebugUnitId;
   readonly label: string;
@@ -279,7 +286,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ENTITY HUD:</BarLabel>
-        <BarLabel title="Current-selection HUD elements for selected entities. ALL always shows them; OFF never does; DMG shows bars only when damaged or under construction.">SEL:</BarLabel>
+        <BarLabel title="How enabled per-type HUD elements behave on selected entities. ALL shows enabled health even when full; OFF suppresses selected bars and names; DMG shows health only when damaged and build bars only during construction. Names have no fullness, so DMG leaves enabled selected names visible. Hover can still force a health bar for inspection, and unselected entities are unaffected by this selector.">SEL:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.selectionHudMode.options"
@@ -342,26 +349,62 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <div class="fps-stats">
-          <BarLabel :title="`Three/WebGL workload from the last completed draw. Draw calls ${model.webglDrawCalls}, triangles ${model.webglTriangles}, points ${model.webglPoints}, lines ${model.webglLines}, retained geometries ${model.webglGeometries}, textures ${model.webglTextures}.`">DRAW:</BarLabel>
-          <span class="fps-value">{{ fmtCount4(model.webglDrawCalls) }}</span>
-          <span class="fps-label">dc</span>
-          <span class="fps-value">{{ fmtCount4(model.webglTriangles) }}</span>
-          <span class="fps-label">tri</span>
-          <span class="fps-value">{{ fmtCount4(model.webglPoints) }}</span>
-          <span class="fps-label">pt</span>
+        <BarLabel :title="`Three/WebGL workload from the last completed draw. The bars compare against configurable soft per-frame budgets, not GPU hard limits: ${fmtCount4(TELEMETRY_BUDGETS.trianglesPerFrame)} triangles and ${fmtCount4(TELEMETRY_BUDGETS.drawCallsPerFrame)} draw calls. Current points ${model.webglPoints}, lines ${model.webglLines}, retained geometries ${model.webglGeometries}, textures ${model.webglTextures}.`">DRAW:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtCount4(model.webglTriangles) }}</span>
+              <span class="fps-label">/{{ fmtCount4(TELEMETRY_BUDGETS.trianglesPerFrame) }} tri</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="budgetBarStyle(model.webglTriangles, TELEMETRY_BUDGETS.trianglesPerFrame)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtCount4(model.webglDrawCalls) }}</span>
+              <span class="fps-label">/{{ fmtCount4(TELEMETRY_BUDGETS.drawCallsPerFrame) }} dc</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="budgetBarStyle(model.webglDrawCalls, TELEMETRY_BUDGETS.drawCallsPerFrame)"
+              ></div>
+            </div>
+          </div>
         </div>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <div class="fps-stats">
-          <BarLabel :title="`WebGL buffer upload pressure from bufferData/bufferSubData during the last completed draw. Profiler ${model.webglBufferProfilerSupported ? 'active' : 'unavailable'}. bufferData calls ${model.webglBufferDataCalls}, bufferSubData calls ${model.webglBufferSubDataCalls}, upload bytes ${fmtBytes4(model.webglBufferUploadBytes)}, WebGL submit ${fmt4(model.webglRendererRenderMs)} ms.`">UPLOAD:</BarLabel>
-          <span class="fps-value">{{ fmtBytes4(model.webglBufferUploadBytes) }}</span>
-          <span class="fps-label">buf</span>
-          <span class="fps-value">{{ fmtCount4(model.webglBufferDataCalls + model.webglBufferSubDataCalls) }}</span>
-          <span class="fps-label">calls</span>
-          <span class="fps-value">{{ fmt4(model.webglRendererRenderMs) }}</span>
-          <span class="fps-label">ms</span>
+        <BarLabel :title="`WebGL buffer uploads during the last completed draw. The bars compare against configurable soft per-frame budgets of ${fmtBytes4(TELEMETRY_BUDGETS.bufferUploadBytesPerFrame)} and ${TELEMETRY_BUDGETS.bufferUploadCallsPerFrame} calls. Profiler ${model.webglBufferProfilerSupported ? 'active' : 'unavailable'}. bufferData ${model.webglBufferDataCalls}, bufferSubData ${model.webglBufferSubDataCalls}, WebGL submit ${fmt4(model.webglRendererRenderMs)} ms.`">UPLOAD:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtBytes4(model.webglBufferUploadBytes) }}</span>
+              <span class="fps-label">/{{ fmtBytes4(TELEMETRY_BUDGETS.bufferUploadBytesPerFrame) }}</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="budgetBarStyle(model.webglBufferUploadBytes, TELEMETRY_BUDGETS.bufferUploadBytesPerFrame)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtCount4(model.webglBufferDataCalls + model.webglBufferSubDataCalls) }}</span>
+              <span class="fps-label">/{{ TELEMETRY_BUDGETS.bufferUploadCallsPerFrame }} calls</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="budgetBarStyle(model.webglBufferDataCalls + model.webglBufferSubDataCalls, TELEMETRY_BUDGETS.bufferUploadCallsPerFrame)"
+              ></div>
+            </div>
+          </div>
         </div>
       </BarControlGroup>
       <BarControlGroup>
@@ -438,9 +481,20 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <div class="fps-stats">
-          <BarLabel title="Rendered camera-eye distance from the map center origin, in world units. Zoom-out is capped at the configured max map-center distance.">ZOOM:</BarLabel>
-          <span class="fps-value">{{ fmt4(model.currentZoom) }}</span>
+        <BarLabel :title="`Rendered camera-eye distance from the map center origin, in world units. The configured zoom-out rail is ${fmtCount4(ZOOM_MAX_MAP_CENTER_DISTANCE)}.`">ZOOM:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtCount4(model.currentZoom) }}</span>
+              <span class="fps-label">/{{ fmtCount4(ZOOM_MAX_MAP_CENTER_DISTANCE) }}</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="statBarStyle(model.currentZoom, ZOOM_MAX_MAP_CENTER_DISTANCE, true)"
+              ></div>
+            </div>
+          </div>
         </div>
       </BarControlGroup>
       <BarControlGroup>
@@ -520,7 +574,7 @@ function resetEveryCustomHotkey(): void {
         >BUILD</BarButton>
         <BarButton
           :active="model.airLiftProbeDebug"
-          title="PROBES - show configured lift probes; thick black lines reach solid ground/support and thin red lines reach exposed water level"
+          title="PROBES - show authoritative force-tick lift probes; brown lines are active solid/support distances and blue lines are active exposed-water distances"
           @click="model.toggleAirLiftProbeDebug"
         >PROBES</BarButton>
         <BarButton
@@ -728,52 +782,13 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Main 3D camera vertical field-of-view in degrees. Lower is narrower/telephoto; higher is wider-angle.">FOV:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.cameraFov.options"
-            :key="opt.value"
-            :active="model.cameraFovDegrees === opt.value"
-            :title="`Set camera field-of-view to ${opt.value} degrees`"
-            @click="model.changeCameraFovDegrees(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>CAMERA:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            :active="model.cameraSmoothMode === 'snap'"
-            title="Zoom and pan apply instantly - original behavior, no animation"
-            @click="model.setCameraMode('snap')"
-          >SNAP</BarButton>
-          <BarButton
-            :active="model.cameraSmoothMode === 'fast'"
-            title="Zoom and pan ease with EMA tau around 50 ms - quick settle"
-            @click="model.setCameraMode('fast')"
-          >FAST</BarButton>
-          <BarButton
-            :active="model.cameraSmoothMode === 'mid'"
-            title="Zoom and pan ease with EMA tau around 120 ms - default-feeling smoothness"
-            @click="model.setCameraMode('mid')"
-          >MID</BarButton>
-          <BarButton
-            :active="model.cameraSmoothMode === 'slow'"
-            title="Zoom and pan ease with EMA tau around 400 ms - deliberate, weighty feel"
-            @click="model.setCameraMode('slow')"
-          >SLOW</BarButton>
-        </BarButtonGroup>
-        <BarDivider />
-      </BarControlGroup>
-      <BarControlGroup>
         <BarLabel>ANCHOR:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="slot in CAMERA_ANCHOR_SLOTS"
             :key="`save-${slot}`"
             :active="false"
-            :title="`Save camera anchor ${slot + 1}`"
+            :title="`Save the current camera target, distance, yaw, and pitch in in-memory anchor ${slot + 1}`"
             @click="model.setCameraAnchor(slot)"
           >S{{ slot + 1 }}</BarButton>
         </BarButtonGroup>
@@ -782,7 +797,7 @@ function resetEveryCustomHotkey(): void {
             v-for="slot in CAMERA_ANCHOR_SLOTS"
             :key="`focus-${slot}`"
             :active="false"
-            :title="`Focus camera anchor ${slot + 1}`"
+            :title="`Restore in-memory camera anchor ${slot + 1}; does nothing until that slot has been saved`"
             @click="model.focusCameraAnchor(slot)"
           >{{ slot + 1 }}</BarButton>
         </BarButtonGroup>

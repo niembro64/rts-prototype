@@ -107,6 +107,16 @@ const CLOSE_RUNG_MIN_LEVEL = Math.max(
   MID_RUNG_MIN_LEVEL,
   clamp01(finitePositiveOr(detailConfig.rungMinLevel?.close, 0.62)),
 );
+export const PLASMA_MEDIUM_RUNG_MIN_LEVEL = clamp01(
+  finitePositiveOr(detailConfig.plasmaRungMinLevel?.medium, 0.08),
+);
+export const PLASMA_HIGH_RUNG_MIN_LEVEL = Math.max(
+  PLASMA_MEDIUM_RUNG_MIN_LEVEL,
+  clamp01(finitePositiveOr(detailConfig.plasmaRungMinLevel?.high, 0.52)),
+);
+export const PLASMA_DETAIL_HYSTERESIS_LEVEL = clamp01(
+  finitePositiveOr(detailConfig.plasmaRungMinLevel?.hysteresis, 0.03),
+);
 export const DETAIL_HYSTERESIS_LEVEL = clamp01(
   finitePositiveOr(detailConfig.hysteresisLevel, 0.05));
 export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
@@ -267,6 +277,40 @@ export function detailRungForLevel(level: number): DetailRung {
   if (level <= DETAIL_LEVEL_GLYPH) return DETAIL_RUNG_GLYPH;
   if (level >= CLOSE_RUNG_MIN_LEVEL) return DETAIL_RUNG_CLOSE;
   if (level >= MID_RUNG_MIN_LEVEL) return DETAIL_RUNG_MID;
+  return DETAIL_RUNG_FAR;
+}
+
+/** Plasma uses its own farther-reaching geometry ladder. Its LOW mesh is
+ *  still real triangle geometry, so level zero maps to FAR rather than the
+ *  generic point-sprite GLYPH rung. */
+export function plasmaDetailRungForLevel(level: number): DetailRung {
+  if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL) return DETAIL_RUNG_CLOSE;
+  if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL) return DETAIL_RUNG_MID;
+  return DETAIL_RUNG_FAR;
+}
+
+export function plasmaDetailRungWithHysteresis(
+  currentRung: DetailRung,
+  level: number,
+): DetailRung {
+  const current = currentRung === DETAIL_RUNG_GLYPH
+    ? DETAIL_RUNG_FAR
+    : currentRung;
+  const h = PLASMA_DETAIL_HYSTERESIS_LEVEL;
+
+  if (current === DETAIL_RUNG_CLOSE) {
+    if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL - h) return DETAIL_RUNG_CLOSE;
+    return level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL - h
+      ? DETAIL_RUNG_MID
+      : DETAIL_RUNG_FAR;
+  }
+  if (current === DETAIL_RUNG_MID) {
+    if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_CLOSE;
+    if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL - h) return DETAIL_RUNG_MID;
+    return DETAIL_RUNG_FAR;
+  }
+  if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_CLOSE;
+  if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_MID;
   return DETAIL_RUNG_FAR;
 }
 

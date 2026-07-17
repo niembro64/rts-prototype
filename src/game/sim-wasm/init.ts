@@ -78,6 +78,7 @@ import __wbg_init, {
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
   unit_force_surface_lift_distance_response,
+  unit_force_water_fraction,
   unit_force_runtime_clear,
   unit_fatal_water_step_pool,
   unit_fatal_water_entity_slots_ptr,
@@ -1041,16 +1042,14 @@ export interface SimWasm {
     driveAlignmentZeroForceDot: number,
     driveAlignmentFullForceDot: number,
     driveAlignmentResponseExponent: number,
-    surfaceLiftReferenceDistanceWorld: number,
     surfaceLiftMinimumDistanceWorld: number,
-    surfaceLiftDistanceExponent: number,
+    surfaceLiftForceMultiplier: number,
   ) => number;
   readonly unitForceSurfaceLiftDistanceResponse: (
     distanceToSurfaceWorld: number,
-    referenceDistanceWorld: number,
     minimumDistanceWorld: number,
-    distanceExponent: number,
   ) => number;
+  readonly unitForceWaterFraction: (bodyZ: number, bodyRadius: number) => number;
   /** Blueprint locomotion constants table for unitForceStepBatch,
    *  code-indexed. Ensure BEFORE taking the pointers (resize moves
    *  them); fill once when blueprints are ready. */
@@ -4130,6 +4129,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
         unitForceSurfaceLiftDistanceResponse: unit_force_surface_lift_distance_response,
+        unitForceWaterFraction: unit_force_water_fraction,
         unitForceProfileEnsure: unit_force_profile_ensure,
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,

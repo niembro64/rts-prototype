@@ -23,7 +23,15 @@ import {
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
 import { entityDetailLevelForView } from './EntityLod3D';
-import { projectileStyleForDetail } from './EntityDetailLevel3D';
+import {
+  DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_FAR,
+  DETAIL_RUNG_MID,
+  type DetailRung,
+  plasmaDetailRungForLevel,
+  plasmaDetailRungWithHysteresis,
+  projectileStyleForDetail,
+} from './EntityDetailLevel3D';
 import { ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
@@ -34,10 +42,10 @@ const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
 const FIN_REAR_OVERHANG_MULT = 0.75;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const PROJECTILE_ROCKET_FIN_COUNT = 3;
-const CURVED_CONE_CURVE_SEGMENTS = 6;
-const CURVED_CONE_RADIAL_SEGMENTS = 10;
-const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
-const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
+const PLASMA_HIGH_CURVE_SEGMENTS = 6;
+const PLASMA_HIGH_RADIAL_SEGMENTS = 10;
+const PLASMA_MEDIUM_CURVE_SEGMENTS = 3;
+const PLASMA_MEDIUM_RADIAL_SEGMENTS = 6;
 // Trail stamps record the projectile's recent path as a polyline of
 // positions frozen in render space the moment they were laid down, so
 // MOVE POS / VEL EMAs only ever affect the live head — old stamps don't
@@ -49,16 +57,66 @@ const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RA
 // and forced reflection stamps can land arbitrarily close together.
 // The extra slots keep the recorded polyline longer than the horizon,
 // so evicting the oldest stamp never moves drawn geometry.
-const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS + 4;
+const TRAIL_STAMP_CAP = PLASMA_HIGH_CURVE_SEGMENTS + 4;
 const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
-const CURVED_CONE_COS = new Array<number>(CURVED_CONE_RADIAL_SEGMENTS);
-const CURVED_CONE_SIN = new Array<number>(CURVED_CONE_RADIAL_SEGMENTS);
-for (let i = 0; i < CURVED_CONE_RADIAL_SEGMENTS; i++) {
-  const angle = (i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2;
-  CURVED_CONE_COS[i] = Math.cos(angle);
-  CURVED_CONE_SIN[i] = Math.sin(angle);
+
+type PlasmaGeometrySpec = {
+  readonly curveSegments: number;
+  readonly radialSegments: number;
+  readonly ringCount: number;
+  readonly verticesPerShot: number;
+  readonly indicesPerShot: number;
+  readonly cos: readonly number[];
+  readonly sin: readonly number[];
+};
+
+function createPlasmaGeometrySpec(
+  curveSegments: number,
+  radialSegments: number,
+): PlasmaGeometrySpec {
+  const cos = new Array<number>(radialSegments);
+  const sin = new Array<number>(radialSegments);
+  for (let i = 0; i < radialSegments; i++) {
+    const angle = (i / radialSegments) * Math.PI * 2;
+    cos[i] = Math.cos(angle);
+    sin[i] = Math.sin(angle);
+  }
+  // Rounded shoulder + head ring + one ring per interior tail bend.
+  // Single shared vertices close the nose and tail without hidden caps.
+  const ringCount = curveSegments + 1;
+  return {
+    curveSegments,
+    radialSegments,
+    ringCount,
+    verticesPerShot: 2 + ringCount * radialSegments,
+    indicesPerShot: radialSegments * 6 * (curveSegments + 1),
+    cos,
+    sin,
+  };
 }
+
+const PLASMA_HIGH_SPEC = createPlasmaGeometrySpec(
+  PLASMA_HIGH_CURVE_SEGMENTS,
+  PLASMA_HIGH_RADIAL_SEGMENTS,
+);
+const PLASMA_MEDIUM_SPEC = createPlasmaGeometrySpec(
+  PLASMA_MEDIUM_CURVE_SEGMENTS,
+  PLASMA_MEDIUM_RADIAL_SEGMENTS,
+);
+const PLASMA_LOW_INDICES = [
+  0, 2, 1,
+  0, 1, 3,
+  1, 2, 3,
+  2, 0, 3,
+] as const;
+
+/** Actual submitted triangle count for one plasma projectile at each rung. */
+export const PLASMA_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
+  high: PLASMA_HIGH_SPEC.indicesPerShot / 3,
+  medium: PLASMA_MEDIUM_SPEC.indicesPerShot / 3,
+  low: PLASMA_LOW_INDICES.length / 3,
+});
 
 function writeTranslateScaleMatrix(
   out: Float32Array,
@@ -130,12 +188,11 @@ type TrailStampBuffer = {
   count: number;
 };
 
-type DynamicCurvedConeGeometry = {
+type DynamicPlasmaGeometry = {
+  spec: PlasmaGeometrySpec;
   geometry: THREE.BufferGeometry;
   positions: Float32Array;
-  normals: Float32Array;
   positionAttr: THREE.BufferAttribute;
-  normalAttr: THREE.BufferAttribute;
 };
 
 type ProjectileRenderer3DOptions = {
@@ -161,7 +218,9 @@ export class ProjectileRenderer3D {
   private readonly projectileMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.projectile.body.colorHex,
   });
-  private readonly projectileCurvedConeMat = new THREE.MeshLambertMaterial({
+  // Plasma stays exactly white under every terrain/sun light: the body and
+  // tail are one unlit surface instead of two differently shaded meshes.
+  private readonly plasmaMat = new THREE.MeshBasicMaterial({
     color: COLORS.effects.projectile.curvedCone.colorHex,
     side: THREE.DoubleSide,
   });
@@ -186,8 +245,13 @@ export class ProjectileRenderer3D {
   private readonly sphereMatrices: Float32Array;
   private readonly cylinderInstanced: THREE.InstancedMesh;
   private readonly cylinderMatrices: Float32Array;
-  private readonly curvedCone: DynamicCurvedConeGeometry;
-  private readonly curvedConeMesh: THREE.Mesh;
+  private readonly plasmaHigh: DynamicPlasmaGeometry;
+  private readonly plasmaHighMesh: THREE.Mesh;
+  private readonly plasmaMedium: DynamicPlasmaGeometry;
+  private readonly plasmaMediumMesh: THREE.Mesh;
+  private readonly plasmaLowGeom = createLowResolutionPlasmaGeometry();
+  private readonly plasmaLowInstanced: THREE.InstancedMesh;
+  private readonly plasmaLowMatrices: Float32Array;
   private readonly finInstanced: THREE.InstancedMesh;
   private readonly finMatrices: Float32Array;
   private readonly finColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
@@ -196,13 +260,14 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
+  private readonly plasmaDetailRungs = new IndexedEntityIdMap<DetailRung>();
   private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
   // Scratch buffers reused across projectiles to avoid per-frame allocs.
   // resampleTrailCenterline fills tailCenterline with the drawn ring
   // centers, tailRingDist with each ring's arc distance behind the head,
   // and trailArcScratch with cumulative stamp-polyline arc lengths.
-  private readonly tailCenterline = new Float32Array((CURVED_CONE_CURVE_SEGMENTS + 1) * 3);
-  private readonly tailRingDist = new Float32Array(CURVED_CONE_CURVE_SEGMENTS + 1);
+  private readonly tailCenterline = new Float32Array((PLASMA_HIGH_CURVE_SEGMENTS + 1) * 3);
+  private readonly tailRingDist = new Float32Array(PLASMA_HIGH_CURVE_SEGMENTS + 1);
   private readonly trailArcScratch = new Float32Array(TRAIL_STAMP_CAP + 1);
   private lastProjectileEntitySetVersion = -1;
   private lastProjectileScopeVersion = -1;
@@ -251,11 +316,31 @@ export class ProjectileRenderer3D {
     this.cylinderInstanced.count = 0;
     this.world.add(this.cylinderInstanced);
 
-    this.curvedCone = createProjectileCurvedConeGeometry(PROJECTILE_INSTANCED_CAP);
-    this.curvedConeMesh = new THREE.Mesh(this.curvedCone.geometry, this.projectileCurvedConeMat);
-    this.curvedConeMesh.frustumCulled = false;
-    this.curvedConeMesh.visible = false;
-    this.world.add(this.curvedConeMesh);
+    this.plasmaHigh = createDynamicPlasmaGeometry(PROJECTILE_INSTANCED_CAP, PLASMA_HIGH_SPEC);
+    this.plasmaHighMesh = new THREE.Mesh(this.plasmaHigh.geometry, this.plasmaMat);
+    this.plasmaHighMesh.frustumCulled = false;
+    this.plasmaHighMesh.visible = false;
+    this.world.add(this.plasmaHighMesh);
+
+    this.plasmaMedium = createDynamicPlasmaGeometry(
+      PROJECTILE_INSTANCED_CAP,
+      PLASMA_MEDIUM_SPEC,
+    );
+    this.plasmaMediumMesh = new THREE.Mesh(this.plasmaMedium.geometry, this.plasmaMat);
+    this.plasmaMediumMesh.frustumCulled = false;
+    this.plasmaMediumMesh.visible = false;
+    this.world.add(this.plasmaMediumMesh);
+
+    this.plasmaLowInstanced = new THREE.InstancedMesh(
+      this.plasmaLowGeom,
+      this.plasmaMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.plasmaLowInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.plasmaLowMatrices = this.plasmaLowInstanced.instanceMatrix.array as Float32Array;
+    this.plasmaLowInstanced.frustumCulled = false;
+    this.plasmaLowInstanced.count = 0;
+    this.world.add(this.plasmaLowInstanced);
 
     this.finInstanced = new THREE.InstancedMesh(
       this.projectileFinGeom,
@@ -283,7 +368,9 @@ export class ProjectileRenderer3D {
 
     let sphereCount = 0;
     let cylinderCount = 0;
-    let curvedConeCount = 0;
+    let plasmaHighCount = 0;
+    let plasmaMediumCount = 0;
+    let plasmaLowCount = 0;
     let finCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
@@ -327,12 +414,78 @@ export class ProjectileRenderer3D {
       const radius = shotProfile?.runtime.radius.other ?? 4;
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
+      const isPlasma = shotProfile?.runtime.type === 'plasma';
+      const emissionFarLod = this.isEntityEmissionFarLod(e);
 
-      if (this.isEntityEmissionFarLod(e)) {
+      // Plasma owns a four-triangle far rung, so it never drops out at the
+      // legacy emission cutoff. Other projectile classes keep that cutoff.
+      if (emissionFarLod && !isPlasma) {
         this.hideProjRadiusMeshes(e.id);
         this.trailStamps.delete(e.id);
         continue;
       }
+
+      if (isPlasma && proj) {
+        const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
+        const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
+        this.composeProjectileTailPose(
+          projectileAxisOutput,
+          projectileIndex * projectileAxisOutputStride,
+          tx,
+          ty,
+          tz,
+          tailLength,
+          tailRadius,
+        );
+        const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
+        // DOT/CORE graphics ceilings still shed to the minimum plasma mesh;
+        // they no longer make the projectile disappear altogether.
+        const rung = drawProjectileTail
+          ? this.resolvePlasmaDetailRung(e.id, detailLevel)
+          : DETAIL_RUNG_FAR;
+        if (rung === DETAIL_RUNG_CLOSE && plasmaHighCount < PROJECTILE_INSTANCED_CAP) {
+          const drawnSpan = this.resampleTrailCenterline(
+            tx, ty, tz, stamps, tailLength, PLASMA_HIGH_SPEC.curveSegments,
+          );
+          this.writePlasmaGeometry(
+            this.plasmaHigh,
+            plasmaHighCount++,
+            r,
+            tailRadius,
+            drawnSpan,
+          );
+        } else if (
+          rung === DETAIL_RUNG_MID &&
+          plasmaMediumCount < PROJECTILE_INSTANCED_CAP
+        ) {
+          const drawnSpan = this.resampleTrailCenterline(
+            tx, ty, tz, stamps, tailLength, PLASMA_MEDIUM_SPEC.curveSegments,
+          );
+          this.writePlasmaGeometry(
+            this.plasmaMedium,
+            plasmaMediumCount++,
+            r,
+            tailRadius,
+            drawnSpan,
+          );
+        } else if (plasmaLowCount < PROJECTILE_INSTANCED_CAP) {
+          writeComposedMatrix(
+            this.plasmaLowMatrices,
+            plasmaLowCount++,
+            this.projPos.x,
+            this.projPos.y,
+            this.projPos.z,
+            this.projQuat,
+            r,
+            tailLength,
+            r,
+          );
+        }
+        this.updateProjRadiusMeshes(e, wantCol, wantExp);
+        continue;
+      }
+
+      this.plasmaDetailRungs.delete(e.id);
 
       if (sphereCount >= PROJECTILE_INSTANCED_CAP) {
         this.hideProjRadiusMeshes(e.id);
@@ -344,12 +497,6 @@ export class ProjectileRenderer3D {
         tx, tz, ty,
         r, r, r,
       );
-
-      if (this.isEntityEmissionFarLod(e)) {
-        this.hideProjRadiusMeshes(e.id);
-        this.trailStamps.delete(e.id);
-        continue;
-      }
 
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'
@@ -382,16 +529,6 @@ export class ProjectileRenderer3D {
               this.projScale.y,
               this.projScale.z,
             );
-          }
-        } else if (
-          tailShape === 'cone' &&
-          curvedConeCount < PROJECTILE_INSTANCED_CAP &&
-          proj
-        ) {
-          const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
-          if (stamps.count >= 1) {
-            const drawnSpan = this.resampleTrailCenterline(tx, ty, tz, stamps, tailLength);
-            this.writeProjectileCurvedConeTail(curvedConeCount++, tailRadius, drawnSpan);
           }
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
@@ -443,7 +580,14 @@ export class ProjectileRenderer3D {
     if (cylinderCount > 0) {
       this.markInstanceMatrixRange(this.cylinderInstanced, 0, cylinderCount - 1);
     }
-    this.flushCurvedConeGeometry(curvedConeCount);
+    this.flushPlasmaGeometry(this.plasmaHigh, this.plasmaHighMesh, plasmaHighCount);
+    this.flushPlasmaGeometry(this.plasmaMedium, this.plasmaMediumMesh, plasmaMediumCount);
+    if (this.plasmaLowInstanced.count !== plasmaLowCount) {
+      this.plasmaLowInstanced.count = plasmaLowCount;
+    }
+    if (plasmaLowCount > 0) {
+      this.markInstanceMatrixRange(this.plasmaLowInstanced, 0, plasmaLowCount - 1);
+    }
     if (this.finInstanced.count !== finCount) this.finInstanced.count = finCount;
     if (finCount > 0) {
       this.markInstanceMatrixRange(this.finInstanced, 0, finCount - 1);
@@ -472,6 +616,9 @@ export class ProjectileRenderer3D {
       for (const id of this.trailStamps.keys()) {
         if (!seen.has(id)) this.trailStamps.delete(id);
       }
+      for (const id of this.plasmaDetailRungs.keys()) {
+        if (!seen.has(id)) this.plasmaDetailRungs.delete(id);
+      }
       this.lastProjectileEntitySetVersion = entitySetVersion;
       this.lastProjectileScopeVersion = scopeVersion;
     }
@@ -480,7 +627,9 @@ export class ProjectileRenderer3D {
   destroy(): void {
     disposeMesh(this.sphereInstanced, { material: false, geometry: false });
     disposeMesh(this.cylinderInstanced, { material: false, geometry: false });
-    disposeMesh(this.curvedConeMesh, { material: false, geometry: false });
+    disposeMesh(this.plasmaHighMesh, { material: false, geometry: false });
+    disposeMesh(this.plasmaMediumMesh, { material: false, geometry: false });
+    disposeMesh(this.plasmaLowInstanced, { material: false, geometry: false });
     disposeMesh(this.finInstanced, { material: false, geometry: false });
     for (const radii of this.projectileRadiusMeshes.values()) {
       if (radii.collision) {
@@ -494,21 +643,33 @@ export class ProjectileRenderer3D {
       disposeMesh(mesh, { material: false, geometry: false });
     }
     this.seenProjectileIds.clear();
+    this.plasmaDetailRungs.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
     disposeGeometries([
       this.projectileGeom,
       this.projectileCylinderGeom,
-      this.curvedCone.geometry,
+      this.plasmaHigh.geometry,
+      this.plasmaMedium.geometry,
+      this.plasmaLowGeom,
       this.projectileFinGeom,
     ]);
     disposeMaterials([
       this.projectileMat,
-      this.projectileCurvedConeMat,
+      this.plasmaMat,
       this.projectileFinMat,
       this.projMatCollision,
       this.projMatExplosion,
     ]);
+  }
+
+  private resolvePlasmaDetailRung(entityId: EntityId, level: number): DetailRung {
+    const previous = this.plasmaDetailRungs.get(entityId);
+    const next = previous === undefined
+      ? plasmaDetailRungForLevel(level)
+      : plasmaDetailRungWithHysteresis(previous, level);
+    this.plasmaDetailRungs.set(entityId, next);
+    return next;
   }
 
   // Shifts older stamps one slot deeper (dropping the oldest if at cap)
@@ -575,7 +736,7 @@ export class ProjectileRenderer3D {
     // Step size determines how far the head travels between stamps. We
     // pick one segment's worth of tail length so the recorded polyline
     // naturally spans the resample horizon when fully populated.
-    const stampStep = Math.max(0.25, tailLength / CURVED_CONE_CURVE_SEGMENTS);
+    const stampStep = Math.max(0.25, tailLength / PLASMA_HIGH_CURVE_SEGMENTS);
     const stampStepSq = stampStep * stampStep;
     const pts = stamps.points;
     let shouldStamp = stamps.count === 0;
@@ -613,6 +774,7 @@ export class ProjectileRenderer3D {
     headZ: number,
     stamps: TrailStampBuffer,
     tailLength: number,
+    curveSegments: number,
   ): number {
     const pts = stamps.points;
     const count = stamps.count;
@@ -642,8 +804,8 @@ export class ProjectileRenderer3D {
     const drawnSpan = Math.min(tailLength, total);
     if (drawnSpan < 1e-4) {
       // No usable path yet (fresh spawn) — collapse every ring onto the
-      // head. writeProjectileCurvedConeTail zeroes the radii.
-      for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
+      // head. writePlasmaGeometry collapses the tail rings onto that point.
+      for (let i = 1; i <= curveSegments; i++) {
         const dst = i * 3;
         centerline[dst] = headX;
         centerline[dst + 1] = headY;
@@ -653,8 +815,8 @@ export class ProjectileRenderer3D {
       return 0;
     }
 
-    const step = drawnSpan / CURVED_CONE_CURVE_SEGMENTS;
-    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) dists[i] = i * step;
+    const step = drawnSpan / curveSegments;
+    for (let i = 1; i <= curveSegments; i++) dists[i] = i * step;
 
     // Pin the newest reflection kink onto a ring (holder), and let the
     // ring that held it during the previous slot window relax home.
@@ -665,10 +827,10 @@ export class ProjectileRenderer3D {
       const tau = d / step;
       const j = Math.floor(tau);
       // Ring 0 is the live head and the tip must stay at the span end,
-      // so only interior rings hold the kink; past tau = 7 the kink and
-      // its relax window have both left the drawn tail.
-      if (j >= 1 && j < CURVED_CONE_CURVE_SEGMENTS) dists[j] = d;
-      if (j >= 2 && j <= CURVED_CONE_CURVE_SEGMENTS) {
+      // so only interior rings hold the kink; once tau passes the last
+      // segment, the kink and its relax window have left the drawn tail.
+      if (j >= 1 && j < curveSegments) dists[j] = d;
+      if (j >= 2 && j <= curveSegments) {
         dists[j - 1] = (2 * j - tau) * step;
       }
       break;
@@ -677,7 +839,7 @@ export class ProjectileRenderer3D {
     // Single forward walk emitting ring centers at each target distance
     // (dists is monotone by construction).
     let seg = 0;
-    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
+    for (let i = 1; i <= curveSegments; i++) {
       let d = dists[i];
       if (d > total) d = total;
       while (seg < count - 1 && cum[seg + 1] < d) seg++;
@@ -698,76 +860,148 @@ export class ProjectileRenderer3D {
     return drawnSpan;
   }
 
-  private writeProjectileCurvedConeTail(
+  private writePlasmaGeometry(
+    dynamic: DynamicPlasmaGeometry,
     slot: number,
-    radius: number,
+    bodyRadius: number,
+    tailRadius: number,
     drawnSpan: number,
   ): void {
-    // tailCenterline and tailRingDist were just filled by
-    // resampleTrailCenterline: vertex 0 is the live head, vertices 1..N
-    // are resampled history points at known arc distances behind it.
-    // The radius tapers linearly in arc length so the tube thickness at
-    // a world point never depends on which ring currently samples it,
-    // and the final ring (at the span end) always closes to zero.
+    // One continuous surface replaces the old overlapping sphere + open
+    // cone. The front apex and shoulder make the plasma ball; the same
+    // indexed surface then tapers through the resampled trail to one tail
+    // vertex, so there are no hidden sphere or cone-cap triangles.
+    const spec = dynamic.spec;
     const centerline = this.tailCenterline;
     const dists = this.tailRingDist;
     const invSpan = drawnSpan > 1e-4 ? 1 / drawnSpan : 0;
+    const positions = dynamic.positions;
+    const vertexBase = slot * spec.verticesPerShot;
+    const headX = centerline[0];
+    const headY = centerline[2];
+    const headZ = centerline[1];
 
-    const positions = this.curvedCone.positions;
-    const normals = this.curvedCone.normals;
-    const vertexBase = slot * CURVED_CONE_VERTS_PER_TAIL;
-    for (let segment = 0; segment <= CURVED_CONE_CURVE_SEGMENTS; segment++) {
+    let tanX = centerline[3] - centerline[0];
+    let tanY = centerline[4] - centerline[1];
+    let tanZ = centerline[5] - centerline[2];
+    if (tanX * tanX + tanY * tanY + tanZ * tanZ < TRAIL_MIN_TANGENT_SQ) {
+      // projDir is already in THREE coordinates; map it back to sim order
+      // because setCurveBasis performs the sim -> THREE axis conversion.
+      tanX = this.projDir.x;
+      tanY = this.projDir.z;
+      tanZ = this.projDir.y;
+    }
+    this.setCurveBasis(tanX, tanY, tanZ, true);
+
+    this.writePlasmaVertex(
+      positions,
+      vertexBase,
+      headX - this.curveTangent.x * bodyRadius,
+      headY - this.curveTangent.y * bodyRadius,
+      headZ - this.curveTangent.z * bodyRadius,
+    );
+    let ringVertex = vertexBase + 1;
+    this.writePlasmaRing(
+      positions,
+      ringVertex,
+      spec,
+      headX - this.curveTangent.x * bodyRadius * 0.45,
+      headY - this.curveTangent.y * bodyRadius * 0.45,
+      headZ - this.curveTangent.z * bodyRadius * 0.45,
+      bodyRadius * 0.9,
+    );
+    ringVertex += spec.radialSegments;
+    this.writePlasmaRing(
+      positions,
+      ringVertex,
+      spec,
+      headX,
+      headY,
+      headZ,
+      bodyRadius,
+    );
+    ringVertex += spec.radialSegments;
+
+    for (let segment = 1; segment < spec.curveSegments; segment++) {
       const ci = segment * 3;
       const px = centerline[ci];
       const py = centerline[ci + 1];
       const pz = centerline[ci + 2];
 
-      // Tangent via centered difference (forward at the head, backward
-      // at the tail end). Direction sign doesn't matter — setCurveBasis
-      // only uses it to build an orthonormal frame for the ring.
-      let tanX: number, tanY: number, tanZ: number;
-      if (segment === 0) {
-        tanX = centerline[3] - px;
-        tanY = centerline[4] - py;
-        tanZ = centerline[5] - pz;
-      } else if (segment === CURVED_CONE_CURVE_SEGMENTS) {
-        const pi = (segment - 1) * 3;
-        tanX = px - centerline[pi];
-        tanY = py - centerline[pi + 1];
-        tanZ = pz - centerline[pi + 2];
-      } else {
-        const ni = (segment + 1) * 3;
-        const pi = (segment - 1) * 3;
-        tanX = centerline[ni] - centerline[pi];
-        tanY = centerline[ni + 1] - centerline[pi + 1];
-        tanZ = centerline[ni + 2] - centerline[pi + 2];
-      }
+      const ni = (segment + 1) * 3;
+      const pi = (segment - 1) * 3;
+      tanX = centerline[ni] - centerline[pi];
+      tanY = centerline[ni + 1] - centerline[pi + 1];
+      tanZ = centerline[ni + 2] - centerline[pi + 2];
       if (tanX * tanX + tanY * tanY + tanZ * tanZ < TRAIL_MIN_TANGENT_SQ) {
-        // Padded collapsed tail — fall back to a stable axis so we don't
-        // emit NaN rings.
-        tanX = 0; tanY = 0; tanZ = 1;
+        tanX = this.projDir.x;
+        tanY = this.projDir.z;
+        tanZ = this.projDir.y;
       }
-      this.setCurveBasis(tanX, tanY, tanZ, segment === 0);
+      this.setCurveBasis(tanX, tanY, tanZ, false);
 
       const ringRadius = invSpan > 0
-        ? radius * (1 - dists[segment] * invSpan)
+        ? tailRadius * (1 - dists[segment] * invSpan)
         : 0;
-      for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
-        const normalX = this.curveRight.x * CURVED_CONE_COS[radial] +
-          this.curveUp.x * CURVED_CONE_SIN[radial];
-        const normalY = this.curveRight.y * CURVED_CONE_COS[radial] +
-          this.curveUp.y * CURVED_CONE_SIN[radial];
-        const normalZ = this.curveRight.z * CURVED_CONE_COS[radial] +
-          this.curveUp.z * CURVED_CONE_SIN[radial];
-        const out = (vertexBase + segment * CURVED_CONE_RADIAL_SEGMENTS + radial) * 3;
-        positions[out] = px + normalX * ringRadius;
-        positions[out + 1] = pz + normalY * ringRadius;
-        positions[out + 2] = py + normalZ * ringRadius;
-        normals[out] = normalX;
-        normals[out + 1] = normalY;
-        normals[out + 2] = normalZ;
-      }
+      this.writePlasmaRing(
+        positions,
+        ringVertex,
+        spec,
+        px,
+        pz,
+        py,
+        ringRadius,
+      );
+      ringVertex += spec.radialSegments;
     }
+
+    const tailOffset = spec.curveSegments * 3;
+    this.writePlasmaVertex(
+      positions,
+      vertexBase + spec.verticesPerShot - 1,
+      centerline[tailOffset],
+      centerline[tailOffset + 2],
+      centerline[tailOffset + 1],
+    );
+  }
+
+  private writePlasmaRing(
+    positions: Float32Array,
+    vertexStart: number,
+    spec: PlasmaGeometrySpec,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+  ): void {
+    for (let radial = 0; radial < spec.radialSegments; radial++) {
+      const normalX = this.curveRight.x * spec.cos[radial] +
+        this.curveUp.x * spec.sin[radial];
+      const normalY = this.curveRight.y * spec.cos[radial] +
+        this.curveUp.y * spec.sin[radial];
+      const normalZ = this.curveRight.z * spec.cos[radial] +
+        this.curveUp.z * spec.sin[radial];
+      this.writePlasmaVertex(
+        positions,
+        vertexStart + radial,
+        centerX + normalX * radius,
+        centerY + normalY * radius,
+        centerZ + normalZ * radius,
+      );
+    }
+  }
+
+  private writePlasmaVertex(
+    positions: Float32Array,
+    vertex: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
+    const out = vertex * 3;
+    positions[out] = x;
+    positions[out + 1] = y;
+    positions[out + 2] = z;
   }
 
   private setCurveBasis(
@@ -811,24 +1045,25 @@ export class ProjectileRenderer3D {
     this.curveUp.crossVectors(t, this.curveRight).normalize();
   }
 
-  private flushCurvedConeGeometry(count: number): void {
-    setObjectVisibleIfChanged(this.curvedConeMesh, count > 0);
-    const drawCount = count * CURVED_CONE_INDICES_PER_TAIL;
+  private flushPlasmaGeometry(
+    dynamic: DynamicPlasmaGeometry,
+    mesh: THREE.Mesh,
+    count: number,
+  ): void {
+    setObjectVisibleIfChanged(mesh, count > 0);
+    const drawCount = count * dynamic.spec.indicesPerShot;
     if (
-      this.curvedCone.geometry.drawRange.start !== 0 ||
-      this.curvedCone.geometry.drawRange.count !== drawCount
+      dynamic.geometry.drawRange.start !== 0 ||
+      dynamic.geometry.drawRange.count !== drawCount
     ) {
-      this.curvedCone.geometry.setDrawRange(0, drawCount);
+      dynamic.geometry.setDrawRange(0, drawCount);
     }
     if (count <= 0) return;
 
-    const updatedComponents = count * CURVED_CONE_VERTS_PER_TAIL * 3;
-    this.curvedCone.positionAttr.clearUpdateRanges();
-    this.curvedCone.positionAttr.addUpdateRange(0, updatedComponents);
-    this.curvedCone.positionAttr.needsUpdate = true;
-    this.curvedCone.normalAttr.clearUpdateRanges();
-    this.curvedCone.normalAttr.addUpdateRange(0, updatedComponents);
-    this.curvedCone.normalAttr.needsUpdate = true;
+    const updatedComponents = count * dynamic.spec.verticesPerShot * 3;
+    dynamic.positionAttr.clearUpdateRanges();
+    dynamic.positionAttr.addUpdateRange(0, updatedComponents);
+    dynamic.positionAttr.needsUpdate = true;
   }
 
   private composeProjectileFinPose(
@@ -1036,18 +1271,29 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
   return geom;
 }
 
-function createProjectileCurvedConeGeometry(capacity: number): DynamicCurvedConeGeometry {
-  const positions = new Float32Array(capacity * CURVED_CONE_VERTS_PER_TAIL * 3);
-  const normals = new Float32Array(capacity * CURVED_CONE_VERTS_PER_TAIL * 3);
-  const indices = new Uint32Array(capacity * CURVED_CONE_INDICES_PER_TAIL);
+function createDynamicPlasmaGeometry(
+  capacity: number,
+  spec: PlasmaGeometrySpec,
+): DynamicPlasmaGeometry {
+  const positions = new Float32Array(capacity * spec.verticesPerShot * 3);
+  const indices = new Uint32Array(capacity * spec.indicesPerShot);
   for (let slot = 0; slot < capacity; slot++) {
-    const vertexBase = slot * CURVED_CONE_VERTS_PER_TAIL;
-    let indexOut = slot * CURVED_CONE_INDICES_PER_TAIL;
-    for (let segment = 0; segment < CURVED_CONE_CURVE_SEGMENTS; segment++) {
-      const ringA = vertexBase + segment * CURVED_CONE_RADIAL_SEGMENTS;
-      const ringB = ringA + CURVED_CONE_RADIAL_SEGMENTS;
-      for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
-        const next = (radial + 1) % CURVED_CONE_RADIAL_SEGMENTS;
+    const vertexBase = slot * spec.verticesPerShot;
+    const nose = vertexBase;
+    const firstRing = vertexBase + 1;
+    const tail = vertexBase + spec.verticesPerShot - 1;
+    let indexOut = slot * spec.indicesPerShot;
+    for (let radial = 0; radial < spec.radialSegments; radial++) {
+      const next = (radial + 1) % spec.radialSegments;
+      indices[indexOut++] = nose;
+      indices[indexOut++] = firstRing + radial;
+      indices[indexOut++] = firstRing + next;
+    }
+    for (let ring = 0; ring < spec.ringCount - 1; ring++) {
+      const ringA = firstRing + ring * spec.radialSegments;
+      const ringB = ringA + spec.radialSegments;
+      for (let radial = 0; radial < spec.radialSegments; radial++) {
+        const next = (radial + 1) % spec.radialSegments;
         const a = ringA + radial;
         const b = ringB + radial;
         const c = ringB + next;
@@ -1060,14 +1306,37 @@ function createProjectileCurvedConeGeometry(capacity: number): DynamicCurvedCone
         indices[indexOut++] = d;
       }
     }
+    const lastRing = firstRing + (spec.ringCount - 1) * spec.radialSegments;
+    for (let radial = 0; radial < spec.radialSegments; radial++) {
+      const next = (radial + 1) % spec.radialSegments;
+      indices[indexOut++] = lastRing + radial;
+      indices[indexOut++] = tail;
+      indices[indexOut++] = lastRing + next;
+    }
   }
 
   const geometry = new THREE.BufferGeometry();
   const positionAttr = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
-  const normalAttr = new THREE.BufferAttribute(normals, 3).setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('position', positionAttr);
-  geometry.setAttribute('normal', normalAttr);
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.setDrawRange(0, 0);
-  return { geometry, positions, normals, positionAttr, normalAttr };
+  return { spec, geometry, positions, positionAttr };
+}
+
+/** Four triangles total: one equilateral front face and three long faces
+ *  meeting at the rear tail point. Local +Y is the projectile rearward
+ *  axis; the caller scales Y to the authored plasma-tail length. */
+function createLowResolutionPlasmaGeometry(): THREE.BufferGeometry {
+  const halfSqrt3 = Math.sqrt(3) * 0.5;
+  const positions = new Float32Array([
+    0, -0.5, 1,
+    halfSqrt3, -0.5, -0.5,
+    -halfSqrt3, -0.5, -0.5,
+    0, 0.5, 0,
+  ]);
+  const indices = new Uint16Array(PLASMA_LOW_INDICES);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  return geometry;
 }

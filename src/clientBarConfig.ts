@@ -51,7 +51,7 @@ export type FogShadePresentationSettings = {
 // The TS shim re-exports CLIENT_CONFIG as a typed view over the JSON.
 // One field needs a cross-config reference: `cameraFov.default` reads
 // from CAMERA_FOV_DEGREES in config.ts so the canonical FOV stays in
-// one place and the bar inherits it.
+// one place and the client settings inherit it.
 
 type OptionList<T> = ReadonlyArray<{ value: T; label: string }>;
 const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as GraphicsConfig;
@@ -264,6 +264,7 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.selectionHudMode,
     options: clientBarConfig.selectionHudMode.options as OptionList<SelectionHudMode>,
   },
+  telemetryBudgets: { ...clientBarConfig.telemetryBudgets },
 } satisfies ClientBarConfig;
 
 // ── Constant arrays ──

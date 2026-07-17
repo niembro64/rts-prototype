@@ -62,12 +62,16 @@ type LocomotionMediumDefaults = Record<
   { resistance: { linearFriction: number } }
 >;
 
+export const SURFACE_LIFT_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
+export type SurfaceLiftProbeAggregationMode =
+  (typeof SURFACE_LIFT_PROBE_AGGREGATION_MODES)[number];
+
 type UnitLocomotionConfig = {
   forceScale: number;
   surfaceLiftDefaults: {
-    referenceDistanceWorld: number;
     minimumDistanceWorld: number;
-    distanceExponent: number;
+    forceMultiplier: number;
+    probeAggregation: SurfaceLiftProbeAggregationMode;
   };
   mediumDefaults: LocomotionMediumDefaults;
   presets: Record<string, UnitLocomotionPresetConfig>;
@@ -98,6 +102,13 @@ function assertExactKeys(
       throw new Error(`Invalid unitLocomotionConfig.json: missing ${label}.${key}`);
     }
   }
+}
+
+function isSurfaceLiftProbeAggregationMode(
+  value: unknown,
+): value is SurfaceLiftProbeAggregationMode {
+  return typeof value === 'string' &&
+    (SURFACE_LIFT_PROBE_AGGREGATION_MODES as readonly string[]).includes(value);
 }
 
 function assertPropulsion(label: string, value: unknown): void {
@@ -257,22 +268,23 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
     throw new Error('Invalid unitLocomotionConfig.json: missing surfaceLiftDefaults config');
   }
   assertExactKeys('surfaceLiftDefaults', surfaceLiftDefaults as Record<string, unknown>, [
-    'referenceDistanceWorld',
     'minimumDistanceWorld',
-    'distanceExponent',
+    'forceMultiplier',
+    'probeAggregation',
   ]);
-  assertUnitLocomotionPositiveFinite(
-    'surfaceLiftDefaults.referenceDistanceWorld',
-    surfaceLiftDefaults.referenceDistanceWorld,
-  );
   assertUnitLocomotionPositiveFinite(
     'surfaceLiftDefaults.minimumDistanceWorld',
     surfaceLiftDefaults.minimumDistanceWorld,
   );
-  const exponent = surfaceLiftDefaults.distanceExponent ?? NaN;
-  if (!Number.isFinite(exponent) || exponent <= 0 || exponent > 1) {
+  assertUnitLocomotionPositiveFinite(
+    'surfaceLiftDefaults.forceMultiplier',
+    surfaceLiftDefaults.forceMultiplier,
+  );
+  const probeAggregation = surfaceLiftDefaults.probeAggregation;
+  if (!isSurfaceLiftProbeAggregationMode(probeAggregation)) {
     throw new Error(
-      `Invalid unit locomotion surfaceLiftDefaults.distanceExponent: expected finite in (0, 1], got ${exponent}`,
+      'Invalid unit locomotion surfaceLiftDefaults.probeAggregation: expected ' +
+        `${SURFACE_LIFT_PROBE_AGGREGATION_MODES.join(', ')}, got ${String(probeAggregation)}`,
     );
   }
   const mediumDefaults = config.mediumDefaults;
@@ -299,9 +311,9 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
   return {
     forceScale: config.forceScale!,
     surfaceLiftDefaults: {
-      referenceDistanceWorld: surfaceLiftDefaults.referenceDistanceWorld,
       minimumDistanceWorld: surfaceLiftDefaults.minimumDistanceWorld,
-      distanceExponent: exponent,
+      forceMultiplier: surfaceLiftDefaults.forceMultiplier,
+      probeAggregation,
     },
     mediumDefaults: mediumDefaults as LocomotionMediumDefaults,
     presets,
@@ -311,12 +323,12 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
 const UNIT_LOCOMOTION_CONFIG = readUnitLocomotionConfig();
 
 export const UNIT_LOCOMOTION_FORCE_SCALE = UNIT_LOCOMOTION_CONFIG.forceScale;
-export const SURFACE_LIFT_REFERENCE_DISTANCE_WORLD =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.referenceDistanceWorld;
 export const SURFACE_LIFT_MINIMUM_DISTANCE_WORLD =
   UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.minimumDistanceWorld;
-export const SURFACE_LIFT_DISTANCE_EXPONENT =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.distanceExponent;
+export const SURFACE_LIFT_FORCE_MULTIPLIER =
+  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.forceMultiplier;
+export const SURFACE_LIFT_PROBE_AGGREGATION_MODE =
+  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.probeAggregation;
 
 export const UNIT_LOCOMOTION_FRICTION_BY_MEDIUM: Readonly<Record<UnitLocomotionMediumName, number>> =
   Object.freeze(Object.fromEntries(

@@ -1,6 +1,7 @@
 import { getCameraFollowMode, getCameraSmoothMode } from '@/clientBarConfig';
 import {
   CAMERA_BATTLE_DEFAULTS,
+  CAMERA_SMOOTH_TAU_SECONDS,
   type CameraBattleKind,
   type CameraBattleFocus,
 } from '../../../config';
@@ -172,13 +173,7 @@ export class RtsScene3DCameraFramingSystem {
   }
 
   private cameraSmoothTauSec(): number {
-    switch (getCameraSmoothMode()) {
-      case 'fast': return 0.05;
-      case 'mid': return 0.12;
-      case 'slow': return 0.4;
-      case 'snap':
-      default: return 0;
-    }
+    return CAMERA_SMOOTH_TAU_SECONDS[getCameraSmoothMode()];
   }
 
   private povYawForLocalSeat(): number {

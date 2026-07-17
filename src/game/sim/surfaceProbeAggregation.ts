@@ -1,3 +1,5 @@
+import type { SurfaceLiftProbeAggregationMode } from './unitLocomotionPresetConfig';
+
 /** Air lift uses exactly one supporting surface source at each probe. */
 export function surfaceProbeUsesWaterSurface(
   terrainBedZ: number,
@@ -7,19 +9,23 @@ export function surfaceProbeUsesWaterSurface(
 }
 
 /** Aggregates force proposals after each probe has already applied its
- * source-specific authored force. The arithmetic mean is deliberately
- * hardcoded to preserve the original multi-probe lift behavior. */
+ * source-specific authored force. Average mode is the arithmetic mean; max
+ * mode preserves strict strongest-probe authority. */
 export function accumulateSurfaceProbeProposedForce(
   aggregate: number,
   proposedForce: number,
+  mode: SurfaceLiftProbeAggregationMode,
 ): number {
+  if (mode === 'max') return Math.max(aggregate, proposedForce);
   return aggregate + proposedForce;
 }
 
 export function finalizeSurfaceProbeProposedForce(
   aggregate: number,
   sampleCount: number,
+  mode: SurfaceLiftProbeAggregationMode,
 ): number {
   if (sampleCount <= 0) return 0;
+  if (mode === 'max') return aggregate;
   return aggregate / sampleCount;
 }

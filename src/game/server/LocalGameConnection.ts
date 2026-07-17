@@ -3,7 +3,7 @@
 import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
-import type { PlayerId } from '../sim/types';
+import type { EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
@@ -28,6 +28,7 @@ import type {
   PresentationFrameCallback,
   PresentationFrameEvent,
   PresentationFrameUnsubscribe,
+  SurfaceLiftProbeDebugFrame,
 } from '@/types/game';
 
 export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
@@ -366,6 +367,14 @@ export class LocalGameConnection implements GameConnection {
     };
   }
 
+  setSurfaceLiftProbeDebugEntityIds(entityIds: readonly EntityId[]): void {
+    this.server?.getLockstepSimulationCore().setSurfaceLiftProbeDebugEntityIds(entityIds);
+  }
+
+  getSurfaceLiftProbeDebugFrame(entityId: EntityId): SurfaceLiftProbeDebugFrame | undefined {
+    return this.server?.getLockstepSimulationCore().getSurfaceLiftProbeDebugFrame(entityId);
+  }
+
   private receivePresentationFrame(event: PresentationFrameEvent): void {
     const callback = this.presentationFrameCallback;
     if (callback !== null) {
@@ -388,6 +397,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   disconnect(): void {
+    this.server?.getLockstepSimulationCore().setSurfaceLiftProbeDebugEntityIds([]);
     const server = this.server;
     if (server === null) return;
     this.unsubscribePresentationSource();

@@ -2,7 +2,10 @@
 // TypeScript gathers entity/terrain inputs, the Rust/WASM batch owns the
 // per-unit force decisions and writes BodyPool acceleration directly.
 
-import { getSurfaceLiftDistanceResponse } from '../sim/surfaceLiftDistanceResponse';
+import {
+  getSurfaceLiftDistanceResponse,
+  getSurfaceLiftDistanceToSurfaceWorld,
+} from '../sim/surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../sim/surfaceLiftGroundSupport';
 import {
   accumulateSurfaceProbeProposedForce,
@@ -11,9 +14,9 @@ import {
 } from '../sim/surfaceProbeAggregation';
 import {
   UNIT_LOCOMOTION_FORCE_SCALE,
-  SURFACE_LIFT_DISTANCE_EXPONENT,
+  SURFACE_LIFT_FORCE_MULTIPLIER,
   SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-  SURFACE_LIFT_REFERENCE_DISTANCE_WORLD,
+  SURFACE_LIFT_PROBE_AGGREGATION_MODE,
   getUnitLocomotionEffectiveFriction,
 } from '../sim/unitLocomotionPresetConfig';
 import {
@@ -30,6 +33,7 @@ import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
+import type { SurfaceLiftProbeDebugFrame } from '@/types/game';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import {
   UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
@@ -358,6 +362,8 @@ export class UnitForceSystem {
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
   private probeSupportIndexReady = false;
+  private readonly surfaceLiftProbeDebugEntityIds = new Set<EntityId>();
+  private readonly surfaceLiftProbeDebugFrames = new Map<EntityId, SurfaceLiftProbeDebugFrame>();
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
     this.world = world;
@@ -365,7 +371,22 @@ export class UnitForceSystem {
     this.physics = physics;
   }
 
+  setSurfaceLiftProbeDebugEntityIds(entityIds: readonly EntityId[]): void {
+    this.surfaceLiftProbeDebugEntityIds.clear();
+    for (let i = 0; i < entityIds.length; i++) {
+      this.surfaceLiftProbeDebugEntityIds.add(entityIds[i]);
+    }
+    if (entityIds.length === 0) this.surfaceLiftProbeDebugFrames.clear();
+  }
+
+  getSurfaceLiftProbeDebugFrame(entityId: EntityId): SurfaceLiftProbeDebugFrame | undefined {
+    return this.surfaceLiftProbeDebugFrames.get(entityId);
+  }
+
   applyForces(dtSec: number): void {
+    if (this.surfaceLiftProbeDebugEntityIds.size > 0) {
+      this.surfaceLiftProbeDebugFrames.clear();
+    }
     const sim = getSimWasm()!;
     ensureUnitForceProfileTable(sim);
     const fatalWaterCount = sim.unitFatalWaterStepPool(dtSec);
@@ -614,6 +635,16 @@ export class UnitForceSystem {
         mediumLiftActive &&
         (airGroundLiftAuthored || waterGroundLiftAuthored || airWaterSurfaceLiftAuthored)
       ) {
+        const debugFrame = this.surfaceLiftProbeDebugEntityIds.has(entity.id)
+          ? this.createSurfaceLiftProbeDebugFrame(entity.id)
+          : undefined;
+        const waterFraction = debugFrame !== undefined
+          ? sim.unitForceWaterFraction(bodyZ, bodyRadius)
+          : 0;
+        const airLiftMediumActive = debugFrame !== undefined && waterFraction < 1 &&
+          (airGroundLiftAuthored || airWaterSurfaceLiftAuthored);
+        const waterLiftMediumActive = debugFrame !== undefined &&
+          waterFraction > 0 && waterGroundLiftAuthored;
         let probeDirX = 0;
         let probeDirY = 0;
         const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
@@ -631,7 +662,7 @@ export class UnitForceSystem {
           probeDirY = DMath.sin(yaw);
         }
 
-        this.sampleSurfaceLiftAverageProposedForces(
+        this.sampleSurfaceLiftAggregatedProposedForces(
           unit.locomotion.surfaceProbeSetId,
           bodyZ,
           bodyX,
@@ -645,7 +676,10 @@ export class UnitForceSystem {
           unit.locomotion.physics.air.lift.liftForceFromGroundSurface,
           unit.locomotion.physics.air.lift.liftForceFromWaterSurface,
           unit.locomotion.physics.water.lift.liftForceFromGroundSurface,
+          airLiftMediumActive,
+          waterLiftMediumActive,
           _surfaceLiftProposedForces,
+          debugFrame,
         );
         if (airGroundLiftAuthored || airWaterSurfaceLiftAuthored) {
           _forceRows[base + UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE] =
@@ -774,9 +808,8 @@ export class UnitForceSystem {
         UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
         UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
         UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
-        SURFACE_LIFT_REFERENCE_DISTANCE_WORLD,
         SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-        SURFACE_LIFT_DISTANCE_EXPONENT,
+        SURFACE_LIFT_FORCE_MULTIPLIER,
       );
     });
 
@@ -1014,17 +1047,22 @@ export class UnitForceSystem {
     bodyZ: number,
     surfaceZ: number,
   ): number {
-    if (!Number.isFinite(bodyZ) || !Number.isFinite(surfaceZ)) {
-      return getSurfaceLiftDistanceResponse(SURFACE_LIFT_MINIMUM_DISTANCE_WORLD);
-    }
-    const altitude = bodyZ - surfaceZ;
-    const clampedAltitude = Number.isFinite(altitude)
-      ? Math.max(SURFACE_LIFT_MINIMUM_DISTANCE_WORLD, altitude)
-      : SURFACE_LIFT_MINIMUM_DISTANCE_WORLD;
-    return getSurfaceLiftDistanceResponse(clampedAltitude);
+    return getSurfaceLiftDistanceResponse(
+      getSurfaceLiftDistanceToSurfaceWorld(bodyZ, surfaceZ),
+    );
   }
 
-  private sampleSurfaceLiftAverageProposedForces(
+  private createSurfaceLiftProbeDebugFrame(entityId: EntityId): SurfaceLiftProbeDebugFrame {
+    const frame: SurfaceLiftProbeDebugFrame = {
+      tick: this.world.getTick(),
+      entityId,
+      samples: [],
+    };
+    this.surfaceLiftProbeDebugFrames.set(entityId, frame);
+    return frame;
+  }
+
+  private sampleSurfaceLiftAggregatedProposedForces(
     probeSetId: SurfaceProbeSetId,
     bodyZ: number,
     bodyX: number,
@@ -1038,10 +1076,13 @@ export class UnitForceSystem {
     airLiftForceFromGroundSurface: number,
     airLiftForceFromWaterSurface: number,
     waterLiftForceFromGroundSurface: number,
+    airLiftMediumActive: boolean,
+    waterLiftMediumActive: boolean,
     out: { air: number; water: number },
+    debugFrame: SurfaceLiftProbeDebugFrame | undefined = undefined,
   ): void {
-    let airProposedForceSum = 0;
-    let waterProposedForceSum = 0;
+    let airProposedForceAggregate = 0;
+    let waterProposedForceAggregate = 0;
     const sampleCount = forEachSurfaceProbePoint(
       probeSetId,
       bodyX,
@@ -1057,15 +1098,35 @@ export class UnitForceSystem {
           this.world.getTerrainBedZ(x, y),
           WATER_LEVEL,
         );
+        if (debugFrame !== undefined) {
+          const usesGroundDistance =
+            (airLiftMediumActive && !waterCovered && airLiftForceFromGroundSurface > 0) ||
+            (waterLiftMediumActive && waterLiftForceFromGroundSurface > 0);
+          const usesWaterDistance =
+            airLiftMediumActive && waterCovered && airLiftForceFromWaterSurface > 0;
+          debugFrame.samples.push({
+            x,
+            y,
+            bodyZ,
+            role,
+            groundDistanceWorld: getSurfaceLiftDistanceToSurfaceWorld(bodyZ, groundZ),
+            usesGroundDistance,
+            waterDistanceWorld: waterCovered
+              ? getSurfaceLiftDistanceToSurfaceWorld(bodyZ, WATER_LEVEL)
+              : null,
+            usesWaterDistance,
+          });
+        }
         if (!waterCovered && airLiftForceFromGroundSurface > 0) {
           const forceMultiplier = this.surfaceLiftForceMultiplierFromSurfaceZ(
             bodyZ,
             groundZ,
           );
           const proposedForce = airLiftForceFromGroundSurface * forceMultiplier;
-          airProposedForceSum = accumulateSurfaceProbeProposedForce(
-            airProposedForceSum,
+          airProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+            airProposedForceAggregate,
             proposedForce,
+            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
           );
         }
         if (waterCovered && airLiftForceFromWaterSurface > 0) {
@@ -1074,9 +1135,10 @@ export class UnitForceSystem {
             WATER_LEVEL,
           );
           const proposedForce = airLiftForceFromWaterSurface * forceMultiplier;
-          airProposedForceSum = accumulateSurfaceProbeProposedForce(
-            airProposedForceSum,
+          airProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+            airProposedForceAggregate,
             proposedForce,
+            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
           );
         }
         if (waterLiftForceFromGroundSurface > 0) {
@@ -1085,9 +1147,10 @@ export class UnitForceSystem {
             groundZ,
           );
           const proposedForce = waterLiftForceFromGroundSurface * forceMultiplier;
-          waterProposedForceSum = accumulateSurfaceProbeProposedForce(
-            waterProposedForceSum,
+          waterProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+            waterProposedForceAggregate,
             proposedForce,
+            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
           );
         }
       },
@@ -1117,12 +1180,14 @@ export class UnitForceSystem {
       return;
     }
     out.air = finalizeSurfaceProbeProposedForce(
-      airProposedForceSum,
+      airProposedForceAggregate,
       sampleCount,
+      SURFACE_LIFT_PROBE_AGGREGATION_MODE,
     );
     out.water = finalizeSurfaceProbeProposedForce(
-      waterProposedForceSum,
+      waterProposedForceAggregate,
       sampleCount,
+      SURFACE_LIFT_PROBE_AGGREGATION_MODE,
     );
   }
 

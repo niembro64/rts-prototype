@@ -1,6 +1,6 @@
 // Top-level game types extracted from game/createGame.ts and server files
 
-import type { PlayerId } from './sim';
+import type { EntityId, PlayerId } from './sim';
 import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
@@ -93,6 +93,25 @@ export type PresentationFrameEvent = {
 export type PresentationFrameCallback = (event: PresentationFrameEvent) => void;
 export type PresentationFrameUnsubscribe = () => void;
 
+export type SurfaceLiftProbeDebugSample = {
+  x: number;
+  y: number;
+  bodyZ: number;
+  role: 'center' | 'forward' | 'side' | 'rear';
+  /** Exact clamped distance used by any ground/solid lift contribution. */
+  groundDistanceWorld: number;
+  usesGroundDistance: boolean;
+  /** Exact clamped distance used by air lift over exposed water. */
+  waterDistanceWorld: number | null;
+  usesWaterDistance: boolean;
+};
+
+export type SurfaceLiftProbeDebugFrame = {
+  tick: number;
+  entityId: EntityId;
+  samples: SurfaceLiftProbeDebugSample[];
+};
+
 export type GameConnection = {
   /** True for in-memory connections where the client scene and
    *  local server share process-level simulation singletons. */
@@ -103,6 +122,10 @@ export type GameConnection = {
   /** Same-process deterministic lockstep only. The motion data itself stays
    *  in Rust/WASM; this event advances the renderer's one shared alpha clock. */
   onPresentationFrame?(callback: PresentationFrameCallback): PresentationFrameUnsubscribe;
+  /** Same-process authoritative lift-probe diagnostics. The renderer supplies
+   *  only selected IDs so ordinary ticks do not allocate debug samples. */
+  setSurfaceLiftProbeDebugEntityIds?(entityIds: readonly EntityId[]): void;
+  getSurfaceLiftProbeDebugFrame?(entityId: EntityId): SurfaceLiftProbeDebugFrame | undefined;
   clearSnapshotCallback(): void;
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;

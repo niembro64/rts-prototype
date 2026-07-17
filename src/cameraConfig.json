@@ -1,5 +1,11 @@
 {
   "fovDegrees": 45,
+  "smoothingTauSeconds": {
+    "snap": 0.0,
+    "fast": 0.05,
+    "mid": 0.12,
+    "slow": 0.4
+  },
   "panMultiplier": 6.0,
   "worldPaddingPercent": 20.0,
   "zoom": {
