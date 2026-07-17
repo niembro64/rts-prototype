@@ -92,6 +92,41 @@ function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket
   return unitRows;
 }
 
+function collectShieldRenderPacket(
+  view: ClientViewState,
+  emissionFarLod: boolean,
+): ShieldRenderPacket3D {
+  const shields = new ShieldRenderPacket3D();
+  view.prepareRenderEntityPackets3D(
+    {
+      unitRows: new UnitRenderPacket3D(),
+      buildingRows: new BuildingRenderPacket3D(),
+      bodyHud: new BodyHudRenderPacket3D(),
+      shields,
+      pieceNames: new PieceNameRenderPacket3D(),
+      contactShadows: new ContactShadowRenderPacket3D(),
+      groundPrints: new GroundPrintRenderPacket3D(),
+    },
+    {
+      renderScope: new ViewportFootprint(),
+      includeBodyHud: false,
+      includeBodyNames: false,
+      includeShields: true,
+      includeContactShadows: false,
+      includeGroundPrints: false,
+      hoveredEntity: null,
+      scopedUnitsOut: [],
+      scopedBuildingsOut: [],
+      selectionHudMode: 'whenNotFull',
+      getEntityHudToggle: () => false,
+      lookupPlayerName: () => null,
+      getGroundPrintLocomotionMesh: () => undefined,
+      isEntityEmissionFarLod: () => emissionFarLod,
+    },
+  );
+  return shields;
+}
+
 function setUnitSourceRotation(
   entity: {
     transform: { rotation: number };
@@ -119,6 +154,46 @@ const FLAT_SUPPORT: WorldSupportSurface = {
   walkable: true,
   sourceKey: 0,
 };
+
+export function runShieldFarLodRenderPacketContractTest(): void {
+  const shieldSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => 406,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    0,
+    0,
+    1 as PlayerId,
+    'unitDaddy',
+    { allocateSubEntityIds: false },
+  );
+  const shieldTurret = shieldSource.combat?.turrets.find((turret) =>
+    turret.config.shot?.type === 'shield' && turret.config.shot.barrier !== undefined);
+  if (shieldTurret === undefined) {
+    throw new Error('[client snapshot applier contract] shield fixture requires a shield turret');
+  }
+  shieldTurret.shield = { transition: 1, range: 1, onTimeMs: 100 };
+  resetEntitySnapshotPool();
+  const serializedShieldSource = serializeEntitySnapshot(
+    shieldSource,
+    undefined,
+    {} as WorldState,
+  );
+  resetEntitySnapshotPool();
+  if (serializedShieldSource === null) {
+    throw new Error('[client snapshot applier contract] shield fixture must serialize');
+  }
+  const shieldView = new ClientViewState();
+  shieldView.applyNetworkState(snapshot(1, [serializedShieldSource]));
+  assertContract(
+    collectShieldRenderPacket(shieldView, false).count === 1,
+    'active shield emits its render packet at near emission LOD',
+  );
+  assertContract(
+    collectShieldRenderPacket(shieldView, true).count === 1,
+    'active shield retains its render packet at far emission LOD',
+  );
+}
 
 function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
   return {
@@ -2387,4 +2462,7 @@ export function runClientSnapshotApplierContractTest(): void {
     'packed metadata-only turret rows must apply from decoded wire rows',
   );
   turretView.assertRenderEntityStateParity(400);
+  // This fixture allocates shared entity slots, so keep it last to avoid
+  // perturbing the legacy hot-motion assertions above.
+  runShieldFarLodRenderPacketContractTest();
 }

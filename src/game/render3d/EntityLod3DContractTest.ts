@@ -13,10 +13,16 @@ import {
   EntityLodState3D,
   entityLodProxyGlyph3D,
   entityUsesLowLodDistance3D,
+  plasmaEntityDetailLevelForView,
   simPositionUsesLowLodDistance3D,
 } from './EntityLod3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
-import { DETAIL_RUNG_FAR } from './EntityDetailLevel3D';
+import {
+  DETAIL_LEVEL_FULL,
+  DETAIL_LEVEL_GLYPH,
+  DETAIL_RUNG_FAR,
+  PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+} from './EntityDetailLevel3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -183,6 +189,34 @@ export function runEntityLod3DContractTest(): void {
     assertContract(
       entityLodProxyGlyph3D(commanderUnit) === ENTITY_LOD_PROXY_GLYPH_CROSS,
       'commander units take precedence over builder proxy glyphs',
+    );
+
+    const referencePlasma = entityAt(401, 0, -900, 0);
+    const fiveTimesPlasma = entityAt(402, 0, -4500, 0);
+    setLodMode('auto');
+    const referencePlasmaLevel = plasmaEntityDetailLevelForView(
+      viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+    );
+    const fiveTimesPlasmaLevel = plasmaEntityDetailLevelForView(
+      viewAt(camera), fiveTimesPlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5,
+    );
+    assertContract(
+      Math.abs(referencePlasmaLevel - fiveTimesPlasmaLevel) < 1e-12,
+      'five-times-longer plasma reaches the same geometry LOD five times farther away',
+    );
+    setLodMode('high');
+    assertContract(
+      plasmaEntityDetailLevelForView(
+        viewAt(camera), fiveTimesPlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5,
+      ) === DETAIL_LEVEL_FULL,
+      'manual HIGH still pins every plasma size to High geometry',
+    );
+    setLodMode('low');
+    assertContract(
+      plasmaEntityDetailLevelForView(
+        viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+      ) === DETAIL_LEVEL_GLYPH,
+      'manual LOW still pins every plasma size to Low geometry',
     );
 
     const structure = entityAt(306, 0, 0, 0);

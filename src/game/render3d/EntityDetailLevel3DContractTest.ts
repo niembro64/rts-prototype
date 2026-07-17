@@ -8,10 +8,12 @@ import {
   DETAIL_RUNG_MID,
   PLASMA_DETAIL_HYSTERESIS_LEVEL,
   PLASMA_HIGH_RUNG_MIN_LEVEL,
+  PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
   PLASMA_MEDIUM_RUNG_MIN_LEVEL,
   beamStyleForDetail,
   debrisSpawnScaleForDetail,
   detailLevelForRung,
+  detailLevelForRadiusDistance,
   detailLevelForScreenRadius,
   detailRungForLevel,
   detailRungMinLevel,
@@ -23,6 +25,8 @@ import {
   legStyleForDetail,
   plasmaDetailRungForLevel,
   plasmaDetailRungWithHysteresis,
+  plasmaDetailRadiusForTailLength,
+  plasmaLodDistanceScaleForTailLength,
   projectileStyleForDetail,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
@@ -221,6 +225,36 @@ export function runEntityDetailLevel3DContractTest(): void {
       PLASMA_MEDIUM_RUNG_MIN_LEVEL + PLASMA_DETAIL_HYSTERESIS_LEVEL * 1.5,
     ) === DETAIL_RUNG_MID,
     'plasma low upgrades only after clearing the medium margin',
+  );
+
+  // Plasma size scaling follows projected angular size: screen size is
+  // proportional to world size / distance, so a K-times-longer tail reaches
+  // the same LOD threshold at K times the camera distance.
+  assertContract(
+    plasmaLodDistanceScaleForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD) === 1,
+    'smallest plasma tail retains the existing transition distances exactly',
+  );
+  assertContract(
+    plasmaLodDistanceScaleForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5) === 5,
+    'five-times-longer plasma holds each geometry tier five times farther away',
+  );
+  const referenceDistance = 900;
+  const largeScale = 5;
+  const referencePlasmaLevel = detailLevelForRadiusDistance(
+    plasmaDetailRadiusForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD),
+    referenceDistance,
+    fov,
+  );
+  const largePlasmaLevel = detailLevelForRadiusDistance(
+    plasmaDetailRadiusForTailLength(
+      PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * largeScale,
+    ),
+    referenceDistance * largeScale,
+    fov,
+  );
+  assertContract(
+    Math.abs(referencePlasmaLevel - largePlasmaLevel) < 1e-12,
+    'equal angular tail sizes resolve the same continuous plasma detail level',
   );
 
   // ── Features: monotonic ladder, all-on at full, all-off at glyph ──

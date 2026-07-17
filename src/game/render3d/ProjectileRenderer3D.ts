@@ -22,7 +22,10 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
-import { entityDetailLevelForView } from './EntityLod3D';
+import {
+  entityDetailLevelForView,
+  plasmaEntityDetailLevelForView,
+} from './EntityLod3D';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
@@ -509,24 +512,26 @@ export class ProjectileRenderer3D {
 
       const shotProfile = e.projectile?.config.shotProfile;
       const visualProfile = shotProfile?.visual;
-      const detailLevel = entityDetailLevelForView(frameState.view, e);
+      const radius = shotProfile?.runtime.radius.other ?? 4;
+      const visualRadius = radius;
+      const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
+      const isPlasma = shotProfile?.runtime.type === 'plasma';
+      const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
+      const detailLevel = isPlasma
+        ? plasmaEntityDetailLevelForView(frameState.view, e, tailLength)
+        : entityDetailLevelForView(frameState.view, e);
       const projectileStyle = projectileStyleForDetail(
         detailLevel,
         frameState.gfx.projectileStyle,
       );
       const drawProjectileTail = projectileStyle !== 'dot' && projectileStyle !== 'core';
       const drawProjectileFins = projectileStyle === 'full';
-      const radius = shotProfile?.runtime.radius.other ?? 4;
-      const visualRadius = radius;
-      const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
-      const isPlasma = shotProfile?.runtime.type === 'plasma';
       const emissionFarLod = this.isEntityEmissionFarLod(e);
 
       // Every projectile owns real Low geometry. The legacy emission gate
       // now forces that rung instead of making rockets/missiles disappear.
 
       if (isPlasma && proj) {
-        const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
         const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
         this.composeProjectileTailPose(
           projectileAxisOutput,
@@ -590,7 +595,6 @@ export class ProjectileRenderer3D {
         ? visualProfile?.projectileTailShape ?? 'cone'
         : 'none';
       const finSizeMult = visualProfile?.projectileFinSizeMult ?? 0;
-      const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
       const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
       this.composeProjectileTailPose(
         projectileAxisOutput,

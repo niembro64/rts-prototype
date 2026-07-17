@@ -427,6 +427,10 @@ pub(crate) fn combat_targeting_apply_priority_target_fsm_idx(
         || los_clear == 0
         || ballistic_clear == 0
         || shield_clear == 0
+        || !combat_targeting_range_volume_allows_target_domain(
+            combat_targeting_turret_range_volume(pool, idx),
+            target,
+        )
     {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;

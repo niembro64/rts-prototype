@@ -97,12 +97,20 @@ export function runShotLocomotionContractTest(): void {
     'powered torpedo targeting must not use the unpowered ballistic solver',
   );
   assertContract(
-    torpedoLocomotion.transitions.exitWater === 'continueBallistic',
-    'torpedo must lose water engine authority rather than despawning when it breaches',
+    torpedoLocomotion.transitions.enterWater === 'continue',
+    'torpedo must cross from air into water without terminating',
   );
   assertContract(
-    torpedoLocomotion.terminal.expiry === 'despawn',
-    'torpedo expiry must preserve the previous non-detonating behavior',
+    torpedoLocomotion.transitions.exitWater === 'continueBallistic',
+    'torpedo must cross from water into air and lose engine authority without terminating',
+  );
+  assertContract(
+    torpedoLocomotion.maxLifespanMs === 10000,
+    'torpedo must use the same long ten-second lifetime as the guided rocket',
+  );
+  assertContract(
+    torpedoLocomotion.terminal.expiry === 'detonate',
+    'torpedo must detonate when its long lifetime expires',
   );
   assertContract(
     shotLocomotionPhysicsAppliesAtHeight(torpedoLocomotion, WATER_LEVEL - 1, WATER_LEVEL),

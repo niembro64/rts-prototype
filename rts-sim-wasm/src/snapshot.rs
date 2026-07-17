@@ -11456,6 +11456,133 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
+    pub(crate) fn top_water_and_bottom_unbounded_turret_only_targets_the_submerged_volume() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            TERRAIN_WATER_LEVEL - 10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED
+                    | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            TERRAIN_WATER_LEVEL + 3.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, -1, "a body fully above water must be rejected");
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+
+        reset_pools();
+        stamp_entity_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            TERRAIN_WATER_LEVEL - 10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED
+                    | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            202,
+            PLAYER_2,
+            20.0,
+            TERRAIN_WATER_LEVEL - 1000.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 202,
+            "the range volume must remain unbounded at depth"
+        );
+        assert_eq!(state, CT_TURRET_STATE_ENGAGED);
+    }
+
+    #[test]
+    pub(crate) fn top_water_range_volume_rejects_an_above_water_priority_target() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity_with_host_lockon_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            TERRAIN_WATER_LEVEL - 10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            201,
+            REL_ALL,
+            FAM_ALL,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED
+                    | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            TERRAIN_WATER_LEVEL + 3.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_PRIORITY_TARGET);
+        assert_eq!(
+            target_id, -1,
+            "an attack order must not bypass the water-surface ceiling"
+        );
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
     pub(crate) fn sphere_turret_range_rejects_targets_inside_cylinder_but_outside_sphere() {
         let _guard = lock_tests();
         reset_pools();

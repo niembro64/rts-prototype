@@ -1054,7 +1054,7 @@
     "turretBlueprintId": "turretTorpedo",
     "name": "Torpedo Launcher",
     "range": 900,
-    "rangeVolume": "turret-range-sphere",
+    "rangeVolume": "turret-range-top-water-and-bottom-unbounded",
     "cooldown": {
       "duration": 1800,
       "durationRandomness": 0.08

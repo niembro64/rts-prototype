@@ -2304,6 +2304,10 @@ export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
 export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
 export const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED = 1 << 9;
 export const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED = 1 << 10;
+/** Packed range-mode value: fixed water-surface ceiling with no depth floor.
+ *  Bit 10 by itself was intentionally unused; bits 9+10 remain the existing
+ *  fully-unbounded cylinder mode. */
+export const CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED = 1 << 10;
 export const CT_TURRET_CFG_RANGE_SPHERE = 1 << 11;
 export const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP = 1 << 12;
 export const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION = 1 << 13;

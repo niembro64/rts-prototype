@@ -311,9 +311,52 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
 }
 
+function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
+  resetTurretHostIntegrationState();
+  const world = new WorldState(manualTarget ? 6323 : 6324, 1024, 1024);
+  world.playerCount = 2;
+  const source = world.createUnitFromBlueprint(160, 160, 1 as PlayerId, 'unitOrca');
+  const target = world.createUnitFromBlueprint(360, 160, 2 as PlayerId, 'unitOrca');
+  source.transform.z = WATER_LEVEL - 10;
+  target.transform.z = WATER_LEVEL + getUnitBlueprint('unitOrca').radius.hitbox + 1;
+  world.addEntity(source);
+  world.addEntity(target);
+  spatialGrid.updateUnit(source);
+  spatialGrid.updateUnit(target);
+  if (source.combat === null) {
+    throw new Error('[turret host integration] Orca source must be armed');
+  }
+
+  const turret = source.combat.turrets[0];
+  assertContract(
+    turret.config.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
+    'Orca torpedo turret must use the authored water-ceiling range volume',
+  );
+  turret.config.requiresNonObstructedLineOfSight = false;
+  if (manualTarget) {
+    source.combat.priorityTargetId = target.id;
+    source.combat.priorityTargetPoint = null;
+  }
+
+  stampCombatTargetingPool(world);
+  updateTargetingAndFiringState(world, 50);
+  const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
+  assertContract(
+    readCombatTargetingTurretFsmInto(source, 0, targetingState),
+    'Orca torpedo turret must have authoritative targeting state',
+  );
+  assertContract(
+    targetingState.targetId === -1,
+    `Orca torpedo turret must reject an above-water enemy ${manualTarget ? 'attack order' : 'during auto-targeting'}`,
+  );
+  resetTurretHostIntegrationState();
+}
+
 export function runOrcaTargetingContractTest(): void {
   assertOrcaTargetsEnemyOrca(true);
   assertOrcaTargetsEnemyOrca(false);
+  assertOrcaRejectsEnemyAboveWater(true);
+  assertOrcaRejectsEnemyAboveWater(false);
 }
 
 export function runTurretHostIntegrationContractTest(): void {

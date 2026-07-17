@@ -9,7 +9,7 @@ import type { ResourceCost } from './economyTypes';
 import type { EntityId, PlayerId } from './entityTypes';
 import type { UnitSuspensionConfig } from './unitLocomotionTypes';
 
-export type TurretRangeVolume = 'turret-range-cylinder-normal' | 'turret-range-bottom-unbounded' | 'turret-range-top-and-bottom-unbounded' | 'turret-range-sphere';
+export type TurretRangeVolume = 'turret-range-cylinder-normal' | 'turret-range-bottom-unbounded' | 'turret-range-top-water-and-bottom-unbounded' | 'turret-range-top-and-bottom-unbounded' | 'turret-range-sphere';
 
 export type SensorCapabilityConfig = {
   fullSightRadius: number;

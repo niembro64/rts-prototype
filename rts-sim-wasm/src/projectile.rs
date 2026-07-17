@@ -1140,6 +1140,7 @@ const LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL: u32 = 0;
 const LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED: u32 = 1;
 const LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED: u32 = 2;
 const LINE_SHOT_RANGE_VOLUME_SPHERE: u32 = 3;
+const LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED: u32 = 4;
 
 #[inline]
 fn line_shot_distance_to_range_volume_inline(
@@ -1200,7 +1201,8 @@ fn line_shot_distance_to_range_volume_inline(
     let bottom_bounded = match range_volume {
         LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL => true,
         LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED
-        | LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED => false,
+        | LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED
+        | LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED => false,
         _ => false,
     };
     let mut best = f64::INFINITY;
@@ -1230,7 +1232,11 @@ fn line_shot_distance_to_range_volume_inline(
     if range_volume != LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED
         && uz > LINE_SHOT_RANGE_EPSILON
     {
-        let top_z = center_z + radius;
+        let top_z = if range_volume == LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED {
+            TERRAIN_WATER_LEVEL
+        } else {
+            center_z + radius
+        };
         let top_distance = (top_z - start_z) / uz;
         if top_distance >= 0.0 && top_distance.is_finite() {
             best = best.min(top_distance);
@@ -1677,6 +1683,37 @@ mod tests {
             LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED,
         );
         assert!(fully_unbounded.is_none());
+
+        let water_surface_cap = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            TERRAIN_WATER_LEVEL - 25.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            TERRAIN_WATER_LEVEL - 100.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED,
+        )
+        .unwrap();
+        assert_close(water_surface_cap, 25.0);
+
+        let water_depth_unbounded = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            TERRAIN_WATER_LEVEL - 25.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            TERRAIN_WATER_LEVEL - 100.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED,
+        );
+        assert!(water_depth_unbounded.is_none());
     }
 
     #[test]

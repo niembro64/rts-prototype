@@ -70,6 +70,7 @@ import {
   CT_TURRET_CFG_HAS_TRACKING_RANGE,
   CT_TURRET_CFG_HOST_DIRECTED,
   CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
+  CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
   CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
@@ -683,6 +684,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   switch (turret.config.rangeVolume) {
     case 'turret-range-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED;
+      break;
+    case 'turret-range-top-water-and-bottom-unbounded':
+      f |= CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED;
       break;
     case 'turret-range-top-and-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED | CT_TURRET_CFG_RANGE_TOP_UNBOUNDED;

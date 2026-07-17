@@ -3763,7 +3763,7 @@ export class ClientViewState {
           this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
         }
         if (options.includeShields) {
-          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, options, out);
+          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
         }
         if (options.includeContactShadows) {
           this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
@@ -3806,14 +3806,6 @@ export class ClientViewState {
         ) {
           this.pushBodyNamesForEntity3D(entity, options, out, unitRowSlots[i] ?? -1);
         }
-        if (
-          options.includeShields &&
-          entity.unit !== null &&
-          entity.combat !== null &&
-          !this.entityEmissionUsesFarLod3D(entity, options)
-        ) {
-          this.pushShieldUnit3D(entity, renderScope, out, unitRowSlots[i] ?? -1);
-        }
       }
       for (let i = 0; i < buildings.length; i++) {
         const entity = buildings[i];
@@ -3843,6 +3835,13 @@ export class ClientViewState {
         !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options)
       ) {
         this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
+      }
+      if (options.includeShields) {
+        // Active shield fields are gameplay-readable geometry, not optional
+        // emissions. Gather them independently from the body LOD list so a
+        // field survives every distance rung and remains present when its
+        // host is just outside the viewport but the barrier overlaps it.
+        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
       }
       if (options.includeContactShadows) {
         this.populateContactShadowPacket3D(
@@ -4498,13 +4497,13 @@ export class ClientViewState {
   private populateShieldPacket3D(
     units: readonly Entity[],
     renderScope: ViewportFootprint,
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      if (!this.entityEmissionUsesFarLod3D(units[i], options)) {
-        this.pushShieldUnit3D(units[i], renderScope, out);
-      }
+      // Never apply the generic far-emission cutoff here. ShieldRenderPacket3D
+      // performs barrier-radius scope culling and ShieldRenderer3D selects a
+      // real High/Medium/Low surface for every packet row.
+      this.pushShieldUnit3D(units[i], renderScope, out);
     }
   }
 

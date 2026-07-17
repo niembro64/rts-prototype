@@ -57,6 +57,11 @@ pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u16 = 1 << 7;
 pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
 pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
 pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
+/// Packed range-mode value for a cylinder capped at the water surface and
+/// unbounded below. Bit 10 alone was previously unused; bits 9+10 retain the
+/// existing top-and-bottom-unbounded mode.
+#[allow(dead_code)]
+pub const CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED: u16 = 1 << 10;
 pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
 pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
 /// Shield-only emitters maintain force material and may keep targeting
@@ -3602,6 +3607,7 @@ pub(crate) fn combat_targeting_valid_range_target(
 pub(crate) struct CombatTargetingRangeVolume {
     pub(crate) bottom_unbounded: bool,
     pub(crate) top_unbounded: bool,
+    pub(crate) water_surface_ceiling: bool,
     pub(crate) sphere: bool,
 }
 
@@ -3611,6 +3617,7 @@ impl CombatTargetingRangeVolume {
         Self {
             bottom_unbounded: false,
             top_unbounded: false,
+            water_surface_ceiling: false,
             sphere: false,
         }
     }
@@ -3618,10 +3625,15 @@ impl CombatTargetingRangeVolume {
 
 #[inline]
 pub(crate) fn combat_targeting_range_volume_from_flags(flags: u16) -> CombatTargetingRangeVolume {
+    let bottom_bit = (flags & CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED) != 0;
+    let top_bit = (flags & CT_TURRET_CFG_RANGE_TOP_UNBOUNDED) != 0;
+    let sphere = (flags & CT_TURRET_CFG_RANGE_SPHERE) != 0;
+    let water_surface_ceiling = top_bit && !bottom_bit && !sphere;
     CombatTargetingRangeVolume {
-        bottom_unbounded: (flags & CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED) != 0,
-        top_unbounded: (flags & CT_TURRET_CFG_RANGE_TOP_UNBOUNDED) != 0,
-        sphere: (flags & CT_TURRET_CFG_RANGE_SPHERE) != 0,
+        bottom_unbounded: bottom_bit || water_surface_ceiling,
+        top_unbounded: bottom_bit && top_bit,
+        water_surface_ceiling,
+        sphere,
     }
 }
 
@@ -3651,6 +3663,14 @@ pub(crate) fn combat_targeting_target_nearest_distance_sq_to_mount(
 }
 
 #[inline]
+pub(crate) fn combat_targeting_range_volume_allows_target_domain(
+    volume: CombatTargetingRangeVolume,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    !volume.water_surface_ceiling || target.bottom_z <= TERRAIN_WATER_LEVEL
+}
+
+#[inline]
 pub(crate) fn combat_targeting_range_volume_contains(
     range: f64,
     mount_z: f64,
@@ -3665,8 +3685,13 @@ pub(crate) fn combat_targeting_range_volume_contains(
             <= range * range;
     }
     let horizontal_radius = range + target.horizontal_radius.max(0.0);
+    let below_top = if volume.water_surface_ceiling {
+        combat_targeting_range_volume_allows_target_domain(volume, target)
+    } else {
+        volume.top_unbounded || target.bottom_z <= mount_z + range
+    };
     target.horizontal_dist_sq <= horizontal_radius * horizontal_radius
-        && (volume.top_unbounded || target.bottom_z <= mount_z + range)
+        && below_top
         && (volume.bottom_unbounded || target.top_z >= mount_z - range)
 }
 
@@ -3687,11 +3712,13 @@ pub(crate) fn combat_targeting_min_range_prefers_target(
         return combat_targeting_target_nearest_distance_sq_to_mount(mount_z, target)
             >= min_range * min_range;
     }
-    if !volume.top_unbounded && target.bottom_z > mount_z + min_range {
-        return true;
-    }
-    if !volume.bottom_unbounded && target.top_z < mount_z - min_range {
-        return true;
+    if !volume.water_surface_ceiling {
+        if !volume.top_unbounded && target.bottom_z > mount_z + min_range {
+            return true;
+        }
+        if !volume.bottom_unbounded && target.top_z < mount_z - min_range {
+            return true;
+        }
     }
     let threshold = min_range - target.horizontal_radius.max(0.0);
     if threshold <= 0.0 {

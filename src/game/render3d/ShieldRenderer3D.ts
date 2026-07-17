@@ -1081,8 +1081,11 @@ export class ShieldRenderer3D {
         );
         writeHexAlphaToVector4(packet.color[row], alpha, this.implicitFieldStyle[cursor]);
         this._implicitFieldCursor++;
+        return;
       }
-      return;
+      // Uniform capacity is an optimization ceiling, never a visibility
+      // ceiling. Overflow fields continue below into their physical geometry
+      // path (already tiered down to Low at distance) instead of disappearing.
     }
 
     if (shape === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {

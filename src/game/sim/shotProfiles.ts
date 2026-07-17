@@ -15,7 +15,7 @@ import {
 import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
 import shotProfileConfig from './shotProfileConfig.json';
 
-const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
+export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
 const ROCKET_TAIL_LENGTH_MULT = shotProfileConfig.rocketTailLengthMult;
 const PROJECTILE_TAIL_RADIUS_MULT = shotProfileConfig.projectileTailRadiusMult;
 const ROCKET_FIN_SIZE_MULT = shotProfileConfig.rocketFinSizeMult;

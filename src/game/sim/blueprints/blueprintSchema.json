@@ -88,6 +88,7 @@
       "enum": [
         "turret-range-cylinder-normal",
         "turret-range-bottom-unbounded",
+        "turret-range-top-water-and-bottom-unbounded",
         "turret-range-top-and-bottom-unbounded",
         "turret-range-sphere"
       ]

@@ -36,6 +36,7 @@ pub type TurretRangeOverrides = BlueprintJsonValue;
 pub enum TurretRangeVolume {
     TurretRangeCylinderNormal,
     TurretRangeBottomUnbounded,
+    TurretRangeTopWaterAndBottomUnbounded,
     TurretRangeTopAndBottomUnbounded,
     TurretRangeSphere,
 }

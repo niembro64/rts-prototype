@@ -20,6 +20,7 @@ import {
   detailLevelForRung,
   detailRungForLevel,
   detailRungWithHysteresis,
+  plasmaDetailRadiusForTailLength,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
@@ -287,6 +288,29 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
   }
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
+    Math.sqrt(simPositionViewDistanceSq3D(
+      view,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+    )),
+    view.fovYRad,
+  );
+}
+
+/** Plasma-specific projected-detail level. In AUTO, its visual tail length
+ * scales the transition distance by the constant-angular-size law; manual
+ * HIGH/LOW modes retain their exact override behavior. */
+export function plasmaEntityDetailLevelForView(
+  view: RenderViewState3D,
+  entity: Entity,
+  tailLengthWorld: number,
+): number {
+  const lodMode = getLodMode();
+  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+  return detailLevelForRadiusDistance(
+    plasmaDetailRadiusForTailLength(tailLengthWorld),
     Math.sqrt(simPositionViewDistanceSq3D(
       view,
       entity.transform.x,

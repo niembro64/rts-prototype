@@ -21,6 +21,10 @@
       "high": 0.52,
       "hysteresis": 0.03
     },
+    "plasmaSizeScaling": {
+      "comment": "Constant-angular-size LOD law. The smallest authored plasma (radius 2 * tail multiplier 24) has a 48-world-unit tail and keeps the existing thresholds. Larger plasma transition distances scale linearly by actualTailLength/referenceTailLengthWorld.",
+      "referenceTailLengthWorld": 48
+    },
     "hysteresisLevel": 0.05,
     "rebuildBudgetPerFrame": {
       "units": 24,

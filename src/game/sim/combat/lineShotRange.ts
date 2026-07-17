@@ -13,6 +13,7 @@ const LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL = 0;
 const LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED = 1;
 const LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED = 2;
 const LINE_SHOT_RANGE_VOLUME_SPHERE = 3;
+const LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED = 4;
 
 function encodeLineShotRangeVolume(rangeVolume: TurretRangeVolume): number {
   switch (rangeVolume) {
@@ -20,6 +21,8 @@ function encodeLineShotRangeVolume(rangeVolume: TurretRangeVolume): number {
       return LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL;
     case 'turret-range-bottom-unbounded':
       return LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED;
+    case 'turret-range-top-water-and-bottom-unbounded':
+      return LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED;
     case 'turret-range-top-and-bottom-unbounded':
       return LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED;
     case 'turret-range-sphere':
@@ -58,4 +61,3 @@ export function distanceToRayConfigRangeCylinder(
   );
   return distance >= 0 ? distance : null;
 }
-

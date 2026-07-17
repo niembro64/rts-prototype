@@ -117,6 +117,9 @@ export const PLASMA_HIGH_RUNG_MIN_LEVEL = Math.max(
 export const PLASMA_DETAIL_HYSTERESIS_LEVEL = clamp01(
   finitePositiveOr(detailConfig.plasmaRungMinLevel?.hysteresis, 0.03),
 );
+export const PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD = finitePositiveOr(
+  detailConfig.plasmaSizeScaling?.referenceTailLengthWorld, 48,
+);
 export const DETAIL_HYSTERESIS_LEVEL = clamp01(
   finitePositiveOr(detailConfig.hysteresisLevel, 0.05));
 export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
@@ -250,6 +253,27 @@ export function detailLevelForRadiusDistance(
   return detailLevelForScreenRadius(
     detailScreenRadiusPx(radiusWorld, distance, fovYRad),
   );
+}
+
+/**
+ * Constant-angular-size scaling for plasma geometry LOD. Projected size is
+ * proportional to world size / camera distance, so preserving the same
+ * on-screen tail size moves every transition distance linearly with tail
+ * length. Values below the smallest authored reference never pull the current
+ * baseline transitions closer.
+ */
+export function plasmaLodDistanceScaleForTailLength(tailLengthWorld: number): number {
+  const tailLength = finitePositiveOr(
+    tailLengthWorld,
+    PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+  );
+  return Math.max(1, tailLength / PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD);
+}
+
+/** Effective detail radius whose projected size enforces the distance law. */
+export function plasmaDetailRadiusForTailLength(tailLengthWorld: number): number {
+  return DETAIL_RADIUS_FLOOR_PROJECTILE *
+    plasmaLodDistanceScaleForTailLength(tailLengthWorld);
 }
 
 /** Detail level for a bare sim position (effect events, smoke emitters)

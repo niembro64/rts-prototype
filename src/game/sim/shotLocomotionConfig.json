@@ -106,7 +106,7 @@
     },
     "guidedTorpedo": {
       "motionModel": "thrustGuided",
-      "maxLifespanMs": 9000,
+      "maxLifespanMs": 10000,
       "gravityForceMultiplier": 1,
       "guidanceDelayMs": 0,
       "media": {
@@ -115,7 +115,7 @@
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
-      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "despawn", "destroyed": "detonate", "reflectorImpact": "detonate" }
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     }
   }
 }
