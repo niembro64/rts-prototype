@@ -24,9 +24,9 @@ export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
 /** Main camera vertical field of view, in degrees. BAR hotkeys may adjust
  *  the configured value in 5-degree steps at runtime. */
 export type CameraFovDegrees = number;
-/** Renderer entity LOD policy. AUTO switches between HIGH and LOW at the
- *  configured camera distance. HIGH keeps full meshes. LOW forces proxies. */
-export type LodMode = 'auto' | 'high' | 'low';
+/** Renderer visual LOD policy. AUTO follows projected screen coverage.
+ *  HIGH, MEDIUM, and LOW freeze visuals at the matching authored rung. */
+export type LodMode = 'auto' | 'high' | 'medium' | 'low';
 /** Presentation-only treatment of the map/water boundary.
  *    infinity             — extend water and perimeter terrain to a fake horizon.
  *    floating-square      — cut off the real map and render water as a shallow

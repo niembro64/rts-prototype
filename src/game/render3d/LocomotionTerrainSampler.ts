@@ -8,7 +8,6 @@ import {
 } from '../sim/Terrain';
 import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
 import {
-  SUPPORT_SURFACE_CONTACT_EPSILON,
   createWorldSupportSurface,
   writeTerrainSupportSurface,
   type WorldSupportSurface,
@@ -24,7 +23,7 @@ export type LocomotionSurfaceNormal = {
   nz: number;
 };
 
-export type LocomotionFootSurfaceSample = LocomotionSurfaceNormal & {
+export type LocomotionFootSurfaceSample = {
   groundY: number;
   visualFootY: number;
 };
@@ -190,7 +189,6 @@ export function sampleLocomotionFootSurface(
   mapWidth: number,
   mapHeight: number,
   cylinderRadius: number,
-  footPadHalfHeight: number,
   clearance: number,
   ignoreEntityId?: EntityId | null,
   out?: LocomotionFootSurfaceSample,
@@ -199,22 +197,8 @@ export function sampleLocomotionFootSurface(
   const result = out ?? {
     groundY: 0,
     visualFootY: 0,
-    nx: 0,
-    ny: 0,
-    nz: 1,
   };
-  const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
-  if (groundY > terrainY + SUPPORT_SURFACE_CONTACT_EPSILON) {
-    result.nx = 0;
-    result.ny = 0;
-    result.nz = 1;
-  } else {
-    getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE, result);
-  }
-  const normalY = Math.max(0.35, result.nz);
-  const padVerticalLift = (footPadHalfHeight + clearance) / normalY;
-  const cylinderVerticalLift = cylinderRadius + clearance;
   result.groundY = groundY;
-  result.visualFootY = groundY + Math.max(cylinderVerticalLift, padVerticalLift);
+  result.visualFootY = groundY + cylinderRadius + clearance;
   return result;
 }

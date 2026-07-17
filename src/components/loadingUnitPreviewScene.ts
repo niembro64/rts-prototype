@@ -270,11 +270,6 @@ const legJointGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
   mid: createPrimitiveSphereGeometry('locomotion', 'mid'),
   far: createPrimitiveTetrahedronGeometry(),
 };
-const legFootGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
-  close: createPrimitiveCylinderGeometry('locomotion', 'close'),
-  mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
-  far: createPrimitiveTetrahedronGeometry(),
-};
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
 const scratchTarget = new THREE.Vector3();
@@ -784,9 +779,6 @@ function buildPreviewLegs(
   const upperRadius = Math.max(locomotion.config.upperThickness, 1) * 0.6;
   const lowerRadius = Math.max(locomotion.config.lowerThickness, 1) * 0.6;
   const hipJointRadius = Math.max(1, locomotion.config.hipRadius);
-  const kneeJointRadius = Math.max(1, locomotion.config.kneeRadius);
-  const footPadRadius = Math.max(1.1, lowerRadius * 1.45);
-  const footPadHalfHeight = Math.max(0.35, lowerRadius * 0.45);
   const group = new THREE.Group();
   yawGroup.add(group);
 
@@ -802,7 +794,7 @@ function buildPreviewLegs(
     const hip = new THREE.Vector3(leg.attachOffsetX, hipY, leg.attachOffsetY);
     const foot = new THREE.Vector3(
       hip.x + Math.cos(leg.snapTargetAngle) * restDistance,
-      footPadHalfHeight + 0.35,
+      lowerRadius + 0.35,
       hip.z + Math.sin(leg.snapTargetAngle) * restDistance,
     );
     const knee = kneeFromIK(
@@ -815,8 +807,6 @@ function buildPreviewLegs(
     addCylinderBetween(legGroup, hip, kneeVec, upperRadius, legMaterial, geometryTier);
     addCylinderBetween(legGroup, kneeVec, foot, lowerRadius, legMaterial, geometryTier);
     addSphere(legGroup, hip, hipJointRadius, legMaterial, geometryTier);
-    addSphere(legGroup, kneeVec, kneeJointRadius, legMaterial, geometryTier);
-    addFootPad(legGroup, foot, footPadRadius, footPadHalfHeight, legMaterial, geometryTier);
   }
   return group;
 }
@@ -859,7 +849,7 @@ function animatePreviewLocomotion(
 
 function animatePreviewWheels(mesh: WheelMesh, stride: number): void {
   for (let i = 0; i < mesh.wheels.length; i++) {
-    mesh.wheels[i].rotation.y = -stride * 2.4;
+    mesh.wheels[i].rotation.y = mesh.rotationAnimated ? -stride * 2.4 : 0;
     const group = mesh.wheelGroups[i];
     if (group !== undefined) group.position.y = mesh.wheelMounts[i].wheelR + Math.sin(stride + i) * 0.45;
   }
@@ -925,19 +915,5 @@ function addSphere(
   const mesh = new THREE.Mesh(legJointGeoms[geometryTier], material);
   mesh.position.copy(center);
   mesh.scale.setScalar(radius);
-  parent.add(mesh);
-}
-
-function addFootPad(
-  parent: THREE.Group,
-  center: THREE.Vector3,
-  radius: number,
-  halfHeight: number,
-  material: THREE.Material,
-  geometryTier: PrimitiveGeometryTier,
-): void {
-  const mesh = new THREE.Mesh(legFootGeoms[geometryTier], material);
-  mesh.position.copy(center);
-  mesh.scale.set(radius, halfHeight, radius);
   parent.add(mesh);
 }

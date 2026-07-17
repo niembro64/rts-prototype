@@ -1,10 +1,9 @@
-// LegInstancedRenderer — renders every leg cylinder, joint sphere,
-// and foot pad across every unit in the scene via shared instanced
+// LegInstancedRenderer — renders every leg cylinder and hip-joint sphere
+// across every unit in the scene via shared instanced
 // pools. Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
-// → 8 per 4-leg unit → 4000+ at 500 such units. Joints (full-
-// full-style only) and pads similarly collapse into shared InstancedMesh
-// draws.
+// → 8 per 4-leg unit → 4000+ at 500 such units. Hip joints (full
+// style only) similarly collapse into shared InstancedMesh draws.
 //
 // Each leg cylinder is a single instance in one of the two
 // InstancedBufferGeometry-backed meshes. The cylinder geometry is
@@ -574,7 +573,7 @@ class CylinderPool {
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
     // every phantom instance even though they collapse to zero
-    // thickness. JointSpherePool / FootPadPool already do this via
+    // thickness. JointSpherePool already does this via
     // `mesh.count = nextSlot`; InstancedBufferGeometry exposes the
     // equivalent as `instanceCount`.
     const geometry = this.mesh.geometry as THREE.InstancedBufferGeometry;
@@ -751,180 +750,12 @@ class JointSpherePool {
   }
 }
 
-/** Flattened ellipsoid foot pads. They are separate from joint
- *  spheres because pads need non-uniform scale and terrain-normal
- *  orientation, while joints are uniform balls. */
-class FootPadPool {
-  private readonly mesh: THREE.InstancedMesh;
-  private readonly fadeBuf: THREE.InstancedBufferAttribute;
-  private readonly shell: boolean;
-  private readonly matrixDirty = createDirtySpan();
-  private readonly colorDirty = createDirtySpan();
-  private readonly fadeDirty = createDirtySpan();
-  private nextSlot = 0;
-  private freeList: number[] = [];
-  private relocators: (SlotRelocator | null)[] = [];
-  private static readonly _scratchMat = new THREE.Matrix4();
-  private static readonly _scratchPos = new THREE.Vector3();
-  private static readonly _scratchScale = new THREE.Vector3();
-  private static readonly _scratchQuat = new THREE.Quaternion();
-  private static readonly _UP = new THREE.Vector3(0, 1, 0);
-  private static readonly _scratchNormal = new THREE.Vector3();
-  private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-  private static readonly _scratchColor = new THREE.Color();
-
-  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
-    this.shell = shell;
-    const geom = geometryTier === 'far'
-      ? createPrimitiveTetrahedronGeometry()
-      : createPrimitiveSphereGeometry('locomotion', geometryTier);
-    this.fadeBuf = makeFadeAttribute();
-    geom.setAttribute('aFade', this.fadeBuf);
-    const material = makeInstancedSphereMaterial(shell);
-    this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    if (!shell) {
-      const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
-      colorAttr.setUsage(THREE.DynamicDrawUsage);
-      this.mesh.instanceColor = colorAttr;
-    }
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = LEG_RENDER_ORDER;
-    parent.add(this.mesh);
-  }
-
-  alloc(color: number, onRelocate: SlotRelocator): number {
-    let slot: number;
-    if (this.freeList.length > 0) {
-      slot = this.freeList.pop()!;
-    } else if (this.nextSlot < SLOT_CAP) {
-      slot = this.nextSlot++;
-    } else {
-      return -1;
-    }
-    this.relocators[slot] = onRelocate;
-    writeMatrixAt(this.mesh, slot, FootPadPool._ZERO_MATRIX, this.matrixDirty);
-    (this.fadeBuf.array as Float32Array)[slot] = 1;
-    markDirtySlot(this.fadeDirty, slot);
-    if (!this.shell) {
-      const c = FootPadPool._scratchColor.set(color);
-      const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
-      if (arr) {
-        const i3 = slot * 3;
-        arr[i3 + 0] = c.r;
-        arr[i3 + 1] = c.g;
-        arr[i3 + 2] = c.b;
-        markDirtySlot(this.colorDirty, slot);
-      }
-    }
-    return slot;
-  }
-
-  free(slot: number): void {
-    if (slot < 0) return;
-    writeMatrixAt(this.mesh, slot, FootPadPool._ZERO_MATRIX, this.matrixDirty);
-    (this.fadeBuf.array as Float32Array)[slot] = 1;
-    markDirtySlot(this.fadeDirty, slot);
-    this.relocators[slot] = null;
-    this.freeList.push(slot);
-  }
-
-  private copyData = (src: number, dst: number): void => {
-    const arr = this.mesh.instanceMatrix.array as Float32Array;
-    const s16 = src * 16;
-    const d16 = dst * 16;
-    for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
-    const fa = this.fadeBuf.array as Float32Array;
-    fa[dst] = fa[src];
-    const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
-    if (colorArr) {
-      const s3 = src * 3;
-      const d3 = dst * 3;
-      colorArr[d3 + 0] = colorArr[s3 + 0];
-      colorArr[d3 + 1] = colorArr[s3 + 1];
-      colorArr[d3 + 2] = colorArr[s3 + 2];
-    }
-    for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
-    fa[src] = 1;
-    markDirtySlot(this.matrixDirty, dst);
-    markDirtySlot(this.matrixDirty, src);
-    markDirtySlot(this.fadeDirty, dst);
-    markDirtySlot(this.fadeDirty, src);
-    if (colorArr) markDirtySlot(this.colorDirty, dst);
-  };
-
-  update(
-    slot: number,
-    x: number, y: number, z: number,
-    radius: number,
-    halfHeight: number,
-    normalX: number, normalY: number, normalZ: number,
-  ): void {
-    if (slot < 0) return;
-    FootPadPool._scratchNormal.set(normalX, normalY, normalZ);
-    if (FootPadPool._scratchNormal.lengthSq() <= 1e-8) {
-      FootPadPool._scratchNormal.copy(FootPadPool._UP);
-    } else {
-      FootPadPool._scratchNormal.normalize();
-    }
-    FootPadPool._scratchQuat.setFromUnitVectors(
-      FootPadPool._UP,
-      FootPadPool._scratchNormal,
-    );
-    FootPadPool._scratchPos.set(x, y, z);
-    FootPadPool._scratchScale.set(radius, halfHeight, radius);
-    FootPadPool._scratchMat.compose(
-      FootPadPool._scratchPos,
-      FootPadPool._scratchQuat,
-      FootPadPool._scratchScale,
-    );
-    writeMatrixAt(this.mesh, slot, FootPadPool._scratchMat, this.matrixDirty);
-  }
-
-  fade(slot: number, fade: number): void {
-    if (slot < 0) return;
-    const arr = this.fadeBuf.array as Float32Array;
-    if (arr[slot] === fade) return;
-    arr[slot] = fade;
-    markDirtySlot(this.fadeDirty, slot);
-  }
-
-  translate(slot: number, dx: number, dy: number, dz: number): void {
-    if (slot < 0) return;
-    if (dx === 0 && dy === 0 && dz === 0) return;
-    const arr = this.mesh.instanceMatrix.array as Float32Array;
-    const i16 = slot * 16;
-    arr[i16 + 12] += dx;
-    arr[i16 + 13] += dy;
-    arr[i16 + 14] += dz;
-    markDirtySlot(this.matrixDirty, slot);
-  }
-
-  flush(): void {
-    if (shouldDefrag(this.freeList.length, this.nextSlot)) {
-      this.nextSlot = defragSlots(
-        this.nextSlot, this.freeList, this.relocators, this.copyData,
-      );
-    }
-    if (this.mesh.count !== this.nextSlot) this.mesh.count = this.nextSlot;
-    uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
-    uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
-    if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);
-  }
-
-  destroy(): void {
-    disposeMesh(this.mesh);
-  }
-}
-
 export class LegInstancedRenderer {
   private readonly parent: THREE.Group;
   private readonly pools = new Map<string, {
     upper: CylinderPool;
     lower: CylinderPool;
     joints: JointSpherePool;
-    pads: FootPadPool;
   }>();
 
   constructor(parent: THREE.Group) {
@@ -943,7 +774,6 @@ export class LegInstancedRenderer {
         upper: new CylinderPool(this.parent, shell, tier),
         lower: new CylinderPool(this.parent, shell, tier),
         joints: new JointSpherePool(this.parent, shell, tier),
-        pads: new FootPadPool(this.parent, shell, tier),
       };
       this.pools.set(key, pools);
     }
@@ -963,20 +793,15 @@ export class LegInstancedRenderer {
   allocLower(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
     return this.pool(tier, shell).lower.alloc(color, onRelocate);
   }
-  /** Allocate a joint-sphere slot (used by the full leg style for hip / knee).
+  /** Allocate a joint-sphere slot (used by the full leg style for hips).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
   allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
     return this.pool(tier, shell).joints.alloc(color, onRelocate);
   }
-  allocFootPad(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier, shell).pads.alloc(color, onRelocate);
-  }
-
   freeUpper(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).upper.free(slot); }
   freeLower(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).lower.free(slot); }
   freeJoint(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).joints.free(slot); }
-  freeFootPad(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).pads.free(slot); }
 
   fadeUpper(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier, shell).upper.fade(slot, fade);
@@ -987,9 +812,6 @@ export class LegInstancedRenderer {
   fadeJoint(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier, shell).joints.fade(slot, fade);
   }
-  fadeFootPad(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).pads.fade(slot, fade);
-  }
 
   translateUpper(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier, shell).upper.translate(slot, dx, dy, dz);
@@ -999,9 +821,6 @@ export class LegInstancedRenderer {
   }
   translateJoint(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier, shell).joints.translate(slot, dx, dy, dz);
-  }
-  translateFootPad(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).pads.translate(slot, dx, dy, dz);
   }
 
   updateUpper(
@@ -1034,27 +853,6 @@ export class LegInstancedRenderer {
     this.pool(tier, shell).joints.update(slot, x, y, z, radius);
   }
 
-  /** Per-frame write for one flattened foot pad. Normal is in Three.js
-   *  world coordinates and orients the pad so its local +Y follows the
-   *  terrain surface normal under the foot. */
-  updateFootPad(
-    slot: number,
-    x: number, y: number, z: number,
-    radius: number,
-    halfHeight: number,
-    normalX: number, normalY: number, normalZ: number,
-    shell = false,
-    tier: PrimitiveGeometryTier = 'close',
-  ): void {
-    this.pool(tier, shell).pads.update(
-      slot,
-      x, y, z,
-      radius,
-      halfHeight,
-      normalX, normalY, normalZ,
-    );
-  }
-
   /** Upload dirty per-instance spans — call once per frame after every
    *  leg has been updated. The actual GPU upload happens at the next render. */
   flush(): void {
@@ -1062,7 +860,6 @@ export class LegInstancedRenderer {
       pools.upper.flush();
       pools.lower.flush();
       pools.joints.flush();
-      pools.pads.flush();
     }
   }
 
@@ -1071,7 +868,6 @@ export class LegInstancedRenderer {
       pools.upper.destroy();
       pools.lower.destroy();
       pools.joints.destroy();
-      pools.pads.destroy();
     }
     this.pools.clear();
   }

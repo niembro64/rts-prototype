@@ -636,7 +636,8 @@ export class GroundPrint3D {
   ): void {
     const fx = leg.worldX;
     const fz = leg.worldZ;
-    const radius = leg.footPadRadius * STAMP_CIRCLE_RADIUS_MULT;
+    const endpointRadius = Math.max(1.1, leg.lowerThick * 1.45);
+    const radius = endpointRadius * STAMP_CIRCLE_RADIUS_MULT;
     const sLx = fx - radius;
     const sLz = fz - radius;
     const sRx = fx + radius;

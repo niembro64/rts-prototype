@@ -14,6 +14,7 @@ import {
   debrisSpawnScaleForDetail,
   detailLevelForRung,
   detailLevelForRadiusDistance,
+  detailLevelForViewPosition,
   detailLevelForScreenRadius,
   detailRungForLevel,
   detailRungMinLevel,
@@ -35,6 +36,7 @@ import {
   unitShapeForDetail,
   visualFeatureVisibleAtDetail,
 } from './EntityDetailLevel3D';
+import { getLodMode, setLodMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { DetailFeature, DetailRung } from './EntityDetailLevel3D';
 
@@ -100,6 +102,37 @@ const ALL_RUNGS: readonly DetailRung[] = [
 ];
 
 export function runEntityDetailLevel3DContractTest(): void {
+  const previousLodMode = getLodMode();
+  try {
+    const view = {
+      viewportHeightPx: 900,
+      cameraX: 0,
+      cameraY: 0,
+      cameraZ: 0,
+      forwardX: 0,
+      forwardY: 0,
+      forwardZ: -1,
+      fovYRad: Math.PI / 4,
+    };
+    setLodMode('high');
+    assertContract(
+      detailLevelForViewPosition(view, 0, -10000, 0) === DETAIL_LEVEL_FULL,
+      'HIGH freezes bare-position effects at the close rung',
+    );
+    setLodMode('medium');
+    assertContract(
+      detailLevelForViewPosition(view, 0, -10, 0) === detailLevelForRung(DETAIL_RUNG_MID),
+      'MED freezes bare-position effects at the medium rung',
+    );
+    setLodMode('low');
+    assertContract(
+      detailLevelForViewPosition(view, 0, -10, 0) === detailLevelForRung(DETAIL_RUNG_FAR),
+      'LOW freezes bare-position effects at the far rung',
+    );
+  } finally {
+    setLodMode(previousLodMode);
+  }
+
   // ── Screen-coverage level ─────────────────────────────────────────
   const fov = Math.PI / 4;
   assertContract(

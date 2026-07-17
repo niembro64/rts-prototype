@@ -18,6 +18,7 @@
 // (no THREE) and interprets that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
+import { getLodMode } from '@/clientBarConfig';
 import type {
   BeamStyle,
   GraphicsConfig,
@@ -281,6 +282,10 @@ export function detailLevelForViewPosition(
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
 ): number {
+  const lodMode = getLodMode();
+  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
+  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
   const dx = view.cameraX - simX;
   const dy = view.cameraY - simZ;
   const dz = view.cameraZ - simY;

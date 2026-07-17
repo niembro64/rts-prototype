@@ -876,20 +876,24 @@ export function setLegsRadiusToggle(show: boolean): void {
 
 // Entity LOD policy. Standalone + global (not per-mode) because it is a
 // renderer inspection/perf policy rather than a battle/profile setting.
-const FORCE_LOD_PROXY_STORAGE_KEY = 'client-force-lod-proxy';
+// Keep the legacy storage key so existing AUTO/HIGH/LOW preferences survive
+// the four-mode control upgrade.
+const LOD_MODE_STORAGE_KEY = 'client-force-lod-proxy';
 export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
   { value: 'auto', label: 'AUTO' },
   { value: 'high', label: 'HIGH' },
+  { value: 'medium', label: 'MED' },
   { value: 'low', label: 'LOW' },
 ];
 
 function parseStoredLodMode(raw: string | null): LodMode {
   if (raw === 'low' || raw === 'true') return 'low';
+  if (raw === 'medium') return 'medium';
   if (raw === 'high') return 'high';
   return 'auto';
 }
 
-let currentLodMode: LodMode = parseStoredLodMode(readPersisted(FORCE_LOD_PROXY_STORAGE_KEY));
+let currentLodMode: LodMode = parseStoredLodMode(readPersisted(LOD_MODE_STORAGE_KEY));
 
 export function getLodMode(): LodMode {
   return currentLodMode;
@@ -897,7 +901,7 @@ export function getLodMode(): LodMode {
 
 export function setLodMode(mode: LodMode): void {
   currentLodMode = mode;
-  persist(FORCE_LOD_PROXY_STORAGE_KEY, mode);
+  persist(LOD_MODE_STORAGE_KEY, mode);
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {

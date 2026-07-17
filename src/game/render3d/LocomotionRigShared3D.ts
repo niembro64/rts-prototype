@@ -152,6 +152,19 @@ export function sampleRollingContactDistance(
   return signedDistance;
 }
 
+/** Update only the contact's world position. Low rolling rigs use this
+ *  cheaper path so ground prints and suspension retain an exact contact
+ *  point without doing forward-axis, signed-distance, or phase work. */
+export function sampleRollingContactPosition(
+  pose: LocomotionRenderPose,
+  state: RollingContactState,
+): void {
+  transformChassisToWorld(state.localX, 0, state.localZ, pose, _rollingWorld);
+  state.worldX = _rollingWorld.x;
+  state.worldZ = _rollingWorld.z;
+  state.initialized = true;
+}
+
 /** Phase wrapped into `[0, spacing)` for cleat layout. */
 export function wrappedRollingPhase(phase: number, spacing: number): number {
   return ((phase % spacing) + spacing) % spacing;

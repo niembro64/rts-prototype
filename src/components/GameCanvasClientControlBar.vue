@@ -50,9 +50,10 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 };
 
 const LOD_MODE_TITLES: Record<LodMode, string> = {
-  auto: 'Switch between HIGH and LOW at the configured camera distance',
-  high: 'Never render unit, building, or tower level-of-detail proxies',
-  low: 'Always render unit, building, and tower level-of-detail proxies',
+  auto: 'Choose visual detail automatically from projected screen size',
+  high: 'Freeze all visual detail at the high-resolution rung',
+  medium: 'Freeze all visual detail at the medium-resolution rung',
+  low: 'Freeze all visual detail at the low-resolution rung',
 };
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;

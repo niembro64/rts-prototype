@@ -189,7 +189,7 @@ export function captureLocomotionState(
           targetLift: mount.targetLift,
           angularVelocity: mount.angularVelocity,
         })),
-        rotations: locomotion.wheels.map((wheel) => wheel.rotation.y),
+        rotations: locomotion.wheelMounts.map((mount) => mount.rotation),
       };
     case 'treads':
       return {
@@ -256,8 +256,11 @@ export function applyLocomotionState(
         mount.lift = saved.lift;
         mount.targetLift = saved.targetLift;
         mount.angularVelocity = saved.angularVelocity;
+        mount.rotation = state.rotations[i] ?? 0;
         locomotion.wheelGroups[i].position.y = mount.wheelR + mount.lift;
-        locomotion.wheels[i].rotation.y = state.rotations[i] ?? 0;
+        locomotion.wheels[i].rotation.y = locomotion.rotationAnimated
+          ? mount.rotation
+          : 0;
       }
       return;
     }

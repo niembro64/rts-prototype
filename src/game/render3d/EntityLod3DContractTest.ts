@@ -21,7 +21,9 @@ import {
   DETAIL_LEVEL_FULL,
   DETAIL_LEVEL_GLYPH,
   DETAIL_RUNG_FAR,
+  DETAIL_RUNG_MID,
   PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+  detailLevelForRung,
 } from './EntityDetailLevel3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -147,6 +149,13 @@ export function runEntityLod3DContractTest(): void {
       bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_FAR,
       'LOW mode selects the far geometry tier for units',
     );
+    setLodMode('medium');
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID,
+      'MED mode freezes units at real medium-resolution geometry',
+    );
     setLodMode('auto');
     groundUnit.transform.y = -10000;
     bodyLod.beginFrame();
@@ -217,6 +226,13 @@ export function runEntityLod3DContractTest(): void {
         viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
       ) === DETAIL_LEVEL_GLYPH,
       'manual LOW still pins every plasma size to Low geometry',
+    );
+    setLodMode('medium');
+    assertContract(
+      plasmaEntityDetailLevelForView(
+        viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
+      ) === detailLevelForRung(DETAIL_RUNG_MID),
+      'manual MED pins every plasma size to Medium geometry',
     );
 
     const structure = entityAt(306, 0, 0, 0);

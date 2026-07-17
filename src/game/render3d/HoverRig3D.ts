@@ -80,7 +80,7 @@ function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.Buff
   const key = `${tier}:${ratioKey}`;
   let geom = ringGeomByTubeRatio.get(key);
   if (!geom) {
-    geom = tier === 'close'
+    geom = tier !== 'far'
       ? createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey)
       : createPrimitiveRingGeometry(
         'locomotion',
@@ -378,9 +378,14 @@ function buildFan(
     }
   }
 
+  const ringMaterial = getLocomotionMatByCache(ringMats, FAN_RING_COLOR, ownerId);
+  // Medium keeps a reduced-segment 3D duct; Low uses a single annular
+  // surface. Double-sided rendering keeps that low ring visible from
+  // above and below, including arbitrarily oriented Albatros fans.
+  ringMaterial.side = THREE.DoubleSide;
   const ring = new THREE.Mesh(
     getRingGeom(ringTubeRatio, geometryTier),
-    getLocomotionMatByCache(ringMats, FAN_RING_COLOR, ownerId),
+    ringMaterial,
   );
   ring.rotation.x = Math.PI / 2;
   ring.scale.setScalar(fanRadius);

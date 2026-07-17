@@ -11,10 +11,11 @@
 //   rotation position  →  `beltPhase` (where cleats sit on the belt loop)
 //   rotation velocity  →  `beltVelocity` (linear m/s along belt tangent)
 //
-// Animation always plays — the rig doesn't check whether the side is
+// High/Medium animation plays without checking whether the side is
 // touching ground. Position EMAs toward the floor-clamp target every
 // frame; belt velocity EMAs toward the per-side body-motion-derived
-// target every frame. Internal wheels read their angular velocity
+// target every frame. Low uses static envelope boxes while retaining
+// the position clamp and contact samples. Internal wheels read their angular velocity
 // from the parent side's -beltVelocity / wheelR so the whole side
 // moves as one mechanism. See the "Locomotion Visuals Are Frontend"
 // section of budget_design_philosophy.html.
@@ -34,6 +35,7 @@ import {
   rollingLocomotionBodyActive,
   rollingWheelAngularVelocity,
   sampleRollingContactDistance,
+  sampleRollingContactPosition,
   transformChassisToWorld,
   wrappedRollingPhase,
 } from './LocomotionRigShared3D';
@@ -71,8 +73,6 @@ const TREAD_LIFT_SETTLED_EPSILON = 0.02;
 const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
-const treadCleatPlaneGeom = new THREE.PlaneGeometry(1, 1);
-const treadSilhouetteGeom = createTreadSilhouetteGeometry();
 const treadEndGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 
@@ -95,27 +95,6 @@ function getWheelGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
 const treadMats = new Map<number, THREE.MeshBasicMaterial>();
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
-
-function createTreadSilhouetteGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.34, 0);
-  shape.lineTo(0.34, 0);
-  shape.lineTo(0.5, 0.22);
-  shape.lineTo(0.5, 0.78);
-  shape.lineTo(0.34, 1);
-  shape.lineTo(-0.34, 1);
-  shape.lineTo(-0.5, 0.78);
-  shape.lineTo(-0.5, 0.22);
-  shape.closePath();
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 1,
-    steps: 1,
-    bevelEnabled: false,
-  });
-  geometry.translate(0, 0, -0.5);
-  geometry.computeVertexNormals();
-  return geometry;
-}
 
 /** Per-side state owned by the rig. The `group` holds the side's
  *  slab, end caps, internal wheels, and animated cleats — all in a
@@ -178,6 +157,9 @@ export type TreadMesh = {
    *  belt so the two parallel ruts are visually separated rather
    *  than reading as one wide smear. */
   printWidth: number;
+  /** False for the Low box representation, which has no moving cleats or
+   *  wheel meshes and performs no belt/wheel phase integration. */
+  rotationAnimated: boolean;
 } & LocomotionBase;
 
 export function buildTreads(
@@ -217,11 +199,13 @@ export function buildTreads(
     group.add(sideGroup);
 
     if (geometryTier === 'far') {
-      // One 28-triangle extruded track outline replaces the box + two
-      // capped cylinders while preserving the complete belt silhouette.
-      const silhouette = new THREE.Mesh(treadSilhouetteGeom, treadMat);
-      silhouette.scale.set(length, TREAD_HEIGHT, width);
-      sideGroup.add(silhouette);
+      // Low is a single box per side, sized to the complete authored
+      // track envelope. It preserves the high-detail rig's overall
+      // length, height, width, and lateral placement without moving parts.
+      const treadBox = new THREE.Mesh(treadBoxGeom, treadMat);
+      treadBox.scale.set(length, TREAD_HEIGHT, width);
+      treadBox.position.set(0, TREAD_Y, 0);
+      sideGroup.add(treadBox);
     } else {
       // High/medium retain the rounded three-piece belt outline.
       const centerRun = new THREE.Mesh(treadBoxGeom, treadMat);
@@ -256,17 +240,15 @@ export function buildTreads(
   ];
 
   const internalWheelRadius = Math.max(1, r * cfg.wheelRadius);
-  if (animatedWheels) {
+  if (animatedWheels && geometryTier !== 'far') {
     // Internal wheels — mostly hidden inside the slab but ensure the
     // chassis-speed → wheel-rotation rate stays consistent with what the
     // visible cleats display. Their angular velocity is derived from
     // their parent side's beltVelocity, so the whole side moves as
     // one mechanism (cleats and wheels can't desync).
-    const wheelCount = geometryTier === 'far'
-      ? 0
-      : geometryTier === 'mid'
-        ? Math.max(2, Math.round(cfg.treadLength))
-        : Math.max(2, Math.round(cfg.treadLength * 2));
+    const wheelCount = geometryTier === 'mid'
+      ? Math.max(2, Math.round(cfg.treadLength))
+      : Math.max(2, Math.round(cfg.treadLength * 2));
     const wheelR = internalWheelRadius;
     for (let s = 0; s < 2; s++) {
       const sideGroup = sides[s].group;
@@ -287,11 +269,9 @@ export function buildTreads(
     // return, bottom ground-contact run, and rounded rear return. This
     // makes treads read correctly from side/front/back instead of
     // looking like a square slab with only top markings.
-    const cleatCount = geometryTier === 'far'
-      ? 4
-      : geometryTier === 'mid'
-        ? Math.max(6, Math.round(cleatLoopLength / Math.max(1, r * 0.62)))
-        : Math.max(8, Math.round(cleatLoopLength / Math.max(1, r * 0.26)));
+    const cleatCount = geometryTier === 'mid'
+      ? Math.max(6, Math.round(cleatLoopLength / Math.max(1, r * 0.62)))
+      : Math.max(8, Math.round(cleatLoopLength / Math.max(1, r * 0.26)));
     cleatSpacing = cleatLoopLength / cleatCount;
     const cleatLen = cleatSpacing * TREAD_CLEAT_LENGTH_FRAC;
     const cleatWidth = width * TREAD_CLEAT_WIDTH_FRAC;
@@ -299,10 +279,7 @@ export function buildTreads(
     for (let s = 0; s < 2; s++) {
       const sideGroup = sides[s].group;
       for (let i = 0; i < cleatsPerSide; i++) {
-        const cleat = new THREE.Mesh(
-          geometryTier === 'far' ? treadCleatPlaneGeom : treadBoxGeom,
-          cleatMat,
-        );
+        const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
         cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
         layoutTreadCleat(cleat, i * cleatSpacing, straightLength, treadRadius);
         sideGroup.add(cleat);
@@ -330,6 +307,7 @@ export function buildTreads(
     internalWheelRadius,
     maxLift: Math.max(1, Math.min(r * 0.35, TREAD_HEIGHT)),
     printWidth,
+    rotationAnimated: geometryTier !== 'far',
     geometryKey: '',
   };
 }
@@ -343,8 +321,7 @@ const _treadUp = { x: 0, y: 1, z: 0 };
  *  distance drives the beltVelocity channel via EMA. beltPhase
  *  integrates from beltVelocity and feeds the cleat layout. Internal
  *  wheels integrate from the same per-side -beltVelocity / wheelR.
- *  Animation always plays — the rig doesn't check whether the side
- *  is touching ground. */
+ *  Low skips belt and wheel rotation while retaining the floor clamp. */
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,
@@ -409,33 +386,40 @@ export function updateTreads(
     // a sudden body velocity change doesn't manifest as a cleat-scroll
     // discontinuity.
     const contact = mesh.treadContacts[s];
-    const signedDistance = contact !== undefined
-      ? sampleRollingContactDistance(pose, contact)
-      : 0;
-    const targetBeltVelocity = signedDistance / dtSec;
-    sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
+    if (mesh.rotationAnimated) {
+      const signedDistance = contact !== undefined
+        ? sampleRollingContactDistance(pose, contact)
+        : 0;
+      const targetBeltVelocity = signedDistance / dtSec;
+      sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
 
-    // ── Rotation-position channel: beltPhase ─────────────────────
-    // Integrate from the velocity channel. Wraps modulo cleatLoopLength
-    // implicitly inside the cleat layout helper.
-    sideEntry.beltPhase += sideEntry.beltVelocity * dtSec;
+      // ── Rotation-position channel: beltPhase ───────────────────
+      // Integrate from the velocity channel. Wraps modulo
+      // cleatLoopLength implicitly inside the cleat layout helper.
+      sideEntry.beltPhase += sideEntry.beltVelocity * dtSec;
+    } else {
+      if (contact !== undefined) sampleRollingContactPosition(pose, contact);
+      sideEntry.beltVelocity = 0;
+    }
   }
 
   // Internal-wheel phase remains a logical state channel even when Low
   // omits the hidden wheel meshes. A later Low→Medium/High rebuild can
   // therefore restore the exact phase instead of visibly restarting it.
-  for (let i = 0; i < mesh.sides.length; i++) {
-    const side = mesh.sides[i];
-    side.wheelRotation += rollingWheelAngularVelocity(
-      side.beltVelocity,
-      mesh.internalWheelRadius,
-    ) * dtSec;
-  }
-  for (let i = 0; i < mesh.wheels.length; i++) {
-    const sideIdx = mesh.wheelSide[i];
-    const side = mesh.sides[sideIdx];
-    if (!side) continue;
-    mesh.wheels[i].rotation.y = side.wheelRotation;
+  if (mesh.rotationAnimated) {
+    for (let i = 0; i < mesh.sides.length; i++) {
+      const side = mesh.sides[i];
+      side.wheelRotation += rollingWheelAngularVelocity(
+        side.beltVelocity,
+        mesh.internalWheelRadius,
+      ) * dtSec;
+    }
+    for (let i = 0; i < mesh.wheels.length; i++) {
+      const sideIdx = mesh.wheelSide[i];
+      const side = mesh.sides[sideIdx];
+      if (!side) continue;
+      mesh.wheels[i].rotation.y = side.wheelRotation;
+    }
   }
 
   // Lay out cleats from each side's beltPhase.

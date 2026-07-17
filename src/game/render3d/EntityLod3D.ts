@@ -15,6 +15,7 @@ import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
+  DETAIL_RUNG_MID,
   type DetailRung,
   detailLevelForRadiusDistance,
   detailLevelForRung,
@@ -260,6 +261,7 @@ export function simPositionUsesLowLodDistance3D(
 export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') {
     return isAuthoredGeometryHost(entity)
       ? detailLevelForRung(DETAIL_RUNG_FAR)
@@ -281,6 +283,7 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
 export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') {
     return isAuthoredGeometryHost(entity)
       ? detailLevelForRung(DETAIL_RUNG_FAR)
@@ -300,7 +303,7 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
 
 /** Plasma-specific projected-detail level. In AUTO, its visual tail length
  * scales the transition distance by the constant-angular-size law; manual
- * HIGH/LOW modes retain their exact override behavior. */
+ * HIGH/MED/LOW modes pin the matching authored geometry rung. */
 export function plasmaEntityDetailLevelForView(
   view: RenderViewState3D,
   entity: Entity,
@@ -308,6 +311,7 @@ export function plasmaEntityDetailLevelForView(
 ): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
   return detailLevelForRadiusDistance(
     plasmaDetailRadiusForTailLength(tailLengthWorld),
@@ -424,6 +428,7 @@ export class EntityLodState3D {
   entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+    if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
     if (lodMode === 'low') {
       return isAuthoredGeometryHost(entity)
         ? detailLevelForRung(DETAIL_RUNG_FAR)
@@ -444,6 +449,7 @@ export class EntityLodState3D {
   entityDetailRungForView(view: RenderViewState3D, entity: Entity): DetailRung {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
+    if (lodMode === 'medium') return DETAIL_RUNG_MID;
     if (lodMode === 'low') {
       return isAuthoredGeometryHost(entity) ? DETAIL_RUNG_FAR : DETAIL_RUNG_GLYPH;
     }
@@ -499,6 +505,10 @@ export class EntityLodState3D {
       this.deleteChannelEntity(channel, entity.id);
       return false;
     }
+    if (lodMode === 'medium') {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
     if (lodMode === 'low') {
       if (isAuthoredGeometryHost(entity)) {
         this.deleteChannelEntity(channel, entity.id);
@@ -548,6 +558,10 @@ export class EntityLodState3D {
       this.deleteChannelEntity(channel, entity.id);
       return false;
     }
+    if (lodMode === 'medium') {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
     if (lodMode === 'low') {
       if (isAuthoredGeometryHost(entity)) {
         this.deleteChannelEntity(channel, entity.id);
@@ -582,6 +596,7 @@ export class EntityLodState3D {
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+    if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
     if (lodMode === 'low') {
       return isAuthoredGeometryHost(entity)
         ? detailLevelForRung(DETAIL_RUNG_FAR)

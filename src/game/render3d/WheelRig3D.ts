@@ -1,9 +1,10 @@
 // WheelRig3D — four real cylindrical tires for wheeled units (jackal,
 // mongoose, …). Each tire carries the four canonical visual state
 // channels (movement position, movement velocity, rotation position,
-// rotation velocity). Animation always plays off body motion — the
+// rotation velocity). High/Medium animation plays off body motion — the
 // rig never asks "is this tire on the ground?" The floor clamp + lift
-// EMA handle position; the angular-velocity EMA handles spin. Outside
+// EMA handle position; the angular-velocity EMA handles spin. Low keeps
+// only the floor-clamped boxes and rolling-contact samples. Outside
 // wheels travel farther than inside wheels and can rotate opposite
 // directions during a pivot because each tire has its own signed
 // chassis-local distance. See the "Locomotion Visuals Are Frontend"
@@ -23,6 +24,7 @@ import {
   rollingLocomotionBodyActive,
   rollingWheelAngularVelocity,
   sampleRollingContactDistance,
+  sampleRollingContactPosition,
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
 import {
@@ -32,7 +34,6 @@ import {
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveCylinderGeometry,
-  getSharedExtrudedEquilateralTriangleGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -57,7 +58,7 @@ function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   let geometry = wheelGeomByTier.get(tier);
   if (!geometry) {
     geometry = tier === 'far'
-      ? getSharedExtrudedEquilateralTriangleGeometry()
+      ? new THREE.BoxGeometry(1, 1, 1)
       : createPrimitiveCylinderGeometry('locomotion', tier);
     wheelGeomByTier.set(tier, geometry);
   }
@@ -73,8 +74,7 @@ const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
  *                                              natural mount Y)
  *    movement velocity  →  (integrated from lift via the EMA on
  *                            the lift channel; not stored separately)
- *    rotation position  →  `THREE.Mesh.rotation.y` on the tire mesh
- *                          (owned by three.js; integrated below)
+ *    rotation position  →  `rotation` (mirrored to the tire mesh above Low)
  *    rotation velocity  →  `angularVelocity`  (rad/s around axle)
  *
  *  Position EMAs toward the floor clamp every frame; angular velocity
@@ -100,6 +100,9 @@ export type WheelMount = {
    *  frame so the bottom contact surface moves opposite chassis travel;
    *  rotation integrates from this. */
   angularVelocity: number;
+  /** Logical rotation phase, retained across geometry-tier rebuilds even
+   *  though the Low box deliberately renders without rotation. */
+  rotation: number;
 };
 
 export type WheelMesh = {
@@ -112,6 +115,9 @@ export type WheelMesh = {
   wheels: THREE.Mesh[];
   wheelMounts: WheelMount[];
   wheelContacts: RollingContactState[];
+  /** False only for the Low box representation. Suspension and rolling
+   *  contact sampling remain live, but all spin work is disabled. */
+  rotationAnimated: boolean;
   /** Width of the rut a single tire stamps onto the ground, in world
    *  units. Derived from tireWidth at build so GroundPrint3D doesn't
    *  have to re-walk the blueprint to size its quads. */
@@ -172,6 +178,7 @@ export function buildWheels(
         lift: 0,
         targetLift: 0,
         angularVelocity: 0,
+        rotation: 0,
       });
       wheelContacts.push(rollingContact(sx * fx, sz * fz));
     }
@@ -187,6 +194,7 @@ export function buildWheels(
     wheels,
     wheelMounts,
     wheelContacts,
+    rotationAnimated: geometryTier !== 'far',
     printWidth,
     geometryKey: '',
   };
@@ -196,12 +204,12 @@ export function buildWheels(
 const _wheelWorld = { x: 0, y: 0, z: 0 };
 const _wheelUp = { x: 0, y: 1, z: 0 };
 
-/** Per-frame: integrate each tire's four visual channels forward.
+/** Per-frame: integrate each tire's visual channels forward.
  *  Movement-position (lift) EMA-tracks the floor clamp under the
  *  tire; rotation-velocity (angular velocity) EMA-tracks the
  *  body-motion-derived spin rate. Rotation position integrates from
- *  angular velocity. Animation always plays — the rig doesn't check
- *  whether the tire is touching the ground. */
+ *  angular velocity. Low retains suspension/contact work but skips
+ *  angular velocity and phase integration entirely. */
 export function updateWheels(
   mesh: WheelMesh,
   entity: Entity,
@@ -261,16 +269,23 @@ export function updateWheels(
     // chassis-local distance with the no-slip contact sign. Reverse motion comes for free because
     // signedDistance is signed; pivots show opposite spin on opposite
     // wheels because each tire has its own contact and target.
-    const signedDistance = sampleRollingContactDistance(pose, mesh.wheelContacts[i]);
-    const targetOmega = rollingWheelAngularVelocity(
-      signedDistance / dtSec,
-      mount.wheelR,
-    );
-    mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
+    if (mesh.rotationAnimated) {
+      const signedDistance = sampleRollingContactDistance(pose, mesh.wheelContacts[i]);
+      const targetOmega = rollingWheelAngularVelocity(
+        signedDistance / dtSec,
+        mount.wheelR,
+      );
+      mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
 
-    // ── Rotation-position channel: tire rotation ─────────────────
-    // Integrate from the velocity channel.
-    mesh.wheels[i].rotation.y += mount.angularVelocity * dtSec;
+      // ── Rotation-position channel: tire rotation ───────────────
+      // Integrate from the velocity channel.
+      mount.rotation += mount.angularVelocity * dtSec;
+      mesh.wheels[i].rotation.y = mount.rotation;
+    } else {
+      sampleRollingContactPosition(pose, mesh.wheelContacts[i]);
+      mount.angularVelocity = 0;
+      mesh.wheels[i].rotation.y = 0;
+    }
   }
   return wheelsNeedFrame(mesh, pose);
 }

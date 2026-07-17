@@ -380,9 +380,9 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
         locomotion.config, blueprint.radius.other,
       ).all.length;
       countsByUnit.set(unitId, {
-        close: legCount * 484,
-        mid: legCount * 140,
-        far: legCount * 28,
+        close: legCount * 204,
+        mid: legCount * 68,
+        far: legCount * 20,
       });
       continue;
     }
@@ -392,6 +392,16 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
       switch (locomotion.type) {
         case 'wheels': {
           const rig = buildWheels(root, radius, locomotion.config, undefined, tier);
+          assertContract(
+            rig.rotationAnimated === (tier !== 'far'),
+            `${unitId}/${tier} wheel rotation matches its geometry rung`,
+          );
+          if (tier === 'far') {
+            assertContract(
+              rig.wheels.every((wheel) => wheel.geometry.type === 'BoxGeometry'),
+              `${unitId}/far wheels are non-rotating boxes`,
+            );
+          }
           return {
             rig,
             count: objectTriangleCount(root),
@@ -407,6 +417,19 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
         }
         case 'treads': {
           const rig = buildTreads(root, radius, locomotion.config, true, undefined, tier);
+          assertContract(
+            rig.rotationAnimated === (tier !== 'far'),
+            `${unitId}/${tier} tread rotation matches its geometry rung`,
+          );
+          if (tier === 'far') {
+            assertContract(
+              rig.wheels.length === 0 && rig.cleats.length === 0 &&
+                rig.sides.every((side) =>
+                  side.group.children.length === 1 &&
+                  (side.group.children[0] as THREE.Mesh).geometry.type === 'BoxGeometry'),
+              `${unitId}/far treads are one static envelope box per side`,
+            );
+          }
           return {
             rig,
             count: objectTriangleCount(root),
@@ -439,6 +462,16 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             : 'locomotionHovercraft';
           const rig = buildHoverFans(
             root, radius, locomotion.config, smokeUseId, 1, undefined, tier,
+          );
+          assertContract(
+            rig.fans.every((fan) => {
+              const ring = fan.group.children[0] as THREE.Mesh;
+              const material = ring.material as THREE.Material;
+              return ring.isMesh &&
+                ring.geometry.type === (tier === 'far' ? 'RingGeometry' : 'TorusGeometry') &&
+                material.side === THREE.DoubleSide;
+            }),
+            `${unitId}/${tier} hover fans retain a visible tiered duct ring`,
           );
           return {
             rig,
@@ -593,7 +626,8 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
         locomotion.wheelMounts[i].lift = 1 + i;
         locomotion.wheelMounts[i].targetLift = 2 + i;
         locomotion.wheelMounts[i].angularVelocity = 3 + i;
-        locomotion.wheels[i].rotation.y = 0.2 + i;
+        locomotion.wheelMounts[i].rotation = 0.2 + i;
+        locomotion.wheels[i].rotation.y = locomotion.rotationAnimated ? 0.2 + i : 0;
         locomotion.wheelContacts[i].phase = 10 + i;
         locomotion.wheelContacts[i].initialized = true;
       }
@@ -1007,19 +1041,19 @@ function runReferenceGeometryCountContracts(): void {
     if (tier === 'far') {
       const segment = createExtrudedEquilateralTriangleGeometry();
       const joint = createPrimitiveTetrahedronGeometry();
-      const count = triangleCount(segment) * 2 + triangleCount(joint) * 3;
+      const count = triangleCount(segment) * 2 + triangleCount(joint);
       segment.dispose();
       joint.dispose();
       return count;
     }
     const segment = createPrimitiveCylinderGeometry('locomotion', tier);
     const joint = createPrimitiveSphereGeometry('locomotion', tier);
-    const count = triangleCount(segment) * 2 + triangleCount(joint) * 3;
+    const count = triangleCount(segment) * 2 + triangleCount(joint);
     segment.dispose();
     joint.dispose();
     return count;
   });
-  assertSame('one articulated leg geometry ladder', legCounts, [484, 140, 28]);
+  assertSame('one footless articulated leg geometry ladder', legCounts, [204, 68, 20]);
 
   const shieldCounts = TIERS.map((tier) => {
     const geometry = createPrimitiveSphereGeometry('shield', tier);
