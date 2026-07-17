@@ -15,10 +15,12 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import { disposeMesh } from './threeUtils';
-import { createPrimitiveCircleGeometry } from './PrimitiveGeometryQuality3D';
-
-const SHADOW_GEOMETRY = createPrimitiveCircleGeometry('effect', 'close');
-SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
+import {
+  createPrimitiveCircleGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 const UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS = 4;
 const UNIT_AIR_SHADOW_FADE_MIN_HEIGHT = 80;
 const UNIT_AIR_SHADOW_MIN_ALPHA = 0.18;
@@ -321,11 +323,17 @@ diffuseColor.a *= vContactShadowAlpha;
   return material;
 }
 
+type ContactShadowPool = {
+  mesh: THREE.InstancedMesh;
+  alphas: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+  matrixDirty: DirtySpan;
+  alphaDirty: DirtySpan;
+};
+
 export class ContactShadowRenderer3D {
-  private readonly mesh: THREE.InstancedMesh;
+  private readonly pools: Record<PrimitiveGeometryTier, ContactShadowPool>;
   private readonly material: THREE.MeshBasicMaterial;
-  private readonly alphas: Float32Array;
-  private readonly alphaAttr: THREE.InstancedBufferAttribute;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
   private readonly matrix = new THREE.Matrix4();
@@ -335,34 +343,54 @@ export class ContactShadowRenderer3D {
   private readonly sun = new THREE.Vector3();
   private readonly sunTangent = new THREE.Vector3(0, 0, -1);
   private readonly sideTangent = new THREE.Vector3(1, 0, 0);
-  private readonly matrixDirty = createDirtySpan();
-  private readonly alphaDirty = createDirtySpan();
   private lastOpacity = -1;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.material = makeContactShadowMaterial();
-    this.alphas = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphas, 1)
+    this.pools = {
+      close: this.createPool(parent, 'close'),
+      mid: this.createPool(parent, 'mid'),
+      far: this.createPool(parent, 'far'),
+    };
+  }
+
+  private createPool(parent: THREE.Group, tier: PrimitiveGeometryTier): ContactShadowPool {
+    const geometry = tier === 'far'
+      ? new THREE.PlaneGeometry(2, 2)
+      : createPrimitiveCircleGeometry('effect', tier);
+    geometry.rotateX(-Math.PI / 2);
+    const alphas = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+    const alphaAttr = new THREE.InstancedBufferAttribute(alphas, 1)
       .setUsage(THREE.DynamicDrawUsage);
-    this.mesh = new THREE.InstancedMesh(
-      SHADOW_GEOMETRY,
+    geometry.setAttribute('contactShadowAlpha', alphaAttr);
+    const mesh = new THREE.InstancedMesh(
+      geometry,
       this.material,
       CONTACT_SHADOW_RENDER_CONFIG.maxInstances,
     );
-    this.mesh.geometry.setAttribute('contactShadowAlpha', this.alphaAttr);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = GROUND_RENDER_ORDER.contactShadows;
-    parent.add(this.mesh);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = GROUND_RENDER_ORDER.contactShadows;
+    parent.add(mesh);
+    return {
+      mesh,
+      alphas,
+      alphaAttr,
+      matrixDirty: createDirtySpan(),
+      alphaDirty: createDirtySpan(),
+    };
   }
 
   shouldUpdate(frameIndex: number): boolean {
-    if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) return this.mesh.count > 0;
+    if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) {
+      return Object.values(this.pools).some((pool) => pool.mesh.count > 0);
+    }
     const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride | 0);
-    return shouldRunOnStride(frameIndex, stride) || this.mesh.count === 0;
+    return shouldRunOnStride(frameIndex, stride)
+      || Object.values(this.pools).every((pool) => pool.mesh.count === 0);
   }
 
   shouldBuildPacket(frameIndex: number): boolean {
@@ -372,23 +400,23 @@ export class ContactShadowRenderer3D {
   update(
     packet: ContactShadowRenderPacket3D,
     frameIndex: number,
+    view?: RenderViewState3D,
   ): void {
     if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) {
-      if (this.mesh.count !== 0) this.mesh.count = 0;
-      clearDirtySpan(this.matrixDirty);
-      clearDirtySpan(this.alphaDirty);
+      this.clearPools();
       return;
     }
 
     if (packet.count === 0) {
-      if (this.mesh.count !== 0) this.mesh.count = 0;
-      clearDirtySpan(this.matrixDirty);
-      clearDirtySpan(this.alphaDirty);
+      this.clearPools();
       return;
     }
 
     const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride | 0);
-    if (!shouldRunOnStride(frameIndex, stride) && this.mesh.count > 0) return;
+    if (
+      !shouldRunOnStride(frameIndex, stride)
+      && Object.values(this.pools).some((pool) => pool.mesh.count > 0)
+    ) return;
 
     const opacity = CONTACT_SHADOW_RENDER_CONFIG.opacity;
     if (opacity !== this.lastOpacity) {
@@ -398,11 +426,24 @@ export class ContactShadowRenderer3D {
     }
 
     writeSunDirectionThree(this.sun);
-    let cursor = 0;
+    const cursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
     const cap = CONTACT_SHADOW_RENDER_CONFIG.maxInstances;
 
-    for (let i = 0; i < packet.count && cursor < cap; i++) {
+    for (let i = 0; i < packet.count; i++) {
+      const radius = Math.max(packet.crossRadius[i], packet.sunRadius[i]);
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(
+            view,
+            packet.x[i],
+            packet.y[i],
+            packet.casterHeight[i],
+            radius,
+          ))
+        : 'close';
+      const cursor = cursors[tier];
+      if (cursor >= cap) continue;
       if (this.writeShadow(
+        this.pools[tier],
         cursor,
         packet.x[i],
         packet.y[i],
@@ -412,18 +453,30 @@ export class ContactShadowRenderer3D {
         packet.offsetPerHeight[i],
         packet.alpha[i],
       )) {
-        cursor++;
+        cursors[tier]++;
       }
     }
 
-    if (this.mesh.count !== cursor) this.mesh.count = cursor;
-    if (cursor > 0) {
-      uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
-      uploadDirtySpan(this.alphaAttr, this.alphaDirty, 1);
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      const pool = this.pools[tier];
+      pool.mesh.count = cursors[tier];
+      if (cursors[tier] > 0) {
+        uploadDirtySpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
+        uploadDirtySpan(pool.alphaAttr, pool.alphaDirty, 1);
+      }
+    }
+  }
+
+  private clearPools(): void {
+    for (const pool of Object.values(this.pools)) {
+      pool.mesh.count = 0;
+      clearDirtySpan(pool.matrixDirty);
+      clearDirtySpan(pool.alphaDirty);
     }
   }
 
   private writeShadow(
+    pool: ContactShadowPool,
     slot: number,
     x: number,
     y: number,
@@ -462,17 +515,19 @@ export class ContactShadowRenderer3D {
     this.scale.set(Math.max(1, crossRadius), 1, Math.max(1, sunRadius));
     this.matrix.scale(this.scale);
     this.matrix.setPosition(this.pos);
-    writeMatrixAt(this.mesh, slot, this.matrix, this.matrixDirty);
+    writeMatrixAt(pool.mesh, slot, this.matrix, pool.matrixDirty);
     const nextAlpha = Math.fround(alpha);
-    if (this.alphas[slot] !== nextAlpha) {
-      this.alphas[slot] = nextAlpha;
-      markDirtySlot(this.alphaDirty, slot);
+    if (pool.alphas[slot] !== nextAlpha) {
+      pool.alphas[slot] = nextAlpha;
+      markDirtySlot(pool.alphaDirty, slot);
     }
     return true;
   }
 
   dispose(): void {
-    // SHADOW_GEOMETRY is module-shared; skip the geometry leg.
-    disposeMesh(this.mesh, { geometry: false });
+    for (const pool of Object.values(this.pools)) {
+      disposeMesh(pool.mesh, { material: false });
+    }
+    this.material.dispose();
   }
 }

@@ -23,6 +23,7 @@ import {
   type LoadingUnitPreviewRuntime,
 } from './loadingUnitPreview3d';
 import type { TurretBlueprintId } from '@/types/blueprintIds';
+import type { PrimitiveGeometryTier } from '@/game/render3d/PrimitiveGeometryQuality3D';
 
 const emit = defineEmits<{
   openDemoBattle: [];
@@ -41,6 +42,8 @@ const yawDegrees = ref(0);
 const pitchDegrees = ref(0);
 const motion = ref(false);
 const motionSpeed = ref(1);
+const geometryTier = ref<PrimitiveGeometryTier>('close');
+const LOD_TIERS = ['close', 'mid', 'far'] as const;
 const activeLoopActionId = ref<string | null>(null);
 
 let previewRuntime: LoadingUnitPreviewRuntime | null = null;
@@ -91,7 +94,7 @@ onMounted(() => {
   void remountPreview();
 });
 
-watch(selectedEntityKey, () => {
+watch([selectedEntityKey, geometryTier], () => {
   stopContinuous();
   void remountPreview();
 });
@@ -132,6 +135,7 @@ async function remountPreview(): Promise<void> {
     {
       fullBleed: false,
       controls: readPreviewControls(),
+      geometryTier: geometryTier.value,
       onReady: () => {
         previewReady.value = true;
       },
@@ -295,6 +299,16 @@ function degreesToRadians(value: number): number {
 
           <section class="lab-section">
             <h3>View</h3>
+            <div class="kind-tabs" aria-label="Geometry level of detail">
+              <button
+                v-for="tier in LOD_TIERS"
+                :key="tier"
+                :class="{ active: geometryTier === tier }"
+                @click="geometryTier = tier"
+              >
+                {{ tier === 'close' ? 'High' : tier === 'mid' ? 'Medium' : 'Low' }}
+              </button>
+            </div>
             <label class="toggle-row">
               <input v-model="rotate" type="checkbox">
               <span>Rotate</span>

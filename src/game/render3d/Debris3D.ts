@@ -41,8 +41,12 @@ import {
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getSharedExtrudedEquilateralTriangleGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { clamp01 } from './RenderUtils';
+import { geometryTierForDetail } from './EntityDetailLevel3D';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -358,6 +362,7 @@ type CachedUnitDebrisTemplates = {
  *  pool's shared InstancedMesh handles it. */
 type Piece = {
   shape: 'box' | 'cyl' | 'sphere';
+  tier: PrimitiveGeometryTier;
   /** Slot index in `boxPool` / `cylPool` / `spherePool` (depending on
    *  `shape`). Stable for the piece's lifetime — released on death. */
   slot: number;
@@ -387,11 +392,9 @@ type Piece = {
 export class Debris3D {
   private root: THREE.Group;
   private groundHeightAt: (worldX: number, worldZ: number) => number;
-  // Three InstancedMesh pools — one per shape. Each holds up to
-  // GLOBAL_MAX_PIECES so a worst-case all-of-one-shape spawn fits.
-  private boxPool: InstancedDebrisPool;
-  private cylPool: InstancedDebrisPool;
-  private spherePool: InstancedDebrisPool;
+  // Geometry-density pools are separate from the physical piece state, so
+  // LOD never changes launch, tumble, bounce, lifetime, or source transforms.
+  private pools: Record<PrimitiveGeometryTier, Record<'box' | 'cyl' | 'sphere', InstancedDebrisPool>>;
 
   /** Active pieces in INSERTION ORDER — front of array is oldest.
    *  Global-cap eviction drops a front slice; per-frame death
@@ -423,9 +426,9 @@ export class Debris3D {
     this.pieces.length = 0;
     this.piecesEmittedThisFrame = 0;
     this.poolFlushPending = false;
-    this.boxPool.clear();
-    this.cylPool.clear();
-    this.spherePool.clear();
+    for (const tierPools of Object.values(this.pools)) {
+      for (const pool of Object.values(tierPools)) pool.clear();
+    }
   }
 
   constructor(
@@ -435,24 +438,44 @@ export class Debris3D {
     this.root = new THREE.Group();
     this.groundHeightAt = groundHeightAt;
     parentWorld.add(this.root);
-    // Allocate pool buffers up front. Each pool's geometry is owned
-    // by the pool and disposed in destroy().
-    this.boxPool = new InstancedDebrisPool(
-      this.root, new THREE.BoxGeometry(1, 1, 1), GLOBAL_MAX_PIECES,
-    );
-    this.cylPool = new InstancedDebrisPool(
-      this.root, createPrimitiveCylinderGeometry('effect', 'close'), GLOBAL_MAX_PIECES,
-    );
-    this.spherePool = new InstancedDebrisPool(
-      this.root, createPrimitiveSphereGeometry('effect', 'close'), GLOBAL_MAX_PIECES,
-    );
+    const makeTierPools = (
+      tier: PrimitiveGeometryTier,
+    ): Record<'box' | 'cyl' | 'sphere', InstancedDebrisPool> => ({
+      box: new InstancedDebrisPool(
+        this.root,
+        tier === 'far'
+          ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+          : new THREE.BoxGeometry(1, 1, 1),
+        GLOBAL_MAX_PIECES,
+      ),
+      cyl: new InstancedDebrisPool(
+        this.root,
+        tier === 'far'
+          ? getSharedExtrudedEquilateralTriangleGeometry(1, 1).clone()
+          : createPrimitiveCylinderGeometry('effect', tier),
+        GLOBAL_MAX_PIECES,
+      ),
+      sphere: new InstancedDebrisPool(
+        this.root,
+        tier === 'far'
+          ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+          : createPrimitiveSphereGeometry('effect', tier),
+        GLOBAL_MAX_PIECES,
+      ),
+    });
+    this.pools = {
+      close: makeTierPools('close'),
+      mid: makeTierPools('mid'),
+      far: makeTierPools('far'),
+    };
   }
 
   /** Pick the right pool for a piece's shape. */
-  private poolFor(shape: 'box' | 'cyl' | 'sphere'): InstancedDebrisPool {
-    return shape === 'box' ? this.boxPool
-      : shape === 'cyl' ? this.cylPool
-      : this.spherePool;
+  private poolFor(
+    shape: 'box' | 'cyl' | 'sphere',
+    tier: PrimitiveGeometryTier,
+  ): InstancedDebrisPool {
+    return this.pools[tier][shape];
   }
 
   /** Spawn a full debris cluster for a dying unit at a full 3D sim pos.
@@ -474,6 +497,7 @@ export class Debris3D {
     const style = (gfx.materialExplosionStyle ?? gfx.deathExplosionStyle ?? 'scatter') as DebrisStyle;
     const stride = Math.max(1, STYLE_STRIDE[style] ?? 1);
     const lodScale = clamp01(detailScale);
+    const geometryTier = geometryTierForDetail(lodScale);
     const pieceBudget = Math.max(
       0,
       Math.floor((gfx.materialExplosionPieceBudget ?? GLOBAL_MAX_PIECES) * lodScale),
@@ -531,6 +555,7 @@ export class Debris3D {
         uvz,
         primary,
         physicsFrameStride,
+        geometryTier,
       );
     }
 
@@ -542,7 +567,7 @@ export class Debris3D {
       for (let i = 0; i < overflow; i++) {
         const dropped = this.pieces[i];
         if (dropped) {
-          this.poolFor(dropped.shape).free(dropped.slot);
+          this.poolFor(dropped.shape, dropped.tier).free(dropped.slot);
           this.poolFlushPending = true;
         }
       }
@@ -852,9 +877,10 @@ export class Debris3D {
     uvz: number,
     primary: number,
     physicsFrameStride: number,
+    geometryTier: PrimitiveGeometryTier,
   ): void {
     // --- Allocate slot in the right pool ---
-    const pool = this.poolFor(t.shape);
+    const pool = this.poolFor(t.shape, geometryTier);
     const slot = pool.alloc();
     if (slot === null) return; // pool full — drop this piece silently
 
@@ -970,6 +996,7 @@ export class Debris3D {
 
     const piece: Piece = {
       shape: t.shape,
+      tier: geometryTier,
       slot,
       px, py, pz,
       vx, vy, vz,
@@ -1054,7 +1081,7 @@ export class Debris3D {
 
       const t = p.age / p.lifetime;
       if (t >= 1) {
-        this.poolFor(p.shape).free(p.slot);
+        this.poolFor(p.shape, p.tier).free(p.slot);
         this.poolFlushPending = true;
         const lastIndex = this.pieces.length - 1;
         if (i !== lastIndex) {
@@ -1071,7 +1098,7 @@ export class Debris3D {
       const b = p.baseB + (BG_B - p.baseB) * cLerp;
       const alpha = t < 0.6 ? 1 : Math.max(0, (1 - t) / 0.4);
 
-      this.poolFor(p.shape).write(
+      this.poolFor(p.shape, p.tier).write(
         p.slot,
         p.px, p.py, p.pz,
         p.rx, p.ry, p.rz,
@@ -1088,17 +1115,17 @@ export class Debris3D {
   }
 
   private flushPools(): void {
-    this.boxPool.flush();
-    this.cylPool.flush();
-    this.spherePool.flush();
+    for (const tierPools of Object.values(this.pools)) {
+      for (const pool of Object.values(tierPools)) pool.flush();
+    }
     this.poolFlushPending = false;
   }
 
   destroy(): void {
     this.pieces.length = 0;
-    this.boxPool.destroy();
-    this.cylPool.destroy();
-    this.spherePool.destroy();
+    for (const tierPools of Object.values(this.pools)) {
+      for (const pool of Object.values(tierPools)) pool.destroy();
+    }
     this.root.parent?.remove(this.root);
   }
 }

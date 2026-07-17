@@ -6,10 +6,11 @@ import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import {
   createHexFrustumGeometry,
-  cylinderGeom,
   detail,
   extractorBladeMat,
   factoryFrameMat,
+  getActiveBuildingGeometryTier,
+  getBuildingCylinderGeometry,
   hexCylinderGeom,
   invisibleMat,
   makeCylinder,
@@ -119,6 +120,7 @@ export function buildMetalExtractorMesh(
     flowRadius: Math.max(30, ratePillarHeight * 1.1),
     coneAngle: PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD,
     channel: 1,
+    geometryTier: getActiveBuildingGeometryTier(),
   });
   for (const mesh of metalPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
@@ -190,7 +192,7 @@ function makeExtractorRotor(
   accentMaterial?: THREE.Material,
   accentSink?: THREE.Mesh[],
 ): THREE.Mesh {
-  const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
+  const rotor = new THREE.Mesh(getBuildingCylinderGeometry(), invisibleMat);
   rotor.position.set(0, y, 0);
 
   const groundClearance = Math.max(3.5, bladeThickness * 1.5);

@@ -188,6 +188,16 @@ export function runEntityLod3DContractTest(): void {
     const structure = entityAt(306, 0, 0, 0);
     structure.type = 'building';
     structure.building = {} as NonNullable<Entity['building']>;
+    setLodMode('low');
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), structure),
+      'LOW mode keeps structures as real low-poly geometry',
+    );
+    assertContract(
+      bodyLod.entityDetailRungForView(viewAt(camera), structure) === DETAIL_RUNG_FAR,
+      'LOW mode selects the far geometry tier for structures',
+    );
     assertContract(
       entityLodProxyGlyph3D(structure) === ENTITY_LOD_PROXY_GLYPH_SQUARE,
       'structures use the square proxy glyph',

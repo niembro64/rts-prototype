@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { SwimConfig } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   type LocomotionBase,
@@ -18,7 +19,7 @@ import {
 
 const DEG_TO_RAD = Math.PI / 180;
 const swimMaterials = new Map<number, THREE.MeshBasicMaterial>();
-const panelGeometries = new Map<string, THREE.ExtrudeGeometry>();
+const panelGeometries = new Map<string, THREE.BufferGeometry>();
 
 export type SwimMesh = {
   type: 'swim';
@@ -30,9 +31,12 @@ export type SwimMesh = {
   strokeAngle: number;
 } & LocomotionBase;
 
-function taperedPanelGeometry(tipToRootRatio: number): THREE.ExtrudeGeometry {
+function taperedPanelGeometry(
+  tipToRootRatio: number,
+  tier: PrimitiveGeometryTier,
+): THREE.BufferGeometry {
   const ratio = Math.max(0.08, Math.min(1, tipToRootRatio));
-  const key = ratio.toFixed(4);
+  const key = `${tier}:${ratio.toFixed(4)}`;
   let geometry = panelGeometries.get(key);
   if (geometry !== undefined) return geometry;
   const shape = new THREE.Shape();
@@ -41,20 +45,25 @@ function taperedPanelGeometry(tipToRootRatio: number): THREE.ExtrudeGeometry {
   shape.lineTo(ratio * 0.36, 1);
   shape.lineTo(ratio * -0.5, 1);
   shape.closePath();
-  geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 1,
-    bevelEnabled: false,
-    steps: 1,
-  });
-  geometry.translate(0, 0, -0.5);
+  geometry = tier === 'far'
+    ? new THREE.ShapeGeometry(shape)
+    : new THREE.ExtrudeGeometry(shape, {
+      depth: 1,
+      bevelEnabled: tier === 'close',
+      bevelSegments: tier === 'close' ? 1 : 0,
+      bevelSize: tier === 'close' ? 0.03 : 0,
+      bevelThickness: tier === 'close' ? 0.05 : 0,
+      steps: 1,
+    });
+  if (tier !== 'far') geometry.translate(0, 0, -0.5);
   geometry.rotateX(Math.PI / 2);
   geometry.computeVertexNormals();
   panelGeometries.set(key, geometry);
   return geometry;
 }
 
-function dorsalGeometry(): THREE.ExtrudeGeometry {
-  const key = 'dorsal';
+function dorsalGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  const key = `${tier}:dorsal`;
   let geometry = panelGeometries.get(key);
   if (geometry !== undefined) return geometry;
   const shape = new THREE.Shape();
@@ -62,12 +71,17 @@ function dorsalGeometry(): THREE.ExtrudeGeometry {
   shape.lineTo(0.45, 0);
   shape.lineTo(-0.2, 1);
   shape.closePath();
-  geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 1,
-    bevelEnabled: false,
-    steps: 1,
-  });
-  geometry.translate(0, 0, -0.5);
+  geometry = tier === 'far'
+    ? new THREE.ShapeGeometry(shape)
+    : new THREE.ExtrudeGeometry(shape, {
+      depth: 1,
+      bevelEnabled: tier === 'close',
+      bevelSegments: tier === 'close' ? 1 : 0,
+      bevelSize: tier === 'close' ? 0.03 : 0,
+      bevelThickness: tier === 'close' ? 0.05 : 0,
+      steps: 1,
+    });
+  if (tier !== 'far') geometry.translate(0, 0, -0.5);
   geometry.computeVertexNormals();
   panelGeometries.set(key, geometry);
   return geometry;
@@ -78,6 +92,7 @@ export function buildSwimRig(
   radius: number,
   cfg: SwimConfig,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): SwimMesh {
   const group = new THREE.Group();
   const material = getLocomotionMatByCache(
@@ -89,7 +104,10 @@ export function buildSwimRig(
   const pectoralRootChord = Math.max(0.5, radius * cfg.pectoralRootChordFrac);
   const pectoralTipChord = Math.max(0.25, radius * cfg.pectoralTipChordFrac);
   const pectoralSpan = Math.max(0.5, radius * cfg.pectoralSpanFrac);
-  const pectoralGeometry = taperedPanelGeometry(pectoralTipChord / pectoralRootChord);
+  const pectoralGeometry = taperedPanelGeometry(
+    pectoralTipChord / pectoralRootChord,
+    geometryTier,
+  );
   const pectoralHinges: [THREE.Group, THREE.Group] = [new THREE.Group(), new THREE.Group()];
 
   for (let index = 0; index < pectoralHinges.length; index++) {
@@ -108,7 +126,7 @@ export function buildSwimRig(
 
   const tailHinge = new THREE.Group();
   tailHinge.position.set(radius * cfg.tailOffsetXFrac, 0, 0);
-  const tailGeometry = taperedPanelGeometry(0.32);
+  const tailGeometry = taperedPanelGeometry(0.32, geometryTier);
   for (const side of [-1, 1] as const) {
     const fluke = new THREE.Mesh(tailGeometry, material);
     fluke.scale.set(
@@ -120,7 +138,7 @@ export function buildSwimRig(
   }
   group.add(tailHinge);
 
-  const dorsal = new THREE.Mesh(dorsalGeometry(), material);
+  const dorsal = new THREE.Mesh(dorsalGeometry(geometryTier), material);
   dorsal.position.set(radius * cfg.dorsalOffsetXFrac, 0, 0);
   dorsal.scale.set(
     Math.max(0.5, radius * cfg.dorsalChordFrac),

@@ -20,8 +20,14 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { SPLASH_CONFIG } from '@/splashConfig';
 import type { Vec3 } from '@/types/vec2';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 
 const VS = `
 attribute float aAlpha;
@@ -51,13 +57,17 @@ type Droplet = {
   lengthScale: number;
 };
 
+type DropletPool = {
+  geom: THREE.BufferGeometry;
+  mesh: THREE.InstancedMesh;
+  alphaArr: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+};
+
 export class WaterSplash3D {
   private root: THREE.Group;
-  private geom: THREE.SphereGeometry;
   private mat: THREE.ShaderMaterial;
-  private mesh: THREE.InstancedMesh;
-  private alphaArr: Float32Array;
-  private alphaAttr: THREE.InstancedBufferAttribute;
+  private pools: Record<PrimitiveGeometryTier, DropletPool>;
   private scratch = new THREE.Matrix4();
   private droplets: Droplet[] = [];
   private freeSlots: number[] = [];
@@ -67,12 +77,6 @@ export class WaterSplash3D {
     const cfg = SPLASH_CONFIG;
     this.root = new THREE.Group();
     parentWorld.add(this.root);
-
-    this.geom = createPrimitiveSphereGeometry('waterSplash', 'close');
-    this.alphaArr = new Float32Array(cfg.pool.maxDroplets);
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.geom.setAttribute('aAlpha', this.alphaAttr);
 
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VS,
@@ -91,12 +95,11 @@ export class WaterSplash3D {
       blending: THREE.AdditiveBlending,
     });
 
-    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, cfg.pool.maxDroplets);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = 14;
-    this.root.add(this.mesh);
+    this.pools = {
+      close: this.createPool('close', cfg.pool.maxDroplets),
+      mid: this.createPool('mid', cfg.pool.maxDroplets),
+      far: this.createPool('far', cfg.pool.maxDroplets),
+    };
 
     for (let i = cfg.pool.maxDroplets - 1; i >= 0; i--) {
       this.droplets.push({
@@ -108,6 +111,23 @@ export class WaterSplash3D {
       });
       this.freeSlots.push(i);
     }
+  }
+
+  private createPool(tier: PrimitiveGeometryTier, capacity: number): DropletPool {
+    const geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('waterSplash', tier);
+    const alphaArr = new Float32Array(capacity);
+    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
+    alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aAlpha', alphaAttr);
+    const mesh = new THREE.InstancedMesh(geom, this.mat, capacity);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 14;
+    this.root.add(mesh);
+    return { geom, mesh, alphaArr, alphaAttr };
   }
 
   /** Create a water splash from physical impact inputs in sim coords. */
@@ -242,14 +262,14 @@ export class WaterSplash3D {
     return true;
   }
 
-  update(dtMs: number): void {
+  update(dtMs: number, view?: RenderViewState3D): void {
     if (this.activeDropletCount === 0) {
-      if (this.mesh.count !== 0) this.mesh.count = 0;
+      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
       return;
     }
     const dt = dtMs / 1000;
     if (dt <= 0) {
-      this.writeInstances();
+      this.writeInstances(view);
       return;
     }
     const gravity = SPLASH_CONFIG.physics.gravity;
@@ -268,13 +288,13 @@ export class WaterSplash3D {
       }
     }
     if (this.activeDropletCount === 0) {
-      if (this.mesh.count !== 0) this.mesh.count = 0;
+      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
       return;
     }
-    this.writeInstances();
+    this.writeInstances(view);
   }
 
-  private writeInstances(): void {
+  private writeInstances(view?: RenderViewState3D): void {
     const cfg = SPLASH_CONFIG;
     const fadeIn = cfg.appearance.fadeInFraction;
     const maxAlpha = cfg.appearance.maxAlpha;
@@ -283,7 +303,7 @@ export class WaterSplash3D {
     const widthFadePerLife = cfg.streak.widthFadePerLife;
     const lengthFadePerLife = cfg.streak.lengthFadePerLife;
     const e = this.scratch.elements;
-    let writeIndex = 0;
+    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
     for (let i = 0; i < this.droplets.length; i++) {
       const d = this.droplets[i];
       if (!d.active) continue;
@@ -324,19 +344,28 @@ export class WaterSplash3D {
       e[4] = pxAx * w;          e[5] = pyAx * w;          e[6] = pzAx * w;          e[7] = 0;
       e[8] = qxAx * w;          e[9] = qyAx * w;          e[10] = qzAx * w;         e[11] = 0;
       e[12] = d.x;              e[13] = d.y;              e[14] = d.z;              e[15] = 1;
-      this.mesh.setMatrixAt(writeIndex, this.scratch);
-      this.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * maxAlpha;
-      writeIndex++;
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(view, d.x, d.z, d.y, longScale))
+        : 'close';
+      const pool = this.pools[tier];
+      const writeIndex = counts[tier]++;
+      pool.mesh.setMatrixAt(writeIndex, this.scratch);
+      pool.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * maxAlpha;
     }
-    if (this.mesh.count !== writeIndex) this.mesh.count = writeIndex;
-    if (writeIndex > 0) {
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.alphaAttr.needsUpdate = true;
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      const pool = this.pools[tier];
+      pool.mesh.count = counts[tier];
+      if (counts[tier] > 0) {
+        pool.mesh.instanceMatrix.needsUpdate = true;
+        pool.alphaAttr.needsUpdate = true;
+      }
     }
   }
 
   destroy(): void {
-    disposeMesh(this.mesh);
+    for (const pool of Object.values(this.pools)) {
+      disposeMesh(pool.mesh, { material: false });
+    }
     this.mat.dispose();
   }
 }

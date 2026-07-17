@@ -44,11 +44,13 @@ import {
   createHexFrustumGeometry,
   disposeBuildingMeshPrimitives,
   detail,
+  getActiveBuildingGeometryTier,
   hexCylinderGeom,
   invisibleMat,
   makeBox,
   makeCylinder,
   makeSphere,
+  withBuildingGeometryTier,
 } from './BuildingMeshPrimitives3D';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import {
@@ -67,7 +69,10 @@ import {
 } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
-import { createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveRingGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -83,7 +88,8 @@ export type BuildingDetailRole =
   | 'solarTeamAccent'
   | 'windRig'
   | 'extractorRotor'
-  | 'radarRig';
+  | 'radarRig'
+  | 'tinyTrim';
 
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
@@ -132,8 +138,33 @@ export type ResourceConverterRig = {
 const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 
 const radarTowerGeom = createHexFrustumGeometry(0.055, 0.16);
-const radarDishGeom = createRadarDishGeometry();
-const radarRingGeom = createPrimitiveTorusGeometry('building', 'close', 1, 0.055);
+const radarDishGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+const radarRingGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+
+function getRadarDishGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  let geometry = radarDishGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = tier === 'close'
+      ? createRadarDishGeometry(4, 24)
+      : tier === 'mid'
+        ? createRadarDishGeometry(3, 14)
+        : createRadarDishGeometry(1, 6);
+    radarDishGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function getRadarRingGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  let geometry = radarRingGeomByTier.get(tier);
+  if (geometry === undefined) {
+    // A dish rim is a thin visible face, not a pipe. RingGeometry preserves
+    // the exact circular outline without submitting the torus's hidden inner
+    // and outer walls (which used to dominate Radar even at Medium).
+    geometry = createPrimitiveRingGeometry('building', tier, 0.945, 1.055);
+    radarRingGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
 const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 const radarDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const radarDishMat = new THREE.MeshStandardMaterial({
@@ -189,38 +220,41 @@ export function buildBuildingShape(
   depth: number,
   primaryMat: THREE.Material,
   buildingBlueprintId?: StructureBlueprintId | null,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): BuildingShape {
-  switch (type) {
-    case 'buildingSolar':
-      return buildSolarCollector(width, depth, primaryMat);
-    case 'buildingWind':
-      return buildWindTurbineMesh(width, depth, primaryMat);
-    case 'towerFabricator':
-      return buildFactoryMesh(width, depth, primaryMat);
-    case 'buildingExtractor':
-      return buildMetalExtractorMesh(
-        width,
-        depth,
-        primaryMat,
-        buildingBlueprintId === 'buildingExtractorT2' ? 'advanced' : 'standard',
-      );
-    case 'buildingRadar':
-      return buildRadarMesh(width, depth, primaryMat);
-    case 'towerBeamMega':
-      return buildMegaBeamTowerMesh(primaryMat);
-    case 'towerCannon':
-      return buildCannonTowerMesh(primaryMat);
-    case 'towerAntiAir':
-      return buildAntiAirTowerMesh(primaryMat);
-    case 'buildingResourceConverter':
-      return buildResourceConverterMesh(width, depth, primaryMat);
-    case 'unknown':
-      return buildUnknown(primaryMat);
-    case 'bodyless':
-      return buildBodyless(primaryMat);
-    default:
-      throw new Error(`Unhandled building shape type: ${type as string}`);
-  }
+  return withBuildingGeometryTier(geometryTier, () => {
+    switch (type) {
+      case 'buildingSolar':
+        return buildSolarCollector(width, depth, primaryMat);
+      case 'buildingWind':
+        return buildWindTurbineMesh(width, depth, primaryMat);
+      case 'towerFabricator':
+        return buildFactoryMesh(width, depth, primaryMat);
+      case 'buildingExtractor':
+        return buildMetalExtractorMesh(
+          width,
+          depth,
+          primaryMat,
+          buildingBlueprintId === 'buildingExtractorT2' ? 'advanced' : 'standard',
+        );
+      case 'buildingRadar':
+        return buildRadarMesh(width, depth, primaryMat);
+      case 'towerBeamMega':
+        return buildMegaBeamTowerMesh(primaryMat);
+      case 'towerCannon':
+        return buildCannonTowerMesh(primaryMat);
+      case 'towerAntiAir':
+        return buildAntiAirTowerMesh(primaryMat);
+      case 'buildingResourceConverter':
+        return buildResourceConverterMesh(width, depth, primaryMat);
+      case 'unknown':
+        return buildUnknown(primaryMat);
+      case 'bodyless':
+        return buildBodyless(primaryMat);
+      default:
+        throw new Error(`Unhandled building shape type: ${type as string}`);
+    }
+  });
 }
 
 /** Fallback — plain team-primary slab at default height, no detail. */
@@ -245,6 +279,7 @@ function buildRadarMesh(
   primaryMat: THREE.Material,
 ): BuildingShape {
   const height = RADAR_BUILDING_VISUAL_HEIGHT;
+  const geometryTier = getActiveBuildingGeometryTier();
   const minDim = Math.min(width, depth);
   const primary = new THREE.Mesh(radarTowerGeom, primaryMat);
   const details: BuildingShape['details'] = [];
@@ -267,7 +302,7 @@ function buildRadarMesh(
   const sweep = new THREE.Mesh(boxGeom, invisibleMat);
   sweep.position.set(0, height * 0.52, 0);
   const sweepRadius = Math.max(24, minDim * 0.08);
-  const sweepRing = new THREE.Mesh(radarRingGeom, radarSweepMat);
+  const sweepRing = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarSweepMat);
   sweepRing.rotation.x = Math.PI / 2;
   sweepRing.scale.set(sweepRadius, sweepRadius, 4);
   sweep.add(sweepRing);
@@ -285,11 +320,11 @@ function buildRadarMesh(
   const dishRadiusX = Math.max(30, minDim * 0.12);
   const dishRadiusY = dishRadiusX * 0.58;
   const dishDepth = Math.max(6, minDim * 0.032);
-  const dish = new THREE.Mesh(radarDishGeom, radarDishMat);
+  const dish = new THREE.Mesh(getRadarDishGeometry(geometryTier), radarDishMat);
   dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
   dishPivot.add(dish);
 
-  const rim = new THREE.Mesh(radarRingGeom, radarFrameMat);
+  const rim = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarFrameMat);
   rim.scale.set(dishRadiusX, dishRadiusY, 4);
   dishPivot.add(rim);
 
@@ -450,6 +485,7 @@ function buildResourceConverterMesh(
     flowRadius: Math.max(34, pylonHeight * 1.25),
     coneAngle: PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD,
     channel: 0,
+    geometryTier: getActiveBuildingGeometryTier(),
   });
   const metalPylon = buildResourcePylonRig({
     resource: 'metal',
@@ -464,6 +500,7 @@ function buildResourceConverterMesh(
     flowRadius: Math.max(34, pylonHeight * 1.25),
     coneAngle: PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD,
     channel: 1,
+    geometryTier: getActiveBuildingGeometryTier(),
   });
   for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));
   for (const mesh of metalPylon.staticMeshes) details.push(detail(mesh, 'low'));
@@ -488,8 +525,10 @@ export function disposeBuildingGeoms(): void {
   disposeFactoryMeshGeoms();
   disposeSolarCollectorGeoms();
   radarTowerGeom.dispose();
-  radarDishGeom.dispose();
-  radarRingGeom.dispose();
+  for (const geometry of radarDishGeomByTier.values()) geometry.dispose();
+  for (const geometry of radarRingGeomByTier.values()) geometry.dispose();
+  radarDishGeomByTier.clear();
+  radarRingGeomByTier.clear();
   radarFrameMat.dispose();
   radarDarkMat.dispose();
   radarDishMat.dispose();

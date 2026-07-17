@@ -10,9 +10,27 @@
 import * as THREE from 'three';
 
 import { getShieldFrameGeometry } from '../sim/shieldPanelCache';
+import {
+  getSharedExtrudedEquilateralTriangleGeometry,
+  getSharedPrimitiveCylinderGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
 const _supportDir = new THREE.Vector3();
+const lowPanelGeom = new THREE.PlaneGeometry(1, 1);
+const lowArmGeom = createDoubleSidedArmTriangleGeometry();
+
+function createDoubleSidedArmTriangleGeometry(): THREE.BufferGeometry {
+  const positions = new Float32Array([
+    -0.5, -0.5, 0, 0.5, 0, 0, -0.5, 0.5, 0,
+    -0.5, 0.5, 0, 0.5, 0, 0, -0.5, -0.5, 0,
+  ]);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
 
 export type ShieldPanelMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
@@ -73,9 +91,9 @@ export function buildShieldPanelMesh3D(
    *  panel center (chassis-local, along turret +X). Matches the sim
    *  cache's `panel.offsetX`. */
   panelArmLength: number,
-  panelGeom: THREE.BoxGeometry,
-  armGeom: THREE.BoxGeometry,
-  supportGeom: THREE.CylinderGeometry,
+  panelGeom: THREE.BufferGeometry,
+  armGeom: THREE.BufferGeometry,
+  supportGeom: THREE.BufferGeometry,
   panelMaterial: THREE.Material,
   armMaterial: THREE.Material,
   /** When true, panel Meshes are BUILT (so .position / .rotation /
@@ -86,6 +104,7 @@ export function buildShieldPanelMesh3D(
    *  always attach per-Mesh; the cap-bound shared instance is for
    *  panels only. */
   skipPerMesh: boolean = false,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): ShieldPanelMesh {
   // The mirror is a ball-joint at the authored turret attachment
   // point. Arms and panels live at Y = 0 in root's local frame; the
@@ -103,6 +122,13 @@ export function buildShieldPanelMesh3D(
   const side = frame.side;
   const supportDiameter = frame.supportDiameter;
   const frameSegmentLength = frame.frameSegmentLength;
+  const resolvedPanelGeom = geometryTier === 'far' ? lowPanelGeom : panelGeom;
+  const resolvedArmGeom = geometryTier === 'far' ? lowArmGeom : armGeom;
+  const resolvedSupportGeom = geometryTier === 'far'
+    ? getSharedExtrudedEquilateralTriangleGeometry()
+    : geometryTier === 'mid'
+      ? getSharedPrimitiveCylinderGeometry('unitDetail', 'mid')
+      : supportGeom;
 
   const makeCylinderBetween = (
     ax: number, ay: number, az: number,
@@ -112,7 +138,7 @@ export function buildShieldPanelMesh3D(
     const dy = by - ay;
     const dz = bz - az;
     const len = Math.max(Math.hypot(dx, dy, dz), 0.001);
-    const mesh = new THREE.Mesh(supportGeom, armMaterial);
+    const mesh = new THREE.Mesh(resolvedSupportGeom, armMaterial);
     mesh.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
     mesh.scale.set(supportDiameter, len, supportDiameter);
     _supportDir.set(dx / len, dy / len, dz / len);
@@ -132,7 +158,7 @@ export function buildShieldPanelMesh3D(
     // (along the arm), so the Z scale becomes the slab thickness along
     // the panel normal. The whole assembly's pitch comes from root's
     // quaternion, so the panel keeps a static local rotation here.
-    const m = new THREE.Mesh(panelGeom, panelMaterial);
+    const m = new THREE.Mesh(resolvedPanelGeom, panelMaterial);
     m.rotation.y = -Math.PI / 2;
     m.scale.set(side, side, panelThickness);
     // Panel center at the END of the arm, root-local Y = 0.
@@ -144,7 +170,7 @@ export function buildShieldPanelMesh3D(
     const addSideArm = (sign: -1 | 1) => {
       const armZ = frameZ * sign;
       const armLength = Math.hypot(panelArmLength, armZ);
-      const arm = new THREE.Mesh(armGeom, armMaterial);
+      const arm = new THREE.Mesh(resolvedArmGeom, armMaterial);
       // The arm is the old "extruded frame tab" shape: long toward
       // the turret pivot, tall along the mirror side, and thin through
       // the panel. It overlaps the cylindrical grabber at the far end

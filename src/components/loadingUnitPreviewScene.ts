@@ -52,11 +52,21 @@ import {
 } from '@/game/render3d/EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
 import {
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  createPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
 } from '@/game/render3d/PrimitiveGeometryQuality3D';
+import {
+  DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_FAR,
+  DETAIL_RUNG_MID,
+  detailLevelForRung,
+} from '@/game/render3d/EntityDetailLevel3D';
 import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
+import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -71,6 +81,7 @@ type LoadingUnitPreviewSceneOptions = {
   kind: LoadingPreviewKind;
   blueprintId: LoadingEntityBlueprintId;
   fullBleed: boolean;
+  geometryTier?: PrimitiveGeometryTier;
   preserveDrawingBuffer?: boolean;
 };
 
@@ -131,6 +142,7 @@ const SHELL_ENTITY_ID = 1;
 // matching GameCanvas's `localPlayerId` default so it looks exactly as
 // it will in-game for the host.
 const HOST_PLAYER_ID: PlayerId = 1;
+const previewCommanderVisualKit = new CommanderVisualKit3D();
 const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const DEFAULT_CONTROLS: LoadingUnitPreviewControls = {
   rotate: true,
@@ -248,9 +260,21 @@ const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
 const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
-const legCylinderGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
-const legJointGeom = createPrimitiveSphereGeometry('locomotion', 'close');
-const legFootGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
+const legSegmentGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveCylinderGeometry('locomotion', 'close'),
+  mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
+  far: createExtrudedEquilateralTriangleGeometry(),
+};
+const legJointGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveSphereGeometry('locomotion', 'close'),
+  mid: createPrimitiveSphereGeometry('locomotion', 'mid'),
+  far: createPrimitiveTetrahedronGeometry(),
+};
+const legFootGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveCylinderGeometry('locomotion', 'close'),
+  mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
+  far: createPrimitiveTetrahedronGeometry(),
+};
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
 const scratchTarget = new THREE.Vector3();
@@ -299,7 +323,12 @@ export class LoadingUnitPreviewScene {
     this.environmentTexture = installPreviewEnvironment(this.renderer, this.scene);
 
     this.spinRoot.add(this.motionRoot);
-    this.model = buildPreviewModel(options.kind, options.blueprintId, this.materials);
+    this.model = buildPreviewModel(
+      options.kind,
+      options.blueprintId,
+      this.materials,
+      options.geometryTier ?? 'close',
+    );
     this.centerModel(this.model.root);
     this.motionRoot.add(this.model.root);
     this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
@@ -406,10 +435,21 @@ function buildPreviewModel(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): PreviewModel {
   return kind === 'unit'
-    ? buildPreviewUnitModel(blueprintId as UnitBlueprintId, materials)
-    : buildPreviewBuildingModel(blueprintId as StructureBlueprintId, materials);
+    ? buildPreviewUnitModel(blueprintId as UnitBlueprintId, materials, geometryTier)
+    : buildPreviewBuildingModel(blueprintId as StructureBlueprintId, materials, geometryTier);
+}
+
+function detailLevelForGeometryTier(tier: PrimitiveGeometryTier): number {
+  return detailLevelForRung(
+    tier === 'close'
+      ? DETAIL_RUNG_CLOSE
+      : tier === 'mid'
+        ? DETAIL_RUNG_MID
+        : DETAIL_RUNG_FAR,
+  );
 }
 
 /** Build a static preview of a building/tower, mirroring the in-game
@@ -421,6 +461,7 @@ function buildPreviewModel(
 function buildPreviewBuildingModel(
   buildingBlueprintId: StructureBlueprintId,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): PreviewModel {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
   const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
@@ -433,6 +474,7 @@ function buildPreviewBuildingModel(
     depth,
     materials.primary,
     buildingBlueprintId,
+    geometryTier,
   );
   if (!shape.bodyless) {
     // Match updateBuildingMesh: the primary body sits on the footprint
@@ -441,9 +483,17 @@ function buildPreviewBuildingModel(
     shape.primary.scale.set(width, shape.height, depth);
     root.add(shape.primary);
   }
-  for (const detail of shape.details) root.add(detail.mesh);
+  for (const detail of shape.details) {
+    if (
+      geometryTier !== 'close' &&
+      (detail.role === 'tinyTrim' || detail.role === 'solarTeamAccent')
+    ) {
+      continue;
+    }
+    root.add(detail.mesh);
+  }
 
-  buildPreviewBuildingTurrets(root, buildingBlueprintId, materials);
+  buildPreviewBuildingTurrets(root, buildingBlueprintId, materials, geometryTier);
   return { root, locomotion: null };
 }
 
@@ -451,6 +501,7 @@ function buildPreviewBuildingTurrets(
   root: THREE.Group,
   buildingBlueprintId: StructureBlueprintId,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
   for (const turret of turrets) {
@@ -462,6 +513,7 @@ function buildPreviewBuildingTurrets(
       turretAccentMat: materials.turretAccent,
       skipHead: false,
       skipBarrels: false,
+      detailLevel: detailLevelForGeometryTier(geometryTier),
     });
     // Building mounts are authored in absolute world units (see
     // BuildingEntityRenderer3D.updateTurretPoses): head pivots at
@@ -475,6 +527,7 @@ function buildPreviewBuildingTurrets(
 function buildPreviewUnitModel(
   unitBlueprintId: UnitBlueprintId,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): PreviewModel {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const radius = blueprint.radius.other;
@@ -483,17 +536,17 @@ function buildPreviewUnitModel(
   const yawGroup = new THREE.Group();
   root.add(yawGroup);
 
-  const locomotion = buildPreviewLocomotion(yawGroup, blueprint, materials);
+  const locomotion = buildPreviewLocomotion(yawGroup, blueprint, materials, geometryTier);
 
   const liftGroup = new THREE.Group();
   liftGroup.position.y = chassisLift;
   yawGroup.add(liftGroup);
 
   const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
-  buildPreviewBody(liftGroup, blueprint, materials.primary);
-  buildPreviewProductionRing(liftGroup, productionRing, materials.primary);
-  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials, productionRing);
-  buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials);
+  buildPreviewBody(liftGroup, blueprint, materials.primary, geometryTier);
+  buildPreviewProductionRing(liftGroup, productionRing, materials.primary, geometryTier);
+  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials, productionRing, geometryTier);
+  buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials, geometryTier);
   return { root, locomotion };
 }
 
@@ -519,12 +572,14 @@ function buildPreviewProductionRing(
   liftGroup: THREE.Group,
   productionRing: PreviewProductionRing | null,
   material: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   if (productionRing === null) return;
   const ring = buildProductionHoldRingMesh(
     productionRing.ringRadius,
     material,
     productionRing.ringOrientation,
+    geometryTier,
   );
   ring.position.set(productionRing.centerX, productionRing.centerY, productionRing.centerZ);
   liftGroup.add(ring);
@@ -534,12 +589,13 @@ function buildPreviewBody(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
   bodyMaterial: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const chassis = new THREE.Group();
   if (blueprint.unitBlueprintId === 'unitAlbatros') {
-    buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID);
+    buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
   } else {
-    const bodyEntry = getBodyGeom(blueprint.bodyShape);
+    const bodyEntry = getBodyGeom(blueprint.bodyShape, geometryTier);
     for (const part of bodyEntry.parts) {
       const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
       mesh.position.set(part.x, part.y, part.z);
@@ -547,6 +603,9 @@ function buildPreviewBody(
       if (part.rotZ) mesh.rotation.z = part.rotZ;
       chassis.add(mesh);
     }
+  }
+  if (blueprint.unitBlueprintId === 'unitCommander') {
+    chassis.add(previewCommanderVisualKit.buildKit(bodyMaterial, geometryTier));
   }
   chassis.scale.setScalar(blueprint.radius.other);
   liftGroup.add(chassis);
@@ -559,6 +618,7 @@ function buildPreviewTurrets(
   chassisLift: number,
   materials: PreviewUnitMaterials,
   productionRing: PreviewProductionRing | null,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
   let productionPylonOrdinal = 0;
@@ -576,7 +636,16 @@ function buildPreviewTurrets(
       showShieldEmitterCore,
       skipHead: false,
       skipBarrels: false,
+      detailLevel: detailLevelForGeometryTier(geometryTier),
     });
+    if (unitBlueprintId === 'unitCommander') {
+      previewCommanderVisualKit.decorateTurret(
+        turretMesh,
+        turret.config.turretBlueprintId === blueprint.dgun?.turretBlueprintId,
+        materials.primary,
+        geometryTier,
+      );
+    }
     const headRadius = getTurretHeadRadius(turret.config);
     let mountX = turret.mount.x;
     let mountY = turret.mount.z - chassisLift;
@@ -601,23 +670,24 @@ function buildPreviewLocomotion(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): PreviewLocomotionRig | null {
   const locomotion = blueprint.unitLocomotion;
   const radius = blueprint.radius.other;
   switch (locomotion.type) {
     case 'treads':
-      return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID) };
+      return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID, geometryTier) };
     case 'wheels':
-      return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID) };
+      return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier) };
     case 'flippers':
       return {
         type: 'flippers',
-        mesh: buildFlippers(yawGroup, radius, locomotion.config, HOST_PLAYER_ID),
+        mesh: buildFlippers(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
     case 'swim':
       return {
         type: 'swim',
-        mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID),
+        mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
     case 'hover':
       if (blueprint.unitBlueprintId === 'unitAlbatros') {
@@ -630,6 +700,7 @@ function buildPreviewLocomotion(
             'locomotionAlbatrosHoverFans',
             SHELL_ENTITY_ID,
             HOST_PLAYER_ID,
+            geometryTier,
           ),
         };
       }
@@ -642,6 +713,7 @@ function buildPreviewLocomotion(
           'locomotionHovercraft',
           SHELL_ENTITY_ID,
           HOST_PLAYER_ID,
+          geometryTier,
         ),
       };
     case 'flying':
@@ -654,10 +726,11 @@ function buildPreviewLocomotion(
           blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosFlying' : 'locomotionEagleFlying',
           SHELL_ENTITY_ID,
           HOST_PLAYER_ID,
+          geometryTier,
         ),
       };
     case 'legs':
-      return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg) };
+      return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier) };
   }
   return null;
 }
@@ -667,6 +740,7 @@ function buildPreviewMirrors(
   blueprint: UnitBlueprint,
   chassisLift: number,
   materials: PreviewUnitMaterials,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const shieldPanels: CachedShieldPanel[] = [];
   buildShieldPanelCache(blueprint, shieldPanels);
@@ -677,7 +751,7 @@ function buildPreviewMirrors(
   const panelHalfSide = shieldPanels[0].halfWidth;
   const panelArmLength = shieldPanels[0].offsetX;
 
-  buildShieldPanelMesh3D(
+  const mirror = buildShieldPanelMesh3D(
     liftGroup,
     shieldPanels,
     shieldPanelTurret?.mount.x ?? 0,
@@ -690,13 +764,17 @@ function buildPreviewMirrors(
     mirrorSupportGeom,
     materials.mirrorShiny,
     materials.primary,
+    false,
+    geometryTier,
   );
+  mirror.root.visible = true;
 }
 
 function buildPreviewLegs(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
   legMaterial: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): THREE.Group {
   const locomotion = blueprint.unitLocomotion;
   if (locomotion.type !== 'legs') return new THREE.Group();
@@ -734,11 +812,11 @@ function buildPreviewLegs(
       0, 1, 0,
     );
     const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-    addCylinderBetween(legGroup, hip, kneeVec, upperRadius, legMaterial);
-    addCylinderBetween(legGroup, kneeVec, foot, lowerRadius, legMaterial);
-    addSphere(legGroup, hip, hipJointRadius, legMaterial);
-    addSphere(legGroup, kneeVec, kneeJointRadius, legMaterial);
-    addFootPad(legGroup, foot, footPadRadius, footPadHalfHeight, legMaterial);
+    addCylinderBetween(legGroup, hip, kneeVec, upperRadius, legMaterial, geometryTier);
+    addCylinderBetween(legGroup, kneeVec, foot, lowerRadius, legMaterial, geometryTier);
+    addSphere(legGroup, hip, hipJointRadius, legMaterial, geometryTier);
+    addSphere(legGroup, kneeVec, kneeJointRadius, legMaterial, geometryTier);
+    addFootPad(legGroup, foot, footPadRadius, footPadHalfHeight, legMaterial, geometryTier);
   }
   return group;
 }
@@ -822,13 +900,14 @@ function addCylinderBetween(
   b: THREE.Vector3,
   radius: number,
   material: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const dz = b.z - a.z;
   const length = Math.hypot(dx, dy, dz);
   if (length < 0.001) return;
-  const mesh = new THREE.Mesh(legCylinderGeom, material);
+  const mesh = new THREE.Mesh(legSegmentGeoms[geometryTier], material);
   mesh.position.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
   mesh.scale.set(radius, length, radius);
   scratchDir.set(dx / length, dy / length, dz / length);
@@ -841,8 +920,9 @@ function addSphere(
   center: THREE.Vector3,
   radius: number,
   material: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
-  const mesh = new THREE.Mesh(legJointGeom, material);
+  const mesh = new THREE.Mesh(legJointGeoms[geometryTier], material);
   mesh.position.copy(center);
   mesh.scale.setScalar(radius);
   parent.add(mesh);
@@ -854,8 +934,9 @@ function addFootPad(
   radius: number,
   halfHeight: number,
   material: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): void {
-  const mesh = new THREE.Mesh(legFootGeom, material);
+  const mesh = new THREE.Mesh(legFootGeoms[geometryTier], material);
   mesh.position.copy(center);
   mesh.scale.set(radius, halfHeight, radius);
   parent.add(mesh);

@@ -21,8 +21,13 @@ import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
-import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  getSharedExtrudedEquilateralTriangleGeometry,
+  getSharedPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 export type ConstructionTowerOrbitPart = {
   mesh: THREE.Mesh;
@@ -104,11 +109,37 @@ type ResourcePylonBuildOptions = {
    *  economy buildings pass their building-specific pylon cone constants. */
   coneAngle: number;
   channel: number;
+  geometryTier?: PrimitiveGeometryTier;
 };
 
-const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
-const hexCylinderGeom = createPrimitiveCylinderGeometry('building', 'far', 0.5, 0.5);
-const octagonCylinderGeom = createPrimitiveCylinderGeometry('effect', 'mid', 0.5, 0.5);
+const baseCylinderGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+const strawCylinderGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
+
+function getBaseCylinderGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  let geometry = baseCylinderGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = tier === 'far'
+      ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
+      : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5);
+    baseCylinderGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function getStrawCylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geometry = strawCylinderGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = createPrimitiveCylinderGeometry('unitDetail', tier, 0.5, 0.5, 1, 1, true);
+    strawCylinderGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function getCapGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  return tier === 'far'
+    ? getSharedPrimitiveTetrahedronGeometry()
+    : getSharedPrimitiveSphereGeometry('unitDetail', tier);
+}
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
 // "Straw" walls: the pylon is a transparent double-wall tube — an outer
@@ -204,6 +235,7 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
   rig: ResourcePylonRig;
 } {
   const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[options.resource];
+  const geometryTier = options.geometryTier ?? 'close';
   const staticMeshes: THREE.Mesh[] = [];
   if (options.pylonRadius > 0) {
     for (const wall of makeStrawWalls(
@@ -212,14 +244,16 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
       options.x,
       options.pylonBaseY + options.pylonHeight / 2,
       options.z,
+      geometryTier,
     )) staticMeshes.push(wall);
-    staticMeshes.push(makeSphere(
-      variant.capMaterial,
-      Math.max(1.6, options.pylonRadius * 1.45),
+    const cap = new THREE.Mesh(getCapGeometry(geometryTier), variant.capMaterial);
+    cap.scale.setScalar(Math.max(1.6, options.pylonRadius * 1.45));
+    cap.position.set(
       options.x,
       options.pylonBaseY + options.pylonHeight + Math.max(1.0, options.pylonRadius * 0.5),
       options.z,
-    ));
+    );
+    staticMeshes.push(cap);
   }
   const capRadius = Math.max(1.6, options.pylonRadius * 1.45);
   const topLocal = new THREE.Vector3(
@@ -256,6 +290,7 @@ export function buildConstructionEmitterRigFromTurretConfig(
   // Resource-pylon turrets carry exactly ONE resource pylon (the legacy
   // construction emitter renders the energy+metal pair). null = the pair.
   singleResource: ConstructionTowerResource | null = null,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): ConstructionEmitterRig {
   const spec = turretConfig.constructionEmitter;
   if (!spec) {
@@ -277,11 +312,17 @@ export function buildConstructionEmitterRigFromTurretConfig(
     dims.innerPylonRadius,
     pylonBaseY,
     singleResource,
+    geometryTier,
   );
   // The deck is the multi-pylon construction tower's shared base; a single
   // resource pylon (the split metal/energy pylons) stands alone without it.
   if (variant === 'large' && singleResource === null) {
-    root.add(buildConstructionTurretDeck(dims.pylonOffset, dims.innerPylonRadius, primaryMat));
+    root.add(buildConstructionTurretDeck(
+      dims.pylonOffset,
+      dims.innerPylonRadius,
+      primaryMat,
+      geometryTier,
+    ));
   }
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
   for (const pylon of pylonTrio.pylons) {
@@ -304,10 +345,10 @@ export function buildConstructionEmitterRigFromTurretConfig(
 }
 
 export function disposeConstructionEmitterGeoms(): void {
-  cylinderGeom.dispose();
-  hexCylinderGeom.dispose();
-  octagonCylinderGeom.dispose();
-  disposeRenderUtilsGeoms();
+  for (const geometry of baseCylinderGeomByTier.values()) geometry.dispose();
+  for (const geometry of strawCylinderGeomByTier.values()) geometry.dispose();
+  baseCylinderGeomByTier.clear();
+  strawCylinderGeomByTier.clear();
   frameMat.dispose();
   strawOuterMat.dispose();
   strawInnerMat.dispose();
@@ -320,10 +361,11 @@ function buildConstructionTurretDeck(
   pylonOffset: number,
   innerPylonRadius: number,
   primaryMat: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
 ): THREE.Mesh {
   const radius = Math.max(16, pylonOffset + innerPylonRadius * 5);
   const height = Math.max(4, innerPylonRadius * 1.6);
-  const deck = new THREE.Mesh(octagonCylinderGeom, primaryMat);
+  const deck = new THREE.Mesh(getBaseCylinderGeom(geometryTier), primaryMat);
   deck.position.set(0, -height * 0.5, 0);
   deck.scale.set(radius * 2, height, radius * 2);
   return deck;
@@ -337,6 +379,7 @@ function buildConstructionPylonTrio(
   innerPylonRadius: number,
   pylonBaseY: number,
   singleResource: ConstructionTowerResource | null = null,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): ConstructionPylonTrio {
   const staticMeshes: THREE.Mesh[] = [];
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
@@ -361,6 +404,7 @@ function buildConstructionPylonTrio(
       pylonBaseY,
       Math.cos(a) * offset,
       Math.sin(a) * offset,
+      geometryTier,
     );
     staticMeshes.push(...tower.staticMeshes);
     towerOrbitParts.push(...tower.towerOrbitParts);
@@ -379,6 +423,7 @@ function buildConstructionTowerPiece(
   pylonBaseY: number,
   x: number,
   z: number,
+  geometryTier: PrimitiveGeometryTier,
 ): {
   staticMeshes: THREE.Mesh[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
@@ -400,7 +445,7 @@ function buildConstructionTowerPiece(
     x,
     pylonBaseY + baseHeight / 2,
     z,
-    hexCylinderGeom,
+    getBaseCylinderGeom(geometryTier),
   );
   const constructionBand = makeCylinder(
     constructionBandMat,
@@ -409,7 +454,7 @@ function buildConstructionTowerPiece(
     x,
     pylonBaseY + baseHeight + bandHeight / 2,
     z,
-    hexCylinderGeom,
+    getBaseCylinderGeom(geometryTier),
   );
   const [strawOuter, strawInner] = makeStrawWalls(
     innerPylonRadius,
@@ -417,8 +462,11 @@ function buildConstructionTowerPiece(
     x,
     pylonBaseY + pylonHeight / 2,
     z,
+    geometryTier,
   );
-  const cap = makeSphere(variant.capMaterial, capRadius, x, capY, z);
+  const cap = new THREE.Mesh(getCapGeometry(geometryTier), variant.capMaterial);
+  cap.scale.setScalar(capRadius);
+  cap.position.set(x, capY, z);
   const staticMeshes = [teamBase, constructionBand, strawOuter, strawInner, cap];
 
   const rootLocal = new THREE.Vector3(x, pylonBaseY, z);
@@ -473,7 +521,7 @@ function makeCylinder(
   x: number,
   y: number,
   z: number,
-  geom: THREE.BufferGeometry = cylinderGeom,
+  geom: THREE.BufferGeometry,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(geom, material);
   mesh.scale.set(radius * 2, height, radius * 2);
@@ -490,9 +538,11 @@ function makeStrawWalls(
   x: number,
   y: number,
   z: number,
+  geometryTier: PrimitiveGeometryTier,
 ): THREE.Mesh[] {
+  const geometry = getStrawCylinderGeom(geometryTier);
   return [
-    makeCylinder(strawOuterMat, radius, height, x, y, z),
-    makeCylinder(strawInnerMat, radius * STRAW_BORE_FRAC, height, x, y, z),
+    makeCylinder(strawOuterMat, radius, height, x, y, z, geometry),
+    makeCylinder(strawInnerMat, radius * STRAW_BORE_FRAC, height, x, y, z, geometry),
   ];
 }

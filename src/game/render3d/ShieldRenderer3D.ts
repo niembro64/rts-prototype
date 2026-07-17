@@ -24,7 +24,13 @@ import {
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import {
+  detailLevelForViewPosition,
+  geometryTierForDetail,
+} from './EntityDetailLevel3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
 import type { ClientRenderEntityStateViews } from './ClientRenderEntityStateSlab';
 import { CLIENT_RENDER_ENTITY_KIND_UNIT } from './ClientRenderEntityStateSlab';
 import {
@@ -655,38 +661,80 @@ function writeHexColorAt(
   markDirtySlot(dirty, slot);
 }
 
+type ShieldSurfacePool = {
+  geometry: THREE.BufferGeometry;
+  mesh: THREE.InstancedMesh;
+  material: THREE.ShaderMaterial;
+  alpha: Float32Array;
+  color: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+  colorAttr: THREE.InstancedBufferAttribute;
+  matrixDirty: DirtySpan;
+  alphaDirty: DirtySpan;
+  colorDirty: DirtySpan;
+  cursor: number;
+};
+
+function createShieldSurfacePool(
+  root: THREE.Group,
+  geometry: THREE.BufferGeometry,
+): ShieldSurfacePool {
+  const alpha = new Float32Array(SPHERE_INSTANCED_CAP);
+  const color = new Float32Array(SPHERE_INSTANCED_CAP * 3);
+  const alphaAttr = new THREE.InstancedBufferAttribute(alpha, 1);
+  const colorAttr = new THREE.InstancedBufferAttribute(color, 3);
+  alphaAttr.setUsage(THREE.DynamicDrawUsage);
+  colorAttr.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('aAlpha', alphaAttr);
+  geometry.setAttribute('aColor', colorAttr);
+  const material = createShieldSurfaceMaterial();
+  const mesh = new THREE.InstancedMesh(geometry, material, SPHERE_INSTANCED_CAP);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.count = 0;
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 7;
+  root.add(mesh);
+  return {
+    geometry,
+    mesh,
+    material,
+    alpha,
+    color,
+    alphaAttr,
+    colorAttr,
+    matrixDirty: createDirtySpan(),
+    alphaDirty: createDirtySpan(),
+    colorDirty: createDirtySpan(),
+    cursor: 0,
+  };
+}
+
+function flushShieldSurfacePool(pool: ShieldSurfacePool): void {
+  setInstancedCount(pool.mesh, pool.cursor);
+  if (pool.cursor <= 0) return;
+  uploadDirtySpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
+  uploadDirtySpan(pool.alphaAttr, pool.alphaDirty, 1);
+  uploadDirtySpan(pool.colorAttr, pool.colorDirty, 3);
+}
+
+function clearShieldSurfacePool(pool: ShieldSurfacePool): void {
+  pool.cursor = 0;
+  setInstancedCount(pool.mesh, 0);
+  clearDirtySpan(pool.matrixDirty);
+  clearDirtySpan(pool.alphaDirty);
+  clearDirtySpan(pool.colorDirty);
+}
+
+const SHIELD_GEOMETRY_TIERS: readonly PrimitiveGeometryTier[] = [
+  'close', 'mid', 'far',
+];
+
 export class ShieldRenderer3D {
   private root: THREE.Group;
-  // Unit sphere reused for the bubble write into the shared
-  // sphereInstancedMesh below.
-  private sphereGeom = createPrimitiveSphereGeometry('shield', 'close');
-  private finiteCylinderGeom = createPrimitiveCylinderGeometry('shield', 'close', 1, 1, 1, 1, true);
   private implicitFieldGeom = new THREE.PlaneGeometry(2, 2);
   private fields = new Map<FieldKey, FieldMesh>();
-
-  /** Shared InstancedMesh covering every bubble sphere across every
-   *  active shield on the map. Slots are allocated TRANSIENT per
-   *  frame: walk active fields, write [0, count). count is set to the
-   *  live prefix at end-of-frame so off-screen / inactive fields cost
-   *  zero GPU time. The whole shield layer is one draw call. */
-  private sphereInstancedMesh: THREE.InstancedMesh;
-  private sphereInstancedMat: THREE.ShaderMaterial;
-  private sphereAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
-  private sphereColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
-  private sphereAlphaAttr: THREE.InstancedBufferAttribute;
-  private sphereColorAttr: THREE.InstancedBufferAttribute;
-  private readonly sphereMatrixDirty = createDirtySpan();
-  private readonly sphereAlphaDirty = createDirtySpan();
-  private readonly sphereColorDirty = createDirtySpan();
-  private finiteCylinderInstancedMesh: THREE.InstancedMesh;
-  private finiteCylinderInstancedMat: THREE.ShaderMaterial;
-  private finiteCylinderAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
-  private finiteCylinderColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
-  private finiteCylinderAlphaAttr: THREE.InstancedBufferAttribute;
-  private finiteCylinderColorAttr: THREE.InstancedBufferAttribute;
-  private readonly finiteCylinderMatrixDirty = createDirtySpan();
-  private readonly finiteCylinderAlphaDirty = createDirtySpan();
-  private readonly finiteCylinderColorDirty = createDirtySpan();
+  private readonly spherePools = new Map<PrimitiveGeometryTier, ShieldSurfacePool>();
+  private readonly finiteCylinderPools = new Map<PrimitiveGeometryTier, ShieldSurfacePool>();
   private implicitFieldMesh: THREE.Mesh;
   private implicitFieldMat: THREE.ShaderMaterial;
   private implicitFieldData: THREE.Vector4[] = createVector4ScratchArray(IMPLICIT_FIELD_CAP);
@@ -697,9 +745,8 @@ export class ShieldRenderer3D {
   private implicitFieldCameraPosition = new THREE.Vector3();
   /** Per-frame transient slot cursor — reset in beginFrame, advanced
    *  per surface in _processUnit, used as the count at end-of-frame. */
-  private _sphereCursor = 0;
-  private _finiteCylinderCursor = 0;
   private _implicitFieldCursor = 0;
+  private currentView: RenderViewState3D | undefined;
   private drawStateClear = true;
   /** Scratch matrices for the bubble instance write. Same pattern as
    *  the chassis pools — compose `T(worldPos) · S(scale)` per slot,
@@ -739,53 +786,25 @@ export class ShieldRenderer3D {
     this.camera = camera;
     this.getYawGroup = getYawGroup;
 
-    // Build the shared bubble InstancedMesh. Same construction
-    // pattern as SmokeTrail3D / Explosion3D / SprayRenderer3D.
-    this.sphereAlphaAttr = new THREE.InstancedBufferAttribute(this.sphereAlphaArr, 1);
-    this.sphereAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.sphereColorAttr = new THREE.InstancedBufferAttribute(this.sphereColorArr, 3);
-    this.sphereColorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.sphereGeom.setAttribute('aAlpha', this.sphereAlphaAttr);
-    this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
-    this.finiteCylinderAlphaAttr = new THREE.InstancedBufferAttribute(this.finiteCylinderAlphaArr, 1);
-    this.finiteCylinderAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.finiteCylinderColorAttr = new THREE.InstancedBufferAttribute(this.finiteCylinderColorArr, 3);
-    this.finiteCylinderColorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.finiteCylinderGeom.setAttribute('aAlpha', this.finiteCylinderAlphaAttr);
-    this.finiteCylinderGeom.setAttribute('aColor', this.finiteCylinderColorAttr);
-
-    // Materials Are Independent Of Shape: same material as the flat-panel
-    // shield surface, just carried by field geometry here.
-    this.sphereInstancedMat = createShieldSurfaceMaterial();
-    this.finiteCylinderInstancedMat = createShieldSurfaceMaterial();
+    // One immutable instance pool per geometry tier. Field pose/color writes
+    // are identical across pools; only the selected primitive changes.
+    for (const tier of SHIELD_GEOMETRY_TIERS) {
+      this.spherePools.set(
+        tier,
+        createShieldSurfacePool(
+          this.root,
+          createPrimitiveSphereGeometry('shield', tier),
+        ),
+      );
+      this.finiteCylinderPools.set(
+        tier,
+        createShieldSurfacePool(
+          this.root,
+          createPrimitiveCylinderGeometry('shield', tier, 1, 1, 1, 1, true),
+        ),
+      );
+    }
     this.implicitFieldMat = this.createImplicitFieldMaterial();
-
-    this.sphereInstancedMesh = new THREE.InstancedMesh(
-      this.sphereGeom,
-      this.sphereInstancedMat,
-      SPHERE_INSTANCED_CAP,
-    );
-    this.sphereInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.sphereInstancedMesh.count = 0;
-    // Source-geom bounding sphere is at origin (radius 1); instances
-    // live anywhere on the map.
-    this.sphereInstancedMesh.frustumCulled = false;
-    // Slightly higher render-order than the per-particle effects so
-    // the bubble's translucency composites on top of smoke particles
-    // passing through it.
-    this.sphereInstancedMesh.renderOrder = 7;
-    this.root.add(this.sphereInstancedMesh);
-
-    this.finiteCylinderInstancedMesh = new THREE.InstancedMesh(
-      this.finiteCylinderGeom,
-      this.finiteCylinderInstancedMat,
-      SPHERE_INSTANCED_CAP,
-    );
-    this.finiteCylinderInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.finiteCylinderInstancedMesh.count = 0;
-    this.finiteCylinderInstancedMesh.frustumCulled = false;
-    this.finiteCylinderInstancedMesh.renderOrder = 7;
-    this.root.add(this.finiteCylinderInstancedMesh);
 
     this.implicitFieldMesh = new THREE.Mesh(
       this.implicitFieldGeom,
@@ -862,10 +881,14 @@ export class ShieldRenderer3D {
    *  of perUnit calls and finishes with endFrame. The `graphicsConfig`
    *  argument is currently unused, but the parameter is preserved
    *  so existing callers don't need to change shape. */
-  beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
+  beginFrame(
+    _graphicsConfig: GraphicsConfig = getGraphicsConfig(),
+    view?: RenderViewState3D,
+  ): void {
     this._seenFieldKeys.clear();
-    this._sphereCursor = 0;
-    this._finiteCylinderCursor = 0;
+    this.currentView = view;
+    for (const pool of this.spherePools.values()) pool.cursor = 0;
+    for (const pool of this.finiteCylinderPools.values()) pool.cursor = 0;
     this._implicitFieldCursor = 0;
   }
 
@@ -879,8 +902,12 @@ export class ShieldRenderer3D {
    *  ranges, then tear down per-field state for fields that didn't get
    *  visited (unit despawned, shield disabled, off-scope). */
   endFrame(): void {
-    const sphereCursor = this._sphereCursor;
-    const finiteCylinderCursor = this._finiteCylinderCursor;
+    let sphereCursor = 0;
+    let finiteCylinderCursor = 0;
+    for (const pool of this.spherePools.values()) sphereCursor += pool.cursor;
+    for (const pool of this.finiteCylinderPools.values()) {
+      finiteCylinderCursor += pool.cursor;
+    }
     const implicitFieldCursor = this._implicitFieldCursor;
     const nextDrawStateClear =
       sphereCursor === 0 &&
@@ -890,22 +917,8 @@ export class ShieldRenderer3D {
 
     if (nextDrawStateClear && this.drawStateClear) return;
 
-    setInstancedCount(this.sphereInstancedMesh, sphereCursor);
-    if (sphereCursor > 0) {
-      uploadDirtySpan(this.sphereInstancedMesh.instanceMatrix, this.sphereMatrixDirty, 16);
-      uploadDirtySpan(this.sphereAlphaAttr, this.sphereAlphaDirty, 1);
-      uploadDirtySpan(this.sphereColorAttr, this.sphereColorDirty, 3);
-    }
-    setInstancedCount(this.finiteCylinderInstancedMesh, finiteCylinderCursor);
-    if (finiteCylinderCursor > 0) {
-      uploadDirtySpan(
-        this.finiteCylinderInstancedMesh.instanceMatrix,
-        this.finiteCylinderMatrixDirty,
-        16,
-      );
-      uploadDirtySpan(this.finiteCylinderAlphaAttr, this.finiteCylinderAlphaDirty, 1);
-      uploadDirtySpan(this.finiteCylinderColorAttr, this.finiteCylinderColorDirty, 3);
-    }
+    for (const pool of this.spherePools.values()) flushShieldSurfacePool(pool);
+    for (const pool of this.finiteCylinderPools.values()) flushShieldSurfacePool(pool);
     this.updateImplicitFieldUniforms();
     const seen = this._seenFieldKeys;
     for (const [key] of this.fields) {
@@ -921,22 +934,15 @@ export class ShieldRenderer3D {
 
   clear(): void {
     this._seenFieldKeys.clear();
-    this._sphereCursor = 0;
-    this._finiteCylinderCursor = 0;
+    this.currentView = undefined;
     this._implicitFieldCursor = 0;
     if (this.drawStateClear) return;
-    setInstancedCount(this.sphereInstancedMesh, 0);
-    setInstancedCount(this.finiteCylinderInstancedMesh, 0);
+    for (const pool of this.spherePools.values()) clearShieldSurfacePool(pool);
+    for (const pool of this.finiteCylinderPools.values()) clearShieldSurfacePool(pool);
     if (this.implicitFieldMesh.visible) this.implicitFieldMesh.visible = false;
     if (this.implicitFieldMat.uniforms.uFieldCount.value !== 0) {
       this.implicitFieldMat.uniforms.uFieldCount.value = 0;
     }
-    clearDirtySpan(this.sphereMatrixDirty);
-    clearDirtySpan(this.sphereAlphaDirty);
-    clearDirtySpan(this.sphereColorDirty);
-    clearDirtySpan(this.finiteCylinderMatrixDirty);
-    clearDirtySpan(this.finiteCylinderAlphaDirty);
-    clearDirtySpan(this.finiteCylinderColorDirty);
     this.fields.clear();
     this.drawStateClear = true;
   }
@@ -944,8 +950,8 @@ export class ShieldRenderer3D {
   /** Legacy all-in-one entry — calls beginFrame / processPacket /
    *  endFrame internally so existing callers don't have to thread the
    *  fused lifecycle. */
-  update(packet: ShieldRenderPacket3D): void {
-    this.beginFrame();
+  update(packet: ShieldRenderPacket3D, view?: RenderViewState3D): void {
+    this.beginFrame(undefined, view);
     this.processPacket(packet);
     this.endFrame();
   }
@@ -1003,6 +1009,15 @@ export class ShieldRenderer3D {
     if (progress <= 0) return;
     const outer = packet.outerRange[row];
     if (outer <= 0) return;
+    const geometryTier = this.currentView === undefined
+      ? 'close'
+      : geometryTierForDetail(detailLevelForViewPosition(
+        this.currentView,
+        packet.x[row],
+        packet.y[row],
+        packet.z[row],
+        outer,
+      ));
     const fadeIn = Math.min(progress * 3, 1);
     const localX = field.localX;
     const localY = field.localY;
@@ -1071,7 +1086,8 @@ export class ShieldRenderer3D {
     }
 
     if (shape === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
-      if (this._finiteCylinderCursor < SPHERE_INSTANCED_CAP) {
+      const pool = this.finiteCylinderPools.get(geometryTier)!;
+      if (pool.cursor < SPHERE_INSTANCED_CAP) {
         this._cylinderTargetPos.set(
           packet.targetX[row],
           packet.targetZ[row],
@@ -1098,32 +1114,33 @@ export class ShieldRenderer3D {
           this._cylinderQuat,
           this._sphereScratchScale,
         );
-        const cursor = this._finiteCylinderCursor;
+        const cursor = pool.cursor;
         writeMatrixAt(
-          this.finiteCylinderInstancedMesh,
+          pool.mesh,
           cursor,
           this._sphereScratchMat,
-          this.finiteCylinderMatrixDirty,
+          pool.matrixDirty,
         );
         writeAlphaAt(
-          this.finiteCylinderAlphaArr,
+          pool.alpha,
           cursor,
           alpha,
-          this.finiteCylinderAlphaDirty,
+          pool.alphaDirty,
         );
         writeHexColorAt(
           packet.color[row],
-          this.finiteCylinderColorArr,
+          pool.color,
           cursor,
-          this.finiteCylinderColorDirty,
+          pool.colorDirty,
         );
-        this._finiteCylinderCursor++;
+        pool.cursor++;
       }
       return;
     }
 
     if (shape === SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
-      if (this._finiteCylinderCursor < SPHERE_INSTANCED_CAP) {
+      const pool = this.finiteCylinderPools.get(geometryTier)!;
+      if (pool.cursor < SPHERE_INSTANCED_CAP) {
         this._sphereScratchScale.set(
           outer,
           this.finiteCylinderInfinityVisualHeight(outer),
@@ -1134,63 +1151,75 @@ export class ShieldRenderer3D {
           ShieldRenderer3D._IDENTITY_QUAT,
           this._sphereScratchScale,
         );
-        const cursor = this._finiteCylinderCursor;
+        const cursor = pool.cursor;
         writeMatrixAt(
-          this.finiteCylinderInstancedMesh,
+          pool.mesh,
           cursor,
           this._sphereScratchMat,
-          this.finiteCylinderMatrixDirty,
+          pool.matrixDirty,
         );
         writeAlphaAt(
-          this.finiteCylinderAlphaArr,
+          pool.alpha,
           cursor,
           alpha,
-          this.finiteCylinderAlphaDirty,
+          pool.alphaDirty,
         );
         writeHexColorAt(
           packet.color[row],
-          this.finiteCylinderColorArr,
+          pool.color,
           cursor,
-          this.finiteCylinderColorDirty,
+          pool.colorDirty,
         );
-        this._finiteCylinderCursor++;
+        pool.cursor++;
       }
       return;
     }
 
-    if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
+    const spherePool = this.spherePools.get(geometryTier)!;
+    if (spherePool.cursor < SPHERE_INSTANCED_CAP) {
       this._sphereScratchScale.set(outer, outer, outer);
       this._sphereScratchMat.compose(
         this._sphereScratchPos,
         ShieldRenderer3D._IDENTITY_QUAT,
         this._sphereScratchScale,
       );
-      const cursor = this._sphereCursor;
+      const cursor = spherePool.cursor;
       writeMatrixAt(
-        this.sphereInstancedMesh,
+        spherePool.mesh,
         cursor,
         this._sphereScratchMat,
-        this.sphereMatrixDirty,
+        spherePool.matrixDirty,
       );
-      writeAlphaAt(this.sphereAlphaArr, cursor, alpha, this.sphereAlphaDirty);
-      writeHexColorAt(packet.color[row], this.sphereColorArr, cursor, this.sphereColorDirty);
-      this._sphereCursor++;
+      writeAlphaAt(spherePool.alpha, cursor, alpha, spherePool.alphaDirty);
+      writeHexColorAt(
+        packet.color[row],
+        spherePool.color,
+        cursor,
+        spherePool.colorDirty,
+      );
+      spherePool.cursor++;
     }
   }
 
   destroy(): void {
     this.fields.clear();
-    this.root.remove(this.sphereInstancedMesh);
-    this.root.remove(this.finiteCylinderInstancedMesh);
+    for (const pool of this.spherePools.values()) {
+      this.root.remove(pool.mesh);
+      pool.mesh.dispose();
+      pool.material.dispose();
+      pool.geometry.dispose();
+    }
+    for (const pool of this.finiteCylinderPools.values()) {
+      this.root.remove(pool.mesh);
+      pool.mesh.dispose();
+      pool.material.dispose();
+      pool.geometry.dispose();
+    }
+    this.spherePools.clear();
+    this.finiteCylinderPools.clear();
     this.root.remove(this.implicitFieldMesh);
-    this.sphereInstancedMesh.dispose();
-    this.finiteCylinderInstancedMesh.dispose();
     this.implicitFieldMesh.geometry.dispose();
-    this.sphereInstancedMat.dispose();
-    this.finiteCylinderInstancedMat.dispose();
     this.implicitFieldMat.dispose();
-    this.sphereGeom.dispose();
-    this.finiteCylinderGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }

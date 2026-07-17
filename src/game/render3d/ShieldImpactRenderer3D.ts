@@ -11,8 +11,15 @@ import * as THREE from 'three';
 import { SHIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
-import { createPrimitiveCircleGeometry, createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCircleGeometry,
+  createPrimitiveRingGeometry,
+  createPrimitiveTorusGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 
 type Impact = {
   ageMs: number;
@@ -126,8 +133,7 @@ class ImpactPool {
 
 export class ShieldImpactRenderer3D {
   private root: THREE.Group;
-  private ringPool: ImpactPool;
-  private corePool: ImpactPool;
+  private pools: Record<PrimitiveGeometryTier, { ring: ImpactPool; core: ImpactPool }>;
   private impacts: Impact[] = [];
   private scratchMat = new THREE.Matrix4();
   private scratchPos = new THREE.Vector3();
@@ -135,8 +141,6 @@ export class ShieldImpactRenderer3D {
   private scratchQuat = new THREE.Quaternion();
   private scratchNormal = new THREE.Vector3();
   private continuousTimeMs = 0;
-  private continuousRingCursor = 0;
-  private continuousCoreCursor = 0;
   private visible = true;
   private drawStateClear = true;
 
@@ -154,21 +158,34 @@ export class ShieldImpactRenderer3D {
     // RingGeometry's orientation so the existing normal-aligned quaternion
     // and surface offset still work unchanged. NormalBlending makes the
     // tori read like rings of shield/mirror material.
-    this.ringPool = new ImpactPool(
-      this.root,
-      createPrimitiveTorusGeometry('shieldImpact', 'close', 1, tubeRadius),
-      cfg.maxImpacts * Math.max(1, cfg.ringCount)
-        + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
-          * ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
-      18,
-      THREE.NormalBlending,
-    );
-    this.corePool = new ImpactPool(
-      this.root,
-      createPrimitiveCircleGeometry('shieldImpact', 'close'),
-      cfg.maxImpacts + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP,
-      17,
-    );
+    const ringCapacity = cfg.maxImpacts * Math.max(1, cfg.ringCount)
+      + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
+        * ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT;
+    const coreCapacity = cfg.maxImpacts + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP;
+    const makePools = (tier: PrimitiveGeometryTier): { ring: ImpactPool; core: ImpactPool } => ({
+      ring: new ImpactPool(
+        this.root,
+        tier === 'far'
+          ? createPrimitiveRingGeometry('environment', 'far', 1 - tubeRadius, 1 + tubeRadius)
+          : createPrimitiveTorusGeometry('shieldImpact', tier, 1, tubeRadius),
+        ringCapacity,
+        18,
+        THREE.NormalBlending,
+      ),
+      core: new ImpactPool(
+        this.root,
+        tier === 'far'
+          ? new THREE.PlaneGeometry(2, 2)
+          : createPrimitiveCircleGeometry('shieldImpact', tier),
+        coreCapacity,
+        17,
+      ),
+    });
+    this.pools = {
+      close: makePools('close'),
+      mid: makePools('mid'),
+      far: makePools('far'),
+    };
   }
 
   private resolveColor(playerId: PlayerId | undefined): number {
@@ -188,10 +205,10 @@ export class ShieldImpactRenderer3D {
   private clearDrawState(): void {
     if (this.drawStateClear) return;
     this.impacts.length = 0;
-    this.continuousRingCursor = 0;
-    this.continuousCoreCursor = 0;
-    this.corePool.setCount(0);
-    this.ringPool.setCount(0);
+    for (const pools of Object.values(this.pools)) {
+      pools.core.setCount(0);
+      pools.ring.setCount(0);
+    }
     this.drawStateClear = true;
   }
 
@@ -232,15 +249,19 @@ export class ShieldImpactRenderer3D {
     });
   }
 
-  update(dtMs: number, lineProjectiles: readonly Entity[] = EMPTY_LINE_PROJECTILES): void {
+  update(
+    dtMs: number,
+    lineProjectiles: readonly Entity[] = EMPTY_LINE_PROJECTILES,
+    view?: RenderViewState3D,
+  ): void {
     if (!this.visible) {
       this.clearDrawState();
       return;
     }
     const cfg = SHIELD_IMPACT_VISUAL;
     this.continuousTimeMs += dtMs;
-    let ringCursor = 0;
-    let coreCursor = 0;
+    const ringCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const coreCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
     let i = 0;
     while (i < this.impacts.length) {
@@ -256,6 +277,16 @@ export class ShieldImpactRenderer3D {
       this.scratchNormal.set(impact.nx, impact.ny, impact.nz).normalize();
       this.scratchQuat.setFromUnitVectors(ShieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
       this.scratchPos.set(impact.x, impact.y, impact.z);
+      const impactTier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(
+            view,
+            impact.x,
+            impact.z,
+            impact.y,
+            cfg.endRadius,
+          ))
+        : 'close';
+      const impactPools = this.pools[impactTier];
 
       const coreDuration = Math.max(1, cfg.durationMs * cfg.coreDurationFrac);
       if (impact.ageMs < coreDuration) {
@@ -264,7 +295,7 @@ export class ShieldImpactRenderer3D {
         const radius = cfg.startRadius + (cfg.endRadius * cfg.coreRadiusFrac - cfg.startRadius) * t;
         this.scratchScale.set(radius, radius, 1);
         this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-        this.corePool.write(coreCursor++, this.scratchMat, impact.color, cfg.coreOpacity * fade);
+        impactPools.core.write(coreCursors[impactTier]++, this.scratchMat, impact.color, cfg.coreOpacity * fade);
       }
 
       for (let ring = 0; ring < cfg.ringCount; ring++) {
@@ -280,7 +311,7 @@ export class ShieldImpactRenderer3D {
         // Uniform scale so the torus tube cross-section grows proportionally.
         this.scratchScale.set(radius, radius, radius);
         this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-        this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity * fade);
+        impactPools.ring.write(ringCursors[impactTier]++, this.scratchMat, impact.color, cfg.ringOpacity * fade);
       }
 
       i++;
@@ -288,30 +319,30 @@ export class ShieldImpactRenderer3D {
 
     this.writeContinuousBeamHits(
       lineProjectiles,
-      ringCursor,
-      coreCursor,
+      ringCursors,
+      coreCursors,
+      view,
     );
-    ringCursor = this.continuousRingCursor;
-    coreCursor = this.continuousCoreCursor;
 
     const nextDrawStateClear =
-      coreCursor === 0 &&
-      ringCursor === 0 &&
+      Object.values(coreCursors).every((count) => count === 0) &&
+      Object.values(ringCursors).every((count) => count === 0) &&
       this.impacts.length === 0;
     if (!nextDrawStateClear || !this.drawStateClear) {
-      this.corePool.setCount(coreCursor);
-      this.ringPool.setCount(ringCursor);
+      for (const tier of ['close', 'mid', 'far'] as const) {
+        this.pools[tier].core.setCount(coreCursors[tier]);
+        this.pools[tier].ring.setCount(ringCursors[tier]);
+      }
     }
     this.drawStateClear = nextDrawStateClear;
   }
 
   private writeContinuousBeamHits(
     lineProjectiles: readonly Entity[],
-    ringCursor: number,
-    coreCursor: number,
+    ringCursors: Record<PrimitiveGeometryTier, number>,
+    coreCursors: Record<PrimitiveGeometryTier, number>,
+    view?: RenderViewState3D,
   ): void {
-    this.continuousRingCursor = ringCursor;
-    this.continuousCoreCursor = coreCursor;
     const cfg = SHIELD_IMPACT_VISUAL;
     if (lineProjectiles.length === 0) return;
 
@@ -350,6 +381,18 @@ export class ShieldImpactRenderer3D {
         );
         this.scratchNormal.set(snx, snz, sny).normalize();
         this.scratchQuat.setFromUnitVectors(ShieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
+        const tier = view
+          ? geometryTierForDetail(detailLevelForViewPosition(
+              view,
+              this.scratchPos.x,
+              this.scratchPos.z,
+              this.scratchPos.y,
+              cfg.endRadius,
+            ))
+          : 'close';
+        const pools = this.pools[tier];
+        let coreCursor = coreCursors[tier];
+        let ringCursor = ringCursors[tier];
 
         const color = this.resolveColor(point.reflectorPlayerId ?? undefined);
         const sizeMul = 1;
@@ -358,11 +401,11 @@ export class ShieldImpactRenderer3D {
         const pulse = (time * 0.006 + phaseSeed) % 1;
         const sinPulse = Math.sin((pulse + phaseSeed) * Math.PI * 2) * 0.5 + 0.5;
 
-        if (coreCursor < this.corePool.capacity) {
+        if (coreCursor < pools.core.capacity) {
           const coreRadius = cfg.startRadius * sizeMul * (1.05 + sinPulse * 0.22);
           this.scratchScale.set(coreRadius, coreRadius, 1);
           this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-          this.corePool.write(
+          pools.core.write(
             coreCursor++,
             this.scratchMat,
             color,
@@ -371,7 +414,7 @@ export class ShieldImpactRenderer3D {
         }
 
         for (let ring = 0; ring < ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT; ring++) {
-          if (ringCursor >= this.ringPool.capacity) break;
+          if (ringCursor >= pools.ring.capacity) break;
           const t = (pulse + ring / ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT) % 1;
           const invT = 1 - t;
           const ease = 1 - invT * invT;
@@ -380,7 +423,7 @@ export class ShieldImpactRenderer3D {
           // Uniform scale for the torus tube to grow proportionally.
           this.scratchScale.set(radius, radius, radius);
           this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-          this.ringPool.write(
+          pools.ring.write(
             ringCursor++,
             this.scratchMat,
             color,
@@ -388,18 +431,21 @@ export class ShieldImpactRenderer3D {
           );
         }
 
+        coreCursors[tier] = coreCursor;
+        ringCursors[tier] = ringCursor;
+
         written++;
       }
     }
 
-    this.continuousRingCursor = ringCursor;
-    this.continuousCoreCursor = coreCursor;
   }
 
   destroy(): void {
     this.impacts.length = 0;
-    this.ringPool.destroy();
-    this.corePool.destroy();
+    for (const pools of Object.values(this.pools)) {
+      pools.ring.destroy();
+      pools.core.destroy();
+    }
     this.root.parent?.remove(this.root);
   }
 }

@@ -52,12 +52,12 @@
     },
     "visualFeatureMinRung": {
       "building": {
-        "typeDetails": "mid",
+        "typeDetails": "far",
         "largeAnimation": "far",
         "tinyTrim": "close"
       },
       "tower": {
-        "launcherDetails": "mid",
+        "launcherDetails": "far",
         "animationAndGlow": "far",
         "smallTrim": "close"
       }
@@ -66,7 +66,7 @@
       "comment": "Live per-frame animation shedding (no mesh rebuild). Below unitAnimationMinRung, barrel spin freezes and locomotion rigs (tread scroll, wheel spin, leg gait, floor clamps) update every locomotionFarFrameStride frames with accumulated dt instead of every frame. Building animators (wind/extractor/radar/solar) freeze below buildingAnimationMinRung.",
       "unitAnimationMinRung": "far",
       "locomotionFarFrameStride": 1,
-      "buildingAnimationMinRung": "mid"
+      "buildingAnimationMinRung": "far"
     },
     "effectSpawnScale": {
       "comment": "Continuous spawn-count scaling by L: full at/above fullAbove, ramping down to the floor value at/below zeroBelow.",

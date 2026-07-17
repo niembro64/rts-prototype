@@ -30,6 +30,8 @@ import {
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getSharedExtrudedEquilateralTriangleGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
@@ -417,12 +419,16 @@ export class UnitDetailInstanceRenderer3D {
         SMOOTH_CHASSIS_TIER_CAPS[t],
       ));
       this.turretHeadPools.push(this.createTierPool(
-        createPrimitiveSphereGeometry('turret', tierName),
+        tierName === 'far'
+          ? getSharedPrimitiveTetrahedronGeometry()
+          : createPrimitiveSphereGeometry('turret', tierName),
         new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
         TURRET_HEAD_TIER_CAPS[t],
       ));
       this.barrelPools.push(this.createTierPool(
-        createPrimitiveCylinderGeometry('turret', tierName),
+        tierName === 'far'
+          ? getSharedExtrudedEquilateralTriangleGeometry()
+          : createPrimitiveCylinderGeometry('turret', tierName),
         options.barrelMat.clone(),
         BARREL_TIER_CAPS[t],
       ));

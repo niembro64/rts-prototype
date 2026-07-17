@@ -10,6 +10,7 @@
     "build:web": "npm run build:wasm && npm run render:primitive-geometry-audit && node ./node_modules/vue-tsc/bin/vue-tsc.js && node ./node_modules/vite/bin/vite.js build",
     "generate:blueprint-schema": "node scripts/generateBlueprintSchemaTypes.mjs",
     "render:primitive-geometry-audit": "node scripts/primitiveGeometryQualityAudit.mjs",
+    "render:lod-captures": "node scripts/captureEntityLodGallery.mjs",
     "build:wasm": "npm run generate:blueprint-schema && cd rts-sim-wasm && wasm-pack --log-level error build --release --target web --out-dir ../src/game/sim-wasm/pkg && if command -v wasm-opt >/dev/null 2>&1; then wasm-opt -O3 --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-simd ../src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm -o ../src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm; else echo \"wasm-opt not found; skipping wasm optimization\"; fi",
     "build:wasm:dev": "cd rts-sim-wasm && wasm-pack --log-level error build --dev --target web --out-dir ../src/game/sim-wasm/pkg",
     "deterministic:audit": "node scripts/auditDeterminism.mjs",

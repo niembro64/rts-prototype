@@ -5,6 +5,7 @@ import {
   type LoadingUnitPreviewControls,
   type LoadingUnitPreviewSceneSize,
 } from './loadingUnitPreviewScene';
+import type { PrimitiveGeometryTier } from '@/game/render3d/PrimitiveGeometryQuality3D';
 
 type InitMessage = {
   type: 'init';
@@ -12,6 +13,7 @@ type InitMessage = {
   kind: LoadingPreviewKind;
   blueprintId: LoadingEntityBlueprintId;
   fullBleed: boolean;
+  geometryTier: PrimitiveGeometryTier;
   controls: Partial<LoadingUnitPreviewControls>;
 } & LoadingUnitPreviewSceneSize;
 
@@ -62,6 +64,7 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
       kind: message.kind,
       blueprintId: message.blueprintId,
       fullBleed: message.fullBleed,
+      geometryTier: message.geometryTier,
     });
     preview.updateControls(message.controls);
     preview.resize(message);

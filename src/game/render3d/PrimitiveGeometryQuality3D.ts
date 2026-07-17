@@ -15,6 +15,7 @@ export type PrimitiveGeometryRole =
   | 'smoke'
   | 'fog'
   | 'waterSplash'
+  | 'environment'
   | 'hud'
   | 'debug';
 
@@ -47,18 +48,18 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   unitBody: {
     sphere: {
       close: { widthSegments: 12, heightSegments: 8 },
-      mid: { widthSegments: 10, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 8, heightSegments: 5 },
+      far: { widthSegments: 4, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 10 },
-      mid: { radialSegments: 8 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 10 },
-      mid: { radialSegments: 8 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
     },
     circle: {
       close: { radialSegments: 18 },
@@ -74,18 +75,18 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   unitDetail: {
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
-      mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 3, heightSegments: 2 },
     },
     cylinder: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     circle: {
       close: { radialSegments: 16 },
@@ -101,18 +102,18 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   turret: {
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
-      mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 3, heightSegments: 2 },
     },
     cylinder: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     circle: {
       close: { radialSegments: 14 },
@@ -156,17 +157,17 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
       mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 4, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 8 },
       mid: { radialSegments: 6 },
-      far: { radialSegments: 5 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 8 },
       mid: { radialSegments: 6 },
-      far: { radialSegments: 5 },
+      far: { radialSegments: 3 },
     },
     circle: {
       close: { radialSegments: 16 },
@@ -182,13 +183,13 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   shield: {
     sphere: {
       close: { widthSegments: 16, heightSegments: 10 },
-      mid: { widthSegments: 12, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 10, heightSegments: 7 },
+      far: { widthSegments: 6, heightSegments: 4 },
     },
     cylinder: {
       close: { radialSegments: 24 },
-      mid: { radialSegments: 16 },
-      far: { radialSegments: 10 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 4 },
     },
     cone: {
       close: { radialSegments: 16 },
@@ -209,13 +210,13 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   shieldImpact: {
     sphere: {
       close: { widthSegments: 16, heightSegments: 10 },
-      mid: { widthSegments: 12, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 8, heightSegments: 5 },
+      far: { widthSegments: 4, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 24 },
-      mid: { radialSegments: 16 },
-      far: { radialSegments: 10 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 4 },
     },
     cone: {
       close: { radialSegments: 16 },
@@ -224,30 +225,30 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     },
     circle: {
       close: { radialSegments: 24 },
-      mid: { radialSegments: 16 },
-      far: { radialSegments: 10 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 4 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 24 },
-      mid: { tubeSegments: 5, radialSegments: 16 },
-      far: { tubeSegments: 4, radialSegments: 10 },
+      close: { tubeSegments: 4, radialSegments: 16 },
+      mid: { tubeSegments: 2, radialSegments: 8 },
+      far: { tubeSegments: 2, radialSegments: 4 },
     },
   },
   building: {
     sphere: {
       close: { widthSegments: 14, heightSegments: 10 },
-      mid: { widthSegments: 10, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 10, heightSegments: 7 },
+      far: { widthSegments: 5, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 14 },
-      mid: { radialSegments: 10 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 4 },
     },
     cone: {
       close: { radialSegments: 14 },
-      mid: { radialSegments: 10 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 4 },
     },
     circle: {
       close: { radialSegments: 24 },
@@ -256,25 +257,25 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     },
     torus: {
       close: { tubeSegments: 10, radialSegments: 28 },
-      mid: { tubeSegments: 8, radialSegments: 20 },
-      far: { tubeSegments: 6, radialSegments: 12 },
+      mid: { tubeSegments: 5, radialSegments: 12 },
+      far: { tubeSegments: 3, radialSegments: 6 },
     },
   },
   locomotion: {
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
-      mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 3, heightSegments: 2 },
     },
     cylinder: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 8 },
-      mid: { radialSegments: 6 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 4 },
+      far: { radialSegments: 3 },
     },
     circle: {
       close: { radialSegments: 14 },
@@ -290,13 +291,13 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   effect: {
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
-      mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 4, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 10 },
-      mid: { radialSegments: 8 },
-      far: { radialSegments: 6 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
     },
     cone: {
       close: { radialSegments: 10 },
@@ -305,7 +306,7 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     },
     circle: {
       close: { radialSegments: 20 },
-      mid: { radialSegments: 14 },
+      mid: { radialSegments: 8 },
       far: { radialSegments: 8 },
     },
     torus: {
@@ -317,8 +318,8 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   smoke: {
     sphere: {
       close: { widthSegments: 12, heightSegments: 8 },
-      mid: { widthSegments: 8, heightSegments: 6 },
-      far: { widthSegments: 6, heightSegments: 4 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 4, heightSegments: 3 },
     },
     cylinder: {
       close: { radialSegments: 10 },
@@ -371,8 +372,8 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   waterSplash: {
     sphere: {
       close: { widthSegments: 5, heightSegments: 3 },
-      mid: { widthSegments: 5, heightSegments: 3 },
-      far: { widthSegments: 5, heightSegments: 3 },
+      mid: { widthSegments: 4, heightSegments: 3 },
+      far: { widthSegments: 3, heightSegments: 2 },
     },
     cylinder: {
       close: { radialSegments: 8 },
@@ -393,6 +394,33 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       close: { tubeSegments: 6, radialSegments: 12 },
       mid: { tubeSegments: 5, radialSegments: 10 },
       far: { tubeSegments: 5, radialSegments: 8 },
+    },
+  },
+  environment: {
+    sphere: {
+      close: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 5, heightSegments: 4 },
+      far: { widthSegments: 3, heightSegments: 2 },
+    },
+    cylinder: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
+    },
+    cone: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
+    },
+    circle: {
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 3 },
+    },
+    torus: {
+      close: { tubeSegments: 6, radialSegments: 12 },
+      mid: { tubeSegments: 4, radialSegments: 8 },
+      far: { tubeSegments: 3, radialSegments: 6 },
     },
   },
   hud: {
@@ -530,6 +558,31 @@ export function createPrimitiveTetrahedronGeometry(
   radius = 1,
 ): THREE.TetrahedronGeometry {
   return new THREE.TetrahedronGeometry(radius, 0);
+}
+
+export function getSharedExtrudedEquilateralTriangleGeometry(
+  radius = 1,
+  height = 1,
+): THREE.BufferGeometry {
+  const key = keyOf(['equilateral-triangle-prism', radius, height]);
+  let geometry = sharedGeometry.get(key);
+  if (geometry === undefined) {
+    geometry = createExtrudedEquilateralTriangleGeometry(radius, height);
+    sharedGeometry.set(key, geometry);
+  }
+  return geometry;
+}
+
+export function getSharedPrimitiveTetrahedronGeometry(
+  radius = 1,
+): THREE.TetrahedronGeometry {
+  const key = keyOf(['tetrahedron', radius]);
+  let geometry = sharedGeometry.get(key) as THREE.TetrahedronGeometry | undefined;
+  if (geometry === undefined) {
+    geometry = createPrimitiveTetrahedronGeometry(radius);
+    sharedGeometry.set(key, geometry);
+  }
+  return geometry;
 }
 
 export function createPrimitiveConeGeometry(

@@ -27,8 +27,10 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
+  createPrimitiveRingGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTorusGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -51,14 +53,16 @@ const FAN_BLADE_COUNT = 3;
 const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
-const ringGeomByTubeRatio = new Map<string, THREE.TorusGeometry>();
+const ringGeomByTubeRatio = new Map<string, THREE.BufferGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
-const hubGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+const hubGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
-function getHubGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
+function getHubGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   let geom = hubGeomByTier.get(tier);
   if (!geom) {
-    geom = createPrimitiveSphereGeometry('locomotion', tier);
+    geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry()
+      : createPrimitiveSphereGeometry('locomotion', tier);
     hubGeomByTier.set(tier, geom);
   }
   return geom;
@@ -71,12 +75,19 @@ const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
 
-function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.TorusGeometry {
+function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   const ratioKey = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
   const key = `${tier}:${ratioKey}`;
   let geom = ringGeomByTubeRatio.get(key);
   if (!geom) {
-    geom = createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey);
+    geom = tier === 'close'
+      ? createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey)
+      : createPrimitiveRingGeometry(
+        'locomotion',
+        tier,
+        Math.max(0.55, 1 - ratioKey * 1.65),
+        1,
+      );
     ringGeomByTubeRatio.set(key, geom);
   }
   return geom;
@@ -151,14 +162,63 @@ function pushRotorBladeBox(
   }
 }
 
+function pushRotorBladeSurface(
+  positions: number[],
+  bladeRootRadius: number,
+  length: number,
+  chord: number,
+  pitchRad: number,
+  yawRad: number,
+  low: boolean,
+): void {
+  const halfChord = chord * 0.5;
+  const tip = bladeRootRadius + length;
+  const points = low
+    ? [
+      [bladeRootRadius, 0, -halfChord],
+      [tip, 0, 0],
+      [bladeRootRadius, 0, halfChord],
+    ]
+    : [
+      [bladeRootRadius, 0, -halfChord],
+      [tip, 0, -halfChord * 0.42],
+      [tip, 0, halfChord * 0.42],
+      [bladeRootRadius, 0, halfChord],
+    ];
+  const cp = Math.cos(pitchRad);
+  const sp = Math.sin(pitchRad);
+  const cy = Math.cos(yawRad);
+  const sy = Math.sin(yawRad);
+  const transformed: number[] = [];
+  for (const point of points) {
+    const py = point[1] * cp - point[2] * sp;
+    const pz = point[1] * sp + point[2] * cp;
+    transformed.push(
+      point[0] * cy + pz * sy,
+      py,
+      -point[0] * sy + pz * cy,
+    );
+  }
+  const faces = low ? [0, 1, 2] : [0, 1, 2, 0, 2, 3];
+  for (const index of faces) {
+    const offset = index * 3;
+    positions.push(
+      transformed[offset],
+      transformed[offset + 1],
+      transformed[offset + 2],
+    );
+  }
+}
+
 function getBladeRotorGeom(
   bladeLength: number,
   bladeThickness: number,
   bladeChord: number,
   bladeRootRadius: number,
   bladePitchRad: number,
+  tier: PrimitiveGeometryTier,
 ): THREE.BufferGeometry {
-  const key = rotorGeomKey(
+  const key = `${tier}:` + rotorGeomKey(
     bladeLength,
     bladeThickness,
     bladeChord,
@@ -170,15 +230,28 @@ function getBladeRotorGeom(
     const positions: number[] = [];
     const bladeCenterX = bladeRootRadius + bladeLength * 0.5;
     for (let i = 0; i < FAN_BLADE_COUNT; i++) {
-      pushRotorBladeBox(
-        positions,
-        bladeCenterX,
-        bladeLength,
-        bladeThickness,
-        bladeChord,
-        bladePitchRad,
-        (i * Math.PI * 2) / FAN_BLADE_COUNT,
-      );
+      const yaw = (i * Math.PI * 2) / FAN_BLADE_COUNT;
+      if (tier === 'close') {
+        pushRotorBladeBox(
+          positions,
+          bladeCenterX,
+          bladeLength,
+          bladeThickness,
+          bladeChord,
+          bladePitchRad,
+          yaw,
+        );
+      } else {
+        pushRotorBladeSurface(
+          positions,
+          bladeRootRadius,
+          bladeLength,
+          bladeChord,
+          bladePitchRad,
+          yaw,
+          tier === 'far',
+        );
+      }
     }
     geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -327,6 +400,7 @@ function buildFan(
       bladeChord,
       bladeRootRadius,
       bladePitchRad,
+      geometryTier,
     ),
     getRotorBladeMat(FAN_BLADE_COLOR, ownerId, fanSpinRadPerSec),
   );

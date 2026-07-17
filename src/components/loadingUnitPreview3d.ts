@@ -3,6 +3,7 @@ import type { LoadingUnitPreviewControls } from './loadingUnitPreviewScene';
 import {
   acquireAuxiliaryRendererContext,
 } from '@/game/render3d/RendererContextBudget';
+import type { PrimitiveGeometryTier } from '@/game/render3d/PrimitiveGeometryQuality3D';
 
 export type { LoadingEntityBlueprintId, LoadingPreviewKind };
 export type { LoadingUnitPreviewControls };
@@ -16,6 +17,7 @@ type LoadingUnitPreviewOptions = {
   fullBleed?: boolean;
   controls?: Partial<LoadingUnitPreviewControls>;
   onReady?: () => void;
+  geometryTier?: PrimitiveGeometryTier;
 };
 
 type PreviewSize = {
@@ -48,6 +50,7 @@ type WorkerPreviewMessage =
       kind: LoadingPreviewKind;
       blueprintId: LoadingEntityBlueprintId;
       fullBleed: boolean;
+      geometryTier: PrimitiveGeometryTier;
       controls: Partial<LoadingUnitPreviewControls>;
     } & PreviewSize)
   | ({ type: 'resize' } & PreviewSize)
@@ -67,6 +70,7 @@ export function mountLoadingUnitPreview(
   options: LoadingUnitPreviewOptions = {},
 ): LoadingUnitPreviewRuntime {
   const fullBleed = options.fullBleed === true;
+  const geometryTier = options.geometryTier ?? 'close';
   const stage = document.createElement('div');
   stage.className = `loader-unit-stage${fullBleed ? ' full-bleed' : ''}`;
 
@@ -86,11 +90,11 @@ export function mountLoadingUnitPreview(
 
   let latestSize = readPreviewSize(host);
   let latestControls: Partial<LoadingUnitPreviewControls> = options.controls ?? {};
-  let driver = createWorkerDriver(canvas, kind, blueprintId, fullBleed, latestSize, latestControls, hooks);
+  let driver = createWorkerDriver(canvas, kind, blueprintId, fullBleed, geometryTier, latestSize, latestControls, hooks);
   let fallbackDriverPromise: Promise<PreviewDriver | null> | null = null;
 
   if (!driver) {
-    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, kind, blueprintId, fullBleed, latestSize, latestControls, hooks);
+    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, kind, blueprintId, fullBleed, geometryTier, latestSize, latestControls, hooks);
     void fallbackDriverPromise.then((resolved) => {
       if (destroyed) {
         resolved?.destroy();
@@ -131,6 +135,7 @@ function createWorkerDriver(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
+  geometryTier: PrimitiveGeometryTier,
   size: PreviewSize,
   controls: Partial<LoadingUnitPreviewControls>,
   hooks: DriverHooks,
@@ -205,6 +210,7 @@ function createWorkerDriver(
     kind,
     blueprintId,
     fullBleed,
+    geometryTier,
     controls,
     ...size,
   };
@@ -254,6 +260,7 @@ async function createMainThreadFallbackDriver(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
+  geometryTier: PrimitiveGeometryTier,
   size: PreviewSize,
   controls: Partial<LoadingUnitPreviewControls>,
   hooks: DriverHooks,
@@ -265,7 +272,7 @@ async function createMainThreadFallbackDriver(
   let scene: LoadingPreviewSceneRuntime | null = null;
   try {
     const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
-    scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
+    scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed, geometryTier });
     scene.updateControls(controls);
     scene.resize(size);
   } catch {

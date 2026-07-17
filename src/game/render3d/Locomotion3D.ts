@@ -71,6 +71,7 @@ import type {
 } from './AirborneEmitterBatch3D';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 import type { LocomotionRenderPose } from './LocomotionRigShared3D';
+import type { RollingContactState } from './LocomotionRigShared3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -84,6 +85,230 @@ export type Locomotion3DMesh =
 
 export type { LegStateSnapshot };
 export { setHoverFanAnimationTime };
+
+type RollingContactSnapshot = Readonly<{
+  worldX: number;
+  worldZ: number;
+  initialized: boolean;
+  phase: number;
+}>;
+
+/**
+ * Geometry-tier rebuild state. It deliberately contains presentation state
+ * only: changing High/Medium/Low swaps meshes while rolling phase, suspension,
+ * gait and articulated poses continue from the previous frame.
+ */
+export type LocomotionStateSnapshot =
+  | {
+      type: 'legs';
+      legs: LegStateSnapshot;
+      visualGrounded: boolean;
+      poseInitialized: boolean;
+      lastBaseX: number;
+      lastBaseY: number;
+      lastBaseZ: number;
+    }
+  | {
+      type: 'wheels';
+      contacts: RollingContactSnapshot[];
+      mounts: Array<Readonly<{ lift: number; targetLift: number; angularVelocity: number }>>;
+      rotations: number[];
+    }
+  | {
+      type: 'treads';
+      contacts: RollingContactSnapshot[];
+      sides: Array<Readonly<{
+        lift: number;
+        targetLift: number;
+        beltPhase: number;
+        beltVelocity: number;
+        groupY: number;
+        wheelRotation: number;
+      }>>;
+    }
+  | {
+      type: 'flippers';
+      contact: RollingContactSnapshot;
+      waterBlend: number;
+      hingeQuaternions: Array<readonly [number, number, number, number]>;
+    }
+  | { type: 'hover'; clearance: number }
+  | { type: 'flying' }
+  | {
+      type: 'swim';
+      contact: RollingContactSnapshot;
+      hingeQuaternions: Array<readonly [number, number, number, number]>;
+    };
+
+function captureRollingContact(state: RollingContactState): RollingContactSnapshot {
+  return {
+    worldX: state.worldX,
+    worldZ: state.worldZ,
+    initialized: state.initialized,
+    phase: state.phase,
+  };
+}
+
+function applyRollingContact(
+  state: RollingContactState,
+  snapshot: RollingContactSnapshot | undefined,
+): void {
+  if (snapshot === undefined) return;
+  state.worldX = snapshot.worldX;
+  state.worldZ = snapshot.worldZ;
+  state.initialized = snapshot.initialized;
+  state.phase = snapshot.phase;
+}
+
+function quaternionTuple(object: THREE.Object3D): readonly [number, number, number, number] {
+  return [object.quaternion.x, object.quaternion.y, object.quaternion.z, object.quaternion.w];
+}
+
+/** Capture every mutable locomotion channel before a geometry-tier rebuild. */
+export function captureLocomotionState(
+  locomotion: Locomotion3DMesh,
+): LocomotionStateSnapshot | undefined {
+  if (!locomotion) return undefined;
+  switch (locomotion.type) {
+    case 'legs':
+      return {
+        type: 'legs',
+        legs: captureLegStateImpl(locomotion),
+        visualGrounded: locomotion.visualGrounded,
+        poseInitialized: locomotion.poseInitialized,
+        lastBaseX: locomotion.lastBaseX,
+        lastBaseY: locomotion.lastBaseY,
+        lastBaseZ: locomotion.lastBaseZ,
+      };
+    case 'wheels':
+      return {
+        type: 'wheels',
+        contacts: locomotion.wheelContacts.map(captureRollingContact),
+        mounts: locomotion.wheelMounts.map((mount) => ({
+          lift: mount.lift,
+          targetLift: mount.targetLift,
+          angularVelocity: mount.angularVelocity,
+        })),
+        rotations: locomotion.wheels.map((wheel) => wheel.rotation.y),
+      };
+    case 'treads':
+      return {
+        type: 'treads',
+        contacts: locomotion.treadContacts.map(captureRollingContact),
+        sides: locomotion.sides.map((side) => ({
+          lift: side.lift,
+          targetLift: side.targetLift,
+          beltPhase: side.beltPhase,
+          beltVelocity: side.beltVelocity,
+          groupY: side.group.position.y,
+          wheelRotation: side.wheelRotation,
+        })),
+      };
+    case 'flippers':
+      return {
+        type: 'flippers',
+        contact: captureRollingContact(locomotion.contact),
+        waterBlend: locomotion.waterBlend,
+        hingeQuaternions: locomotion.panels.map((panel) => quaternionTuple(panel.hinge)),
+      };
+    case 'hover':
+      return { type: 'hover', clearance: locomotion.clearance };
+    case 'flying':
+      return { type: 'flying' };
+    case 'swim':
+      return {
+        type: 'swim',
+        contact: captureRollingContact(locomotion.contact),
+        hingeQuaternions: [
+          ...locomotion.pectoralHinges.map(quaternionTuple),
+          quaternionTuple(locomotion.tailHinge),
+        ],
+      };
+  }
+}
+
+/** Restore presentation state onto a newly built geometry tier. */
+export function applyLocomotionState(
+  locomotion: Locomotion3DMesh,
+  snapshot: LocomotionStateSnapshot | undefined,
+): void {
+  if (!locomotion || snapshot === undefined || locomotion.type !== snapshot.type) return;
+  switch (locomotion.type) {
+    case 'legs': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'legs' }>;
+      applyLegStateImpl(locomotion, state.legs);
+      locomotion.visualGrounded = state.visualGrounded;
+      locomotion.poseInitialized = state.poseInitialized;
+      locomotion.lastBaseX = state.lastBaseX;
+      locomotion.lastBaseY = state.lastBaseY;
+      locomotion.lastBaseZ = state.lastBaseZ;
+      return;
+    }
+    case 'wheels': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'wheels' }>;
+      for (let i = 0; i < locomotion.wheelContacts.length; i++) {
+        applyRollingContact(locomotion.wheelContacts[i], state.contacts[i]);
+      }
+      for (let i = 0; i < locomotion.wheelMounts.length; i++) {
+        const saved = state.mounts[i];
+        if (!saved) continue;
+        const mount = locomotion.wheelMounts[i];
+        mount.lift = saved.lift;
+        mount.targetLift = saved.targetLift;
+        mount.angularVelocity = saved.angularVelocity;
+        locomotion.wheelGroups[i].position.y = mount.wheelR + mount.lift;
+        locomotion.wheels[i].rotation.y = state.rotations[i] ?? 0;
+      }
+      return;
+    }
+    case 'treads': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'treads' }>;
+      for (let i = 0; i < locomotion.treadContacts.length; i++) {
+        applyRollingContact(locomotion.treadContacts[i], state.contacts[i]);
+      }
+      for (let i = 0; i < locomotion.sides.length; i++) {
+        const saved = state.sides[i];
+        if (!saved) continue;
+        const side = locomotion.sides[i];
+        side.lift = saved.lift;
+        side.targetLift = saved.targetLift;
+        side.beltPhase = saved.beltPhase;
+        side.beltVelocity = saved.beltVelocity;
+        side.wheelRotation = saved.wheelRotation;
+        side.group.position.y = saved.groupY;
+      }
+      for (let i = 0; i < locomotion.wheels.length; i++) {
+        locomotion.wheels[i].rotation.y = locomotion.sides[locomotion.wheelSide[i]]?.wheelRotation ?? 0;
+      }
+      return;
+    }
+    case 'flippers': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'flippers' }>;
+      applyRollingContact(locomotion.contact, state.contact);
+      locomotion.waterBlend = state.waterBlend;
+      for (let i = 0; i < locomotion.panels.length; i++) {
+        const q = state.hingeQuaternions[i];
+        if (q) locomotion.panels[i].hinge.quaternion.set(q[0], q[1], q[2], q[3]);
+      }
+      return;
+    }
+    case 'hover':
+      locomotion.clearance = (snapshot as Extract<LocomotionStateSnapshot, { type: 'hover' }>).clearance;
+      return;
+    case 'flying':
+      return;
+    case 'swim': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'swim' }>;
+      applyRollingContact(locomotion.contact, state.contact);
+      const hinges: THREE.Object3D[] = [...locomotion.pectoralHinges, locomotion.tailHinge];
+      for (let i = 0; i < hinges.length; i++) {
+        const q = state.hingeQuaternions[i];
+        if (q) hinges[i].quaternion.set(q[0], q[1], q[2], q[3]);
+      }
+      return;
+    }
+  }
+}
 
 export type AirborneEmitterUpdate3D = {
   batch: AirborneEmitterBatch3D;
@@ -188,7 +413,9 @@ export function buildLocomotion(
       return mesh;
     }
     case 'flippers': {
-      const mesh = buildFlippers(unitGroup, unitRadius, loc.config, ownerId);
+      const mesh = buildFlippers(
+        unitGroup, unitRadius, loc.config, ownerId, geometryTier,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -227,7 +454,9 @@ export function buildLocomotion(
       return mesh;
     }
     case 'swim': {
-      const mesh = buildSwimRig(unitGroup, unitRadius, loc.config, ownerId);
+      const mesh = buildSwimRig(
+        unitGroup, unitRadius, loc.config, ownerId, geometryTier,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }

@@ -27,6 +27,7 @@ import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
+  detailRungForLevel,
   type DetailRung,
   plasmaDetailRungForLevel,
   plasmaDetailRungWithHysteresis,
@@ -117,6 +118,44 @@ export const PLASMA_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
   medium: PLASMA_MEDIUM_SPEC.indicesPerShot / 3,
   low: PLASMA_LOW_INDICES.length / 3,
 });
+
+/** Rocket/missile/torpedo body + tube + all three authored fins. */
+export const ROCKET_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
+  high: 80 + 32 + 24,
+  medium: 36 + 24 + 3,
+  low: PLASMA_LOW_INDICES.length / 3,
+});
+
+/** Geometry-independent projectile pose shared by every visual tier. */
+export function composeProjectileTailPose3D(
+  pose: Float32Array,
+  poseOffset: number,
+  x: number, y: number, z: number,
+  length: number,
+  radius: number,
+  outDirection: THREE.Vector3,
+  outPosition: THREE.Vector3,
+  outQuaternion: THREE.Quaternion,
+  outScale: THREE.Vector3,
+): void {
+  outDirection.set(
+    pose[poseOffset],
+    pose[poseOffset + 1],
+    pose[poseOffset + 2],
+  );
+  outQuaternion.set(
+    pose[poseOffset + 3],
+    pose[poseOffset + 4],
+    pose[poseOffset + 5],
+    pose[poseOffset + 6],
+  );
+  outPosition.set(
+    x + outDirection.x * length * 0.5,
+    z + outDirection.y * length * 0.5,
+    y + outDirection.z * length * 0.5,
+  );
+  outScale.set(radius, length, radius);
+}
 
 function writeTranslateScaleMatrix(
   out: Float32Array,
@@ -215,6 +254,9 @@ export class ProjectileRenderer3D {
   private readonly projectileGeom = createPrimitiveSphereGeometry('projectile', 'close');
   private readonly projectileCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'close');
   private readonly projectileFinGeom = createProjectileFinGeometry();
+  private readonly projectileMediumGeom = createPrimitiveSphereGeometry('projectile', 'mid');
+  private readonly projectileMediumCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'mid');
+  private readonly projectileMediumFinGeom = createProjectileFinGeometry(false);
   private readonly projectileMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.projectile.body.colorHex,
   });
@@ -245,6 +287,10 @@ export class ProjectileRenderer3D {
   private readonly sphereMatrices: Float32Array;
   private readonly cylinderInstanced: THREE.InstancedMesh;
   private readonly cylinderMatrices: Float32Array;
+  private readonly mediumSphereInstanced: THREE.InstancedMesh;
+  private readonly mediumSphereMatrices: Float32Array;
+  private readonly mediumCylinderInstanced: THREE.InstancedMesh;
+  private readonly mediumCylinderMatrices: Float32Array;
   private readonly plasmaHigh: DynamicPlasmaGeometry;
   private readonly plasmaHighMesh: THREE.Mesh;
   private readonly plasmaMedium: DynamicPlasmaGeometry;
@@ -252,10 +298,19 @@ export class ProjectileRenderer3D {
   private readonly plasmaLowGeom = createLowResolutionPlasmaGeometry();
   private readonly plasmaLowInstanced: THREE.InstancedMesh;
   private readonly plasmaLowMatrices: Float32Array;
+  private readonly rocketLowInstanced: THREE.InstancedMesh;
+  private readonly rocketLowMatrices: Float32Array;
   private readonly finInstanced: THREE.InstancedMesh;
   private readonly finMatrices: Float32Array;
   private readonly finColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
   private readonly finColorAttr = new THREE.InstancedBufferAttribute(this.finColors, 3);
+  private readonly mediumFinInstanced: THREE.InstancedMesh;
+  private readonly mediumFinMatrices: Float32Array;
+  private readonly mediumFinColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
+  private readonly mediumFinColorAttr = new THREE.InstancedBufferAttribute(
+    this.mediumFinColors,
+    3,
+  );
   private readonly seenProjectileIds = new Set<number>();
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
@@ -316,6 +371,28 @@ export class ProjectileRenderer3D {
     this.cylinderInstanced.count = 0;
     this.world.add(this.cylinderInstanced);
 
+    this.mediumSphereInstanced = new THREE.InstancedMesh(
+      this.projectileMediumGeom,
+      this.projectileMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.mediumSphereInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mediumSphereMatrices = this.mediumSphereInstanced.instanceMatrix.array as Float32Array;
+    this.mediumSphereInstanced.frustumCulled = false;
+    this.mediumSphereInstanced.count = 0;
+    this.world.add(this.mediumSphereInstanced);
+
+    this.mediumCylinderInstanced = new THREE.InstancedMesh(
+      this.projectileMediumCylinderGeom,
+      this.projectileMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.mediumCylinderInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mediumCylinderMatrices = this.mediumCylinderInstanced.instanceMatrix.array as Float32Array;
+    this.mediumCylinderInstanced.frustumCulled = false;
+    this.mediumCylinderInstanced.count = 0;
+    this.world.add(this.mediumCylinderInstanced);
+
     this.plasmaHigh = createDynamicPlasmaGeometry(PROJECTILE_INSTANCED_CAP, PLASMA_HIGH_SPEC);
     this.plasmaHighMesh = new THREE.Mesh(this.plasmaHigh.geometry, this.plasmaMat);
     this.plasmaHighMesh.frustumCulled = false;
@@ -342,6 +419,17 @@ export class ProjectileRenderer3D {
     this.plasmaLowInstanced.count = 0;
     this.world.add(this.plasmaLowInstanced);
 
+    this.rocketLowInstanced = new THREE.InstancedMesh(
+      this.plasmaLowGeom,
+      this.projectileMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.rocketLowInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.rocketLowMatrices = this.rocketLowInstanced.instanceMatrix.array as Float32Array;
+    this.rocketLowInstanced.frustumCulled = false;
+    this.rocketLowInstanced.count = 0;
+    this.world.add(this.rocketLowInstanced);
+
     this.finInstanced = new THREE.InstancedMesh(
       this.projectileFinGeom,
       this.projectileFinMat,
@@ -354,6 +442,19 @@ export class ProjectileRenderer3D {
     this.finInstanced.frustumCulled = false;
     this.finInstanced.count = 0;
     this.world.add(this.finInstanced);
+
+    this.mediumFinInstanced = new THREE.InstancedMesh(
+      this.projectileMediumFinGeom,
+      this.projectileFinMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.mediumFinInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mediumFinMatrices = this.mediumFinInstanced.instanceMatrix.array as Float32Array;
+    this.mediumFinColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.mediumFinInstanced.instanceColor = this.mediumFinColorAttr;
+    this.mediumFinInstanced.frustumCulled = false;
+    this.mediumFinInstanced.count = 0;
+    this.world.add(this.mediumFinInstanced);
   }
 
   update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
@@ -368,10 +469,14 @@ export class ProjectileRenderer3D {
 
     let sphereCount = 0;
     let cylinderCount = 0;
+    let mediumSphereCount = 0;
+    let mediumCylinderCount = 0;
+    let rocketLowCount = 0;
     let plasmaHighCount = 0;
     let plasmaMediumCount = 0;
     let plasmaLowCount = 0;
     let finCount = 0;
+    let mediumFinCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
     this.projectileAxisPose.begin(projectiles.length);
@@ -417,13 +522,8 @@ export class ProjectileRenderer3D {
       const isPlasma = shotProfile?.runtime.type === 'plasma';
       const emissionFarLod = this.isEntityEmissionFarLod(e);
 
-      // Plasma owns a four-triangle far rung, so it never drops out at the
-      // legacy emission cutoff. Other projectile classes keep that cutoff.
-      if (emissionFarLod && !isPlasma) {
-        this.hideProjRadiusMeshes(e.id);
-        this.trailStamps.delete(e.id);
-        continue;
-      }
+      // Every projectile owns real Low geometry. The legacy emission gate
+      // now forces that rung instead of making rockets/missiles disappear.
 
       if (isPlasma && proj) {
         const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
@@ -486,63 +586,106 @@ export class ProjectileRenderer3D {
       }
 
       this.plasmaDetailRungs.delete(e.id);
-
-      if (sphereCount >= PROJECTILE_INSTANCED_CAP) {
-        this.hideProjRadiusMeshes(e.id);
-        continue;
-      }
-      writeTranslateScaleMatrix(
-        this.sphereMatrices,
-        sphereCount++,
-        tx, tz, ty,
-        r, r, r,
-      );
-
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'
         : 'none';
-      const finSizeMult = drawProjectileFins
-        ? visualProfile?.projectileFinSizeMult ?? 0
-        : 0;
-      if (tailShape !== 'none' || finSizeMult > 0) {
-        const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
-        const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
-        this.composeProjectileTailPose(
-          projectileAxisOutput,
-          projectileIndex * projectileAxisOutputStride,
-          tx,
-          ty,
-          tz,
-          tailLength,
-          tailRadius,
-        );
-        if (tailShape === 'cylinder') {
-          if (cylinderCount < PROJECTILE_INSTANCED_CAP) {
-            writeComposedMatrix(
-              this.cylinderMatrices,
-              cylinderCount++,
-              this.projPos.x,
-              this.projPos.y,
-              this.projPos.z,
-              this.projQuat,
-              this.projScale.x,
-              this.projScale.y,
-              this.projScale.z,
-            );
-          }
+      const finSizeMult = visualProfile?.projectileFinSizeMult ?? 0;
+      const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
+      const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
+      this.composeProjectileTailPose(
+        projectileAxisOutput,
+        projectileIndex * projectileAxisOutputStride,
+        tx,
+        ty,
+        tz,
+        tailLength,
+        tailRadius,
+      );
+      const rawRocketRung = detailRungForLevel(detailLevel);
+      const rocketRung = emissionFarLod || (!drawProjectileTail && !drawProjectileFins)
+        ? DETAIL_RUNG_FAR
+        : rawRocketRung;
+
+      if (rocketRung === DETAIL_RUNG_CLOSE) {
+        if (sphereCount < PROJECTILE_INSTANCED_CAP) {
+          writeTranslateScaleMatrix(
+            this.sphereMatrices,
+            sphereCount++,
+            tx, tz, ty,
+            r, r, r,
+          );
         }
-        if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
-          const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
-          const rollAngle = proj && isRocketLike
-            ? (renderNowMs + (e.id % 64) * 31) * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
-            : 0;
-          // Push the fin's rear edge past the cylinder tail end so the
-          // white fin tips don't z-fight with the rocket body cap.
-          const finRearOffset = tailLength + r * FIN_REAR_OVERHANG_MULT;
-          this.composeProjectileFinPose(tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle);
+        if (tailShape === 'cylinder' && cylinderCount < PROJECTILE_INSTANCED_CAP) {
           writeComposedMatrix(
-            this.finMatrices,
-            finCount,
+            this.cylinderMatrices,
+            cylinderCount++,
+            this.projPos.x,
+            this.projPos.y,
+            this.projPos.z,
+            this.projQuat,
+            this.projScale.x,
+            this.projScale.y,
+            this.projScale.z,
+          );
+        }
+      } else if (rocketRung === DETAIL_RUNG_MID) {
+        if (mediumSphereCount < PROJECTILE_INSTANCED_CAP) {
+          writeTranslateScaleMatrix(
+            this.mediumSphereMatrices,
+            mediumSphereCount++,
+            tx, tz, ty,
+            r, r, r,
+          );
+        }
+        if (
+          tailShape === 'cylinder' &&
+          mediumCylinderCount < PROJECTILE_INSTANCED_CAP
+        ) {
+          writeComposedMatrix(
+            this.mediumCylinderMatrices,
+            mediumCylinderCount++,
+            this.projPos.x,
+            this.projPos.y,
+            this.projPos.z,
+            this.projQuat,
+            this.projScale.x,
+            this.projScale.y,
+            this.projScale.z,
+          );
+        }
+      } else if (rocketLowCount < PROJECTILE_INSTANCED_CAP) {
+        writeComposedMatrix(
+          this.rocketLowMatrices,
+          rocketLowCount++,
+          this.projPos.x,
+          this.projPos.y,
+          this.projPos.z,
+          this.projQuat,
+          r,
+          tailLength,
+          r,
+        );
+      }
+
+      if (
+        finSizeMult > 0 &&
+        (rocketRung === DETAIL_RUNG_CLOSE || rocketRung === DETAIL_RUNG_MID)
+      ) {
+        const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
+        const rollAngle = proj && isRocketLike
+          ? (renderNowMs + (e.id % 64) * 31) * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
+          : 0;
+        const finRearOffset = tailLength + r * FIN_REAR_OVERHANG_MULT;
+        this.composeProjectileFinPose(
+          tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle,
+        );
+        const medium = rocketRung === DETAIL_RUNG_MID;
+        const slot = medium ? mediumFinCount : finCount;
+        if (slot < PROJECTILE_INSTANCED_CAP) {
+          const matrices = medium ? this.mediumFinMatrices : this.finMatrices;
+          writeComposedMatrix(
+            matrices,
+            slot,
             this.projPos.x,
             this.projPos.y,
             this.projPos.z,
@@ -553,19 +696,15 @@ export class ProjectileRenderer3D {
           );
           if (proj) {
             this.finColor.set(getPlayerColors(proj.ownerId).primary);
-            const colorOffset = finCount * 3;
-            if (
-              this.finColors[colorOffset] !== this.finColor.r ||
-              this.finColors[colorOffset + 1] !== this.finColor.g ||
-              this.finColors[colorOffset + 2] !== this.finColor.b
-            ) {
-              this.finColors[colorOffset] = this.finColor.r;
-              this.finColors[colorOffset + 1] = this.finColor.g;
-              this.finColors[colorOffset + 2] = this.finColor.b;
-              this.markFinColorDirty(finCount);
-            }
+            const colors = medium ? this.mediumFinColors : this.finColors;
+            const colorOffset = slot * 3;
+            colors[colorOffset] = this.finColor.r;
+            colors[colorOffset + 1] = this.finColor.g;
+            colors[colorOffset + 2] = this.finColor.b;
+            if (!medium) this.markFinColorDirty(slot);
           }
-          finCount++;
+          if (medium) mediumFinCount++;
+          else finCount++;
         }
       }
 
@@ -580,6 +719,26 @@ export class ProjectileRenderer3D {
     if (cylinderCount > 0) {
       this.markInstanceMatrixRange(this.cylinderInstanced, 0, cylinderCount - 1);
     }
+    if (this.mediumSphereInstanced.count !== mediumSphereCount) {
+      this.mediumSphereInstanced.count = mediumSphereCount;
+    }
+    if (mediumSphereCount > 0) {
+      this.markInstanceMatrixRange(
+        this.mediumSphereInstanced,
+        0,
+        mediumSphereCount - 1,
+      );
+    }
+    if (this.mediumCylinderInstanced.count !== mediumCylinderCount) {
+      this.mediumCylinderInstanced.count = mediumCylinderCount;
+    }
+    if (mediumCylinderCount > 0) {
+      this.markInstanceMatrixRange(
+        this.mediumCylinderInstanced,
+        0,
+        mediumCylinderCount - 1,
+      );
+    }
     this.flushPlasmaGeometry(this.plasmaHigh, this.plasmaHighMesh, plasmaHighCount);
     this.flushPlasmaGeometry(this.plasmaMedium, this.plasmaMediumMesh, plasmaMediumCount);
     if (this.plasmaLowInstanced.count !== plasmaLowCount) {
@@ -587,6 +746,12 @@ export class ProjectileRenderer3D {
     }
     if (plasmaLowCount > 0) {
       this.markInstanceMatrixRange(this.plasmaLowInstanced, 0, plasmaLowCount - 1);
+    }
+    if (this.rocketLowInstanced.count !== rocketLowCount) {
+      this.rocketLowInstanced.count = rocketLowCount;
+    }
+    if (rocketLowCount > 0) {
+      this.markInstanceMatrixRange(this.rocketLowInstanced, 0, rocketLowCount - 1);
     }
     if (this.finInstanced.count !== finCount) this.finInstanced.count = finCount;
     if (finCount > 0) {
@@ -603,6 +768,15 @@ export class ProjectileRenderer3D {
       this.finInstanced.instanceColor.needsUpdate = true;
       this.finColorDirtyMin = Number.POSITIVE_INFINITY;
       this.finColorDirtyMax = -1;
+    }
+    if (this.mediumFinInstanced.count !== mediumFinCount) {
+      this.mediumFinInstanced.count = mediumFinCount;
+    }
+    if (mediumFinCount > 0) {
+      this.markInstanceMatrixRange(this.mediumFinInstanced, 0, mediumFinCount - 1);
+      this.mediumFinColorAttr.clearUpdateRanges();
+      this.mediumFinColorAttr.addUpdateRange(0, mediumFinCount * 3);
+      this.mediumFinColorAttr.needsUpdate = true;
     }
 
     if (pruneProjectiles) {
@@ -627,10 +801,14 @@ export class ProjectileRenderer3D {
   destroy(): void {
     disposeMesh(this.sphereInstanced, { material: false, geometry: false });
     disposeMesh(this.cylinderInstanced, { material: false, geometry: false });
+    disposeMesh(this.mediumSphereInstanced, { material: false, geometry: false });
+    disposeMesh(this.mediumCylinderInstanced, { material: false, geometry: false });
     disposeMesh(this.plasmaHighMesh, { material: false, geometry: false });
     disposeMesh(this.plasmaMediumMesh, { material: false, geometry: false });
     disposeMesh(this.plasmaLowInstanced, { material: false, geometry: false });
+    disposeMesh(this.rocketLowInstanced, { material: false, geometry: false });
     disposeMesh(this.finInstanced, { material: false, geometry: false });
+    disposeMesh(this.mediumFinInstanced, { material: false, geometry: false });
     for (const radii of this.projectileRadiusMeshes.values()) {
       if (radii.collision) {
         disposeMesh(radii.collision, { material: false, geometry: false });
@@ -649,10 +827,13 @@ export class ProjectileRenderer3D {
     disposeGeometries([
       this.projectileGeom,
       this.projectileCylinderGeom,
+      this.projectileMediumGeom,
+      this.projectileMediumCylinderGeom,
       this.plasmaHigh.geometry,
       this.plasmaMedium.geometry,
       this.plasmaLowGeom,
       this.projectileFinGeom,
+      this.projectileMediumFinGeom,
     ]);
     disposeMaterials([
       this.projectileMat,
@@ -1095,23 +1276,17 @@ export class ProjectileRenderer3D {
     length: number,
     radius: number,
   ): void {
-    this.projDir.set(
-      pose[poseOffset],
-      pose[poseOffset + 1],
-      pose[poseOffset + 2],
+    composeProjectileTailPose3D(
+      pose,
+      poseOffset,
+      x, y, z,
+      length,
+      radius,
+      this.projDir,
+      this.projPos,
+      this.projQuat,
+      this.projScale,
     );
-    this.projQuat.set(
-      pose[poseOffset + 3],
-      pose[poseOffset + 4],
-      pose[poseOffset + 5],
-      pose[poseOffset + 6],
-    );
-    this.projPos.set(
-      x + this.projDir.x * length * 0.5,
-      z + this.projDir.y * length * 0.5,
-      y + this.projDir.z * length * 0.5,
-    );
-    this.projScale.set(radius, length, radius);
   }
 
   private updateProjRadiusMeshes(
@@ -1219,7 +1394,7 @@ export class ProjectileRenderer3D {
 // quaternion is applied. The local origin sits at the fin's rear edge so
 // the caller can place it directly at the rocket tail end; the fin tapers
 // forward along local -Y toward the rocket body.
-function createProjectileFinGeometry(): THREE.BufferGeometry {
+function createProjectileFinGeometry(extruded: boolean = true): THREE.BufferGeometry {
   const FIN_FORWARD = -2;
   const FIN_REAR = 0;
   const FIN_OUT = 1;
@@ -1238,6 +1413,12 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
     const A = [0, FIN_FORWARD, 0];
     const B = [0, FIN_REAR, 0];
     const C = [ox, FIN_REAR, oz];
+    if (!extruded) {
+      // One double-sided material triangle per authored fin. It retains
+      // the exact three-fin silhouette/roll transform while shedding the
+      // hidden prism thickness at Medium.
+      return [...A, ...B, ...C];
+    }
     const Ap = [A[0] + px, A[1], A[2] + pz];
     const Bp = [B[0] + px, B[1], B[2] + pz];
     const Cp = [C[0] + px, C[1], C[2] + pz];

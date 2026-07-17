@@ -7,10 +7,10 @@ import { isCommander } from '../sim/combat/combatUtils';
 import type { Entity, PlayerId, Turret } from '../sim/types';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import {
-  applyLegState,
+  applyLocomotionState,
   buildLocomotion,
   getChassisLift,
-  type LegStateSnapshot,
+  type LocomotionStateSnapshot,
 } from './Locomotion3D';
 import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
@@ -59,7 +59,7 @@ type UnitMeshBuildRequest = {
   unitFrameKey: string;
   unitRenderKey: string;
   detailLevel: number;
-  legState?: LegStateSnapshot;
+  locomotionState?: LocomotionStateSnapshot;
 };
 
 export function applyUnitLiftGroupPose3D(mesh: EntityMesh, entity: Entity): void {
@@ -118,7 +118,7 @@ export class UnitMeshBuilder3D {
       unitFrameKey,
       unitRenderKey,
       detailLevel,
-      legState,
+      locomotionState,
     } = request;
 
     const group = new THREE.Group();
@@ -127,8 +127,11 @@ export class UnitMeshBuilder3D {
     const authoredBodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
     const bodyShape =
       unitGfx.unitShape === 'circles' ? LOW_DETAIL_UNIT_BODY_SHAPE : authoredBodyShape;
-    const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
     const geometryTier = geometryTierForDetail(detailLevel);
+    // Poly chassis pools own immutable geometry. Include the tier so a
+    // Close bevelled body can never be reused by a Mid/Far instance (or
+    // vice versa) merely because the authored 2D shape key is identical.
+    const bodyShapeKey = `${geometryTier}:${getUnitBodyShapeKey(bodyShape)}`;
     const bodyEntry = getBodyGeom(bodyShape, geometryTier);
     const primaryMat = this.getPrimaryMat(ownerId);
 
@@ -252,7 +255,7 @@ export class UnitMeshBuilder3D {
       detailLevel,
       this.legRenderer,
     );
-    if (legState !== undefined) applyLegState(mesh.locomotion, legState);
+    if (locomotionState !== undefined) applyLocomotionState(mesh.locomotion, locomotionState);
 
     this.buildMirrors(
       mesh,
@@ -415,7 +418,12 @@ export class UnitMeshBuilder3D {
       - liftGroup.position.y;
     const pivotLocalZ = shieldPanelTurret?.mount.y ?? 0;
     const panelCount = shieldPanels.length;
-    const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
+    const panelGeometryTier = geometryTierForDetail(detailLevel);
+    // The shared panel pool owns the High box slab. Medium/Low use their
+    // own cheaper per-mesh slab/support geometry while keeping the same
+    // root pose and authored panel transforms.
+    const allocedPanelSlots =
+      useDetailedUnitInstancing && panelCount > 0 && panelGeometryTier === 'close'
       ? this.unitDetailInstances.allocShieldPanelSlots(panelCount)
       : null;
     const allMirrorAlloc = allocedPanelSlots !== null;
@@ -433,6 +441,7 @@ export class UnitMeshBuilder3D {
       this.getMirrorShinyMat(),
       this.getPrimaryMat(ownerId),
       allMirrorAlloc,
+      panelGeometryTier,
     );
     if (allMirrorAlloc) mesh.mirrors.panelSlots = allocedPanelSlots;
     for (const panel of mesh.mirrors.panels) {

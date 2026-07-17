@@ -8,8 +8,8 @@ import {
 import type { BuildingShape } from './BuildingShape3D';
 import {
   createHexFrustumGeometry,
-  cylinderGeom,
   detail,
+  getBuildingCylinderGeometry,
   hexCylinderGeom,
   makeCylinder,
 } from './BuildingMeshPrimitives3D';
@@ -211,7 +211,7 @@ function buildDefenseTowerMesh(
     );
     const delta = top.clone().sub(bottom);
     const length = delta.length();
-    const strut = new THREE.Mesh(cylinderGeom, profile.trimMaterial);
+    const strut = new THREE.Mesh(getBuildingCylinderGeometry(), profile.trimMaterial);
     strut.scale.set(strutRadius * 2, length, strutRadius * 2);
     strut.position.copy(bottom).addScaledVector(delta, 0.5);
     strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());

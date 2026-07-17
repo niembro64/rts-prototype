@@ -32,6 +32,7 @@ import {
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveCylinderGeometry,
+  getSharedExtrudedEquilateralTriangleGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -51,11 +52,13 @@ const WHEEL_OMEGA_SETTLED_EPSILON = 0.02;
 const WHEEL_COLOR = COLORS.units.locomotion.wheel.tire.colorHex;
 const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
-const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
-function getWheelGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   let geometry = wheelGeomByTier.get(tier);
   if (!geometry) {
-    geometry = createPrimitiveCylinderGeometry('locomotion', tier);
+    geometry = tier === 'far'
+      ? getSharedExtrudedEquilateralTriangleGeometry()
+      : createPrimitiveCylinderGeometry('locomotion', tier);
     wheelGeomByTier.set(tier, geometry);
   }
   return geometry;

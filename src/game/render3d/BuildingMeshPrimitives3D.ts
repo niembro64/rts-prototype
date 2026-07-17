@@ -6,6 +6,9 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getSharedExtrudedEquilateralTriangleGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 export const boxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -13,7 +16,82 @@ export const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close',
 export const hexCylinderGeom = createPrimitiveCylinderGeometry('building', 'far', 0.5, 0.5);
 const factorySphereGeom = createPrimitiveSphereGeometry('building', 'close');
 const coneGeom = createPrimitiveConeGeometry('building', 'close', 0.5);
-const windBladeGeom = createWindBladeGeometry();
+const cylinderGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>([
+  ['close', cylinderGeom],
+]);
+const sphereGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>([
+  ['close', factorySphereGeom],
+]);
+const coneGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>([
+  ['close', coneGeom],
+]);
+let activeBuildingGeometryTier: PrimitiveGeometryTier = 'close';
+
+export function withBuildingGeometryTier<T>(
+  tier: PrimitiveGeometryTier,
+  build: () => T,
+): T {
+  const previous = activeBuildingGeometryTier;
+  activeBuildingGeometryTier = tier;
+  try {
+    return build();
+  } finally {
+    activeBuildingGeometryTier = previous;
+  }
+}
+
+export function getActiveBuildingGeometryTier(): PrimitiveGeometryTier {
+  return activeBuildingGeometryTier;
+}
+
+export function getBuildingCylinderGeometry(
+  tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
+): THREE.BufferGeometry {
+  let geometry = cylinderGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = tier === 'far'
+      ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
+      : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5);
+    cylinderGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function getBuildingSphereGeometry(
+  tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
+): THREE.BufferGeometry {
+  let geometry = sphereGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('building', tier);
+    sphereGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function getBuildingConeGeometry(
+  tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
+): THREE.BufferGeometry {
+  let geometry = coneGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = createPrimitiveConeGeometry('building', tier, 0.5);
+    coneGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+const windBladeGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+
+function getWindBladeGeometry(
+  tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
+): THREE.BufferGeometry {
+  let geometry = windBladeGeomByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = createWindBladeGeometry(tier);
+    windBladeGeomByTier.set(tier, geometry);
+  }
+  return geometry;
+}
 
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 export const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
@@ -26,6 +104,7 @@ export const windBladeMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.windBlade.colorHex,
   metalness: COLORS.buildings.materials.windBlade.metalness,
   roughness: COLORS.buildings.materials.windBlade.roughness,
+  side: THREE.DoubleSide,
 });
 export const windGlassMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.windGlass.colorHex,
@@ -50,10 +129,22 @@ export const invisibleMat = new THREE.MeshBasicMaterial({
 });
 export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
-function createWindBladeGeometry(): THREE.BufferGeometry {
-  const stations = [
+function createWindBladeGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  if (tier === 'far') {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.68, 0.06, 0, 0.68, 0.06, 0, 0.08, 1, 0,
+      -0.68, 0.06, 0, 0.08, 1, 0, -0.08, 1, 0,
+    ], 3));
+    geom.computeVertexNormals();
+    return geom;
+  }
+  const stations = tier === 'close' ? [
     { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
     { y: 0.48, halfW: 0.376, halfT: 0.509, sweep: 0.025 },
+    { y: 1.0, halfW: 0.0, halfT: 0.0, sweep: 0.08 },
+  ] : [
+    { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
     { y: 1.0, halfW: 0.0, halfT: 0.0, sweep: 0.08 },
   ];
   const positions: number[] = [];
@@ -142,7 +233,7 @@ export function makeTurbineBlade(
   thickness: number,
   angle: number,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(windBladeGeom, material);
+  const mesh = new THREE.Mesh(getWindBladeGeometry(), material);
   mesh.scale.set(rootWidth, length, thickness);
   mesh.rotation.z = angle;
   return mesh;
@@ -171,9 +262,9 @@ export function makeCylinder(
   x: number,
   y: number,
   z: number,
-  geom: THREE.BufferGeometry = cylinderGeom,
+  geom?: THREE.BufferGeometry,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(geom, material);
+  const mesh = new THREE.Mesh(geom ?? getBuildingCylinderGeometry(), material);
   mesh.scale.set(radius * 2, height, radius * 2);
   mesh.position.set(x, y, z);
   return mesh;
@@ -187,7 +278,7 @@ export function makeCone(
   y: number,
   z: number,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(coneGeom, material);
+  const mesh = new THREE.Mesh(getBuildingConeGeometry(), material);
   mesh.scale.set(radius * 2, height, radius * 2);
   mesh.position.set(x, y, z);
   return mesh;
@@ -200,7 +291,7 @@ export function makeSphere(
   y: number,
   z: number,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(factorySphereGeom, material);
+  const mesh = new THREE.Mesh(getBuildingSphereGeometry(), material);
   mesh.scale.setScalar(radius);
   mesh.position.set(x, y, z);
   return mesh;
@@ -217,11 +308,15 @@ export function detail(
 
 export function disposeBuildingMeshPrimitives(): void {
   boxGeom.dispose();
-  cylinderGeom.dispose();
   hexCylinderGeom.dispose();
-  factorySphereGeom.dispose();
-  coneGeom.dispose();
-  windBladeGeom.dispose();
+  for (const geometry of cylinderGeomByTier.values()) geometry.dispose();
+  for (const geometry of sphereGeomByTier.values()) geometry.dispose();
+  for (const geometry of coneGeomByTier.values()) geometry.dispose();
+  cylinderGeomByTier.clear();
+  sphereGeomByTier.clear();
+  coneGeomByTier.clear();
+  for (const geometry of windBladeGeomByTier.values()) geometry.dispose();
+  windBladeGeomByTier.clear();
   windTowerMat.dispose();
   windTrimMat.dispose();
   windNacelleMat.dispose();

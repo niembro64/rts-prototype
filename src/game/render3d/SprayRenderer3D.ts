@@ -40,7 +40,13 @@ import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -95,20 +101,19 @@ void main() {
 }
 `;
 
+type SprayParticlePool = {
+  geom: THREE.BufferGeometry;
+  mesh: THREE.InstancedMesh;
+  alphaArr: Float32Array;
+  colorArr: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+  colorAttr: THREE.InstancedBufferAttribute;
+};
+
 export class SprayRenderer3D {
   private root: THREE.Group;
-  // Shared sphere geometry for all particles — cheap tessellation since
-  // each particle is small on screen.
-  private geom = createPrimitiveSphereGeometry('effect', 'mid');
   private mat: THREE.ShaderMaterial;
-  private mesh: THREE.InstancedMesh;
-  // Per-instance attribute buffers. Index i in alphaArr / colorArr /
-  // instanceMatrix corresponds to the i-th visible particle this
-  // frame; the `count` cursor caps the draw bound to the live prefix.
-  private alphaArr = new Float32Array(MAX_PARTICLES);
-  private colorArr = new Float32Array(MAX_PARTICLES * 3);
-  private alphaAttr: THREE.InstancedBufferAttribute;
-  private colorAttr: THREE.InstancedBufferAttribute;
+  private pools: Record<PrimitiveGeometryTier, SprayParticlePool>;
   // Particle state. Kept in typed arrays so the stream can persist
   // across frames without allocating one object per particle.
   private particleCount = 0;
@@ -170,13 +175,6 @@ export class SprayRenderer3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.geom.setAttribute('aAlpha', this.alphaAttr);
-    this.geom.setAttribute('aColor', this.colorAttr);
-
     this.mat = new THREE.ShaderMaterial({
       vertexShader: PARTICLE_VERTEX_SHADER,
       fragmentShader: PARTICLE_FRAGMENT_SHADER,
@@ -184,17 +182,32 @@ export class SprayRenderer3D {
       depthWrite: false,
     });
 
-    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, MAX_PARTICLES);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    // Source geometry's bounding sphere is at origin, instances live
-    // anywhere on the map — disable cull (same caveat the chassis +
-    // particle pools share).
-    this.mesh.frustumCulled = false;
-    // Draw after water (renderOrder=3) so transparent sorting doesn't
-    // let the water plane blend over particles geometrically above it.
-    this.mesh.renderOrder = 5;
-    this.root.add(this.mesh);
+    this.pools = {
+      close: this.createPool('close'),
+      mid: this.createPool('mid'),
+      far: this.createPool('far'),
+    };
+  }
+
+  private createPool(tier: PrimitiveGeometryTier): SprayParticlePool {
+    const geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('effect', tier);
+    const alphaArr = new Float32Array(MAX_PARTICLES);
+    const colorArr = new Float32Array(MAX_PARTICLES * 3);
+    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
+    alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aAlpha', alphaAttr);
+    geom.setAttribute('aColor', colorAttr);
+    const mesh = new THREE.InstancedMesh(geom, this.mat, MAX_PARTICLES);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 5;
+    this.root.add(mesh);
+    return { geom, mesh, alphaArr, colorArr, alphaAttr, colorAttr };
   }
 
   /** Per-frame update. `dtMs` advances the wobble phase so frame rate
@@ -204,6 +217,7 @@ export class SprayRenderer3D {
     dtMs: number,
     oneShotSprays: readonly SprayTarget[] = [],
     onPylonTubeHandoff?: (flowKey: string, intensity: number) => void,
+    view?: RenderViewState3D,
   ): void {
     if (
       sprayTargets.length === 0
@@ -293,21 +307,24 @@ export class SprayRenderer3D {
       if (!this.activeSprayKeys.has(key)) this.spraySpawnBudget.delete(key);
     }
 
-    const visibleCount = this.writeParticlesToMesh();
+    const visibleCounts = this.writeParticlesToMeshes(view);
 
     // Cap draw to the live prefix — trailing slots (whatever they
     // happen to hold from previous frames) don't render.
-    if (this.mesh.count !== visibleCount) this.mesh.count = visibleCount;
-    if (visibleCount > 0) {
-      this.mesh.instanceMatrix.clearUpdateRanges();
-      this.mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.alphaAttr.clearUpdateRanges();
-      this.alphaAttr.addUpdateRange(0, visibleCount);
-      this.alphaAttr.needsUpdate = true;
-      this.colorAttr.clearUpdateRanges();
-      this.colorAttr.addUpdateRange(0, visibleCount * 3);
-      this.colorAttr.needsUpdate = true;
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      const pool = this.pools[tier];
+      const visibleCount = visibleCounts[tier];
+      pool.mesh.count = visibleCount;
+      if (visibleCount <= 0) continue;
+      pool.mesh.instanceMatrix.clearUpdateRanges();
+      pool.mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);
+      pool.mesh.instanceMatrix.needsUpdate = true;
+      pool.alphaAttr.clearUpdateRanges();
+      pool.alphaAttr.addUpdateRange(0, visibleCount);
+      pool.alphaAttr.needsUpdate = true;
+      pool.colorAttr.clearUpdateRanges();
+      pool.colorAttr.addUpdateRange(0, visibleCount * 3);
+      pool.colorAttr.needsUpdate = true;
     }
   }
 
@@ -752,9 +769,9 @@ export class SprayRenderer3D {
     this.particleCount = last;
   }
 
-  private writeParticlesToMesh(): number {
+  private writeParticlesToMeshes(view?: RenderViewState3D): Record<PrimitiveGeometryTier, number> {
     const timeSec = this._time / 1000;
-    let visibleCount = 0;
+    const visibleCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
     for (let i = 0; i < this.particleCount; i++) {
       const phase = Math.max(0, Math.min(1, this.pAge[i] / this.pLife[i]));
@@ -838,7 +855,12 @@ export class SprayRenderer3D {
         : this.pSize[i] * (0.78 + 0.36 * phase);
       this._scratchMat.makeScale(size, size, size);
       this._scratchMat.setPosition(px, py, pz);
-      this.mesh.setMatrixAt(visibleCount, this._scratchMat);
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(view, px, pz, py, size))
+        : 'close';
+      const pool = this.pools[tier];
+      const visibleCount = visibleCounts[tier]++;
+      pool.mesh.setMatrixAt(visibleCount, this._scratchMat);
       const colorPhase = split > 0 && split2 > split
         ? phase <= split
           ? 0
@@ -846,18 +868,20 @@ export class SprayRenderer3D {
             ? 1
             : (phase - split) / (split2 - split)
         : phase;
-      this.colorArr[visibleCount * 3] = this.pR[i] + (this.pEndR[i] - this.pR[i]) * colorPhase;
-      this.colorArr[visibleCount * 3 + 1] = this.pG[i] + (this.pEndG[i] - this.pG[i]) * colorPhase;
-      this.colorArr[visibleCount * 3 + 2] = this.pB[i] + (this.pEndB[i] - this.pB[i]) * colorPhase;
-      this.alphaArr[visibleCount] = alpha;
-      visibleCount++;
+      pool.colorArr[visibleCount * 3] = this.pR[i] + (this.pEndR[i] - this.pR[i]) * colorPhase;
+      pool.colorArr[visibleCount * 3 + 1] = this.pG[i] + (this.pEndG[i] - this.pG[i]) * colorPhase;
+      pool.colorArr[visibleCount * 3 + 2] = this.pB[i] + (this.pEndB[i] - this.pB[i]) * colorPhase;
+      pool.alphaArr[visibleCount] = alpha;
     }
 
-    return visibleCount;
+    return visibleCounts;
   }
 
   destroy(): void {
-    disposeMesh(this.mesh);
+    for (const pool of Object.values(this.pools)) {
+      disposeMesh(pool.mesh, { material: false });
+    }
+    this.mat.dispose();
     this._teamColorCache.clear();
     this.spraySpawnBudget.clear();
     this.activeSprayKeys.clear();

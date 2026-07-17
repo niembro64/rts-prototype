@@ -7,8 +7,14 @@ import {
 } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
-import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  getActiveBuildingGeometryTier,
+  getBuildingCylinderGeometry,
+} from './BuildingMeshPrimitives3D';
+import {
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 export type SolarPetalAnimation = {
   width: number;
@@ -61,7 +67,34 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
   bevelEnabled: false,
   steps: 1,
 });
-const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
+const solarHingeCapGeometryByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+
+function getSolarHingeCapGeometry(): THREE.BufferGeometry {
+  const tier = getActiveBuildingGeometryTier();
+  let geometry = solarHingeCapGeometryByTier.get(tier);
+  if (geometry === undefined) {
+    geometry = tier === 'close'
+      ? new THREE.IcosahedronGeometry(1, 1)
+      : tier === 'mid'
+        ? new THREE.OctahedronGeometry(1)
+        : getSharedPrimitiveTetrahedronGeometry(1).clone();
+    solarHingeCapGeometryByTier.set(tier, geometry);
+  }
+  return geometry;
+}
+
+function makeHingeCap(
+  material: THREE.Material,
+  radius: number,
+  x: number,
+  y: number,
+  z: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(getSolarHingeCapGeometry(), material);
+  mesh.position.set(x, y, z);
+  mesh.scale.setScalar(radius);
+  return mesh;
+}
 
 const solarCellMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.solarCell.colorHex,
@@ -114,13 +147,13 @@ export function buildSolarCollector(
 
   for (const xSign of [-1, 1] as const) {
     for (const zSign of [-1, 1] as const) {
-      details.push(detail(makeSphere(
+      details.push(detail(makeHingeCap(
         solarPetalBackMat,
         hingeCapRadius,
         xSign * sideX,
         hingeCapRadius,
         zSign * frontBackZ,
-      ), 'low'));
+      ), 'low', undefined, 'tinyTrim'));
     }
   }
 
@@ -279,6 +312,7 @@ export function buildSolarCollector(
     flowRadius: Math.max(36, ratePillarHeight * 1.35),
     coneAngle: PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD,
     channel: 0,
+    geometryTier: getActiveBuildingGeometryTier(),
   });
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
@@ -359,7 +393,12 @@ function makeTrianglePlate(
   thickness = 0,
   panelSideHint?: THREE.Vector3,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(thickness > 0 ? solarTrianglePetalGeom : solarTrianglePanelGeom, material);
+  const mesh = new THREE.Mesh(
+    thickness > 0 && getActiveBuildingGeometryTier() !== 'far'
+      ? solarTrianglePetalGeom
+      : solarTrianglePanelGeom,
+    material,
+  );
   mesh.matrixAutoUpdate = false;
   mesh.matrix.copy(makeTrianglePlateMatrix(width, length, hinge, tangent, petalDirection, inset, normalOffset, thickness, panelSideHint));
   return mesh;
@@ -432,7 +471,7 @@ function makeHingeBar(
   tangentX: number,
   tangentZ: number,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(cylinderGeom, material);
+  const mesh = new THREE.Mesh(getBuildingCylinderGeometry(), material);
   mesh.scale.set(radius * 2, length, radius * 2);
   mesh.position.set(x, y, z);
   const tangent = new THREE.Vector3(tangentX, 0, tangentZ).normalize();
@@ -453,8 +492,8 @@ export function disposeSolarCollectorGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarTrianglePanelGeom.dispose();
   solarTrianglePetalGeom.dispose();
-  cylinderGeom.dispose();
-  disposeRenderUtilsGeoms();
+  for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
+  solarHingeCapGeometryByTier.clear();
   solarCellMat.dispose();
   solarPetalBackMat.dispose();
 }

@@ -334,7 +334,7 @@ export class RtsScene3DRenderPhase {
     const timings = this.lastPhaseTimings;
     let phaseMark = renderStart;
 
-    metalDepositRenderer?.update(graphicsConfig);
+    metalDepositRenderer?.update(graphicsConfig, renderFrameState.view);
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
@@ -474,7 +474,11 @@ export class RtsScene3DRenderPhase {
       this.populateRenderListTurretNamePacket(entityLists, selectionHudMode);
     }
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
-      contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
+      contactShadowRenderer.update(
+        entityLists.contactShadows,
+        this.renderFrameIndex,
+        renderFrameState.view,
+      );
     }
     // Whole-map cell overlays (DEBUG: BUILD / METAL / WATER and CLIENT PATH)
     // are baked directly onto the terrain AND metal-deposit coin surfaces by
@@ -521,7 +525,7 @@ export class RtsScene3DRenderPhase {
       this.debrisAccumMs = 0;
     }
     if (updateEffectsThisFrame) {
-      explosionRenderer.update(this.fireExplosionAccumMs);
+      explosionRenderer.update(this.fireExplosionAccumMs, renderFrameState.view);
       if (materialExplosionsEnabled) {
         debrisRenderer.update(this.debrisAccumMs);
       }
@@ -530,9 +534,9 @@ export class RtsScene3DRenderPhase {
     }
     shieldImpactRenderer.setVisible(forceFieldsVisible);
     if (forceFieldsVisible) {
-      shieldImpactRenderer.update(effectDtMs, lineProjectiles);
+      shieldImpactRenderer.update(effectDtMs, lineProjectiles, renderFrameState.view);
     }
-    waterSplashRenderer.update(effectDtMs);
+    waterSplashRenderer.update(effectDtMs, renderFrameState.view);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       burnMarkRenderer.update(
@@ -561,6 +565,7 @@ export class RtsScene3DRenderPhase {
         pylonTubeFlowRenderer.update(
           entityRenderer.getPylonTubeFlows(),
           this.sprayAccumMs,
+          renderFrameState.view,
         ),
         this.nearPylonFreeLegSprays,
       );
@@ -587,6 +592,7 @@ export class RtsScene3DRenderPhase {
           this.sprayAccumMs,
           pylonFreeLegSprays,
           this.enqueuePylonTubeHandoff,
+          renderFrameState.view,
         );
       } else {
         sprayRenderer.update(
@@ -594,6 +600,7 @@ export class RtsScene3DRenderPhase {
           this.sprayAccumMs,
           pylonFreeLegSprays,
           this.enqueuePylonTubeHandoff,
+          renderFrameState.view,
         );
       }
       this.sprayAccumMs = 0;
@@ -644,7 +651,7 @@ export class RtsScene3DRenderPhase {
     }
 
     if (turretShieldSpheresEnabled && forceFieldsVisible) {
-      shieldRenderer.beginFrame(graphicsConfig);
+      shieldRenderer.beginFrame(graphicsConfig, renderFrameState.view);
       shieldRenderer.processPacket(entityLists.shields);
       shieldRenderer.endFrame();
     } else {

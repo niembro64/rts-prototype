@@ -9,8 +9,14 @@ import type { FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import { clamp01 } from './RenderUtils';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 
 const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
@@ -61,7 +67,7 @@ function durationMultiplier(radius: number): number {
 }
 
 class InstancedSpherePool {
-  private geom: THREE.SphereGeometry;
+  private geom: THREE.BufferGeometry;
   private mat: THREE.ShaderMaterial;
   readonly mesh: THREE.InstancedMesh;
   private alphaArr: Float32Array;
@@ -70,8 +76,10 @@ class InstancedSpherePool {
   private colorAttr: THREE.InstancedBufferAttribute;
   private scratch = new THREE.Matrix4();
 
-  constructor(parent: THREE.Group, cap: number, renderOrder: number) {
-    this.geom = createPrimitiveSphereGeometry('effect', 'close');
+  constructor(parent: THREE.Group, cap: number, renderOrder: number, tier: PrimitiveGeometryTier) {
+    this.geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('effect', tier);
     this.alphaArr = new Float32Array(cap);
     this.colorArr = new Float32Array(cap * 3);
     this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
@@ -141,14 +149,18 @@ class InstancedSpherePool {
 export class Explosion3D {
   static warnedBadInput = false;
   private root: THREE.Group;
-  private puffPool: InstancedSpherePool;
+  private puffPools: Record<PrimitiveGeometryTier, InstancedSpherePool>;
   private puffs: Puff[] = [];
   private puffSpawnsThisFrame = 0;
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
-    this.puffPool = new InstancedSpherePool(this.root, MAX_PUFFS, 14);
+    this.puffPools = {
+      close: new InstancedSpherePool(this.root, MAX_PUFFS, 14, 'close'),
+      mid: new InstancedSpherePool(this.root, MAX_PUFFS, 14, 'mid'),
+      far: new InstancedSpherePool(this.root, MAX_PUFFS, 14, 'far'),
+    };
   }
 
   beginFrame(): void {
@@ -157,12 +169,12 @@ export class Explosion3D {
 
   prepareWarmup(): void {
     if (this.puffs.length > 0) return;
-    this.puffPool.prepareWarmupInstance();
+    for (const pool of Object.values(this.puffPools)) pool.prepareWarmupInstance();
   }
 
   finishWarmup(): void {
     if (this.puffs.length > 0) return;
-    this.puffPool.setCount(0);
+    for (const pool of Object.values(this.puffPools)) pool.setCount(0);
   }
 
   spawnImpact(
@@ -257,8 +269,13 @@ export class Explosion3D {
     });
   }
 
-  update(dtMs: number): void {
-    if (this.puffs.length === 0) return;
+  update(dtMs: number, view?: RenderViewState3D): void {
+    if (this.puffs.length === 0) {
+      for (const pool of Object.values(this.puffPools)) pool.setCount(0);
+      return;
+    }
+
+    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
     let i = 0;
     while (i < this.puffs.length) {
@@ -273,15 +290,21 @@ export class Explosion3D {
       const t = p.ageMs / p.lifetimeMs;
       const scale = p.startR + (p.endR - p.startR) * t;
       const fade = (1 - t) * (1 - t) * (1 - t);
-      this.puffPool.write(i, p.px, p.py, p.pz, scale, p.r, p.g, p.b, fade);
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(view, p.px, p.pz, p.py, scale))
+        : 'close';
+      const writeIndex = counts[tier]++;
+      this.puffPools[tier].write(writeIndex, p.px, p.py, p.pz, scale, p.r, p.g, p.b, fade);
       i++;
     }
-    this.puffPool.setCount(this.puffs.length);
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      this.puffPools[tier].setCount(counts[tier]);
+    }
   }
 
   destroy(): void {
     this.puffs.length = 0;
-    this.puffPool.destroy();
+    for (const pool of Object.values(this.puffPools)) pool.destroy();
     this.root.parent?.remove(this.root);
   }
 }

@@ -35,10 +35,15 @@ import {
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { entityDetailLevelForView } from './EntityLod3D';
-import { beamStyleForDetail } from './EntityDetailLevel3D';
+import {
+  DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_MID,
+  detailRungForLevel,
+} from './EntityDetailLevel3D';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
@@ -78,6 +83,49 @@ type BeamConfigFile = {
 };
 
 type BeamEmissionLodResolver = (entity: Entity) => boolean;
+
+export type BeamSegmentPoseScratch3D = {
+  a: THREE.Vector3;
+  b: THREE.Vector3;
+  mid: THREE.Vector3;
+  direction: THREE.Vector3;
+  up: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  scale: THREE.Vector3;
+};
+
+export function createBeamSegmentPoseScratch3D(): BeamSegmentPoseScratch3D {
+  return {
+    a: new THREE.Vector3(),
+    b: new THREE.Vector3(),
+    mid: new THREE.Vector3(),
+    direction: new THREE.Vector3(),
+    up: new THREE.Vector3(0, 1, 0),
+    quaternion: new THREE.Quaternion(),
+    scale: new THREE.Vector3(),
+  };
+}
+
+/** Geometry-independent beam pose shared by High, Medium, and Low segments. */
+export function composeBeamSegmentMatrix3D(
+  out: THREE.Matrix4,
+  scratch: BeamSegmentPoseScratch3D,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cylinderRadius: number,
+  length: number,
+): THREE.Matrix4 {
+  // sim-(x, y, z) maps to three-(x, z, y).
+  scratch.a.set(ax, az, ay);
+  scratch.b.set(bx, bz, by);
+  scratch.mid.copy(scratch.a).lerp(scratch.b, 0.5);
+  scratch.direction.copy(scratch.b).sub(scratch.a);
+  if (length > 1e-5) scratch.direction.multiplyScalar(1 / length);
+  else scratch.direction.set(1, 0, 0);
+  scratch.quaternion.setFromUnitVectors(scratch.up, scratch.direction);
+  scratch.scale.set(cylinderRadius, Math.max(length, 1e-3), cylinderRadius);
+  return out.compose(scratch.mid, scratch.quaternion, scratch.scale);
+}
 
 const NEVER_EMISSION_LOW_LOD: BeamEmissionLodResolver = () => false;
 
@@ -131,8 +179,11 @@ function createBeamVisualLayer(
   config: BeamVisualConfig,
   radiusMultiplier: number,
   renderOrder: number,
+  geometryTier: PrimitiveGeometryTier,
 ): BeamVisualLayer {
-  const segmentGeom = createPrimitiveCylinderGeometry('beam', 'close', 1, 1, 1, 1, false);
+  const segmentGeom = createPrimitiveCylinderGeometry(
+    'beam', geometryTier, 1, 1, 1, 1, geometryTier !== 'close',
+  );
   const segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
   segmentAlpha.fill(1);
   const segmentAlphaAttr = new THREE.InstancedBufferAttribute(segmentAlpha, 1);
@@ -163,7 +214,7 @@ function createBeamVisualLayer(
   segmentMesh.count = 0;
   root.add(segmentMesh);
 
-  const endpointGeom = createPrimitiveSphereGeometry('beam', 'close');
+  const endpointGeom = createPrimitiveSphereGeometry('beam', geometryTier);
   const endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
   endpointAlpha.fill(1);
   const endpointAlphaAttr = new THREE.InstancedBufferAttribute(endpointAlpha, 1);
@@ -202,6 +253,7 @@ function createBeamVisualLayer(
 export class BeamRenderer3D {
   private root: THREE.Group;
   private readonly layers: BeamVisualLayer[];
+  private readonly mediumLayer: BeamVisualLayer;
   private readonly imposterSegmentMesh: THREE.InstancedMesh;
   private activeImposterSegmentCount = 0;
 
@@ -212,13 +264,7 @@ export class BeamRenderer3D {
   private lastScopeVersion = -1;
 
   // Scratch vectors reused per frame (no per-segment allocations).
-  private _a = new THREE.Vector3();
-  private _b = new THREE.Vector3();
-  private _mid = new THREE.Vector3();
-  private _dir = new THREE.Vector3();
-  private _up = new THREE.Vector3(0, 1, 0);
-  private _quat = new THREE.Quaternion();
-  private _scale = new THREE.Vector3();
+  private readonly segmentPoseScratch = createBeamSegmentPoseScratch3D();
   private _matrix = new THREE.Matrix4();
 
   constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
@@ -233,10 +279,21 @@ export class BeamRenderer3D {
         layer.config,
         layer.radiusMultiplier,
         12 + i,
+        'close',
       );
     }
 
-    const imposterSegmentGeom = createPrimitiveCylinderGeometry('beam', 'close', 1, 1, 1, 1, false);
+    this.mediumLayer = createBeamVisualLayer(
+      this.root,
+      BEAM_OUTER_VISUAL_CONFIG,
+      1,
+      11,
+      'mid',
+    );
+
+    const imposterSegmentGeom = createPrimitiveCylinderGeometry(
+      'beam', 'far', 1, 1, 1, 1, true,
+    );
     const imposterSegmentMat = new THREE.MeshBasicMaterial({
       color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
       transparent: true,
@@ -265,22 +322,14 @@ export class BeamRenderer3D {
     cylRadius: number,
     length: number,
   ): void {
-    // sim-(x, y, z) maps to three-(x, z, y) — height is sim.z, which
-    // the beam tracer now reports per segment (mount-center start,
-    // reflection points, and final end all carry their real altitude).
-    this._a.set(ax, az, ay);
-    this._b.set(bx, bz, by);
-    this._mid.copy(this._a).lerp(this._b, 0.5);
-    this._dir.copy(this._b).sub(this._a);
-    if (length > 1e-5) this._dir.multiplyScalar(1 / length);
-    else this._dir.set(1, 0, 0); // avoid NaN on degenerate segments
-    // Rotate cylinder's default +Y axis to align with the segment direction.
-    this._quat.setFromUnitVectors(this._up, this._dir);
-    // CylinderGeometry has radius 1; scale.x/.z become this visual layer's
-    // actual beam radius. The outer layer keeps the shot-width footprint;
-    // the inner layer intentionally passes a smaller radius.
-    this._scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
-    this._matrix.compose(this._mid, this._quat, this._scale);
+    composeBeamSegmentMatrix3D(
+      this._matrix,
+      this.segmentPoseScratch,
+      ax, ay, az,
+      bx, by, bz,
+      cylRadius,
+      length,
+    );
     mesh.setMatrixAt(slot, this._matrix);
   }
 
@@ -348,6 +397,10 @@ export class BeamRenderer3D {
 
   private hasActiveVisuals(): boolean {
     if (this.activeImposterSegmentCount > 0) return true;
+    if (
+      this.mediumLayer.activeSegmentCount > 0 ||
+      this.mediumLayer.activeEndpointCount > 0
+    ) return true;
     const layers = this.layers;
     for (let i = 0; i < layers.length; i++) {
       const layer = layers[i];
@@ -380,8 +433,10 @@ export class BeamRenderer3D {
     this.lastScopeVersion = scopeVersion;
 
     let segIdx = 0;
+    let mediumSegIdx = 0;
     let imposterSegIdx = 0;
     let endpointIdx = 0;
+    let mediumEndpointIdx = 0;
     const layers = this.layers;
     const layerCount = layers.length;
 
@@ -412,14 +467,13 @@ export class BeamRenderer3D {
         BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
         isEntityEmissionLowLod(e);
       const detailLevel = view ? entityDetailLevelForView(view, e) : 1;
-      const beamStyle = beamStyleForDetail(
-        detailLevel,
-        graphicsConfig?.beamStyle ?? 'complex',
-      );
+      const detailRung = detailRungForLevel(detailLevel);
+      const beamStyle = graphicsConfig?.beamStyle ?? 'complex';
       const useImposterSegments =
-        useLowLodSegments || beamStyle === 'simple' || beamStyle === 'standard';
-      const useLowLodEndpoints =
-        isEntityEmissionLowLod(e) || beamStyle === 'simple' || beamStyle === 'standard';
+        useLowLodSegments || beamStyle === 'simple' || detailRung < DETAIL_RUNG_MID;
+      const useMediumSegments =
+        !useImposterSegments &&
+        (beamStyle === 'standard' || detailRung < DETAIL_RUNG_CLOSE);
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -495,6 +549,19 @@ export class BeamRenderer3D {
             );
             imposterSegIdx++;
           }
+        } else if (useMediumSegments) {
+          if (mediumSegIdx < BEAM_SEGMENT_CAP) {
+            this.writeSegment(
+              this.mediumLayer,
+              mediumSegIdx,
+              ax, ay, az,
+              bx, by, bz,
+              cylRadius,
+              segLen,
+              beamWaveFlowPhase(e.id, mediumSegIdx),
+            );
+            mediumSegIdx++;
+          }
         } else if (segIdx < BEAM_SEGMENT_CAP) {
           const phase = beamWaveFlowPhase(e.id, segIdx);
           for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
@@ -513,8 +580,21 @@ export class BeamRenderer3D {
         }
       }
 
-      if (!useLowLodEndpoints && proj.endpointDamageable !== false) {
-        if (endpointIdx < BEAM_ENDPOINT_CAP) {
+      if (!useImposterSegments && proj.endpointDamageable !== false) {
+        if (useMediumSegments && mediumEndpointIdx < BEAM_ENDPOINT_CAP) {
+          const damageSphereRadius = Math.max(
+            ENDPOINT_MIN_RADIUS,
+            profile.lineDamageSphereRadius,
+          );
+          if (this.writeEndpoint(
+            this.mediumLayer,
+            mediumEndpointIdx,
+            endPoint.x,
+            endPoint.y,
+            endPoint.z,
+            damageSphereRadius,
+          )) mediumEndpointIdx++;
+        } else if (!useMediumSegments && endpointIdx < BEAM_ENDPOINT_CAP) {
           const damageSphereRadius = Math.max(
             ENDPOINT_MIN_RADIUS,
             profile.lineDamageSphereRadius,
@@ -557,6 +637,27 @@ export class BeamRenderer3D {
       layer.activeEndpointCount = endpointIdx;
     }
 
+    this.mediumLayer.segmentMesh.count = mediumSegIdx;
+    if (mediumSegIdx > 0) {
+      this.mediumLayer.segmentMesh.instanceMatrix.clearUpdateRanges();
+      this.mediumLayer.segmentMesh.instanceMatrix.addUpdateRange(0, mediumSegIdx * 16);
+      this.mediumLayer.segmentMesh.instanceMatrix.needsUpdate = true;
+      this.mediumLayer.segmentFlowAttr.clearUpdateRanges();
+      this.mediumLayer.segmentFlowAttr.addUpdateRange(0, mediumSegIdx * 4);
+      this.mediumLayer.segmentFlowAttr.needsUpdate = true;
+    }
+    this.mediumLayer.activeSegmentCount = mediumSegIdx;
+    this.mediumLayer.endpointMesh.count = mediumEndpointIdx;
+    if (mediumEndpointIdx > 0) {
+      this.mediumLayer.endpointMesh.instanceMatrix.clearUpdateRanges();
+      this.mediumLayer.endpointMesh.instanceMatrix.addUpdateRange(
+        0,
+        mediumEndpointIdx * 16,
+      );
+      this.mediumLayer.endpointMesh.instanceMatrix.needsUpdate = true;
+    }
+    this.mediumLayer.activeEndpointCount = mediumEndpointIdx;
+
     this.activeImposterSegmentCount = imposterSegIdx;
     this.imposterSegmentMesh.visible =
       BEAM_IMPOSTER_SEGMENT_CONFIG.enabled && imposterSegIdx > 0;
@@ -570,6 +671,8 @@ export class BeamRenderer3D {
 
   destroy(): void {
     disposeMesh(this.imposterSegmentMesh);
+    disposeMesh(this.mediumLayer.segmentMesh);
+    disposeMesh(this.mediumLayer.endpointMesh);
     for (const layer of this.layers) {
       disposeMesh(layer.segmentMesh);
       disposeMesh(layer.endpointMesh);

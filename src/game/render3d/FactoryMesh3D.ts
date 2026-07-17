@@ -6,8 +6,9 @@ import {
 import { disposeConstructionEmitterGeoms } from './ConstructionEmitterMesh3D';
 import type { BuildingShape } from './BuildingShape3D';
 import {
-  cylinderGeom,
   detail,
+  getActiveBuildingGeometryTier,
+  getBuildingCylinderGeometry,
 } from './BuildingMeshPrimitives3D';
 import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
 import {
@@ -26,7 +27,7 @@ export function buildFactoryMesh(
 ): BuildingShape {
   // The fabricator is a hovering TORUS, not a body shell — render bodyless and
   // hang the ring (+ its under-slung spawn / construction pylons) in the air.
-  const primary = new THREE.Mesh(cylinderGeom, primaryMat);
+  const primary = new THREE.Mesh(getBuildingCylinderGeometry(), primaryMat);
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint('towerFabricator');
 
@@ -36,6 +37,8 @@ export function buildFactoryMesh(
   const torus = buildProductionHoldRingMesh(
     fabricatorTorusRingRadius(width, depth),
     primaryMat,
+    'horizontal',
+    getActiveBuildingGeometryTier(),
   );
   torus.position.y = fabricatorTorusHoverHeight();
   details.push(detail(torus, 'medium', undefined, 'static'));

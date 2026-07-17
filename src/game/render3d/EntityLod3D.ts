@@ -57,6 +57,10 @@ function isUnitGeometryHost(entity: Entity): boolean {
   return entity.unit != null;
 }
 
+function isAuthoredGeometryHost(entity: Entity): boolean {
+  return entity.unit != null || entity.building != null;
+}
+
 function clampUnitDetailLevel(entity: Entity, level: number): number {
   return isUnitGeometryHost(entity)
     ? Math.max(level, detailLevelForRung(DETAIL_RUNG_FAR))
@@ -255,7 +259,11 @@ export function simPositionUsesLowLodDistance3D(
 export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+  if (lodMode === 'low') {
+    return isAuthoredGeometryHost(entity)
+      ? detailLevelForRung(DETAIL_RUNG_FAR)
+      : DETAIL_LEVEL_GLYPH;
+  }
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(entityCameraDistanceSq3D(camera, entity)),
@@ -272,7 +280,11 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
 export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+  if (lodMode === 'low') {
+    return isAuthoredGeometryHost(entity)
+      ? detailLevelForRung(DETAIL_RUNG_FAR)
+      : DETAIL_LEVEL_GLYPH;
+  }
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(simPositionViewDistanceSq3D(
@@ -389,7 +401,7 @@ export class EntityLodState3D {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'low') {
-      return isUnitGeometryHost(entity)
+      return isAuthoredGeometryHost(entity)
         ? detailLevelForRung(DETAIL_RUNG_FAR)
         : DETAIL_LEVEL_GLYPH;
     }
@@ -409,7 +421,7 @@ export class EntityLodState3D {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
     if (lodMode === 'low') {
-      return isUnitGeometryHost(entity) ? DETAIL_RUNG_FAR : DETAIL_RUNG_GLYPH;
+      return isAuthoredGeometryHost(entity) ? DETAIL_RUNG_FAR : DETAIL_RUNG_GLYPH;
     }
 
     const entityId = entity.id;
@@ -464,6 +476,10 @@ export class EntityLodState3D {
       return false;
     }
     if (lodMode === 'low') {
+      if (isAuthoredGeometryHost(entity)) {
+        this.deleteChannelEntity(channel, entity.id);
+        return false;
+      }
       this.proxyIdsForChannel(channel).add(entity.id);
       this.lastSeenForChannel(channel).set(entity.id, this.frame);
       return true;
@@ -509,6 +525,10 @@ export class EntityLodState3D {
       return false;
     }
     if (lodMode === 'low') {
+      if (isAuthoredGeometryHost(entity)) {
+        this.deleteChannelEntity(channel, entity.id);
+        return false;
+      }
       this.proxyIdsForChannel(channel).add(entity.id);
       this.lastSeenForChannel(channel).set(entity.id, this.frame);
       return true;
@@ -539,7 +559,7 @@ export class EntityLodState3D {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'low') {
-      return isUnitGeometryHost(entity)
+      return isAuthoredGeometryHost(entity)
         ? detailLevelForRung(DETAIL_RUNG_FAR)
         : DETAIL_LEVEL_GLYPH;
     }

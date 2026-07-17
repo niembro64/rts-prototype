@@ -32,8 +32,10 @@ import {
 import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 import {
+  getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveCylinderGeometry,
   getSharedPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
 } from './PrimitiveGeometryQuality3D';
 
 export type TurretMesh = {
@@ -182,6 +184,7 @@ export function buildTurretMesh3D(
       turret.config.visualVariant ?? undefined,
       deps.primaryMat,
       pylonResource,
+      geometryTierForDetail(detailLevel),
     );
     root.add(constructionEmitter.group);
     parent.add(root);
@@ -231,7 +234,9 @@ export function buildTurretMesh3D(
     const headTier = geometryTierForDetail(detailLevel);
     const headGeom = headTier === 'close'
       ? deps.headGeom
-      : getSharedPrimitiveSphereGeometry('turret', headTier);
+      : headTier === 'far'
+        ? getSharedPrimitiveTetrahedronGeometry()
+        : getSharedPrimitiveSphereGeometry('turret', headTier);
     head = new THREE.Mesh(headGeom, headMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
@@ -314,7 +319,9 @@ export function buildTurretMesh3D(
     ? deps.coneBarrelGeom
     : barrelTier === 'close'
       ? deps.barrelGeom
-      : getSharedPrimitiveCylinderGeometry('turret', barrelTier);
+      : barrelTier === 'far'
+        ? getSharedExtrudedEquilateralTriangleGeometry()
+        : getSharedPrimitiveCylinderGeometry('turret', barrelTier);
   const pushSegment = (
     baseX: number, baseY: number, baseZ: number,
     tipX: number, tipY: number, tipZ: number,

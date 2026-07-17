@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { FlipperConfig } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   type LocomotionBase,
@@ -26,7 +27,7 @@ const WATER_SWEEP_DEG = 8;
 const FLIPPER_BLEND_SETTLED_EPSILON = 0.002;
 
 const flipperMaterials = new Map<number, THREE.MeshBasicMaterial>();
-const flipperGeometries = new Map<string, THREE.ExtrudeGeometry>();
+const flipperGeometries = new Map<string, THREE.BufferGeometry>();
 
 type FlipperPanel = {
   hinge: THREE.Group;
@@ -47,9 +48,12 @@ export type FlipperMesh = {
   waterStrokeAngle: number;
 } & LocomotionBase;
 
-function flipperGeometry(tipToRootRatio: number): THREE.ExtrudeGeometry {
+function flipperGeometry(
+  tipToRootRatio: number,
+  tier: PrimitiveGeometryTier,
+): THREE.BufferGeometry {
   const ratio = Math.max(0.1, Math.min(1, tipToRootRatio));
-  const key = ratio.toFixed(4);
+  const key = `${tier}:${ratio.toFixed(4)}`;
   let geometry = flipperGeometries.get(key);
   if (geometry) return geometry;
 
@@ -59,13 +63,18 @@ function flipperGeometry(tipToRootRatio: number): THREE.ExtrudeGeometry {
   shape.lineTo(ratio * 0.5, 1);
   shape.lineTo(ratio * -0.5, 1);
   shape.closePath();
-  geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 1,
-    bevelEnabled: false,
-    steps: 1,
-  });
+  geometry = tier === 'far'
+    ? new THREE.ShapeGeometry(shape)
+    : new THREE.ExtrudeGeometry(shape, {
+      depth: 1,
+      bevelEnabled: tier === 'close',
+      bevelSegments: tier === 'close' ? 1 : 0,
+      bevelSize: tier === 'close' ? 0.035 : 0,
+      bevelThickness: tier === 'close' ? 0.06 : 0,
+      steps: 1,
+    });
   // Shape Y becomes panel span Z; extrusion is centered into thickness Y.
-  geometry.translate(0, 0, -0.5);
+  if (tier !== 'far') geometry.translate(0, 0, -0.5);
   geometry.rotateX(Math.PI / 2);
   geometry.computeVertexNormals();
   flipperGeometries.set(key, geometry);
@@ -77,13 +86,14 @@ export function buildFlippers(
   radius: number,
   cfg: FlipperConfig,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): FlipperMesh {
   const group = new THREE.Group();
   const panels: FlipperPanel[] = [];
   const rootChord = Math.max(0.5, radius * cfg.rootChordFrac);
   const tipChord = Math.max(0.25, radius * cfg.tipChordFrac);
   const thickness = Math.max(0.35, radius * cfg.thicknessFrac);
-  const geometry = flipperGeometry(tipChord / rootChord);
+  const geometry = flipperGeometry(tipChord / rootChord, geometryTier);
   const material = getLocomotionMatByCache(
     flipperMaterials,
     COLORS.units.locomotion.flipper.panel.colorHex,

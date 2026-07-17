@@ -6,9 +6,10 @@ import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import {
   boxGeom,
-  cylinderGeom,
   detail,
   factoryFrameMat,
+  getActiveBuildingGeometryTier,
+  getBuildingCylinderGeometry,
   hexCylinderGeom,
   invisibleMat,
   makeBox,
@@ -50,7 +51,7 @@ export function buildWindTurbineMesh(
   const towerRadius = Math.max(3, minDim * 0.1);
   const towerH = WIND_BUILDING_VISUAL_HEIGHT * 0.57;
   const baseH = 12;
-  const primary = new THREE.Mesh(cylinderGeom, primaryMat);
+  const primary = new THREE.Mesh(getBuildingCylinderGeometry(), primaryMat);
   const details: BuildingShape['details'] = [];
 
   details.push(detail(
@@ -73,6 +74,7 @@ export function buildWindTurbineMesh(
     flowRadius: Math.max(42, towerH * 0.9),
     coneAngle: PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD,
     channel: 0,
+    geometryTier: getActiveBuildingGeometryTier(),
   });
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));

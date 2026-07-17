@@ -38,12 +38,17 @@ import {
   type SmokeUseId,
 } from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 import { clamp01 } from './RenderUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import {
   detailLevelForViewPosition,
+  geometryTierForDetail,
   smokeSpawnScaleForDetail,
 } from './EntityDetailLevel3D';
 
@@ -185,7 +190,7 @@ void main() {
 /** One InstancedMesh pool for every smoke puff. */
 type PuffPool = {
   maxParticles: number;
-  geom: THREE.SphereGeometry;
+  geom: THREE.BufferGeometry;
   mesh: THREE.InstancedMesh;
   alphaArr: Float32Array;
   colorArr: Float32Array;
@@ -194,7 +199,6 @@ type PuffPool = {
   active: Puff[];
   activeByUse: Map<SmokeUseId, number>;
   evictionCursor: number;
-  emitterCursor: number;
   colorUpdateMin: number;
   colorUpdateMax: number;
 };
@@ -206,12 +210,13 @@ export class SmokeTrail3D {
   private matSphere: THREE.ShaderMaterial;
   private matSoft: THREE.ShaderMaterial;
   private softEdges: boolean;
-  private pool: PuffPool;
+  private pools: Record<PrimitiveGeometryTier, PuffPool>;
   // Scratch buffers reused across frames to avoid per-frame allocs.
   private _eligible: Entity[] = [];
   private readonly _emitPoint = { x: 0, y: 0, z: 0 };
   private _scratchMat = new THREE.Matrix4();
   private emissionCursor = 0;
+  private emitterCursor = 0;
   /** Per-frame "puffs emitted per smoke-use" tally. Hoisted to an
    *  instance field and cleared each emission pass so update() doesn't
    *  allocate a fresh Map every render frame. */
@@ -238,15 +243,21 @@ export class SmokeTrail3D {
     });
     this.softEdges = getSmokeSoftEdges();
 
-    this.pool = this.createPool(MAX_PARTICLES);
+    this.pools = {
+      close: this.createPool(MAX_PARTICLES, 'close'),
+      mid: this.createPool(MAX_PARTICLES, 'mid'),
+      far: this.createPool(MAX_PARTICLES, 'far'),
+    };
   }
 
   private activeMaterial(): THREE.ShaderMaterial {
     return this.softEdges ? this.matSoft : this.matSphere;
   }
 
-  private createPool(maxParticles: number): PuffPool {
-    const geom = createPrimitiveSphereGeometry('smoke', 'close');
+  private createPool(maxParticles: number, tier: PrimitiveGeometryTier): PuffPool {
+    const geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('smoke', tier);
     const alphaArr = new Float32Array(maxParticles);
     const colorArr = new Float32Array(maxParticles * 3);
     // Per-instance attribute buffers. Index i in alphaArr / colorArr
@@ -283,7 +294,6 @@ export class SmokeTrail3D {
       active: [],
       activeByUse: new Map(),
       evictionCursor: 0,
-      emitterCursor: 0,
       colorUpdateMin: Number.POSITIVE_INFINITY,
       colorUpdateMax: -1,
     };
@@ -311,10 +321,11 @@ export class SmokeTrail3D {
     // every advance / emit path so toggling off clears the screen
     // immediately and the renderer does no per-frame work.
     if (!getSmokeTrails()) {
-      if (this.pool.active.length > 0) {
-        this.pool.active.length = 0;
-        this.pool.activeByUse.clear();
-        this.flushPool(this.pool);
+      for (const pool of Object.values(this.pools)) {
+        if (pool.active.length === 0) continue;
+        pool.active.length = 0;
+        pool.activeByUse.clear();
+        this.flushPool(pool);
       }
       return;
     }
@@ -326,12 +337,14 @@ export class SmokeTrail3D {
     const wantSoftEdges = getSmokeSoftEdges();
     if (wantSoftEdges !== this.softEdges) {
       this.softEdges = wantSoftEdges;
-      this.pool.mesh.material = this.activeMaterial();
+      for (const pool of Object.values(this.pools)) {
+        pool.mesh.material = this.activeMaterial();
+      }
     }
 
     if (
       projectiles.length === 0 &&
-      this.pool.active.length === 0 &&
+      this.totalActivePuffs() === 0 &&
       (!emitters || emitters.length === 0)
     ) return;
 
@@ -344,7 +357,7 @@ export class SmokeTrail3D {
     //    pass. Each surviving puff writes matrix + alpha every frame;
     //    color is static after spawn and only moves when swap-pop
     //    compaction changes a puff's slot.
-    this.advancePool(this.pool, dtSec);
+    for (const pool of Object.values(this.pools)) this.advancePool(pool, dtSec);
 
     // 2) For each projectile that leaves a trail, sample at its
     //    frame-skip cadence. Then apply a steady-state per-use emission
@@ -419,7 +432,7 @@ export class SmokeTrail3D {
           }
         }
         const spawned = this.spawnPuff(
-          this.pool,
+          this.poolForPosition(view, e.transform.x, e.transform.y, e.transform.z),
           emit.x, emit.y, emit.z,
           puffVx, puffVy, puffVz,
           spec,
@@ -441,7 +454,7 @@ export class SmokeTrail3D {
 
     // 3) Push attribute updates to GPU and bound the draw to the
     //    live-puff prefix.
-    this.flushPool(this.pool);
+    for (const pool of Object.values(this.pools)) this.flushPool(pool);
   }
 
   private advancePool(pool: PuffPool, dtSec: number): void {
@@ -488,20 +501,9 @@ export class SmokeTrail3D {
     renderFrameIndex: number,
     view?: RenderViewState3D,
   ): void {
-    this.emitFromEmittersForPool(this.pool, emitters, scope, dtSec, renderFrameIndex, view);
-  }
-
-  private emitFromEmittersForPool(
-    pool: PuffPool,
-    emitters: readonly SmokePuffEmitter[],
-    scope: ViewportFootprint | undefined,
-    dtSec: number,
-    renderFrameIndex: number,
-    view?: RenderViewState3D,
-  ): void {
     const len = emitters.length;
-    if (len === 0 || pool.maxParticles <= 0) return;
-    const start = pool.emitterCursor % len;
+    if (len === 0) return;
+    const start = this.emitterCursor % len;
     const emittedByUse = this._emittedByUse;
     emittedByUse.clear();
     let emitted = 0;
@@ -523,7 +525,7 @@ export class SmokeTrail3D {
       const useEmitted = emittedByUse.get(emitter.useId) ?? 0;
       if (useEmitted >= this.emissionBudget(emitter, dtSec, lodScale)) continue;
       const spawned = this.spawnPuff(
-        pool,
+        this.poolForPosition(view, emitter.x, emitter.y, emitter.z),
         emitter.x, emitter.y, emitter.z,
         emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
         emitter,
@@ -534,7 +536,24 @@ export class SmokeTrail3D {
       emittedByUse.set(emitter.useId, useEmitted + 1);
       emitted++;
     }
-    pool.emitterCursor = (start + Math.max(1, emitted)) % len;
+    this.emitterCursor = (start + Math.max(1, emitted)) % len;
+  }
+
+  private poolForPosition(
+    view: RenderViewState3D | undefined,
+    simX: number,
+    simY: number,
+    simZ: number,
+  ): PuffPool {
+    if (!view) return this.pools.close;
+    const tier = geometryTierForDetail(detailLevelForViewPosition(view, simX, simY, simZ));
+    return this.pools[tier];
+  }
+
+  private totalActivePuffs(): number {
+    return this.pools.close.active.length
+      + this.pools.mid.active.length
+      + this.pools.far.active.length;
   }
 
   private flushPool(pool: PuffPool): void {
@@ -809,11 +828,13 @@ export class SmokeTrail3D {
   destroy(): void {
     // disposeMesh only frees the mesh's currently-bound material, so
     // dispose both shader materials explicitly.
-    disposeMesh(this.pool.mesh, { material: false });
+    for (const pool of Object.values(this.pools)) {
+      disposeMesh(pool.mesh, { material: false });
+      pool.active.length = 0;
+      pool.activeByUse.clear();
+    }
     this.matSphere.dispose();
     this.matSoft.dispose();
-    this.pool.active.length = 0;
-    this.pool.activeByUse.clear();
     this.root.parent?.remove(this.root);
   }
 }

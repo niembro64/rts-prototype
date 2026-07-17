@@ -59,6 +59,7 @@ import {
   detailRungForLevel,
   detailRungIndex,
   featureVisibleAtDetail,
+  geometryTierForDetail,
   turretStyleForDetail,
   visualFeatureVisibleAtDetail,
 } from './EntityDetailLevel3D';
@@ -67,6 +68,11 @@ import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
+import {
+  applyEntityLodVisualState3D,
+  captureEntityLodVisualState3D,
+  type EntityLodVisualState3D,
+} from './EntityLodVisualState3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -94,6 +100,14 @@ function buildingDetailVisibleAtLevel(
   level: number,
 ): boolean {
   const tower = isTowerShapeType(shapeType);
+  if (detailMesh.role === 'tinyTrim' || detailMesh.role === 'solarTeamAccent') {
+    return visualFeatureVisibleAtDetail(
+      tower ? 'tower' : 'building',
+      tower ? 'smallTrim' : 'tinyTrim',
+      level,
+      tower ? 0.82 : 0.72,
+    );
+  }
   if (detailMesh.role === 'windRig' || detailMesh.role === 'extractorRotor' || detailMesh.role === 'radarRig') {
     return visualFeatureVisibleAtDetail(
       tower ? 'tower' : 'building',
@@ -102,7 +116,7 @@ function buildingDetailVisibleAtLevel(
       tower ? 0.68 : 0.54,
     );
   }
-  if (detailMesh.role === 'solarLeaf' || detailMesh.role === 'solarPanel' || detailMesh.role === 'solarTeamAccent') {
+  if (detailMesh.role === 'solarLeaf' || detailMesh.role === 'solarPanel') {
     return visualFeatureVisibleAtDetail('building', 'typeDetails', level, 0.38);
   }
   return visualFeatureVisibleAtDetail(
@@ -212,6 +226,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     depth,
     getPrimaryMat(ownerId),
     entity.buildingBlueprintId,
+    geometryTierForDetail(detailLevel),
   );
   shape.primary.matrixAutoUpdate = false;
   shape.primary.userData.entityId = entity.id;
@@ -704,8 +719,8 @@ export class BuildingEntityRenderer3D {
     beamAimCache: TurretBeamAimCache3D,
   ): void {
     if (!this.scopedMeshRetention.markBuildingHidden(id)) return;
-    this.animations.unregister(id);
-    this.unregisterBuildingSpinTurrets(id);
+    this.animations.detach(id);
+    this.deactivateBuildingSpinEntries(id);
     beamAimCache.delete(id);
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
@@ -720,8 +735,8 @@ export class BuildingEntityRenderer3D {
   ): void {
     if (mesh.renderLodProxyActive === true) return;
     mesh.renderLodProxyActive = true;
-    this.animations.unregister(id);
-    this.unregisterBuildingSpinTurrets(id);
+    this.animations.detach(id);
+    this.deactivateBuildingSpinEntries(id);
     beamAimCache.delete(id);
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
@@ -772,7 +787,7 @@ export class BuildingEntityRenderer3D {
     const gated = mesh.buildingAnimationsGated === true;
     if (!animate) {
       mesh.buildingAnimationsGated = true;
-      this.animations.unregister(entity.id);
+      this.animations.detach(entity.id);
       this.deactivateBuildingSpinEntries(entity.id);
     } else if (gated) {
       mesh.buildingAnimationsGated = false;
@@ -825,6 +840,7 @@ export class BuildingEntityRenderer3D {
     const turretCount = rows.turretCount[row];
 
     let mesh = this.meshes.get(entity.id);
+    let retainedLodVisualState: EntityLodVisualState3D | undefined;
     const coreKeyChanged =
       mesh !== undefined &&
       (
@@ -844,10 +860,16 @@ export class BuildingEntityRenderer3D {
       (coreKeyChanged || (bandOnlyChanged && this.buildingRebuildBudgetLeft > 0))
     ) {
       if (!coreKeyChanged) this.buildingRebuildBudgetLeft--;
-      this.animations.unregister(entity.id);
+      if (bandOnlyChanged) {
+        retainedLodVisualState = captureEntityLodVisualState3D(mesh);
+        this.animations.detach(entity.id);
+      } else {
+        this.animations.unregister(entity.id);
+      }
       this.meshes.delete(entity.id);
       this.beamAimCache?.delete(entity.id);
-      this.unregisterBuildingSpinTurrets(entity.id);
+      if (bandOnlyChanged) this.deactivateBuildingSpinEntries(entity.id);
+      else this.unregisterBuildingSpinTurrets(entity.id);
       this.scopedMeshRetention.forgetBuilding(entity.id);
       this.disposeBuildingMesh(mesh);
       mesh = undefined;
@@ -867,6 +889,7 @@ export class BuildingEntityRenderer3D {
         getTurretAccentMat: this.getTurretAccentMat,
         detailLevel,
       });
+      applyEntityLodVisualState3D(mesh, retainedLodVisualState);
       mesh.buildingRenderDetailBand = detailBand;
       this.meshes.set(entity.id, mesh);
       this.animations.register(entity, mesh);

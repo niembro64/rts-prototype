@@ -4718,6 +4718,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretSnapshotDirtyContractTest();
         const { runPrimitiveGeometryQuality3DContractTest } = await import('../render3d/PrimitiveGeometryQuality3DContractTest');
         runPrimitiveGeometryQuality3DContractTest();
+        const { runEntityLodGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
+        runEntityLodGeometry3DContractTest();
         const { runShotArmingOverlay3DContractTest } = await import('../render3d/ShotArmingOverlay3DContractTest');
         runShotArmingOverlay3DContractTest();
         const { runEntityLod3DContractTest } = await import('../render3d/EntityLod3DContractTest');

@@ -27,9 +27,14 @@ import {
   type DepositVisualCell,
   type MetalDepositVisualCluster,
 } from './MetalDepositVisualClusters';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 const DEPOSIT_MESH_DETAIL = {
-  outlineStep: 2,
+  close: { outlineStep: 2, maxOutlinePoints: Number.POSITIVE_INFINITY },
+  mid: { outlineStep: 5, maxOutlinePoints: 18 },
+  far: { outlineStep: 1, maxOutlinePoints: 8 },
   material: 'standard' as const,
 };
 
@@ -42,6 +47,8 @@ export class MetalDepositRenderer3D {
   private clusters: ReadonlyArray<MetalDepositVisualCluster>;
   private records: Array<{
     node: THREE.Group;
+    meshes: Record<PrimitiveGeometryTier, THREE.Mesh>;
+    cluster: MetalDepositVisualCluster;
   }> = [];
   private materials = new Map<string, THREE.Material>();
 
@@ -57,35 +64,67 @@ export class MetalDepositRenderer3D {
     this.buildAll();
   }
 
-  update(_graphicsConfig: GraphicsConfig): void {
-    // Deposits are static world geometry; buildAll() leaves every node
-    // visible, and the shared material reads live overlay uniforms.
+  update(_graphicsConfig: GraphicsConfig, view?: RenderViewState3D): void {
+    for (const record of this.records) {
+      const cluster = record.cluster;
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(
+            view,
+            cluster.x,
+            cluster.y,
+            cluster.height,
+            Math.max(cluster.resourceHalfSize, BUILD_GRID_CELL_SIZE),
+          ))
+        : 'close';
+      record.meshes.close.visible = tier === 'close';
+      record.meshes.mid.visible = tier === 'mid';
+      record.meshes.far.visible = tier === 'far';
+    }
   }
 
   private buildAll(): void {
     for (let i = 0; i < this.clusters.length; i++) {
-      const node = this.buildDepositNode(i);
+      const { node, meshes } = this.buildDepositNode(i);
       node.visible = true;
-      this.records[i] = { node };
+      this.records[i] = { node, meshes, cluster: this.clusters[i] };
       this.group.add(node);
     }
   }
 
-  private buildDepositNode(index: number): THREE.Group {
+  private buildDepositNode(index: number): {
+    node: THREE.Group;
+    meshes: Record<PrimitiveGeometryTier, THREE.Mesh>;
+  } {
     const cluster = this.clusters[index];
     const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
-    const mesh = new THREE.Mesh(
-      makeDepositCoinGeometry(cluster, DEPOSIT_MESH_DETAIL.outlineStep, coinHeight),
-      this.getMaterial(DEPOSIT_MESH_DETAIL.material),
-    );
-    node.add(mesh);
+    const material = this.getMaterial(DEPOSIT_MESH_DETAIL.material);
+    const makeMesh = (tier: PrimitiveGeometryTier): THREE.Mesh => {
+      const detail = DEPOSIT_MESH_DETAIL[tier];
+      const mesh = new THREE.Mesh(
+        makeDepositCoinGeometry(
+          cluster,
+          detail.outlineStep,
+          coinHeight,
+          detail.maxOutlinePoints,
+        ),
+        material,
+      );
+      mesh.visible = tier === 'close';
+      node.add(mesh);
+      return mesh;
+    };
+    const meshes = {
+      close: makeMesh('close'),
+      mid: makeMesh('mid'),
+      far: makeMesh('far'),
+    };
     // The mesh contains only the above-ground crown. Relying on the
     // terrain surface to hide below-ground triangles leaks at grazing
     // camera angles because the terrain is a surface, not a solid mask.
     node.position.set(cluster.x, cluster.height + 0.04, cluster.y);
     node.userData.metalDepositIds = cluster.depositIds;
-    return node;
+    return { node, meshes };
   }
 
   private getMaterial(kind: 'lambert' | 'standard'): THREE.Material {
@@ -235,8 +274,12 @@ function makeDepositCoinGeometry(
   source: MetalDepositVisualCluster,
   outlineStep: number,
   height: number,
+  maxOutlinePoints: number = Number.POSITIVE_INFINITY,
 ): THREE.BufferGeometry {
-  const outline = makeSmoothedDepositOutline(source, outlineStep);
+  const outline = limitDepositOutline(
+    makeSmoothedDepositOutline(source, outlineStep),
+    maxOutlinePoints,
+  );
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
@@ -292,6 +335,19 @@ function makeDepositCoinGeometry(
   indexed.dispose();
   geom.computeVertexNormals();
   return geom;
+}
+
+function limitDepositOutline(
+  points: readonly DepositOutlinePoint[],
+  maxPoints: number,
+): DepositOutlinePoint[] {
+  const cap = Math.max(3, Math.floor(maxPoints));
+  if (!Number.isFinite(maxPoints) || points.length <= cap) return copyDepositLoop(points);
+  const out = new Array<DepositOutlinePoint>(cap);
+  for (let i = 0; i < cap; i++) {
+    out[i] = points[Math.floor((i * points.length) / cap)];
+  }
+  return out;
 }
 
 function makeSmoothedDepositOutline(

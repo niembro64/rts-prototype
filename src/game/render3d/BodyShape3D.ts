@@ -152,16 +152,30 @@ function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFr
   };
 }
 
+function bodyExtrudeOptions(
+  depth: number,
+  tier: PrimitiveGeometryTier,
+): THREE.ExtrudeGeometryOptions {
+  if (tier === 'far') {
+    return { depth, bevelEnabled: false, steps: 1 };
+  }
+  const close = tier === 'close';
+  return {
+    depth,
+    steps: 1,
+    bevelEnabled: true,
+    bevelSegments: close ? 2 : 1,
+    bevelSize: close ? 0.055 : 0.035,
+    bevelThickness: Math.min(depth * (close ? 0.11 : 0.07), close ? 0.055 : 0.035),
+  };
+}
+
 function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomEntry {
   const topY = getBodyTopFrac(spec);
   if (spec.kind === 'polygon') {
     const h = spec.heightFrac;
     const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
-    const geom = new THREE.ExtrudeGeometry(shape, {
-      depth: h,
-      bevelEnabled: false,
-      steps: 1,
-    });
+    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
     // Extrusion along +Z with shape in XY → rotate so the shape lands on
     // the XZ plane and extrude direction becomes +Y.
     geom.rotateX(-Math.PI / 2);
@@ -178,11 +192,7 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
   if (spec.kind === 'rect') {
     const h = spec.heightFrac;
     const shape = buildRectShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, {
-      depth: h,
-      bevelEnabled: false,
-      steps: 1,
-    });
+    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
     geom.rotateX(-Math.PI / 2);
     return {
       parts: [{
@@ -197,11 +207,7 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
   if (spec.kind === 'rhombus') {
     const h = spec.heightFrac;
     const shape = buildRhombusShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, {
-      depth: h,
-      bevelEnabled: false,
-      steps: 1,
-    });
+    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
     geom.rotateX(-Math.PI / 2);
     return {
       parts: [{

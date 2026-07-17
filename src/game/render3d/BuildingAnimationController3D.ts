@@ -194,7 +194,8 @@ export class BuildingAnimationController3D {
     }
   }
 
-  unregister(id: EntityId): void {
+  /** Detach the current mesh while retaining per-entity animation phase. */
+  detach(id: EntityId): void {
     removeAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, id);
@@ -202,6 +203,15 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
     this.resourcePylonAnimator.unregister(id);
+    removeAnimatedBuildingEntry(this.factoryBuildings, this.factoryBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
+  }
+
+  /** Full teardown: detach the mesh and forget all entity animation state. */
+  unregister(id: EntityId): void {
+    this.detach(id);
     this.constructionVisuals.unregister(id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
@@ -211,10 +221,6 @@ export class BuildingAnimationController3D {
     this.windCloseAmounts.delete(id);
     this.windAppliedCloseAmounts.delete(id);
     this.windRotorPhases.delete(id);
-    removeAnimatedBuildingEntry(this.factoryBuildings, this.factoryBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
     this.radarHeadPhases.delete(id);
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);

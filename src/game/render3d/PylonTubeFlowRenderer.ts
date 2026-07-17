@@ -16,7 +16,13 @@ import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveSphereGeometry,
+  getSharedPrimitiveTetrahedronGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -77,15 +83,19 @@ void main() {
 }
 `;
 
+type TubeBeadPool = {
+  geom: THREE.BufferGeometry;
+  mesh: THREE.InstancedMesh;
+  alphaArr: Float32Array;
+  colorArr: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+  colorAttr: THREE.InstancedBufferAttribute;
+};
+
 export class PylonTubeFlowRenderer {
   private root: THREE.Group;
-  private geom = createPrimitiveSphereGeometry('effect', 'mid');
   private mat: THREE.ShaderMaterial;
-  private mesh: THREE.InstancedMesh;
-  private alphaArr = new Float32Array(MAX_BEADS);
-  private colorArr = new Float32Array(MAX_BEADS * 3);
-  private alphaAttr: THREE.InstancedBufferAttribute;
-  private colorAttr: THREE.InstancedBufferAttribute;
+  private pools: Record<PrimitiveGeometryTier, TubeBeadPool>;
   private _scratchMat = new THREE.Matrix4();
   private frameIndex = 0;
   private beadCount = 0;
@@ -102,13 +112,6 @@ export class PylonTubeFlowRenderer {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.geom.setAttribute('aAlpha', this.alphaAttr);
-    this.geom.setAttribute('aColor', this.colorAttr);
-
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
@@ -116,14 +119,32 @@ export class PylonTubeFlowRenderer {
       depthWrite: false,
     });
 
-    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, MAX_BEADS);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    // Draw after the transparent straw walls (renderOrder defaults) and
-    // the water plane so beads read clearly inside the bore.
-    this.mesh.renderOrder = 6;
-    this.root.add(this.mesh);
+    this.pools = {
+      close: this.createPool('close'),
+      mid: this.createPool('mid'),
+      far: this.createPool('far'),
+    };
+  }
+
+  private createPool(tier: PrimitiveGeometryTier): TubeBeadPool {
+    const geom = tier === 'far'
+      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+      : createPrimitiveSphereGeometry('effect', tier);
+    const alphaArr = new Float32Array(MAX_BEADS);
+    const colorArr = new Float32Array(MAX_BEADS * 3);
+    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
+    alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aAlpha', alphaAttr);
+    geom.setAttribute('aColor', colorAttr);
+    const mesh = new THREE.InstancedMesh(geom, this.mat, MAX_BEADS);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 6;
+    this.root.add(mesh);
+    return { geom, mesh, alphaArr, colorArr, alphaAttr, colorAttr };
   }
 
   /** Called by SprayRenderer3D when an inbound free-leg particle reaches
@@ -142,7 +163,11 @@ export class PylonTubeFlowRenderer {
 
   /** Per-frame update. Returns one-shot free-leg particles emitted by
    *  outbound beads that reached their pylon tip this frame. */
-  update(flows: readonly PylonTubeFlow[], dtMs: number): readonly SprayTarget[] {
+  update(
+    flows: readonly PylonTubeFlow[],
+    dtMs: number,
+    view?: RenderViewState3D,
+  ): readonly SprayTarget[] {
     this.frameIndex++;
     for (let i = 0; i < this.handoffSprays.length; i++) {
       this.handoffSprayPool.push(this.handoffSprays[i]);
@@ -154,7 +179,7 @@ export class PylonTubeFlowRenderer {
       this.pendingTubeBirths.size === 0 &&
       this.flowRuntimes.size === 0
     ) {
-      if (this.mesh.count !== 0) this.mesh.count = 0;
+      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
       return this.handoffSprays;
     }
 
@@ -165,7 +190,7 @@ export class PylonTubeFlowRenderer {
     this.spawnPendingTubeBirths();
     this.spawnRateGatedBeads(dtSec);
     this.advanceBeads(dtSec);
-    let n = 0;
+    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
     for (let i = 0; i < this.beadCount; i++) {
       const runtime = this.flowRuntimes.get(this.beadFlowKeys[i]);
       if (!runtime) continue;
@@ -174,7 +199,6 @@ export class PylonTubeFlowRenderer {
       const dz = runtime.tip.z - runtime.root.z;
       const len = Math.hypot(dx, dy, dz);
       if (len < 1e-3) continue;
-      if (n >= MAX_BEADS) break;
       const fr = Math.max(0, Math.min(1, this.beadFrac[i]));
       const px = runtime.root.x + dx * fr;
       const py = runtime.root.y + dy * fr;
@@ -184,25 +208,38 @@ export class PylonTubeFlowRenderer {
       const rootFade = Math.min(1, fr / END_FADE_FRAC);
       this._scratchMat.makeScale(runtime.beadRadius, runtime.beadRadius, runtime.beadRadius);
       this._scratchMat.setPosition(px, py, pz);
-      this.mesh.setMatrixAt(n, this._scratchMat);
-      this.colorArr[n * 3] = runtime.colorRGB.r;
-      this.colorArr[n * 3 + 1] = runtime.colorRGB.g;
-      this.colorArr[n * 3 + 2] = runtime.colorRGB.b;
-      this.alphaArr[n] = BASE_ALPHA * this.beadAlphaScale[i] * Math.max(0, rootFade);
-      n++;
+      const tier = view
+        ? geometryTierForDetail(detailLevelForViewPosition(
+            view,
+            px,
+            pz,
+            py,
+            runtime.beadRadius,
+          ))
+        : 'close';
+      const pool = this.pools[tier];
+      const n = counts[tier]++;
+      pool.mesh.setMatrixAt(n, this._scratchMat);
+      pool.colorArr[n * 3] = runtime.colorRGB.r;
+      pool.colorArr[n * 3 + 1] = runtime.colorRGB.g;
+      pool.colorArr[n * 3 + 2] = runtime.colorRGB.b;
+      pool.alphaArr[n] = BASE_ALPHA * this.beadAlphaScale[i] * Math.max(0, rootFade);
     }
 
-    if (this.mesh.count !== n) this.mesh.count = n;
-    if (n > 0) {
-      this.mesh.instanceMatrix.clearUpdateRanges();
-      this.mesh.instanceMatrix.addUpdateRange(0, n * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.alphaAttr.clearUpdateRanges();
-      this.alphaAttr.addUpdateRange(0, n);
-      this.alphaAttr.needsUpdate = true;
-      this.colorAttr.clearUpdateRanges();
-      this.colorAttr.addUpdateRange(0, n * 3);
-      this.colorAttr.needsUpdate = true;
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      const pool = this.pools[tier];
+      const n = counts[tier];
+      pool.mesh.count = n;
+      if (n <= 0) continue;
+      pool.mesh.instanceMatrix.clearUpdateRanges();
+      pool.mesh.instanceMatrix.addUpdateRange(0, n * 16);
+      pool.mesh.instanceMatrix.needsUpdate = true;
+      pool.alphaAttr.clearUpdateRanges();
+      pool.alphaAttr.addUpdateRange(0, n);
+      pool.alphaAttr.needsUpdate = true;
+      pool.colorAttr.clearUpdateRanges();
+      pool.colorAttr.addUpdateRange(0, n * 3);
+      pool.colorAttr.needsUpdate = true;
     }
     this.pruneStaleRuntimes();
     return this.handoffSprays;
@@ -511,7 +548,10 @@ export class PylonTubeFlowRenderer {
   }
 
   destroy(): void {
-    disposeMesh(this.mesh);
+    for (const pool of Object.values(this.pools)) {
+      disposeMesh(pool.mesh, { material: false });
+    }
+    this.mat.dispose();
     this.flowRuntimes.clear();
     this.pendingTubeBirths.clear();
     this.handoffSprays.length = 0;

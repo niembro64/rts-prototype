@@ -18,9 +18,9 @@ import { IndexedEntityIdMap, IndexedEntityIdSet } from '../network/IndexedEntity
 import {
   updateLocomotion,
   destroyLocomotion,
-  captureLegState,
+  captureLocomotionState,
   setHoverFanAnimationTime,
-  type LegStateSnapshot,
+  type LocomotionStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
@@ -92,6 +92,11 @@ import {
 } from './UnitDynamicMaterialSync3D';
 import { advanceUnitVisionFadeIn, applyUnitEntityFade3D } from './UnitEntityFade3D';
 import { AirborneEmitterUpdateScratch3D } from './AirborneEmitterUpdateScratch3D';
+import {
+  applyEntityLodVisualState3D,
+  captureEntityLodVisualState3D,
+  type EntityLodVisualState3D,
+} from './EntityLodVisualState3D';
 import {
   setEulerIfChanged,
   setObjectVisibleIfChanged,
@@ -231,7 +236,8 @@ export class Render3DEntities {
   // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
   // their world-space planted positions instead of snapping to rest.
-  private legStateCache = new IndexedEntityIdMap<LegStateSnapshot>();
+  private locomotionStateCache = new IndexedEntityIdMap<LocomotionStateSnapshot>();
+  private unitLodVisualStateCache = new IndexedEntityIdMap<EntityLodVisualState3D>();
 
   // Per-frame graphics state.
   private frameState: RenderFrameState3D = createRenderFrameState();
@@ -662,18 +668,19 @@ export class Render3DEntities {
         )
       ) {
         if (!coreKeyChanged) this.unitRebuildBudgetLeft--;
-        // Preserve leg state across the rebuild — feet keep
-        // their planted world positions through the teardown so the
-        // newly built mesh resumes the gait instead of snapping back
-        // to rest. Captured BEFORE destroyUnitMesh frees the legs.
-        const legSnap = captureLegState(m.locomotion);
-        if (legSnap) this.legStateCache.set(entityId, legSnap);
+        // A tier rebuild swaps geometry only. Preserve every mutable
+        // locomotion channel (gait, rolling phase, suspension and fin pose)
+        // before destroyUnitMesh tears down the old visual rig.
+        const locomotionSnap = captureLocomotionState(m.locomotion);
+        if (locomotionSnap) this.locomotionStateCache.set(entityId, locomotionSnap);
+        this.unitLodVisualStateCache.set(entityId, captureEntityLodVisualState3D(m));
         this.destroyUnitMesh(entityId, m);
         m = undefined;
       }
       let meshCreated = false;
       if (!m) {
-        const legSnap = this.legStateCache.get(entityId);
+        const locomotionSnap = this.locomotionStateCache.get(entityId);
+        const lodVisualSnap = this.unitLodVisualStateCache.get(entityId);
         const ownerKey = pid ?? 'neutral';
         const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}|unit:${unitBlueprintId ?? 'unknown'}|turrets:${unitTurretCount}|detail:${detailBand}`;
         m = this.unitMeshBuilder.build({
@@ -688,9 +695,11 @@ export class Render3DEntities {
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
           detailLevel,
-          legState: legSnap,
+          locomotionState: locomotionSnap,
         });
-        if (legSnap !== undefined) this.legStateCache.delete(entityId);
+        applyEntityLodVisualState3D(m, lodVisualSnap);
+        if (locomotionSnap !== undefined) this.locomotionStateCache.delete(entityId);
+        if (lodVisualSnap !== undefined) this.unitLodVisualStateCache.delete(entityId);
         this.unitMeshes.set(entityId, m);
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
         // Record the band this mesh was actually built at.
@@ -1068,7 +1077,8 @@ export class Render3DEntities {
     this.barrelSpinState.delete(id);
     this.turretBeamAimCache.delete(id);
     this.turretMountCache.delete(id);
-    this.legStateCache.delete(id);
+    this.locomotionStateCache.delete(id);
+    this.unitLodVisualStateCache.delete(id);
     this.spawnFadeElapsed.delete(id);
     this.activeLocomotionUnitIds.delete(id);
 
@@ -1207,7 +1217,8 @@ export class Render3DEntities {
     this.spawnFadeElapsed.clear();
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
-    this.legStateCache.clear();
+    this.locomotionStateCache.clear();
+    this.unitLodVisualStateCache.clear();
     this.buildingRenderer.destroy();
     this.lodProxyRenderer.destroy();
     this.projectileRangeEnvelope.destroy();
