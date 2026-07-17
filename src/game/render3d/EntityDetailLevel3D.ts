@@ -211,10 +211,6 @@ export const ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX = finitePositiveOr(
   detailConfig.environment?.grassMinScreenRadiusPx, 3);
 export const ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX = finitePositiveOr(
   detailConfig.environment?.treeMinScreenRadiusPx, 1.5);
-export const FOG_SPHERE_GEOMETRY_TIER: PrimitiveGeometryTier =
-  detailConfig.fogSphereTier === 'close' || detailConfig.fogSphereTier === 'far'
-    ? detailConfig.fogSphereTier
-    : 'mid';
 
 // ── Screen-coverage math ────────────────────────────────────────────
 

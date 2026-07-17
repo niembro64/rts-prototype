@@ -4040,7 +4040,7 @@ pub(crate) fn fog_mark_circle_scanline_impl(
     modified
 }
 
-/// Fog/shroud scanline circle fill. Mutates a row-major byte bitmap
+/// Fog scanline circle fill. Mutates a row-major byte bitmap
 /// in-place and returns 1 if any cell flipped 0 -> 1.
 #[wasm_bindgen]
 pub fn fog_mark_circle_scanline(
@@ -4055,7 +4055,7 @@ pub fn fog_mark_circle_scanline(
     fog_mark_circle_scanline_impl(bitmap, None, grid_w, grid_h, cx, cy, radius, cell_anchor, 0)
 }
 
-/// Fog/shroud scanline circle fill with an aligned RGBA side buffer.
+/// Fog scanline circle fill with an aligned RGBA side buffer.
 /// Each newly revealed bitmap cell also writes `rgb_value` to RGB,
 /// leaving alpha untouched.
 #[wasm_bindgen]

@@ -251,7 +251,6 @@ function snapshot(
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: undefined,
     gameState: undefined,
     serverMeta: undefined,

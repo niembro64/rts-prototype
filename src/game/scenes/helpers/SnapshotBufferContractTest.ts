@@ -314,7 +314,6 @@ function createSnapshot(
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: {
       spawns: undefined,
       despawns: despawnIds.map((id) => ({ id })),

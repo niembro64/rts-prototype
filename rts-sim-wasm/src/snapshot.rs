@@ -1998,47 +1998,6 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Shroud-bitmap scratch — flat Uint8Array of explored-tile bits. JS
-/// fills before calling snapshot_encode_envelope_emit_shroud which
-/// emits the wrapper map (gridW, gridH, cellSize, bitmap) using the
-/// MessagePack writer's `write_bin` for the bitmap payload.
-pub(crate) struct SnapshotEncodeShroudScratch {
-    buf: Vec<u8>,
-}
-
-pub(crate) struct SnapshotEncodeShroudScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeShroudScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeShroudScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_SHROUD_SCRATCH: SnapshotEncodeShroudScratchHolder =
-    SnapshotEncodeShroudScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn snapshot_encode_shroud_scratch() -> &'static mut SnapshotEncodeShroudScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_SHROUD_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeShroudScratch {
-                buf: vec![0u8; 4096],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_shroud_scratch_ptr() -> *const u8 {
-    snapshot_encode_shroud_scratch().buf.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_shroud_scratch_ensure(byte_count: u32) {
-    let s = snapshot_encode_shroud_scratch();
-    if s.buf.len() < byte_count as usize {
-        s.buf.resize(byte_count as usize, 0);
-    }
-}
-
 /// Shared numeric scratch for low-frequency top-level snapshot
 /// payloads such as terrain and buildability. JS packs one or more
 /// number arrays back-to-back, then passes offsets/counts into the
@@ -4567,34 +4526,6 @@ pub fn snapshot_encode_envelope_continue(
         w.write_str("visibilityFiltered");
         w.write_bool(visibility_filtered != 0);
     }
-    w.buf.len() as u32
-}
-
-/// Append the shroud wrapper. Sits AFTER scanPulses in iteration
-/// order — both lazily added to _snapshotBuf, scanPulses first then
-/// shroud. The bitmap bytes come from the shroud scratch (caller
-/// pre-fills + supplies byte length).
-#[wasm_bindgen]
-pub fn snapshot_encode_envelope_emit_shroud(
-    grid_w: u32,
-    grid_h: u32,
-    cell_size: f64,
-    bitmap_byte_count: u32,
-) -> u32 {
-    let w = messagepack_writer();
-    let scratch = snapshot_encode_shroud_scratch();
-    let n = bitmap_byte_count as usize;
-    w.write_str("shroud");
-    // Pool order from createShroudDto: gridW, gridH, cellSize, bitmap.
-    w.write_map_header(4);
-    w.write_str("gridW");
-    w.write_uint(grid_w as u64);
-    w.write_str("gridH");
-    w.write_uint(grid_h as u64);
-    w.write_str("cellSize");
-    w.write_number(cell_size);
-    w.write_str("bitmap");
-    w.write_bin(&scratch.buf[0..n]);
     w.buf.len() as u32
 }
 

@@ -75,7 +75,6 @@ function projectileSnapshot(
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: {
       spawns,
       despawns: despawnIds !== undefined

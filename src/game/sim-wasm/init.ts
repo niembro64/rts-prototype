@@ -453,9 +453,6 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
-  snapshot_encode_envelope_emit_shroud,
-  snapshot_encode_shroud_scratch_ptr,
-  snapshot_encode_shroud_scratch_ensure,
   snapshot_encode_envelope_emit_packed_terrain,
   snapshot_encode_envelope_emit_terrain,
   snapshot_encode_envelope_emit_packed_buildability,
@@ -1765,8 +1762,8 @@ export interface SimWasm {
     tx: number, ty: number, tz: number,
     stepLen: number,
   ) => number;
-  /** FOW-OPT-WASM — shared scanline circle fill for server shroud
-   *  bitmaps and client reveal alpha maps. Returns 1 if any byte flipped
+  /** FOW-OPT-WASM — shared scanline circle fill for fog reveal
+   *  bitmaps and alpha maps. Returns 1 if any byte flipped
    *  0 -> 1. TypeScript keeps only orchestration/fallback. */
   readonly fogMarkCircleScanline: (
     bitmap: Uint8Array,
@@ -3406,15 +3403,6 @@ export interface SnapshotEncodeApi {
   scanPulseScratchEnsure: (count: number) => void;
   /** Stride per scan-pulse entry (f64 count). */
   readonly scanPulseScratchStride: number;
-  /** Emit `shroud: { gridW, gridH, cellSize, bitmap }`. The bitmap
-   *  bytes come from the shroud scratch (caller pre-fills `bytes`
-   *  bytes); the wrapper map is emitted with the gridW/gridH/cellSize
-   *  args. */
-  emitShroud: (gridW: number, gridH: number, cellSize: number, bitmapBytes: number) => number;
-  /** Raw pointer to the shroud-bitmap scratch (Uint8Array). */
-  shroudScratchPtr: () => number;
-  /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
-  shroudScratchEnsure: (byteCount: number) => void;
   /** Emit compact `terrain: {v,m,vc,vh,ti,tw}` from raw TerrainTileMap
    *  arrays copied into number scratch. */
   emitPackedTerrain: (
@@ -4430,9 +4418,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           scanPulseScratchPtr: snapshot_encode_scan_pulse_scratch_ptr,
           scanPulseScratchEnsure: snapshot_encode_scan_pulse_scratch_ensure,
           scanPulseScratchStride: 6,
-          emitShroud: snapshot_encode_envelope_emit_shroud,
-          shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
-          shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
           emitPackedTerrain: snapshot_encode_envelope_emit_packed_terrain,
           emitTerrain: snapshot_encode_envelope_emit_terrain,
           emitPackedBuildability: snapshot_encode_envelope_emit_packed_buildability,

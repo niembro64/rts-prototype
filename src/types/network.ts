@@ -594,20 +594,8 @@ export type NetworkServerSnapshotResourceMovement = {
   direction: ResourceFlowDirectionCode;
 };
 
-/** Legacy explored-history shroud payload. The runtime no longer emits
- *  this field; fog presentation is now client-local live shade/clouds
- *  controlled from the PLAYER CLIENT DEBUG section. The type remains
- *  so older encoded snapshots can still be decoded without changing
- *  the envelope schema. */
-export type NetworkServerSnapshotShroud = {
-  gridW: number;
-  gridH: number;
-  cellSize: number;
-  bitmap: Uint8Array;
-};
-
 /** Wire shape for an active scan pulse (FOW-14). Only the geometric
- *  info the client needs to clear live fog shade/clouds — the
+ *  info the client needs to clear the live fog shade — the
  *  authoritative TTL stays on the server, but a copy of expiresAtTick
  *  rides along so a freshly-joined / reconnected client knows how
  *  much of the sweep is left. */
@@ -807,14 +795,11 @@ export type NetworkServerSnapshot = {
   audioEvents: NetworkServerSnapshotSimEvent[] | undefined;
   /** Active temporary vision pulses (FOW-14 — scanner sweeps) owned
    *  by the recipient or one of their allies, with the tick they
-   *  expire on. The client passes these into live fog renderers so
-   *  the shade/clouds clear inside the sweep radius the same way they
-   *  do around a unit's vision circle. Omitted when no pulses are live
-   *  for the recipient's team. */
+   *  expire on. The client passes these into the live fog shade so
+   *  it clears inside the sweep radius the same way it does around
+   *  a unit's vision circle. Omitted when no pulses are live for the
+   *  recipient's team. */
   scanPulses: NetworkServerSnapshotScanPulse[] | undefined;
-  /** Legacy explored-history shroud slot. Runtime snapshots leave this
-   *  undefined. */
-  shroud: NetworkServerSnapshotShroud | undefined;
   projectiles: NetworkServerSnapshotProjectiles | undefined;
   gameState: NetworkServerSnapshotGameState | undefined;
   serverMeta: NetworkServerSnapshotMeta | undefined;

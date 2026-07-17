@@ -70,7 +70,6 @@ const TOP_LEVEL_SNAPSHOT_KEYS = [
   'sprayTargets',
   'audioEvents',
   'scanPulses',
-  'shroud',
   'projectiles',
   'gameState',
   'serverMeta',

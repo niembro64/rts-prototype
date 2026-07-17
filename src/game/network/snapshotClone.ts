@@ -433,7 +433,6 @@ export class ReusableNetworkSnapshotCloner {
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: undefined,
     gameState: undefined,
     serverMeta: undefined,
@@ -525,7 +524,6 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.resourceMovements = undefined;
     this.snapshot.audioEvents = undefined;
     this.snapshot.scanPulses = undefined;
-    this.snapshot.shroud = undefined;
     this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
     this.snapshot.terrain = undefined;
@@ -623,7 +621,6 @@ export class ReusableNetworkSnapshotCloner {
     dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createSprayDto, copySprayInto);
     dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
     dst.scanPulses = this.copyArray(state.scanPulses, this.scanPulses, createScanPulseDto, copyScanPulseInto);
-    dst.shroud = undefined;
     if (state.projectiles) {
       this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
       this.projectiles.despawns = this.copyDespawnArray(state.projectiles.despawns);

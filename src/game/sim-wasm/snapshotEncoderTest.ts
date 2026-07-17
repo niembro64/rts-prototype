@@ -33,9 +33,6 @@ import {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
-  snapshot_encode_envelope_emit_shroud,
-  snapshot_encode_shroud_scratch_ptr,
-  snapshot_encode_shroud_scratch_ensure,
   snapshot_encode_envelope_emit_packed_terrain,
   snapshot_encode_envelope_emit_terrain,
   snapshot_encode_envelope_emit_packed_buildability,
@@ -1903,24 +1900,6 @@ function packSprayTargetsIntoScratch(
   }
 }
 
-type ShroudFixture = {
-  gridW: number;
-  gridH: number;
-  cellSize: number;
-  bitmap: Uint8Array;
-};
-
-function packShroudBitmapIntoScratch(
-  memory: WebAssembly.Memory,
-  bitmap: Uint8Array,
-): void {
-  if (bitmap.length === 0) return;
-  snapshot_encode_shroud_scratch_ensure(bitmap.length);
-  const ptr = snapshot_encode_shroud_scratch_ptr();
-  const view = new Uint8Array(memory.buffer, ptr, bitmap.length);
-  view.set(bitmap);
-}
-
 const _numberArrayOffsets: number[] = [];
 
 function packNumberArraysIntoScratch(
@@ -2116,7 +2095,6 @@ type EnvelopeFixture = {
   removedEntityIds?: number[];
   visibilityFiltered?: boolean;
   scanPulses?: ScanPulseFixture[];
-  shroud?: ShroudFixture;
   terrain?: TerrainFixture;
   buildability?: BuildabilityFixture;
 };
@@ -2782,23 +2760,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         },
       ],
     },
-    // shroud — small bitmap exercising bin8 path (len <= 0xFF).
-    {
-      tick: 1010, entities: [], economy: {},
-      shroud: {
-        gridW: 8, gridH: 4, cellSize: 64,
-        bitmap: new Uint8Array([0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF]),
-      },
-    },
-    // shroud — bitmap > 255 bytes pushes msgpack into bin16 territory.
-    {
-      tick: 1011, entities: [], economy: {},
-      shroud: (() => {
-        const bytes = new Uint8Array(300);
-        for (let i = 0; i < bytes.length; i++) bytes[i] = i & 0xFF;
-        return { gridW: 30, gridH: 10, cellSize: 32, bitmap: bytes };
-      })(),
-    },
     // scanPulses + everything else (validates ordering: scanPulses
     // emits AFTER visibilityFiltered).
     {
@@ -2818,18 +2779,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       scanPulses: [
         { playerId: 1, x: 50, y: 50, z: 0, radius: 1200, expiresAtTick: 1066 },
       ],
-    },
-    // scanPulses + shroud together — both lazy-added, scanPulses
-    // first, shroud second.
-    {
-      tick: 1003, entities: [], economy: {},
-      scanPulses: [
-        { playerId: 2, x: 200, y: 300, z: 10, radius: 500, expiresAtTick: 1067 },
-      ],
-      shroud: {
-        gridW: 4, gridH: 2, cellSize: 64,
-        bitmap: new Uint8Array([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22]),
-      },
     },
     // beamUpdates: minimal 2-vertex beam (start + end), no reflectors.
     {
@@ -3013,7 +2962,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const hasRemovedIds = f.removedEntityIds !== undefined ? 1 : 0;
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
     const hasScanPulses = f.scanPulses !== undefined ? 1 : 0;
-    const hasShroud = f.shroud !== undefined ? 1 : 0;
     const hasTerrain = f.terrain !== undefined ? 1 : 0;
     const hasBuildability = f.buildability !== undefined ? 1 : 0;
     const totalKeyCount =
@@ -3027,7 +2975,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasRemovedIds +
       hasVisibilityFiltered +
       hasScanPulses +
-      hasShroud +
       hasTerrain +
       hasBuildability;
 
@@ -3065,9 +3012,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasScanPulses && f.scanPulses) {
       packScanPulsesIntoScratch(memory, f.scanPulses);
-    }
-    if (hasShroud && f.shroud) {
-      packShroudBitmapIntoScratch(memory, f.shroud.bitmap);
     }
     if (hasSprayTargets && f.sprayTargets) {
       packSprayTargetsIntoScratch(memory, f.sprayTargets);
@@ -3260,15 +3204,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
 
     // scanPulses sits AFTER visibilityFiltered in iteration order
     // because _snapshotBuf adds it lazily (not in the static init);
-    // see commit message for D.3j-21. shroud follows scanPulses by
-    // the same lazy-add ordering.
+    // see commit message for D.3j-21.
     if (hasScanPulses && f.scanPulses) {
       snapshot_encode_envelope_emit_scan_pulses(f.scanPulses.length);
-    }
-    if (hasShroud && f.shroud) {
-      snapshot_encode_envelope_emit_shroud(
-        f.shroud.gridW, f.shroud.gridH, f.shroud.cellSize, f.shroud.bitmap.length,
-      );
     }
     if (hasTerrain && f.terrain) {
       emitTerrainFixture(memory, f.terrain);

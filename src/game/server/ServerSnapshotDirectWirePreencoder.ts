@@ -183,7 +183,6 @@ export class ServerSnapshotDirectWirePreencoder {
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: undefined,
     serverMeta: undefined,
     terrain: undefined,
@@ -442,7 +441,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.sprayTargets = netSprayTargets;
     state.audioEvents = netAudioEvents;
     state.scanPulses = netScanPulses;
-    state.shroud = undefined;
     state.projectiles = netProjectiles;
     state.serverMeta = input.serverMeta;
     state.terrain = input.terrain;
@@ -509,7 +507,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.sprayTargets = undefined;
     state.audioEvents = netAudioEvents;
     state.scanPulses = undefined;
-    state.shroud = undefined;
     state.projectiles = netProjectiles;
     state.serverMeta = undefined;
     state.terrain = undefined;
@@ -660,7 +657,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.sprayTargets = netSprayTargets;
     state.audioEvents = netAudioEvents;
     state.scanPulses = netScanPulses;
-    state.shroud = undefined;
     state.projectiles = netProjectiles;
     state.serverMeta = input.serverMeta;
     state.terrain = undefined;
