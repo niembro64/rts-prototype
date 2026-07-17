@@ -14,7 +14,6 @@
   "imposterSegment": {
     "enabled": true,
     "color": 14152959,
-    "opacity": 0.68,
     "minScreenRadiusPx": 0.9
   },
   "staggeredPathUpdates": {

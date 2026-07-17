@@ -579,6 +579,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleAirLiftProbeDebug"
         >PROBES</BarButton>
         <BarButton
+          :active="model.zoomPointsDebug"
+          title="ZOOM POINTS - show the exact center, eight inner-ring, and eight outer-ring terrain points averaged by relative camera zoom"
+          @click="model.toggleZoomPointsDebug"
+        >ZOOM POINTS</BarButton>
+        <BarButton
           :active="model.metalMap"
           title="METAL - show metal-producing build cells without the rest of the buildability grid"
           @click="model.toggleMetalMap"

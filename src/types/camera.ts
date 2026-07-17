@@ -51,6 +51,26 @@ export type CameraMovementConfig = {
   readonly ctrlCenterClickHeightPan: CameraPanMovementConfig;
 };
 
+/** Screen-space terrain neighborhood sampled by relative camera zoom.
+ *  The center anchor plus two rings are resolved through the same rendered
+ *  terrain picker; their camera-to-surface distances are averaged before the
+ *  zoom movement is applied. */
+export type CameraZoomDistanceSamplingConfig = {
+  /** Number of evenly spaced rays on each ring. Eight produces 17 samples
+   *  total: center + eight inner + eight outer. */
+  readonly ringPointCount: number;
+  readonly innerRadiusPixels: number;
+  readonly outerRadiusPixels: number;
+  /** Keep at least this fraction of the center anchor distance after one
+   *  zoom-in event, even if nearby terrain depths are extremely different. */
+  readonly minCenterDistanceFraction: number;
+  readonly debugPointSizePixels: number;
+  readonly debugVisibleMilliseconds: number;
+  readonly debugCenterColor: string;
+  readonly debugInnerColor: string;
+  readonly debugOuterColor: string;
+};
+
 export type CameraZoomInLimitMode = 'none' | 'zoom-max';
 
 export type CameraTargetBoundsMode = 'none' | 'map-padding';

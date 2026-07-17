@@ -515,7 +515,8 @@
       "sides": 6,
       "radiusFrac": 0.55,
       "heightFrac": 0.3,
-      "rotation": 0
+      "rotation": 0,
+      "bevelEnabled": false
     },
     "hud": {
       "barsOffsetAboveTop": 12

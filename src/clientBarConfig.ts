@@ -74,6 +74,7 @@ type ClientDefaults = {
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly airLiftProbeDebug: boolean;
+  readonly zoomPointsDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
@@ -143,6 +144,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     airLiftProbeDebug: pickDefault(clientBarConfig.airLiftProbeDebug, mode),
+    zoomPointsDebug: pickDefault(clientBarConfig.zoomPointsDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
     elevationMap: pickDefault(clientBarConfig.elevationMap, mode),
     pathingMap: pickDefault(clientBarConfig.pathingMap, mode),
@@ -219,6 +221,7 @@ export const CLIENT_CONFIG = {
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   airLiftProbeDebug: { default: DEMO_CLIENT_DEFAULTS.airLiftProbeDebug },
+  zoomPointsDebug: { default: DEMO_CLIENT_DEFAULTS.zoomPointsDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
   pathingMap: { default: DEMO_CLIENT_DEFAULTS.pathingMap },
@@ -297,6 +300,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
     airLiftProbeDebug: { default: defaults.airLiftProbeDebug },
+    zoomPointsDebug: { default: defaults.zoomPointsDebug },
     metalMap: { default: defaults.metalMap },
     elevationMap: { default: defaults.elevationMap },
     pathingMap: { default: defaults.pathingMap },
@@ -354,6 +358,7 @@ type ClientStorageKeyName =
   | 'wallTriangleDebug'
   | 'buildGridDebug'
   | 'airLiftProbeDebug'
+  | 'zoomPointsDebug'
   | 'metalMap'
   | 'elevationMap'
   | 'pathingMap'
@@ -394,6 +399,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'wallTriangleDebug',
   'buildGridDebug',
   'airLiftProbeDebug',
+  'zoomPointsDebug',
   'metalMap',
   'elevationMap',
   'pathingMap',
@@ -484,6 +490,7 @@ let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentAirLiftProbeDebug: boolean = _cd.airLiftProbeDebug.default;
+let currentZoomPointsDebug: boolean = _cd.zoomPointsDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
 let currentPathingMap: boolean = _cd.pathingMap.default;
@@ -558,6 +565,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentAirLiftProbeDebug = cd.airLiftProbeDebug.default;
+  currentZoomPointsDebug = cd.zoomPointsDebug.default;
   currentMetalMap = cd.metalMap.default;
   currentElevationMap = cd.elevationMap.default;
   currentPathingMap = cd.pathingMap.default;
@@ -654,6 +662,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedAirLiftProbeDebug = readPersisted(keys.airLiftProbeDebug);
   if (storedAirLiftProbeDebug !== null) {
     currentAirLiftProbeDebug = storedAirLiftProbeDebug === 'true';
+  }
+  const storedZoomPointsDebug = readPersisted(keys.zoomPointsDebug);
+  if (storedZoomPointsDebug !== null) {
+    currentZoomPointsDebug = storedZoomPointsDebug === 'true';
   }
   const storedMetalMap = readPersisted(keys.metalMap);
   if (storedMetalMap !== null) {
@@ -1087,6 +1099,15 @@ export function getAirLiftProbeDebug(): boolean {
 export function setAirLiftProbeDebug(enabled: boolean): void {
   currentAirLiftProbeDebug = enabled;
   persist(activeStorageKeys().airLiftProbeDebug, String(enabled));
+}
+
+export function getZoomPointsDebug(): boolean {
+  return currentZoomPointsDebug;
+}
+
+export function setZoomPointsDebug(enabled: boolean): void {
+  currentZoomPointsDebug = enabled;
+  persist(activeStorageKeys().zoomPointsDebug, String(enabled));
 }
 
 export function getMetalMap(): boolean {

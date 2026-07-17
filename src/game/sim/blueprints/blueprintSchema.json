@@ -2651,6 +2651,9 @@
         },
         "rotation": {
           "type": "number"
+        },
+        "bevelEnabled": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

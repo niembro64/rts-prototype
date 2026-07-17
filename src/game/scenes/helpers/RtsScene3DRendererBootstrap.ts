@@ -163,6 +163,7 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
     terrainTileRenderer.getMesh(),
+    waterRenderer.getMesh(),
   );
   threeApp.orbit.setCursorPicker((cx, cy, terrainMode) =>
     cursorGround.pickWorld(cx, cy, terrainMode)

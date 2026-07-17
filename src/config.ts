@@ -20,6 +20,7 @@ import type {
   CameraAnchor,
   CameraConstraintConfig,
   CameraMovementConfig,
+  CameraZoomDistanceSamplingConfig,
 } from './types/camera';
 import {
   LAND_CELL_SIZE,
@@ -787,6 +788,11 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
  * the cursor's world point stays pinned through the move.
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
+
+/** Terrain-neighborhood sampling used to smooth cursor-relative zoom depth,
+ *  plus the presentation settings for the matching CLIENT debug overlay. */
+export const CAMERA_ZOOM_DISTANCE_SAMPLING =
+  cameraConfigJson.zoom.distanceSampling as CameraZoomDistanceSamplingConfig;
 
 /** Full camera movement tuning, grouped by physical mouse gesture. Each
  *  gesture owns its base movement amount and its velocity-sensitive gain

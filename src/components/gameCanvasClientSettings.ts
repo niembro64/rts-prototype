@@ -9,6 +9,7 @@ import {
   getAudioScope,
   getAudioSmoothing,
   getAirLiftProbeDebug,
+  getZoomPointsDebug,
   getBuildGridDebug,
   getCameraFollowMode,
   getCameraFovDegrees,
@@ -46,6 +47,7 @@ import {
   setAudioScope,
   setAudioSmoothing,
   setAirLiftProbeDebug,
+  setZoomPointsDebug,
   setBuildGridDebug,
   setCameraFollowMode,
   setCameraFovDegrees,
@@ -136,6 +138,7 @@ export function useGameCanvasClientSettings({
   const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const airLiftProbeDebug = ref<boolean>(getAirLiftProbeDebug());
+  const zoomPointsDebug = ref<boolean>(getZoomPointsDebug());
   const metalMap = ref<boolean>(getMetalMap());
   const elevationMap = ref<boolean>(getElevationMap());
   const pathingMap = ref<boolean>(getPathingMap());
@@ -221,6 +224,7 @@ export function useGameCanvasClientSettings({
     wallTriangleDebug.value = getWallTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
     airLiftProbeDebug.value = getAirLiftProbeDebug();
+    zoomPointsDebug.value = getZoomPointsDebug();
     metalMap.value = getMetalMap();
     elevationMap.value = getElevationMap();
     pathingMap.value = getPathingMap();
@@ -445,6 +449,12 @@ export function useGameCanvasClientSettings({
     airLiftProbeDebug.value = newValue;
   }
 
+  function toggleZoomPointsDebug(): void {
+    const newValue = !zoomPointsDebug.value;
+    setZoomPointsDebug(newValue);
+    zoomPointsDebug.value = newValue;
+  }
+
   function toggleMetalMap(): void {
     const newValue = !metalMap.value;
     setMetalMap(newValue);
@@ -588,6 +598,8 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = cd.buildGridDebug.default;
     setAirLiftProbeDebug(cd.airLiftProbeDebug.default);
     airLiftProbeDebug.value = cd.airLiftProbeDebug.default;
+    setZoomPointsDebug(cd.zoomPointsDebug.default);
+    zoomPointsDebug.value = cd.zoomPointsDebug.default;
     setMetalMap(cd.metalMap.default);
     metalMap.value = cd.metalMap.default;
     setElevationMap(cd.elevationMap.default);
@@ -671,6 +683,7 @@ export function useGameCanvasClientSettings({
     wallTriangleDebug,
     buildGridDebug,
     airLiftProbeDebug,
+    zoomPointsDebug,
     metalMap,
     elevationMap,
     pathingMap,
@@ -734,6 +747,7 @@ export function useGameCanvasClientSettings({
     toggleWallTriangleDebug,
     toggleBuildGridDebug,
     toggleAirLiftProbeDebug,
+    toggleZoomPointsDebug,
     toggleMetalMap,
     toggleElevationMap,
     togglePathingMap,

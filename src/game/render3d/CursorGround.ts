@@ -12,9 +12,9 @@
 // The terrain is not monotonic along an oblique camera ray. A ray can enter a
 // mountain, leave it over a valley, then hit later terrain behind it. The
 // resolver therefore never binary-searches a camera→world-floor interval
-// directly. It asks the authoritative terrain mesh for sorted intersections
-// first, then falls back to a forward scan that brackets the FIRST clearance
-// sign change before refining it.
+// directly. It asks the authoritative rendered terrain and water meshes for
+// sorted intersections first, then falls back to a forward terrain scan only
+// when no rendered terrain mesh is available.
 
 import * as THREE from 'three';
 import {
@@ -26,6 +26,7 @@ import type { CameraAnchorTerrain } from '../../types/camera';
 
 const TERRAIN_RAY_FALLBACK_STEP = 20;
 const TERRAIN_RAY_FALLBACK_MAX_STEPS = 8192;
+const WATER_TOP_PICK_EPSILON = 1e-3;
 
 export type SimGroundPoint = {
   x: number;
@@ -39,13 +40,17 @@ export class CursorGround {
   private mapWidth: number;
   private mapHeight: number;
   private terrainMesh?: THREE.Object3D;
+  private waterMesh?: THREE.Object3D;
 
   // Reusable scratch — never allocate per-call on hot input paths.
   private raycaster = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
   private worldHit = new THREE.Vector3();
+  private terrainCandidate = new THREE.Vector3();
+  private waterCandidate = new THREE.Vector3();
   private simHit: SimGroundPoint = { x: 0, y: 0, z: 0 };
   private terrainHits: THREE.Intersection[] = [];
+  private waterHits: THREE.Intersection[] = [];
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -53,12 +58,14 @@ export class CursorGround {
     mapWidth: number,
     mapHeight: number,
     terrainMesh?: THREE.Object3D,
+    waterMesh?: THREE.Object3D,
   ) {
     this.camera = camera;
     this.canvas = canvas;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.terrainMesh = terrainMesh;
+    this.waterMesh = waterMesh;
   }
 
   /** Release the retained terrain mesh reference on scene teardown so a
@@ -67,7 +74,9 @@ export class CursorGround {
    *  per-scene picking service. */
   dispose(): void {
     this.terrainMesh = undefined;
+    this.waterMesh = undefined;
     this.terrainHits.length = 0;
+    this.waterHits.length = 0;
   }
 
   /** Cursor → camera anchor point in THREE.JS coords.
@@ -75,8 +84,8 @@ export class CursorGround {
    *  The caller supplies the terrain axis explicitly:
    *  - plane-2d: project against the flat y=0 building plane.
    *  - terrain-3d: return the raw rendered terrain hit.
-   *  - terrain-3d-water: return the rendered terrain hit clamped up
-   *    to WATER_LEVEL.
+   *  - terrain-3d-water: return whichever rendered terrain/water surface
+   *    the ray reaches first.
    *
    *  The returned Vector3 is a SHARED scratch — read it immediately
    *  or copy if you need to retain. */
@@ -86,7 +95,11 @@ export class CursorGround {
     terrainMode: CameraAnchorTerrain,
   ): THREE.Vector3 | null {
     if (!this.setRayFromClient(clientX, clientY)) return null;
-    return this.pickWorldFromCurrentRay(terrainMode);
+    // Camera anchors must remain defined even beyond finite floating-map
+    // geometry, so terrain-3d-water may fall back to the infinite horizontal
+    // water plane. Command picking below deliberately does not enable that
+    // fallback, preventing off-map orders.
+    return this.pickWorldFromCurrentRay(terrainMode, true);
   }
 
   private setRayFromClient(clientX: number, clientY: number): boolean {
@@ -101,30 +114,53 @@ export class CursorGround {
   }
 
   private pickPlaneRay(): THREE.Vector3 | null {
+    return this.pickHorizontalPlaneRay(0);
+  }
+
+  private pickHorizontalPlaneRay(height: number): THREE.Vector3 | null {
     const ray = this.raycaster.ray;
     if (Math.abs(ray.direction.y) < 1e-6) return null;
-    const t = -ray.origin.y / ray.direction.y;
+    const t = (height - ray.origin.y) / ray.direction.y;
     if (t < 0) return null;
     this.worldHit.set(
       ray.origin.x + t * ray.direction.x,
-      0,
+      height,
       ray.origin.z + t * ray.direction.z,
     );
     return this.worldHit;
   }
 
-  private pickWorldFromCurrentRay(terrainMode: CameraAnchorTerrain): THREE.Vector3 | null {
+  private pickWorldFromCurrentRay(
+    terrainMode: CameraAnchorTerrain,
+    allowUnboundedWaterFallback = false,
+  ): THREE.Vector3 | null {
     if (terrainMode === 'plane-2d') return this.pickPlaneRay();
 
-    const terrainHit = this.pickFirstTerrainSurfaceRay();
-    if (!terrainHit) return null;
-    if (terrainMode === 'terrain-3d-water' && terrainHit.y < WATER_LEVEL) {
-      terrainHit.y = WATER_LEVEL;
-    }
-    return terrainHit;
+    if (terrainMode === 'terrain-3d') return this.pickFirstTerrainSurfaceRay();
+
+    // WATER must be intersected as real geometry, not approximated by taking
+    // an underwater terrain hit and replacing only its Y. That old shortcut
+    // moved the result off the camera ray (X/Z still belonged to the deeper
+    // terrain hit), so repeated cursor-relative zoom accumulated target drift
+    // and could appear to stop working over open water/off-land areas.
+    const terrainHit = this.pickFirstTerrainSurfaceRay(this.terrainMesh === undefined);
+    if (terrainHit) this.terrainCandidate.copy(terrainHit);
+    const waterHit = this.pickFirstWaterSurfaceRay(allowUnboundedWaterFallback);
+    if (waterHit) this.waterCandidate.copy(waterHit);
+    if (!terrainHit) return waterHit ? this.worldHit.copy(this.waterCandidate) : null;
+    if (!waterHit) return this.worldHit.copy(this.terrainCandidate);
+
+    const origin = this.raycaster.ray.origin;
+    const terrainDistanceSq = origin.distanceToSquared(this.terrainCandidate);
+    const waterDistanceSq = origin.distanceToSquared(this.waterCandidate);
+    return this.worldHit.copy(
+      waterDistanceSq < terrainDistanceSq
+        ? this.waterCandidate
+        : this.terrainCandidate,
+    );
   }
 
-  private pickFirstTerrainSurfaceRay(): THREE.Vector3 | null {
+  private pickFirstTerrainSurfaceRay(allowSamplingFallback = true): THREE.Vector3 | null {
     if (this.terrainMesh) {
       this.terrainHits.length = 0;
       this.raycaster.intersectObject(this.terrainMesh, false, this.terrainHits);
@@ -133,8 +169,28 @@ export class CursorGround {
         this.worldHit.copy(hit.point);
         return this.worldHit;
       }
+      if (!allowSamplingFallback) return null;
     }
     return this.pickFirstTerrainSurfaceBySampling();
+  }
+
+  private pickFirstWaterSurfaceRay(allowUnboundedFallback: boolean): THREE.Vector3 | null {
+    if (this.waterMesh) {
+      this.waterHits.length = 0;
+      this.raycaster.intersectObject(this.waterMesh, false, this.waterHits);
+      // Floating-square water is a cuboid. Camera distance should key off its
+      // horizontal water surface, never a side wall or bottom face, otherwise
+      // crossing the square edge creates another abrupt depth discontinuity.
+      for (let i = 0; i < this.waterHits.length; i++) {
+        const hit = this.waterHits[i];
+        if (Math.abs(hit.point.y - WATER_LEVEL) <= WATER_TOP_PICK_EPSILON) {
+          return this.worldHit.copy(hit.point);
+        }
+      }
+    }
+    return allowUnboundedFallback
+      ? this.pickHorizontalPlaneRay(WATER_LEVEL)
+      : null;
   }
 
   private pickFirstTerrainSurfaceBySampling(): THREE.Vector3 | null {
@@ -205,16 +261,15 @@ export class CursorGround {
 
   /** Cursor → command target point in SIM coords
    *  (sim.x = three.x, sim.y = three.z, sim.z = three.y).
-   *  Commands use the same first rendered terrain hit as camera
-   *  anchors, then clamp submerged terrain up to the visible water
-   *  surface for the returned altitude.
+   *  Commands use the same first rendered terrain-or-water hit as camera
+   *  anchors.
    *  The z component carries the chosen altitude for renderers /
    *  handlers that need it.
    *  Returns null on miss; callers should treat that as "command
    *  cannot be issued from this cursor position". */
   pickSim(clientX: number, clientY: number): SimGroundPoint | null {
     if (!this.setRayFromClient(clientX, clientY)) return null;
-    const w = this.pickWorldFromCurrentRay('terrain-3d-water');
+    const w = this.pickWorldFromCurrentRay('terrain-3d-water', false);
     if (!w) return null;
     this.simHit.x = w.x;
     this.simHit.y = w.z;

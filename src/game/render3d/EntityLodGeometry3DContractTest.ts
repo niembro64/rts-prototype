@@ -44,14 +44,17 @@ import {
   PLASMA_PROJECTILE_TRIANGLE_COUNTS,
   ROCKET_PROJECTILE_TRIANGLE_COUNTS,
   composeProjectileTailPose3D,
+  createLowResolutionRocketGeometry,
 } from './ProjectileRenderer3D';
 import {
+  BEAM_LOW_LOD_OPACITY,
   BEAM_UPDATE_BUCKET_COUNT,
   beamImposterWorldRadiusForSegment,
   beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
+import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
 import {
   createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
@@ -80,7 +83,10 @@ import {
   applyEntityLodVisualState3D,
   captureEntityLodVisualState3D,
 } from './EntityLodVisualState3D';
-import { environmentLodFlatMaterialSpec } from './EnvironmentPropRenderer3D';
+import {
+  buildEnvironmentGrassLodGeometry,
+  environmentLodFlatMaterialSpec,
+} from './EnvironmentPropRenderer3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
 const DETAIL_LEVELS = [
@@ -335,6 +341,17 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     ));
     assertContract(counts.every((count) => count > 0), `${unitId} body resolves H/M/L geometry`);
     assertDescending(`${unitId} body`, counts);
+    if (unitId === 'unitMongoose') {
+      assertContract(
+        blueprint.bodyShape.kind === 'polygon' &&
+          blueprint.bodyShape.bevelEnabled === false,
+        'Mongoose explicitly disables polygon body bevels',
+      );
+      assertContract(
+        counts[0] === counts[1] && counts[1] === counts[2],
+        'Mongoose High/Medium/Low bodies stay on the same unbeveled hexagonal prism',
+      );
+    }
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
   for (const type of ['wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim']) {
@@ -982,6 +999,10 @@ function runEmissionRegistryContracts(): void {
 
 function runEmissionPoseContracts(): void {
   assertContract(
+    BEAM_LOW_LOD_OPACITY === BEAM_OUTER_VISUAL_CONFIG.waveHighAlpha,
+    'Low beam transparency matches the canonical outer beam layer',
+  );
+  assertContract(
     BEAM_UPDATE_BUCKET_COUNT > 1,
     'beam path updates use more than one stagger bucket',
   );
@@ -1016,6 +1037,25 @@ function runEmissionPoseContracts(): void {
   assertContract(
     farImposterRadius > 0.35,
     'far beam imposter expands enough to retain its minimum screen radius',
+  );
+  const nearToFarImposterRadius = beamImposterWorldRadiusForSegment(
+    {
+      viewportHeightPx: 1080,
+      cameraX: 0,
+      cameraY: 0,
+      cameraZ: 0,
+      forwardX: 0,
+      forwardY: 0,
+      forwardZ: -1,
+      fovYRad: Math.PI / 4,
+    },
+    0, -10, 0,
+    0, -10000, 0,
+    0.35,
+  );
+  assertContract(
+    nearToFarImposterRadius === 0.35,
+    'long Low beams use their closest camera distance instead of inflating from the midpoint',
   );
 
   const reflectedPath = [
@@ -1079,8 +1119,14 @@ function runReferenceGeometryCountContracts(): void {
     high: 140, medium: 48, low: 4,
   });
   assertSame('rocket reference ladder', ROCKET_PROJECTILE_TRIANGLE_COUNTS, {
-    high: 136, medium: 63, low: 4,
+    high: 136, medium: 63, low: 8,
   });
+  const lowRocket = createLowResolutionRocketGeometry();
+  assertContract(
+    triangleCount(lowRocket) === 8,
+    'Low rocket uses the eight-face capped equilateral triangular prism',
+  );
+  lowRocket.dispose();
 
   const legCounts = TIERS.map((tier) => {
     if (tier === 'far') {
@@ -1124,6 +1170,54 @@ function runEnvironmentLodMaterialContracts(): void {
     wood.key !== foliage.key,
     'Medium/Low wood and foliage cache as separate flat materials',
   );
+
+  const highGrass = new THREE.Group();
+  const authoredDirections = [
+    new THREE.Vector3(0.3, 1.8, 0.1),
+    new THREE.Vector3(-0.7, 1.5, 0.4),
+    new THREE.Vector3(0.2, 1.3, -0.8),
+  ];
+  for (let i = 0; i < authoredDirections.length; i++) {
+    const tip = authoredDirections[i];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0,
+      tip.x * 0.45 + 0.08, tip.y * 0.45, tip.z * 0.45,
+      tip.x, tip.y, tip.z,
+    ], 3));
+    highGrass.add(new THREE.Mesh(geometry));
+  }
+  const mediumGrass = buildEnvironmentGrassLodGeometry(highGrass, 'mid');
+  const lowGrass = buildEnvironmentGrassLodGeometry(highGrass, 'far');
+  assertContract(
+    mediumGrass.getAttribute('position').count === authoredDirections.length * 3,
+    'Medium grass uses one simple triangle per authored High leaf',
+  );
+  assertContract(
+    lowGrass.getAttribute('position').count === 6,
+    'Low grass retains two representative authored leaf triangles',
+  );
+  const mediumPositions = mediumGrass.getAttribute('position');
+  const mediumBaseCenter = new THREE.Vector3(
+    (mediumPositions.getX(0) + mediumPositions.getX(1)) * 0.5,
+    (mediumPositions.getY(0) + mediumPositions.getY(1)) * 0.5,
+    (mediumPositions.getZ(0) + mediumPositions.getZ(1)) * 0.5,
+  );
+  const mediumDirection = new THREE.Vector3(
+    mediumPositions.getX(2),
+    mediumPositions.getY(2),
+    mediumPositions.getZ(2),
+  ).sub(mediumBaseCenter).normalize();
+  assertContract(
+    mediumDirection.dot(authoredDirections[0].clone().normalize()) > 0.9999,
+    'Medium grass triangle preserves its authored High leaf direction',
+  );
+  mediumGrass.dispose();
+  lowGrass.dispose();
+  highGrass.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.isMesh) mesh.geometry.dispose();
+  });
 }
 
 export function runEntityLodGeometry3DContractTest(): void {

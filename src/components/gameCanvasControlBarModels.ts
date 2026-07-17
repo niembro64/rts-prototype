@@ -221,6 +221,7 @@ export type GameCanvasClientControlBarModel = {
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly airLiftProbeDebug: boolean;
+  readonly zoomPointsDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
@@ -270,6 +271,7 @@ export type GameCanvasClientControlBarModel = {
   toggleWallTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleAirLiftProbeDebug(): void;
+  toggleZoomPointsDebug(): void;
   toggleMetalMap(): void;
   toggleElevationMap(): void;
   togglePathingMap(): void;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import { COLORS } from '@/colorsConfig';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 import { getTreeLeafTexture } from './TreeLeafTexture';
@@ -27,7 +28,6 @@ import {
 import type { RenderViewState3D } from './RenderFrameState3D';
 import type { FogOfWarShade3D } from './FogOfWarShade3D';
 import {
-  getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   createPrimitiveConeGeometry,
   type PrimitiveGeometryTier,
@@ -47,6 +47,16 @@ type LoadedEnvironmentAsset = {
 
 export type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
 
+type EnvironmentGrassLodTier = 'mid' | 'far';
+
+type EnvironmentGrassBladeTriangle = {
+  positions: readonly number[];
+  direction: THREE.Vector3;
+  length: number;
+};
+
+const ENVIRONMENT_TREE_MEDIUM_VERTEX_REMOVAL_RATIO = 0.35;
+
 /** Medium/Low environment geometry deliberately drops texture maps, but its
  *  base hues must remain identical to the canonical textured High assets. */
 export function environmentLodFlatMaterialSpec(
@@ -63,6 +73,26 @@ export function environmentLodFlatMaterialSpec(
         color: FOREST_SPRUCE2_LEAF_COLOR,
         map: null,
       };
+}
+
+/** Builds one flat triangle in the authored direction of each High grass leaf.
+ * Low retains two representative leaves from that same authored set. */
+export function buildEnvironmentGrassLodGeometry(
+  highTemplate: THREE.Object3D,
+  tier: EnvironmentGrassLodTier,
+): THREE.BufferGeometry {
+  const authoredBlades = collectEnvironmentGrassBladeTriangles(highTemplate);
+  const blades = tier === 'mid'
+    ? authoredBlades
+    : selectRepresentativeGrassBlades(authoredBlades, 2);
+  const positions: number[] = [];
+  for (let i = 0; i < blades.length; i++) {
+    positions.push(...blades[i].positions);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 type EnvironmentPropRenderer3DOptions = {
@@ -314,33 +344,7 @@ export class EnvironmentPropRenderer3D {
   ): THREE.Group {
     const group = new THREE.Group();
     group.name = `environment-template-${asset.spec.id}-${tier}`;
-    const bladeCount = tier === 'far'
-      ? 2
-      : Math.max(10, Number(asset.spec.id.slice(-1)) * 2 + 8);
-    const radius = asset.unitHeight
-      * (asset.spec.defaultRadius / Math.max(1, asset.spec.defaultHeight));
-    const positions: number[] = [];
-    for (let i = 0; i < bladeCount; i++) {
-      const angle = (i / bladeCount) * Math.PI;
-      const radial = tier === 'far' ? 0 : radius * 0.48 * ((i % 3) / 2);
-      const centerX = Math.cos(angle * 2.37) * radial;
-      const centerZ = Math.sin(angle * 2.37) * radial;
-      const halfWidth = radius * (tier === 'far' ? 0.46 : 0.2 + (i % 3) * 0.025);
-      const height = asset.unitHeight * (tier === 'far' ? 0.9 : 0.7 + (i % 4) * 0.08);
-      const dx = Math.cos(angle) * halfWidth;
-      const dz = Math.sin(angle) * halfWidth;
-      positions.push(
-        centerX - dx, 0, centerZ - dz,
-        centerX + dx, 0, centerZ + dz,
-        centerX + dx * 0.22, height, centerZ + dz * 0.22,
-        centerX - dx, 0, centerZ - dz,
-        centerX + dx * 0.22, height, centerZ + dz * 0.22,
-        centerX - dx * 0.22, height, centerZ - dz * 0.22,
-      );
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.computeVertexNormals();
+    const geometry = buildEnvironmentGrassLodGeometry(asset.templates.close, tier);
     const material = this.environmentLodFlatMaterial('foliage');
     material.side = THREE.DoubleSide;
     material.needsUpdate = true;
@@ -366,56 +370,61 @@ export class EnvironmentPropRenderer3D {
     this.fogOfWarShade.patchMaterial(trunkMaterial);
     this.fogOfWarShade.patchMaterial(leafMaterial);
 
+    if (tier === 'mid') {
+      this.addMediumTreeGeometry(
+        group,
+        asset.templates.close,
+        trunkMaterial,
+        leafMaterial,
+      );
+      return group;
+    }
+
     const trunkHeight = height * (asset.spec.palette === 'forestTree' ? 0.34 : 0.48);
     const trunkRadius = Math.max(radius * 0.09, height * 0.018);
-    const trunkGeometry = tier === 'far'
-      ? new THREE.PlaneGeometry(2, 2)
-      : getSharedExtrudedEquilateralTriangleGeometry(1, 1).clone();
+    const trunkGeometry = new THREE.PlaneGeometry(2, 2);
     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-    if (tier === 'far') {
-      trunk.scale.set(trunkRadius, trunkHeight * 0.5, 1);
-      trunk.position.y = trunkHeight * 0.5;
-    } else {
-      trunk.scale.set(trunkRadius, trunkHeight, trunkRadius);
-      trunk.position.y = trunkHeight * 0.5;
-    }
+    trunk.scale.set(trunkRadius, trunkHeight * 0.5, 1);
+    trunk.position.y = trunkHeight * 0.5;
     group.add(trunk);
 
     if (asset.spec.palette === 'forestTree') {
       const crownBottom = height * 0.18;
       const crownHeight = height * 0.82;
-      const layerCount = tier === 'far' ? 1 : 3;
-      for (let i = 0; i < layerCount; i++) {
-        const layerT = layerCount === 1 ? 0.5 : i / (layerCount - 1);
-        const layerHeight = tier === 'far' ? crownHeight : crownHeight * 0.48;
-        const layerRadius = radius * (1 - layerT * 0.42);
-        const geometry = createPrimitiveConeGeometry(
-          'environment',
-          tier,
-          layerRadius,
-          layerHeight,
-        );
-        const crown = new THREE.Mesh(geometry, leafMaterial);
-        crown.position.y = crownBottom + layerHeight * 0.5 + layerT * crownHeight * 0.5;
-        group.add(crown);
-      }
-    } else if (tier === 'far') {
+      const geometry = createPrimitiveConeGeometry(
+        'environment',
+        'far',
+        radius * 0.79,
+        crownHeight,
+      );
+      const crown = new THREE.Mesh(geometry, leafMaterial);
+      crown.position.y = crownBottom + crownHeight * 0.5;
+      group.add(crown);
+    } else {
       const crown = new THREE.Mesh(getSharedPrimitiveTetrahedronGeometry(1).clone(), leafMaterial);
       crown.scale.set(radius, height * 0.34, radius);
       crown.position.y = height * 0.7;
       group.add(crown);
-    } else {
-      for (const [x, y, z, scale] of [
-        [-0.32, 0.69, 0, 0.72],
-        [0.32, 0.7, 0.04, 0.72],
-      ] as const) {
-        const crown = new THREE.Mesh(new THREE.OctahedronGeometry(1), leafMaterial);
-        crown.scale.set(radius * scale, height * 0.24, radius * scale);
-        crown.position.set(radius * x, height * y, radius * z);
-        group.add(crown);
-      }
     }
     return group;
+  }
+
+  private addMediumTreeGeometry(
+    group: THREE.Group,
+    highTemplate: THREE.Object3D,
+    trunkMaterial: THREE.Material,
+    leafMaterial: THREE.Material,
+  ): void {
+    const positionsByRole = collectEnvironmentTreeTrianglePositions(highTemplate);
+    for (const role of ['wood', 'foliage'] as const) {
+      const positions = positionsByRole[role];
+      if (positions.length === 0) continue;
+      const geometry = simplifyEnvironmentTreeGeometry(positions);
+      group.add(new THREE.Mesh(
+        geometry,
+        role === 'wood' ? trunkMaterial : leafMaterial,
+      ));
+    }
   }
 
   private materialForAsset(
@@ -540,6 +549,202 @@ export class EnvironmentPropRenderer3D {
       this.nodes.push({ placement, root, lods });
     }
   }
+}
+
+function collectEnvironmentGrassBladeTriangles(
+  highTemplate: THREE.Object3D,
+): EnvironmentGrassBladeTriangle[] {
+  highTemplate.updateMatrixWorld(true);
+  const blades: EnvironmentGrassBladeTriangle[] = [];
+  highTemplate.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry?.getAttribute('position');
+    if (!position || position.count < 3) return;
+
+    const vertices = collectUniqueTransformedPositions(position, mesh.matrixWorld);
+    if (vertices.length < 3) return;
+    let root = vertices[0];
+    for (let i = 1; i < vertices.length; i++) {
+      if (vertices[i].y < root.y) root = vertices[i];
+    }
+    let tip = vertices[0];
+    let lengthSq = -1;
+    for (let i = 0; i < vertices.length; i++) {
+      const candidateLengthSq = root.distanceToSquared(vertices[i]);
+      if (candidateLengthSq > lengthSq) {
+        tip = vertices[i];
+        lengthSq = candidateLengthSq;
+      }
+    }
+    const length = Math.sqrt(lengthSq);
+    if (length <= 1e-6) return;
+
+    const direction = tip.clone().sub(root).normalize();
+    const widthDirection = new THREE.Vector3(-direction.z, 0, direction.x);
+    if (widthDirection.lengthSq() <= 1e-8) widthDirection.set(1, 0, 0);
+    else widthDirection.normalize();
+
+    let greatestAxisDistance = 0;
+    const offset = new THREE.Vector3();
+    const projected = new THREE.Vector3();
+    for (let i = 0; i < vertices.length; i++) {
+      offset.copy(vertices[i]).sub(root);
+      projected.copy(direction).multiplyScalar(offset.dot(direction));
+      greatestAxisDistance = Math.max(
+        greatestAxisDistance,
+        offset.sub(projected).length(),
+      );
+    }
+    const halfWidth = THREE.MathUtils.clamp(
+      greatestAxisDistance * 0.55,
+      length * 0.065,
+      length * 0.18,
+    );
+    const left = root.clone().addScaledVector(widthDirection, halfWidth);
+    const right = root.clone().addScaledVector(widthDirection, -halfWidth);
+    blades.push({
+      positions: [
+        left.x, left.y, left.z,
+        right.x, right.y, right.z,
+        tip.x, tip.y, tip.z,
+      ],
+      direction,
+      length,
+    });
+  });
+  return blades;
+}
+
+function collectUniqueTransformedPositions(
+  position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  transform: THREE.Matrix4,
+): THREE.Vector3[] {
+  const seen = new Set<string>();
+  const positions: THREE.Vector3[] = [];
+  for (let i = 0; i < position.count; i++) {
+    const vertex = new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(transform);
+    const key = quantizedPositionKey(vertex.x, vertex.y, vertex.z);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    positions.push(vertex);
+  }
+  return positions;
+}
+
+function selectRepresentativeGrassBlades(
+  blades: readonly EnvironmentGrassBladeTriangle[],
+  maxCount: number,
+): EnvironmentGrassBladeTriangle[] {
+  if (blades.length <= maxCount) return blades.slice();
+  let longestIndex = 0;
+  for (let i = 1; i < blades.length; i++) {
+    if (blades[i].length > blades[longestIndex].length) longestIndex = i;
+  }
+  const selected = [blades[longestIndex]];
+  while (selected.length < maxCount) {
+    let bestIndex = -1;
+    let bestScore = -Infinity;
+    for (let i = 0; i < blades.length; i++) {
+      const candidate = blades[i];
+      if (selected.includes(candidate)) continue;
+      let nearestDirectionDifference = Infinity;
+      for (let j = 0; j < selected.length; j++) {
+        nearestDirectionDifference = Math.min(
+          nearestDirectionDifference,
+          1 - candidate.direction.dot(selected[j].direction),
+        );
+      }
+      const score = nearestDirectionDifference * 2 + candidate.length / blades[longestIndex].length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+    if (bestIndex < 0) break;
+    selected.push(blades[bestIndex]);
+  }
+  return selected;
+}
+
+function collectEnvironmentTreeTrianglePositions(
+  highTemplate: THREE.Object3D,
+): Record<EnvironmentLodFlatColorRole, number[]> {
+  highTemplate.updateMatrixWorld(true);
+  const positionsByRole: Record<EnvironmentLodFlatColorRole, number[]> = {
+    wood: [],
+    foliage: [],
+  };
+  const vertex = new THREE.Vector3();
+  highTemplate.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
+    const position = geometry?.getAttribute('position');
+    if (!geometry || !position) return;
+    const index = geometry.getIndex();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const groups = geometry.groups.length > 0
+      ? geometry.groups
+      : [{
+          start: 0,
+          count: index?.count ?? position.count,
+          materialIndex: 0,
+        }];
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+      const geometryGroup = groups[groupIndex];
+      const material = materials[geometryGroup.materialIndex ?? 0] ?? materials[0];
+      const role = environmentTreeRoleForMaterial(material);
+      const target = positionsByRole[role];
+      const end = geometryGroup.start + geometryGroup.count;
+      for (let i = geometryGroup.start; i < end; i++) {
+        const vertexIndex = index ? index.getX(i) : i;
+        vertex.fromBufferAttribute(position, vertexIndex).applyMatrix4(mesh.matrixWorld);
+        target.push(vertex.x, vertex.y, vertex.z);
+      }
+    }
+  });
+  return positionsByRole;
+}
+
+function environmentTreeRoleForMaterial(
+  material: THREE.Material | undefined,
+): EnvironmentLodFlatColorRole {
+  const name = material?.name.toLowerCase() ?? '';
+  return name.includes('trunk') || name.includes('wood') || name.includes('bark')
+    ? 'wood'
+    : 'foliage';
+}
+
+function simplifyEnvironmentTreeGeometry(
+  positions: readonly number[],
+): THREE.BufferGeometry {
+  const source = new THREE.BufferGeometry();
+  source.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const uniquePositionCount = countUniquePositions(positions);
+  const removalCount = Math.min(
+    Math.max(0, uniquePositionCount - 4),
+    Math.floor(uniquePositionCount * ENVIRONMENT_TREE_MEDIUM_VERTEX_REMOVAL_RATIO),
+  );
+  const geometry = removalCount > 0
+    ? new SimplifyModifier().modify(source, removalCount)
+    : source;
+  if (geometry !== source) source.dispose();
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function countUniquePositions(positions: readonly number[]): number {
+  const unique = new Set<string>();
+  for (let i = 0; i < positions.length; i += 3) {
+    unique.add(quantizedPositionKey(positions[i], positions[i + 1], positions[i + 2]));
+  }
+  return unique.size;
+}
+
+function quantizedPositionKey(x: number, y: number, z: number): string {
+  const precision = 1e5;
+  return `${Math.round(x * precision)},${Math.round(y * precision)},${Math.round(z * precision)}`;
 }
 
 function publicAssetUrl(path: string): string {

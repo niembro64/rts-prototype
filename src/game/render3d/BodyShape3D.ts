@@ -155,8 +155,9 @@ function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFr
 function bodyExtrudeOptions(
   depth: number,
   tier: PrimitiveGeometryTier,
+  bevelEnabled = true,
 ): THREE.ExtrudeGeometryOptions {
-  if (tier === 'far') {
+  if (tier === 'far' || !bevelEnabled) {
     return { depth, bevelEnabled: false, steps: 1 };
   }
   const close = tier === 'close';
@@ -175,7 +176,10 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
   if (spec.kind === 'polygon') {
     const h = spec.heightFrac;
     const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
-    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
+    const geom = new THREE.ExtrudeGeometry(
+      shape,
+      bodyExtrudeOptions(h, tier, spec.bevelEnabled !== false),
+    );
     // Extrusion along +Z with shape in XY → rotate so the shape lands on
     // the XZ plane and extrude direction becomes +Y.
     geom.rotateX(-Math.PI / 2);

@@ -57,7 +57,6 @@ const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xd7f4ff;
-const DEFAULT_IMPOSTER_SEGMENT_OPACITY = 0.68;
 const DEFAULT_IMPOSTER_MIN_SCREEN_RADIUS_PX = 0.9;
 
 type TurretMountResolver = {
@@ -75,7 +74,6 @@ type OpenEndedLineConfig = {
 type BeamImposterSegmentConfig = {
   enabled: boolean;
   color: number;
-  opacity: number;
   minScreenRadiusPx: number;
 };
 
@@ -149,19 +147,12 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
       : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
 };
 
-const configuredImposterOpacity = rawBeamConfig.imposterSegment?.opacity;
 const configuredImposterMinScreenRadiusPx =
   rawBeamConfig.imposterSegment?.minScreenRadiusPx;
 
 const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
   enabled: rawBeamConfig.imposterSegment?.enabled ?? true,
   color: rawBeamConfig.imposterSegment?.color ?? DEFAULT_IMPOSTER_SEGMENT_COLOR,
-  opacity: typeof configuredImposterOpacity === 'number' &&
-    Number.isFinite(configuredImposterOpacity) &&
-    configuredImposterOpacity >= 0 &&
-    configuredImposterOpacity <= 1
-    ? configuredImposterOpacity
-    : DEFAULT_IMPOSTER_SEGMENT_OPACITY,
   minScreenRadiusPx:
     typeof configuredImposterMinScreenRadiusPx === 'number' &&
     Number.isFinite(configuredImposterMinScreenRadiusPx) &&
@@ -170,10 +161,14 @@ const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
       : DEFAULT_IMPOSTER_MIN_SCREEN_RADIUS_PX,
 };
 
+/** Low uses the same outer-layer transparency as Medium/High instead of
+ *  maintaining an unrelated, much more opaque imposter alpha. */
+export const BEAM_LOW_LOD_OPACITY = BEAM_OUTER_VISUAL_CONFIG.waveHighAlpha;
+
 /** Keep the Low solid cylinder at a minimum projected radius. This converts
- *  the screen-space target back into world units at the segment midpoint;
- *  without it, a valid far cylinder eventually becomes sub-pixel and looks
- *  indistinguishable from being culled. */
+ *  the screen-space target back into world units at the closest point on the
+ *  segment. Using the midpoint made long beams that passed near the camera
+ *  inflate from the distance to their far-away center. */
 export function beamImposterWorldRadiusForSegment(
   view: RenderViewState3D | undefined,
   ax: number, ay: number, az: number,
@@ -184,12 +179,28 @@ export function beamImposterWorldRadiusForSegment(
   if (!view || !(view.viewportHeightPx > 0) || !(minScreenRadiusPx > 0)) {
     return authoredRadius;
   }
-  const midX = (ax + bx) * 0.5;
-  const midY = (ay + by) * 0.5;
-  const midZ = (az + bz) * 0.5;
-  const dx = view.cameraX - midX;
-  const dy = view.cameraY - midZ;
-  const dz = view.cameraZ - midY;
+  // Convert Three camera coordinates back to sim (x, y, z) before the
+  // point-to-segment projection: Three (x, y, z) = sim (x, z, y).
+  const cameraX = view.cameraX;
+  const cameraY = view.cameraZ;
+  const cameraZ = view.cameraY;
+  const segmentX = bx - ax;
+  const segmentY = by - ay;
+  const segmentZ = bz - az;
+  const segmentLengthSq =
+    segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+  const closestT = segmentLengthSq > 1e-9
+    ? THREE.MathUtils.clamp(
+        ((cameraX - ax) * segmentX +
+          (cameraY - ay) * segmentY +
+          (cameraZ - az) * segmentZ) / segmentLengthSq,
+        0,
+        1,
+      )
+    : 0;
+  const dx = cameraX - (ax + segmentX * closestT);
+  const dy = cameraY - (ay + segmentY * closestT);
+  const dz = cameraZ - (az + segmentZ * closestT);
   const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
   const worldRadiusForScreenTarget =
     minScreenRadiusPx * distance * 2 * Math.tan(view.fovYRad * 0.5) /
@@ -388,7 +399,7 @@ export class BeamRenderer3D {
     const imposterSegmentMat = new THREE.MeshBasicMaterial({
       color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
       transparent: true,
-      opacity: BEAM_IMPOSTER_SEGMENT_CONFIG.opacity,
+      opacity: BEAM_LOW_LOD_OPACITY,
       depthTest: true,
       depthWrite: false,
     });

@@ -947,6 +947,7 @@ pub struct UnitBodyShapePolygon {
     pub radiusFrac: f64,
     pub heightFrac: f64,
     pub rotation: f64,
+    pub bevelEnabled: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

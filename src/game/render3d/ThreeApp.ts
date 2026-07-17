@@ -14,6 +14,7 @@ import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
 import { WebGlFrameProfiler, type WebGlFrameProfile } from './WebGlFrameProfiler';
+import { ZoomTerrainPointsOverlay3D } from './ZoomTerrainPointsOverlay3D';
 import {
   acquireMainRendererContext,
   type RendererContextToken,
@@ -33,8 +34,9 @@ import {
   ZOOM_MAX_MAP_CENTER_DISTANCE,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
+  CAMERA_ZOOM_DISTANCE_SAMPLING,
 } from '../../config';
-import { getWaterBoundaryMode } from '@/clientBarConfig';
+import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
@@ -114,6 +116,7 @@ export class ThreeApp {
   private _renderEnabled = true;
   private _drawSuspended = false;
   private _destroyed = false;
+  private readonly _zoomTerrainPointsOverlay: ZoomTerrainPointsOverlay3D;
 
   constructor(
     parent: HTMLElement,
@@ -219,6 +222,7 @@ export class ThreeApp {
       cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       zoomStepFraction: ZOOM_STEP_FRACTION,
+      zoomDistanceSampling: CAMERA_ZOOM_DISTANCE_SAMPLING,
       movementConfig: CAMERA_MOVEMENT_CONFIG,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
       zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
@@ -252,6 +256,11 @@ export class ThreeApp {
     // World group for entities
     this.world = new THREE.Group();
     this.scene.add(this.world);
+    this._zoomTerrainPointsOverlay = new ZoomTerrainPointsOverlay3D(
+      this.world,
+      this.orbit,
+      CAMERA_ZOOM_DISTANCE_SAMPLING,
+    );
 
     const gl = this.renderer.getContext();
     // Real-GPU-time telemetry. No-op on browsers without the extension
@@ -359,6 +368,7 @@ export class ThreeApp {
       if (this._updateCallback) this._updateCallback(now, delta);
       if (this._renderEnabled && !this._drawSuspended) {
         this.syncWaterBoundaryPresentation();
+        this._zoomTerrainPointsOverlay.update(now, getZoomPointsDebug());
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
         this.frameProfiler.beginFrame();
@@ -434,6 +444,7 @@ export class ThreeApp {
     this._destroyed = true;
     this.stop();
     this._updateCallback = null;
+    this._zoomTerrainPointsOverlay.destroy();
     this.orbit.destroy();
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();

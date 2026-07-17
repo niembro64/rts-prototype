@@ -138,6 +138,9 @@ export type ClientBarConfig = {
   /** Draws selected units' configured surface-lift probe points and
    *  vertical lines to the sampled terrain/water/support surface. */
   readonly airLiftProbeDebug: BooleanSetting;
+  /** Shows the exact center + two eight-point terrain sample rings used by
+   *  the most recent relative camera zoom event. */
+  readonly zoomPointsDebug: BooleanSetting;
   readonly metalMap: BooleanSetting;
   readonly elevationMap: BooleanSetting;
   readonly pathingMap: BooleanSetting;

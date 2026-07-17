@@ -19,6 +19,7 @@ import {
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
 import {
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
@@ -126,8 +127,15 @@ export const PLASMA_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
 export const ROCKET_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
   high: 80 + 32 + 24,
   medium: 36 + 24 + 3,
-  low: PLASMA_LOW_INDICES.length / 3,
+  low: 8,
 });
+
+/** Low rocket/missile/torpedo tube: the same capped, equilateral triangular
+ *  prism used by other Low cylinder replacements. Local +Y remains the
+ *  projectile axis, so every existing flight pose applies unchanged. */
+export function createLowResolutionRocketGeometry(): THREE.BufferGeometry {
+  return createExtrudedEquilateralTriangleGeometry(1, 1);
+}
 
 /** Geometry-independent projectile pose shared by every visual tier. */
 export function composeProjectileTailPose3D(
@@ -301,6 +309,7 @@ export class ProjectileRenderer3D {
   private readonly plasmaLowGeom = createLowResolutionPlasmaGeometry();
   private readonly plasmaLowInstanced: THREE.InstancedMesh;
   private readonly plasmaLowMatrices: Float32Array;
+  private readonly rocketLowGeom = createLowResolutionRocketGeometry();
   private readonly rocketLowInstanced: THREE.InstancedMesh;
   private readonly rocketLowMatrices: Float32Array;
   private readonly finInstanced: THREE.InstancedMesh;
@@ -423,7 +432,7 @@ export class ProjectileRenderer3D {
     this.world.add(this.plasmaLowInstanced);
 
     this.rocketLowInstanced = new THREE.InstancedMesh(
-      this.plasmaLowGeom,
+      this.rocketLowGeom,
       this.projectileMat,
       PROJECTILE_INSTANCED_CAP,
     );
@@ -836,6 +845,7 @@ export class ProjectileRenderer3D {
       this.plasmaHigh.geometry,
       this.plasmaMedium.geometry,
       this.plasmaLowGeom,
+      this.rocketLowGeom,
       this.projectileFinGeom,
       this.projectileMediumFinGeom,
     ]);

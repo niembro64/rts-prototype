@@ -38,6 +38,7 @@ import type {
   CameraMovementConfig,
   CameraMovementScaleMode,
   CameraTerrainCollisionMode,
+  CameraZoomDistanceSamplingConfig,
 } from '../../types/camera';
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
@@ -46,6 +47,18 @@ const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
 const KEYBOARD_CAMERA_FAST_MULTIPLIER = 2.5;
 const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
+
+const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = {
+  ringPointCount: 8,
+  innerRadiusPixels: 48,
+  outerRadiusPixels: 96,
+  minCenterDistanceFraction: 0.1,
+  debugPointSizePixels: 10,
+  debugVisibleMilliseconds: 500,
+  debugCenterColor: '#ffffff',
+  debugInnerColor: '#00d9ff',
+  debugOuterColor: '#ffb000',
+};
 
 const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
   scaleMode: 'anchor-distance-relative',
@@ -125,6 +138,9 @@ type OrbitCameraOptions = {
    *  same factor, which keeps the cursor pixel pinned to its
    *  world point through the move. */
   zoomStepFraction?: number;
+  /** Screen-space terrain neighborhood used to derive the distance scalar
+   *  for relative zoom movement. */
+  zoomDistanceSampling?: CameraZoomDistanceSamplingConfig;
   /** Full movement tuning, grouped by physical mouse gesture. */
   movementConfig?: CameraMovementConfig;
   /** Relative-mode multiplier applied on top of world-per-pixel when
@@ -156,6 +172,21 @@ type OrbitCameraOptions = {
   rotateAnchor?: CameraAnchor;
   /** Anchor pair for drag-pan depth capture. */
   panAnchor?: CameraAnchor;
+};
+
+/** Fixed, allocation-free sample buffer shared with the zoom-points debug
+ *  renderer. Positions use Three.js world axes and are the exact terrain
+ *  points whose distances contributed to `averageDistance`. */
+export type CameraZoomTerrainSampleSnapshot = {
+  readonly positions: Float32Array;
+  readonly distances: Float32Array;
+  readonly ringPointCount: number;
+  count: number;
+  averageDistance: number;
+  appliedAverageDistance: number;
+  centerDistance: number;
+  sampledAtMilliseconds: number;
+  version: number;
 };
 
 export class OrbitCamera {
@@ -208,6 +239,8 @@ export class OrbitCamera {
   private targetMinZ = -Infinity;
   private targetMaxZ = Infinity;
   private zoomStepFraction: number;
+  private zoomDistanceSampling: CameraZoomDistanceSamplingConfig;
+  private zoomTerrainSamples: CameraZoomTerrainSampleSnapshot;
   private movementScaleMode: CameraMovementScaleMode = 'anchor-distance-relative';
   private movementConfig: CameraMovementConfig = DEFAULT_CAMERA_MOVEMENT_CONFIG;
   private panMultiplier: number;
@@ -284,6 +317,9 @@ export class OrbitCamera {
   private _orbitRightTmp = new THREE.Vector3();
   private _cameraPosTmp = new THREE.Vector3();
   private _cameraLookAtTmp = new THREE.Vector3();
+  private _zoomCenterTmp = new THREE.Vector3();
+  private _zoomPivotTmp = new THREE.Vector3();
+  private _zoomScreenAnchorTmp = new THREE.Vector2();
   private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
@@ -323,6 +359,24 @@ export class OrbitCamera {
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
+    this.zoomDistanceSampling = opts.zoomDistanceSampling
+      ?? DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG;
+    const zoomRingPointCount = Math.max(
+      1,
+      Math.floor(this.zoomDistanceSampling.ringPointCount),
+    );
+    const zoomSampleCount = 1 + zoomRingPointCount * 2;
+    this.zoomTerrainSamples = {
+      positions: new Float32Array(zoomSampleCount * 3),
+      distances: new Float32Array(zoomSampleCount),
+      ringPointCount: zoomRingPointCount,
+      count: 0,
+      averageDistance: 0,
+      appliedAverageDistance: 0,
+      centerDistance: 0,
+      sampledAtMilliseconds: Number.NEGATIVE_INFINITY,
+      version: 0,
+    };
     this.movementConfig = opts.movementConfig ?? this.movementConfig;
     this.movementScaleMode = this.movementConfig.scaleMode;
     this.panMultiplier = opts.panMultiplier ?? 1.0;
@@ -774,8 +828,145 @@ export class OrbitCamera {
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
     const resolvedAnchor = anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor);
-    const p0 = this._anchorWorldPoint(clientX, clientY, resolvedAnchor);
-    this.zoomByResolvedAnchorFactor(wantFactor, p0);
+    const centerHit = this._anchorWorldPoint(clientX, clientY, resolvedAnchor);
+    if (!centerHit) {
+      this.clearZoomTerrainSamples();
+      this.zoomByResolvedAnchorFactor(wantFactor, null);
+      return;
+    }
+
+    // CursorGround returns shared scratch storage, so retain the center before
+    // resolving any of the 16 neighboring rays.
+    this._zoomCenterTmp.copy(centerHit);
+    const pivot = this.resolveAveragedZoomPivot(
+      clientX,
+      clientY,
+      wantFactor,
+      resolvedAnchor,
+      this._zoomCenterTmp,
+    );
+    this.zoomByResolvedAnchorFactor(wantFactor, pivot);
+  }
+
+  /** Resolve center + two screen-space rings through the same world picker
+   *  used by camera anchoring, then place the actual scale pivot on the
+   *  center ray at the averaged depth. Scaling camera + target around any
+   *  point on that ray keeps the center terrain point on the same pixel while
+   *  making the travel magnitude depend on the 17-point mean instead of one
+   *  mountain-top/valley sample. */
+  private resolveAveragedZoomPivot(
+    clientX: number,
+    clientY: number,
+    wantFactor: number,
+    anchor: CameraAnchor,
+    center: THREE.Vector3,
+  ): THREE.Vector3 {
+    const samples = this.zoomTerrainSamples;
+    const cam = this.cameraPositionForState(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toDistance,
+      this.toYaw,
+      this.pitch,
+      this._cameraPosTmp,
+    );
+    const centerDistance = cam.distanceTo(center);
+    const screenAnchor = this._anchorScreenPoint(
+      clientX,
+      clientY,
+      anchor,
+      this._zoomScreenAnchorTmp,
+    );
+
+    let sum = this.writeZoomTerrainSample(0, center, cam);
+    let sampleIndex = 1;
+    const ringPointCount = samples.ringPointCount;
+    const innerRadius = Math.max(0, this.zoomDistanceSampling.innerRadiusPixels);
+    const outerRadius = Math.max(innerRadius, this.zoomDistanceSampling.outerRadiusPixels);
+
+    if (screenAnchor) {
+      for (let ring = 0; ring < 2; ring++) {
+        const radius = ring === 0 ? innerRadius : outerRadius;
+        for (let i = 0; i < ringPointCount; i++) {
+          const angle = (i / ringPointCount) * Math.PI * 2;
+          const hit = this._worldPointForScreenPoint(
+            screenAnchor.x + Math.cos(angle) * radius,
+            screenAnchor.y + Math.sin(angle) * radius,
+            anchor.terrain,
+          );
+          // A peripheral ray can miss the rendered surface at a very low
+          // pitch or canvas edge. Reusing the center gives every zoom event
+          // the configured 17 equal weights without introducing a stale or
+          // arbitrary distance. The shared debug buffer records that exact
+          // fallback position too.
+          sum += this.writeZoomTerrainSample(sampleIndex, hit ?? center, cam);
+          sampleIndex += 1;
+        }
+      }
+    } else {
+      while (sampleIndex < samples.distances.length) {
+        sum += this.writeZoomTerrainSample(sampleIndex, center, cam);
+        sampleIndex += 1;
+      }
+    }
+
+    const averageDistance = sum / sampleIndex;
+    let appliedAverageDistance = averageDistance;
+    if (wantFactor < 1 && centerDistance > 1e-6) {
+      // A deep valley beside an extremely close peak can otherwise ask one
+      // tick to cross the center anchor. Keep a small, configured amount of
+      // center-ray depth while still using the true arithmetic mean in every
+      // normal case.
+      const retained = Math.min(
+        0.99,
+        Math.max(0, this.zoomDistanceSampling.minCenterDistanceFraction),
+      );
+      const maxTravel = centerDistance * (1 - retained);
+      const maxAverageDistance = maxTravel / Math.max(1e-6, 1 - wantFactor);
+      appliedAverageDistance = Math.min(averageDistance, maxAverageDistance);
+    }
+
+    samples.count = sampleIndex;
+    samples.averageDistance = averageDistance;
+    samples.appliedAverageDistance = appliedAverageDistance;
+    samples.centerDistance = centerDistance;
+    samples.sampledAtMilliseconds = performance.now();
+    samples.version += 1;
+
+    if (!(centerDistance > 1e-6) || !Number.isFinite(appliedAverageDistance)) {
+      return center;
+    }
+    const depthScale = appliedAverageDistance / centerDistance;
+    return this._zoomPivotTmp.set(
+      cam.x + (center.x - cam.x) * depthScale,
+      cam.y + (center.y - cam.y) * depthScale,
+      cam.z + (center.z - cam.z) * depthScale,
+    );
+  }
+
+  private writeZoomTerrainSample(
+    index: number,
+    point: THREE.Vector3,
+    cameraPosition: THREE.Vector3,
+  ): number {
+    const offset = index * 3;
+    const positions = this.zoomTerrainSamples.positions;
+    positions[offset] = point.x;
+    positions[offset + 1] = point.y;
+    positions[offset + 2] = point.z;
+    const distance = cameraPosition.distanceTo(point);
+    this.zoomTerrainSamples.distances[index] = distance;
+    return distance;
+  }
+
+  private clearZoomTerrainSamples(): void {
+    this.zoomTerrainSamples.count = 0;
+    this.zoomTerrainSamples.averageDistance = 0;
+    this.zoomTerrainSamples.appliedAverageDistance = 0;
+    this.zoomTerrainSamples.centerDistance = 0;
+    this.zoomTerrainSamples.sampledAtMilliseconds = performance.now();
+    this.zoomTerrainSamples.version += 1;
   }
 
   private zoomByWorldStepAt(
@@ -1198,6 +1389,21 @@ export class OrbitCamera {
     return this.getCursorWorldPoint?.(clientX, clientY, terrainMode) ?? null;
   }
 
+  private _anchorScreenPoint(
+    clientX: number,
+    clientY: number,
+    anchor: CameraAnchor,
+    out: THREE.Vector2,
+  ): THREE.Vector2 | null {
+    if (anchor.screen === 'cursor') return out.set(clientX, clientY);
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return out.set(
+      rect.left + rect.width * 0.5,
+      rect.top + rect.height * 0.5,
+    );
+  }
+
   /** Resolve the gesture's anchor world point from its configured
    *  screen axis and terrain axis. */
   private _anchorWorldPoint(
@@ -1205,14 +1411,14 @@ export class OrbitCamera {
     clientY: number,
     anchor: CameraAnchor,
   ): THREE.Vector3 | null {
-    if (anchor.screen === 'cursor') {
-      return this._worldPointForScreenPoint(clientX, clientY, anchor.terrain);
-    }
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const cx = rect.left + rect.width * 0.5;
-    const cy = rect.top + rect.height * 0.5;
-    return this._worldPointForScreenPoint(cx, cy, anchor.terrain);
+    const screenPoint = this._anchorScreenPoint(
+      clientX,
+      clientY,
+      anchor,
+      this._zoomScreenAnchorTmp,
+    );
+    if (!screenPoint) return null;
+    return this._worldPointForScreenPoint(screenPoint.x, screenPoint.y, anchor.terrain);
   }
 
   private cameraPositionForState(
@@ -1552,6 +1758,13 @@ export class OrbitCamera {
     this.target.z += dZ * alpha;
     this.yaw += dYaw * alpha;
     this.apply();
+  }
+
+  /** Shared read-only view for the CLIENT ZOOM POINTS overlay. The typed
+   *  position buffer is stable for this OrbitCamera's lifetime and is updated
+   *  in place on each relative wheel/pinch zoom event. */
+  getZoomTerrainSampleSnapshot(): Readonly<CameraZoomTerrainSampleSnapshot> {
+    return this.zoomTerrainSamples;
   }
 
   /** Install / replace the 3D cursor picker callback. The scene calls

@@ -11,7 +11,18 @@
   "zoom": {
     "max": 40.0,
     "maxMapCenterDistance": 50000.0,
-    "stepFraction": 0.2
+    "stepFraction": 0.2,
+    "distanceSampling": {
+      "ringPointCount": 8,
+      "innerRadiusPixels": 48.0,
+      "outerRadiusPixels": 96.0,
+      "minCenterDistanceFraction": 0.1,
+      "debugPointSizePixels": 10.0,
+      "debugVisibleMilliseconds": 500.0,
+      "debugCenterColor": "#ffffff",
+      "debugInnerColor": "#00d9ff",
+      "debugOuterColor": "#ffb000"
+    }
   },
   "constraints": {
     "zoomInLimit": "zoom-max",

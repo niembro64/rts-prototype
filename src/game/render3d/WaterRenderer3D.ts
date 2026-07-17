@@ -81,6 +81,13 @@ export class WaterRenderer3D {
     parent.add(this.waterMesh);
   }
 
+  /** Canonical rendered water geometry for camera/cursor first-surface
+   *  picking. The mesh object is stable even when its geometry is rebuilt for
+   *  a different boundary presentation mode. */
+  getMesh(): THREE.Mesh {
+    return this.waterMesh;
+  }
+
   private buildInfinityGeometry(): void {
     const outer = HORIZON_RENDER_EXTEND;
     const x0 = -outer;
