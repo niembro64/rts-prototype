@@ -40,7 +40,6 @@ function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): Ne
     sprayTargets: undefined,
     audioEvents: undefined,
     scanPulses: undefined,
-    shroud: undefined,
     projectiles: undefined,
     gameState: undefined,
     serverMeta: undefined,

@@ -59,7 +59,6 @@ const _snapshotBuf: NetworkServerSnapshot = {
   sprayTargets: undefined,
   audioEvents: undefined,
   scanPulses: undefined,
-  shroud: undefined,
   projectiles: undefined,
   gameState: undefined,
   serverMeta: undefined,
@@ -276,7 +275,6 @@ export function serializeGameState(
   if (stages !== undefined) {
     addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
   }
-  const netShroud = undefined;
 
   stageStart = performance.now();
   const netProjectiles = serializeProjectileSnapshot({
@@ -309,7 +307,6 @@ export function serializeGameState(
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
   _snapshotBuf.scanPulses = netScanPulses;
-  _snapshotBuf.shroud = netShroud;
   _snapshotBuf.projectiles = netProjectiles;
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.removedEntityIds = _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;

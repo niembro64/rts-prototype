@@ -78,7 +78,6 @@
       "comment": "Environment props hide when their projected screen radius drops below these thresholds (px at the reference viewport height).",
       "grassMinScreenRadiusPx": 3,
       "treeMinScreenRadiusPx": 1.5
-    },
-    "fogSphereTier": "mid"
+    }
   }
 }

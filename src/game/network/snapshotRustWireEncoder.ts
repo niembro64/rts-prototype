@@ -2063,14 +2063,6 @@ function packScanPulsesIntoScratch(
   }
 }
 
-function packShroudIntoScratch(sim: SimWasm, shroud: NonNullable<NetworkServerSnapshot['shroud']>): void {
-  if (shroud.bitmap.length === 0) return;
-  const api = sim.snapshotEncode;
-  api.shroudScratchEnsure(shroud.bitmap.length);
-  new Uint8Array(sim.memory.buffer, api.shroudScratchPtr(), shroud.bitmap.length)
-    .set(shroud.bitmap);
-}
-
 const _numberArrayOffsets: number[] = [];
 
 function packNumberArraysIntoScratch(
@@ -2285,12 +2277,6 @@ function emitTopLevelKey(
       const pulses = value as NonNullable<NetworkServerSnapshot['scanPulses']>;
       packScanPulsesIntoScratch(sim, pulses);
       api.emitScanPulses(pulses.length);
-      return;
-    }
-    case 'shroud': {
-      const shroud = value as NonNullable<NetworkServerSnapshot['shroud']>;
-      packShroudIntoScratch(sim, shroud);
-      api.emitShroud(shroud.gridW, shroud.gridH, shroud.cellSize, shroud.bitmap.length);
       return;
     }
     case 'terrain': {
