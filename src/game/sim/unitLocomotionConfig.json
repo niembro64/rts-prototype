@@ -524,7 +524,7 @@
             "forceCoupling": 3
           },
           "resistance": {
-            "frictionMultiplier": 0.9747862873111837,
+            "frictionMultiplier": 0.1,
             "quadraticDrag": 0.00002,
             "directionalScale": {
               "forward": 0.55,
