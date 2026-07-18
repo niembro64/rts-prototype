@@ -27,6 +27,8 @@ import type { CameraAnchorTerrain } from '../../types/camera';
 const TERRAIN_RAY_FALLBACK_STEP = 20;
 const TERRAIN_RAY_FALLBACK_MAX_STEPS = 8192;
 const WATER_TOP_PICK_EPSILON = 1e-3;
+const ZOOM_SAMPLE_HEIGHT_ITERATIONS = 6;
+const ZOOM_SAMPLE_HEIGHT_CONVERGENCE = 0.05;
 
 export type SimGroundPoint = {
   x: number;
@@ -100,6 +102,69 @@ export class CursorGround {
     // water plane. Command picking below deliberately does not enable that
     // fallback, preventing off-map orders.
     return this.pickWorldFromCurrentRay(terrainMode, true);
+  }
+
+  /** Fast peripheral picker for the optional 8/16 zoom-neighborhood rays.
+   *  Unlike pickWorld(), this never traverses the full terrain or water mesh.
+   *  It projects the screen ray onto a candidate horizontal surface, samples
+   *  the canonical O(1) heightfield there, and iterates that height a handful
+   *  of times. The returned point remains on the screen ray and is the exact
+   *  point recorded by OrbitCamera's averaging/debug buffer.
+   *
+   *  The exact center mesh hit is still obtained separately for cursor-anchor
+   *  fallback, but every distance probe (including center) uses this same
+   *  solver so MIN never gets a center-only precision advantage. */
+  pickZoomSampleWorld(
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+    referenceSurfaceHeight: number,
+  ): THREE.Vector3 | null {
+    if (!this.setRayFromClient(clientX, clientY)) return null;
+    if (terrainMode === 'plane-2d') return this.pickPlaneRay();
+
+    const ray = this.raycaster.ray;
+    if (ray.direction.y >= -1e-6) return null;
+    let height = Number.isFinite(referenceSurfaceHeight)
+      ? referenceSurfaceHeight
+      : terrainMode === 'terrain-3d-water'
+        ? WATER_LEVEL
+        : 0;
+
+    for (let i = 0; i < ZOOM_SAMPLE_HEIGHT_ITERATIONS; i++) {
+      const t = (height - ray.origin.y) / ray.direction.y;
+      if (!Number.isFinite(t) || t < 0) return null;
+      const x = ray.origin.x + t * ray.direction.x;
+      const z = ray.origin.z + t * ray.direction.z;
+      const nextHeight = this.zoomSampleSurfaceHeight(x, z, terrainMode);
+      if (!Number.isFinite(nextHeight)) return null;
+      const converged = Math.abs(nextHeight - height) <= ZOOM_SAMPLE_HEIGHT_CONVERGENCE;
+      height = nextHeight;
+      if (converged) break;
+    }
+
+    const t = (height - ray.origin.y) / ray.direction.y;
+    if (!Number.isFinite(t) || t < 0) return null;
+    return this.worldHit.set(
+      ray.origin.x + t * ray.direction.x,
+      height,
+      ray.origin.z + t * ray.direction.z,
+    );
+  }
+
+  private zoomSampleSurfaceHeight(
+    x: number,
+    z: number,
+    terrainMode: CameraAnchorTerrain,
+  ): number {
+    const insideTerrain = x >= 0 && x <= this.mapWidth && z >= 0 && z <= this.mapHeight;
+    if (!insideTerrain) {
+      return terrainMode === 'terrain-3d-water' ? WATER_LEVEL : Number.NaN;
+    }
+    const terrainHeight = getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight);
+    return terrainMode === 'terrain-3d-water'
+      ? Math.max(terrainHeight, WATER_LEVEL)
+      : terrainHeight;
   }
 
   private setRayFromClient(clientX: number, clientY: number): boolean {

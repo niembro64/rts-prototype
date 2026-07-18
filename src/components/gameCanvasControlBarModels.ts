@@ -172,6 +172,12 @@ export type GameCanvasClientControlBarModel = {
   readonly renderTpsAvg: number;
   readonly renderTpsWorst: number;
   readonly currentZoom: number;
+  readonly cameraPositionX: number;
+  readonly cameraPositionY: number;
+  readonly cameraPositionZ: number;
+  readonly cameraDirectionX: number;
+  readonly cameraDirectionY: number;
+  readonly cameraDirectionZ: number;
   readonly snapAvgRate: number;
   readonly snapWorstRate: number;
   readonly rawSnapshotReceivedRate: number;

@@ -13,6 +13,12 @@ export class ZoomTerrainPointsOverlay3D {
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.PointsMaterial;
   private readonly points: THREE.Points;
+  private readonly colorValues: Float32Array;
+  private readonly colorAttribute: THREE.BufferAttribute;
+  private readonly centerColor: THREE.Color;
+  private readonly innerColor: THREE.Color;
+  private readonly outerColor: THREE.Color;
+  private readonly selectedColor: THREE.Color;
   private readonly samples: Readonly<CameraZoomTerrainSampleSnapshot>;
   private lastVersion = -1;
 
@@ -28,22 +34,14 @@ export class ZoomTerrainPointsOverlay3D {
       new THREE.BufferAttribute(this.samples.positions, 3),
     );
 
-    const colors = new Float32Array(this.samples.distances.length * 3);
-    const centerColor = new THREE.Color(config.debugCenterColor);
-    const innerColor = new THREE.Color(config.debugInnerColor);
-    const outerColor = new THREE.Color(config.debugOuterColor);
-    for (let i = 0; i < this.samples.distances.length; i++) {
-      const color = i === 0
-        ? centerColor
-        : i <= this.samples.ringPointCount
-          ? innerColor
-          : outerColor;
-      const offset = i * 3;
-      colors[offset] = color.r;
-      colors[offset + 1] = color.g;
-      colors[offset + 2] = color.b;
-    }
-    this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.colorValues = new Float32Array(this.samples.distances.length * 3);
+    this.colorAttribute = new THREE.BufferAttribute(this.colorValues, 3);
+    this.centerColor = new THREE.Color(config.debugCenterColor);
+    this.innerColor = new THREE.Color(config.debugInnerColor);
+    this.outerColor = new THREE.Color(config.debugOuterColor);
+    this.selectedColor = new THREE.Color(config.debugSelectedColor);
+    this.refreshColors();
+    this.geometry.setAttribute('color', this.colorAttribute);
     this.geometry.setDrawRange(0, 0);
 
     this.material = new THREE.PointsMaterial({
@@ -75,7 +73,27 @@ export class ZoomTerrainPointsOverlay3D {
     this.lastVersion = this.samples.version;
     const position = this.geometry.getAttribute('position') as THREE.BufferAttribute;
     position.needsUpdate = true;
+    this.refreshColors();
     this.geometry.setDrawRange(0, this.samples.count);
+  }
+
+  private refreshColors(): void {
+    for (let i = 0; i < this.samples.distances.length; i++) {
+      const selected = this.samples.aggregation === 'min'
+        && i === this.samples.selectedSampleIndex;
+      const color = selected
+        ? this.selectedColor
+        : i === 0
+          ? this.centerColor
+          : i <= this.samples.ringPointCount
+            ? this.innerColor
+            : this.outerColor;
+      const offset = i * 3;
+      this.colorValues[offset] = color.r;
+      this.colorValues[offset + 1] = color.g;
+      this.colorValues[offset + 2] = color.b;
+    }
+    this.colorAttribute.needsUpdate = true;
   }
 
   destroy(): void {

@@ -34,6 +34,7 @@ import {
   ZOOM_MAX_MAP_CENTER_DISTANCE,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
+  CAMERA_LOST_TERRAIN_RECOVERY,
   CAMERA_ZOOM_DISTANCE_SAMPLING,
 } from '../../config';
 import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
@@ -221,6 +222,7 @@ export class ThreeApp {
       maxCameraDistanceFromOrigin: ZOOM_MAX_MAP_CENTER_DISTANCE,
       cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
+      lostTerrainRecovery: CAMERA_LOST_TERRAIN_RECOVERY,
       zoomStepFraction: ZOOM_STEP_FRACTION,
       zoomDistanceSampling: CAMERA_ZOOM_DISTANCE_SAMPLING,
       movementConfig: CAMERA_MOVEMENT_CONFIG,

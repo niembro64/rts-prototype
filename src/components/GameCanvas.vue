@@ -1298,6 +1298,12 @@ const displayServerTpsWorst = computed(
 );
 const {
   currentZoom,
+  cameraPositionX,
+  cameraPositionY,
+  cameraPositionZ,
+  cameraDirectionX,
+  cameraDirectionY,
+  cameraDirectionZ,
   displayGpuMs,
   frameMsAvg,
   frameMsHi,
@@ -1951,6 +1957,12 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   renderTpsAvg: renderTpsAvg.value,
   renderTpsWorst: renderTpsWorst.value,
   currentZoom: currentZoom.value,
+  cameraPositionX: cameraPositionX.value,
+  cameraPositionY: cameraPositionY.value,
+  cameraPositionZ: cameraPositionZ.value,
+  cameraDirectionX: cameraDirectionX.value,
+  cameraDirectionY: cameraDirectionY.value,
+  cameraDirectionZ: cameraDirectionZ.value,
   snapAvgRate: snapAvgRate.value,
   snapWorstRate: snapWorstRate.value,
   rawSnapshotReceivedRate: rawSnapshotReceivedRate.value,
@@ -2142,6 +2154,12 @@ watchEffect(() => {
   m.renderTpsAvg = renderTpsAvg.value;
   m.renderTpsWorst = renderTpsWorst.value;
   m.currentZoom = currentZoom.value;
+  m.cameraPositionX = cameraPositionX.value;
+  m.cameraPositionY = cameraPositionY.value;
+  m.cameraPositionZ = cameraPositionZ.value;
+  m.cameraDirectionX = cameraDirectionX.value;
+  m.cameraDirectionY = cameraDirectionY.value;
+  m.cameraDirectionZ = cameraDirectionZ.value;
   m.snapAvgRate = snapAvgRate.value;
   m.snapWorstRate = snapWorstRate.value;
   m.rawSnapshotReceivedRate = rawSnapshotReceivedRate.value;

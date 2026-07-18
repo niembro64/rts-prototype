@@ -13,20 +13,27 @@
     "maxMapCenterDistance": 50000.0,
     "stepFraction": 0.2,
     "distanceSampling": {
+      "pointMode": "seventeen",
+      "distanceAggregation": "min",
       "ringPointCount": 8,
-      "innerRadiusPixels": 48.0,
-      "outerRadiusPixels": 96.0,
+      "innerRadiusPixels": 100.0,
+      "outerRadiusPixels": 200.0,
       "minCenterDistanceFraction": 0.1,
       "debugPointSizePixels": 10.0,
       "debugVisibleMilliseconds": 500.0,
-      "debugCenterColor": "#ffffff",
-      "debugInnerColor": "#00d9ff",
-      "debugOuterColor": "#ffb000"
+      "debugCenterColor": "#ffb000",
+      "debugInnerColor": "#ffb000",
+      "debugOuterColor": "#ffb000",
+      "debugSelectedColor": "#ff3030"
     }
   },
   "constraints": {
     "zoomInLimit": "zoom-max",
     "targetBounds": "map-padding"
+  },
+  "lostTerrainRecovery": {
+    "enabled": true,
+    "emaTauSeconds": 0.35
   },
   "movement": {
     "scaleMode": "anchor-distance-relative",

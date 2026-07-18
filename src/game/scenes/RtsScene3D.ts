@@ -1017,6 +1017,35 @@ export class RtsScene3D {
     return this.cameraControl.getOrbitCamera();
   }
 
+  /**
+   * Actual rendered-camera pose, in Three world coordinates.  This is
+   * intentionally the eye and forward vector after OrbitCamera.apply(), not
+   * its target / requested orbit state, so camera diagnostics expose exactly
+   * what the renderer is drawing from.
+   */
+  public getCameraDebugPose(): {
+    readonly positionX: number;
+    readonly positionY: number;
+    readonly positionZ: number;
+    readonly directionX: number;
+    readonly directionY: number;
+    readonly directionZ: number;
+  } {
+    const camera = this.threeApp.camera;
+    // lookAt() updates the camera quaternion immediately; ensure matrixWorld
+    // reflects it too before extracting Three's normalized -Z forward axis.
+    camera.updateWorldMatrix(true, false);
+    const worldMatrix = camera.matrixWorld.elements;
+    return {
+      positionX: camera.position.x,
+      positionY: camera.position.y,
+      positionZ: camera.position.z,
+      directionX: -worldMatrix[8],
+      directionY: -worldMatrix[9],
+      directionZ: -worldMatrix[10],
+    };
+  }
+
   public markSelectionDirty(): void {
     this.selectionSystem.markSelectionDirty();
   }

@@ -35,9 +35,11 @@ import type {
   CameraAnchor,
   CameraAnchorTerrain,
   CameraInputMomentumConfig,
+  CameraLostTerrainRecoveryConfig,
   CameraMovementConfig,
   CameraMovementScaleMode,
   CameraTerrainCollisionMode,
+  CameraZoomDistanceAggregation,
   CameraZoomDistanceSamplingConfig,
 } from '../../types/camera';
 
@@ -49,6 +51,8 @@ const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
 
 const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = {
+  pointMode: 'seventeen',
+  distanceAggregation: 'min',
   ringPointCount: 8,
   innerRadiusPixels: 48,
   outerRadiusPixels: 96,
@@ -58,6 +62,7 @@ const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = 
   debugCenterColor: '#ffffff',
   debugInnerColor: '#00d9ff',
   debugOuterColor: '#ffb000',
+  debugSelectedColor: '#ff3030',
 };
 
 const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
@@ -114,6 +119,11 @@ const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
   },
 };
 
+const DEFAULT_LOST_TERRAIN_RECOVERY_CONFIG: CameraLostTerrainRecoveryConfig = {
+  enabled: false,
+  emaTauSeconds: 0.35,
+};
+
 type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Leave undefined for an effectively
    *  unbounded camera; terrain clearance is handled separately at render
@@ -128,6 +138,9 @@ type OrbitCameraOptions = {
    *  The camera can dolly past it freely; HUD elements key off this so
    *  the fade window tracks map size. */
   farReferenceDistance?: number;
+  /** Recover a lost map view by EMAing the eye and view angle toward the
+   * configured map-origin point. Disabled by default for standalone callers. */
+  lostTerrainRecovery?: CameraLostTerrainRecoveryConfig;
   minPitch?: number;
   maxPitch?: number;
   /** Relative-mode per-wheel-tick zoom fraction. Each scroll-IN moves the
@@ -154,6 +167,16 @@ type OrbitCameraOptions = {
     clientY: number,
     terrainMode: CameraAnchorTerrain,
   ) => THREE.Vector3 | null;
+  /** OPTIONAL optimized picker for the peripheral zoom-distance samples.
+   *  The center anchor always uses getCursorWorldPoint's authoritative mesh
+   *  raycast; this callback can resolve the surrounding rays from a cheaper
+   *  heightfield representation. */
+  getZoomSampleWorldPoint?: (
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+    referenceSurfaceHeight: number,
+  ) => THREE.Vector3 | null;
   /** OPTIONAL terrain-height sampler used only when an explicit
    *  terrain collision mode is enabled. The app-level camera does
    *  not wire this path by default, so it remains free to pass
@@ -176,15 +199,18 @@ type OrbitCameraOptions = {
 
 /** Fixed, allocation-free sample buffer shared with the zoom-points debug
  *  renderer. Positions use Three.js world axes and are the exact terrain
- *  points whose distances contributed to `averageDistance`. */
+ *  points whose distances contributed to `aggregateDistance`. */
 export type CameraZoomTerrainSampleSnapshot = {
   readonly positions: Float32Array;
   readonly distances: Float32Array;
   readonly ringPointCount: number;
   count: number;
-  averageDistance: number;
-  appliedAverageDistance: number;
+  aggregation: CameraZoomDistanceAggregation;
+  aggregateDistance: number;
+  appliedAggregateDistance: number;
   centerDistance: number;
+  /** Index of the point selected by `min`; -1 for average mode. */
+  selectedSampleIndex: number;
   sampledAtMilliseconds: number;
   version: number;
 };
@@ -232,6 +258,17 @@ export class OrbitCamera {
   private cameraDistanceOrigin = new THREE.Vector3();
   /** HUD-fade far reference (see getFarReferenceDistance). Not a clamp. */
   private farReferenceDistance: number;
+  private lostTerrainRecovery: CameraLostTerrainRecoveryConfig =
+    DEFAULT_LOST_TERRAIN_RECOVERY_CONFIG;
+  /** Receives a camera frustum and reports whether an actual rendered map
+   * surface (terrain or water) intersects it. Installed by the scene once
+   * those renderers exist. */
+  private surfaceVisibilityChecker?: (frustum: THREE.Frustum) => boolean;
+  private mapRecoveryActive = false;
+  private mapRecoveryPitch = this.pitch;
+  private mapRecoveryDistance = this.distance;
+  private mapRecoveryYaw = this.yaw;
+  private readonly mapRecoveryTarget = new THREE.Vector3();
   private minPitch: number;
   private maxPitch: number;
   private targetMinX = -Infinity;
@@ -248,6 +285,12 @@ export class OrbitCamera {
     clientX: number,
     clientY: number,
     terrainMode: CameraAnchorTerrain,
+  ) => THREE.Vector3 | null;
+  private getZoomSampleWorldPoint?: (
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+    referenceSurfaceHeight: number,
   ) => THREE.Vector3 | null;
   private getTerrainHeight?: (x: number, z: number) => number;
   /** Minimum 3D gap between the camera and nearby terrain when an
@@ -318,8 +361,13 @@ export class OrbitCamera {
   private _cameraPosTmp = new THREE.Vector3();
   private _cameraLookAtTmp = new THREE.Vector3();
   private _zoomCenterTmp = new THREE.Vector3();
+  private _zoomSampleCenterTmp = new THREE.Vector3();
   private _zoomPivotTmp = new THREE.Vector3();
   private _zoomScreenAnchorTmp = new THREE.Vector2();
+  private _mapRecoveryOriginClipTmp = new THREE.Vector3();
+  private _mapRecoveryEyeOffsetTmp = new THREE.Vector3();
+  private _surfaceVisibilityFrustum = new THREE.Frustum();
+  private _surfaceVisibilityProjectionTmp = new THREE.Matrix4();
   private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
@@ -356,6 +404,15 @@ export class OrbitCamera {
       );
     }
     this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
+    const recovery = opts.lostTerrainRecovery;
+    if (recovery !== undefined) {
+      this.lostTerrainRecovery = {
+        enabled: recovery.enabled === true,
+        emaTauSeconds: Number.isFinite(recovery.emaTauSeconds)
+          ? Math.max(0.01, recovery.emaTauSeconds)
+          : DEFAULT_LOST_TERRAIN_RECOVERY_CONFIG.emaTauSeconds,
+      };
+    }
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
@@ -371,9 +428,11 @@ export class OrbitCamera {
       distances: new Float32Array(zoomSampleCount),
       ringPointCount: zoomRingPointCount,
       count: 0,
-      averageDistance: 0,
-      appliedAverageDistance: 0,
+      aggregation: this.zoomDistanceSampling.distanceAggregation,
+      aggregateDistance: 0,
+      appliedAggregateDistance: 0,
       centerDistance: 0,
+      selectedSampleIndex: -1,
       sampledAtMilliseconds: Number.NEGATIVE_INFINITY,
       version: 0,
     };
@@ -381,6 +440,7 @@ export class OrbitCamera {
     this.movementScaleMode = this.movementConfig.scaleMode;
     this.panMultiplier = opts.panMultiplier ?? 1.0;
     this.getCursorWorldPoint = opts.getCursorWorldPoint;
+    this.getZoomSampleWorldPoint = opts.getZoomSampleWorldPoint;
     this.getTerrainHeight = opts.getTerrainHeight;
     if (opts.minTerrainClearance !== undefined) {
       this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
@@ -835,8 +895,8 @@ export class OrbitCamera {
       return;
     }
 
-    // CursorGround returns shared scratch storage, so retain the center before
-    // resolving any of the 16 neighboring rays.
+    // CursorGround returns shared scratch storage, so retain the exact center
+    // anchor before resolving the uniform 17-probe distance set below.
     this._zoomCenterTmp.copy(centerHit);
     const pivot = this.resolveAveragedZoomPivot(
       clientX,
@@ -848,12 +908,13 @@ export class OrbitCamera {
     this.zoomByResolvedAnchorFactor(wantFactor, pivot);
   }
 
-  /** Resolve center + two screen-space rings through the same world picker
-   *  used by camera anchoring, then place the actual scale pivot on the
-   *  center ray at the averaged depth. Scaling camera + target around any
-   *  point on that ray keeps the center terrain point on the same pixel while
-   *  making the travel magnitude depend on the 17-point mean instead of one
-   *  mountain-top/valley sample. */
+  /** Resolve the center plus zero, one, or two screen-space rings, then place
+   *  the actual scale pivot on the center ray at the selected aggregate depth.
+   *  All aggregation probes use the same fast heightfield ray solver — mixing
+   *  one mesh intersection with sixteen height samples biased MIN toward the
+   *  center on cliffs/occluded terrain. Scaling camera + target around a point
+   *  on the center ray keeps the center terrain point on the same pixel while
+   *  making travel depend on the configured neighborhood scalar. */
   private resolveAveragedZoomPivot(
     clientX: number,
     clientY: number,
@@ -861,8 +922,27 @@ export class OrbitCamera {
     anchor: CameraAnchor,
     center: THREE.Vector3,
   ): THREE.Vector3 {
+    const screenAnchor = this._anchorScreenPoint(
+      clientX,
+      clientY,
+      anchor,
+      this._zoomScreenAnchorTmp,
+    );
+    // The exact mesh hit supplied by zoomByFactorAt is retained only as a
+    // fallback. The central distance probe must go through the same solver as
+    // all sixteen neighbors, otherwise MIN compares different surfaces and
+    // the center can win simply because it was sampled more accurately.
+    const sampledCenterHit = screenAnchor && this.getZoomSampleWorldPoint
+      ? this.getZoomSampleWorldPoint(
+          screenAnchor.x,
+          screenAnchor.y,
+          anchor.terrain,
+          center.y,
+        )
+      : center;
+    const sampledCenter = this._zoomSampleCenterTmp.copy(sampledCenterHit ?? center);
     const samples = this.zoomTerrainSamples;
-    const cam = this.cameraPositionForState(
+    const motionCamera = this.cameraPositionForState(
       this.toTargetX,
       this.toTargetY,
       this.toTargetZ,
@@ -871,77 +951,117 @@ export class OrbitCamera {
       this.pitch,
       this._cameraPosTmp,
     );
-    const centerDistance = cam.distanceTo(center);
-    const screenAnchor = this._anchorScreenPoint(
-      clientX,
-      clientY,
-      anchor,
-      this._zoomScreenAnchorTmp,
-    );
+    // The 17 sample rays originate at the rendered camera, so compare their
+    // distances from that same camera. Using the smooth TO-state here mixed
+    // two camera poses during an EMA zoom and could make the center look like
+    // it always won the min reduction.
+    const sampleCamera = this.camera.position;
+    const centerDistance = sampleCamera.distanceTo(sampledCenter);
+    const motionCenterDistance = motionCamera.distanceTo(sampledCenter);
 
-    let sum = this.writeZoomTerrainSample(0, center, cam);
+    let sum = this.writeZoomTerrainSample(0, sampledCenter, sampleCamera);
+    let minDistance = samples.distances[0];
+    let minSampleIndex = 0;
     let sampleIndex = 1;
     const ringPointCount = samples.ringPointCount;
+    const sampledRingCount = this.zoomDistanceSampling.pointMode === 'single'
+      ? 0
+      : this.zoomDistanceSampling.pointMode === 'nine'
+        ? 1
+        : 2;
+    const targetSampleCount = 1 + sampledRingCount * ringPointCount;
     const innerRadius = Math.max(0, this.zoomDistanceSampling.innerRadiusPixels);
     const outerRadius = Math.max(innerRadius, this.zoomDistanceSampling.outerRadiusPixels);
 
-    if (screenAnchor) {
-      for (let ring = 0; ring < 2; ring++) {
+    if (screenAnchor && sampledRingCount > 0) {
+      for (let ring = 0; ring < sampledRingCount; ring++) {
         const radius = ring === 0 ? innerRadius : outerRadius;
         for (let i = 0; i < ringPointCount; i++) {
           const angle = (i / ringPointCount) * Math.PI * 2;
-          const hit = this._worldPointForScreenPoint(
-            screenAnchor.x + Math.cos(angle) * radius,
-            screenAnchor.y + Math.sin(angle) * radius,
-            anchor.terrain,
-          );
+          const sampleClientX = screenAnchor.x + Math.cos(angle) * radius;
+          const sampleClientY = screenAnchor.y + Math.sin(angle) * radius;
+          const hit = this.getZoomSampleWorldPoint
+            ? this.getZoomSampleWorldPoint(
+                sampleClientX,
+                sampleClientY,
+                anchor.terrain,
+                sampledCenter.y,
+              )
+            : this._worldPointForScreenPoint(
+                sampleClientX,
+                sampleClientY,
+                anchor.terrain,
+              );
           // A peripheral ray can miss the rendered surface at a very low
           // pitch or canvas edge. Reusing the center gives every zoom event
-          // the configured 17 equal weights without introducing a stale or
+          // the configured equal weights without introducing a stale or
           // arbitrary distance. The shared debug buffer records that exact
           // fallback position too.
-          sum += this.writeZoomTerrainSample(sampleIndex, hit ?? center, cam);
+          const distance = this.writeZoomTerrainSample(
+            sampleIndex,
+            hit ?? sampledCenter,
+            sampleCamera,
+          );
+          sum += distance;
+          if (distance < minDistance) {
+            minDistance = distance;
+            minSampleIndex = sampleIndex;
+          }
           sampleIndex += 1;
         }
       }
     } else {
-      while (sampleIndex < samples.distances.length) {
-        sum += this.writeZoomTerrainSample(sampleIndex, center, cam);
+      while (sampleIndex < targetSampleCount) {
+        const distance = this.writeZoomTerrainSample(
+          sampleIndex,
+          sampledCenter,
+          sampleCamera,
+        );
+        sum += distance;
+        if (distance < minDistance) {
+          minDistance = distance;
+          minSampleIndex = sampleIndex;
+        }
         sampleIndex += 1;
       }
     }
 
-    const averageDistance = sum / sampleIndex;
-    let appliedAverageDistance = averageDistance;
-    if (wantFactor < 1 && centerDistance > 1e-6) {
+    const aggregation = this.zoomDistanceSampling.distanceAggregation;
+    const aggregateDistance = aggregation === 'min'
+      ? minDistance
+      : sum / sampleIndex;
+    let appliedAggregateDistance = aggregateDistance;
+    if (wantFactor < 1 && motionCenterDistance > 1e-6) {
       // A deep valley beside an extremely close peak can otherwise ask one
       // tick to cross the center anchor. Keep a small, configured amount of
-      // center-ray depth while still using the true arithmetic mean in every
+      // center-ray depth while preserving the selected aggregate in every
       // normal case.
       const retained = Math.min(
         0.99,
         Math.max(0, this.zoomDistanceSampling.minCenterDistanceFraction),
       );
-      const maxTravel = centerDistance * (1 - retained);
-      const maxAverageDistance = maxTravel / Math.max(1e-6, 1 - wantFactor);
-      appliedAverageDistance = Math.min(averageDistance, maxAverageDistance);
+      const maxTravel = motionCenterDistance * (1 - retained);
+      const maxAggregateDistance = maxTravel / Math.max(1e-6, 1 - wantFactor);
+      appliedAggregateDistance = Math.min(aggregateDistance, maxAggregateDistance);
     }
 
     samples.count = sampleIndex;
-    samples.averageDistance = averageDistance;
-    samples.appliedAverageDistance = appliedAverageDistance;
+    samples.aggregation = aggregation;
+    samples.aggregateDistance = aggregateDistance;
+    samples.appliedAggregateDistance = appliedAggregateDistance;
     samples.centerDistance = centerDistance;
+    samples.selectedSampleIndex = aggregation === 'min' ? minSampleIndex : -1;
     samples.sampledAtMilliseconds = performance.now();
     samples.version += 1;
 
-    if (!(centerDistance > 1e-6) || !Number.isFinite(appliedAverageDistance)) {
+    if (!(motionCenterDistance > 1e-6) || !Number.isFinite(appliedAggregateDistance)) {
       return center;
     }
-    const depthScale = appliedAverageDistance / centerDistance;
+    const depthScale = appliedAggregateDistance / motionCenterDistance;
     return this._zoomPivotTmp.set(
-      cam.x + (center.x - cam.x) * depthScale,
-      cam.y + (center.y - cam.y) * depthScale,
-      cam.z + (center.z - cam.z) * depthScale,
+      motionCamera.x + (sampledCenter.x - motionCamera.x) * depthScale,
+      motionCamera.y + (sampledCenter.y - motionCamera.y) * depthScale,
+      motionCamera.z + (sampledCenter.z - motionCamera.z) * depthScale,
     );
   }
 
@@ -962,9 +1082,10 @@ export class OrbitCamera {
 
   private clearZoomTerrainSamples(): void {
     this.zoomTerrainSamples.count = 0;
-    this.zoomTerrainSamples.averageDistance = 0;
-    this.zoomTerrainSamples.appliedAverageDistance = 0;
+    this.zoomTerrainSamples.aggregateDistance = 0;
+    this.zoomTerrainSamples.appliedAggregateDistance = 0;
     this.zoomTerrainSamples.centerDistance = 0;
+    this.zoomTerrainSamples.selectedSampleIndex = -1;
     this.zoomTerrainSamples.sampledAtMilliseconds = performance.now();
     this.zoomTerrainSamples.version += 1;
   }
@@ -1031,7 +1152,14 @@ export class OrbitCamera {
     p0: THREE.Vector3 | null,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    const wantedDistance = this.toDistance * wantFactor;
+    // A water-horizon anchor can be vastly farther away than the visible map.
+    // Clamp the factor BEFORE it translates target + eye around that anchor,
+    // so an outward zoom ends exactly on the eye-distance rail instead of
+    // leaving an impossible target/rail combination for the distance solver.
+    const railSafeFactor = p0
+      ? this.constrainZoomFactorToCameraRail(wantFactor, p0)
+      : wantFactor;
+    const wantedDistance = this.toDistance * railSafeFactor;
     const startTargetX = this.toTargetX;
     const startTargetY = this.toTargetY;
     const startTargetZ = this.toTargetZ;
@@ -1360,11 +1488,76 @@ export class OrbitCamera {
       relZ * relZ -
       this.maxCameraDistanceFromOrigin * this.maxCameraDistanceFromOrigin;
     const discriminant = b * b - c;
-    if (discriminant < 0) return this.minDistance;
+    // The target can transiently be outside the eye-distance sphere (for
+    // example after a horizon-facing gesture). There is then no valid orbit
+    // distance along this yaw/pitch ray. Preserve the current requested
+    // distance rather than snapping to minDistance, which teleported the view
+    // under/away from the map and made a normal zoom-in feel dead.
+    if (discriminant < 0) return minClamped;
 
     const maxOrbitDistance = -b + Math.sqrt(discriminant);
-    if (!Number.isFinite(maxOrbitDistance)) return minClamped;
+    if (!Number.isFinite(maxOrbitDistance) || maxOrbitDistance <= 0) return minClamped;
     return Math.min(minClamped, Math.max(this.minDistance, maxOrbitDistance));
+  }
+
+  /** Restrict a cursor-pinned zoom factor so the resulting destination eye
+   *  stays inside maxCameraDistanceFromOrigin. The camera motion caused by a
+   *  factor is a straight segment:
+   *
+   *    eye' = factor·eye + (1−factor)·anchor
+   *
+   *  so a simple segment/sphere intersection gives the largest legal fraction
+   *  of the requested gesture. This is applied before target movement, unlike
+   *  constrainOrbitDistance(), and therefore cannot create a contradictory
+   *  far-away target with a tiny forced orbit distance. */
+  private constrainZoomFactorToCameraRail(
+    wantFactor: number,
+    anchor: THREE.Vector3,
+  ): number {
+    if (!Number.isFinite(this.maxCameraDistanceFromOrigin)) return wantFactor;
+    const eye = this.cameraPositionForState(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toDistance,
+      this.toYaw,
+      this.pitch,
+      this._cameraPosTmp,
+    );
+    const nextEyeX = wantFactor * eye.x + (1 - wantFactor) * anchor.x;
+    const nextEyeY = wantFactor * eye.y + (1 - wantFactor) * anchor.y;
+    const nextEyeZ = wantFactor * eye.z + (1 - wantFactor) * anchor.z;
+    const origin = this.cameraDistanceOrigin;
+    const startX = eye.x - origin.x;
+    const startY = eye.y - origin.y;
+    const startZ = eye.z - origin.z;
+    const endX = nextEyeX - origin.x;
+    const endY = nextEyeY - origin.y;
+    const endZ = nextEyeZ - origin.z;
+    const radiusSq = this.maxCameraDistanceFromOrigin * this.maxCameraDistanceFromOrigin;
+    const startRadiusSq = startX * startX + startY * startY + startZ * startZ;
+    const endRadiusSq = endX * endX + endY * endY + endZ * endZ;
+    if (endRadiusSq <= radiusSq) return wantFactor;
+
+    // If a stale/legacy state is already beyond the rail, never let an
+    // outward zoom make it worse; allow inward zooms unchanged so the player
+    // can always recover without using the minimap.
+    if (startRadiusSq >= radiusSq) {
+      return endRadiusSq < startRadiusSq ? wantFactor : 1;
+    }
+
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const deltaZ = endZ - startZ;
+    const a = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+    if (!(a > 1e-12)) return 1;
+    const b = 2 * (startX * deltaX + startY * deltaY + startZ * deltaZ);
+    const c = startRadiusSq - radiusSq;
+    const discriminant = b * b - 4 * a * c;
+    if (!(discriminant >= 0)) return 1;
+    const exitT = (-b + Math.sqrt(discriminant)) / (2 * a);
+    const clampedT = Math.min(1, Math.max(0, exitT));
+    return 1 + (wantFactor - 1) * clampedT;
   }
 
   private static normalizeAngleDelta(delta: number): number {
@@ -1715,7 +1908,11 @@ export class OrbitCamera {
    *  the to-state via EMA: alpha = 1 − exp(−dt / tau). Cheap no-op
    *  when tau is 0 or already converged. */
   tick(dtSec: number): void {
-    if (this.smoothTauSec <= 0) return;
+    const recoveringMap = this.updateLostTerrainRecovery();
+    const tau = recoveringMap
+      ? this.lostTerrainRecovery.emaTauSeconds
+      : this.smoothTauSec;
+    if (tau <= 0) return;
     const dDist = this.toDistance - this.distance;
     const dX = this.toTargetX - this.target.x;
     const dY = this.toTargetY - this.target.y;
@@ -1729,15 +1926,20 @@ export class OrbitCamera {
     if (dYaw > Math.PI || dYaw < -Math.PI) {
       dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
     }
+    const dPitch = recoveringMap ? this.mapRecoveryPitch - this.pitch : 0;
     // Settled — snap to exact and stop spinning the integrator.
     if (
       Math.abs(dDist) < 1e-3 &&
       Math.abs(dX) < 1e-3 &&
       Math.abs(dY) < 1e-3 &&
       Math.abs(dZ) < 1e-3 &&
-      Math.abs(dYaw) < 1e-4
+      Math.abs(dYaw) < 1e-4 &&
+      Math.abs(dPitch) < 1e-4
     ) {
-      if (dDist !== 0 || dX !== 0 || dY !== 0 || dZ !== 0 || dYaw !== 0) {
+      if (
+        dDist !== 0 || dX !== 0 || dY !== 0 || dZ !== 0 || dYaw !== 0
+        || dPitch !== 0
+      ) {
         this.distance = this.toDistance;
         this.target.x = this.toTargetX;
         this.target.y = this.toTargetY;
@@ -1747,17 +1949,136 @@ export class OrbitCamera {
         // jump its raw value by a full turn (visually identical, but
         // other readers of `yaw` see a clean number).
         this.yaw += dYaw;
+        this.pitch += dPitch;
         this.apply();
       }
       return;
     }
-    const alpha = 1 - Math.exp(-dtSec / this.smoothTauSec);
+    const alpha = 1 - Math.exp(-dtSec / tau);
     this.distance += dDist * alpha;
     this.target.x += dX * alpha;
     this.target.y += dY * alpha;
     this.target.z += dZ * alpha;
     this.yaw += dYaw * alpha;
+    this.pitch += dPitch * alpha;
     this.apply();
+  }
+
+  /**
+   * Install the scene-owned, allocation-free surface visibility test. It is
+   * deliberately a frustum test over the actual terrain/water extents instead
+   * of a screen-center ray: terrain in a viewport corner still counts as
+   * visible and must not trigger recovery.
+   */
+  setSurfaceVisibilityChecker(
+    checker: ((frustum: THREE.Frustum) => boolean) | undefined,
+  ): void {
+    this.surfaceVisibilityChecker = checker;
+    if (checker === undefined) this.mapRecoveryActive = false;
+  }
+
+  private updateLostTerrainRecovery(): boolean {
+    if (!this.lostTerrainRecovery.enabled || this.surfaceVisibilityChecker === undefined) {
+      this.mapRecoveryActive = false;
+      return false;
+    }
+
+    const originVisible = this.isMapOriginInViewport();
+    if (this.mapRecoveryActive) {
+      if (originVisible) {
+        this.mapRecoveryActive = false;
+        return false;
+      }
+      // Follow/focus/input code writes the regular to-state before tick().
+      // Reassert the recovery destination here so recovery owns the pose only
+      // until the origin becomes visible again.
+      this.toTargetX = this.mapRecoveryTarget.x;
+      this.toTargetY = this.mapRecoveryTarget.y;
+      this.toTargetZ = this.mapRecoveryTarget.z;
+      this.toDistance = this.mapRecoveryDistance;
+      this.toYaw = this.mapRecoveryYaw;
+      return true;
+    }
+
+    if (originVisible || this.hasVisibleMapSurface()) return false;
+    this.beginLostTerrainRecovery();
+    return true;
+  }
+
+  private prepareCameraVisibilityMatrices(): void {
+    this.camera.updateMatrixWorld(true);
+    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
+  }
+
+  private isMapOriginInViewport(): boolean {
+    this.prepareCameraVisibilityMatrices();
+    const clip = this._mapRecoveryOriginClipTmp
+      .copy(this.cameraDistanceOrigin)
+      .applyMatrix4(this.camera.matrixWorldInverse);
+    // Three cameras face down local -Z. Check the unprojected view-space
+    // depth first so a point behind the eye cannot appear to be in the NDC
+    // rectangle after perspective division.
+    if (
+      !Number.isFinite(clip.z)
+      || clip.z > -this.camera.near
+      || clip.z < -this.camera.far
+    ) {
+      return false;
+    }
+    clip.applyMatrix4(this.camera.projectionMatrix);
+    return Number.isFinite(clip.x)
+      && Number.isFinite(clip.y)
+      && Number.isFinite(clip.z)
+      && clip.x >= -1 && clip.x <= 1
+      && clip.y >= -1 && clip.y <= 1
+      && clip.z >= -1 && clip.z <= 1;
+  }
+
+  private hasVisibleMapSurface(): boolean {
+    this.prepareCameraVisibilityMatrices();
+    this._surfaceVisibilityProjectionTmp.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse,
+    );
+    this._surfaceVisibilityFrustum.setFromProjectionMatrix(
+      this._surfaceVisibilityProjectionTmp,
+    );
+    return this.surfaceVisibilityChecker?.(this._surfaceVisibilityFrustum) ?? true;
+  }
+
+  private beginLostTerrainRecovery(): void {
+    const origin = this.cameraDistanceOrigin;
+    const eyeOffset = this._mapRecoveryEyeOffsetTmp
+      .copy(this.camera.position)
+      .sub(origin);
+    const eyeRadius = eyeOffset.length();
+    const safeRadius = Number.isFinite(eyeRadius) && eyeRadius > 1e-6
+      ? Math.max(this.minDistance, Math.min(eyeRadius, this.farReferenceDistance))
+      : Math.max(this.minDistance, Math.min(this.distance, this.farReferenceDistance));
+
+    this.mapRecoveryTarget.copy(origin);
+    this.mapRecoveryDistance = safeRadius;
+    if (Number.isFinite(eyeRadius) && eyeRadius > 1e-6) {
+      const elevation = Math.max(-1, Math.min(1, eyeOffset.y / eyeRadius));
+      this.mapRecoveryPitch = Math.min(
+        this.maxPitch,
+        Math.max(this.minPitch, Math.acos(elevation)),
+      );
+      if (eyeOffset.x * eyeOffset.x + eyeOffset.z * eyeOffset.z > 1e-8) {
+        this.mapRecoveryYaw = Math.atan2(eyeOffset.x, -eyeOffset.z);
+      } else {
+        this.mapRecoveryYaw = this.yaw;
+      }
+    } else {
+      this.mapRecoveryPitch = this.pitch;
+      this.mapRecoveryYaw = this.yaw;
+    }
+    this.toTargetX = origin.x;
+    this.toTargetY = origin.y;
+    this.toTargetZ = origin.z;
+    this.toDistance = this.mapRecoveryDistance;
+    this.toYaw = this.mapRecoveryYaw;
+    this.mapRecoveryActive = true;
   }
 
   /** Shared read-only view for the CLIENT ZOOM POINTS overlay. The typed
@@ -1778,6 +2099,21 @@ export class OrbitCamera {
     ) => THREE.Vector3 | null) | undefined,
   ): void {
     this.getCursorWorldPoint = cb;
+  }
+
+  /** Install / replace the optimized peripheral zoom-sample picker. Keeping
+   *  this separate from the authoritative center picker ensures cursor
+   *  pinning still uses exact rendered geometry while the optional rings do
+   *  not multiply full terrain-mesh raycasts per wheel event. */
+  setZoomSamplePicker(
+    cb: ((
+      clientX: number,
+      clientY: number,
+      terrainMode: CameraAnchorTerrain,
+      referenceSurfaceHeight: number,
+    ) => THREE.Vector3 | null) | undefined,
+  ): void {
+    this.getZoomSampleWorldPoint = cb;
   }
 
   /** Install / replace the terrain-height sampler. While set, every

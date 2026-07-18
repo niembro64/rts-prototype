@@ -55,6 +55,21 @@ function setNumberRefIfChanged(target: { value: number }, value: number, epsilon
   if (Math.abs(target.value - value) > epsilon) target.value = value;
 }
 
+// Camera diagnostics deliberately preserve an invalid value: displaying `—`
+// is much more useful while investigating a broken camera than silently
+// leaving a stale, previously-valid coordinate in the bar.
+function setCameraDebugNumberRefIfChanged(
+  target: { value: number },
+  value: number,
+  epsilon: number,
+): void {
+  if (!Number.isFinite(value)) {
+    setRefIfChanged(target, value);
+    return;
+  }
+  setNumberRefIfChanged(target, value, epsilon);
+}
+
 export function useGameCanvasTelemetry({
   getScene,
 }: GameCanvasTelemetryOptions) {
@@ -133,6 +148,12 @@ export function useGameCanvasTelemetry({
   const projectileDeltaSnapshotApplyAvgMs = ref(0);
   const projectileDeltaSnapshotApplyHiMs = ref(0);
   const currentZoom = ref(0.4);
+  const cameraPositionX = ref(0);
+  const cameraPositionY = ref(0);
+  const cameraPositionZ = ref(0);
+  const cameraDirectionX = ref(0);
+  const cameraDirectionY = ref(0);
+  const cameraDirectionZ = ref(0);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let renderProfileApi: RenderProfileApi | null = null;
   let lastSnapshotCounterSampleMs = 0;
@@ -165,6 +186,14 @@ export function useGameCanvasTelemetry({
         scene.cameras.main.mapCenterDistance ?? scene.cameras.main.zoom,
         0.05,
       );
+
+      const cameraPose = scene.getCameraDebugPose();
+      setCameraDebugNumberRefIfChanged(cameraPositionX, cameraPose.positionX, 0.01);
+      setCameraDebugNumberRefIfChanged(cameraPositionY, cameraPose.positionY, 0.01);
+      setCameraDebugNumberRefIfChanged(cameraPositionZ, cameraPose.positionZ, 0.01);
+      setCameraDebugNumberRefIfChanged(cameraDirectionX, cameraPose.directionX, 0.0001);
+      setCameraDebugNumberRefIfChanged(cameraDirectionY, cameraPose.directionY, 0.0001);
+      setCameraDebugNumberRefIfChanged(cameraDirectionZ, cameraPose.directionZ, 0.0001);
 
       const timing = scene.getFrameTiming();
       setNumberRefIfChanged(frameMsAvg, timing.frameMsAvg);
@@ -354,6 +383,12 @@ export function useGameCanvasTelemetry({
 
   return {
     currentZoom,
+    cameraPositionX,
+    cameraPositionY,
+    cameraPositionZ,
+    cameraDirectionX,
+    cameraDirectionY,
+    cameraDirectionZ,
     displayGpuMs,
     frameMsAvg,
     frameMsHi,

@@ -19,6 +19,7 @@ import type {
 import type {
   CameraAnchor,
   CameraConstraintConfig,
+  CameraLostTerrainRecoveryConfig,
   CameraMovementConfig,
   CameraZoomDistanceSamplingConfig,
 } from './types/camera';
@@ -804,6 +805,11 @@ export const CAMERA_MOVEMENT_CONFIG =
  *  without coupling camera body movement to terrain height. */
 export const CAMERA_CONSTRAINTS =
   cameraConfigJson.constraints as CameraConstraintConfig;
+
+/** Automatic camera recovery used only when neither terrain nor water is in
+ * the viewport. Normal zoom/pan/orbit behavior is unaffected. */
+export const CAMERA_LOST_TERRAIN_RECOVERY =
+  cameraConfigJson.lostTerrainRecovery as CameraLostTerrainRecoveryConfig;
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
 export type CameraBattleFocus =

@@ -82,6 +82,16 @@ function fmtCount4(value: number): string {
   return `${Math.round(millions)}m`;
 }
 
+function fmtCameraPositionCoordinate(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  return Math.abs(value) >= 1000 ? value.toFixed(0) : value.toFixed(1);
+}
+
+function fmtCameraDirectionCoordinate(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  return value.toFixed(3);
+}
+
 const props = defineProps<{
   model: GameCanvasClientControlBarModel;
 }>();
@@ -89,6 +99,48 @@ const props = defineProps<{
 const hotkeyEditorOpen = ref(false);
 const captureCommandId = ref<CommandHotkeyId | null>(null);
 const hotkeyEditorRevision = ref(0);
+const cameraDebugCopyStatus = ref<'idle' | 'copied' | 'failed'>('idle');
+let cameraDebugCopyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function formatCameraDebugClipboardCoordinate(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(6) : 'INVALID';
+}
+
+function setCameraDebugCopyStatus(status: 'copied' | 'failed'): void {
+  cameraDebugCopyStatus.value = status;
+  if (cameraDebugCopyTimeout !== null) clearTimeout(cameraDebugCopyTimeout);
+  cameraDebugCopyTimeout = setTimeout(() => {
+    cameraDebugCopyTimeout = null;
+    cameraDebugCopyStatus.value = 'idle';
+  }, 1800);
+}
+
+async function copyCameraDebugPose(): Promise<void> {
+  const { model } = props;
+  const text = [
+    'Camera debug (Three world XYZ; Y is altitude)',
+    `position: x=${formatCameraDebugClipboardCoordinate(model.cameraPositionX)}, y=${formatCameraDebugClipboardCoordinate(model.cameraPositionY)}, z=${formatCameraDebugClipboardCoordinate(model.cameraPositionZ)}`,
+    `direction: x=${formatCameraDebugClipboardCoordinate(model.cameraDirectionX)}, y=${formatCameraDebugClipboardCoordinate(model.cameraDirectionY)}, z=${formatCameraDebugClipboardCoordinate(model.cameraDirectionZ)}`,
+  ].join('\n');
+
+  try {
+    await navigator.clipboard.writeText(text);
+    setCameraDebugCopyStatus('copied');
+    return;
+  } catch {
+    // Older/embedded browser fallback when the async Clipboard API is
+    // unavailable. Keep the temporary selection entirely out of the UI.
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.append(textArea);
+    textArea.select();
+    const copied = document.execCommand('copy');
+    textArea.remove();
+    setCameraDebugCopyStatus(copied ? 'copied' : 'failed');
+  }
+}
 
 const currentHotkeyConflicts = computed(() => {
   void props.model.commandHotkeyRevision;
@@ -500,6 +552,25 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel title="Actual rendered Three.js camera-eye position in world XYZ. Y is altitude; this is not the orbit target.">CAM POS:</BarLabel>
+        <span class="fps-value camera-vector-value">X {{ fmtCameraPositionCoordinate(model.cameraPositionX) }}</span>
+        <span class="fps-value camera-vector-value">Y {{ fmtCameraPositionCoordinate(model.cameraPositionY) }}</span>
+        <span class="fps-value camera-vector-value">Z {{ fmtCameraPositionCoordinate(model.cameraPositionZ) }}</span>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Actual rendered Three.js normalized forward/view direction in world XYZ. This is where the camera is pointing.">CAM DIR:</BarLabel>
+        <span class="fps-value camera-vector-value">X {{ fmtCameraDirectionCoordinate(model.cameraDirectionX) }}</span>
+        <span class="fps-value camera-vector-value">Y {{ fmtCameraDirectionCoordinate(model.cameraDirectionY) }}</span>
+        <span class="fps-value camera-vector-value">Z {{ fmtCameraDirectionCoordinate(model.cameraDirectionZ) }}</span>
+        <BarButton
+          :active="cameraDebugCopyStatus === 'copied'"
+          :title="cameraDebugCopyStatus === 'copied' ? 'Camera position and direction copied' : 'Copy the camera position and direction as a paste-ready XYZ diagnostic'"
+          @click="copyCameraDebugPose"
+        >{{ cameraDebugCopyStatus === 'copied' ? 'COPIED' : cameraDebugCopyStatus === 'failed' ? 'FAILED' : 'COPY' }}</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>EVENTS:</BarLabel>
         <BarButton
           :active="model.audioSmoothing"
@@ -580,7 +651,7 @@ function resetEveryCustomHotkey(): void {
         >PROBES</BarButton>
         <BarButton
           :active="model.zoomPointsDebug"
-          title="ZOOM POINTS - show the exact center, eight inner-ring, and eight outer-ring terrain points averaged by relative camera zoom"
+          title="ZOOM POINTS - show the exact configured terrain neighborhood; red marks the point currently selected by MIN distance mode"
           @click="model.toggleZoomPointsDebug"
         >ZOOM POINTS</BarButton>
         <BarButton
@@ -892,6 +963,10 @@ function resetEveryCustomHotkey(): void {
 </template>
 
 <style scoped>
+.camera-vector-value {
+  width: 8ch;
+}
+
 .hotkey-editor {
   display: flex;
   flex-direction: column;

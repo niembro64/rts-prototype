@@ -51,13 +51,24 @@ export type CameraMovementConfig = {
   readonly ctrlCenterClickHeightPan: CameraPanMovementConfig;
 };
 
+export type CameraZoomDistanceSamplingMode = 'single' | 'nine' | 'seventeen';
+/** How a configured zoom-sample neighborhood becomes one camera-distance
+ *  scalar. */
+export type CameraZoomDistanceAggregation = 'min' | 'average';
+
 /** Screen-space terrain neighborhood sampled by relative camera zoom.
- *  The center anchor plus two rings are resolved through the same rendered
- *  terrain picker; their camera-to-surface distances are averaged before the
- *  zoom movement is applied. */
+ *  The center anchor plus zero, one, or two configured rings resolve surface
+ *  points whose camera distances are reduced to one configured scalar before
+ *  zoom is applied. */
 export type CameraZoomDistanceSamplingConfig = {
-  /** Number of evenly spaced rays on each ring. Eight produces 17 samples
-   *  total: center + eight inner + eight outer. */
+  /** single = center only; nine = center + inner ring; seventeen = center +
+   *  inner and outer rings. */
+  readonly pointMode: CameraZoomDistanceSamplingMode;
+  /** min favors the closest sampled surface; average smooths across the
+   *  complete configured neighborhood. */
+  readonly distanceAggregation: CameraZoomDistanceAggregation;
+  /** Number of evenly spaced rays on each ring. Eight produces 9 samples
+   *  with one ring or 17 with two. */
   readonly ringPointCount: number;
   readonly innerRadiusPixels: number;
   readonly outerRadiusPixels: number;
@@ -69,6 +80,8 @@ export type CameraZoomDistanceSamplingConfig = {
   readonly debugCenterColor: string;
   readonly debugInnerColor: string;
   readonly debugOuterColor: string;
+  /** Highlight color for the point selected by min aggregation. */
+  readonly debugSelectedColor: string;
 };
 
 export type CameraZoomInLimitMode = 'none' | 'zoom-max';
@@ -80,6 +93,16 @@ export type CameraConstraintConfig = {
   readonly zoomInLimit: CameraZoomInLimitMode;
   /** 'map-padding' keeps the orbit target inside the padded map region. */
   readonly targetBounds: CameraTargetBoundsMode;
+};
+
+/** Automatic recovery for the exceptional case where the camera viewport no
+ * longer contains any rendered map surface. */
+export type CameraLostTerrainRecoveryConfig = {
+  /** Turn automatic map recovery on/off without changing normal camera input. */
+  readonly enabled: boolean;
+  /** EMA time constant for both camera pose position and view angle while
+   * returning the map origin to the viewport. */
+  readonly emaTauSeconds: number;
 };
 
 /** How the orbit camera resolves a frame where the eye would sit below

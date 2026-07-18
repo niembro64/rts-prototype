@@ -1,4 +1,6 @@
 import type { ClientViewState } from '../../network/ClientViewState';
+import * as THREE from 'three';
+import { getWaterBoundaryMode } from '@/clientBarConfig';
 import { AreaDrag3D } from '../../render3d/AreaDrag3D';
 import { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeOverlay3D';
 import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
@@ -29,10 +31,11 @@ import { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import { WindParticleField3D } from '../../render3d/WindParticleField3D';
 import type { ViewportFootprint } from '../../ViewportFootprint';
-import { LAND_CELL_SIZE } from '../../../config';
+import { HORIZON_RENDER_EXTEND, LAND_CELL_SIZE } from '../../../config';
 import type { MetalDeposit } from '../../../metalDepositConfig';
 import {
   TERRAIN_MAX_RENDER_Y,
+  TILE_FLOOR_Y,
   WATER_LEVEL,
   getSurfaceHeight,
   getTerrainMeshHeight,
@@ -157,6 +160,29 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
   );
+  // The recovery check uses tight surface volumes instead of a center ray:
+  // water/terrain in any viewport corner counts as visible. The sea volume is
+  // intentionally the same horizon rectangle the water renderer draws in
+  // infinity mode; floating-square water stays inside the terrain volume.
+  const terrainSurfaceBounds = new THREE.Box3(
+    new THREE.Vector3(0, TILE_FLOOR_Y, 0),
+    new THREE.Vector3(mapWidth, TERRAIN_MAX_RENDER_Y, mapHeight),
+  );
+  const infinityWaterSurfaceBounds = new THREE.Box3(
+    new THREE.Vector3(-HORIZON_RENDER_EXTEND, WATER_LEVEL - 0.001, -HORIZON_RENDER_EXTEND),
+    new THREE.Vector3(
+      mapWidth + HORIZON_RENDER_EXTEND,
+      WATER_LEVEL + 0.001,
+      mapHeight + HORIZON_RENDER_EXTEND,
+    ),
+  );
+  threeApp.orbit.setSurfaceVisibilityChecker((frustum) =>
+    frustum.intersectsBox(terrainSurfaceBounds)
+    || (
+      getWaterBoundaryMode() === 'infinity'
+      && frustum.intersectsBox(infinityWaterSurfaceBounds)
+    )
+  );
   const cursorGround = new CursorGround(
     threeApp.camera,
     threeApp.renderer.domElement,
@@ -167,6 +193,14 @@ export function bootstrapRtsScene3DRenderers(
   );
   threeApp.orbit.setCursorPicker((cx, cy, terrainMode) =>
     cursorGround.pickWorld(cx, cy, terrainMode)
+  );
+  threeApp.orbit.setZoomSamplePicker((cx, cy, terrainMode, referenceSurfaceHeight) =>
+    cursorGround.pickZoomSampleWorld(
+      cx,
+      cy,
+      terrainMode,
+      referenceSurfaceHeight,
+    )
   );
   threeApp.orbit.setTerrainSampler((x, z) =>
     getTerrainMeshHeight(x, z, mapWidth, mapHeight)
