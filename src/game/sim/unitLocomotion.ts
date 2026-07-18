@@ -1,6 +1,5 @@
 import type {
   UnitLocomotionBlueprint,
-  PathfindingBlueprint,
 } from '@/types/blueprints';
 import type {
   UnitLocomotion,
@@ -139,16 +138,6 @@ function createRuntimeLocomotionPhysics(
   };
 }
 
-function createRuntimePathfindingConfig(
-  pathfinding: PathfindingBlueprint,
-): UnitLocomotion['pathfinding'] {
-  return {
-    pathfindingBlueprintId: pathfinding.pathfindingBlueprintId,
-    terrainMode: pathfinding.terrainMode,
-    ignoreTerrainBlocking: pathfinding.terrainMode === 'anywhere',
-  };
-}
-
 export function createUnitLocomotion(
   locomotion: UnitLocomotionBlueprint,
 ): UnitLocomotion {
@@ -170,7 +159,6 @@ export function createUnitLocomotion(
     driveForceScalesWithFacing: preset.physics.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: preset.physics.maintainFullThrustAtWaypoints,
     surfaceProbeSetId: preset.physics.surfaceProbeSetId,
-    pathfinding: createRuntimePathfindingConfig(locomotion.pathfinding),
   };
   if (!hasAnyUnitLocomotionRouteCapability(resolveUnitLocomotionRouteCapabilities(runtime))) {
     throw new Error(
@@ -225,7 +213,6 @@ export function cloneUnitLocomotion(
     driveForceScalesWithFacing: locomotion.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
     surfaceProbeSetId: locomotion.surfaceProbeSetId,
-    pathfinding: { ...locomotion.pathfinding },
   };
 }
 

@@ -2083,28 +2083,6 @@
       },
       "additionalProperties": false
     },
-    "PathfindingTerrainMode": {
-      "enum": [
-        "land",
-        "anywhere"
-      ]
-    },
-    "PathfindingBlueprint": {
-      "type": "object",
-      "required": [
-        "pathfindingBlueprintId",
-        "terrainMode"
-      ],
-      "properties": {
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "terrainMode": {
-          "$ref": "#/$defs/PathfindingTerrainMode"
-        }
-      },
-      "additionalProperties": false
-    },
     "HoverConfig": {
       "type": "object",
       "required": [
@@ -2246,8 +2224,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2263,12 +2239,6 @@
         "survival": {
           "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "pathfinding": {
-          "$ref": "#/$defs/PathfindingBlueprint"
-        },
         "config": {
           "$ref": "#/$defs/WheelConfig"
         }
@@ -2282,8 +2252,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2299,12 +2267,6 @@
         "survival": {
           "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "pathfinding": {
-          "$ref": "#/$defs/PathfindingBlueprint"
-        },
         "config": {
           "$ref": "#/$defs/TreadConfig"
         }
@@ -2318,8 +2280,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2335,12 +2295,6 @@
         "survival": {
           "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "pathfinding": {
-          "$ref": "#/$defs/PathfindingBlueprint"
-        },
         "config": {
           "$ref": "#/$defs/LegConfig"
         }
@@ -2354,8 +2308,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2363,8 +2315,6 @@
         "physicsPresetId": { "type": "string" },
         "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
         "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
-        "pathfindingBlueprintId": { "type": "string" },
-        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
         "config": { "$ref": "#/$defs/FlipperConfig" }
       },
       "additionalProperties": false
@@ -2376,8 +2326,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2393,12 +2341,6 @@
         "survival": {
           "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "pathfinding": {
-          "$ref": "#/$defs/PathfindingBlueprint"
-        },
         "config": {
           "$ref": "#/$defs/HoverConfig"
         }
@@ -2412,8 +2354,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2429,12 +2369,6 @@
         "survival": {
           "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
         },
-        "pathfindingBlueprintId": {
-          "type": "string"
-        },
-        "pathfinding": {
-          "$ref": "#/$defs/PathfindingBlueprint"
-        },
         "config": {
           "$ref": "#/$defs/FlyingConfig"
         }
@@ -2448,8 +2382,6 @@
         "physicsPresetId",
         "physics",
         "survival",
-        "pathfindingBlueprintId",
-        "pathfinding",
         "config"
       ],
       "properties": {
@@ -2457,8 +2389,6 @@
         "physicsPresetId": { "type": "string" },
         "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
         "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
-        "pathfindingBlueprintId": { "type": "string" },
-        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
         "config": { "$ref": "#/$defs/SwimConfig" }
       },
       "additionalProperties": false

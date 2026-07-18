@@ -2,8 +2,8 @@
  * Unit blueprints.
  *
  * Authored unit facts live in units.json. Unit locomotion is authored
- * inline on the unit; this loader only resolves shared data references
- * such as pathfinding and $audio into the runtime objects callers expect.
+ * inline on the unit; this loader resolves $audio and validates the complete
+ * force profile that derives route capability.
  */
 
 import type { TurretBlueprintId } from '../../../types/blueprintIds';
@@ -13,7 +13,6 @@ import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../unitLocomotion';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS,  } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
-import { PATHFINDING_BLUEPRINTS } from './pathfinding';
 import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
@@ -32,9 +31,7 @@ import {
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
 
-type JsonUnitBlueprint = Omit<UnitBlueprint, 'unitLocomotion' | keyof LockOnInclusionObject> & {
-  unitLocomotion: Omit<UnitLocomotionBlueprint, 'pathfinding'>;
-};
+type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 
 const UNIT_EXPLICIT_FIELDS = [
   'base',
@@ -55,17 +52,6 @@ function resolveInlineLocomotion(
   if (!unitLocomotion || !unitLocomotion.type) {
     throw new Error(`Invalid unit blueprint ${unitBlueprintId}: missing unitLocomotion`);
   }
-  if (!unitLocomotion.pathfindingBlueprintId) {
-    throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion missing pathfindingBlueprintId`,
-    );
-  }
-  const pathfinding = PATHFINDING_BLUEPRINTS[unitLocomotion.pathfindingBlueprintId];
-  if (!pathfinding) {
-    throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: unknown unitLocomotion.pathfindingBlueprintId "${unitLocomotion.pathfindingBlueprintId}"`,
-    );
-  }
   if (!unitLocomotion.physics || typeof unitLocomotion.physics !== 'object') {
     throw new Error(
       `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion missing physics`,
@@ -79,12 +65,8 @@ function resolveInlineLocomotion(
       `Invalid unit blueprint ${unitBlueprintId}: unitLocomotion physics.maxSlopeDeg is derived from authoritative physics`,
     );
   }
-  const resolved = {
-    ...unitLocomotion,
-    pathfinding,
-  } as UnitLocomotionBlueprint;
-  createUnitLocomotion(resolved);
-  return resolved;
+  createUnitLocomotion(unitLocomotion);
+  return unitLocomotion;
 }
 
 function buildUnitBlueprints(): Record<string, UnitBlueprint> {

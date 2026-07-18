@@ -462,7 +462,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Total frame time - CPU + GPU wall-clock per frame (ms)">FRAME:</BarLabel>
+        <BarLabel title="RAF callback wall-clock: scene update plus WebGL submission. Compare this with R-TPS: a low FRAME value at ~30 R-TPS indicates browser/display pacing, while 17+ ms of FRAME work can miss 60 Hz vsync. Hardware GPU execution is reported separately by GPU when timer queries are available.">FRAME:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

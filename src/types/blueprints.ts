@@ -35,9 +35,6 @@ export type {
   LockOnInclusionObject,
   LockOnRequiresTargetLockedOntoSelf,
   UnitLocomotionBlueprint,
-  
-  PathfindingBlueprint,
-  
   SensorCapabilityConfig,
   ShotBlueprint,
 

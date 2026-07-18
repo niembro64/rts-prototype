@@ -1,14 +1,5 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
-type UnitPathfindingTerrainMode = 'land' | 'anywhere';
-
-export type UnitPathfindingConfig = {
-  pathfindingBlueprintId: string;
-  terrainMode: UnitPathfindingTerrainMode;
-  /** True for profiles that can route over water and steep terrain. */
-  ignoreTerrainBlocking: boolean;
-};
-
 export type UnitLocomotionPropulsionPhysics = {
   /** Absolute propulsion force owned by this locomotion preset and medium. */
   driveForce: number;
@@ -115,8 +106,6 @@ export type UnitLocomotion = {
   /** Named, config-authored sampling layout used for air and water
    *  surface-lift distance responses. */
   surfaceProbeSetId: SurfaceProbeSetId;
-  /** Named pathfinding profile resolved from pathfindingConfig.json. */
-  pathfinding: UnitPathfindingConfig;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

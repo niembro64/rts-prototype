@@ -75,6 +75,7 @@ import {
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
+  CT_TURRET_CFG_REQUIRES_AIR_TARGET,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
@@ -666,6 +667,14 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   }
   if (shot !== null && shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
+  }
+  if (
+    shot !== null &&
+    isProjectileShot(shot) &&
+    shot.shotLocomotion.media.air.operational &&
+    !shot.shotLocomotion.media.water.operational
+  ) {
+    f |= CT_TURRET_CFG_REQUIRES_AIR_TARGET;
   }
   if (turretIgnoresForceMaterialSightObstruction(turret)) {
     f |= CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION;

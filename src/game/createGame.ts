@@ -58,6 +58,12 @@ export function createGame(config: GameConfig): GameInstance {
     app.onUpdate((time, delta) => {
       currentScene?.update(time, delta);
     });
+    app.onFrameComplete(({ rendererRenderMs }) => {
+      // The scene callback finishes before ThreeApp submits the WebGL draw.
+      // Record frame work here so frame telemetry tracks the complete RAF
+      // callback rather than only render preparation.
+      currentScene?.completeFrameTelemetry(rendererRenderMs);
+    });
     app.start();
 
     const wireRestart = (s: RtsScene3D) => {

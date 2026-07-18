@@ -161,7 +161,7 @@ export function useGameCanvasTelemetry({
   let lastAppliedSnapshotTotal = 0;
 
   const displayGpuMs = computed(() =>
-    gpuTimerSupported.value ? gpuTimerMs.value : renderMsAvg.value,
+    gpuTimerSupported.value ? gpuTimerMs.value : webglRendererRenderMs.value,
   );
   const gpuSourceLabel = computed(() =>
     gpuTimerSupported.value ? 'GPU time query' : 'renderer.render() wall-clock',

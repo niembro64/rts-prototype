@@ -530,13 +530,6 @@ export type UnitLocomotionSurvivalPolicy = {
   fatalExposureSeconds: number;
 };
 
-export type PathfindingTerrainMode = 'land' | 'anywhere';
-
-export type PathfindingBlueprint = {
-  pathfindingBlueprintId: string;
-  terrainMode: PathfindingTerrainMode;
-};
-
 export type HoverConfig = {
   fanDistX: number;
   fanDistY: number;
@@ -582,8 +575,6 @@ export type UnitLocomotionBlueprintWheels = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: WheelConfig;
 };
 
@@ -592,8 +583,6 @@ export type UnitLocomotionBlueprintTreads = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: TreadConfig;
 };
 
@@ -602,8 +591,6 @@ export type UnitLocomotionBlueprintLegs = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: LegConfig;
 };
 
@@ -612,8 +599,6 @@ export type UnitLocomotionBlueprintFlippers = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: FlipperConfig;
 };
 
@@ -622,8 +607,6 @@ export type UnitLocomotionBlueprintHover = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: HoverConfig;
 };
 
@@ -632,8 +615,6 @@ export type UnitLocomotionBlueprintFlying = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: FlyingConfig;
 };
 
@@ -642,8 +623,6 @@ export type UnitLocomotionBlueprintSwim = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
-  pathfindingBlueprintId: string;
-  pathfinding: PathfindingBlueprint;
   config: SwimConfig;
 };
 

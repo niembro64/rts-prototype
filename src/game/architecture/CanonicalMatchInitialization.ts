@@ -14,7 +14,6 @@ import windConfigJson from '../../windConfig.json';
 import buildingsJson from '../sim/blueprints/buildings.json';
 import fallbackJson from '../sim/blueprints/fallbacks.json';
 import inclusionLockOnConfigJson from '../sim/blueprints/inclusionLockOnConfig.json';
-import pathfindingConfigJson from '../sim/blueprints/pathfindingConfig.json';
 import raysJson from '../sim/blueprints/rays.json';
 import shieldMaterialsJson from '../sim/blueprints/shieldMaterials.json';
 import shieldsJson from '../sim/blueprints/shields.json';
@@ -96,7 +95,6 @@ const BLUEPRINT_CONTENT = {
   buildings: buildingsJson,
   fallbacks: fallbackJson,
   inclusionLockOnConfig: inclusionLockOnConfigJson,
-  pathfindingConfig: pathfindingConfigJson,
   rays: raysJson,
   shieldMaterials: shieldMaterialsJson,
   shields: shieldsJson,

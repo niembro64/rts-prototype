@@ -7,7 +7,7 @@
 //
 // When the extension isn't available (Safari, very old GPUs) the query
 // helper silently no-ops — callers check `isSupported()` and fall back to
-// CPU-side `renderMs` as the GPU proxy.
+// CPU-side renderer-submit time as the GPU proxy.
 //
 // Usage:
 //   const q = new GpuTimerQuery(gl);

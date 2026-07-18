@@ -64,7 +64,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "air": {
           "lift": {
@@ -175,7 +174,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "air": {
           "lift": {
@@ -293,7 +291,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {
@@ -425,7 +422,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "air": {
           "lift": {
@@ -536,7 +532,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "air": {
           "lift": {
@@ -645,7 +640,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {
@@ -777,7 +771,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "air": {
           "lift": {
@@ -905,7 +898,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {
@@ -1131,7 +1123,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {
@@ -1262,7 +1253,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -1315,8 +1305,8 @@
     "radius": {
       "other": 28,
       "hitbox": 24,
-      "collision": 48,
-      "shotArmingRadius": 72
+      "collision": 40,
+      "shotArmingRadius": 60
     },
     "bodyCenterHeight": 14,
     "supportSurface": {
@@ -1405,19 +1395,18 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "air": {
           "lift": {
             "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
+            "liftForceFromWaterSurface": 3000,
             "gravityCounterRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 300,
-            "gravityCounterRatio": 0
+            "liftForceFromGroundSurface": 600,
+            "gravityCounterRatio": 1
           }
         }
       },
@@ -1452,8 +1441,8 @@
       "radius": {
         "other": 28,
         "hitbox": 24,
-        "collision": 48,
-        "shotArmingRadius": 72
+        "collision": 40,
+        "shotArmingRadius": 60
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1466,8 +1455,8 @@
     "radius": {
       "other": 34,
       "hitbox": 28,
-      "collision": 42,
-      "shotArmingRadius": 63
+      "collision": 45,
+      "shotArmingRadius": 67.5
     },
     "bodyCenterHeight": 10,
     "supportSurface": {
@@ -1549,7 +1538,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -1598,8 +1586,8 @@
       "radius": {
         "other": 34,
         "hitbox": 28,
-        "collision": 42,
-        "shotArmingRadius": 63
+        "collision": 45,
+        "shotArmingRadius": 67.5
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1680,7 +1668,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {
@@ -1817,7 +1804,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "air": {
           "lift": {
@@ -1924,7 +1910,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2059,7 +2044,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2222,7 +2206,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2338,7 +2321,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2483,7 +2465,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2647,7 +2628,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2796,7 +2776,6 @@
         "fatalSubmergedFraction": 0.65,
         "fatalExposureSeconds": 2
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -2930,7 +2909,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "air": {
           "lift": {
@@ -3118,7 +3096,6 @@
         "fatalSubmergedFraction": 1,
         "fatalExposureSeconds": 0
       },
-      "pathfindingBlueprintId": "legsLand",
       "physics": {
         "air": {
           "lift": {

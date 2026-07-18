@@ -132,10 +132,14 @@ export class RtsScene3DFrameTelemetry {
     frameStart: number;
     renderMs: number;
     predMs: number;
+    rendererRenderMs: number;
   }): void {
     const frameEnd = performance.now();
     const frameMs = frameEnd - params.frameStart;
-    const logicMs = Math.max(0, frameMs - params.renderMs - params.predMs);
+    const logicMs = Math.max(
+      0,
+      frameMs - params.renderMs - params.predMs - params.rendererRenderMs,
+    );
     this.frameMsTracker.update(frameMs);
     this.renderMsTracker.update(params.renderMs);
     this.logicMsTracker.update(logicMs);

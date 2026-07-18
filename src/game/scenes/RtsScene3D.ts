@@ -246,6 +246,14 @@ export class RtsScene3D {
     getTerrainBuildabilityGrid: () => ReturnType<ClientViewState['getTerrainBuildabilityGrid']>;
   };
   private clientRenderEnabled = true;
+  // `update()` finishes before ThreeApp calls renderer.render(). Keep the
+  // scene-side timings until the app reports that the complete RAF callback
+  // has finished so FRAME includes WebGL submission too.
+  private pendingFrameTelemetry: {
+    frameStart: number;
+    renderMs: number;
+    predMs: number;
+  } | null = null;
 
   // ── Callback interface matching RtsScene ──
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -817,7 +825,18 @@ export class RtsScene3D {
       this.onMinimapUpdate,
     );
 
-    this.frameTelemetry.recordRenderFrame({ frameStart, renderMs, predMs });
+    this.pendingFrameTelemetry = { frameStart, renderMs, predMs };
+  }
+
+  /** Called by ThreeApp immediately after the optional WebGL draw. */
+  public completeFrameTelemetry(rendererRenderMs: number): void {
+    const pending = this.pendingFrameTelemetry;
+    this.pendingFrameTelemetry = null;
+    if (!pending || this.destroyed) return;
+    this.frameTelemetry.recordRenderFrame({
+      ...pending,
+      rendererRenderMs,
+    });
   }
 
   private processLocalCommands(): void {

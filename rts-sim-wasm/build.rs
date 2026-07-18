@@ -467,13 +467,6 @@ fn generate_blueprint_tables(manifest_dir: &Path) {
             entry_id_field: Some("materialId"),
         },
         BlueprintObjectTable {
-            relative_path: "../src/game/sim/blueprints/pathfindingConfig.json",
-            json_const: "BLUEPRINT_PATHFINDING_JSON",
-            ids_const: "BLUEPRINT_PATHFINDING_IDS",
-            count_const: "BLUEPRINT_PATHFINDING_COUNT",
-            entry_id_field: Some("pathfindingBlueprintId"),
-        },
-        BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/fallbacks.json",
             json_const: "BLUEPRINT_FALLBACKS_JSON",
             ids_const: "BLUEPRINT_FALLBACK_KEYS",

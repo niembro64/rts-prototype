@@ -291,17 +291,19 @@ function assertMobilityTuningIntent(): void {
     flying.air.propulsion.forceCoupling >= 3,
     'flying speed tuning must not remove air turn authority',
   );
-  for (const [label, fluid, expectedEma] of [
-    ['flippers.water', flippers.water, 0.97],
-    ['swim.air', swim.air, 0.97],
-    ['swim.water', swim.water, 0.97],
-    ['hover.air', hover.air, 0.3],
-    ['flying.air', flying.air, 0.97],
+  for (const [label, fluid] of [
+    ['flippers.water', flippers.water],
+    ['swim.air', swim.air],
+    ['swim.water', swim.water],
+    ['hover.air', hover.air],
+    ['flying.air', flying.air],
   ] as const) {
     assertContract(
-      fluid.surfaceLiftResponse.randomizationAmount === 0.99 &&
-        fluid.surfaceLiftResponse.ema === expectedEma,
-      `${label} preserves the historical randomized, smoothed surface-lift tuning`,
+      fluid.surfaceLiftResponse.randomizationAmount >= 0 &&
+        fluid.surfaceLiftResponse.randomizationAmount <= 1 &&
+        fluid.surfaceLiftResponse.ema >= 0 &&
+        fluid.surfaceLiftResponse.ema < 1,
+      `${label} owns a bounded surface-lift force response`,
     );
   }
   for (const [label, fluid] of [
@@ -413,28 +415,6 @@ function assertRuntimeFluidMatchesSources(
   );
 }
 
-function assertPathfindingMatchesAuthored(
-  runtime: UnitLocomotion['pathfinding'],
-  authored: UnitLocomotionBlueprint['pathfinding'],
-  label: string,
-): void {
-  assertEqual(
-    runtime.pathfindingBlueprintId,
-    authored.pathfindingBlueprintId,
-    `${label} pathfinding id follows pathfinding JSON`,
-  );
-  assertEqual(
-    runtime.terrainMode,
-    authored.terrainMode,
-    `${label} terrain mode follows pathfinding JSON`,
-  );
-  if (authored.terrainMode === 'anywhere') {
-    assertEqual(runtime.ignoreTerrainBlocking, true, `${label} anywhere pathfinding ignores terrain blocking`);
-    return;
-  }
-  assertEqual(runtime.ignoreTerrainBlocking, false, `${label} land pathfinding uses terrain blocking`);
-}
-
 function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLocomotion {
   const unitBlueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
@@ -499,7 +479,6 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
     typeConfig.physics.surfaceProbeSetId,
     `${unitBlueprintId} surface probe set follows unitLocomotionConfig.json`,
   );
-  assertPathfindingMatchesAuthored(locomotion.pathfinding, authored.pathfinding, unitBlueprintId);
   return locomotion;
 }
 
@@ -642,9 +621,9 @@ export function runUnitLocomotionContractTest(): void {
   );
   assertContract(
     seaTurtleLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      seaTurtleLocomotion.physics.water.lift.randomizationAmount === 0.99 &&
-      seaTurtleLocomotion.physics.water.lift.ema === 0.97,
-    'Sea Turtle water lift preserves its historical randomized, strongly smoothed response',
+      seaTurtleLocomotion.physics.water.lift.gravityCounterRatio === 1 &&
+      seaTurtleLocomotion.physics.air.lift.liftForceFromWaterSurface > 0,
+    'Sea Turtle holds the waterline with explicit buoyancy and air-water surface lift',
   );
   const seaTurtleRoutes = resolveUnitLocomotionRouteCapabilities(seaTurtleLocomotion);
   assertContract(
@@ -694,9 +673,10 @@ export function runUnitLocomotionContractTest(): void {
   );
   assertContract(
     orcaLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      orcaLocomotion.physics.water.lift.randomizationAmount === 0.99 &&
-      orcaLocomotion.physics.water.lift.ema === 0.97,
-    'Orca water lift preserves its historical randomized, strongly smoothed response',
+      orcaLocomotion.physics.water.lift.gravityCounterRatio > 0 &&
+      orcaLocomotion.physics.water.lift.gravityCounterRatio < 1 &&
+      orcaLocomotion.physics.air.lift.liftForceFromWaterSurface === 0,
+    'Orca retains water-only depth buoyancy rather than a surface-swimmer controller',
   );
   const eagleAirLiftLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
   assertContract(

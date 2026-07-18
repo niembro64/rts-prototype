@@ -42,6 +42,11 @@ import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
+
+export type ThreeAppFrameComplete = {
+  /** CPU wall-clock time spent submitting the WebGL draw for this frame. */
+  readonly rendererRenderMs: number;
+};
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
 // game's units have ~10–20 wu radius, so 50 keeps routine play geometry
@@ -88,11 +93,12 @@ export class ThreeApp {
   /** Real GPU execution time per frame via EXT_disjoint_timer_query_webgl2.
    *  Results are async (available 2-3 frames after the render call). On
    *  browsers without the extension (Safari), isSupported() returns false
-   *  and callers should fall back to CPU-side renderMs. */
+   *  and callers should fall back to CPU-side renderer-submit time. */
   public gpuTimer: GpuTimerQuery;
   public frameProfiler: WebGlFrameProfiler;
 
   private _updateCallback: ((time: number, delta: number) => void) | null = null;
+  private _frameCompleteCallback: ((frame: ThreeAppFrameComplete) => void) | null = null;
   private _lastTime = 0;
   private _running = false;
   private _rafId = 0;
@@ -289,6 +295,16 @@ export class ThreeApp {
     this._updateCallback = callback;
   }
 
+  /**
+   * Runs after the scene update and any WebGL draw have completed. This is
+   * deliberately separate from `onUpdate`: an update callback cannot measure
+   * the draw that follows it, so putting frame telemetry there undercounts
+   * the work that determines whether the next vsync is missed.
+   */
+  onFrameComplete(callback: (frame: ThreeAppFrameComplete) => void): void {
+    this._frameCompleteCallback = callback;
+  }
+
   setRenderEnabled(enabled: boolean): void {
     this._renderEnabled = enabled;
   }
@@ -368,6 +384,7 @@ export class ThreeApp {
       }
       this._lastTime = now;
       if (this._updateCallback) this._updateCallback(now, delta);
+      let rendererRenderMs = 0;
       if (this._renderEnabled && !this._drawSuspended) {
         this.syncWaterBoundaryPresentation();
         this._zoomTerrainPointsOverlay.update(now, getZoomPointsDebug());
@@ -377,21 +394,22 @@ export class ThreeApp {
         this.gpuTimer.begin();
         const renderStart = performance.now();
         this.renderer.render(this.scene, this.camera);
-        const rendererRenderMs = performance.now() - renderStart;
+        rendererRenderMs = performance.now() - renderStart;
         this.gpuTimer.end();
         this.frameProfiler.endFrame(this.renderer, rendererRenderMs);
         // Poll results from any queries that resolved during this frame —
         // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
         // always reflects slightly stale data (acceptable for a UI readout).
         this.gpuTimer.poll();
-        this.adjustPixelRatio(now, delta);
+        this.adjustPixelRatio(now, rendererRenderMs);
       }
+      this._frameCompleteCallback?.({ rendererRenderMs });
       this._rafId = requestAnimationFrame(tick);
     };
     this._rafId = requestAnimationFrame(tick);
   }
 
-  private adjustPixelRatio(now: number, frameDeltaMs: number): void {
+  private adjustPixelRatio(now: number, rendererRenderMs: number): void {
     // Some runtimes visibly flash the WebGL canvas when the backing
     // buffer is reallocated by setPixelRatio()+setSize(). Those profiles
     // keep DPR stable; browser desktop keeps the adaptive quality loop.
@@ -400,8 +418,15 @@ export class ThreeApp {
 
     const gpuMs = this.gpuTimer.getGpuMs();
     const hasGpuMs = this.gpuTimer.isSupported() && gpuMs > 0;
-    const overloaded = hasGpuMs ? gpuMs > 16 : frameDeltaMs > 22;
-    const comfortable = hasGpuMs ? gpuMs < 9 : frameDeltaMs < 14;
+    // RAF delta includes time the browser withheld callbacks. At 30 Hz that
+    // is ~33 ms even when the draw is cheap, so using it here needlessly
+    // reduces resolution for display/power/browser pacing rather than actual
+    // render pressure. A GPU timer is best; render-submit wall time is the
+    // least misleading fallback when timer queries are unavailable.
+    const renderCostMs = hasGpuMs ? gpuMs : rendererRenderMs;
+    const overloaded = renderCostMs > 16;
+    const comfortable = renderCostMs < 9;
+    this._lastPixelRatioAdjustMs = now;
     let next = this._activePixelRatio;
     if (overloaded) {
       next = Math.max(DYNAMIC_PIXEL_RATIO_FLOOR, this._activePixelRatio - 0.25);
@@ -411,7 +436,6 @@ export class ThreeApp {
     if (Math.abs(next - this._activePixelRatio) < 0.01) return;
 
     this._activePixelRatio = next;
-    this._lastPixelRatioAdjustMs = now;
     this.renderer.setPixelRatio(this._activePixelRatio);
     const canvas = this.renderer.domElement;
     this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
@@ -446,6 +470,7 @@ export class ThreeApp {
     this._destroyed = true;
     this.stop();
     this._updateCallback = null;
+    this._frameCompleteCallback = null;
     this._zoomTerrainPointsOverlay.destroy();
     this.orbit.destroy();
     this._resizeObserver.disconnect();

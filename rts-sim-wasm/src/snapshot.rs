@@ -4877,6 +4877,29 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn air_only_projectiles_require_an_exposed_target_volume() {
+        let submerged = CombatTargetingCylinderTarget {
+            horizontal_dist_sq: 0.0,
+            horizontal_radius: 1.0,
+            bottom_z: TERRAIN_WATER_LEVEL - 20.0,
+            top_z: TERRAIN_WATER_LEVEL,
+        };
+        let exposed = CombatTargetingCylinderTarget {
+            top_z: TERRAIN_WATER_LEVEL + 0.001,
+            ..submerged
+        };
+        assert!(!combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
+            submerged,
+        ));
+        assert!(combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
+            exposed,
+        ));
+        assert!(combat_targeting_flags_allow_target_medium(0, submerged));
+    }
+
+    #[test]
     pub(crate) fn wind_sample_state_writes_deterministic_vector() {
         let mut a = [0.0; 5];
         let mut b = [0.0; 5];
@@ -8543,7 +8566,6 @@ mod sim_kernel_tests {
         assert!(blueprint_tables::BLUEPRINT_TOWERS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_TURRETS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_SHOTS_COUNT > 0);
-        assert!(blueprint_tables::BLUEPRINT_PATHFINDING_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"unitJackal"));
         assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"buildingSolar"));
@@ -9968,7 +9990,7 @@ mod lock_on_inclusion_tests {
     struct TurretSpec {
         state: u8,
         target_id: i32,
-        flags: u16,
+        flags: u32,
         dps: f32,
         blueprint_code: u8,
         relationship_mask: u8,

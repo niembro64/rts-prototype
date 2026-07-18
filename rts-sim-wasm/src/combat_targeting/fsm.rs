@@ -19,7 +19,10 @@ pub(crate) fn combat_targeting_apply_priority_point_fsm_idx(
     shield_clear: u8,
 ) {
     let old_state = pool.turret_state[idx];
-    let next_state = if los_clear == 0 || ballistic_clear == 0 {
+    let next_state = if los_clear == 0
+        || ballistic_clear == 0
+        || !combat_targeting_turret_allows_target_medium(pool, idx, target)
+    {
         CT_TURRET_STATE_IDLE
     } else if shield_clear == 0 {
         CT_TURRET_STATE_IDLE
@@ -130,7 +133,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
     entity_slot: u32,
     turret_idx: u32,
     idx: usize,
-    flags: u16,
+    flags: u32,
     mount_x: f64,
     mount_y: f64,
     mount_z: f64,
@@ -431,6 +434,7 @@ pub(crate) fn combat_targeting_apply_priority_target_fsm_idx(
             combat_targeting_turret_range_volume(pool, idx),
             target,
         )
+        || !combat_targeting_turret_allows_target_medium(pool, idx, target)
     {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;

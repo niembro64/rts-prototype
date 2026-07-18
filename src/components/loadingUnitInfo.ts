@@ -92,7 +92,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
       stat('HP', fmt(blueprint.hp)),
       stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'non-damaging'),
       stat('Range', longestRange > 0 ? fmt(longestRange) : 'none'),
-      stat('Mobility', `${labelCase(locomotion.type)} / ${locomotion.pathfinding.terrainMode}`),
+      stat('Mobility', `${labelCase(locomotion.type)} / ${describeRouteMedia(blueprint)}`),
     ],
     leftSections: [
       buildEconomySection(blueprint, buildCost),
@@ -237,15 +237,13 @@ function buildEconomySection(
 
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
-  const locomotion = blueprint.unitLocomotion;
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
   const primaryPhysics = getUnitLocomotionPrimaryDrivePhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
     stat('Drive force', fmt(primaryPhysics.propulsion.driveForce)),
     stat('Force coupling', fmt(primaryPhysics.propulsion.forceCoupling, 2)),
-    node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
-      stat('Terrain mode', runtime.pathfinding.terrainMode),
+    node('Route capability', 'derived from force profile', undefined, [
       stat(
         'Media',
         [
@@ -260,6 +258,18 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
     ...describeLocomotionPhysics(runtime),
   ];
   return { id: 'movement', title: 'Movement', items };
+}
+
+function describeRouteMedia(blueprint: UnitBlueprint): string {
+  const climb = computeLocomotionClimbProfile(
+    getUnitLocomotion(blueprint.unitBlueprintId),
+    blueprint.mass,
+  );
+  return [
+    climb.allowOnGround ? 'ground' : '',
+    climb.allowInWater ? 'water' : '',
+    climb.allowInAir ? 'air' : '',
+  ].filter(Boolean).join('+') || 'immobile';
 }
 
 function buildCombatSummarySection(

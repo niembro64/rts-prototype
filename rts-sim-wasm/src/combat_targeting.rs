@@ -42,40 +42,44 @@ pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 pub const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE: u8 = 1 << 5;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
-pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u16 = 1 << 0;
-pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u16 = 1 << 1;
-pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u16 = 1 << 2;
-pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u16 = 1 << 3;
-pub const CT_TURRET_CFG_PASSIVE: u16 = 1 << 4;
-pub const CT_TURRET_CFG_VISUAL_ONLY: u16 = 1 << 5;
-pub const CT_TURRET_CFG_SHOT_IS_FORCE: u16 = 1 << 6;
-pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u16 = 1 << 7;
+pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u32 = 1 << 0;
+pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u32 = 1 << 1;
+pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u32 = 1 << 2;
+pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u32 = 1 << 3;
+pub const CT_TURRET_CFG_PASSIVE: u32 = 1 << 4;
+pub const CT_TURRET_CFG_VISUAL_ONLY: u32 = 1 << 5;
+pub const CT_TURRET_CFG_SHOT_IS_FORCE: u32 = 1 << 6;
+pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u32 = 1 << 7;
 /// When set, the turret inherits the host entity's priority target /
 /// priority point. When clear (fully-autonomous), priority FSM batches
 /// must skip this turret entirely so it keeps running its own
 /// independent acquisition.
-pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
-pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
-pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
+pub const CT_TURRET_CFG_HOST_DIRECTED: u32 = 1 << 8;
+pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u32 = 1 << 9;
+pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u32 = 1 << 10;
 /// Packed range-mode value for a cylinder capped at the water surface and
 /// unbounded below. Bit 10 alone was previously unused; bits 9+10 retain the
 /// existing top-and-bottom-unbounded mode.
 #[allow(dead_code)]
-pub const CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED: u16 = 1 << 10;
-pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
-pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
+pub const CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED: u32 = 1 << 10;
+pub const CT_TURRET_CFG_RANGE_SPHERE: u32 = 1 << 11;
+pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u32 = 1 << 12;
 /// Shield-only emitters maintain force material and may keep targeting
 /// through that material. Offensive shield emitters with submunitions do
 /// not set this; their damaging fire uses the normal shield-aware
 /// targeting gate.
-pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
+pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u32 = 1 << 13;
 /// Passive shield panels aim between the incoming enemy turret and the
 /// enemy body so reflections return toward the source of fire.
-pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u16 = 1 << 14;
+pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u32 = 1 << 14;
 /// When set, this turret may only lock an enemy the player/team sees with
 /// FULL sight (not radar-only). Direct beams and precision line weapons set
 /// it; artillery / missiles that author radar fire leave it clear.
-pub const CT_TURRET_CFG_REQUIRES_FULL_SIGHT: u16 = 1 << 15;
+pub const CT_TURRET_CFG_REQUIRES_FULL_SIGHT: u32 = 1 << 15;
+/// The emitted projectile operates in air but not water, so this turret may
+/// only acquire a target whose physical volume is exposed above the waterline.
+/// This is stamped from shot-medium configuration, not a unit/chassis type.
+pub const CT_TURRET_CFG_REQUIRES_AIR_TARGET: u32 = 1 << 16;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -335,7 +339,7 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_under_only: Vec<u8>,
     pub(crate) turret_blueprint_code: Vec<u8>,
     pub(crate) turret_los_blocked_ticks: Vec<u16>,
-    pub(crate) turret_config_flags: Vec<u16>,
+    pub(crate) turret_config_flags: Vec<u32>,
     // LOCK-ON-03 — Per-turret lock-on inclusion masks compiled from
     // each turret blueprint's authored inclusion arrays. Lock-on is off
     // by default: an empty level-0 mask includes nothing.
@@ -1094,7 +1098,7 @@ pub fn combat_targeting_set_turret(
     local_mount_y: f64,
     local_mount_z: f64,
     world_pos_tick: i32,
-    config_flags: u16,
+    config_flags: u32,
     dps: f32,
     projectile_speed: f64,
     projectile_mass: f64,
@@ -1728,7 +1732,7 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(
     combat_targeting_turret_config_flags_ptr,
     turret_config_flags,
-    u16
+    u32
 );
 combat_targeting_ptr_export!(
     combat_targeting_turret_ballistic_has_solution_ptr,
@@ -3624,7 +3628,7 @@ impl CombatTargetingRangeVolume {
 }
 
 #[inline]
-pub(crate) fn combat_targeting_range_volume_from_flags(flags: u16) -> CombatTargetingRangeVolume {
+pub(crate) fn combat_targeting_range_volume_from_flags(flags: u32) -> CombatTargetingRangeVolume {
     let bottom_bit = (flags & CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED) != 0;
     let top_bit = (flags & CT_TURRET_CFG_RANGE_TOP_UNBOUNDED) != 0;
     let sphere = (flags & CT_TURRET_CFG_RANGE_SPHERE) != 0;
@@ -3668,6 +3672,23 @@ pub(crate) fn combat_targeting_range_volume_allows_target_domain(
     target: CombatTargetingCylinderTarget,
 ) -> bool {
     !volume.water_surface_ceiling || target.bottom_z <= TERRAIN_WATER_LEVEL
+}
+
+#[inline]
+pub(crate) fn combat_targeting_flags_allow_target_medium(
+    flags: u32,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    (flags & CT_TURRET_CFG_REQUIRES_AIR_TARGET) == 0 || target.top_z > TERRAIN_WATER_LEVEL
+}
+
+#[inline]
+pub(crate) fn combat_targeting_turret_allows_target_medium(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    combat_targeting_flags_allow_target_medium(pool.turret_config_flags[idx], target)
 }
 
 #[inline]
@@ -3739,12 +3760,13 @@ pub(crate) fn combat_targeting_fire_max_cylinder_contains(
     } else {
         pool.turret_fire_max_acquire_sq[idx]
     };
-    combat_targeting_range_volume_contains(
-        combat_targeting_range_radius_from_sq(range_sq),
-        pool.turret_mount_z[idx],
-        combat_targeting_turret_range_volume(pool, idx),
-        target,
-    )
+    combat_targeting_turret_allows_target_medium(pool, idx, target)
+        && combat_targeting_range_volume_contains(
+            combat_targeting_range_radius_from_sq(range_sq),
+            pool.turret_mount_z[idx],
+            combat_targeting_turret_range_volume(pool, idx),
+            target,
+        )
 }
 
 #[inline]
@@ -3759,12 +3781,13 @@ pub(crate) fn combat_targeting_outermost_release_cylinder_contains(
     } else {
         pool.turret_fire_max_release_sq[idx]
     };
-    combat_targeting_range_volume_contains(
-        combat_targeting_range_radius_from_sq(range_sq),
-        pool.turret_mount_z[idx],
-        combat_targeting_turret_range_volume(pool, idx),
-        target,
-    )
+    combat_targeting_turret_allows_target_medium(pool, idx, target)
+        && combat_targeting_range_volume_contains(
+            combat_targeting_range_radius_from_sq(range_sq),
+            pool.turret_mount_z[idx],
+            combat_targeting_turret_range_volume(pool, idx),
+            target,
+        )
 }
 
 #[inline]
@@ -3844,7 +3867,7 @@ pub(crate) fn combat_targeting_weapon_system_disabled(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_turret_ignores_force_material_sight_obstruction(flags: u16) -> bool {
+pub(crate) fn combat_targeting_turret_ignores_force_material_sight_obstruction(flags: u32) -> bool {
     (flags & CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION) != 0
 }
 
@@ -4267,7 +4290,7 @@ pub(crate) fn combat_targeting_clear_choice_prep_outputs(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_choice_prep_result(current: u8, flags: u16) -> u8 {
+pub(crate) fn combat_targeting_choice_prep_result(current: u8, flags: u32) -> u8 {
     if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
         current | CT_TARGETING_PREP_HAS_APPLY | CT_TARGETING_PREP_HAS_PASSIVE_APPLY
     } else {
@@ -5936,6 +5959,7 @@ pub(crate) fn targeting_score_candidate(
     seed_shield_panel_score: f64,
     is_passive: u8,
     range_volume: CombatTargetingRangeVolume,
+    config_flags: u32,
     candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
@@ -5965,6 +5989,9 @@ pub(crate) fn targeting_score_candidate(
         top_z: candidate_pos_z[candidate_idx]
             + combat_targeting_nonnegative_finite(candidate_vertical_extent),
     };
+    if !combat_targeting_flags_allow_target_medium(config_flags, target) {
+        return None;
+    }
     let rank = targeting_rank_cylinder(
         rank_mode,
         fire_max_acquire,
@@ -6662,6 +6689,7 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             seed_shield_panel_score,
             is_passive,
             range_volume,
+            pool.turret_config_flags[source_turret_idx],
             candidate_observable,
             candidate_pos_x,
             candidate_pos_y,
@@ -6833,6 +6861,7 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
                 seed_shield_panel_score,
                 is_passive,
                 range_volume,
+                pool.turret_config_flags[source_turret_idx],
                 candidate_observable,
                 candidate_pos_x,
                 candidate_pos_y,

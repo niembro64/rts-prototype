@@ -1,4 +1,4 @@
-import { getUnitLocomotion } from './index';
+import { getUnitBlueprint, getUnitLocomotion } from './index';
 import {
   UNIT_LOCOMOTION_CONTACT_FIELDS,
   UNIT_LOCOMOTION_FLUID_RESISTANCE_FIELDS,
@@ -65,12 +65,35 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
       `${unitBlueprintId} water physics must not source lift from water surface`,
     );
     assertContract(
-      lift.randomizationAmount === 0.99,
-      `${unitBlueprintId} must preserve the historical water-lift randomization`,
-    );
-    assertContract(
-      lift.ema === 0.97,
-      `${unitBlueprintId} must preserve the historical strong water-lift EMA`,
+      lift.randomizationAmount >= 0 && lift.randomizationAmount <= 1 &&
+        lift.ema >= 0 && lift.ema < 1,
+      `${unitBlueprintId} water lift response must remain a valid bounded force controller`,
     );
   }
+
+  const seaTurtle = getUnitLocomotion('unitSeaTurtle');
+  assertContract(
+    seaTurtle.physics.water.lift.gravityCounterRatio === 1 &&
+      seaTurtle.physics.water.lift.liftForceFromGroundSurface > 0 &&
+      seaTurtle.physics.air.lift.liftForceFromWaterSurface > 0,
+    'Sea Turtle reaches and holds the waterline through medium forces, not a height clamp',
+  );
+  assertContract(
+    getUnitBlueprint('unitSeaTurtle').radius.collision <
+      getUnitBlueprint('unitSeaTurtle').radius.other * 1.5,
+    'Sea Turtle collision envelope stays close to its physical body envelope',
+  );
+
+  const orca = getUnitLocomotion('unitOrca');
+  assertContract(
+    orca.physics.air.lift.liftForceFromWaterSurface === 0 &&
+      orca.physics.water.lift.gravityCounterRatio > 0 &&
+      orca.physics.water.lift.gravityCounterRatio < 1,
+    'Orca retains submerged depth authority without inheriting Sea Turtle surface lift',
+  );
+  assertContract(
+    getUnitBlueprint('unitOrca').radius.collision >=
+      getUnitBlueprint('unitOrca').radius.other * 1.3,
+    'Orca collision envelope covers its long hull and tail',
+  );
 }

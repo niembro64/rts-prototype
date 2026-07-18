@@ -28,8 +28,6 @@ export type {
   TurretBlueprint,
 
   
-
-  PathfindingBlueprint,
   UnitBodyShape,
   
   UnitLocomotionBlueprint,

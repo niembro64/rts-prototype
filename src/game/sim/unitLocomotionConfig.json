@@ -280,8 +280,8 @@
             "angularDrag": 4
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0
           }
         },
         "idleAirDrive": false
@@ -326,8 +326,8 @@
             "angularDrag": 1
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0
           }
         },
         "water": {
@@ -346,8 +346,8 @@
             "angularDrag": 3
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0
           }
         },
         "idleAirDrive": false

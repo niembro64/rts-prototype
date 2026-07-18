@@ -750,18 +750,6 @@ pub struct UnitLocomotionSurvivalPolicy {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum PathfindingTerrainMode {
-    Land,
-    Anywhere,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct PathfindingBlueprint {
-    pub pathfindingBlueprintId: String,
-    pub terrainMode: PathfindingTerrainMode,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct HoverConfig {
     pub fanDistX: f64,
     pub fanDistY: f64,
@@ -809,8 +797,6 @@ pub struct UnitLocomotionBlueprintWheels {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: WheelConfig,
 }
 
@@ -820,8 +806,6 @@ pub struct UnitLocomotionBlueprintTreads {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: TreadConfig,
 }
 
@@ -831,8 +815,6 @@ pub struct UnitLocomotionBlueprintLegs {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: LegConfig,
 }
 
@@ -842,8 +824,6 @@ pub struct UnitLocomotionBlueprintFlippers {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: FlipperConfig,
 }
 
@@ -853,8 +833,6 @@ pub struct UnitLocomotionBlueprintHover {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: HoverConfig,
 }
 
@@ -864,8 +842,6 @@ pub struct UnitLocomotionBlueprintFlying {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: FlyingConfig,
 }
 
@@ -875,8 +851,6 @@ pub struct UnitLocomotionBlueprintSwim {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub survival: UnitLocomotionSurvivalPolicy,
-    pub pathfindingBlueprintId: String,
-    pub pathfinding: PathfindingBlueprint,
     pub config: SwimConfig,
 }
 
