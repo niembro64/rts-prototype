@@ -6,6 +6,8 @@ import {
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
+  ICON_FADE_MIN_ALPHA,
+  ICON_FADE_START_SCREEN_RADIUS_PX,
   PLASMA_DETAIL_HYSTERESIS_LEVEL,
   PLASMA_HIGH_RUNG_MIN_LEVEL,
   PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
@@ -24,6 +26,7 @@ import {
   featureVisibleAtDetail,
   geometryTierForDetail,
   legStyleForDetail,
+  lodProxyFadeAlphaForScreenRadius,
   plasmaDetailRungForLevel,
   plasmaDetailRungWithHysteresis,
   plasmaDetailRadiusForTailLength,
@@ -156,6 +159,30 @@ export function runEntityDetailLevel3DContractTest(): void {
     midLevel > DETAIL_LEVEL_GLYPH && midLevel <= DETAIL_LEVEL_FULL,
     'intermediate coverage lands strictly inside the ramp',
   );
+
+  // ── BAR-style icon cross-fade band ────────────────────────────────
+  assertContract(
+    lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX) === 0 &&
+      lodProxyFadeAlphaForScreenRadius(10000) === 0,
+    'no icon overlay at/above the fade-start screen radius',
+  );
+  const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + 4) / 2;
+  const bandAlpha = lodProxyFadeAlphaForScreenRadius(bandPx);
+  assertContract(
+    bandPx >= ICON_FADE_START_SCREEN_RADIUS_PX ||
+      (bandAlpha >= ICON_FADE_MIN_ALPHA && bandAlpha < 1),
+    'inside the band the icon alpha sits between the pop-in floor and 1',
+  );
+  assertContract(
+    lodProxyFadeAlphaForScreenRadius(0) === 1,
+    'at/below the glyph radius the icon is fully opaque',
+  );
+  let previousFade = -1;
+  for (let px = ICON_FADE_START_SCREEN_RADIUS_PX + 1; px >= 0; px -= 0.5) {
+    const fade = lodProxyFadeAlphaForScreenRadius(px);
+    assertContract(fade >= previousFade, 'icon fade alpha is monotonic as coverage shrinks');
+    previousFade = fade;
+  }
 
   // ── Rung ladder + representative-level round trip ─────────────────
   assertContract(

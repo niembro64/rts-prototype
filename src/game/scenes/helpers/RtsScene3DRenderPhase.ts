@@ -447,6 +447,8 @@ export class RtsScene3DRenderPhase {
         isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
         entityDetailRung: (entity) =>
           this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
+        entityLodProxyFadeAlpha: (entity) =>
+          this.entityLod.entityLodProxyFadeAlphaForView(renderFrameState.view, entity),
         scoped: this.renderScope.getMode() !== 'all',
       },
       {

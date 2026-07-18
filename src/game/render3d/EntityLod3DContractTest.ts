@@ -22,6 +22,7 @@ import {
   DETAIL_LEVEL_GLYPH,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
+  ICON_FADE_MIN_ALPHA,
   PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
   detailLevelForRung,
 } from './EntityDetailLevel3D';
@@ -138,7 +139,10 @@ export function runEntityLod3DContractTest(): void {
     );
 
     const groundUnit = entityAt(301, 0, 0, 0);
-    groundUnit.unit = { locomotion: { type: 'wheels' } } as NonNullable<Entity['unit']>;
+    groundUnit.unit = {
+      locomotion: { type: 'wheels' },
+      radius: { other: 20, hitbox: 18, collision: 15 },
+    } as NonNullable<Entity['unit']>;
     setLodMode('low');
     bodyLod.beginFrame();
     assertContract(
@@ -156,12 +160,30 @@ export function runEntityLod3DContractTest(): void {
         bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID,
       'MED mode freezes units at real medium-resolution geometry',
     );
+    // BAR-style behavior: units iconify too. Near units draw no icon;
+    // inside the fade band the icon fades in OVER the still-opaque model;
+    // at glyph range the model stops drawing and the icon replaces it.
     setLodMode('auto');
+    groundUnit.transform.y = -10;
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+        bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
+      'AUTO mode draws near units as full models with no icon overlay',
+    );
+    groundUnit.transform.y = -4000;
+    bodyLod.beginFrame();
+    const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
+    assertContract(
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+        bandFadeAlpha >= ICON_FADE_MIN_ALPHA && bandFadeAlpha < 1,
+      'AUTO mode cross-fades the icon in over the still-drawn unit model',
+    );
     groundUnit.transform.y = -10000;
     bodyLod.beginFrame();
     assertContract(
-      !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit),
-      'AUTO mode keeps very distant units as real low-poly geometry',
+      bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit),
+      'AUTO mode replaces very distant units with their proxy icons (BAR)',
     );
     assertContract(
       entityLodProxyGlyph3D(groundUnit) === ENTITY_LOD_PROXY_GLYPH_CIRCLE,

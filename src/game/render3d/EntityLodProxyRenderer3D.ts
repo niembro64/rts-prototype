@@ -17,9 +17,11 @@ const POINT_VERTEX_SHADER = `
 attribute vec3 color;
 attribute float aRadius;
 attribute float aGlyph;
+attribute float aAlpha;
 uniform float uViewportHeight;
 varying vec3 vColor;
 varying float vGlyph;
+varying float vAlpha;
 varying float vViewZ;
 varying float vViewRadius;
 varying vec4 vDepthProjection;
@@ -27,6 +29,7 @@ varying vec4 vDepthProjection;
 void main() {
   vColor = color;
   vGlyph = aGlyph;
+  vAlpha = aAlpha;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float viewDistance = max(1.0, -mvPosition.z);
@@ -49,6 +52,7 @@ const POINT_FRAGMENT_SHADER = `
 uniform float uOpacity;
 varying vec3 vColor;
 varying float vGlyph;
+varying float vAlpha;
 varying float vViewZ;
 varying float vViewRadius;
 varying vec4 vDepthProjection;
@@ -89,7 +93,7 @@ void main() {
   float depth = (clipZ / clipW) * 0.5 + 0.5;
   if (depth < 0.0 || depth > 1.0) discard;
   gl_FragDepthEXT = depth;
-  gl_FragColor = vec4(vColor, uOpacity);
+  gl_FragColor = vec4(vColor, uOpacity * vAlpha);
 }
 `;
 
@@ -106,14 +110,17 @@ type ProxyPointBatch = {
   colors: Float32Array;
   radii: Float32Array;
   glyphs: Float32Array;
+  alphas: Float32Array;
   positionAttr: THREE.BufferAttribute;
   colorAttr: THREE.BufferAttribute;
   radiusAttr: THREE.BufferAttribute;
   glyphAttr: THREE.BufferAttribute;
+  alphaAttr: THREE.BufferAttribute;
   positionDirty: DirtySpan;
   colorDirty: DirtySpan;
   radiusDirty: DirtySpan;
   glyphDirty: DirtySpan;
+  alphaDirty: DirtySpan;
   count: number;
   drawRangeCount: number;
 };
@@ -128,6 +135,7 @@ type EntityLodProxyRendererBackend3D = {
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha?: number,
   ): void;
   pushBuilding(entity: Entity): void;
   pushBuildingProxy(
@@ -137,6 +145,7 @@ type EntityLodProxyRendererBackend3D = {
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha?: number,
   ): void;
   flush(viewportHeight: number): void;
   destroy(): void;
@@ -181,7 +190,9 @@ function createProxyPointMaterial(): THREE.ShaderMaterial {
     },
     vertexShader: POINT_VERTEX_SHADER,
     fragmentShader: POINT_FRAGMENT_SHADER,
-    transparent: ENTITY_LOD_PROXY_OPACITY < 1,
+    // Always blended: cross-fade rows carry per-instance alpha < 1 while
+    // the icon fades in over the still-opaque model (BAR behavior).
+    transparent: true,
     depthTest: ENTITY_LOD_PROXY_DEPTH_TEST,
     depthWrite: ENTITY_LOD_PROXY_DEPTH_WRITE,
   });
@@ -193,18 +204,22 @@ function createProxyPointBatch(): ProxyPointBatch {
   const colors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const radii = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const glyphs = new Float32Array(ENTITY_LOD_PROXY_CAP);
+  const alphas = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const positionAttr = new THREE.BufferAttribute(positions, 3);
   const colorAttr = new THREE.BufferAttribute(colors, 3);
   const radiusAttr = new THREE.BufferAttribute(radii, 1);
   const glyphAttr = new THREE.BufferAttribute(glyphs, 1);
+  const alphaAttr = new THREE.BufferAttribute(alphas, 1);
   positionAttr.setUsage(THREE.DynamicDrawUsage);
   colorAttr.setUsage(THREE.DynamicDrawUsage);
   radiusAttr.setUsage(THREE.DynamicDrawUsage);
   glyphAttr.setUsage(THREE.DynamicDrawUsage);
+  alphaAttr.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('position', positionAttr);
   geometry.setAttribute('color', colorAttr);
   geometry.setAttribute('aRadius', radiusAttr);
   geometry.setAttribute('aGlyph', glyphAttr);
+  geometry.setAttribute('aAlpha', alphaAttr);
   geometry.setDrawRange(0, 0);
 
   const material = createProxyPointMaterial();
@@ -219,14 +234,17 @@ function createProxyPointBatch(): ProxyPointBatch {
     colors,
     radii,
     glyphs,
+    alphas,
     positionAttr,
     colorAttr,
     radiusAttr,
     glyphAttr,
+    alphaAttr,
     positionDirty: createDirtySpan(),
     colorDirty: createDirtySpan(),
     radiusDirty: createDirtySpan(),
     glyphDirty: createDirtySpan(),
+    alphaDirty: createDirtySpan(),
     count: 0,
     drawRangeCount: 0,
   };
@@ -258,6 +276,7 @@ function writePoint(
   radius: number,
   glyph: number,
   colorHex: number,
+  alpha: number,
 ): void {
   const posOffset = slot * 3;
   const px = Math.fround(x);
@@ -284,6 +303,11 @@ function writePoint(
     batch.glyphs[slot] = nextGlyph;
     markDirty(batch.glyphDirty, slot);
   }
+  const nextAlpha = Math.fround(alpha);
+  if (batch.alphas[slot] !== nextAlpha) {
+    batch.alphas[slot] = nextAlpha;
+    markDirty(batch.alphaDirty, slot);
+  }
   writeColorHex(batch, slot, colorHex);
 }
 
@@ -296,8 +320,9 @@ function writeSimPoint(
   radius: number,
   glyph: number,
   ownerId: PlayerId | undefined,
+  alpha: number,
 ): void {
-  writePoint(batch, slot, simX, simZ, simY, radius, glyph, lodProxyColorHex(ownerId));
+  writePoint(batch, slot, simX, simZ, simY, radius, glyph, lodProxyColorHex(ownerId), alpha);
 }
 
 function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
@@ -312,6 +337,7 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
   uploadDirty(batch.colorAttr, batch.colorDirty, 3);
   uploadDirty(batch.radiusAttr, batch.radiusDirty, 1);
   uploadDirty(batch.glyphAttr, batch.glyphDirty, 1);
+  uploadDirty(batch.alphaAttr, batch.alphaDirty, 1);
 }
 
 class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
@@ -368,6 +394,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha: number = 1,
   ): void {
     const slot = this.unitBatch.count;
     if (slot >= ENTITY_LOD_PROXY_CAP) return;
@@ -380,6 +407,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       radius,
       glyph,
       ownerId,
+      alpha,
     );
     this.unitBatch.count = slot + 1;
   }
@@ -404,6 +432,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha: number = 1,
   ): void {
     const slot = this.buildingBatch.count;
     if (slot >= ENTITY_LOD_PROXY_CAP) return;
@@ -416,6 +445,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       radius,
       glyph,
       ownerId,
+      alpha,
     );
     this.buildingBatch.count = slot + 1;
   }
@@ -469,8 +499,9 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha: number = 1,
   ): void {
-    this.backend.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId);
+    this.backend.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId, alpha);
   }
 
   pushBuilding(entity: Entity): void {
@@ -484,8 +515,9 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     radius: number,
     glyph: number,
     ownerId: PlayerId | undefined,
+    alpha: number = 1,
   ): void {
-    this.backend.pushBuildingProxy(simX, simY, simZ, radius, glyph, ownerId);
+    this.backend.pushBuildingProxy(simX, simY, simZ, radius, glyph, ownerId, alpha);
   }
 
   flush(viewportHeight: number): void {
