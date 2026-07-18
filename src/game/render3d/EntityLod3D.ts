@@ -21,6 +21,8 @@ import {
   detailLevelForRung,
   detailRungForLevel,
   detailRungWithHysteresis,
+  detailScreenRadiusPx,
+  lodProxyFadeAlphaForScreenRadius,
   plasmaDetailRadiusForTailLength,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
@@ -53,26 +55,8 @@ function entityLodEnabled(): boolean {
   return ENTITY_LOD_ENABLED;
 }
 
-/** Units always retain real low-poly geometry. Buildings and other entity
- * families may still use the point-sprite proxy at extreme distance. */
-function isUnitGeometryHost(entity: Entity): boolean {
-  return entity.unit != null;
-}
-
 function isAuthoredGeometryHost(entity: Entity): boolean {
   return entity.unit != null || entity.building != null;
-}
-
-function clampUnitDetailLevel(entity: Entity, level: number): number {
-  return isUnitGeometryHost(entity)
-    ? Math.max(level, detailLevelForRung(DETAIL_RUNG_FAR))
-    : level;
-}
-
-function clampUnitDetailRung(entity: Entity, rung: DetailRung): DetailRung {
-  return isUnitGeometryHost(entity) && rung < DETAIL_RUNG_FAR
-    ? DETAIL_RUNG_FAR
-    : rung;
 }
 
 function cameraFovYRad(camera: THREE.Camera): number {
@@ -434,7 +418,24 @@ export class EntityLodState3D {
         ? detailLevelForRung(DETAIL_RUNG_FAR)
         : DETAIL_LEVEL_GLYPH;
     }
-    return clampUnitDetailLevel(entity, detailLevelForRadiusDistance(
+    return detailLevelForRadiusDistance(
+      entityDetailRadius3D(entity),
+      Math.sqrt(this.entityViewDistanceSq(view, entity)),
+      view.fovYRad,
+    );
+  }
+
+  /**
+   * BAR-style icon cross-fade alpha for entities NOT yet latched at the
+   * GLYPH rung: 0 outside the fade band, ramping to 1 as the projected
+   * screen radius approaches the glyph threshold. Computed from the raw
+   * (unlatched) screen radius so the fade is continuous; only the model
+   * cut itself rides the hysteresis-latched rung.
+   */
+  entityLodProxyFadeAlphaForView(view: RenderViewState3D, entity: Entity): number {
+    if (getLodMode() !== 'auto') return 0;
+    if (!entityLodEnabled()) return 0;
+    return lodProxyFadeAlphaForScreenRadius(detailScreenRadiusPx(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
       view.fovYRad,
@@ -459,13 +460,13 @@ export class EntityLodState3D {
       const frame = this.rungFrameByIndexedEntityId[entityId];
       const stored = this.rungByIndexedEntityId[entityId];
       if (frame === this.frame && stored !== undefined) {
-        return clampUnitDetailRung(entity, stored);
+        return stored;
       }
       const level = this.entityDetailLevelForView(view, entity);
-      const rung = clampUnitDetailRung(entity, stored !== undefined && frame !== undefined &&
+      const rung = stored !== undefined && frame !== undefined &&
         this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
         ? detailRungWithHysteresis(stored, level)
-        : detailRungForLevel(level));
+        : detailRungForLevel(level);
       this.trackIndexedEntityCache(
         entityId,
         this.rungIndexedEntityIds,
@@ -479,13 +480,13 @@ export class EntityLodState3D {
     const frame = this.rungFrameByEntityId.get(entityId);
     const stored = this.rungByEntityId.get(entityId);
     if (frame === this.frame && stored !== undefined) {
-      return clampUnitDetailRung(entity, stored);
+      return stored;
     }
     const level = this.entityDetailLevelForView(view, entity);
-    const rung = clampUnitDetailRung(entity, stored !== undefined && frame !== undefined &&
+    const rung = stored !== undefined && frame !== undefined &&
       this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
       ? detailRungWithHysteresis(stored, level)
-      : detailRungForLevel(level));
+      : detailRungForLevel(level);
     this.rungByEntityId.set(entityId, rung);
     this.rungFrameByEntityId.set(entityId, this.frame);
     return rung;
@@ -496,10 +497,6 @@ export class EntityLodState3D {
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
-    if (isUnitGeometryHost(entity)) {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -543,16 +540,14 @@ export class EntityLodState3D {
    * AUTO-mode proxy selection for the active 3D render loop: the entity is
    * a glyph exactly when its latched detail rung reaches GLYPH (projected
    * screen radius at/below the configured glyph size, with hysteresis).
+   * Units iconify too (BAR behavior) — the cross-fade band beforehand is
+   * {@link entityLodProxyFadeAlphaForView}.
    */
   entityUsesLodProxyForView(
     view: RenderViewState3D,
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
-    if (isUnitGeometryHost(entity)) {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -602,11 +597,11 @@ export class EntityLodState3D {
         ? detailLevelForRung(DETAIL_RUNG_FAR)
         : DETAIL_LEVEL_GLYPH;
     }
-    return clampUnitDetailLevel(entity, detailLevelForRadiusDistance(
+    return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
-    ));
+    );
   }
 
   entityUsesLowLodDistance(

@@ -7,7 +7,9 @@
 // the ends, discrete RUNGS pick the geometry segment tier and which named
 // features are built:
 //
-//   GLYPH (0)  point-sprite proxy for non-unit entities
+//   GLYPH (0)  point-sprite proxy (BAR-style strategic icon); the icon
+//              cross-fades in over the model beforehand — see
+//              lodProxyFadeAlphaForScreenRadius
 //   FAR   (1)  low-poly geometry, full authored unit silhouette and rig
 //   MID   (2)  medium-poly geometry, full authored unit silhouette and rig
 //   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
@@ -102,6 +104,15 @@ const GLYPH_SCREEN_RADIUS_PX = finitePositiveOr(detailConfig.screenRadiusPx?.gly
 const FULL_SCREEN_RADIUS_PX = Math.max(
   GLYPH_SCREEN_RADIUS_PX + 1,
   finitePositiveOr(detailConfig.screenRadiusPx?.full, 26),
+);
+// BAR-style icon cross-fade band: the proxy glyph fades in over the model
+// while the projected screen radius falls from iconFadeStart toward glyph.
+export const ICON_FADE_START_SCREEN_RADIUS_PX = Math.max(
+  GLYPH_SCREEN_RADIUS_PX,
+  finitePositiveOr(detailConfig.screenRadiusPx?.iconFadeStart, 8),
+);
+export const ICON_FADE_MIN_ALPHA = clamp01(
+  finitePositiveOr(detailConfig.proxyFade?.minAlpha, 0.25),
 );
 const MID_RUNG_MIN_LEVEL = clamp01(finitePositiveOr(detailConfig.rungMinLevel?.mid, 0.32));
 const CLOSE_RUNG_MIN_LEVEL = Math.max(
@@ -250,6 +261,26 @@ export function detailLevelForRadiusDistance(
   return detailLevelForScreenRadius(
     detailScreenRadiusPx(radiusWorld, distance, fovYRad),
   );
+}
+
+/**
+ * BAR-style icon cross-fade alpha from the projected screen radius.
+ * 0 while the entity is comfortably large on screen (no icon), then a
+ * linear ramp from ICON_FADE_MIN_ALPHA (icons are unrecognisable when
+ * fainter — BAR pops them in at ~25%) up to 1 as the radius falls from
+ * the fade-start threshold to the glyph threshold. The MODEL is never
+ * faded: it stays fully opaque under the icon and stops drawing
+ * entirely once the latched rung reaches GLYPH (where the opaque glyph
+ * has fully covered it).
+ */
+export function lodProxyFadeAlphaForScreenRadius(screenRadiusPx: number): number {
+  if (!ENTITY_DETAIL_ENABLED) return 0;
+  if (!Number.isFinite(screenRadiusPx)) return 0;
+  if (screenRadiusPx >= ICON_FADE_START_SCREEN_RADIUS_PX) return 0;
+  if (screenRadiusPx <= GLYPH_SCREEN_RADIUS_PX) return 1;
+  const t = (ICON_FADE_START_SCREEN_RADIUS_PX - screenRadiusPx) /
+    (ICON_FADE_START_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+  return ICON_FADE_MIN_ALPHA + (1 - ICON_FADE_MIN_ALPHA) * t;
 }
 
 /**

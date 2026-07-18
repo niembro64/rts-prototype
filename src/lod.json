@@ -9,7 +9,12 @@
     "referenceViewportHeightPx": 1080,
     "screenRadiusPx": {
       "glyph": 4,
+      "iconFadeStart": 8,
       "full": 26
+    },
+    "proxyFade": {
+      "comment": "BAR-style icon cross-fade. While an entity's projected screen radius sits between screenRadiusPx.iconFadeStart and screenRadiusPx.glyph, its proxy glyph is drawn ON TOP of the still-fully-opaque model, alpha ramping linearly from minAlpha (BAR pops icons in at ~25% so they stay recognisable) up to 1. At/below the glyph radius the model stops drawing entirely and the opaque glyph replaces it.",
+      "minAlpha": 0.25
     },
     "rungMinLevel": {
       "mid": 0.32,

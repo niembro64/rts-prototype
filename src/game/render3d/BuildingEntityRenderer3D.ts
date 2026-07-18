@@ -433,6 +433,7 @@ export class BuildingEntityRenderer3D {
     beamAimCache: TurretBeamAimCache3D,
     scopedRender: boolean = false,
     entityDetailRung?: (entity: Entity) => DetailRung,
+    entityLodProxyFadeAlpha?: (entity: Entity) => number,
   ): void {
     this.buildingRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_BUILDINGS;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
@@ -500,6 +501,21 @@ export class BuildingEntityRenderer3D {
       const detailRung = entityDetailRung !== undefined
         ? entityDetailRung(entity)
         : detailRungForLevel(entityDetailLevelForView(frameState.view, entity));
+      // BAR-style cross-fade: the icon fades in ON TOP of the still-fully-
+      // opaque building before the (hysteresis-latched) glyph flip above
+      // stops drawing the model entirely.
+      const proxyFadeAlpha = entityLodProxyFadeAlpha?.(entity) ?? 0;
+      if (proxyFadeAlpha > 0) {
+        this.lodProxyRenderer.pushBuildingProxy(
+          rows.x[row],
+          rows.y[row],
+          rows.z[row],
+          rows.lodProxyRadius[row],
+          rows.lodProxyGlyph[row],
+          rows.ownerIdAt(row),
+          proxyFadeAlpha,
+        );
+      }
       const detailLevel = detailLevelForRung(detailRung);
       const detailBand = buildingDetailBandForLevel(detailLevel, shapeType);
       const detailBandChanged =

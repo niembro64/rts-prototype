@@ -43,6 +43,7 @@ import type { EntityMesh } from './EntityMesh3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
   DETAIL_REBUILD_BUDGET_UNITS,
+  DETAIL_RUNG_GLYPH,
   LOCOMOTION_FAR_FRAME_STRIDE,
   UNIT_ANIMATION_MIN_RUNG,
   type DetailRung,
@@ -128,6 +129,10 @@ type RenderEntityUpdatePacket3D = {
    *  state that stamps the packet's LOD-proxy flag, so the rebuild band
    *  and the glyph flip can never disagree within a frame. */
   entityDetailRung?: (entity: Entity) => DetailRung;
+  /** BAR-style icon cross-fade alpha for entities NOT yet at the glyph
+   *  rung: > 0 inside the fade band, where the proxy glyph is drawn ON
+   *  TOP of the still-fully-opaque model. */
+  entityLodProxyFadeAlpha?: (entity: Entity) => number;
   scoped: boolean;
 };
 
@@ -152,6 +157,7 @@ export class Render3DEntities {
   private isEntityEmissionFarLod: (entity: Entity) => boolean =
     DEFAULT_ENTITY_EMISSION_FAR_LOD;
   private entityDetailRung: ((entity: Entity) => DetailRung) | undefined;
+  private entityLodProxyFadeAlpha: ((entity: Entity) => number) | undefined;
   /** Per-frame cap on detail-band mesh rebuilds. Camera sweeps change
    *  many bands at once; over-budget units keep their previous rung
    *  until a later frame so a zoom never lands as one hitch frame. */
@@ -452,6 +458,7 @@ export class Render3DEntities {
     this.isEntityEmissionFarLod = entityPacket?.isEntityEmissionFarLod
       ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
     this.entityDetailRung = entityPacket?.entityDetailRung;
+    this.entityLodProxyFadeAlpha = entityPacket?.entityLodProxyFadeAlpha;
     this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
     this.renderFrameCounter++;
 
@@ -488,6 +495,7 @@ export class Render3DEntities {
       this.turretBeamAimCache,
       entityPacket?.scoped === true,
       this.entityDetailRung,
+      this.entityLodProxyFadeAlpha,
     );
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(
@@ -557,7 +565,14 @@ export class Render3DEntities {
     const rows = this.fallbackUnitRenderRows;
     rows.reset();
     const units = this.clientViewState.getUnits();
-    for (let i = 0; i < units.length; i++) rows.pushEntity(units[i]);
+    for (let i = 0; i < units.length; i++) {
+      // Stamp the proxy flag from the same latched rung the real packet
+      // carries — a hardcoded false here would flash glyph-state units
+      // back to full meshes for one forced frame.
+      const lodProxy = this.entityDetailRung !== undefined &&
+        this.entityDetailRung(units[i]) === DETAIL_RUNG_GLYPH;
+      rows.pushEntity(units[i], false, false, false, lodProxy);
+    }
     return rows;
   }
 
@@ -644,6 +659,22 @@ export class Render3DEntities {
       const detailRung = this.entityDetailRung !== undefined
         ? this.entityDetailRung(e)
         : detailRungForLevel(entityDetailLevelForView(this.frameState.view, e));
+      // BAR-style cross-fade: while the unit is shrinking toward the glyph
+      // flip, its icon fades in ON TOP of the still-fully-opaque model.
+      // The model itself is never alpha-faded; it stops drawing entirely
+      // at the (hysteresis-latched) GLYPH rung above.
+      const proxyFadeAlpha = this.entityLodProxyFadeAlpha?.(e) ?? 0;
+      if (proxyFadeAlpha > 0) {
+        this.lodProxyRenderer.pushUnitProxy(
+          unitRows.x[row],
+          unitRows.y[row],
+          unitRows.z[row],
+          unitRows.lodProxyRadius[row],
+          unitRows.lodProxyGlyph[row],
+          unitRows.ownerIdAt(row),
+          proxyFadeAlpha,
+        );
+      }
       const detailLevel = detailLevelForRung(detailRung);
       const detailBand = unitDetailBand(detailLevel, unitGfx);
       const detailBandChanged =
