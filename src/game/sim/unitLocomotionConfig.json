@@ -476,14 +476,14 @@
             "directionalScale": {
               "forward": 0.55,
               "lateral": 1.3,
-              "vertical": 6
+              "vertical": 0.5
             },
             "angularDrag": 3
           },
           "surfaceLiftResponse": { "randomizationAmount": 0.99, "ema": 0.5 }
         },
         "water": {
-          "propulsion": { "driveForce": 70, "forceCoupling": 1.5 },
+          "propulsion": { "driveForce": 20, "forceCoupling": 1.5 },
           "resistance": {
             "frictionMultiplier": 0.3125,
             "quadraticDrag": 0.0015,
@@ -524,12 +524,12 @@
             "forceCoupling": 3
           },
           "resistance": {
-            "frictionMultiplier": 0.1,
+            "frictionMultiplier": 0.9747862873111837,
             "quadraticDrag": 0.00002,
             "directionalScale": {
               "forward": 0.55,
               "lateral": 1.3,
-              "vertical": 0.0
+              "vertical": 0.5
             },
             "angularDrag": 3
           },

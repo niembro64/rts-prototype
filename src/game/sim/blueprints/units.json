@@ -2430,14 +2430,14 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 800,
+            "liftForceFromGroundSurface": 500,
             "liftForceFromWaterSurface": 0,
             "gravityCounterRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 300,
+            "liftForceFromGroundSurface": 200,
             "gravityCounterRatio": 0.0
           }
         }
