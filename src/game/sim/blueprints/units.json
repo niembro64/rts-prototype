@@ -1246,7 +1246,7 @@
       "$audio": "event.death.unitHippo"
     },
     "unitLocomotion": {
-      "type": "treads",
+      "type": "amphibious-treads",
       "physicsPresetId": "amphibiousTreads",
       "survival": {
         "waterFatal": false,
@@ -1531,8 +1531,8 @@
       "$audio": "event.death.unitHippo"
     },
     "unitLocomotion": {
-      "type": "swim",
-      "physicsPresetId": "swim",
+      "type": "submarine",
+      "physicsPresetId": "submarine",
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -2372,6 +2372,107 @@
         "collision": 21.6,
         "shotArmingRadius": 32.4
       }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
+  },
+  "unitDuck": {
+    "unitBlueprintId": "unitDuck",
+    "name": "Duck",
+    "shortName": "DUK",
+    "hp": 300,
+    "radius": {
+      "other": 16,
+      "hitbox": 13,
+      "collision": 19,
+      "shotArmingRadius": 28.5
+    },
+    "bodyCenterHeight": 6,
+    "supportSurface": { "kind": "none" },
+    "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 175,
+    "cost": { "energy": 900, "metal": 900 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretRocketFast",
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.2, "xFrac": 0.7, "yFrac": 0.3, "zFrac": 0.28 },
+        { "kind": "oval", "offsetForward": 0.56, "xFrac": 0.24, "yFrac": 0.18, "zFrac": 0.18 }
+      ]
+    },
+    "hud": { "barsOffsetAboveTop": 14 },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": { "$audio": "event.death.unitEagle" },
+    "unitLocomotion": {
+      "type": "dive",
+      "physicsPresetId": "dive",
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
+      "physics": {
+        "air": {
+          "lift": {
+            "liftForceFromGroundSurface": 800,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
+        },
+        "water": {
+          "lift": {
+            "liftForceFromGroundSurface": 300,
+            "gravityCounterRatio": 0.0
+          }
+        }
+      },
+      "config": {
+        "wingEnabled": true,
+        "wingSpan": 2.1,
+        "wingChord": 0.62,
+        "wingOffsetX": -0.05,
+        "wingHeight": 0.28,
+        "wingThickness": 0.06,
+        "wingDihedralDeg": 8,
+        "wingSweepFrac": 0.35,
+        "tailWingSpan": 0.9,
+        "tailWingChord": 0.3,
+        "tailWingOffsetX": -0.78,
+        "tailWingHeight": 0.28,
+        "tailWingThickness": 0.05,
+        "tailWingDihedralDeg": 14,
+        "tailWingSweepFrac": 0.7,
+        "tailWingMirrorX": true,
+        "jetOffsetX": -1,
+        "jetOffsetY": 0,
+        "jetOffsetZ": 0.2,
+        "jetRadius": 0.12,
+        "jetLength": 0.3,
+        "jetCount": 1
+      }
+    },
+    "base": {
+      "cost": { "energy": 900, "metal": 900 },
+      "mass": 175,
+      "health": 300,
+      "deathExplosion": { "radius": 22, "force": 10500, "damage": 190 },
+      "radius": { "other": 16, "hitbox": 13, "collision": 19, "shotArmingRadius": 28.5 }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
   },

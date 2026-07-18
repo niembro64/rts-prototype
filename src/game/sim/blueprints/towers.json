@@ -30,6 +30,7 @@
       "unitDragonfly",
       "unitTransport",
       "unitEagle",
+      "unitDuck",
       "unitAlbatros"
     ],
     "renderProfile": "towerFabricator",

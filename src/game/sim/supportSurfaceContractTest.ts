@@ -398,7 +398,7 @@ function assertBuildingSupportContract(): void {
 
   const locomotionIds = firstBlueprintIdByLocomotionType();
   const requiredTypes: UnitLocomotion['type'][] = [
-    'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim',
+    'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
   ];
   for (let i = 0; i < requiredTypes.length; i++) {
     const type = requiredTypes[i];

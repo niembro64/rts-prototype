@@ -32,7 +32,6 @@ use wasm_bindgen::prelude::*;
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
 pub(crate) const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
-pub(crate) const PATHFINDER_MAX_STEEP_START_ESCAPE_CANDIDATES: usize = 384;
 pub(crate) const PATHFINDER_SQRT2_MINUS_1: f32 = 0.41421356237309515;
 pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
 pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
@@ -671,7 +670,7 @@ pub(crate) fn pathfinder_is_cell_passable(
     let wet = state.terrain_water[idx] == 1;
     let terrain_blocked = state.blocked[idx] == 1;
     let passable_by_medium = if wet {
-        // Intentional water traversal is an explicit navigation policy.
+        // Intentional water traversal is an explicit pathing class.
         // Ground contact may physically exist on the lakebed, but that does
         // not authorize an ordinary land unit to route itself into water.
         traversal.allow_water
@@ -1046,187 +1045,6 @@ pub(crate) fn pathfinder_find_nearest_open(
     None
 }
 
-pub(crate) fn pathfinder_find_nearest_open_toward(
-    state: &PathfinderState,
-    gx: i32,
-    gy: i32,
-    target_gx: i32,
-    target_gy: i32,
-    traversal: PathfinderTraversal,
-) -> Option<(i32, i32)> {
-    let vx = target_gx - gx;
-    let vy = target_gy - gy;
-    let v_len_sq = vx * vx + vy * vy;
-    if v_len_sq <= 0 {
-        return pathfinder_find_nearest_open(state, gx, gy, traversal);
-    }
-
-    let mut best: Option<(i32, i32, i32, f64)> = None;
-    let inv_v_len = 1.0 / (v_len_sq as f64).sqrt();
-    for &(dx, dy) in &state.snap_offsets {
-        let nx = gx + dx as i32;
-        let ny = gy + dy as i32;
-        if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
-            continue;
-        }
-        if !pathfinder_is_cell_passable(state, (ny * state.grid_w + nx) as usize, traversal) {
-            continue;
-        }
-
-        let dx_i = nx - gx;
-        let dy_i = ny - gy;
-        let dist_sq = dx_i * dx_i + dy_i * dy_i;
-        if dist_sq <= 0 {
-            continue;
-        }
-        let projection = dx_i * vx + dy_i * vy;
-        let dir_score = if projection > 0 {
-            (projection as f64) / (dist_sq as f64).sqrt() * inv_v_len
-        } else {
-            -1.0
-        };
-        match best {
-            Some((_, _, best_dist_sq, best_dir_score))
-                if dir_score < best_dir_score - 1.0e-9
-                    || ((dir_score - best_dir_score).abs() <= 1.0e-9
-                        && dist_sq >= best_dist_sq) => {}
-            _ => best = Some((nx, ny, dist_sq, dir_score)),
-        }
-    }
-    best.map(|(x, y, _, _)| (x, y))
-}
-
-#[inline]
-pub(crate) fn pathfinder_exact_sample_is_too_steep(
-    x: f64,
-    y: f64,
-    traversal: PathfinderTraversal,
-) -> bool {
-    if traversal.allow_air {
-        return false;
-    }
-    let (height, normal_z) = pathfinder_sample_terrain(x, y);
-    if height < TERRAIN_WATER_LEVEL {
-        return !traversal.allow_water;
-    }
-    (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
-        && normal_z.is_finite()
-        && normal_z
-            < pathfinder_required_normal_z(traversal.min_standstill_normal_z)
-}
-
-#[inline]
-pub(crate) fn pathfinder_escape_candidate_is_stable(
-    state: &PathfinderState,
-    gx: i32,
-    gy: i32,
-    traversal: PathfinderTraversal,
-) -> bool {
-    if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
-        return false;
-    }
-    let idx = (gy * state.grid_w + gx) as usize;
-    if !pathfinder_is_cell_passable(state, idx, traversal) {
-        return false;
-    }
-    if traversal.allow_air || (state.terrain_water[idx] == 1 && traversal.allow_water) {
-        return true;
-    }
-    let (x, y) = pathfinder_cell_center(gx, gy);
-    let (height, normal_z) = pathfinder_sample_terrain(x, y);
-    (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
-        && normal_z.is_finite()
-        && normal_z
-            >= pathfinder_required_normal_z(traversal.min_standstill_normal_z)
-}
-
-pub(crate) struct StartEscapeResult {
-    start_gx: i32,
-    start_gy: i32,
-    a_star_result: AStarResult,
-}
-
-pub(crate) fn pathfinder_try_steep_start_escape(
-    state: &mut PathfinderState,
-    origin_gx: i32,
-    origin_gy: i32,
-    goal_gx: i32,
-    goal_gy: i32,
-    traversal: PathfinderTraversal,
-    cost_profile: PathfinderCostProfile,
-) -> Option<StartEscapeResult> {
-    let target_dx = goal_gx - origin_gx;
-    let target_dy = goal_gy - origin_gy;
-    let has_target_dir = target_dx != 0 || target_dy != 0;
-
-    // First try candidates in the command direction, then fall back to any
-    // nearby stable cell. This lets a unit already on a wall escape either up
-    // or down according to the player's click, without turning ordinary flat
-    // uphill failures into wall climbs.
-    for pass in 0..2 {
-        let mut attempts = 0usize;
-        for offset_index in 0..state.snap_offsets.len() {
-            if attempts >= PATHFINDER_MAX_STEEP_START_ESCAPE_CANDIDATES {
-                break;
-            }
-            let (dx, dy) = state.snap_offsets[offset_index];
-            let candidate_gx = origin_gx + dx as i32;
-            let candidate_gy = origin_gy + dy as i32;
-            if candidate_gx == origin_gx && candidate_gy == origin_gy {
-                continue;
-            }
-            if pass == 0
-                && has_target_dir
-                && (candidate_gx - origin_gx) * target_dx + (candidate_gy - origin_gy) * target_dy
-                    < 0
-            {
-                continue;
-            }
-
-            state.cur_required_clearance = 0;
-            if !pathfinder_escape_candidate_is_stable(state, candidate_gx, candidate_gy, traversal)
-            {
-                continue;
-            }
-            attempts += 1;
-
-            if candidate_gx == goal_gx && candidate_gy == goal_gy {
-                state.path_scratch.clear();
-                return Some(StartEscapeResult {
-                    start_gx: candidate_gx,
-                    start_gy: candidate_gy,
-                    a_star_result: AStarResult {
-                        goal_gx,
-                        goal_gy,
-                        reached_goal: true,
-                    },
-                });
-            }
-
-            state.cur_required_clearance = cost_profile.hard_clearance_cells;
-            let a_star_result = pathfinder_a_star(
-                state,
-                candidate_gx,
-                candidate_gy,
-                goal_gx,
-                goal_gy,
-                traversal,
-                cost_profile,
-            );
-            if let Some(result) = a_star_result {
-                if result.reached_goal || !state.path_scratch.is_empty() {
-                    return Some(StartEscapeResult {
-                        start_gx: candidate_gx,
-                        start_gy: candidate_gy,
-                        a_star_result: result,
-                    });
-                }
-            }
-        }
-    }
-    None
-}
-
 pub(crate) fn pathfinder_find_nearest_in_component(
     state: &PathfinderState,
     gx: i32,
@@ -1592,8 +1410,8 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// `min_standstill_normal_z` is the per-unit dry-ground surface on which the
 /// unit can stop and hold; `min_climb_normal_z` adds uphill force-coupling.
 /// Zero disables the corresponding filter. The
-/// allow_* flags are derived from the unit's usable ground/water/air medium
-/// navigation policy: air bypasses terrain, wet cells require explicit water
+/// allow_* flags are mapped only from the unit's explicit ground/water/air
+/// pathing class: air bypasses terrain, wet cells require explicit water
 /// navigation, and dry cells require ground navigation. Physical lakebed
 /// contact does not by itself authorize an intentional water route.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
@@ -1628,9 +1446,10 @@ pub fn pathfinder_find_path(
         allow_water,
         allow_air,
     };
-    // Per-query traversal params. The start may escape without clearance (a
-    // unit pushed against a building still needs a way out), but the goal and
-    // every planned segment must fit at least the hard physical footprint.
+    // Per-query traversal params. The current cell must already be legal for
+    // this route class; a displaced unit is intentionally stranded instead of
+    // being snapped or rescued into a nearby domain. Goals and every planned
+    // segment must fit at least the hard physical footprint.
     // Air traversal flies over footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
     let hard_clearance = if traversal.allow_air {
@@ -1661,29 +1480,17 @@ pub fn pathfinder_find_path(
     let ggy = ((goal_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let start_idx = (sgy * grid_w + sgx) as usize;
 
-    // Snap blocked start.
-    let mut start_cell_gx = sgx;
-    let mut start_cell_gy = sgy;
-    let mut start_was_snapped = false;
-    let mut start_escape_waypoint = false;
+    // A blocked start is terminal for this query. In particular, land units
+    // in water and water units on land may not use the planner to escape.
+    let start_cell_gx = sgx;
+    let start_cell_gy = sgy;
     if !pathfinder_is_cell_passable(state, start_idx, traversal) {
-        match pathfinder_find_nearest_open_toward(state, sgx, sgy, ggx, ggy, traversal) {
-            Some((nx, ny)) => {
-                start_cell_gx = nx;
-                start_cell_gy = ny;
-                start_was_snapped = true;
-            }
-            None => {
-                // No open cell anywhere near start — return single waypoint at start.
-                state.waypoint_scratch.push(start_x);
-                state.waypoint_scratch.push(start_y);
-                return 1;
-            }
-        }
+        state.waypoint_scratch.push(start_x);
+        state.waypoint_scratch.push(start_y);
+        return 1;
     }
 
-    // Goals must fit the physical collision disk. Starts are allowed to be
-    // illegal so pushed/knocked units can escape, but snapping a destination
+    // Goals must fit the physical collision disk. Snapping a destination
     // without hard clearance would knowingly route the body into overlap.
     state.cur_required_clearance = hard_clearance;
     let mut goal_cell_gx = ggx;
@@ -1736,7 +1543,7 @@ pub fn pathfinder_find_path(
             state.waypoint_scratch.push(goal_x);
             state.waypoint_scratch.push(goal_y);
         }
-        state.last_result_status = if goal_was_snapped || start_was_snapped {
+        state.last_result_status = if goal_was_snapped {
             PATHFINDER_RESULT_SNAPPED
         } else {
             PATHFINDER_RESULT_COMPLETE
@@ -1752,36 +1559,34 @@ pub fn pathfinder_find_path(
     // passable cells, do not touch A*. This is the common case for open-field
     // move/fight/formation orders and keeps the planner out of the tick path
     // unless terrain or structures actually require a route.
-    if !start_was_snapped {
-        let (raw_goal_x, raw_goal_y) = if goal_was_snapped {
-            pathfinder_cell_center(goal_cell_gx, goal_cell_gy)
+    let (raw_goal_x, raw_goal_y) = if goal_was_snapped {
+        pathfinder_cell_center(goal_cell_gx, goal_cell_gy)
+    } else {
+        (goal_x, goal_y)
+    };
+    let direct_cost = pathfinder_line_cost(
+        state,
+        start_x,
+        start_y,
+        raw_goal_x,
+        raw_goal_y,
+        traversal,
+        cost_profile,
+    );
+    let geometric_lower_bound =
+        pathfinder_octile(start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy);
+    if direct_cost.is_some_and(|cost| cost <= geometric_lower_bound + 1.0e-5) {
+        state.waypoint_scratch.push(raw_goal_x);
+        state.waypoint_scratch.push(raw_goal_y);
+        state.last_result_status = if goal_was_snapped {
+            PATHFINDER_RESULT_SNAPPED
         } else {
-            (goal_x, goal_y)
+            PATHFINDER_RESULT_COMPLETE
         };
-        let direct_cost = pathfinder_line_cost(
-            state,
-            start_x,
-            start_y,
-            raw_goal_x,
-            raw_goal_y,
-            traversal,
-            cost_profile,
-        );
-        let geometric_lower_bound =
-            pathfinder_octile(start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy);
-        if direct_cost.is_some_and(|cost| cost <= geometric_lower_bound + 1.0e-5) {
-            state.waypoint_scratch.push(raw_goal_x);
-            state.waypoint_scratch.push(raw_goal_y);
-            state.last_result_status = if goal_was_snapped {
-                PATHFINDER_RESULT_SNAPPED
-            } else {
-                PATHFINDER_RESULT_COMPLETE
-            };
-            return 1;
-        }
+        return 1;
     }
 
-    let mut a_star_result = pathfinder_a_star(
+    let a_star_result = pathfinder_a_star(
         state,
         start_cell_gx,
         start_cell_gy,
@@ -1790,28 +1595,6 @@ pub fn pathfinder_find_path(
         traversal,
         cost_profile,
     );
-    // Exact terrain can be steeper than its coarse path cell. Always prefer an
-    // explicit route to a nearby standstill-valid cell when the unit begins on
-    // such a face, even if coarse A* found a nominal path from that cell.
-    if !start_was_snapped
-        && pathfinder_exact_sample_is_too_steep(start_x, start_y, traversal)
-    {
-        if let Some(escape) = pathfinder_try_steep_start_escape(
-            state,
-            sgx,
-            sgy,
-            goal_cell_gx,
-            goal_cell_gy,
-            traversal,
-            cost_profile,
-        ) {
-            start_cell_gx = escape.start_gx;
-            start_cell_gy = escape.start_gy;
-            start_was_snapped = true;
-            start_escape_waypoint = true;
-            a_star_result = Some(escape.a_star_result);
-        }
-    }
     let a_star_result = match a_star_result {
         Some(r) => r,
         None => {
@@ -1826,14 +1609,8 @@ pub fn pathfinder_find_path(
         goal_cell_gy = a_star_result.goal_gy;
         goal_was_snapped = true;
         if start_cell_gx == goal_cell_gx && start_cell_gy == goal_cell_gy {
-            if start_was_snapped {
-                let (cx, cy) = pathfinder_cell_center(start_cell_gx, start_cell_gy);
-                state.waypoint_scratch.push(cx);
-                state.waypoint_scratch.push(cy);
-            } else {
-                state.waypoint_scratch.push(start_x);
-                state.waypoint_scratch.push(start_y);
-            }
+            state.waypoint_scratch.push(start_x);
+            state.waypoint_scratch.push(start_y);
             return 1;
         }
         state.last_result_status = PATHFINDER_RESULT_PARTIAL;
@@ -1841,19 +1618,8 @@ pub fn pathfinder_find_path(
     // Cost-aware string pulling. A legal shortcut is accepted only when it is
     // no more expensive than the A* chain it replaces, so smoothing cannot
     // erase slope-time or soft-clearance decisions.
-    let mut anchor_x: f64;
-    let mut anchor_y: f64;
-    if start_was_snapped {
-        let (cx, cy) = pathfinder_cell_center(start_cell_gx, start_cell_gy);
-        if start_escape_waypoint {
-            pathfinder_push_waypoint(state, cx, cy);
-        }
-        anchor_x = cx;
-        anchor_y = cy;
-    } else {
-        anchor_x = start_x;
-        anchor_y = start_y;
-    }
+    let mut anchor_x = start_x;
+    let mut anchor_y = start_y;
     let path_len = state.path_scratch.len();
     if path_len > 1 {
         let first_idx = state.path_scratch[0] as i32;

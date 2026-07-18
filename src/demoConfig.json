@@ -35,11 +35,12 @@
     }
   },
   "waterFabricators": {
-    "radiusFraction": 0.92,
+    "radiusFraction": 0.96,
     "arcSectorFraction": 0.9,
     "unitBlueprintIds": [
       "unitSeaTurtle",
-      "unitOrca"
+      "unitOrca",
+      "unitDuck"
     ]
   },
   "initialUnitWaypointType": "patrol",

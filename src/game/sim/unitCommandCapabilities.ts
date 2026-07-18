@@ -69,6 +69,7 @@ const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitConstructionDrone',
   'unitDragonfly',
   'unitEagle',
+  'unitDuck',
   'unitAlbatros',
   'unitTransport',
   // Local flying factory aircraft outside the T1 BAR production page still

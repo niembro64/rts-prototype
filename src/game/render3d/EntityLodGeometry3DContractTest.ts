@@ -171,6 +171,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitDragonfly: { close: 1500, mid: 780, far: 330 },
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
   unitEagle: { close: 600, mid: 420, far: 220 },
+  unitDuck: { close: 600, mid: 420, far: 220 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
   unitQueenBee: { close: 2350, mid: 1100, far: 450 },
   unitQueenTick: { close: 1250, mid: 780, far: 340 },
@@ -354,7 +355,9 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     }
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
-  for (const type of ['wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim']) {
+  for (const type of [
+    'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+  ]) {
     assertContract(locomotionTypes.has(type), `authored roster exercises ${type} locomotion LOD`);
   }
 
@@ -440,7 +443,8 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'treads': {
+        case 'treads':
+        case 'amphibious-treads': {
           const rig = buildTreads(root, radius, locomotion.config, true, undefined, tier);
           assertContract(
             rig.rotationAnimated === (tier !== 'far'),
@@ -512,7 +516,8 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'flying': {
+        case 'flying':
+        case 'dive': {
           const smokeUseId = unitId === 'unitAlbatros'
             ? 'locomotionAlbatrosFlying'
             : 'locomotionEagleFlying';
@@ -532,7 +537,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'swim': {
+        case 'submarine': {
           const rig = buildSwimRig(root, radius, locomotion.config, undefined, tier);
           return {
             rig,
@@ -1221,7 +1226,7 @@ function runEnvironmentLodMaterialContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 23, 'visual roster covers all 23 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 24, 'visual roster covers all 24 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 6, 'visual roster covers all 6 buildings');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.towers.length === 4, 'visual roster covers all 4 towers');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });

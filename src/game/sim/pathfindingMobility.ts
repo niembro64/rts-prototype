@@ -6,7 +6,7 @@ import {
 } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import type { UnitLocomotion } from './types';
-import { resolveUnitLocomotionRouteCapabilities } from './unitLocomotionNavigation';
+import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { UNIT_LOCOMOTION_FORCE_SCALE } from './unitLocomotionPresetConfig';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
@@ -51,7 +51,7 @@ export function computeLocomotionClimbProfile(
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
   const { allowOnGround, allowInWater, allowInAir } =
-    resolveUnitLocomotionRouteCapabilities(locomotion);
+    getUnitLocomotionTraversalCapabilities(locomotion.type);
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
@@ -67,9 +67,7 @@ export function computeLocomotionClimbProfile(
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
     PATHFINDING_STABILITY_MAX_SLOPE_DEG,
-    allowOnGround ? 1 : 0,
-    allowInWater ? 1 : 0,
-    allowInAir ? 1 : 0,
+    locomotion.type,
   ].join(':');
   const cached = climbProfileCache.get(cacheKey);
   if (cached !== undefined) return cached;

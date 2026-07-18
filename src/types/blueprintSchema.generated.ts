@@ -586,6 +586,14 @@ export type UnitLocomotionBlueprintTreads = {
   config: TreadConfig;
 };
 
+export type UnitLocomotionBlueprintAmphibiousTreads = {
+  type: 'amphibious-treads';
+  physicsPresetId: string;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
+  config: TreadConfig;
+};
+
 export type UnitLocomotionBlueprintLegs = {
   type: 'legs';
   physicsPresetId: string;
@@ -618,15 +626,23 @@ export type UnitLocomotionBlueprintFlying = {
   config: FlyingConfig;
 };
 
-export type UnitLocomotionBlueprintSwim = {
-  type: 'swim';
+export type UnitLocomotionBlueprintSubmarine = {
+  type: 'submarine';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   survival: UnitLocomotionSurvivalPolicy;
   config: SwimConfig;
 };
 
-export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSwim;
+export type UnitLocomotionBlueprintDive = {
+  type: 'dive';
+  physicsPresetId: string;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  survival: UnitLocomotionSurvivalPolicy;
+  config: FlyingConfig;
+};
+
+export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintAmphibiousTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintDive;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';

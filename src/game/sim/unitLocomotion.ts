@@ -7,6 +7,7 @@ import type {
   UnitLocomotionGroundPhysics,
   UnitLocomotionMediumPhysics,
   UnitLocomotionPhysics,
+  UnitLocomotionType,
 } from '@/types/unitLocomotionTypes';
 import {
   UNIT_LOCOMOTION_MEDIUM_NAMES,
@@ -14,21 +15,44 @@ import {
   type UnitLocomotionPresetConfig,
 } from './unitLocomotionPresetConfig';
 import {
-  hasAnyUnitLocomotionRouteCapability,
-  resolveUnitLocomotionRouteCapabilities,
-} from './unitLocomotionNavigation';
-import {
   assertUnitLocomotionClosedUnitFraction,
   assertUnitLocomotionNonNegativeFinite,
   assertUnitLocomotionPositiveFinite,
 } from './unitLocomotionValidation';
 
-// Visual rig discriminants are deliberately separate from authoritative
-// physics presets. A wheels rig may use any preset and moves identically to
-// any other rig with the same expanded profile.
+// Locomotion types are authoritative for route permissions. Physics presets
+// remain independent expanded movement profiles.
 const UNIT_LOCOMOTION_TYPES = [
-  'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim',
-] as const;
+  'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+] as const satisfies readonly UnitLocomotionType[];
+
+export type UnitLocomotionTraversalCapabilities = Readonly<{
+  allowOnGround: boolean;
+  allowInWater: boolean;
+  allowInAir: boolean;
+}>;
+
+const UNIT_LOCOMOTION_TRAVERSAL_CAPABILITIES: Record<
+  UnitLocomotionType,
+  UnitLocomotionTraversalCapabilities
+> = {
+  wheels: { allowOnGround: true, allowInWater: false, allowInAir: false },
+  treads: { allowOnGround: true, allowInWater: false, allowInAir: false },
+  'amphibious-treads': { allowOnGround: true, allowInWater: true, allowInAir: false },
+  legs: { allowOnGround: true, allowInWater: false, allowInAir: false },
+  flippers: { allowOnGround: true, allowInWater: true, allowInAir: false },
+  hover: { allowOnGround: false, allowInWater: false, allowInAir: true },
+  flying: { allowOnGround: false, allowInWater: false, allowInAir: true },
+  submarine: { allowOnGround: false, allowInWater: true, allowInAir: false },
+  dive: { allowOnGround: false, allowInWater: true, allowInAir: true },
+};
+
+/** Convert the unit's one locomotion concept to the traversal ABI flags. */
+export function getUnitLocomotionTraversalCapabilities(
+  type: UnitLocomotionType,
+): UnitLocomotionTraversalCapabilities {
+  return UNIT_LOCOMOTION_TRAVERSAL_CAPABILITIES[type];
+}
 type AuthoredFluidPhysics = NonNullable<UnitLocomotionBlueprint['physics']['air']>;
 
 function createRuntimeGroundPhysics(
@@ -143,16 +167,14 @@ export function createUnitLocomotion(
 ): UnitLocomotion {
   const { type, physicsPresetId, survival } = locomotion;
   if (!(UNIT_LOCOMOTION_TYPES as readonly string[]).includes(type)) {
-    throw new Error(`Invalid unit locomotion visual rig type "${String(type)}"`);
+    throw new Error(`Invalid unit locomotion type "${String(type)}"`);
   }
   const preset = getUnitLocomotionPreset(physicsPresetId);
   const physics = createRuntimeLocomotionPhysics(physicsPresetId, preset, locomotion.physics);
-  const navigation = { ...preset.navigation };
   const runtime: UnitLocomotion = {
     type,
     physicsPresetId,
     physics,
-    navigation,
     survival: { ...survival },
     idleAirDrive: preset.physics.idleAirDrive,
     forwardForceRequiresFacing: preset.physics.forwardForceRequiresFacing,
@@ -160,11 +182,6 @@ export function createUnitLocomotion(
     maintainFullThrustAtWaypoints: preset.physics.maintainFullThrustAtWaypoints,
     surfaceProbeSetId: preset.physics.surfaceProbeSetId,
   };
-  if (!hasAnyUnitLocomotionRouteCapability(resolveUnitLocomotionRouteCapabilities(runtime))) {
-    throw new Error(
-      `Invalid unit locomotion ${physicsPresetId}: preset navigation and physical authority allow no route domain`,
-    );
-  }
   assertUnitLocomotionClosedUnitFraction(
     `${physicsPresetId}.survival.fatalSubmergedFraction`,
     survival.fatalSubmergedFraction,
@@ -206,7 +223,6 @@ export function cloneUnitLocomotion(
       air: cloneFluidPhysics(locomotion.physics.air),
       water: cloneFluidPhysics(locomotion.physics.water),
     },
-    navigation: { ...locomotion.navigation },
     survival: { ...locomotion.survival },
     idleAirDrive: locomotion.idleAirDrive,
     forwardForceRequiresFacing: locomotion.forwardForceRequiresFacing,
@@ -219,12 +235,22 @@ export function cloneUnitLocomotion(
 export function getUnitLocomotionPrimaryDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
-  const capabilities = resolveUnitLocomotionRouteCapabilities(locomotion);
-  if (capabilities.allowInAir) return locomotion.physics.air;
-  if (capabilities.allowInWater && !capabilities.allowOnGround) {
-    return locomotion.physics.water;
+  const scores = [
+    locomotion.physics.ground,
+    locomotion.physics.air,
+    locomotion.physics.water,
+  ] as const;
+  let primary: UnitLocomotionMediumPhysics = scores[0];
+  let primaryScore = primary.propulsion.driveForce * primary.propulsion.forceCoupling;
+  for (let i = 1; i < scores.length; i++) {
+    const candidate = scores[i];
+    const score = candidate.propulsion.driveForce * candidate.propulsion.forceCoupling;
+    if (score > primaryScore) {
+      primary = candidate;
+      primaryScore = score;
+    }
   }
-  return locomotion.physics.ground;
+  return primary;
 }
 
 export function getUnitLocomotionGroundDrivePhysics(

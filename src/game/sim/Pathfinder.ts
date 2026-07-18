@@ -120,31 +120,14 @@ function findPath(
 
 // ── Path validator (developer self-check) ────────────────────────
 
-/** Walks every segment of `path` (starting from the unit's actual
- *  position) and samples world points at VALIDATE_SAMPLE_STEP_WU
- *  spacing. Logs once if the path RE-ENTERS water after first
- *  reaching dry land — that's a real planner bug.
- *
- *  Important nuance: the unit's CURRENT position can legitimately
- *  be in water (knocked there, pushed by physics, spawned at a
- *  shoreline cell). The pathfinder gets asked to plan a route
- *  out, and the first leg necessarily starts wet. A naive
- *  "any sample is wet → violation" check would flag every move
- *  command issued while a unit is in water, which isn't useful
- *  signal. Instead we look for the wet → dry transition: once
- *  the path has reached dry land (any sample is on land), every
- *  sample after that must stay dry. A wet sample after the
- *  transition means the planned path is geometrically dipping
- *  back into water — that IS a planner bug.
- *
- *  Returns true iff a re-entry violation was found. */
+/** Walk a land-only route and report any water sample. Invalid starts are
+ * rejected before pathfinding, so even the first segment must stay dry. */
 function validatePathDoesNotCrossWater(
   startX: number, startY: number,
   goalX: number, goalY: number,
   path: ReadonlyArray<Vec2>,
   mapWidth: number, mapHeight: number,
 ): boolean {
-  let reachedDryLand = false;
   let prevX = startX;
   let prevY = startY;
   for (let segIdx = 0; segIdx < path.length; segIdx++) {
@@ -160,22 +143,18 @@ function validatePathDoesNotCrossWater(
         const y = prevY + dy * t;
         const wet = isWaterAt(x, y, mapWidth, mapHeight);
         if (wet) {
-          if (reachedDryLand) {
-            debugWarn(
-              VALIDATE_PATHS,
-              '[Pathfinder] path RE-ENTERS water at (%d,%d) on segment %d — segment (%d,%d)→(%d,%d), full path (%d,%d)→(%d,%d) with %d waypoints',
-              Math.round(x), Math.round(y),
-              segIdx,
-              Math.round(prevX), Math.round(prevY),
-              Math.round(wp.x), Math.round(wp.y),
-              Math.round(startX), Math.round(startY),
-              Math.round(goalX), Math.round(goalY),
-              path.length,
-            );
-            return true;
-          }
-        } else {
-          reachedDryLand = true;
+          debugWarn(
+            VALIDATE_PATHS,
+            '[Pathfinder] land route enters water at (%d,%d) on segment %d — segment (%d,%d)→(%d,%d), full path (%d,%d)→(%d,%d) with %d waypoints',
+            Math.round(x), Math.round(y),
+            segIdx,
+            Math.round(prevX), Math.round(prevY),
+            Math.round(wp.x), Math.round(wp.y),
+            Math.round(startX), Math.round(startY),
+            Math.round(goalX), Math.round(goalY),
+            path.length,
+          );
+          return true;
         }
       }
     }

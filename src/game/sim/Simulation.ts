@@ -38,7 +38,8 @@ import {
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './pathfindingTraversal';
-import { getTerrainVersion } from './Terrain';
+import { getTerrainVersion, isWaterAt } from './Terrain';
+import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
@@ -547,13 +548,15 @@ export class Simulation {
   }
 
   private isActivePathValid(
+    entity: Entity,
     unit: Unit,
     action: UnitAction,
     terrainVersion: number,
     buildingGridVersion: number,
   ): boolean {
     const plan = unit.activePath;
-    return plan !== null &&
+    return this.isUnitAtValidPathingStart(entity) &&
+      plan !== null &&
       plan.actionHash === unit.actionHash &&
       plan.terrainVersion === terrainVersion &&
       plan.buildingGridVersion === buildingGridVersion &&
@@ -563,6 +566,24 @@ export class Simulation {
       plan.actionType === action.type &&
       plan.targetId === action.targetId &&
       plan.buildingId === action.buildingId;
+  }
+
+  /** A physics displacement never grants a pathing exception. Cached paths
+   * are invalidated at the new location and the next planner query returns a
+   * stay-put result if the unit's locomotion cannot occupy that surface. */
+  private isUnitAtValidPathingStart(entity: Entity): boolean {
+    const unit = entity.unit;
+    if (unit === null) return false;
+    const capabilities = getUnitLocomotionTraversalCapabilities(unit.locomotion.type);
+    const overWater = isWaterAt(
+      entity.transform.x,
+      entity.transform.y,
+      this.world.mapWidth,
+      this.world.mapHeight,
+    );
+    return overWater
+      ? capabilities.allowInWater || capabilities.allowInAir
+      : capabilities.allowOnGround || capabilities.allowInAir;
   }
 
   private getFormationRouteMetadata(action: UnitAction): FormationRouteMetadata | null {
@@ -727,7 +748,7 @@ export class Simulation {
     const buildingGrid = this.constructionSystem.getGrid();
     const terrainVersion = getTerrainVersion();
     const buildingGridVersion = buildingGrid.getVersion();
-    if (this.isActivePathValid(unit, action, terrainVersion, buildingGridVersion)) {
+    if (this.isActivePathValid(entity, unit, action, terrainVersion, buildingGridVersion)) {
       return unit.activePath;
     }
 

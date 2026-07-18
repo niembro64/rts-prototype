@@ -1,5 +1,7 @@
 import type { UnitLocomotion } from './types';
 import { computeLocomotionClimbProfile } from './pathfindingMobility';
+import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
+import type { UnitLocomotionType } from '@/types/unitLocomotionTypes';
 
 export type PathCostProfile = Readonly<{
   /** Locomotion capability consumed by the abstract terrain-time cost model. */
@@ -9,11 +11,11 @@ export type PathCostProfile = Readonly<{
 }>;
 
 export type PathTerrainFilter = Readonly<{
+  /** The authored locomotion mechanism. Compatibility flags are produced
+   * only at the WASM boundary from this field. */
+  locomotionType: UnitLocomotionType;
   minStandstillNormalZ: number | null;
   minClimbNormalZ: number | null;
-  allowOnGround: boolean;
-  allowInWater: boolean;
-  allowInAir: boolean;
   cost: PathCostProfile;
 }>;
 
@@ -41,18 +43,21 @@ function finiteNormalOrZero(value: number | null | undefined): number {
 export function resolvePathfinderTraversalInput(
   filter: PathTerrainFilter | null,
 ): PathfinderTraversalInput {
-  const normal = filter?.allowInAir === true ? null : filter?.minStandstillNormalZ;
+  const capabilities = filter === null
+    ? { allowOnGround: true, allowInWater: false, allowInAir: false }
+    : getUnitLocomotionTraversalCapabilities(filter.locomotionType);
+  const normal = capabilities.allowInAir ? null : filter?.minStandstillNormalZ;
   const minStandstillNormalZ = finiteNormalOrZero(normal);
-  const minClimbNormalZ = filter?.allowInAir === true
+  const minClimbNormalZ = capabilities.allowInAir
     ? 0
     : finiteNormalOrZero(filter?.minClimbNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
   return {
     minStandstillNormalZ,
     minClimbNormalZ,
-    allowOnGround: filter === null || filter.allowOnGround,
-    allowInWater: filter?.allowInWater === true,
-    allowInAir: filter?.allowInAir === true,
+    allowOnGround: capabilities.allowOnGround,
+    allowInWater: capabilities.allowInWater,
+    allowInAir: capabilities.allowInAir,
     flatDriveAccel:
       flatDriveAccel !== null &&
       flatDriveAccel !== undefined &&
@@ -77,11 +82,9 @@ export function pathTerrainFilterForLocomotion(
   if (locomotion === undefined || mass === undefined) return null;
   const mobility = computeLocomotionClimbProfile(locomotion, mass, thrustMultiplier);
   return {
+    locomotionType: locomotion.type,
     minStandstillNormalZ: mobility.minStandstillNormalZ,
     minClimbNormalZ: mobility.minClimbNormalZ,
-    allowOnGround: mobility.allowOnGround,
-    allowInWater: mobility.allowInWater,
-    allowInAir: mobility.allowInAir,
     cost: {
       flatDriveAccel: mobility.flatDriveAccel,
       safeDriveAccel: mobility.safeDriveAccel,
@@ -94,9 +97,7 @@ export function pathTerrainFilterForLocomotion(
 export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): string {
   if (filter === null) return 'default';
   return [
-    filter.allowOnGround ? 'g1' : 'g0',
-    filter.allowInWater ? 'w1' : 'w0',
-    filter.allowInAir ? 'a1' : 'a0',
+    `locomotion:${filter.locomotionType}`,
     `standstill:${filter.minStandstillNormalZ ?? 'null'}`,
     `climb:${filter.minClimbNormalZ ?? 'null'}`,
     `accel:${filter.cost.flatDriveAccel ?? 'null'}`,

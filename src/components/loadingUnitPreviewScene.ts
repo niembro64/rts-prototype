@@ -671,6 +671,7 @@ function buildPreviewLocomotion(
   const radius = blueprint.radius.other;
   switch (locomotion.type) {
     case 'treads':
+    case 'amphibious-treads':
       return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID, geometryTier) };
     case 'wheels':
       return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier) };
@@ -679,7 +680,7 @@ function buildPreviewLocomotion(
         type: 'flippers',
         mesh: buildFlippers(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
-    case 'swim':
+    case 'submarine':
       return {
         type: 'swim',
         mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
@@ -712,6 +713,7 @@ function buildPreviewLocomotion(
         ),
       };
     case 'flying':
+    case 'dive':
       return {
         type: 'flying',
         mesh: buildFlyingRig(

@@ -10,8 +10,8 @@ function assertUnitInterval(value: number, label: string): void {
   assertContract(Number.isFinite(value) && value >= 0 && value <= 1, `${label} must be in [0, 1]`);
 }
 
-/** Verify that route capability is derived, coherent, immutable, and cached
- *  for every resolved unit physics profile after authoritative WASM boots. */
+/** Verify that slope mobility is physics-derived while route domains remain
+ * explicitly authored, immutable, and cached after authoritative WASM boots. */
 export function runPathfindingMobilityContractTest(): void {
   for (const blueprint of getAllUnitBlueprints()) {
     const locomotion = getUnitLocomotion(blueprint.unitBlueprintId);

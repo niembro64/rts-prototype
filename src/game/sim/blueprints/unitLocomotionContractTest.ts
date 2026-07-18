@@ -7,6 +7,7 @@ import type {
 import {
   cloneUnitLocomotion,
   createUnitLocomotion,
+  getUnitLocomotionTraversalCapabilities,
 } from '../unitLocomotion';
 import {
   getSurfaceLiftDistanceResponse,
@@ -18,7 +19,6 @@ import {
   finalizeSurfaceProbeProposedForce,
   surfaceProbeUsesWaterSurface,
 } from '../surfaceProbeAggregation';
-import { resolveUnitLocomotionRouteCapabilities } from '../unitLocomotionNavigation';
 import {
   UNIT_LOCOMOTION_FORCE_SCALE,
   UNIT_LOCOMOTION_FRICTION_BY_MEDIUM,
@@ -111,9 +111,10 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     forceMultiplier,
     'runtime surface lift force multiplier follows config',
   );
+  const aboveMinimumDistance = minimumDistanceWorld * 2;
   assertEqual(
-    getSurfaceLiftDistanceResponse(4),
-    1 / 4,
+    getSurfaceLiftDistanceResponse(aboveMinimumDistance),
+    1 / aboveMinimumDistance,
     'surface lift is the reciprocal of probe distance',
   );
   assertEqual(
@@ -239,7 +240,7 @@ function assertSurfaceProbeLayouts(): void {
       `${presetId} uses center sampling`,
     );
   }
-  for (const presetId of ['amphibiousTreads', 'swim']) {
+  for (const presetId of ['amphibiousTreads', 'submarine']) {
     assertEqual(
       getUnitLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '5-points',
@@ -260,7 +261,7 @@ function assertMobilityTuningIntent(): void {
   const treads = getUnitLocomotionPreset('treads').physics;
   const legs = getUnitLocomotionPreset('legs').physics;
   const flippers = getUnitLocomotionPreset('flippers').physics;
-  const swim = getUnitLocomotionPreset('swim').physics;
+  const submarine = getUnitLocomotionPreset('submarine').physics;
   const hover = getUnitLocomotionPreset('hover').physics;
   const flying = getUnitLocomotionPreset('flying').physics;
 
@@ -293,8 +294,8 @@ function assertMobilityTuningIntent(): void {
   );
   for (const [label, fluid] of [
     ['flippers.water', flippers.water],
-    ['swim.air', swim.air],
-    ['swim.water', swim.water],
+    ['submarine.air', submarine.air],
+    ['submarine.water', submarine.water],
     ['hover.air', hover.air],
     ['flying.air', flying.air],
   ] as const) {
@@ -308,7 +309,7 @@ function assertMobilityTuningIntent(): void {
   }
   for (const [label, fluid] of [
     ['flippers.water', flippers.water],
-    ['swim.water', swim.water],
+    ['submarine.water', submarine.water],
     ['hover.air', hover.air],
     ['flying.air', flying.air],
   ] as const) {
@@ -348,9 +349,9 @@ function assertGlobalFrictionContract(): void {
     }
   }
   assertEqual(
-    getUnitLocomotionEffectiveFriction('air', getUnitLocomotionPreset('swim').physics.air),
+    getUnitLocomotionEffectiveFriction('air', getUnitLocomotionPreset('submarine').physics.air),
     1,
-    'swim preserves its effective air friction',
+    'submarine preserves its effective air friction',
   );
   assertEqual(
     getUnitLocomotionEffectiveFriction('water', getUnitLocomotionPreset('flippers').physics.water),
@@ -358,9 +359,9 @@ function assertGlobalFrictionContract(): void {
     'flippers preserve their effective water friction',
   );
   assertEqual(
-    getUnitLocomotionEffectiveFriction('water', getUnitLocomotionPreset('swim').physics.water),
+    getUnitLocomotionEffectiveFriction('water', getUnitLocomotionPreset('submarine').physics.water),
     2.5,
-    'swim preserves its effective water friction',
+    'submarine preserves its effective water friction',
   );
 }
 
@@ -426,11 +427,6 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
     locomotion.physicsPresetId,
     authored.physicsPresetId,
     `${unitBlueprintId} physics preset follows unit JSON`,
-  );
-  assertEqual(
-    JSON.stringify(locomotion.navigation),
-    JSON.stringify(typeConfig.navigation),
-    `${unitBlueprintId} navigation policy follows locomotion preset`,
   );
   assertEqual(
     JSON.stringify(locomotion.survival),
@@ -500,7 +496,7 @@ export function runUnitLocomotionContractTest(): void {
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
-  const hippoRoutes = resolveUnitLocomotionRouteCapabilities(hippoLocomotion);
+  const hippoRoutes = getUnitLocomotionTraversalCapabilities(hippoLocomotion.type);
   assertContract(hippoRoutes.allowOnGround, 'Hippo allows on-ground routes');
   assertContract(hippoRoutes.allowInWater, 'Hippo allows in-water routes');
   assertContract(!hippoRoutes.allowInAir, 'Hippo does not allow in-air routes');
@@ -508,19 +504,32 @@ export function runUnitLocomotionContractTest(): void {
   assertClonedLocomotionMatchesSource(clonedHippoLocomotion, hippoLocomotion, 'Hippo');
 
   const eagleLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
-  const eagleRoutes = resolveUnitLocomotionRouteCapabilities(eagleLocomotion);
+  const eagleRoutes = getUnitLocomotionTraversalCapabilities(eagleLocomotion.type);
   assertContract(!eagleRoutes.allowOnGround, 'Eagle does not allow on-ground routes');
   assertContract(!eagleRoutes.allowInWater, 'Eagle does not allow in-water routes');
   assertContract(eagleRoutes.allowInAir, 'Eagle allows in-air routes');
   assertClonedLocomotionMatchesSource(cloneUnitLocomotion(eagleLocomotion), eagleLocomotion, 'Eagle');
 
+  const duckLocomotion = assertRuntimeLocomotionMatchesSources('unitDuck');
+  assertEqual(duckLocomotion.type, 'dive', 'Duck owns the dive locomotion');
+  const duckRoutes = getUnitLocomotionTraversalCapabilities(duckLocomotion.type);
+  assertContract(
+    !duckRoutes.allowOnGround && duckRoutes.allowInWater && duckRoutes.allowInAir,
+    'Duck routes through air and water but never land pathing',
+  );
+  assertContract(
+    duckLocomotion.physics.air.lift.liftForceFromGroundSurface > 0 &&
+      duckLocomotion.physics.air.lift.liftForceFromWaterSurface === 0,
+    'Duck gets above-land lift only from its ground-surface probes and no water-surface lift',
+  );
+
   const jackalBlueprint = getUnitBlueprint('unitJackal');
   const nonAmphibiousLocomotion = assertRuntimeLocomotionMatchesSources('unitJackal');
-  const jackalRoutes = resolveUnitLocomotionRouteCapabilities(nonAmphibiousLocomotion);
+  const jackalRoutes = getUnitLocomotionTraversalCapabilities(nonAmphibiousLocomotion.type);
   assertContract(jackalRoutes.allowOnGround, 'Jackal allows on-ground routes');
   assertContract(
     !jackalRoutes.allowInWater,
-    'Jackal water-only preset envelope still requires physical water authority',
+    'Jackal land pathing never routes through water',
   );
   assertContract(!jackalRoutes.allowInAir, 'Jackal does not allow in-air routes');
   assertClonedLocomotionMatchesSource(
@@ -528,12 +537,12 @@ export function runUnitLocomotionContractTest(): void {
     nonAmphibiousLocomotion,
     'Jackal',
   );
-  const lynxRoutes = resolveUnitLocomotionRouteCapabilities(
-    assertRuntimeLocomotionMatchesSources('unitLynx'),
+  const lynxRoutes = getUnitLocomotionTraversalCapabilities(
+    assertRuntimeLocomotionMatchesSources('unitLynx').type,
   );
   assertContract(
     !lynxRoutes.allowInWater,
-    'standard treads do not inherit amphibious water authority',
+    'standard treads do not inherit amphibious pathing',
   );
   const mongooseBlueprint = getUnitBlueprint('unitMongoose');
   const mongooseLocomotion = assertRuntimeLocomotionMatchesSources('unitMongoose');
@@ -625,7 +634,7 @@ export function runUnitLocomotionContractTest(): void {
       seaTurtleLocomotion.physics.air.lift.liftForceFromWaterSurface > 0,
     'Sea Turtle holds the waterline with explicit buoyancy and air-water surface lift',
   );
-  const seaTurtleRoutes = resolveUnitLocomotionRouteCapabilities(seaTurtleLocomotion);
+  const seaTurtleRoutes = getUnitLocomotionTraversalCapabilities(seaTurtleLocomotion.type);
   assertContract(
     seaTurtleRoutes.allowOnGround && seaTurtleRoutes.allowInWater && !seaTurtleRoutes.allowInAir,
     'flippers route on ground and in water, never through air',
@@ -634,13 +643,13 @@ export function runUnitLocomotionContractTest(): void {
   const orcaBlueprint = getUnitBlueprint('unitOrca');
   assertEqual(
     orcaBlueprint.unitLocomotion.type,
-    'swim',
-    'Orca owns the independent swim visual rig',
+    'submarine',
+    'Orca owns the submarine locomotion',
   );
   assertEqual(
     orcaLocomotion.physicsPresetId,
-    'swim',
-    'Orca owns the water-only swim physics preset',
+    'submarine',
+    'Orca owns the water-only submarine physics preset',
   );
   assertEqual(
     orcaBlueprint.turrets[0]?.turretBlueprintId,
@@ -660,7 +669,7 @@ export function runUnitLocomotionContractTest(): void {
     true,
     'the dedicated torpedo shot remains water-only',
   );
-  const orcaRoutes = resolveUnitLocomotionRouteCapabilities(orcaLocomotion);
+  const orcaRoutes = getUnitLocomotionTraversalCapabilities(orcaLocomotion.type);
   assertContract(
     !orcaRoutes.allowOnGround && orcaRoutes.allowInWater && !orcaRoutes.allowInAir,
     'Orca routes only through the water medium',
@@ -716,8 +725,8 @@ export function runUnitLocomotionContractTest(): void {
   );
   assertEqual(
     hippoBlueprint.unitLocomotion.type,
-    'treads',
-    'Hippo remains the amphibious tread unit',
+    'amphibious-treads',
+    'Hippo owns the amphibious-treads locomotion',
   );
 
   const strayUnitMediumConfig = cloneUnitLocomotionBlueprint(hippoBlueprint.unitLocomotion);

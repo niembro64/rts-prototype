@@ -270,7 +270,7 @@ export class UnitRenderPacket3D {
     this.passiveTurretIndex[cursor] = passiveTurretIndex(turretRows);
     let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
     const locomotionType = unit.locomotion.type;
-    if (locomotionType === 'hover' || locomotionType === 'flying') {
+    if (locomotionType === 'hover' || locomotionType === 'flying' || locomotionType === 'dive') {
       flags |= UNIT_RENDER_FLAG_AIRBORNE;
     }
     if (unit.suspension !== null) flags |= UNIT_RENDER_FLAG_HAS_SUSPENSION;

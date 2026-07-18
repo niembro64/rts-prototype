@@ -61,6 +61,7 @@ const BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitBee',
   'unitDragonfly',
   'unitEagle',
+  'unitDuck',
   'unitAlbatros',
   'unitTransport',
 ]);

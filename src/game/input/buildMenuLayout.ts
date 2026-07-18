@@ -78,6 +78,7 @@ const BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitConstructionDrone',
   'unitBee',
   'unitEagle',
+  'unitDuck',
   'unitAlbatros',
   'unitDragonfly',
   'unitTick',
@@ -107,14 +108,15 @@ const BAR_GRID_FACTORY_UNIT_SLOT_INDEX = new Map<string, number>([
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
   // Page 3 follows BAR armap air-plant slots:
-  // armca, armfig, armkam, armthund,
-  // armpeep, armatlas.
+  // armca, armfig, armkam, armthund, armpeep, armatlas,
+  // plus the local dive Duck in the final air-page cell.
   ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
   ['unitEagle', (BAR_GRID_SLOT_COUNT * 2) + 1],
   ['unitAlbatros', (BAR_GRID_SLOT_COUNT * 2) + 2],
   ['unitDragonfly', (BAR_GRID_SLOT_COUNT * 2) + 3],
   ['unitBee', (BAR_GRID_SLOT_COUNT * 2) + 4],
   ['unitTransport', (BAR_GRID_SLOT_COUNT * 2) + 5],
+  ['unitDuck', (BAR_GRID_SLOT_COUNT * 2) + 6],
 ]);
 
 export function buildStructureMenuLayout(
@@ -440,6 +442,8 @@ function barClassicFactoryUnitSortIndex(id: string): number {
       return 4030; // armpeep scout/light air
     case 'unitEagle':
       return 4300; // armfig fighter
+    case 'unitDuck':
+      return 4310; // local dive aircraft
     case 'unitAlbatros':
       return 4320; // armkam gunship
     case 'unitDragonfly':

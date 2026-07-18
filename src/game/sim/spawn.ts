@@ -626,16 +626,16 @@ export function spawnInitialBases(
     }
 
     // Fabricator arcs — one ordinary land Fabricator per available demo unit
-    // blueprint, plus exactly two outer-water Fabricators per player: one
-    // repeat-building Sea Turtles and one repeat-building Orcas.
+    // blueprint, plus one outer-water Fabricator per water-capable production
+    // line: Sea Turtle, Orca, and Duck.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster. Gated by the towerFabricator
     // tower toggle — disabling it removes the demo's whole factory ring.
     if (isTowerEnabled('towerFabricator')) {
       // Offshore factories are inserted first so the deterministic factory
-      // update order lets their two reserved cap slots produce Orca and Sea
-      // Turtle shells before ordinary land production considers the cap.
+      // update order lets their reserved cap slots produce water-line shells
+      // before ordinary land production considers the cap.
       entities.push(...placeFactoryArcRowForUnitBlueprintIds(
         world,
         construction,

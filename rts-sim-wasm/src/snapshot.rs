@@ -7126,14 +7126,13 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_building_top_overrides_blocked_terrain_below() {
+    pub(crate) fn pathfinder_does_not_rescue_a_blocked_start_near_a_building() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
-        // Terrain inflation blocks edge cells, but a building top at
-        // that XY is still valid terrain for movement: units standing
-        // there can always move/fall down from it.
+        // The current cell is in the map-edge buffer. It used to be snapped
+        // toward the goal; an invalid start now remains stranded.
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
         let count = pathfinder_find_path(
@@ -7144,7 +7143,7 @@ mod sim_kernel_tests {
 
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
-        assert!((waypoints[0] - 80.0).abs() < 1.0e-9);
+        assert!((waypoints[0] - 30.0).abs() < 1.0e-9);
         assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
     }
 
@@ -7353,6 +7352,34 @@ mod sim_kernel_tests {
             0,
             "translating that formation segment into the water buffer must be rejected",
         );
+
+        let stranded_land_count = pathfinder_find_path(
+            150.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            0.0, false,
+        );
+        assert_eq!(stranded_land_count, 1);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
+        let stranded_land_waypoints = unsafe {
+            std::slice::from_raw_parts(
+                pathfinder_waypoints_ptr(),
+                (stranded_land_count as usize) * 2,
+            )
+        };
+        assert_eq!(stranded_land_waypoints, &[150.0, 90.0]);
+
+        let stranded_water_count = pathfinder_find_path(
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, false, true, false, 0.0, 0.0, 0.0,
+            0.0, false,
+        );
+        assert_eq!(stranded_water_count, 1);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
+        let stranded_water_waypoints = unsafe {
+            std::slice::from_raw_parts(
+                pathfinder_waypoints_ptr(),
+                (stranded_water_count as usize) * 2,
+            )
+        };
+        assert_eq!(stranded_water_waypoints, &[70.0, 90.0]);
 
         let amphibious_count = pathfinder_find_path(
             70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, true, false, 0.0, 0.0, 0.0,
@@ -7646,7 +7673,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_routes_from_steep_wall_start_toward_goal() {
+    pub(crate) fn pathfinder_strands_a_steep_wall_start() {
         let _guard = lock_tests();
         install_pathfinder_sloped_wall_escape_test_terrain();
         pathfinder_init(200.0, 100.0);
@@ -7670,20 +7697,9 @@ mod sim_kernel_tests {
         );
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
-        assert!(
-            count >= 1,
-            "steep wall starts must retain a route onto standstill-valid ground; got {count} at ({}, {})",
-            waypoints[0],
-            waypoints[1],
-        );
-        assert!(
-            waypoints[0] < 80.0,
-            "first route waypoint should land on the flat plateau top, got x={}",
-            waypoints[0]
-        );
-        let last = (count as usize - 1) * 2;
-        assert!((waypoints[last] - 50.0).abs() < 1.0e-9);
-        assert!((waypoints[last + 1] - 50.0).abs() < 1.0e-9);
+        assert_eq!(count, 1);
+        assert!((waypoints[0] - 100.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 50.0).abs() < 1.0e-9);
     }
 
     #[test]

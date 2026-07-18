@@ -267,6 +267,7 @@ const BAR_EQUIVALENT_FACTORY_SLOT_INDEX = new Map<UnitBlueprintId, number>([
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
   ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
   ['unitEagle', (BAR_GRID_SLOT_COUNT * 2) + 1],
+  ['unitDuck', (BAR_GRID_SLOT_COUNT * 2) + 6],
   ['unitAlbatros', (BAR_GRID_SLOT_COUNT * 2) + 2],
   ['unitDragonfly', (BAR_GRID_SLOT_COUNT * 2) + 3],
   ['unitBee', (BAR_GRID_SLOT_COUNT * 2) + 4],
@@ -288,12 +289,14 @@ const BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitDragonfly',
   'unitBee',
   'unitTransport',
+  'unitDuck',
 ];
 
 const BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitConstructionDrone',
   'unitBee',
   'unitEagle',
+  'unitDuck',
   'unitAlbatros',
   'unitDragonfly',
   'unitTick',
@@ -597,8 +600,7 @@ export function runRosterCommandSurfaceContractTest(): void {
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 1] === null &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 2] === null &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 4] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 5] === null &&
-          barGridFactoryUnitCells[(BAR_GRID_SLOT_COUNT * 2) + 6] === null,
+          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 5] === null,
         'towerFabricator BAR-grid factory cells must keep empty BAR final labGrids vehicle/bot/air slots instead of compacting options',
       );
       for (const hiddenNonBarUnitBlueprintId of ['unitLoris'] as const) {
@@ -813,6 +815,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitConstructionDrone',
     'unitDragonfly',
     'unitEagle',
+    'unitDuck',
     'unitAlbatros',
     'unitQueenBee',
     'unitQueenTick',

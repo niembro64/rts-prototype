@@ -243,7 +243,7 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
     stat('Type', labelCase(runtime.type)),
     stat('Drive force', fmt(primaryPhysics.propulsion.driveForce)),
     stat('Force coupling', fmt(primaryPhysics.propulsion.forceCoupling, 2)),
-    node('Route capability', 'derived from force profile', undefined, [
+    node('Route media', labelCase(runtime.type), undefined, [
       stat(
         'Media',
         [
@@ -576,8 +576,8 @@ function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
 function summarizeUnitRole(blueprint: UnitBlueprint, weaponCount: number): string {
   if (blueprint.builder) return 'builder / support';
   if (weaponCount === 0) return 'utility';
-  if (blueprint.unitLocomotion.type === 'flying') return 'air strike';
-  if (blueprint.unitLocomotion.type === 'swim') return 'underwater assault';
+  if (blueprint.unitLocomotion.type === 'flying' || blueprint.unitLocomotion.type === 'dive') return 'air strike';
+  if (blueprint.unitLocomotion.type === 'submarine') return 'underwater assault';
   if (blueprint.unitLocomotion.type === 'hover') return 'hover skirmisher';
   if (blueprint.unitLocomotion.type === 'legs') return 'walker assault';
   if (blueprint.unitLocomotion.type === 'treads') return 'armored assault';

@@ -390,7 +390,8 @@ export function buildLocomotion(
   const geometryTier = geometryTierForDetail(detailLevel);
 
   switch (loc.type) {
-    case 'treads': {
+    case 'treads':
+    case 'amphibious-treads': {
       const mesh = buildTreads(
         unitGroup, unitRadius, loc.config, gfx.treadsAnimated, ownerId, geometryTier,
       );
@@ -442,7 +443,8 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'flying': {
+    case 'flying':
+    case 'dive': {
       const mesh = buildFlyingRig(
         airborneUnitGroup,
         unitRadius,
@@ -456,7 +458,7 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'swim': {
+    case 'submarine': {
       const mesh = buildSwimRig(
         unitGroup, unitRadius, loc.config, ownerId, geometryTier,
       );

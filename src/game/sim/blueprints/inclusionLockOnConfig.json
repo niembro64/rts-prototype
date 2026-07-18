@@ -43,6 +43,7 @@
         "unitDragonfly",
         "unitConstructionDrone",
         "unitEagle",
+        "unitDuck",
         "unitAlbatros",
         "unitQueenBee",
         "unitQueenTick",
@@ -281,6 +282,7 @@
               "unitDragonfly",
               "unitConstructionDrone",
               "unitEagle",
+              "unitDuck",
               "unitAlbatros",
               "unitQueenBee",
               "unitQueenTick"
@@ -290,6 +292,15 @@
       }
     },
     "unitAlbatros": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitDuck": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -516,6 +527,7 @@
               "unitDragonfly",
               "unitConstructionDrone",
               "unitEagle",
+              "unitDuck",
               "unitAlbatros",
               "unitQueenBee",
               "unitQueenTick"
@@ -609,6 +621,7 @@
               "unitConstructionDrone",
               "unitDragonfly",
               "unitEagle",
+              "unitDuck",
               "unitAlbatros",
               "unitQueenBee",
               "unitQueenTick"

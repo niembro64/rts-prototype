@@ -61,31 +61,31 @@ export type UnitLocomotionPhysics = {
   water: UnitLocomotionFluidPhysics;
 };
 
-export type UnitLocomotionMediumNavigation = 'air-only' | 'water-only' | 'air-and-water';
-
-export type UnitLocomotionNavigationPolicy = {
-  /** Whether this locomotion preset may deliberately route while supported
-   *  by a ground contact patch. */
-  allowOnGround: boolean;
-  /** Fluid domains this preset may deliberately route through. Actual route
-   *  capability still requires usable authored propulsion in that medium. */
-  allowInMedium: UnitLocomotionMediumNavigation;
-};
+/** The authored locomotion mechanism. It is the sole source for routing
+ * permissions as well as the visual rig choice. */
+export type UnitLocomotionType =
+  | 'wheels'
+  | 'treads'
+  | 'amphibious-treads'
+  | 'legs'
+  | 'flippers'
+  | 'hover'
+  | 'flying'
+  | 'submarine'
+  | 'dive';
 
 export type SurfaceProbeSetId = '1-point' | '5-points' | '8-points';
 
 export type UnitLocomotion = {
-  /** Presentation rig only. Authoritative physics never selects behavior
-   *  from this discriminant. */
-  type: 'wheels' | 'treads' | 'legs' | 'flippers' | 'hover' | 'flying' | 'swim';
+  /** Authored mechanism. Pathfinding derives its routing permissions from
+   *  this value; physics remains driven by the expanded preset below. */
+  type: UnitLocomotionType;
   /** Explicit preset expanded into the complete applicable profile at load. */
   physicsPresetId: string;
   /** Fully-abstracted medium physics. Every unit owns each medium profile;
    *  zero propulsion makes a medium inert, while concepts that do not apply
    *  to that medium are structurally absent. */
   physics: UnitLocomotionPhysics;
-  /** Type/preset-level navigation policy expanded from unitLocomotionConfig.json. */
-  navigation: UnitLocomotionNavigationPolicy;
   /** Environmental failure policy, independent from propulsion/lift. */
   survival: {
     waterFatal: boolean;

@@ -1,5 +1,4 @@
 import type {
-  UnitLocomotionNavigationPolicy,
   SurfaceProbeSetId,
   UnitLocomotionGroundPhysics,
   UnitLocomotionLiftPhysics,
@@ -7,10 +6,6 @@ import type {
   UnitLocomotionResistancePhysics,
 } from '@/types/unitLocomotionTypes';
 import rawUnitLocomotionConfig from './unitLocomotionConfig.json';
-import {
-  UNIT_LOCOMOTION_MEDIUM_NAVIGATION_VALUES,
-  isUnitLocomotionMediumNavigation,
-} from './unitLocomotionNavigation';
 import {
   assertUnitLocomotionBoolean,
   assertUnitLocomotionClosedUnitFraction,
@@ -44,7 +39,6 @@ export type UnitLocomotionPresetFluidPhysics = {
 };
 
 export type UnitLocomotionPresetConfig = {
-  navigation: UnitLocomotionNavigationPolicy;
   physics: {
     forwardForceRequiresFacing: boolean;
     driveForceScalesWithFacing: boolean;
@@ -201,25 +195,8 @@ function assertPreset(presetId: string, preset: UnitLocomotionPresetConfig | und
     throw new Error(`Invalid unitLocomotionConfig.json: missing presets.${presetId} config`);
   }
   assertExactKeys(`presets.${presetId}`, preset as unknown as Record<string, unknown>, [
-    'navigation',
     'physics',
   ]);
-  assertObject(`presets.${presetId}.navigation`, preset.navigation);
-  assertExactKeys(`presets.${presetId}.navigation`, preset.navigation, [
-    'allowOnGround',
-    'allowInMedium',
-  ]);
-  assertUnitLocomotionBoolean(
-    `presets.${presetId}.navigation.allowOnGround`,
-    preset.navigation.allowOnGround,
-  );
-  if (!isUnitLocomotionMediumNavigation(preset.navigation.allowInMedium)) {
-    throw new Error(
-      `Invalid unit locomotion presets.${presetId}.navigation.allowInMedium: expected ${
-        UNIT_LOCOMOTION_MEDIUM_NAVIGATION_VALUES.join(', ')
-      }, got ${String(preset.navigation.allowInMedium)}`,
-    );
-  }
   assertObject(`presets.${presetId}.physics`, preset.physics);
   assertExactKeys(`presets.${presetId}.physics`, preset.physics, [
     'forwardForceRequiresFacing',

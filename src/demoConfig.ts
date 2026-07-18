@@ -6,6 +6,7 @@ export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 const REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS = [
   'unitSeaTurtle',
   'unitOrca',
+  'unitDuck',
 ] as const;
 
 function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {

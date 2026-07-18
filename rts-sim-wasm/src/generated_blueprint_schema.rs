@@ -810,6 +810,15 @@ pub struct UnitLocomotionBlueprintTreads {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitLocomotionBlueprintAmphibiousTreads {
+    pub r#type: String,
+    pub physicsPresetId: String,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
+    pub config: TreadConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitLocomotionBlueprintLegs {
     pub r#type: String,
     pub physicsPresetId: String,
@@ -846,7 +855,7 @@ pub struct UnitLocomotionBlueprintFlying {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintSwim {
+pub struct UnitLocomotionBlueprintSubmarine {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
@@ -855,14 +864,25 @@ pub struct UnitLocomotionBlueprintSwim {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitLocomotionBlueprintDive {
+    pub r#type: String,
+    pub physicsPresetId: String,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub survival: UnitLocomotionSurvivalPolicy,
+    pub config: FlyingConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnitLocomotionBlueprint {
     UnitLocomotionBlueprintWheels(UnitLocomotionBlueprintWheels),
     UnitLocomotionBlueprintTreads(UnitLocomotionBlueprintTreads),
+    UnitLocomotionBlueprintAmphibiousTreads(UnitLocomotionBlueprintAmphibiousTreads),
     UnitLocomotionBlueprintLegs(UnitLocomotionBlueprintLegs),
     UnitLocomotionBlueprintFlippers(UnitLocomotionBlueprintFlippers),
     UnitLocomotionBlueprintHover(UnitLocomotionBlueprintHover),
     UnitLocomotionBlueprintFlying(UnitLocomotionBlueprintFlying),
-    UnitLocomotionBlueprintSwim(UnitLocomotionBlueprintSwim),
+    UnitLocomotionBlueprintSubmarine(UnitLocomotionBlueprintSubmarine),
+    UnitLocomotionBlueprintDive(UnitLocomotionBlueprintDive),
 }
 
 #[derive(Clone, Debug, PartialEq)]

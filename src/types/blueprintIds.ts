@@ -7,7 +7,7 @@ export const UNIT_BLUEPRINT_IDS = [
   'unitFormik', 'unitHippo', 'unitCommander', 'unitBee', 'unitDragonfly',
   'unitEagle', 'unitConstructionDrone', 'unitAlbatros', 'unitTransport',
   'unitQueenBee', 'unitQueenTick', 'unitSeaTurtle',
-  'unitOrca',
+  'unitOrca', 'unitDuck',
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 

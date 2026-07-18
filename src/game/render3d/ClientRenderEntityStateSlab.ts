@@ -389,7 +389,7 @@ export class ClientRenderEntityStateSlab {
     }
     if (isShell(entity)) flags |= CLIENT_RENDER_ENTITY_FLAG_SHELL;
     const locomotionType = unit.locomotion.type;
-    if (locomotionType === 'hover' || locomotionType === 'flying') {
+    if (locomotionType === 'hover' || locomotionType === 'flying' || locomotionType === 'dive') {
       flags |= CLIENT_RENDER_UNIT_FLAG_AIRBORNE;
     }
     if (unit.suspension !== null) flags |= CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION;

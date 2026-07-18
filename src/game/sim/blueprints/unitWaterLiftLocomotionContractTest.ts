@@ -12,7 +12,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runUnitWaterLiftLocomotionContractTest(): void {
-  for (const presetId of ['flippers', 'swim']) {
+  for (const presetId of ['flippers', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     for (const field of UNIT_LOCOMOTION_PROPULSION_FIELDS) {
       assertContract(
@@ -51,7 +51,7 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
 
   for (const [unitBlueprintId, presetId] of [
     ['unitSeaTurtle', 'flippers'],
-    ['unitOrca', 'swim'],
+    ['unitOrca', 'submarine'],
   ] as const) {
     const locomotion = getUnitLocomotion(unitBlueprintId);
     assertContract(locomotion.physicsPresetId === presetId, `${unitBlueprintId} must use ${presetId}`);
