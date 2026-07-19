@@ -99,7 +99,6 @@
       { "value": "floating-square-sea", "label": "SEA" }
     ]
   },
-  "edgeScroll": { "demoDefault": false, "realDefault": true },
   "dragPan": { "demoDefault": true, "realDefault": true },
   "sounds": {
     "demoDefault": {
@@ -204,7 +203,6 @@
     "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
     "waterBoundaryMode": "water-boundary-mode",
-    "edgeScroll": "edge-scroll",
     "dragPan": "drag-pan",
     "lobbyVisible": "lobby-visible",
     "waypointDetail": "waypoint-detail",

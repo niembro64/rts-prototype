@@ -162,7 +162,6 @@ export type ClientBarConfig = {
   readonly cameraFollow: LabeledOptionsConfig<CameraFollowMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;
   readonly waterBoundaryMode: LabeledOptionsConfig<WaterBoundaryMode>;
-  readonly edgeScroll: BooleanSetting;
   readonly dragPan: BooleanSetting;
   readonly sounds: DefaultSetting<SoundDefaults>;
   readonly rangeToggles: BooleanSetting;

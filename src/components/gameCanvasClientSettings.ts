@@ -22,7 +22,6 @@ import {
   getMaterialExplosions,
   getPathingMap,
   getPathingDebugUnit,
-  getEdgeScrollEnabled,
   getBurnMarks,
   getLodMode,
   getLegsRadiusToggle,
@@ -60,7 +59,6 @@ import {
   setMaterialExplosions,
   setPathingMap,
   setPathingDebugUnit,
-  setEdgeScrollEnabled,
   setBurnMarks,
   setLodMode,
   setLegsRadiusToggle,
@@ -146,7 +144,6 @@ export function useGameCanvasClientSettings({
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
   const clientUnitGroundNormalEmaMode = ref<DriftMode>(getClientUnitGroundNormalEmaMode());
-  const edgeScrollEnabled = ref(getEdgeScrollEnabled());
   const dragPanEnabled = ref(getDragPanEnabled());
   const waypointDetail = ref<WaypointDetail>(getWaypointDetail());
   const soundToggles = reactive<Record<SoundCategory, boolean>>({
@@ -232,7 +229,6 @@ export function useGameCanvasClientSettings({
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
     clientUnitGroundNormalEmaMode.value = getClientUnitGroundNormalEmaMode();
-    edgeScrollEnabled.value = getEdgeScrollEnabled();
     dragPanEnabled.value = getDragPanEnabled();
     waypointDetail.value = getWaypointDetail();
     for (const type of ENTITY_HUD_TYPES) {
@@ -521,26 +517,10 @@ export function useGameCanvasClientSettings({
     commandHotkeyRevision.value += 1;
   }
 
-  function toggleEdgeScroll(): void {
-    const newValue = !edgeScrollEnabled.value;
-    setEdgeScrollEnabled(newValue);
-    edgeScrollEnabled.value = newValue;
-  }
-
   function toggleDragPan(): void {
     const newValue = !dragPanEnabled.value;
     setDragPanEnabled(newValue);
     dragPanEnabled.value = newValue;
-  }
-
-  const allPanActive = computed(
-    () => edgeScrollEnabled.value && dragPanEnabled.value,
-  );
-
-  function toggleAllPan(): void {
-    const enable = !allPanActive.value;
-    if (edgeScrollEnabled.value !== enable) toggleEdgeScroll();
-    if (dragPanEnabled.value !== enable) toggleDragPan();
   }
 
   const SFX_CATEGORIES = SOUND_CATEGORIES.filter((c) => c !== 'music');
@@ -613,7 +593,6 @@ export function useGameCanvasClientSettings({
     radarBoundary.value = cd.radarBoundary.default;
     setClientUnitGroundNormalEmaMode(cd.unitGroundNormalEma.default);
     clientUnitGroundNormalEmaMode.value = cd.unitGroundNormalEma.default;
-    if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
     if (dragPanEnabled.value !== cd.dragPan.default) toggleDragPan();
     for (const rt of RANGE_TYPES) {
       if (rangeToggles[rt] !== cd.rangeToggles.default) toggleRange(rt);
@@ -691,7 +670,6 @@ export function useGameCanvasClientSettings({
     sightBoundary,
     radarBoundary,
     clientUnitGroundNormalEmaMode,
-    edgeScrollEnabled,
     dragPanEnabled,
     waypointDetail,
     entityHud,
@@ -713,7 +691,6 @@ export function useGameCanvasClientSettings({
     allRangesActive,
     allProjRangesActive,
     allUnitRadiiActive,
-    allPanActive,
     SFX_CATEGORIES,
     allSoundsActive,
     SOUND_LABELS,
@@ -760,9 +737,7 @@ export function useGameCanvasClientSettings({
     changeSelectionHudMode,
     changeCommandHotkeyPreset,
     refreshCommandHotkeys,
-    toggleEdgeScroll,
     toggleDragPan,
-    toggleAllPan,
     toggleAllSounds,
     toggleSoundCategory,
   };

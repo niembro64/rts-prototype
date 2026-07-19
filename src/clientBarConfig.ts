@@ -87,7 +87,6 @@ type ClientDefaults = {
   readonly cameraFollow: CameraFollowMode;
   readonly cameraFov: CameraFovDegrees;
   readonly waterBoundaryMode: WaterBoundaryMode;
-  readonly edgeScroll: boolean;
   readonly dragPan: boolean;
   readonly sounds: Record<SoundCategory, boolean>;
   readonly rangeToggles: boolean;
@@ -161,7 +160,6 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     cameraFov: CAMERA_FOV_DEGREES,
     waterBoundaryMode:
       pickDefault(clientBarConfig.waterBoundaryMode, mode) as WaterBoundaryMode,
-    edgeScroll: pickDefault(clientBarConfig.edgeScroll, mode),
     dragPan: pickDefault(clientBarConfig.dragPan, mode),
     sounds: { ...pickDefault(clientBarConfig.sounds, mode) } as Record<SoundCategory, boolean>,
     rangeToggles: pickDefault(clientBarConfig.rangeToggles, mode),
@@ -251,7 +249,6 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.waterBoundaryMode,
     options: clientBarConfig.waterBoundaryMode.options as OptionList<WaterBoundaryMode>,
   },
-  edgeScroll: { default: DEMO_CLIENT_DEFAULTS.edgeScroll },
   dragPan: { default: DEMO_CLIENT_DEFAULTS.dragPan },
   sounds: { default: { ...DEMO_CLIENT_DEFAULTS.sounds } },
   rangeToggles: { default: DEMO_CLIENT_DEFAULTS.rangeToggles },
@@ -319,7 +316,6 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
       ...CLIENT_CONFIG.waterBoundaryMode,
       default: defaults.waterBoundaryMode,
     },
-    edgeScroll: { default: defaults.edgeScroll },
     dragPan: { default: defaults.dragPan },
     sounds: { default: { ...defaults.sounds } },
     rangeToggles: { default: defaults.rangeToggles },
@@ -375,7 +371,6 @@ type ClientStorageKeyName =
   | 'cameraFollow'
   | 'cameraFov'
   | 'waterBoundaryMode'
-  | 'edgeScroll'
   | 'dragPan'
   | 'lobbyVisible'
   | 'waypointDetail'
@@ -416,7 +411,6 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'cameraFollow',
   'cameraFov',
   'waterBoundaryMode',
-  'edgeScroll',
   'dragPan',
   'lobbyVisible',
   'waypointDetail',
@@ -501,7 +495,6 @@ let currentClientUnitGroundNormalEmaMode: DriftMode = _cd.unitGroundNormalEma.de
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
 };
-let currentEdgeScrollEnabled: boolean = _cd.edgeScroll.default;
 let currentDragPanEnabled: boolean = _cd.dragPan.default;
 const _isMobile = typeof navigator !== 'undefined' &&
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -574,7 +567,6 @@ function applyClientDefaults(mode: ClientMode): void {
   currentRadarBoundary = cd.radarBoundary.default;
   currentClientUnitGroundNormalEmaMode = cd.unitGroundNormalEma.default;
   for (const cat of SOUND_CATEGORIES) currentSoundToggles[cat] = cd.sounds.default[cat];
-  currentEdgeScrollEnabled = cd.edgeScroll.default;
   currentDragPanEnabled = cd.dragPan.default;
   currentWaypointDetail = cd.waypointDetail.default;
   for (const type of ENTITY_HUD_TYPES) {
@@ -776,10 +768,6 @@ function loadFromStorage(mode: ClientMode): void {
         }
       }
     } catch { /* malformed JSON — keep defaults */ }
-  }
-  const storedEdgeScroll = readPersisted(keys.edgeScroll);
-  if (storedEdgeScroll !== null) {
-    currentEdgeScrollEnabled = storedEdgeScroll === 'true';
   }
   const storedDragPan = readPersisted(keys.dragPan);
   if (storedDragPan !== null) {
@@ -1184,15 +1172,6 @@ export function setSoundToggle(
 ): void {
   currentSoundToggles[category] = enabled;
   persistJson(activeStorageKeys().soundToggles, currentSoundToggles);
-}
-
-export function getEdgeScrollEnabled(): boolean {
-  return currentEdgeScrollEnabled;
-}
-
-export function setEdgeScrollEnabled(enabled: boolean): void {
-  currentEdgeScrollEnabled = enabled;
-  persist(activeStorageKeys().edgeScroll, String(enabled));
 }
 
 export function getDragPanEnabled(): boolean {

@@ -1138,7 +1138,6 @@ const {
   allRangesActive,
   allProjRangesActive,
   allUnitRadiiActive,
-  allPanActive,
   entityHudTypes,
   entityHudElements,
   SFX_CATEGORIES,
@@ -1187,7 +1186,6 @@ const {
   changeCommandHotkeyPreset,
   refreshCommandHotkeys,
   toggleDragPan,
-  toggleAllPan,
   toggleAllSounds,
   toggleSoundCategory,
 } = useGameCanvasClientSettings({
@@ -2005,7 +2003,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   fogShade: fogShade.value,
   materialExplosions: materialExplosions.value,
   clientUnitGroundNormalEmaMode: clientUnitGroundNormalEmaMode.value,
-  allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
@@ -2056,7 +2053,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleFogShade,
   toggleMaterialExplosions,
   changeClientUnitGroundNormalEmaMode,
-  toggleAllPan,
   toggleDragPan,
   toggleTriangleDebug,
   toggleWallTriangleDebug,
@@ -2202,7 +2198,6 @@ watchEffect(() => {
   m.fogShade = fogShade.value;
   m.materialExplosions = materialExplosions.value;
   m.clientUnitGroundNormalEmaMode = clientUnitGroundNormalEmaMode.value;
-  m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;

@@ -220,7 +220,6 @@ export type GameCanvasClientControlBarModel = {
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly clientUnitGroundNormalEmaMode: DriftMode;
-  readonly allPanActive: boolean;
   readonly dragPanEnabled: boolean;
   readonly showServerControls: boolean;
   readonly triangleDebug: boolean;
@@ -271,7 +270,6 @@ export type GameCanvasClientControlBarModel = {
   toggleFogShade(): void;
   toggleMaterialExplosions(): void;
   changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;
-  toggleAllPan(): void;
   toggleDragPan(): void;
   toggleTriangleDebug(): void;
   toggleWallTriangleDebug(): void;

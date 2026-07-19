@@ -129,12 +129,9 @@ import {
   isBarCommandHotkeyPreset,
   isBarGridCommandHotkeyPreset,
 } from '../input/commandHotkeys';
-import { getEdgeScrollEnabled } from '../../clientBarConfig';
-
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const SAME_TYPE_DOUBLE_CLICK_MS = 450;
 const SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX = 8;
-const EDGE_SCROLL_MARGIN_PX = 36;
 const BAR_STANDARD_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['high', 'low'];
 const BAR_SMART_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['auto', 'low', 'high'];
 
@@ -2628,34 +2625,7 @@ export class Input3DManager {
     if (this.towerTargetNoGroundMode && !this.hasSelectedTargetableCombatEntities()) {
       this.exitTowerTargetNoGroundMode();
     }
-    this.applyEdgeScroll();
     this.refreshCursor();
-  }
-
-  private applyEdgeScroll(): void {
-    if (!getEdgeScrollEnabled()) return;
-    if (this.rightDrag.active || this.modeClicks.active) return;
-    if (!Number.isFinite(this.pointerClientX) || !Number.isFinite(this.pointerClientY)) return;
-
-    const rect = this.canvas.getBoundingClientRect();
-    const x = this.pointerClientX;
-    const y = this.pointerClientY;
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
-    if (document.elementFromPoint(x, y) !== this.canvas) return;
-
-    const margin = Math.min(
-      EDGE_SCROLL_MARGIN_PX,
-      Math.max(8, rect.width * 0.18),
-      Math.max(8, rect.height * 0.18),
-    );
-    let screenX = 0;
-    let screenY = 0;
-    if (x <= rect.left + margin) screenX -= 1;
-    if (x >= rect.right - margin) screenX += 1;
-    if (y <= rect.top + margin) screenY -= 1;
-    if (y >= rect.bottom - margin) screenY += 1;
-    if (screenX === 0 && screenY === 0) return;
-    this.orbit.moveByKeyboardScreenDirection('pan', screenX, screenY);
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
