@@ -35,22 +35,6 @@ pub(crate) fn quat_normalize_inplace(q: &mut [f64; 4]) {
     q[3] *= inv;
 }
 
-#[inline]
-pub(crate) fn quat_from_yaw_pitch_roll(yaw: f64, pitch: f64, roll: f64) -> [f64; 4] {
-    let cy = (yaw * 0.5).cos();
-    let sy = (yaw * 0.5).sin();
-    let cp = (pitch * 0.5).cos();
-    let sp = (pitch * 0.5).sin();
-    let cr = (roll * 0.5).cos();
-    let sr = (roll * 0.5).sin();
-    [
-        cy * cp * sr - sy * sp * cr,
-        sy * cp * sr + cy * sp * cr,
-        sy * cp * cr - cy * sp * sr,
-        cy * cp * cr + sy * sp * sr,
-    ]
-}
-
 /// Returns (axis · angle) of the shortest-path rotation from
 /// `current` to `target`. Mirrors quatShortestAxisAngle in TS:
 /// computes Δq = target · conjugate(current), flips to shortest

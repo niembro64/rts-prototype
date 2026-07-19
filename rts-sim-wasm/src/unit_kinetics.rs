@@ -6,71 +6,6 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
-//  Phase 3e — Batched hover orientation kernel
-//
-//  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep
-//  + quatYaw chain in UnitForceSystem.ts (hover branch). One WASM
-//  call processes every hover entity this tick.
-//
-//  Buffer layout per entity (QUAT_HOVER_BATCH_STRIDE = 14 f64s):
-//    0..4   orientation (x, y, z, w)             in/out
-//    4..7   omega (x, y, z)                      in/out
-//    7..10  target_yaw, target_pitch, target_roll  in
-//    10..13 alpha (x, y, z)                      out
-//    13     yaw extracted from new orientation   out
-//
-//  Caller responsibility: build target_yaw/pitch/roll JS-side from
-//  thrust direction + body-frame velocity (as the existing TS code
-//  does). The force kernel owns alpha internally, writes yaw into
-//  entity.transform.rotation, and pushes snapshot dirty.
-// ─────────────────────────────────────────────────────────────────
-
-pub const QUAT_HOVER_BATCH_STRIDE: usize = 14;
-
-#[wasm_bindgen]
-pub fn quat_hover_orientation_step_batch(
-    buf: &mut [f64],
-    count: usize,
-    k: f64,
-    c: f64,
-    dt_sec: f64,
-) {
-    debug_assert!(buf.len() >= count * QUAT_HOVER_BATCH_STRIDE);
-    for i in 0..count {
-        let base = i * QUAT_HOVER_BATCH_STRIDE;
-        let mut orientation = [buf[base], buf[base + 1], buf[base + 2], buf[base + 3]];
-        let mut omega = [buf[base + 4], buf[base + 5], buf[base + 6]];
-        let target_yaw = buf[base + 7];
-        let target_pitch = buf[base + 8];
-        let target_roll = buf[base + 9];
-
-        let target = quat_from_yaw_pitch_roll(target_yaw, target_pitch, target_roll);
-
-        // Spring law: α = k · (axis·angle) − c · ω.
-        let axis_angle = quat_shortest_axis_angle(orientation, target);
-        let alpha_x = axis_angle[0] * k - omega[0] * c;
-        let alpha_y = axis_angle[1] * k - omega[1] * c;
-        let alpha_z = axis_angle[2] * k - omega[2] * c;
-        omega[0] += alpha_x * dt_sec;
-        omega[1] += alpha_y * dt_sec;
-        omega[2] += alpha_z * dt_sec;
-        quat_integrate_inplace(&mut orientation, omega, dt_sec);
-
-        buf[base] = orientation[0];
-        buf[base + 1] = orientation[1];
-        buf[base + 2] = orientation[2];
-        buf[base + 3] = orientation[3];
-        buf[base + 4] = omega[0];
-        buf[base + 5] = omega[1];
-        buf[base + 6] = omega[2];
-        buf[base + 10] = alpha_x;
-        buf[base + 11] = alpha_y;
-        buf[base + 12] = alpha_z;
-        buf[base + 13] = quat_yaw(orientation);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────
 //  Server unit-force kernel
 //
 //  TypeScript gathers unit/body/terrain rows and Rust owns the per-row
@@ -751,26 +686,51 @@ fn unit_force_attitude_step(
         return true;
     }
 
+    // The old path integrated this spring with semi-implicit Euler. Its
+    // continuous coefficient was critical, but light units can have
+    // sqrt(k) * dt > 1 at 60 Hz, where the discrete update oscillates around
+    // the heading. Solve the linear damped oscillator exactly over this tick
+    // instead. `axis_angle` is target minus current orientation, while the
+    // solver stores current minus target, hence the negation below.
+    //
+    // Medium angular damping is passive. An active attitude servo supplies
+    // whatever additional derivative torque is needed to reach critical
+    // damping; if passive damping alone is stronger, the physically possible
+    // result is overdamped, never underdamped.
     let k = max_alpha / core::f64::consts::PI;
-    let c = 2.0 * k.sqrt() + medium_angular_damping.max(0.0);
-    let mut alpha = [
-        axis_angle[0] * k - omega[0] * c,
-        axis_angle[1] * k - omega[1] * c,
-        axis_angle[2] * k - omega[2] * c,
-    ];
-    let alpha_mag = (alpha[0] * alpha[0] + alpha[1] * alpha[1] + alpha[2] * alpha[2]).sqrt();
-    if alpha_mag > max_alpha && alpha_mag.is_finite() {
-        let scale = max_alpha / alpha_mag;
-        alpha[0] *= scale;
-        alpha[1] *= scale;
-        alpha[2] *= scale;
-    }
-
-    omega[0] += alpha[0] * dt_sec;
-    omega[1] += alpha[1] * dt_sec;
-    omega[2] += alpha[2] * dt_sec;
+    let critical_damping = 2.0 * k.sqrt();
+    let damping = critical_damping.max(medium_angular_damping.max(0.0));
+    let (relative_x, next_omega_x, _) = compute_damped_rotation(
+        -axis_angle[0], omega[0], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+    );
+    let (relative_y, next_omega_y, _) = compute_damped_rotation(
+        -axis_angle[1], omega[1], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+    );
+    let (relative_z, next_omega_z, _) = compute_damped_rotation(
+        -axis_angle[2], omega[2], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+    );
+    let next_axis_angle = [-relative_x, -relative_y, -relative_z];
+    let previous_omega = omega;
+    omega = [next_omega_x, next_omega_y, next_omega_z];
     unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
-    quat_integrate_inplace(&mut orientation, omega, dt_sec);
+    let rate_limited = (omega[0] - next_omega_x).abs() > 1e-12
+        || (omega[1] - next_omega_y).abs() > 1e-12
+        || (omega[2] - next_omega_z).abs() > 1e-12;
+    if rate_limited {
+        // The exact state transition assumes an unconstrained velocity. Once
+        // the physical angular-speed limit engages, advance with that bounded
+        // velocity and derive a fresh error next tick.
+        quat_integrate_inplace(&mut orientation, omega, dt_sec);
+    } else {
+        let error = unit_force_quat_from_axis_angle(next_axis_angle);
+        orientation = quat_mul(unit_force_quat_conjugate(error), target);
+        quat_normalize_inplace(&mut orientation);
+    }
+    let alpha = [
+        (omega[0] - previous_omega[0]) / dt_sec,
+        (omega[1] - previous_omega[1]) / dt_sec,
+        (omega[2] - previous_omega[2]) / dt_sec,
+    ];
 
     rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
     rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
@@ -783,6 +743,35 @@ fn unit_force_attitude_step(
     rows[base + UF_ROW_ANGULAR_ACCEL_Y] = alpha[1];
     rows[base + UF_ROW_ANGULAR_ACCEL_Z] = alpha[2];
     true
+}
+
+#[inline]
+fn unit_force_quat_conjugate(q: [f64; 4]) -> [f64; 4] {
+    [-q[0], -q[1], -q[2], q[3]]
+}
+
+#[inline]
+fn unit_force_quat_from_axis_angle(axis_angle: [f64; 3]) -> [f64; 4] {
+    let angle_sq = axis_angle[0] * axis_angle[0]
+        + axis_angle[1] * axis_angle[1]
+        + axis_angle[2] * axis_angle[2];
+    if !angle_sq.is_finite() || angle_sq <= 1e-24 {
+        // sin(theta / 2) / theta tends to 1/2 at zero.
+        return [
+            axis_angle[0] * 0.5,
+            axis_angle[1] * 0.5,
+            axis_angle[2] * 0.5,
+            1.0,
+        ];
+    }
+    let angle = angle_sq.sqrt();
+    let scale = (angle * 0.5).sin() / angle;
+    [
+        axis_angle[0] * scale,
+        axis_angle[1] * scale,
+        axis_angle[2] * scale,
+        (angle * 0.5).cos(),
+    ]
 }
 
 #[wasm_bindgen]
@@ -1406,6 +1395,49 @@ mod tests {
         assert_near(full.1, 0.015);
         assert_near(full.2, -0.006);
         assert_near(half.0, full.0 * 0.5);
+    }
+
+    #[test]
+    fn high_authority_attitude_servo_converges_without_heading_overshoot() {
+        // Jackal-class force/mass/radius values make sqrt(k) * dt greater
+        // than one. The previous semi-implicit update entered a visible
+        // left/right yaw limit cycle in exactly this regime.
+        let mut rows = vec![0.0; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
+        let target_yaw = core::f64::consts::FRAC_PI_2;
+        let mut previous_error = target_yaw;
+
+        for _ in 0..240 {
+            assert!(unit_force_attitude_step(
+                &mut rows,
+                0,
+                4_500.0,
+                9.6,
+                26.666_666_666_667,
+                [0.0, 0.0, 1.0],
+                0.0,
+                1.0 / 60.0,
+            ));
+            let orientation = [
+                rows[UF_ROW_ORIENTATION_X],
+                rows[UF_ROW_ORIENTATION_Y],
+                rows[UF_ROW_ORIENTATION_Z],
+                rows[UF_ROW_ORIENTATION_W],
+            ];
+            let error = normalize_angle_ts(target_yaw - quat_yaw(orientation));
+            assert!(
+                error >= -1.0e-9,
+                "a critically damped heading must not cross the target: {error}"
+            );
+            assert!(
+                error <= previous_error + 1.0e-9,
+                "heading error must decay monotonically: previous={previous_error}, next={error}"
+            );
+            previous_error = error;
+        }
+        assert!(previous_error < 1.0e-6);
     }
 
     #[test]

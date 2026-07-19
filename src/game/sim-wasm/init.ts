@@ -76,7 +76,6 @@ import __wbg_init, {
   engine_statics_add,
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
-  quat_hover_orientation_step_batch,
   unit_force_surface_lift_distance_response,
   unit_force_water_fraction,
   unit_force_runtime_clear,
@@ -991,21 +990,6 @@ export interface SimWasm {
     alpha: number,
     dirtyEpsilon: number,
   ) => number;
-  /** Phase 4 + 3e — batched hover orientation kernel. UnitForceSystem
-   *  builds a per-tick scratch with one entry per hover entity:
-   *  orientation (in/out), omega (in/out), target yaw/pitch/roll
-   *  (in), then the kernel writes alpha (out) and the extracted yaw
-   *  of the new orientation (out). Per entity stride =
-   *  QUAT_HOVER_BATCH_STRIDE f64s. JS scatters back to
-   *  entity.unit.orientation / .angularVelocity3
-   *  and entity.transform.rotation in a post-call pass. */
-  readonly quatHoverOrientationStepBatch: (
-    buf: Float64Array,
-    count: number,
-    k: number,
-    c: number,
-    dtSec: number,
-  ) => void;
   /** Server authoritative unit-force batch. TypeScript gathers active
    *  unit rows, pre-sampled terrain/water data, and external force
    *  inputs; Rust computes drive/lift/brake/water-wall force outputs,
@@ -3695,10 +3679,6 @@ export interface ProjectilePoolViews {
   parentShotEntityId: Int32Array;
 }
 
-/** Layout stride for `quatHoverOrientationStepBatch`. Mirrors
- *  QUAT_HOVER_BATCH_STRIDE in rts-sim-wasm/src/lib.rs. */
-export const QUAT_HOVER_BATCH_STRIDE = 14;
-
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
 export const UNIT_FORCE_BATCH_STRIDE = 57;
@@ -4096,7 +4076,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         arrivalControlStepBatch: arrival_control_step_batch,
         unitEffectiveDriveAcceleration: unit_effective_drive_acceleration,
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
-        quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
         unitForceSurfaceLiftDistanceResponse: unit_force_surface_lift_distance_response,
         unitForceWaterFraction: unit_force_water_fraction,
