@@ -2137,40 +2137,66 @@
       },
       "additionalProperties": false
     },
-    "LocomotionLiftPhysics": {
+    "LocomotionAirLiftPhysics": {
       "type": "object",
       "required": [
-        "surfaceFollowingForceFromGround",
-        "buoyancyRatio"
+        "surfaceFollowingInverseForceFromGround",
+        "surfaceFollowingInverseForceFromWater"
       ],
       "properties": {
-        "surfaceFollowingForceFromGround": {
+        "surfaceFollowingInverseForceFromGround": {
           "type": "number",
           "minimum": 0,
-          "description": "Powered support thrust strength sourced from the probe-averaged nonlinear distance response to the highest solid ground/support surface."
+          "description": "Inverse-distance support-force coefficient sourced from the probe-averaged distance to the highest solid ground/support surface."
         },
-        "surfaceFollowingForceFromWater": {
+        "surfaceFollowingInverseForceFromWater": {
           "type": "number",
           "minimum": 0,
-          "description": "Powered support thrust strength sourced from the probe-averaged nonlinear distance response to exposed water."
-        },
-        "buoyancyRatio": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Passive buoyancy as a fraction of body weight at full medium occupancy."
+          "description": "Inverse-distance support-force coefficient sourced from the probe-averaged distance to exposed water."
         }
       },
       "additionalProperties": false
     },
-    "LocomotionFluidBodyPhysics": {
+    "LocomotionWaterLiftPhysics": {
+      "type": "object",
+      "required": [
+        "surfaceFollowingInverseForceFromGround",
+        "surfaceFollowingProportionalForceFromWater"
+      ],
+      "properties": {
+        "surfaceFollowingInverseForceFromGround": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Inverse-distance support-force coefficient sourced from the probe-averaged distance to the lakebed or highest solid support surface."
+        },
+        "surfaceFollowingProportionalForceFromWater": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Upward-force coefficient per world unit of probe-averaged depth below the exposed water surface."
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionAirFluidBodyPhysics": {
       "type": "object",
       "required": [
         "lift"
       ],
       "properties": {
         "lift": {
-          "$ref": "#/$defs/LocomotionLiftPhysics"
+          "$ref": "#/$defs/LocomotionAirLiftPhysics"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionWaterFluidBodyPhysics": {
+      "type": "object",
+      "required": [
+        "lift"
+      ],
+      "properties": {
+        "lift": {
+          "$ref": "#/$defs/LocomotionWaterLiftPhysics"
         }
       },
       "additionalProperties": false
@@ -2183,10 +2209,10 @@
       ],
       "properties": {
         "air": {
-          "$ref": "#/$defs/LocomotionFluidBodyPhysics"
+          "$ref": "#/$defs/LocomotionAirFluidBodyPhysics"
         },
         "water": {
-          "$ref": "#/$defs/LocomotionFluidBodyPhysics"
+          "$ref": "#/$defs/LocomotionWaterFluidBodyPhysics"
         }
       },
       "additionalProperties": false

@@ -76,7 +76,8 @@ import __wbg_init, {
   engine_statics_add,
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
-  unit_force_surface_lift_distance_response,
+  unit_force_surface_lift_inverse_distance_response,
+  unit_force_water_surface_depth_world,
   unit_force_water_fraction,
   unit_force_runtime_clear,
   unit_fatal_water_step_pool,
@@ -1007,10 +1008,11 @@ export interface SimWasm {
     windZ: number,
     surfaceFollowingMinimumDistanceWorld: number,
   ) => number;
-  readonly unitForceSurfaceLiftDistanceResponse: (
+  readonly unitForceSurfaceLiftInverseDistanceResponse: (
     distanceToSurfaceWorld: number,
     minimumDistanceWorld: number,
   ) => number;
+  readonly unitForceWaterSurfaceDepthWorld: (bodyZ: number) => number;
   readonly unitForceWaterFraction: (bodyZ: number, bodyRadius: number) => number;
   /** Blueprint locomotion constants table for unitForceStepBatch,
    *  code-indexed. Ensure BEFORE taking the pointers (resize moves
@@ -3673,7 +3675,7 @@ export interface ProjectilePoolViews {
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 57;
+export const UNIT_FORCE_BATCH_STRIDE = 59;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4069,7 +4071,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitEffectiveDriveAcceleration: unit_effective_drive_acceleration,
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         unitForceStepBatch: unit_force_step_batch,
-        unitForceSurfaceLiftDistanceResponse: unit_force_surface_lift_distance_response,
+        unitForceSurfaceLiftInverseDistanceResponse: unit_force_surface_lift_inverse_distance_response,
+        unitForceWaterSurfaceDepthWorld: unit_force_water_surface_depth_world,
         unitForceWaterFraction: unit_force_water_fraction,
         unitForceProfileEnsure: unit_force_profile_ensure,
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,

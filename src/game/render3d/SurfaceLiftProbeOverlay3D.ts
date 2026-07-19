@@ -110,7 +110,8 @@ export class SurfaceLiftProbeOverlay3D {
     for (let i = 0; i < probeUnits.length; i++) probeEntityIds[i] = probeUnits[i].id;
     debugSource.setEntityIds(probeEntityIds);
 
-    this.ensureCapacity(instanceCount);
+    // A probe can draw one ground-inverse line plus both water-surface lines.
+    this.ensureCapacity(instanceCount * 3);
     const markers = this.markerMesh;
     const groundLines = this.groundLineMesh;
     const waterLines = this.waterLineMesh;
@@ -137,28 +138,42 @@ export class SurfaceLiftProbeOverlay3D {
         );
         markerCursor++;
         if (
-          sample.usesGroundDistance &&
+          sample.usesGroundInverseDistance &&
           this.writeLineInstance(
             groundLines,
             groundLineCursor,
             x,
             bodyY,
             z,
-            bodyY - sample.groundDistanceWorld,
+            bodyY - sample.groundInverseDistanceWorld,
           )
         ) {
           groundLineCursor++;
         }
         if (
-          sample.usesWaterDistance &&
-          sample.waterDistanceWorld !== null &&
+          sample.usesWaterSurfaceInverseDistance &&
+          sample.waterSurfaceInverseDistanceWorld !== null &&
           this.writeLineInstance(
             waterLines,
             waterLineCursor,
             x,
             bodyY,
             z,
-            bodyY - sample.waterDistanceWorld,
+            bodyY - sample.waterSurfaceInverseDistanceWorld,
+          )
+        ) {
+          waterLineCursor++;
+        }
+        if (
+          sample.usesWaterSurfaceDepth &&
+          sample.waterSurfaceDepthWorld !== null &&
+          this.writeLineInstance(
+            waterLines,
+            waterLineCursor,
+            x,
+            bodyY,
+            z,
+            bodyY + sample.waterSurfaceDepthWorld,
           )
         ) {
           waterLineCursor++;
@@ -278,7 +293,8 @@ function unitShouldShowSurfaceLiftProbes(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return false;
   if (isBuildInProgress(entity.buildable)) return false;
-  return unit.locomotion.physics.air.lift.surfaceFollowingForceFromGround > 0 ||
-    unit.locomotion.physics.air.lift.surfaceFollowingForceFromWater > 0 ||
-    unit.locomotion.physics.water.lift.surfaceFollowingForceFromGround > 0;
+  return unit.locomotion.physics.air.lift.surfaceFollowingInverseForceFromGround > 0 ||
+    unit.locomotion.physics.air.lift.surfaceFollowingInverseForceFromWater > 0 ||
+    unit.locomotion.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 ||
+    unit.locomotion.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0;
 }

@@ -7,15 +7,22 @@ export type UnitLocomotionResistancePhysics = {
   angularDampingRate: number;
 };
 
-export type UnitLocomotionLiftPhysics = {
-  /** Passive buoyancy as a fraction of body weight at full occupancy, in [0, 1]. */
-  buoyancyRatio: number;
-  /** Powered support thrust sourced from the probe-averaged distance to the
-   *  highest solid ground/support surface. */
-  surfaceFollowingForceFromGround: number;
-  /** Powered support thrust sourced from the probe-averaged distance to exposed
-   *  water. Always zero for water-medium physics. */
-  surfaceFollowingForceFromWater: number;
+export type UnitLocomotionAirLiftPhysics = {
+  /** Inverse-distance support-force coefficient sourced from the probe-averaged
+   *  distance to the highest solid ground/support surface. */
+  surfaceFollowingInverseForceFromGround: number;
+  /** Inverse-distance support-force coefficient sourced from the probe-averaged
+   *  distance to exposed water. */
+  surfaceFollowingInverseForceFromWater: number;
+};
+
+export type UnitLocomotionWaterLiftPhysics = {
+  /** Inverse-distance support-force coefficient sourced from the probe-averaged
+   *  distance to the lakebed or highest solid support surface. */
+  surfaceFollowingInverseForceFromGround: number;
+  /** Upward-force coefficient per world unit of probe-averaged depth below the
+   *  exposed water surface. */
+  surfaceFollowingProportionalForceFromWater: number;
 };
 
 export type UnitLocomotionGroundPhysics = {
@@ -25,15 +32,20 @@ export type UnitLocomotionGroundPhysics = {
   tangentialDampingRate: number;
 };
 
-export type UnitLocomotionFluidPhysics = {
+export type UnitLocomotionAirFluidPhysics = {
   resistance: UnitLocomotionResistancePhysics;
-  lift: UnitLocomotionLiftPhysics;
+  lift: UnitLocomotionAirLiftPhysics;
+};
+
+export type UnitLocomotionWaterFluidPhysics = {
+  resistance: UnitLocomotionResistancePhysics;
+  lift: UnitLocomotionWaterLiftPhysics;
 };
 
 export type UnitLocomotionPhysics = {
   ground: UnitLocomotionGroundPhysics;
-  air: UnitLocomotionFluidPhysics;
-  water: UnitLocomotionFluidPhysics;
+  air: UnitLocomotionAirFluidPhysics;
+  water: UnitLocomotionWaterFluidPhysics;
 };
 
 /** The authored locomotion mechanism, used for the visual rig and motion

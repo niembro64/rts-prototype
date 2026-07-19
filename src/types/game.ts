@@ -98,12 +98,15 @@ export type SurfaceLiftProbeDebugSample = {
   y: number;
   bodyZ: number;
   isCenter: boolean;
-  /** Exact clamped distance used by any ground/solid lift contribution. */
-  groundDistanceWorld: number;
-  usesGroundDistance: boolean;
-  /** Exact clamped distance used by air lift over exposed water. */
-  waterDistanceWorld: number | null;
-  usesWaterDistance: boolean;
+  /** Exact clamped distance used by any inverse ground/solid contribution. */
+  groundInverseDistanceWorld: number;
+  usesGroundInverseDistance: boolean;
+  /** Exact clamped distance used by air's inverse lift over exposed water. */
+  waterSurfaceInverseDistanceWorld: number | null;
+  usesWaterSurfaceInverseDistance: boolean;
+  /** Exact non-negative depth used by water's proportional surface support. */
+  waterSurfaceDepthWorld: number | null;
+  usesWaterSurfaceDepth: boolean;
 };
 
 export type SurfaceLiftProbeDebugFrame = {

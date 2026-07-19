@@ -8631,10 +8631,12 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn direct_surface_following_force_scales_with_medium_occupancy() {
-        let full_force = 120.0_f64;
-        assert!((full_force - 120.0).abs() < 1e-12);
-        assert!((full_force * 0.5 - 60.0).abs() < 1e-12);
+    pub(crate) fn water_surface_support_scales_with_medium_occupancy() {
+        let inverse_force = 120.0_f64;
+        let proportional_force = 80.0_f64;
+        let full_force = inverse_force + proportional_force;
+        assert!((full_force - 200.0).abs() < 1e-12);
+        assert!((full_force * 0.5 - 100.0).abs() < 1e-12);
     }
 
     #[test]

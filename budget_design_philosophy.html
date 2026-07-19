@@ -971,11 +971,15 @@
         policy is separate again.
       </p>
       <p>
-        Surface following is a source-explicit powered support force, not a height clamp. Unit
-        blueprints author <code>surfaceFollowingForceFromGround</code>, air may also author
-        <code>surfaceFollowingForceFromWater</code>, and each medium authors
-        <code>buoyancyRatio</code>. Probe distance uses one positive minimum and a reciprocal
-        response; proposed forces are aggregated by the configured average or maximum and then
+        Surface following is a source-explicit powered support force, not a height clamp. Air
+        blueprints author <code>surfaceFollowingInverseForceFromGround</code> and
+        <code>surfaceFollowingInverseForceFromWater</code>; each air probe selects exactly one
+        inverse-distance source. Water blueprints author
+        <code>surfaceFollowingInverseForceFromGround</code> and
+        <code>surfaceFollowingProportionalForceFromWater</code>; both contributions act together
+        at every wet probe, the first reciprocally from the lakebed/support surface and the second
+        proportionally to depth below the water plane. Inverse probe distance uses one positive
+        minimum; all proposed forces are aggregated by the configured average or maximum and then
         occupancy weighted. The configuration deliberately retains
         <code>surfaceLiftResponse: { randomizationAmount: 0, ema: 0 }</code>: support is
         deterministic and unfiltered, with no hidden temporal state.
@@ -984,7 +988,7 @@
         Presentation, motion control, navigation, hazards, and physical body properties remain
         separate contracts. The visual locomotion type chooses a rig; it never grants route
         permissions or changes a force law. This leaves one rigid body acted on by gravity,
-        contact, medium resistance, buoyancy, surface-following force, and direct actuators.
+        contact, medium resistance, surface-following force, and direct actuators.
       </p>
 
       <h3>Discrete gameplay still enters through physical effects</h3>

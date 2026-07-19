@@ -508,19 +508,27 @@ export type SwimConfig = {
   cycleDistanceFrac: number;
 };
 
-export type LocomotionLiftPhysics = {
-  surfaceFollowingForceFromGround: number;
-  surfaceFollowingForceFromWater?: number;
-  buoyancyRatio: number;
+export type LocomotionAirLiftPhysics = {
+  surfaceFollowingInverseForceFromGround: number;
+  surfaceFollowingInverseForceFromWater: number;
 };
 
-export type LocomotionFluidBodyPhysics = {
-  lift: LocomotionLiftPhysics;
+export type LocomotionWaterLiftPhysics = {
+  surfaceFollowingInverseForceFromGround: number;
+  surfaceFollowingProportionalForceFromWater: number;
+};
+
+export type LocomotionAirFluidBodyPhysics = {
+  lift: LocomotionAirLiftPhysics;
+};
+
+export type LocomotionWaterFluidBodyPhysics = {
+  lift: LocomotionWaterLiftPhysics;
 };
 
 export type UnitUnitLocomotionBlueprintPhysics = {
-  air: LocomotionFluidBodyPhysics;
-  water: LocomotionFluidBodyPhysics;
+  air: LocomotionAirFluidBodyPhysics;
+  water: LocomotionWaterFluidBodyPhysics;
 };
 
 export type UnitLocomotionEnvironmentalHazardPolicy = {

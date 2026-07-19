@@ -399,11 +399,7 @@ fn unit_effective_max_propulsive_force(
         0.0
     };
     if ground_contact {
-        let buoyancy_ratio = air_fraction
-            * profile.values[pbase + UF_PROFILE_AIR_BUOYANCY_RATIO].max(0.0)
-            + water_fraction * profile.values[pbase + UF_PROFILE_WATER_BUOYANCY_RATIO].max(0.0);
-        let normal_load =
-            body_mass * GRAVITY * (1.0 - buoyancy_ratio).max(0.0) / 1_000_000.0;
+        let normal_load = body_mass * GRAVITY / 1_000_000.0;
         let contact_limit = normal_load
             * profile.values[pbase + UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
         max_propulsive_force += profile.values[pbase + UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE]

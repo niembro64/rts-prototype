@@ -712,6 +712,18 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
 const _shotLaunchMediumMount = { x: 0, y: 0, z: 0 };
+// Reused for every projectile turret stamped in a tick. The values are
+// overwritten before each entity's turret loop, so this removes one short-
+// lived options DTO per turret without sharing state across computations.
+const _shotLaunchMediumContext: {
+  currentTick: number | undefined;
+  unitGroundZ: number | undefined;
+  surfaceN: { nx: number; ny: number; nz: number } | undefined;
+} = {
+  currentTick: undefined,
+  unitGroundZ: undefined,
+  surfaceN: undefined,
+};
 
 function stampCombatTargetingEntityInto(
   targeting: CombatTargetingApi,
@@ -887,6 +899,11 @@ function stampCombatTargetingEntityInto(
   );
 
   if (turrets === null) return slot;
+  const currentTick = world.getTick();
+  _shotLaunchMediumContext.currentTick = currentTick;
+  _shotLaunchMediumContext.unitGroundZ = groundZ;
+  _shotLaunchMediumContext.surfaceN = surfaceN;
+  const trajectoryMode = combat?.trajectoryMode ?? 'auto';
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
@@ -894,8 +911,6 @@ function stampCombatTargetingEntityInto(
     const projectileShot: ProjectileShot | undefined =
       shot !== null && isProjectileShot(shot) ? shot : undefined;
     const angleType = t.config.aimStyle.angleType;
-    const entityCombat = entity.combat;
-    const trajectoryMode = entityCombat === null ? 'auto' : entityCombat.trajectoryMode;
     const ballisticArcPreference = trajectoryMode === 'high'
       ? BALLISTIC_ARC_HIGH
       : trajectoryMode === 'low'
@@ -914,11 +929,7 @@ function stampCombatTargetingEntityInto(
           i,
           rotCos,
           rotSin,
-          {
-            currentTick: world.getTick(),
-            unitGroundZ: groundZ,
-            surfaceN,
-          },
+          _shotLaunchMediumContext,
           _shotLaunchMediumMount,
         )
       : undefined;
@@ -1027,7 +1038,8 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   }
 
   const targets = world.getCombatTargetEntities();
-  for (const entity of targets) {
+  for (let i = 0; i < targets.length; i++) {
+    const entity = targets[i];
     const slot = stampCombatTargetingEntityInto(targeting, world, entity);
     if (slot >= 0) {
       queueCombatTargetingTargetSlot(slot);

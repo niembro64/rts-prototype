@@ -61,15 +61,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -171,15 +170,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -288,15 +286,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -419,15 +416,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -529,15 +525,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -637,15 +632,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -768,15 +762,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -895,15 +888,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1120,15 +1112,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1250,15 +1241,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 327.3576026,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 327.3576026,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1392,15 +1382,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 600,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 120,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 300,
+            "surfaceFollowingProportionalForceFromWater": 0.001
           }
         }
       },
@@ -1535,15 +1524,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 472.3071034,
-            "buoyancyRatio": 0.75
+            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingProportionalForceFromWater": 0.1
           }
         }
       },
@@ -1664,15 +1652,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1800,15 +1787,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1906,15 +1892,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 22,
-            "surfaceFollowingForceFromWater": 8,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 22,
+            "surfaceFollowingInverseForceFromWater": 8
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2040,15 +2025,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 160,
-            "surfaceFollowingForceFromWater": 100,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 160,
+            "surfaceFollowingInverseForceFromWater": 100
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2202,15 +2186,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 60,
-            "surfaceFollowingForceFromWater": 140,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 60,
+            "surfaceFollowingInverseForceFromWater": 140
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2317,15 +2300,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 120,
-            "surfaceFollowingForceFromWater": 80,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 120,
+            "surfaceFollowingInverseForceFromWater": 80
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2441,15 +2423,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 100,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 40,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 40,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2592,15 +2573,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 40000,
-            "surfaceFollowingForceFromWater": 20000,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 40000,
+            "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2755,15 +2735,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 14000,
-            "surfaceFollowingForceFromWater": 20000,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 14000,
+            "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -2903,15 +2882,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 10000,
-            "surfaceFollowingForceFromWater": 20000,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 10000,
+            "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -3036,15 +3014,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 80,
-            "surfaceFollowingForceFromWater": 240,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 80,
+            "surfaceFollowingInverseForceFromWater": 240
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -3223,15 +3200,14 @@
       "physics": {
         "air": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "surfaceFollowingForceFromWater": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 0
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },

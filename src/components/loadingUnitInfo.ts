@@ -430,25 +430,21 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   const air = locomotion.physics.air;
   if (
     air.resistance.linearDampingRate > 0 ||
-    air.lift.buoyancyRatio > 0 ||
-    air.lift.surfaceFollowingForceFromGround > 0 ||
-    air.lift.surfaceFollowingForceFromWater > 0
+    air.lift.surfaceFollowingInverseForceFromGround > 0 ||
+    air.lift.surfaceFollowingInverseForceFromWater > 0
   ) {
     const airChildren = [
       stat('Linear damping rate', fmt(air.resistance.linearDampingRate, 2)),
       stat('Angular damping rate', fmt(air.resistance.angularDampingRate, 2)),
     ];
-    if (air.lift.buoyancyRatio > 0) {
-      airChildren.push(stat('Buoyancy ratio', fmt(air.lift.buoyancyRatio, 2)));
-    }
-    if (air.lift.surfaceFollowingForceFromGround > 0) {
+    if (air.lift.surfaceFollowingInverseForceFromGround > 0) {
       airChildren.push(
-        stat('Surface-following force from ground', fmt(air.lift.surfaceFollowingForceFromGround)),
+        stat('Inverse surface-following force from ground', fmt(air.lift.surfaceFollowingInverseForceFromGround)),
       );
     }
-    if (air.lift.surfaceFollowingForceFromWater > 0) {
+    if (air.lift.surfaceFollowingInverseForceFromWater > 0) {
       airChildren.push(
-        stat('Surface-following force from water', fmt(air.lift.surfaceFollowingForceFromWater)),
+        stat('Inverse surface-following force from water', fmt(air.lift.surfaceFollowingInverseForceFromWater)),
       );
     }
     items.push(node('Air medium', undefined, undefined, airChildren));
@@ -457,19 +453,24 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   const water = locomotion.physics.water;
   if (
     water.resistance.linearDampingRate > 0 ||
-    water.lift.buoyancyRatio > 0 ||
-    water.lift.surfaceFollowingForceFromGround > 0
+    water.lift.surfaceFollowingInverseForceFromGround > 0 ||
+    water.lift.surfaceFollowingProportionalForceFromWater > 0
   ) {
     const waterChildren = [
       stat('Linear damping rate', fmt(water.resistance.linearDampingRate, 2)),
       stat('Angular damping rate', fmt(water.resistance.angularDampingRate, 2)),
     ];
-    if (water.lift.buoyancyRatio > 0) {
-      waterChildren.push(stat('Buoyancy ratio', fmt(water.lift.buoyancyRatio, 2)));
-    }
-    if (water.lift.surfaceFollowingForceFromGround > 0) {
+    if (water.lift.surfaceFollowingInverseForceFromGround > 0) {
       waterChildren.push(
-        stat('Surface-following force from ground', fmt(water.lift.surfaceFollowingForceFromGround)),
+        stat('Inverse surface-following force from ground', fmt(water.lift.surfaceFollowingInverseForceFromGround)),
+      );
+    }
+    if (water.lift.surfaceFollowingProportionalForceFromWater > 0) {
+      waterChildren.push(
+        stat(
+          'Proportional surface-following force from water',
+          fmt(water.lift.surfaceFollowingProportionalForceFromWater),
+        ),
       );
     }
     items.push(node('Water medium', undefined, undefined, waterChildren));

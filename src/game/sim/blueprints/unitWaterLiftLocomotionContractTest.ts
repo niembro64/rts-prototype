@@ -38,10 +38,10 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
 
   const seaTurtle = getUnitLocomotion('unitSeaTurtle');
   assertContract(
-    seaTurtle.physics.water.lift.buoyancyRatio === 1 &&
-      seaTurtle.physics.water.lift.surfaceFollowingForceFromGround === 0 &&
-      seaTurtle.physics.air.lift.surfaceFollowingForceFromWater === 0,
-    'Sea Turtle is neutrally buoyant underwater without a powered surface-following hover force',
+    seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
+      seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater > 0,
+    'Sea Turtle declares independent inverse bottom and proportional water-surface lift channels',
   );
   assertContract(
     getUnitBlueprint('unitSeaTurtle').radius.collision <
@@ -51,9 +51,9 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
 
   const orca = getUnitLocomotion('unitOrca');
   assertContract(
-    orca.physics.air.lift.surfaceFollowingForceFromWater === 0 &&
-      orca.physics.water.lift.buoyancyRatio > 0 &&
-      orca.physics.water.lift.buoyancyRatio < 1,
-    'Orca retains submerged buoyancy without inheriting the surface-swimmer controller',
+    orca.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
+      orca.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      orca.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
+    'Orca retains its inverse lakebed controller without an air surface swimmer controller',
   );
 }

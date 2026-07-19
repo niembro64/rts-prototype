@@ -96,6 +96,17 @@ const treadMats = new Map<number, THREE.MeshBasicMaterial>();
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
 
+/**
+ * Belt slabs and rounded end caps never change in their side-local space.
+ * Their parent still carries the live suspension lift, but freezing their
+ * local matrices skips needless position/scale/quaternion recomposition on
+ * every display frame for every tracked vehicle.
+ */
+function freezeStaticLocalTransform(mesh: THREE.Mesh): void {
+  mesh.updateMatrix();
+  mesh.matrixAutoUpdate = false;
+}
+
 /** Per-side state owned by the rig. The `group` holds the side's
  *  slab, end caps, internal wheels, and animated cleats — all in a
  *  frame where local origin is the side's lateral offset, so the
@@ -205,12 +216,14 @@ export function buildTreads(
       const treadBox = new THREE.Mesh(treadBoxGeom, treadMat);
       treadBox.scale.set(length, TREAD_HEIGHT, width);
       treadBox.position.set(0, TREAD_Y, 0);
+      freezeStaticLocalTransform(treadBox);
       sideGroup.add(treadBox);
     } else {
       // High/medium retain the rounded three-piece belt outline.
       const centerRun = new THREE.Mesh(treadBoxGeom, treadMat);
       centerRun.scale.set(straightLength, TREAD_HEIGHT, width);
       centerRun.position.set(0, TREAD_Y, 0);
+      freezeStaticLocalTransform(centerRun);
       sideGroup.add(centerRun);
 
       for (const end of [-1, 1] as const) {
@@ -218,6 +231,7 @@ export function buildTreads(
         roundedEnd.rotation.x = Math.PI / 2;
         roundedEnd.scale.set(treadRadius, width, treadRadius);
         roundedEnd.position.set(end * halfStraight, TREAD_Y, 0);
+        freezeStaticLocalTransform(roundedEnd);
         sideGroup.add(roundedEnd);
       }
     }

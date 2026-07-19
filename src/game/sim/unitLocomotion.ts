@@ -3,10 +3,11 @@ import type {
 } from '@/types/blueprints';
 import type {
   UnitLocomotion,
-  UnitLocomotionFluidPhysics,
+  UnitLocomotionAirFluidPhysics,
   UnitLocomotionGroundPhysics,
   UnitLocomotionPhysics,
   UnitLocomotionType,
+  UnitLocomotionWaterFluidPhysics,
 } from '@/types/unitLocomotionTypes';
 import {
   getUnitLocomotionFluidResistance,
@@ -36,7 +37,8 @@ export function getUnitLocomotionTraversalCapabilities(
   return locomotion.navigation;
 }
 
-type AuthoredFluidPhysics = NonNullable<UnitLocomotionBlueprint['physics']['air']>;
+type AuthoredAirFluidPhysics = UnitLocomotionBlueprint['physics']['air'];
+type AuthoredWaterFluidPhysics = UnitLocomotionBlueprint['physics']['water'];
 
 function createRuntimeGroundPhysics(
   preset: UnitLocomotionPresetConfig,
@@ -44,17 +46,11 @@ function createRuntimeGroundPhysics(
   return { ...preset.actuator.ground };
 }
 
-function createRuntimeFluidPhysics(
+function assertAuthoredLiftKeys(
   presetId: string,
   medium: 'air' | 'water',
-  presetPhysics: UnitLocomotionPresetConfig['actuator']['air'],
-  authored: AuthoredFluidPhysics | undefined,
-): UnitLocomotionFluidPhysics {
-  if (authored === undefined) {
-    throw new Error(
-      `Invalid unit locomotion ${presetId}.physics.${medium}: air and water lift objects must be explicitly authored`,
-    );
-  }
+  authored: AuthoredAirFluidPhysics | AuthoredWaterFluidPhysics,
+): void {
   for (const key of Object.keys(authored)) {
     if (key !== 'lift') {
       throw new Error(
@@ -62,57 +58,88 @@ function createRuntimeFluidPhysics(
       );
     }
   }
-  const lift = authored.lift;
-  const hasGroundSurfaceForce = Object.prototype.hasOwnProperty.call(
-    lift,
-    'surfaceFollowingForceFromGround',
+}
+
+function assertLiftFields(
+  presetId: string,
+  medium: 'air' | 'water',
+  lift: Record<string, unknown>,
+  expectedFields: readonly string[],
+): void {
+  for (const field of Object.keys(lift)) {
+    if (!expectedFields.includes(field)) {
+      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}.lift.${field}`);
+    }
+  }
+  for (const field of expectedFields) {
+    if (!Object.prototype.hasOwnProperty.call(lift, field)) {
+      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}.lift: missing ${field}`);
+    }
+  }
+}
+
+function createRuntimeAirFluidPhysics(
+  presetId: string,
+  presetPhysics: UnitLocomotionPresetConfig['actuator']['air'],
+  authored: AuthoredAirFluidPhysics,
+): UnitLocomotionAirFluidPhysics {
+  assertAuthoredLiftKeys(presetId, 'air', authored);
+  assertLiftFields(
+    presetId,
+    'air',
+    authored.lift as unknown as Record<string, unknown>,
+    ['surfaceFollowingInverseForceFromGround', 'surfaceFollowingInverseForceFromWater'],
   );
-  const hasWaterSurfaceForce = Object.prototype.hasOwnProperty.call(
-    lift,
-    'surfaceFollowingForceFromWater',
-  );
-  const hasBuoyancyRatio = Object.prototype.hasOwnProperty.call(lift, 'buoyancyRatio');
-  if (medium === 'air' && (!hasGroundSurfaceForce || !hasWaterSurfaceForce)) {
-    throw new Error(
-      `Invalid unit locomotion ${presetId}.physics.air.lift: air requires both ground and water surface-following forces`,
-    );
-  }
-  if (medium === 'water' && hasWaterSurfaceForce) {
-    throw new Error(
-      `Invalid unit locomotion ${presetId}.physics.water.lift.surfaceFollowingForceFromWater: water support is sourced from the ground surface only`,
-    );
-  }
-  if (medium === 'water' && !hasGroundSurfaceForce) {
-    throw new Error(
-      `Invalid unit locomotion ${presetId}.physics.water.lift: surfaceFollowingForceFromGround must be explicitly authored, using 0 when inactive`,
-    );
-  }
-  if (!hasBuoyancyRatio) {
-    throw new Error(
-      `Invalid unit locomotion ${presetId}.physics.${medium}.lift: buoyancyRatio must be explicitly authored, using 0 when inactive`,
-    );
-  }
-  const surfaceFollowingForceFromGround = lift.surfaceFollowingForceFromGround;
-  const surfaceFollowingForceFromWater = lift.surfaceFollowingForceFromWater ?? 0;
-  const buoyancyRatio = lift.buoyancyRatio;
+  const {
+    surfaceFollowingInverseForceFromGround,
+    surfaceFollowingInverseForceFromWater,
+  } = authored.lift;
   assertUnitLocomotionNonNegativeFinite(
-    `${presetId}.physics.${medium}.lift.surfaceFollowingForceFromGround`,
-    surfaceFollowingForceFromGround,
+    `${presetId}.physics.air.lift.surfaceFollowingInverseForceFromGround`,
+    surfaceFollowingInverseForceFromGround,
   );
   assertUnitLocomotionNonNegativeFinite(
-    `${presetId}.physics.${medium}.lift.surfaceFollowingForceFromWater`,
-    surfaceFollowingForceFromWater,
-  );
-  assertUnitLocomotionClosedUnitFraction(
-    `${presetId}.physics.${medium}.lift.buoyancyRatio`,
-    buoyancyRatio,
+    `${presetId}.physics.air.lift.surfaceFollowingInverseForceFromWater`,
+    surfaceFollowingInverseForceFromWater,
   );
   return {
     resistance: { ...getUnitLocomotionFluidResistance(presetPhysics.resistanceProfileId) },
     lift: {
-      buoyancyRatio,
-      surfaceFollowingForceFromGround,
-      surfaceFollowingForceFromWater,
+      surfaceFollowingInverseForceFromGround,
+      surfaceFollowingInverseForceFromWater,
+    },
+  };
+}
+
+function createRuntimeWaterFluidPhysics(
+  presetId: string,
+  presetPhysics: UnitLocomotionPresetConfig['actuator']['water'],
+  authored: AuthoredWaterFluidPhysics,
+): UnitLocomotionWaterFluidPhysics {
+  assertAuthoredLiftKeys(presetId, 'water', authored);
+  assertLiftFields(
+    presetId,
+    'water',
+    authored.lift as unknown as Record<string, unknown>,
+    ['surfaceFollowingInverseForceFromGround', 'surfaceFollowingProportionalForceFromWater'],
+  );
+  const {
+    surfaceFollowingInverseForceFromGround,
+    surfaceFollowingProportionalForceFromWater,
+  } = authored.lift;
+  assertUnitLocomotionNonNegativeFinite(
+    `${presetId}.physics.water.lift.surfaceFollowingInverseForceFromGround`,
+    surfaceFollowingInverseForceFromGround,
+  );
+  assertUnitLocomotionNonNegativeFinite(
+    `${presetId}.physics.water.lift.surfaceFollowingProportionalForceFromWater`,
+    surfaceFollowingProportionalForceFromWater,
+  );
+  return {
+    resistance: { ...getUnitLocomotionFluidResistance(presetPhysics.resistanceProfileId) },
+    lift: {
+      surfaceFollowingInverseForceFromGround,
+      surfaceFollowingProportionalForceFromWater,
     },
   };
 }
@@ -127,8 +154,8 @@ function createRuntimeLocomotionPhysics(
   }
   return {
     ground: createRuntimeGroundPhysics(preset),
-    air: createRuntimeFluidPhysics(presetId, 'air', preset.actuator.air, authored.air),
-    water: createRuntimeFluidPhysics(presetId, 'water', preset.actuator.water, authored.water),
+    air: createRuntimeAirFluidPhysics(presetId, preset.actuator.air, authored.air),
+    water: createRuntimeWaterFluidPhysics(presetId, preset.actuator.water, authored.water),
   };
 }
 
@@ -173,7 +200,18 @@ function cloneGroundPhysics(physics: UnitLocomotionGroundPhysics): UnitLocomotio
   return { ...physics };
 }
 
-function cloneFluidPhysics(physics: UnitLocomotionFluidPhysics): UnitLocomotionFluidPhysics {
+function cloneAirFluidPhysics(
+  physics: UnitLocomotionAirFluidPhysics,
+): UnitLocomotionAirFluidPhysics {
+  return {
+    resistance: { ...physics.resistance },
+    lift: { ...physics.lift },
+  };
+}
+
+function cloneWaterFluidPhysics(
+  physics: UnitLocomotionWaterFluidPhysics,
+): UnitLocomotionWaterFluidPhysics {
   return {
     resistance: { ...physics.resistance },
     lift: { ...physics.lift },
@@ -188,8 +226,8 @@ export function cloneUnitLocomotion(
     physicsPresetId: locomotion.physicsPresetId,
     physics: {
       ground: cloneGroundPhysics(locomotion.physics.ground),
-      air: cloneFluidPhysics(locomotion.physics.air),
-      water: cloneFluidPhysics(locomotion.physics.water),
+      air: cloneAirFluidPhysics(locomotion.physics.air),
+      water: cloneWaterFluidPhysics(locomotion.physics.water),
     },
     environmentalHazards: { ...locomotion.environmentalHazards },
     actuator: { ...locomotion.actuator },

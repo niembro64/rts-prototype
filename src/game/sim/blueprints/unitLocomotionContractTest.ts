@@ -140,13 +140,15 @@ export function runUnitLocomotionContractTest(): void {
       `${blueprint.unitBlueprintId} locomotion cloning preserves actuator and navigation`,
     );
     assertContract(
-      runtime.physics.air.lift.surfaceFollowingForceFromGround ===
-        (blueprint.unitLocomotion.physics.air?.lift.surfaceFollowingForceFromGround ?? 0) &&
-        runtime.physics.air.lift.surfaceFollowingForceFromWater ===
-          (blueprint.unitLocomotion.physics.air?.lift.surfaceFollowingForceFromWater ?? 0) &&
-        runtime.physics.water.lift.surfaceFollowingForceFromGround ===
-          (blueprint.unitLocomotion.physics.water?.lift.surfaceFollowingForceFromGround ?? 0),
-      `${blueprint.unitBlueprintId} owns source-specific surface-following forces`,
+      runtime.physics.air.lift.surfaceFollowingInverseForceFromGround ===
+        blueprint.unitLocomotion.physics.air.lift.surfaceFollowingInverseForceFromGround &&
+        runtime.physics.air.lift.surfaceFollowingInverseForceFromWater ===
+          blueprint.unitLocomotion.physics.air.lift.surfaceFollowingInverseForceFromWater &&
+        runtime.physics.water.lift.surfaceFollowingInverseForceFromGround ===
+          blueprint.unitLocomotion.physics.water.lift.surfaceFollowingInverseForceFromGround &&
+        runtime.physics.water.lift.surfaceFollowingProportionalForceFromWater ===
+          blueprint.unitLocomotion.physics.water.lift.surfaceFollowingProportionalForceFromWater,
+      `${blueprint.unitBlueprintId} owns explicit inverse and proportional surface-following forces`,
     );
     assertContract(
       getUnitLocomotionTraversalCapabilities(runtime).allowInAir === runtime.navigation.allowInAir,
@@ -172,14 +174,6 @@ export function runUnitLocomotionContractTest(): void {
     );
   }
 
-  for (const unitBlueprintId of ['unitJackal', 'unitTick'] as const) {
-    const locomotion = getUnitLocomotion(unitBlueprintId);
-    assertContract(
-      locomotion.physics.water.lift.buoyancyRatio === 0,
-      `${unitBlueprintId} is a water-fatal land unit, not a floating one`,
-    );
-  }
-
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
     commander.physicsPresetId === 'amphibiousLegs' &&
@@ -187,8 +181,8 @@ export function runUnitLocomotionContractTest(): void {
       commander.navigation.allowInWater &&
       !commander.navigation.allowInAir &&
       !commander.environmentalHazards.waterFatal &&
-      commander.physics.water.lift.buoyancyRatio === 0,
-    'Commander uses its leg rig to walk the seabed, rather than floating or flying',
+      commander.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
+    'Commander uses its leg rig to walk the seabed without a water-surface controller',
   );
 
   const eagle = getUnitLocomotion('unitEagle');
@@ -207,12 +201,15 @@ export function runUnitLocomotionContractTest(): void {
   );
 
   const incompleteAirLift = cloneBlueprint(getUnitBlueprint('unitEagle').unitLocomotion);
-  delete incompleteAirLift.physics.air?.lift.surfaceFollowingForceFromWater;
-  expectLocomotionError(incompleteAirLift, 'air lift requires both surface-following sources');
+  delete (incompleteAirLift.physics.air.lift as {
+    surfaceFollowingInverseForceFromWater?: number;
+  }).surfaceFollowingInverseForceFromWater;
+  expectLocomotionError(incompleteAirLift, 'air lift requires both inverse surface sources');
 
   const invalidWaterLift = cloneBlueprint(getUnitBlueprint('unitOrca').unitLocomotion);
-  const waterLift = invalidWaterLift.physics.water?.lift;
-  assertContract(waterLift !== undefined, 'Orca authors water lift');
-  waterLift.surfaceFollowingForceFromWater = 1;
-  expectLocomotionError(invalidWaterLift, 'water lift cannot source the water surface');
+  const waterLift = invalidWaterLift.physics.water.lift as {
+    surfaceFollowingProportionalForceFromWater?: number;
+  };
+  delete waterLift.surfaceFollowingProportionalForceFromWater;
+  expectLocomotionError(invalidWaterLift, 'water lift requires its proportional water-surface force');
 }

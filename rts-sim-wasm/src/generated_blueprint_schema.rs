@@ -724,21 +724,31 @@ pub struct SwimConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionLiftPhysics {
-    pub surfaceFollowingForceFromGround: f64,
-    pub surfaceFollowingForceFromWater: Option<f64>,
-    pub buoyancyRatio: f64,
+pub struct LocomotionAirLiftPhysics {
+    pub surfaceFollowingInverseForceFromGround: f64,
+    pub surfaceFollowingInverseForceFromWater: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionFluidBodyPhysics {
-    pub lift: LocomotionLiftPhysics,
+pub struct LocomotionWaterLiftPhysics {
+    pub surfaceFollowingInverseForceFromGround: f64,
+    pub surfaceFollowingProportionalForceFromWater: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionAirFluidBodyPhysics {
+    pub lift: LocomotionAirLiftPhysics,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionWaterFluidBodyPhysics {
+    pub lift: LocomotionWaterLiftPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitUnitLocomotionBlueprintPhysics {
-    pub air: LocomotionFluidBodyPhysics,
-    pub water: LocomotionFluidBodyPhysics,
+    pub air: LocomotionAirFluidBodyPhysics,
+    pub water: LocomotionWaterFluidBodyPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
