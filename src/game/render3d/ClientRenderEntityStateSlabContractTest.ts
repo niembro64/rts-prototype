@@ -58,7 +58,7 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
     velocity: null,
     radius: null,
     mass: null,
-    bodyCenterHeight: null,
+    supportPointOffsetZ: null,
     unitBlueprintCode: null,
     isCommander: null,
     surfaceNormal: null,

@@ -1,564 +1,384 @@
 {
-  "forceScale": 150000,
-  "surfaceLiftDefaults": {
+  "surfaceFollowingDefaults": {
     "minimumDistanceWorld": 10,
-    "forceMultiplier": 15,
     "probeAggregation": "average"
   },
-  "mediumDefaults": {
-    "ground": {
-      "resistance": {
-        "linearFriction": 0
-      }
+  "fluidResistanceProfiles": {
+    "air-standard": {
+      "linearDampingRate": 3.077597663253,
+      "angularDampingRate": 3.077597663253
     },
-    "air": {
-      "resistance": {
-        "linearFriction": 3.0775976632530346
-      }
+    "air-hover": {
+      "linearDampingRate": 1,
+      "angularDampingRate": 1
     },
-    "water": {
-      "resistance": {
-        "linearFriction": 8
-      }
+    "air-submersible": {
+      "linearDampingRate": 0.55,
+      "angularDampingRate": 1
+    },
+    "air-flight": {
+      "linearDampingRate": 1.65,
+      "angularDampingRate": 3
+    },
+    "water-standard": {
+      "linearDampingRate": 8,
+      "angularDampingRate": 4
+    },
+    "water-tracked": {
+      "linearDampingRate": 3.25,
+      "angularDampingRate": 4
+    },
+    "water-submersible": {
+      "linearDampingRate": 0.875,
+      "angularDampingRate": 3
     }
   },
   "presets": {
     "wheels": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": true,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "1-point",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": {
-            "driveForce": 1000,
-            "forceCoupling": 2
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.55,
-            "tangentDamping": 0.55
-          }
+          "maxPropulsiveForce": 26.666666666667,
+          "staticFrictionCoefficient": 0.55,
+          "tangentialDampingRate": 0.835487663482
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1
-            },
-            "angularDrag": 3.0775976632530346
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "1-point"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": []
       }
     },
     "treads": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": true,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "1-point",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": {
-            "driveForce": 4000,
-            "forceCoupling": 0.85
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.85,
-            "tangentDamping": 0.85
-          }
+          "maxPropulsiveForce": 45.333333333333,
+          "staticFrictionCoefficient": 0.85,
+          "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1
-            },
-            "angularDrag": 3.0775976632530346
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0.5
-          },
-          "resistance": {
-            "frictionMultiplier": 0.625,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 0.65,
-              "lateral": 1.5,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "1-point"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": []
       }
     },
     "amphibiousTreads": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": true,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "5-points",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": {
-            "driveForce": 760,
-            "forceCoupling": 0.85
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.85,
-            "tangentDamping": 0.85
-          }
+          "maxPropulsiveForce": 8.613333333333,
+          "staticFrictionCoefficient": 0.85,
+          "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1
-            },
-            "angularDrag": 3.0775976632530346
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 400,
-            "forceCoupling": 0.5
-          },
-          "resistance": {
-            "frictionMultiplier": 0.625,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 0.65,
-              "lateral": 1.5,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 2.666666666667,
+          "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "5-points"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": [
+          "water"
+        ]
       }
     },
     "flippers": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": true,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "8-points",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": {
-            "driveForce": 250,
-            "forceCoupling": 1
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.15,
-            "tangentDamping": 1
-          }
+          "maxPropulsiveForce": 3.333333333333,
+          "staticFrictionCoefficient": 0.15,
+          "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1
-            },
-            "angularDrag": 3.0775976632530346
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 250,
-            "forceCoupling": 1.2
-          },
-          "resistance": {
-            "frictionMultiplier": 0.625,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 0.65,
-              "lateral": 1.5,
-              "vertical": 4
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 4,
+          "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "8-points"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": [
+          "water"
+        ]
       }
     },
     "submarine": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": false,
-        "maintainFullThrustAtWaypoints": true,
-        "surfaceProbeSetId": "5-points",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0,
-            "tangentDamping": 0
-          }
+          "maxPropulsiveForce": 0,
+          "staticFrictionCoefficient": 0,
+          "tangentialDampingRate": 0
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 0.3249287624370612,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 0.55,
-              "lateral": 1.3,
-              "vertical": 1
-            },
-            "angularDrag": 1
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-submersible",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 250,
-            "forceCoupling": 1.5
-          },
-          "resistance": {
-            "frictionMultiplier": 0.3125,
-            "quadraticDrag": 0.0015,
-            "directionalScale": {
-              "forward": 0.35,
-              "lateral": 1.8,
-              "vertical": 4
-            },
-            "angularDrag": 3
-          },
+          "maxPropulsiveForce": 5,
+          "resistanceProfileId": "water-submersible",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": true,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "5-points"
+      },
+      "navigation": {
+        "allowOnGround": false,
+        "allowedFluidMedia": [
+          "water"
+        ]
       }
     },
     "legs": {
-      "physics": {
-        "forwardForceRequiresFacing": false,
-        "driveForceScalesWithFacing": false,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "1-point",
+      "actuator": {
+        "propulsionAxis": "worldPlanar",
         "ground": {
-          "propulsion": {
-            "driveForce": 885,
-            "forceCoupling": 1
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 1,
-            "tangentDamping": 1
-          }
+          "maxPropulsiveForce": 11.8,
+          "staticFrictionCoefficient": 1,
+          "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1
-            },
-            "angularDrag": 3.0775976632530346
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
-        },
-        "idleAirDrive": false
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "1-point"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": []
       }
     },
     "hover": {
-      "physics": {
-        "forwardForceRequiresFacing": false,
-        "driveForceScalesWithFacing": false,
-        "maintainFullThrustAtWaypoints": false,
-        "surfaceProbeSetId": "8-points",
+      "actuator": {
+        "propulsionAxis": "worldPlanar",
         "ground": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0.5
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.5,
-            "tangentDamping": 0.5
-          }
+          "maxPropulsiveForce": 0,
+          "staticFrictionCoefficient": 0.5,
+          "tangentialDampingRate": 0.759534239529
         },
         "air": {
-          "propulsion": {
-            "driveForce": 40,
-            "forceCoupling": 0.2
-          },
-          "resistance": {
-            "frictionMultiplier": 0.3249287624370612,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 6
-            },
-            "angularDrag": 1
-          },
-          "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
-          }
-        },
-        "water": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 0.106666666667,
+          "resistanceProfileId": "air-hover",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
-        "idleAirDrive": false
+        "water": {
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "water-standard",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "8-points"
+      },
+      "navigation": {
+        "allowOnGround": false,
+        "allowedFluidMedia": [
+          "air",
+          "water"
+        ]
       }
     },
     "dive": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": false,
-        "maintainFullThrustAtWaypoints": true,
-        "surfaceProbeSetId": "8-points",
+      "actuator": {
+        "propulsionAxis": "bodyForward",
         "ground": {
-          "propulsion": { "driveForce": 0, "forceCoupling": 0.075 },
-          "resistance": { "frictionMultiplier": 1 },
-          "contact": { "surfaceGrip": 0.1, "tangentDamping": 0.1 }
+          "maxPropulsiveForce": 0,
+          "staticFrictionCoefficient": 0.1,
+          "tangentialDampingRate": 0.151906847906
         },
         "air": {
-          "propulsion": { "driveForce": 10, "forceCoupling": 3 },
-          "resistance": {
-            "frictionMultiplier": 0.9747862873111837,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 0.55,
-              "lateral": 1.3,
-              "vertical": 0.5
-            },
-            "angularDrag": 3
-          },
-          "surfaceLiftResponse": { "randomizationAmount": 0.99, "ema": 0.5 }
-        },
-        "water": {
-          "propulsion": { "driveForce": 20, "forceCoupling": 1.5 },
-          "resistance": {
-            "frictionMultiplier": 0.3125,
-            "quadraticDrag": 0.0015,
-            "directionalScale": {
-              "forward": 0.35,
-              "lateral": 1.8,
-              "vertical": 4
-            },
-            "angularDrag": 3
-          },
-          "surfaceLiftResponse": { "randomizationAmount": 0, "ema": 0.5 }
-        },
-        "idleAirDrive": true
-      }
-    },
-    "flying": {
-      "physics": {
-        "forwardForceRequiresFacing": true,
-        "driveForceScalesWithFacing": false,
-        "maintainFullThrustAtWaypoints": true,
-        "surfaceProbeSetId": "8-points",
-        "ground": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0.075
-          },
-          "resistance": {
-            "frictionMultiplier": 1
-          },
-          "contact": {
-            "surfaceGrip": 0.1,
-            "tangentDamping": 0.1
-          }
-        },
-        "air": {
-          "propulsion": {
-            "driveForce": 30,
-            "forceCoupling": 3
-          },
-          "resistance": {
-            "frictionMultiplier": 0.9747862873111837,
-            "quadraticDrag": 0.00002,
-            "directionalScale": {
-              "forward": 0.55,
-              "lateral": 1.3,
-              "vertical": 0.5
-            },
-            "angularDrag": 3
-          },
-          "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
-          }
-        },
-        "water": {
-          "propulsion": {
-            "driveForce": 0,
-            "forceCoupling": 0
-          },
-          "resistance": {
-            "frictionMultiplier": 1,
-            "quadraticDrag": 0.001,
-            "directionalScale": {
-              "forward": 1,
-              "lateral": 1,
-              "vertical": 1.2
-            },
-            "angularDrag": 4
-          },
+          "maxPropulsiveForce": 0.4,
+          "resistanceProfileId": "air-flight",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
-        "idleAirDrive": true
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "resistanceProfileId": "water-submersible",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": true,
+        "cruiseWhenUncommanded": true
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "8-points"
+      },
+      "navigation": {
+        "allowOnGround": false,
+        "allowedFluidMedia": [
+          "air",
+          "water"
+        ]
+      }
+    },
+    "flying": {
+      "actuator": {
+        "propulsionAxis": "bodyForward",
+        "ground": {
+          "maxPropulsiveForce": 0,
+          "staticFrictionCoefficient": 0.1,
+          "tangentialDampingRate": 0.151906847906
+        },
+        "air": {
+          "maxPropulsiveForce": 1.2,
+          "resistanceProfileId": "air-flight",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0,
+          "resistanceProfileId": "water-standard",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": true,
+        "cruiseWhenUncommanded": true
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "8-points"
+      },
+      "navigation": {
+        "allowOnGround": false,
+        "allowedFluidMedia": [
+          "air"
+        ]
       }
     }
   }

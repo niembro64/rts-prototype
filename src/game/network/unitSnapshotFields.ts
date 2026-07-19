@@ -85,7 +85,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     unitBlueprintCode: null,
     hp: { curr: 0, max: 0 },
     radius: null,
-    bodyCenterHeight: null,
+    supportPointOffsetZ: null,
     mass: null,
     velocity: { x: 0, y: 0, z: 0 },
     surfaceNormal: null,
@@ -263,8 +263,8 @@ export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapsho
     if (isFiniteNumber(radius.hitbox)) unit.radius.hitbox = radius.hitbox;
     if (isFiniteNumber(radius.collision)) unit.radius.collision = radius.collision;
   }
-  if (isFiniteNumber(src.bodyCenterHeight)) {
-    unit.bodyCenterHeight = src.bodyCenterHeight;
+  if (isFiniteNumber(src.supportPointOffsetZ)) {
+    unit.supportPointOffsetZ = src.supportPointOffsetZ;
   }
   const unitBlueprintId = decodeNetworkUnitBlueprintId(src.unitBlueprintCode);
   if (unitBlueprintId) {
@@ -355,14 +355,14 @@ function radiusFallback(
   return typeof fallback === 'number' ? fallback : finiteOr(fallback[key], 15);
 }
 
-export function readNetworkUnitBodyCenterHeight(
+export function readNetworkUnitSupportPointOffsetZ(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number,
 ): number {
   if (src === null || src === undefined) return fallback;
   const radius = src.radius;
   return finiteOr(
-    src.bodyCenterHeight,
+    src.supportPointOffsetZ,
     finiteOr(radius !== null && radius !== undefined ? radius.collision : undefined, fallback),
   );
 }
@@ -402,7 +402,7 @@ export function writeNetworkUnitStaticFields(
 ): void {
   dst.unitBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
   dst.radius = null;
-  dst.bodyCenterHeight = null;
+  dst.supportPointOffsetZ = null;
   dst.mass = null;
   dst.isCommander = unitIsCommander ? true : null;
 }
@@ -410,7 +410,7 @@ export function writeNetworkUnitStaticFields(
 export function clearNetworkUnitStaticFields(dst: NetworkUnitSnapshot): void {
   dst.unitBlueprintCode = null;
   dst.radius = null;
-  dst.bodyCenterHeight = null;
+  dst.supportPointOffsetZ = null;
   dst.mass = null;
   dst.isCommander = null;
 }
@@ -613,7 +613,7 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.radius = null;
   }
-  dst.bodyCenterHeight = src.bodyCenterHeight ?? null;
+  dst.supportPointOffsetZ = src.supportPointOffsetZ ?? null;
   dst.mass = src.mass ?? null;
   if (src.velocity != null) {
     const velocity = dst.velocity ?? (dst.velocity = { x: 0, y: 0, z: 0 });
@@ -697,8 +697,8 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.z = deqEntityPos(src.pos.z);
   }
   const unit = src.unit;
-  if (isFull && unit !== null && unit !== undefined && isFiniteNumber(unit.bodyCenterHeight)) {
-    target.bodyCenterHeight = unit.bodyCenterHeight;
+  if (isFull && unit !== null && unit !== undefined && isFiniteNumber(unit.supportPointOffsetZ)) {
+    target.supportPointOffsetZ = unit.supportPointOffsetZ;
   }
   if (isFull || (cf & ENTITY_CHANGED_NORMAL)) {
     const sn = unit !== null && unit !== undefined ? unit.surfaceNormal : null;

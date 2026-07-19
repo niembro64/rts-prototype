@@ -34,7 +34,7 @@ export class SimulationFlyingLoiterController {
   }
 
   rememberTarget(unit: Unit, action: UnitAction): void {
-    if (!unit.locomotion.idleAirDrive) return;
+    if (!unit.locomotion.motionControl.cruiseWhenUncommanded) return;
     const x = this.clampMapX(action.x);
     const y = this.clampMapY(action.y);
     unit.flyingLoiterTargetX = x;
@@ -44,7 +44,7 @@ export class SimulationFlyingLoiterController {
 
   queue(entity: Entity): void {
     const unit = entity.unit;
-    if (!unit || !unit.locomotion.idleAirDrive) return;
+    if (!unit || !unit.locomotion.motionControl.cruiseWhenUncommanded) return;
 
     const { transform } = entity;
     const storedCenterX = unit.flyingLoiterTargetX;

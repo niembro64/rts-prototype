@@ -96,7 +96,7 @@ export class UnitTurretPose3D {
     turretRows: ClientRenderTurretHostRows | undefined,
     turrets: readonly Turret[],
     bodyVisible: boolean,
-    bodyCenterHeight: number,
+    supportPointOffsetZ: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     chassisTiltInverse: THREE.Quaternion | undefined,
@@ -147,7 +147,7 @@ export class UnitTurretPose3D {
 
       const turretHeadCenterY = Number.isFinite(mountZ)
         ? mountZ
-        : bodyCenterHeight;
+        : supportPointOffsetZ;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
       setVector3IfChanged(
         turretMesh.root.position,

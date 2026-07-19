@@ -808,14 +808,14 @@
         be one on which the unit could remain controllable from a standstill; this support test is
         independent of travel direction. Second, powered ascent is directional and may impose a
         stricter climb limit. A unit should never be routed onto a slope, ramp, shelf edge, or
-        vertical face that its drive force, mass, force coupling, grip, and global stability ceiling
+        vertical face that its maximum propulsive force, mass, static friction, and stability ceiling
         cannot realistically support. Downhill movement avoids the uphill power requirement, but it
         does not make an uncontrollable surface traversable.
       </p>
       <p>
         Among physically legal routes, A* minimizes a normalized traversal-time cost derived from
         the same abstract force profile as locomotion. The pathfinder receives dry-ground
-        acceleration after drive force, mass, force coupling, and Coulomb-grip limits; it does not
+        acceleration after maximum propulsive force, mass, and Coulomb-friction limits; it does not
         branch on wheels, treads, legs, or any other visual chassis name. The standstill and climb
         envelopes are derived once per unique immutable physics profile and mass, cached in memory,
         and shared by route legality, smoothing, validation, cost, and debug presentation. Uphill
@@ -920,7 +920,7 @@
         Independent Of Shape</strong>). A zero is a real, meaningful preset value: it is how
         a pure ground locomotion declares it cannot push on air or water, and how an aircraft
         locomotion declares it cannot push on the ground. Units sharing a preset receive the
-        same absolute drive force; their different masses create different accelerations.
+        same maximum propulsive force; their different masses create different accelerations.
       </p>
       <p>
         The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
@@ -939,169 +939,43 @@
         ground + water.
       </p>
       <p>
-        Locomotion physics is grouped by physical responsibility, not stored as one flat bag of
-        coefficients. Every medium has <code>propulsion</code>, containing drive force and force
-        coupling, and <code>resistance</code>, containing its [0, 1] global-friction multiplier.
-        Air and water resistance also own quadratic drag, directional drag scales, and angular
-        drag; their preset-level <code>surfaceLiftResponse</code> group owns lift randomisation and
-        EMA smoothing. The global <code>surfaceLiftDefaults</code> group owns the one shared
-        inverse-distance response curve used by both fluids and the
-        <code>probeAggregation</code> policy used after evaluating that reciprocal response independently
-        at every configured probe. It selects either the arithmetic <code>average</code> or strict
-        <code>max</code> of the probes&rsquo; proposed forces. The shared <code>forceMultiplier</code>
-        scales that aggregate once before randomisation and EMA. Ground instead owns a
-        <code>contact</code> group containing surface grip and
-        tangent damping. Fields that have no physical meaning in a medium are absent rather than
-        repeated as decorative zeroes. No preset inherits an invisible partial group: every
-        applicable group is explicit and structurally complete. Absolute linear-friction rates
-        live once in each medium&rsquo;s global <code>mediumDefaults.resistance</code>; preset
-        multipliers may reduce but never amplify that common response. Unit blueprints author only
-        body-specific air/water values inside optional <code>lift</code> groups, and omit an empty
-        override instead of restating zero.
+        Locomotion is grouped by physical responsibility. Ground owns
+        <code>maxPropulsiveForce</code>, <code>staticFrictionCoefficient</code>, and
+        <code>tangentialDampingRate</code>. Air and water each own one direct
+        <code>maxPropulsiveForce</code> plus a named resistance profile with exactly
+        <code>linearDampingRate</code> and <code>angularDampingRate</code>. There is no
+        hidden force multipliers, reference-mass scales, global thrust scales, anisotropic
+        direction scales, or quadratic terms between authored values and the force law.
       </p>
       <ul class="rule-list">
-        <li>
-          <strong>Drive force</strong> (<code>ground.propulsion.driveForce</code>,
-          <code>air.propulsion.driveForce</code>, <code>water.propulsion.driveForce</code>) &mdash; the
-          magnitude of thrust the unit can produce <em>while in that medium</em>, applied
-          through the arrival controller toward the desired motion state. A locomotion preset
-          that can walk but not swim sets ground drive force &gt; 0 and water drive force = 0;
-          an amphibious preset sets both; a gunship preset sets air drive force &gt; 0 and ground
-          drive force = 0. There is no per-unit drive-force multiplier or override. The forces are
-          additive when a unit is in more than one medium at once (a tracked amphibian on the
-          lake bed drives on ground force, then loses it and falls back to water force as it
-          drives off into the deep).
-        </li>
-        <li>
-          <strong>Force coupling</strong> (<code>ground.propulsion.forceCoupling</code>,
-          <code>air.propulsion.forceCoupling</code>, <code>water.propulsion.forceCoupling</code>) &mdash;
-          how effectively that medium <em>couples</em> the drive force into directed
-          acceleration and turn authority. High ground coupling is a tank that turns and
-          stops crisply; low water coupling is a slippery, wide-turning swimmer. Force coupling
-          scales the drive force for its medium. The name intentionally avoids confusing this
-          general propulsion coefficient with solid-surface grip.
-        </li>
-        <li>
-          <strong>Friction</strong> &mdash; each physical medium owns one global passive linear
-          damping rate. A locomotion preset authors only
-          <code>ground/air/water.resistance.frictionMultiplier</code> in [0, 1], and its effective rate is
-          <code>globalMediumFriction * frictionMultiplier</code>. This damping applies whether or
-          not the unit is driving and opposes velocity relative to that medium (air is relative to
-          wind; water is currently relative to still water). Friction is the medium-resistance
-          counterpart to drive force: drive pushes, friction resists, and the equilibrium speed
-          is where they balance. It is distinct from tangent damping at a solid contact patch.
-        </li>
+        <li><strong>Propulsion</strong> is a maximum directed force in the active medium. The simulator applies <code>a = F / m</code>, so mass matters directly and a unit has one clear force budget to tune.</li>
+        <li><strong>Static friction</strong> is contact traction: ground propulsion is limited by <code>normalLoad * staticFrictionCoefficient</code>. It is not a velocity-resistance setting.</li>
+        <li><strong>Tangential damping</strong> is a supported-contact velocity decay rate. It damps residual sliding along the contact plane and is therefore separate from static friction: one caps commanded force, the other removes existing tangential velocity.</li>
+        <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>
       </ul>
       <p>
-        Only occupied media contribute this tick: a flying unit high above the lake feels air
-        friction and air force only; as it intersects the surface those terms fade by
-        <code>fAir</code> while water friction, gravity counter, surface lift, and water drive grow by
-        <code>fWater</code>, plus ground if it touches bottom. Sampling fractional occupancy at
-        the water line and adding ground whenever there is contact is the whole medium rule &mdash;
-        atmospheric wind is part of the air-relative term and is therefore weighted by
-        <code>fAir</code>; it cannot push a fully submerged unit, while water resistance remains
-        relative to still water until an explicit current field exists. Thus an amphibious unit
-        such as Sea Turtle can author weak, low-grip land propulsion and stronger swimming
-        propulsion without a chassis-specific movement branch. There is no
-        per-chassis branch deciding &ldquo;this unit type ignores water.&rdquo; A
-        unit ignores water by authoring zero water terms, and the same medium-sampling code
-        runs for every unit.
+        Medium is sampled rather than typed. Ground applies on a supporting contact; air and water
+        use complementary displaced-volume fractions. Their forces are occupancy weighted and add.
+        Navigation is an explicit preset policy (<code>allowOnGround</code>,
+        <code>allowedFluidMedia</code>), independent of the visual locomotion mechanism. Survival
+        policy is separate again.
       </p>
       <p>
-        Linear damping is the baseline medium resistance. Profiles may additionally author
-        quadratic drag and forward/lateral/vertical drag scales, so a streamlined aircraft,
-        broadside boat, tumbling tank, and submarine can resist motion differently without
-        acquiring separate physics paths. Ground contact uses a Coulomb-style grip limit:
-        available ground drive cannot exceed <code>normalLoad * surfaceGrip</code>, and the
-        occupied medium&rsquo;s gravity counter reduces normal load. Tangent damping is separate from grip;
-        neither is inferred from the visual rig or from a pathfinding label.
+        Surface following is a source-explicit powered support force, not a height clamp. Unit
+        blueprints author <code>surfaceFollowingForceFromGround</code>, air may also author
+        <code>surfaceFollowingForceFromWater</code>, and each medium authors
+        <code>buoyancyRatio</code>. Probe distance uses one positive minimum and a reciprocal
+        response; proposed forces are aggregated by the configured average or maximum and then
+        occupancy weighted. The configuration deliberately retains
+        <code>surfaceLiftResponse: { randomizationAmount: 0, ema: 0 }</code>: support is
+        deterministic and unfiltered, with no hidden temporal state.
       </p>
       <p>
-        Physical capability, locomotion-preset navigation policy, and survival are three separate
-        contracts. The force profile answers what happens if the body is in a medium. Each
-        locomotion preset declares <code>allowOnGround</code> and an
-        <code>allowInMedium</code> envelope of <code>air-only</code>,
-        <code>water-only</code>, or <code>air-and-water</code>. The planner intersects that
-        type-level envelope with the unit&rsquo;s actual non-zero propulsion and force coupling, so a
-        tracked family may support amphibious members without making every tracked unit a swimmer.
-        Touching a lake bed does not silently authorize a land unit to route through a lake.
-        Survival independently declares whether water is fatal, the submerged-volume threshold,
-        and the continuous exposure grace period. This permits deliberate drowning or water-impact
-        tactics while still allowing authored swimmers, floating wreck-prone vehicles, stranded
-        survivors, submarines, and bottom walkers to use the same physics.
+        Presentation, motion control, navigation, hazards, and physical body properties remain
+        separate contracts. The visual locomotion type chooses a rig; it never grants route
+        permissions or changes a force law. This leaves one rigid body acted on by gravity,
+        contact, medium resistance, buoyancy, surface-following force, and direct actuators.
       </p>
-      <p>
-        Vertical surface lift is the altitude/depth analogue of drive force and follows the
-        <strong>Gravity is universal; thrust answers it</strong> rule exactly. Air and water use
-        the same source-explicit lift model. <code>lift.liftForceFromGroundSurface</code> is the
-        powered upward force sourced from distance to the highest solid support under each probe;
-        water-medium lift owns only this source. Air additionally authors
-        <code>lift.liftForceFromWaterSurface</code>, which contributes only at probes over exposed
-        water. Like drive force, both pass through the locomotion force scale, so equal presets
-        accelerate lighter bodies more.
-        <code>lift.gravityCounterRatio</code> is a passive [0, 1] fraction of the body&rsquo;s weight
-        answered in that medium. It is not lift force, cannot exceed gravity, and therefore
-        cannot create upward acceleration by itself.
-        Every unit blueprint authors both medium lift objects even when they are inert: air always
-        supplies both source-force fields and its gravity counter, while water supplies its
-        ground-source force and gravity counter. Explicit <code>0</code> means no authority; a
-        missing field is invalid rather than an accidental default.
-      </p>
-      <p>
-        Source-explicit lift has no target height and no hidden spring. Each source&rsquo;s universal distance response is
-        <code>(referenceDistance / max(distanceToSupport, minimumDistance)) ^ distanceExponent</code>.
-        Every probe that resolves a surface therefore owns a strictly positive distance: zero,
-        negative (the body is below the sampled surface), or defensive non-finite distances all
-        resolve to the globally authored <code>minimumDistanceWorld</code>, never to a zero or
-        ignored distance. Whether a physical source exists at that horizontal point remains a
-        separate question; for example, an exposed-water source still does not exist over dry land.
-        Ground-surface lift measures the highest supporting solid independently of medium. Air&rsquo;s
-        water-surface source measures exposed water independently; it is zero over dry terrain.
-        The
-        resulting equilibrium height or depth emerges from surface-lift force, the response curve,
-        gravity counter, mass, drag, and gravity; it is never authored directly.
-      </p>
-      <p>
-        Surface-distance sampling is also data, not a locomotion-type branch. The separate
-        <code>surfaceProbeConfig.json</code> owns reusable <code>1-point</code>,
-        <code>5-points</code>, and <code>8-points</code> layouts, including each layout&rsquo;s
-        body-relative reach and local forward/lateral offsets. Every locomotion preset explicitly
-        selects one set by id. Air and water use the same selected points but retain their distinct
-        reference sources. At every point the simulation first evaluates each source&rsquo;s nonlinear
-        inverse-distance response, then averages that source&rsquo;s responses; it never substitutes the
-        mathematically different response of an averaged distance. Source contributions are added
-        only after those averages. The <strong>PROBES</strong>
-        diagnostic draws the same selected layout for the selected unit.
-      </p>
-      <p>
-        Temporal smoothing and medium occupancy have a strict order. First compute the ground and
-        exposed-water contributions and add them into one <em>full-medium</em> lift force. Randomise
-        that combined force, then update that medium&rsquo;s single EMA, and only then
-        multiply the smoothed result by <code>fAir</code> or <code>fWater</code>. The gravity-counter
-        force is also multiplied directly by the occupied fraction. Occupancy never enters the EMA:
-        a half-submerged body receives exactly half of the current full-water response, and a body
-        pulled out of water loses water force immediately rather than carrying a submerged-force
-        tail through smoothing. When a medium has zero occupancy its lift EMA state is cleared.
-      </p>
-      <p>
-        Because every expanded preset carries every term, strange-but-legal combinations fall out
-        for free: a preset with non-zero ground, air, and water drive force walks to the shore, lifts
-        off on air force and lift, flies across the lake, then settles and swims under water
-        force &mdash; all without a single new code path, just three media sampled per tick and
-        one force profile with all terms authored once. The arrival controller, gravity, terrain
-        contact, and collision are unchanged; they simply read whichever medium&rsquo;s
-        force coupling, resistance, and drive force are active this tick. This is the locomotion reading of
-        <strong>Mass must matter</strong> and <strong>Config Is Data, Not Code</strong>: one
-        physical model, all tuning in JSON, no chassis-type conditionals in the hot path.
-      </p>
-      <ul class="rule-list">
-        <li>Every locomotion preset explicitly owns every applicable ground/air/water physics group: propulsion and resistance for all media, contact only for ground, and surface-lift response plus directional drag only for fluids. Every runtime unit receives that validated profile, while mass and air/water lift remain unit-authored. Zero explicitly declares no force authority; required lift fields are never omitted.</li>
-        <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), plus complementary displaced-volume fractions for air and water. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
-        <li>Forces and frictions from co-active media add after air/water terms are weighted by occupied volume; ground contact remains an independent additive contribution.</li>
-        <li>Navigation policy lives once on the locomotion preset as <code>allowOnGround</code> plus <code>allowInMedium</code>; effective route capability is that policy intersected with the unit&rsquo;s physical drive force, force coupling, and lift authority, never inferred from momentary contact or presentation state.</li>
-        <li>Vertical lift is thrust answering gravity, identical in shape across hover, flying, and swim but explicit about its physical source. Water owns <code>liftForceFromGroundSurface</code>; air owns both <code>liftForceFromGroundSurface</code> and <code>liftForceFromWaterSurface</code>. Each air probe chooses exactly one source: dry terrain uses the ground-surface force, while water-covered terrain uses only the water-surface force. Water-medium lift continues to measure from the ground bed beneath it. Each probe clamps distance to the configured positive minimum, takes its reciprocal, and applies its source force. Those proposed forces are combined with the configured arithmetic <code>average</code> or strict <code>max</code>, scaled once by the configured surface-lift force multiplier, and then passed through the medium&rsquo;s one randomization/EMA pipeline. The smoothed result is occupancy-weighted. <code>gravityCounterRatio</code> independently counters 0&ndash;100% of occupied-medium weight, without smoothing or upward force beyond gravity.</li>
-        <li>Drive force is authored once per locomotion preset medium. Units never carry a drive-force value or multiplier, so lighter bodies accelerate faster under the same preset force and heavier bodies resist it according to mass.</li>
-      </ul>
 
       <h3>Discrete gameplay still enters through physical effects</h3>
       <p>
@@ -1460,8 +1334,8 @@
         <li><strong>Flippers</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
         separate foot. On land they use a diagonal, leg-like support gait; as the physical
         submerged fraction rises they continuously unfold into wing-like paddles. The visual
-        transition reads the same body-in-water fraction as locomotion physics, while drive force
-        and force coupling remain wholly owned by the locomotion preset.</li>
+        transition reads the same body-in-water fraction as locomotion physics, while maximum
+        propulsive force remains wholly owned by the locomotion preset.</li>
         <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
         balances gravity with downward thrust against the air column underneath. Visually: spinning
         fans, downward smoke columns, chassis riding a target altitude. The contract is
@@ -3303,7 +3177,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one fully-abstracted preset profile expanded onto every runtime unit &mdash; ground/air/water propulsion and resistance, ground-only contact, fluid-only directional drag and surface-lift response, plus unit-authored air/water lift &mdash; not a closed set of chassis code paths or per-unit drive tuning. Absolute linear-friction rates live once per physical medium; preset multipliers may only reduce them. Air and water share one reciprocal-distance lift equation but name physical sources explicitly: water can lift from the ground surface, while air can lift independently from ground and exposed water. Evaluate every source response, aggregate its proposed forces through the configured arithmetic average or strict max, then randomise and EMA the combined full-medium force before multiplying directly by occupied-medium fraction. The loader validates the authored hierarchy and compiles it into fixed flat numeric rows at the Rust/WASM boundary, preserving hot-loop data locality without duplicating the authored model. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and zero drive force or force coupling declares that locomotion cannot push on that medium. Units author mass, so bodies sharing one preset accelerate differently through force divided by mass. See <strong>Unit locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
+        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, <code>navigation</code>, and separate environmental hazards. Ground has maximum propulsive force, static friction, and tangential damping; air and water have maximum propulsive force plus one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. The loader validates this authored hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

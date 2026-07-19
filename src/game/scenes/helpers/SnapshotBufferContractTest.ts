@@ -88,7 +88,7 @@ function createFullUnitEntity(
     unitBlueprintCode: null,
     hp: { curr: hp, max: maxHp },
     radius: null,
-    bodyCenterHeight: null,
+    supportPointOffsetZ: null,
     mass: null,
     velocity: null,
     surfaceNormal: null,

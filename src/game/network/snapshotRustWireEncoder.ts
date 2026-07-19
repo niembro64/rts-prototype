@@ -601,7 +601,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
       !Number.isFinite(unit.radius.hitbox) ||
       !Number.isFinite(unit.radius.collision)
     )) ||
-    (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
+    (unit.supportPointOffsetZ !== null && !Number.isFinite(unit.supportPointOffsetZ)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
     hasInactiveTurret(unit.turrets) ||
     unit.fireEnabled === true ||
@@ -661,8 +661,8 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     radius !== null && radius.other !== null ? radius.other : 0,
     radius !== null && radius.hitbox !== null ? radius.hitbox : 0,
     radius !== null && radius.collision !== null ? radius.collision : 0,
-    unit.bodyCenterHeight !== null ? 1 : 0,
-    unit.bodyCenterHeight ?? 0,
+    unit.supportPointOffsetZ !== null ? 1 : 0,
+    unit.supportPointOffsetZ ?? 0,
     unit.mass !== null ? 1 : 0,
     unit.mass ?? 0,
     surfaceNormal !== null ? 1 : 0,

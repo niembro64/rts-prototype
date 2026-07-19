@@ -201,7 +201,7 @@ export class UnitRenderPacket3D {
   orientationW = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   hasFullOrientation = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  bodyCenterHeight = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  supportPointOffsetZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   passiveTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -265,7 +265,7 @@ export class UnitRenderPacket3D {
     this.orientationW[cursor] = unit.orientation?.w ?? 1;
     this.hasFullOrientation[cursor] = unit.orientation !== null ? 1 : 0;
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
-    this.bodyCenterHeight[cursor] = unit.bodyCenterHeight;
+    this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
     this.turretCount[cursor] = turretRows.length;
     this.passiveTurretIndex[cursor] = passiveTurretIndex(turretRows);
     let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
@@ -357,7 +357,7 @@ export class UnitRenderPacket3D {
     this.orientationW[cursor] = state.orientationW[slot];
     this.hasFullOrientation[cursor] = state.hasFullOrientation[slot];
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
-    this.bodyCenterHeight[cursor] = state.bodyCenterHeight[slot];
+    this.supportPointOffsetZ[cursor] = state.supportPointOffsetZ[slot];
     this.turretCount[cursor] = state.turretCount[slot];
     this.passiveTurretIndex[cursor] = state.passiveTurretIndex[slot];
     this.flags[cursor] = flags;
@@ -459,7 +459,7 @@ export class UnitRenderPacket3D {
     this.orientationW = growFloat32(this.orientationW, nextCapacity);
     this.hasFullOrientation = growUint8(this.hasFullOrientation, nextCapacity);
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
-    this.bodyCenterHeight = growFloat32(this.bodyCenterHeight, nextCapacity);
+    this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.passiveTurretIndex = growInt16(this.passiveTurretIndex, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);

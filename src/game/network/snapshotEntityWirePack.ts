@@ -67,7 +67,7 @@ function createEmptyUnitSub(): UnitSub {
     unitBlueprintCode: null,
     hp: null,
     radius: null,
-    bodyCenterHeight: null,
+    supportPointOffsetZ: null,
     mass: null,
     velocity: null,
     surfaceNormal: null,
@@ -408,7 +408,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.unitBlueprintCode = null;
     u.hp = null;
     u.radius = null;
-    u.bodyCenterHeight = null;
+    u.supportPointOffsetZ = null;
     u.mass = null;
     u.velocity = null;
     u.surfaceNormal = null;
@@ -1753,7 +1753,7 @@ function unpackUnit(row: unknown[]): UnitSub {
     unit.radius = { other, hitbox, collision };
   }
   if ((flags & UNIT_FLAG_BODY_CENTER_HEIGHT) !== 0) {
-    unit.bodyCenterHeight = row[i++] as number;
+    unit.supportPointOffsetZ = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_MASS) !== 0) {
     unit.mass = row[i++] as number;

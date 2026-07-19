@@ -1,13 +1,6 @@
-import {
-  GRAVITY,
-  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-  UNIT_MASS_MULTIPLIER,
-  UNIT_THRUST_MULTIPLIER_GAME,
-} from '../../config';
+import { GRAVITY, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import type { UnitLocomotion } from './types';
-import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
-import { UNIT_LOCOMOTION_FORCE_SCALE } from './unitLocomotionPresetConfig';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
   PATHFINDING_STABILITY_MAX_SLOPE_DEG,
@@ -16,27 +9,24 @@ import {
 export type LocomotionClimbProfile = {
   readonly maxSlopeDeg: number | null;
   /** Minimum terrain-normal Z that can hold the unit at rest using its safe
-   *  drive and Coulomb-grip budgets. Applies in every travel direction. */
+   * direct-force and static-friction budgets. */
   readonly minStandstillNormalZ: number | null;
-  /** Uphill-only normal threshold after the standstill envelope is further
-   *  constrained by the runtime force-coupling geometry. */
+  /** Identical to the standstill envelope: there is no separate coupling
+   * cutoff for uphill propulsion. */
   readonly minClimbNormalZ: number | null;
   readonly safeDriveAccel: number;
   readonly driveLimitedSlopeDeg: number | null;
-  readonly gripLimitedSlopeDeg: number | null;
-  readonly couplingLimitedSlopeDeg: number | null;
+  readonly tractionLimitedSlopeDeg: number | null;
   readonly stabilityLimitedSlopeDeg: number | null;
-  /** Dry-ground tangential acceleration after the authoritative drive-force
-   *  and Coulomb-grip clamp. */
   readonly flatDriveAccel: number | null;
   readonly allowOnGround: boolean;
   readonly allowInWater: boolean;
   readonly allowInAir: boolean;
-  readonly surfaceGrip: number;
+  readonly staticFrictionCoefficient: number;
   readonly cacheKey: string;
 };
 
-const CLIMB_PROFILE_OUTPUT_LENGTH = 10;
+const CLIMB_PROFILE_OUTPUT_LENGTH = 9;
 const climbProfileOut = new Float64Array(CLIMB_PROFILE_OUTPUT_LENGTH);
 const climbProfileCache = new Map<string, LocomotionClimbProfile>();
 
@@ -47,27 +37,23 @@ function finiteOrNull(value: number): number | null {
 export function computeLocomotionClimbProfile(
   locomotion: UnitLocomotion,
   mass: number,
-  thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME,
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
-  const { allowOnGround, allowInWater, allowInAir } =
-    getUnitLocomotionTraversalCapabilities(locomotion.type);
+  const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation;
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
+  const physicsMass = mass * UNIT_MASS_MULTIPLIER;
   const cacheKey = [
-    groundPhysics.propulsion.driveForce,
-    groundPhysics.propulsion.forceCoupling,
-    groundPhysics.contact.surfaceGrip,
-    mass,
-    thrustMultiplier,
-    UNIT_LOCOMOTION_FORCE_SCALE,
-    UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-    UNIT_MASS_MULTIPLIER,
+    groundPhysics.maxPropulsiveForce,
+    groundPhysics.staticFrictionCoefficient,
+    physicsMass,
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
     PATHFINDING_STABILITY_MAX_SLOPE_DEG,
-    locomotion.type,
+    allowOnGround,
+    allowInWater,
+    allowInAir,
   ].join(':');
   const cached = climbProfileCache.get(cacheKey);
   if (cached !== undefined) return cached;
@@ -77,14 +63,9 @@ export function computeLocomotionClimbProfile(
     throw new Error('Pathfinding mobility requires the authoritative simulation WASM to be initialized');
   }
   const computed = sim.pathfinder.computeLocomotionClimbProfile(
-    groundPhysics.propulsion.driveForce,
-    groundPhysics.propulsion.forceCoupling,
-    groundPhysics.contact.surfaceGrip,
-    mass,
-    thrustMultiplier,
-    UNIT_LOCOMOTION_FORCE_SCALE,
-    UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-    UNIT_MASS_MULTIPLIER,
+    groundPhysics.maxPropulsiveForce,
+    groundPhysics.staticFrictionCoefficient,
+    physicsMass,
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
     PATHFINDING_STABILITY_MAX_SLOPE_DEG,
@@ -99,17 +80,16 @@ export function computeLocomotionClimbProfile(
   const profile: LocomotionClimbProfile = Object.freeze({
     maxSlopeDeg: finiteOrNull(climbProfileOut[0]),
     minStandstillNormalZ: finiteOrNull(climbProfileOut[1]),
-    minClimbNormalZ: finiteOrNull(climbProfileOut[8]),
+    minClimbNormalZ: finiteOrNull(climbProfileOut[7]),
     safeDriveAccel: climbProfileOut[2],
     driveLimitedSlopeDeg: finiteOrNull(climbProfileOut[3]),
-    gripLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
-    couplingLimitedSlopeDeg: finiteOrNull(climbProfileOut[7]),
+    tractionLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
     stabilityLimitedSlopeDeg: finiteOrNull(climbProfileOut[5]),
     flatDriveAccel: finiteOrNull(climbProfileOut[6]),
     allowOnGround,
     allowInWater,
     allowInAir,
-    surfaceGrip: climbProfileOut[9],
+    staticFrictionCoefficient: climbProfileOut[8],
     cacheKey,
   });
   climbProfileCache.set(cacheKey, profile);

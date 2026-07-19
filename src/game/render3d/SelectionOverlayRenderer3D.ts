@@ -11,7 +11,7 @@ import type { Entity } from '../sim/types';
 import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
+import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../sim/unitGeometry';
 import { fabricatorTorusHoverHeight } from '../sim/blueprints';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
@@ -276,7 +276,7 @@ export class SelectionOverlayRenderer3D {
     if (!entity.unit || !collider) return;
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
-    const centerY = getUnitBodyCenterHeight(entity.unit);
+    const centerY = getUnitSupportPointOffsetZ(entity.unit);
 
     this.setUnitRadiusSphere(
       rings, 'other', showOther, m.group,
@@ -633,7 +633,7 @@ export class SelectionOverlayRenderer3D {
       mapWidth,
       mapHeight,
       entity.transform.z,
-      getUnitBodyCenterHeight(unit),
+      getUnitSupportPointOffsetZ(unit),
       entity.id,
       this.supportDiagnosticSurface,
     );

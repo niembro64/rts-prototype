@@ -56,15 +56,15 @@ function getBodyCenterLocalY(
 
 
 /** World-space lift applied to the visible body/chassis above the unit's
- *  ground footprint. This is derived from bodyCenterHeight so the
+ *  ground footprint. This is derived from supportPointOffsetZ so the
  *  authored unit center is a hard contract shared by simulation,
  *  targeting, chassis rendering, and locomotion. */
 export function getChassisLiftY(
-  blueprint: Pick<UnitBlueprint, 'unitLocomotion' | 'bodyShape' | 'bodyCenterHeight'> | undefined,
+  blueprint: Pick<UnitBlueprint, 'unitLocomotion' | 'bodyShape' | 'supportPointOffsetZ'> | undefined,
   unitRadius: number,
 ): number {
   if (!blueprint) return 0;
-  return blueprint.bodyCenterHeight - getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
+  return blueprint.supportPointOffsetZ - getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
 }
 
 /** Body-top height in unit-radius-1 space for the given body shape.

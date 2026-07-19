@@ -94,7 +94,9 @@ export class SurfaceLiftProbeOverlay3D {
     let instanceCount = 0;
     for (const entity of probeUnits) {
       if (entity.unit !== null) {
-        instanceCount += getSurfaceProbePointCount(entity.unit.locomotion.surfaceProbeSetId);
+        instanceCount += getSurfaceProbePointCount(
+          entity.unit.locomotion.surfaceFollowing.altitudeProbeSetId,
+        );
       }
     }
     if (instanceCount === 0) {
@@ -273,9 +275,9 @@ function unitShouldShowSurfaceLiftProbes(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return false;
   if (isBuildInProgress(entity.buildable)) return false;
-  return unit.locomotion.physics.air.lift.liftForceFromGroundSurface > 0 ||
-    unit.locomotion.physics.air.lift.liftForceFromWaterSurface > 0 ||
-    unit.locomotion.physics.water.lift.liftForceFromGroundSurface > 0;
+  return unit.locomotion.physics.air.lift.surfaceFollowingForceFromGround > 0 ||
+    unit.locomotion.physics.air.lift.surfaceFollowingForceFromWater > 0 ||
+    unit.locomotion.physics.water.lift.surfaceFollowingForceFromGround > 0;
 }
 
 function probeColor(role: SurfaceProbePointRole): THREE.Color {

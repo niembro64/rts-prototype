@@ -341,7 +341,7 @@ export function getTurretMountHeight(unit: Entity, turretIndex: number): number 
   const turret = combat !== null ? combat.turrets[turretIndex] : undefined;
   if (turret !== undefined) return getRuntimeTurretMountHeight(turret);
   const sourceUnit = unit.unit;
-  return sourceUnit !== null ? sourceUnit.bodyCenterHeight : 0;
+  return sourceUnit !== null ? sourceUnit.supportPointOffsetZ : 0;
 }
 
 export function getEntityPosition3d(entity: Entity, out: Vec3): Vec3 {

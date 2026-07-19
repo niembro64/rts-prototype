@@ -105,7 +105,7 @@ export class ContactShadowRenderPacket3D {
     const unit = entity.unit;
     if (!unit || unit.hp <= 0) return;
     const radius = unit.radius.hitbox * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
-    const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.other);
+    const restHeight = Math.max(1, unit.supportPointOffsetZ ?? unit.radius.other);
     const groundZ = getLocomotionSurfaceHeight(
       entity.transform.x,
       entity.transform.y,

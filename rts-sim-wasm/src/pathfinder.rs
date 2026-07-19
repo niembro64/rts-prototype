@@ -114,7 +114,7 @@ pub(crate) struct PathfinderTraversal {
 pub(crate) struct PathfinderCostProfile {
     flat_drive_accel: f64,
     safe_drive_accel: f64,
-    surface_grip: f64,
+    static_friction_coefficient: f64,
     hard_clearance_cells: i32,
     soft_clearance_cells: i32,
     soft_clearance_penalty_per_cell: f32,
@@ -125,7 +125,7 @@ impl PathfinderCostProfile {
     fn for_query(
         flat_drive_accel: f64,
         safe_drive_accel: f64,
-        surface_grip: f64,
+        static_friction_coefficient: f64,
         hard_clearance_cells: i32,
     ) -> Self {
         Self {
@@ -139,8 +139,8 @@ impl PathfinderCostProfile {
             } else {
                 0.0
             },
-            surface_grip: if surface_grip.is_finite() && surface_grip > 0.0 {
-                surface_grip
+            static_friction_coefficient: if static_friction_coefficient.is_finite() && static_friction_coefficient > 0.0 {
+                static_friction_coefficient
             } else {
                 0.0
             },
@@ -155,7 +155,7 @@ impl PathfinderCostProfile {
         Self {
             flat_drive_accel: 0.0,
             safe_drive_accel: 0.0,
-            surface_grip: 0.0,
+            static_friction_coefficient: 0.0,
             hard_clearance_cells: 0,
             soft_clearance_cells: 0,
             soft_clearance_penalty_per_cell: 0.0,
@@ -736,20 +736,15 @@ pub(crate) fn pathfinder_required_normal_z(min_normal_z: f32) -> f32 {
     }
 }
 
-/// Derive the terrain-bound climb envelope from the same authored drive force,
-/// force_coupling and contact grip consumed by the force kernel. TypeScript supplies
-/// immutable configuration values; all force-to-acceleration and slope physics
-/// remain canonical here in Rust.
+/// Derive the terrain-bound climb envelope from the same authored maximum
+/// propulsion force and static contact friction consumed by the force
+/// kernel. TypeScript supplies immutable configuration values; all
+/// force-to-acceleration and slope physics remain canonical here in Rust.
 #[wasm_bindgen]
 pub fn pathfinder_compute_locomotion_climb_profile(
-    ground_drive_force: f64,
-    ground_force_coupling: f64,
-    surface_grip: f64,
-    mass: f64,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
+    ground_max_propulsive_force: f64,
+    static_friction_coefficient: f64,
+    physics_mass: f64,
     gravity: f64,
     force_safety_ratio: f64,
     stability_max_slope_deg: f64,
@@ -757,75 +752,61 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     allow_air: bool,
     out: &mut [f64],
 ) -> u32 {
-    const PROFILE_LEN: usize = 10;
+    const PROFILE_LEN: usize = 9;
     if out.len() < PROFILE_LEN {
         return 0;
     }
     if allow_air {
         out[..PROFILE_LEN].copy_from_slice(&[
             f64::NAN, f64::NAN, f64::INFINITY, f64::NAN, f64::NAN,
-            f64::NAN, f64::NAN, f64::NAN, f64::NAN, 0.0,
+            f64::NAN, f64::NAN, f64::NAN, 0.0,
         ]);
         return 1;
     }
     if !allow_ground {
         out[..PROFILE_LEN].copy_from_slice(&[
             f64::NAN, f64::NAN, 0.0, f64::NAN, f64::NAN,
-            f64::NAN, f64::NAN, f64::NAN, f64::NAN, surface_grip.max(0.0),
+            f64::NAN, f64::NAN, f64::NAN, static_friction_coefficient.max(0.0),
         ]);
         return 1;
     }
-    if !mass.is_finite()
-        || mass <= 0.0
-        || !unit_mass_multiplier.is_finite()
-        || unit_mass_multiplier <= 0.0
+    if !physics_mass.is_finite()
+        || physics_mass <= 0.0
         || !gravity.is_finite()
         || gravity <= 0.0
     {
         return 0;
     }
 
-    let (_, coupled_force_magnitude) = unit_force_locomotion_magnitudes(
-        ground_drive_force,
-        ground_force_coupling,
-        reference_mass,
-        thrust_multiplier,
-        force_scale,
-    );
-    let effective_mass = mass * unit_mass_multiplier;
-    let drive_accel = coupled_force_magnitude * 1_000_000.0 / effective_mass;
-    let grip_accel = gravity * surface_grip.max(0.0);
-    let flat_drive_accel = drive_accel.min(grip_accel).max(0.0);
-    let safe_drive_force = coupled_force_magnitude * force_safety_ratio.clamp(0.0, 1.0);
-    let safe_drive_accel = safe_drive_force * 1_000_000.0 / effective_mass;
+    let drive_accel = ground_max_propulsive_force.max(0.0) * 1_000_000.0 / physics_mass;
+    let traction_accel = gravity * static_friction_coefficient.max(0.0);
+    let flat_drive_accel = drive_accel.min(traction_accel).max(0.0);
+    let safe_propulsive_force = ground_max_propulsive_force.max(0.0)
+        * force_safety_ratio.clamp(0.0, 1.0);
+    let safe_drive_accel = safe_propulsive_force * 1_000_000.0 / physics_mass;
     let radians_to_degrees = 180.0 / core::f64::consts::PI;
     let drive_limited_slope_deg =
         (safe_drive_accel / gravity).clamp(0.0, 1.0).asin() * radians_to_degrees;
-    let grip_limited_slope_deg = surface_grip.max(0.0).atan() * radians_to_degrees;
+    let traction_limited_slope_deg =
+        static_friction_coefficient.max(0.0).atan() * radians_to_degrees;
     let stability_limited_slope_deg = stability_max_slope_deg.clamp(0.0, 90.0);
     // Standstill means the complete gravity-tangent vector can be cancelled,
     // not merely that the unit can point downhill without an uphill command.
     let max_slope_deg = drive_limited_slope_deg
-        .min(grip_limited_slope_deg)
+        .min(traction_limited_slope_deg)
         .min(stability_limited_slope_deg)
         .max(0.0);
     let min_surface_normal_z = (max_slope_deg / radians_to_degrees).cos();
-    // The runtime drive kernel has an additional geometric coupling cutoff for
-    // positive slope-tangent thrust: tan(theta) <= forceCoupling.
-    let coupling_limited_slope_deg = ground_force_coupling.max(0.0).atan() * radians_to_degrees;
-    let max_climb_slope_deg = max_slope_deg.min(coupling_limited_slope_deg);
-    let min_climb_normal_z = (max_climb_slope_deg / radians_to_degrees).cos();
     out[..PROFILE_LEN].copy_from_slice(&[
         max_slope_deg,
         min_surface_normal_z,
         safe_drive_accel,
         drive_limited_slope_deg,
-        grip_limited_slope_deg,
+        traction_limited_slope_deg,
         stability_limited_slope_deg,
         flat_drive_accel,
-        coupling_limited_slope_deg,
-        min_climb_normal_z,
-        surface_grip.max(0.0),
+        min_surface_normal_z,
+        static_friction_coefficient.max(0.0),
     ]);
     1
 }
@@ -993,7 +974,7 @@ pub(crate) fn pathfinder_edge_cost(
         // Realistic Coulomb budget uses N = mg*cos(theta). The runtime's
         // current scalar contact clamp is no stricter, so this remains a safe
         // promise: every accepted route is within actual movement authority.
-        let grip_accel = GRAVITY * cost_profile.surface_grip * normal_z;
+        let grip_accel = GRAVITY * cost_profile.static_friction_coefficient * normal_z;
         let longitudinal_grip_accel =
             (grip_accel * grip_accel - lateral_hold_accel * lateral_hold_accel)
                 .max(0.0)
@@ -1433,7 +1414,7 @@ pub fn pathfinder_find_path(
     unit_radius: f64,
     flat_drive_accel: f64,
     safe_drive_accel: f64,
-    surface_grip: f64,
+    static_friction_coefficient: f64,
     symmetric_slope: bool,
 ) -> u32 {
     let state = pathfinder_state();
@@ -1460,7 +1441,7 @@ pub fn pathfinder_find_path(
     let cost_profile = PathfinderCostProfile::for_query(
         flat_drive_accel,
         safe_drive_accel,
-        surface_grip,
+        static_friction_coefficient,
         hard_clearance,
     );
     state.cur_required_clearance = 0;
@@ -1805,7 +1786,7 @@ mod tests {
         PathfinderCostProfile {
             flat_drive_accel,
             safe_drive_accel: flat_drive_accel * 0.8,
-            surface_grip: 1.0,
+            static_friction_coefficient: 1.0,
             hard_clearance_cells: 0,
             soft_clearance_cells: 0,
             soft_clearance_penalty_per_cell: 0.0,
@@ -1814,11 +1795,10 @@ mod tests {
 
     #[test]
     fn locomotion_climb_profile_is_limited_by_contact_grip() {
-        let mut out = [0.0; 10];
+        let mut out = [0.0; 9];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                1_000.0, 1.0, 0.5, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, true,
-                false, &mut out,
+                1_000.0, 0.5, 1_000_000.0, GRAVITY, 0.8, 70.0, true, false, &mut out,
             ),
             1,
         );
@@ -1827,18 +1807,16 @@ mod tests {
         assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
         assert!((out[4] - expected_grip_slope).abs() < 1e-9);
         assert!((out[6] - GRAVITY * 0.5).abs() < 1e-9);
-        assert!((out[7] - 45.0).abs() < 1e-9);
-        assert!((out[8] - out[1]).abs() < 1e-9);
-        assert!((out[9] - 0.5).abs() < 1e-9);
+        assert!((out[7] - out[1]).abs() < 1e-9);
+        assert!((out[8] - 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn air_navigation_has_no_terrain_slope_limit() {
-        let mut out = [0.0; 10];
+        let mut out = [0.0_f64; 9];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                0.0, 0.0, 0.0, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, false,
-                true, &mut out,
+                0.0, 0.0, 1_000_000.0, GRAVITY, 0.8, 70.0, false, true, &mut out,
             ),
             1,
         );
@@ -1891,7 +1869,7 @@ mod tests {
     }
 
     #[test]
-    fn force_coupling_is_an_uphill_only_limit() {
+    fn uphill_constraint_does_not_reject_valid_downhill_travel() {
         let mut state = open_test_state(2, 1);
         state.terrain_height[1] = 5.0;
         state.terrain_normal_z[0] = 0.85;
@@ -1966,7 +1944,7 @@ mod tests {
         let profile = PathfinderCostProfile {
             flat_drive_accel: 0.0,
             safe_drive_accel: 0.0,
-            surface_grip: 0.0,
+            static_friction_coefficient: 0.0,
             hard_clearance_cells: 1,
             soft_clearance_cells: 2,
             soft_clearance_penalty_per_cell: 0.35,

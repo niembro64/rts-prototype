@@ -59,7 +59,6 @@ import { isProjectileShot } from './types';
 import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { UNIT_LOCOMOTION_FORCE_SCALE } from './unitLocomotionPresetConfig';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   isBallisticArcWeapon,
@@ -75,10 +74,6 @@ import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
-import {
-  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-  UNIT_MASS_MULTIPLIER,
-} from '../../config';
 import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
 import {
   clearMovementAnchorSatisfied,
@@ -180,7 +175,7 @@ function refreshPatrolStartIndex(unit: Unit): void {
 
 function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): void {
   const unit = entity.unit;
-  if (!unit || !unit.locomotion.idleAirDrive) return;
+  if (!unit || !unit.locomotion.motionControl.cruiseWhenUncommanded) return;
   const x = Math.max(0, Math.min(world.mapWidth, entity.transform.x));
   const y = Math.max(0, Math.min(world.mapHeight, entity.transform.y));
   unit.flyingLoiterTargetX = x;
@@ -625,7 +620,6 @@ export function resolvePathableFormationTarget(
     pathTerrainFilterForLocomotion(
       unitComponent.locomotion,
       unitComponent.mass,
-      world.thrustMultiplier,
     ),
     unitComponent.radius.collision,
     world.slopePathMode === 'symmetric',
@@ -778,20 +772,14 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
   return slots;
 }
 
-function unitFormationAcceleration(entity: Entity, world: WorldState): number {
+function unitFormationAcceleration(entity: Entity): number {
   const body = entity.body?.physicsBody;
   if (entity.unit === null || body === undefined) return 0;
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Formation acceleration requires the authoritative simulation WASM');
   }
-  return sim.unitEffectiveDriveAcceleration(
-    body.slot,
-    world.thrustMultiplier,
-    UNIT_LOCOMOTION_FORCE_SCALE,
-    UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-    UNIT_MASS_MULTIPLIER,
-  );
+  return sim.unitEffectiveDriveAcceleration(body.slot);
 }
 
 function computeSlowestFormationSpeedFactors(
@@ -802,7 +790,7 @@ function computeSlowestFormationSpeedFactors(
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const acceleration = unitFormationAcceleration(entity, world);
+    const acceleration = unitFormationAcceleration(entity);
     if (
       Number.isFinite(acceleration) &&
       acceleration > 0 &&
@@ -817,7 +805,7 @@ function computeSlowestFormationSpeedFactors(
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const acceleration = unitFormationAcceleration(entity, world);
+    const acceleration = unitFormationAcceleration(entity);
     if (!Number.isFinite(acceleration) || acceleration <= slowestAcceleration) continue;
     const factor = slowestAcceleration / acceleration;
     if (factor >= 0.999) continue;

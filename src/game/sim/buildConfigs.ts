@@ -88,7 +88,7 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
       metal: bp.cost.metal * COST_MULTIPLIER,
     },
     radius: { ...bp.radius },
-    bodyCenterHeight: bp.bodyCenterHeight,
+    supportPointOffsetZ: bp.supportPointOffsetZ,
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,

@@ -103,7 +103,7 @@ function findPath(
     unitRadius,
     traversal.flatDriveAccel,
     traversal.safeDriveAccel,
-    traversal.surfaceGrip,
+    traversal.staticFrictionCoefficient,
     symmetricSlope,
   );
   const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());

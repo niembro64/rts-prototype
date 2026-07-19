@@ -11,8 +11,7 @@ import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
-import { getUnitLocomotionPrimaryDrivePhysics } from '@/game/sim/unitLocomotion';
-import { getUnitLocomotionEffectiveFriction } from '@/game/sim/unitLocomotionPresetConfig';
+import { getUnitLocomotionPrimaryPropulsionPhysics } from '@/game/sim/unitLocomotion';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   ShotBlueprint,
@@ -238,11 +237,10 @@ function buildEconomySection(
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
-  const primaryPhysics = getUnitLocomotionPrimaryDrivePhysics(runtime);
+  const primaryPhysics = getUnitLocomotionPrimaryPropulsionPhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Drive force', fmt(primaryPhysics.propulsion.driveForce)),
-    stat('Force coupling', fmt(primaryPhysics.propulsion.forceCoupling, 2)),
+    stat('Maximum propulsive force', fmt(primaryPhysics.maxPropulsiveForce)),
     node('Route media', labelCase(runtime.type), undefined, [
       stat(
         'Media',
@@ -432,54 +430,52 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
 function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoNode[] {
   const items: LoadingUnitInfoNode[] = [];
   const air = locomotion.physics.air;
-  const airFriction = getUnitLocomotionEffectiveFriction('air', air);
   if (
-    air.propulsion.driveForce > 0 ||
-    airFriction > 0 ||
-    air.lift.gravityCounterRatio > 0 ||
-    air.lift.liftForceFromGroundSurface > 0 ||
-    air.lift.liftForceFromWaterSurface > 0
+    air.maxPropulsiveForce > 0 ||
+    air.resistance.linearDampingRate > 0 ||
+    air.lift.buoyancyRatio > 0 ||
+    air.lift.surfaceFollowingForceFromGround > 0 ||
+    air.lift.surfaceFollowingForceFromWater > 0
   ) {
     const airChildren = [
-      stat('Drive force', fmt(air.propulsion.driveForce)),
-      stat('Force coupling', fmt(air.propulsion.forceCoupling, 2)),
-      stat('Friction', fmt(airFriction, 2)),
+      stat('Maximum propulsive force', fmt(air.maxPropulsiveForce)),
+      stat('Linear damping rate', fmt(air.resistance.linearDampingRate, 2)),
+      stat('Angular damping rate', fmt(air.resistance.angularDampingRate, 2)),
     ];
-    if (air.lift.gravityCounterRatio > 0) {
-      airChildren.push(stat('Gravity counter', fmt(air.lift.gravityCounterRatio, 2)));
+    if (air.lift.buoyancyRatio > 0) {
+      airChildren.push(stat('Buoyancy ratio', fmt(air.lift.buoyancyRatio, 2)));
     }
-    if (air.lift.liftForceFromGroundSurface > 0) {
+    if (air.lift.surfaceFollowingForceFromGround > 0) {
       airChildren.push(
-        stat('Lift force from ground surface', fmt(air.lift.liftForceFromGroundSurface)),
+        stat('Surface-following force from ground', fmt(air.lift.surfaceFollowingForceFromGround)),
       );
     }
-    if (air.lift.liftForceFromWaterSurface > 0) {
+    if (air.lift.surfaceFollowingForceFromWater > 0) {
       airChildren.push(
-        stat('Lift force from water surface', fmt(air.lift.liftForceFromWaterSurface)),
+        stat('Surface-following force from water', fmt(air.lift.surfaceFollowingForceFromWater)),
       );
     }
     items.push(node('Air medium', undefined, undefined, airChildren));
   }
 
   const water = locomotion.physics.water;
-  const waterFriction = getUnitLocomotionEffectiveFriction('water', water);
   if (
-    water.propulsion.driveForce > 0 ||
-    waterFriction > 0 ||
-    water.lift.gravityCounterRatio > 0 ||
-    water.lift.liftForceFromGroundSurface > 0
+    water.maxPropulsiveForce > 0 ||
+    water.resistance.linearDampingRate > 0 ||
+    water.lift.buoyancyRatio > 0 ||
+    water.lift.surfaceFollowingForceFromGround > 0
   ) {
     const waterChildren = [
-      stat('Drive force', fmt(water.propulsion.driveForce)),
-      stat('Force coupling', fmt(water.propulsion.forceCoupling, 2)),
-      stat('Friction', fmt(waterFriction, 2)),
+      stat('Maximum propulsive force', fmt(water.maxPropulsiveForce)),
+      stat('Linear damping rate', fmt(water.resistance.linearDampingRate, 2)),
+      stat('Angular damping rate', fmt(water.resistance.angularDampingRate, 2)),
     ];
-    if (water.lift.gravityCounterRatio > 0) {
-      waterChildren.push(stat('Gravity counter', fmt(water.lift.gravityCounterRatio, 2)));
+    if (water.lift.buoyancyRatio > 0) {
+      waterChildren.push(stat('Buoyancy ratio', fmt(water.lift.buoyancyRatio, 2)));
     }
-    if (water.lift.liftForceFromGroundSurface > 0) {
+    if (water.lift.surfaceFollowingForceFromGround > 0) {
       waterChildren.push(
-        stat('Lift force from ground surface', fmt(water.lift.liftForceFromGroundSurface)),
+        stat('Surface-following force from ground', fmt(water.lift.surfaceFollowingForceFromGround)),
       );
     }
     items.push(node('Water medium', undefined, undefined, waterChildren));

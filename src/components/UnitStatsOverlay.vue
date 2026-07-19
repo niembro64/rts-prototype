@@ -144,7 +144,7 @@ function weaponNumbers(weapon: UnitStatsWeaponInfo): string {
       class="stats-row"
     >
       <span class="stats-label">Move</span>
-      <span>{{ info.locomotion.type }} · drive force {{ fmt(info.locomotion.driveForce) }} · coupling {{ fmt(info.locomotion.forceCoupling) }}</span>
+      <span>{{ info.locomotion.type }} · max propulsive force {{ fmt(info.locomotion.maxPropulsiveForce) }}</span>
     </div>
 
     <template v-if="info.weapons.length > 0">

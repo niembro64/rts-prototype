@@ -51,7 +51,7 @@ type CreateUnitBaseArgs = {
   playerId: PlayerId;
   unitBlueprintId: string;
   radius: UnitRadius;
-  bodyCenterHeight: number;
+  supportPointOffsetZ: number;
   supportSurface: UnitSupportSurface;
   fullVisionRadius: number;
   sensors: SensorCapabilityConfig;
@@ -68,7 +68,7 @@ function createUnitBaseEntity({
   playerId,
   unitBlueprintId,
   radius,
-  bodyCenterHeight,
+  supportPointOffsetZ,
   supportSurface,
   fullVisionRadius,
   sensors,
@@ -77,7 +77,7 @@ function createUnitBaseEntity({
   hp,
   spawnSupport,
 }: CreateUnitBaseArgs): Entity {
-  const spawnCenterHeight = bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
+  const spawnCenterHeight = supportPointOffsetZ + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
 
   return {
     ...createEmptyEntityComponentSlots(),
@@ -90,7 +90,7 @@ function createUnitBaseEntity({
       unitBlueprintId,
       locomotion: cloneUnitLocomotion(locomotion),
       radius: { ...radius },
-      bodyCenterHeight,
+      supportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(supportSurface),
       fullVisionRadius,
       sensors: { ...sensors },
@@ -149,7 +149,7 @@ export function createUnitFromBlueprintEntity(
     playerId,
     unitBlueprintId,
     radius: bp.radius,
-    bodyCenterHeight: bp.bodyCenterHeight,
+    supportPointOffsetZ: bp.supportPointOffsetZ,
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
     fullVisionRadius: bp.fullVisionRadius,
     sensors: { ...bp.sensors },

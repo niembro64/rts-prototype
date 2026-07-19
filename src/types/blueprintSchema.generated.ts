@@ -510,9 +510,9 @@ export type SwimConfig = {
 };
 
 export type LocomotionLiftPhysics = {
-  liftForceFromGroundSurface: number;
-  liftForceFromWaterSurface?: number;
-  gravityCounterRatio: number;
+  surfaceFollowingForceFromGround: number;
+  surfaceFollowingForceFromWater?: number;
+  buoyancyRatio: number;
 };
 
 export type LocomotionFluidBodyPhysics = {
@@ -524,7 +524,7 @@ export type UnitUnitLocomotionBlueprintPhysics = {
   water: LocomotionFluidBodyPhysics;
 };
 
-export type UnitLocomotionSurvivalPolicy = {
+export type UnitLocomotionEnvironmentalHazardPolicy = {
   waterFatal: boolean;
   fatalSubmergedFraction: number;
   fatalExposureSeconds: number;
@@ -574,7 +574,7 @@ export type UnitLocomotionBlueprintWheels = {
   type: 'wheels';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: WheelConfig;
 };
 
@@ -582,7 +582,7 @@ export type UnitLocomotionBlueprintTreads = {
   type: 'treads';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: TreadConfig;
 };
 
@@ -590,7 +590,7 @@ export type UnitLocomotionBlueprintAmphibiousTreads = {
   type: 'amphibious-treads';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: TreadConfig;
 };
 
@@ -598,7 +598,7 @@ export type UnitLocomotionBlueprintLegs = {
   type: 'legs';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: LegConfig;
 };
 
@@ -606,7 +606,7 @@ export type UnitLocomotionBlueprintFlippers = {
   type: 'flippers';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: FlipperConfig;
 };
 
@@ -614,7 +614,7 @@ export type UnitLocomotionBlueprintHover = {
   type: 'hover';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: HoverConfig;
 };
 
@@ -622,7 +622,7 @@ export type UnitLocomotionBlueprintFlying = {
   type: 'flying';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: FlyingConfig;
 };
 
@@ -630,7 +630,7 @@ export type UnitLocomotionBlueprintSubmarine = {
   type: 'submarine';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: SwimConfig;
 };
 
@@ -638,7 +638,7 @@ export type UnitLocomotionBlueprintDive = {
   type: 'dive';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
-  survival: UnitLocomotionSurvivalPolicy;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: FlyingConfig;
 };
 
@@ -760,7 +760,6 @@ export type UnitBlueprint = {
   base: EntityBaseLedger;
   hp: number;
   radius: UnitRadiusConfig;
-  bodyCenterHeight: number;
   supportSurface: UnitSupportSurface;
   fullVisionRadius: number;
   sensors: SensorCapabilityConfig;
@@ -784,6 +783,7 @@ export type UnitBlueprint = {
   includeLockOnLevel1Shots: string[];
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
   preventLockOnIfMyTeamIsAboveMe?: boolean;
+  supportPointOffsetZ: number;
 };
 
 export type RayType = 'beam' | 'laser';

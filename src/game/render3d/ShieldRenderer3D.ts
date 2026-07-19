@@ -225,7 +225,7 @@ export class ShieldRenderPacket3D {
   y: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   z: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   rotation: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
-  bodyCenterHeight: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  supportPointOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   mountLiftY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   localX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   localY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
@@ -269,7 +269,7 @@ export class ShieldRenderPacket3D {
         const { cos, sin } = getTransformCosSin(unitEntity.transform);
         const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
         const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
-        const originZ = unitEntity.transform.z - unit.bodyCenterHeight + turret.mount.z;
+        const originZ = unitEntity.transform.z - unit.supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
         targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.range;
@@ -285,7 +285,7 @@ export class ShieldRenderPacket3D {
       this.y[cursor] = unitEntity.transform.y;
       this.z[cursor] = unitEntity.transform.z;
       this.rotation[cursor] = unitEntity.transform.rotation;
-      this.bodyCenterHeight[cursor] = unit.bodyCenterHeight;
+      this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
       this.mountLiftY[cursor] = unitMountLiftY;
       this.localX[cursor] = turret.mount.x;
       this.localY[cursor] = turret.mount.z - unitMountLiftY;
@@ -323,7 +323,7 @@ export class ShieldRenderPacket3D {
     const hostY = state.y[slot];
     const hostZ = state.z[slot];
     const hostRotation = state.rotation[slot];
-    const bodyCenterHeight = state.bodyCenterHeight[slot];
+    const supportPointOffsetZ = state.supportPointOffsetZ[slot];
     const cos = Math.cos(hostRotation);
     const sin = Math.sin(hostRotation);
     for (let ti = 0; ti < turrets.length; ti++) {
@@ -338,7 +338,7 @@ export class ShieldRenderPacket3D {
       if (barrier.shape === 'aimedCylinder') {
         const originX = hostX + turret.mount.x * cos - turret.mount.y * sin;
         const originY = hostY + turret.mount.x * sin + turret.mount.y * cos;
-        const originZ = hostZ - bodyCenterHeight + turret.mount.z;
+        const originZ = hostZ - supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
         targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.range;
@@ -353,7 +353,7 @@ export class ShieldRenderPacket3D {
         y: hostY,
         z: hostZ,
         rotation: hostRotation,
-        bodyCenterHeight,
+        supportPointOffsetZ,
         mountLiftY: unitMountLiftY,
         localX: turret.mount.x,
         localY: turret.mount.z - unitMountLiftY,
@@ -392,7 +392,7 @@ export class ShieldRenderPacket3D {
     const hostY = state.y[slot];
     const hostZ = state.z[slot];
     const hostRotation = state.rotation[slot];
-    const bodyCenterHeight = state.bodyCenterHeight[slot];
+    const supportPointOffsetZ = state.supportPointOffsetZ[slot];
     const ownerId = state.ownerIds[slot];
     const fieldColor = resolveShieldSurfaceColorForOwner(ownerId > 0 ? ownerId : undefined);
     const cos = Math.cos(hostRotation);
@@ -412,7 +412,7 @@ export class ShieldRenderPacket3D {
         const mountY = turretViews.mountY[row];
         const originX = hostX + mountX * cos - mountY * sin;
         const originY = hostY + mountX * sin + mountY * cos;
-        const originZ = hostZ - bodyCenterHeight + turretViews.mountZ[row];
+        const originZ = hostZ - supportPointOffsetZ + turretViews.mountZ[row];
         const pitch = turretViews.pitch[row];
         const pitchSin = Math.sin(pitch);
         const pitchCos = Math.cos(pitch);
@@ -430,7 +430,7 @@ export class ShieldRenderPacket3D {
         y: hostY,
         z: hostZ,
         rotation: hostRotation,
-        bodyCenterHeight,
+        supportPointOffsetZ,
         mountLiftY: turretViews.mountLiftY[row],
         localX: turretViews.mountX[row],
         localY: turretViews.mountZ[row] - turretViews.mountLiftY[row],
@@ -455,7 +455,7 @@ export class ShieldRenderPacket3D {
     y: number;
     z: number;
     rotation: number;
-    bodyCenterHeight: number;
+    supportPointOffsetZ: number;
     mountLiftY: number;
     localX: number;
     localY: number;
@@ -478,7 +478,7 @@ export class ShieldRenderPacket3D {
     this.y[cursor] = options.y;
     this.z[cursor] = options.z;
     this.rotation[cursor] = options.rotation;
-    this.bodyCenterHeight[cursor] = options.bodyCenterHeight;
+    this.supportPointOffsetZ[cursor] = options.supportPointOffsetZ;
     this.mountLiftY[cursor] = options.mountLiftY;
     this.localX[cursor] = options.localX;
     this.localY[cursor] = options.localY;
@@ -505,7 +505,7 @@ export class ShieldRenderPacket3D {
     this.y = growFloat32(this.y, nextCapacity);
     this.z = growFloat32(this.z, nextCapacity);
     this.rotation = growFloat32(this.rotation, nextCapacity);
-    this.bodyCenterHeight = growFloat32(this.bodyCenterHeight, nextCapacity);
+    this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
     this.mountLiftY = growFloat32(this.mountLiftY, nextCapacity);
     this.localX = growFloat32(this.localX, nextCapacity);
     this.localY = growFloat32(this.localY, nextCapacity);
@@ -1047,7 +1047,7 @@ export class ShieldRenderer3D {
     } else {
       // No liftGroup — use the fallback unit transform from the packet.
       // Rebuild the same base-Y convention Render3DEntities uses:
-      // group.y = sim altitude − bodyCenterHeight, then add the
+      // group.y = sim altitude − supportPointOffsetZ, then add the
       // cached blueprint chassis lift and this turret's chassis-
       // local mount Y. Slope tilt lives only on the unit mesh chain;
       // yaw and vertical body lift still stay coherent.
@@ -1058,7 +1058,7 @@ export class ShieldRenderer3D {
       const rz = sinYaw * localX + cosYaw * localZ;
       this._sphereScratchPos.set(
         packet.x[row] + rx,
-        packet.z[row] - packet.bodyCenterHeight[row] + field.mountLiftY + localY,
+        packet.z[row] - packet.supportPointOffsetZ[row] + field.mountLiftY + localY,
         packet.y[row] + rz,
       );
     }

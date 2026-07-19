@@ -5,7 +5,7 @@ import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
 import { isCommander } from '../sim/combat/combatUtils';
 import type { Entity, PlayerId, Turret } from '../sim/types';
-import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
+import { getUnitSupportPointOffsetZ } from '../sim/unitGeometry';
 import {
   applyLocomotionState,
   buildLocomotion,
@@ -414,7 +414,7 @@ export class UnitMeshBuilder3D {
       break;
     }
     const pivotLocalX = shieldPanelTurret?.mount.x ?? 0;
-    const pivotLocalY = (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
+    const pivotLocalY = (shieldPanelTurret?.mount.z ?? getUnitSupportPointOffsetZ(entity.unit))
       - liftGroup.position.y;
     const pivotLocalZ = shieldPanelTurret?.mount.y ?? 0;
     const panelCount = shieldPanels.length;

@@ -23,7 +23,7 @@ export function runPathfindingMobilityContractTest(): void {
     assertContract(Object.isFrozen(first), `${label} cached profile must be immutable`);
     assertContract(first.cacheKey.length > 0, `${label} must expose a non-empty physics cache key`);
     assertContract(first.safeDriveAccel >= 0, `${label} safe drive acceleration must be non-negative`);
-    assertContract(first.surfaceGrip >= 0, `${label} surface grip must be non-negative`);
+    assertContract(first.staticFrictionCoefficient >= 0, `${label} static friction must be non-negative`);
 
     if (first.allowInAir || !first.allowOnGround) {
       assertContract(first.minStandstillNormalZ === null, `${label} bypasses dry-ground standstill gating`);
@@ -43,7 +43,7 @@ export function runPathfindingMobilityContractTest(): void {
     );
     for (const [limitName, limit] of [
       ['drive', first.driveLimitedSlopeDeg],
-      ['grip', first.gripLimitedSlopeDeg],
+      ['traction', first.tractionLimitedSlopeDeg],
       ['stability', first.stabilityLimitedSlopeDeg],
     ] as const) {
       assertContract(

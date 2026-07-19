@@ -574,7 +574,7 @@ export class Simulation {
   private isUnitAtValidPathingStart(entity: Entity): boolean {
     const unit = entity.unit;
     if (unit === null) return false;
-    const capabilities = getUnitLocomotionTraversalCapabilities(unit.locomotion.type);
+    const capabilities = getUnitLocomotionTraversalCapabilities(unit.locomotion);
     const overWater = isWaterAt(
       entity.transform.x,
       entity.transform.y,
@@ -1036,7 +1036,7 @@ export class Simulation {
   // Update unit movement with action queue processing.
   // unit.thrustDirX/Y is mirrored into native entity-state drive input for
   // UnitForceSystem — a (0, 0) means "no powered thrust this tick"; vector
-  // magnitude scales drive force. The authoritative physics velocity stays in
+  // magnitude scales maximum propulsive force. The authoritative physics velocity stays in
   // unit.velocityX/Y/Z and is only overwritten by syncFromPhysics, so
   // lead-prediction in turretSystem reads the real velocity, not this thrust
   // target.
@@ -1194,7 +1194,7 @@ export class Simulation {
       // No actions - profiles with continuous idle air drive keep circling
       // their last destination, independent of their visual rig.
       if (unit.actions.length === 0) {
-        if (!unit.locomotion.idleAirDrive) {
+        if (!unit.locomotion.motionControl.cruiseWhenUncommanded) {
           unit.activePath = null;
           unit.stuckTicks = 0;
           continue;
@@ -1778,7 +1778,6 @@ export class Simulation {
       : pathTerrainFilterForLocomotion(
           entity.unit.locomotion,
           entity.unit.mass,
-          this.world.thrustMultiplier,
         );
   }
 

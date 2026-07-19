@@ -270,7 +270,7 @@ type UnitFixture = BasicEntityFixture & {
     velocity: { x: number; y: number; z: number };
     unitBlueprintCode?: number;
     radius?: { other: number; hitbox: number; collision: number };
-    bodyCenterHeight?: number;
+    supportPointOffsetZ?: number;
     mass?: number;
     surfaceNormal?: { nx: number; ny: number; nz: number };
     orientation?: { x: number; y: number; z: number; w: number };
@@ -383,7 +383,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 4,
         radius: { other: 12, hitbox: 15, collision: 18 },
-        bodyCenterHeight: 21,
+        supportPointOffsetZ: 21,
         mass: 35,
       },
     },
@@ -395,7 +395,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 0,
         radius: { other: 20, hitbox: 20, collision: 22 },
-        bodyCenterHeight: 24,
+        supportPointOffsetZ: 24,
         mass: 250,
         isCommander: true,
       },
@@ -896,8 +896,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       f.unit.radius?.other ?? 0,
       f.unit.radius?.hitbox ?? 0,
       f.unit.radius?.collision ?? 0,
-      f.unit.bodyCenterHeight !== undefined ? 1 : 0,
-      f.unit.bodyCenterHeight ?? 0,
+      f.unit.supportPointOffsetZ !== undefined ? 1 : 0,
+      f.unit.supportPointOffsetZ ?? 0,
       f.unit.mass !== undefined ? 1 : 0,
       f.unit.mass ?? 0,
       hasNormal,
@@ -3066,8 +3066,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           u.unit.radius?.other ?? 0,
           u.unit.radius?.hitbox ?? 0,
           u.unit.radius?.collision ?? 0,
-          u.unit.bodyCenterHeight !== undefined ? 1 : 0,
-          u.unit.bodyCenterHeight ?? 0,
+          u.unit.supportPointOffsetZ !== undefined ? 1 : 0,
+          u.unit.supportPointOffsetZ ?? 0,
           u.unit.mass !== undefined ? 1 : 0,
           u.unit.mass ?? 0,
           sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,

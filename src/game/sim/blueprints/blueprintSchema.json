@@ -220,40 +220,72 @@
         "velocityFrictionPer60HzFrame"
       ],
       "properties": {
-        "operational": { "type": "boolean" },
-        "propulsionForce": { "type": "number" },
-        "guidanceThrust": { "type": "number" },
-        "turnRate": { "type": "number" },
-        "velocityFrictionPer60HzFrame": { "type": "number" }
+        "operational": {
+          "type": "boolean"
+        },
+        "propulsionForce": {
+          "type": "number"
+        },
+        "guidanceThrust": {
+          "type": "number"
+        },
+        "turnRate": {
+          "type": "number"
+        },
+        "velocityFrictionPer60HzFrame": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
     "ShotLocomotionGroundPhysics": {
       "type": "object",
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
         "mode": {
-          "enum": ["impact", "terrainFollowing"]
+          "enum": [
+            "impact",
+            "terrainFollowing"
+          ]
         }
       },
       "additionalProperties": false
     },
     "ShotLocomotionMedia": {
       "type": "object",
-      "required": ["air", "water", "ground"],
+      "required": [
+        "air",
+        "water",
+        "ground"
+      ],
       "properties": {
-        "air": { "$ref": "#/$defs/ShotLocomotionMediumPhysics" },
-        "water": { "$ref": "#/$defs/ShotLocomotionMediumPhysics" },
-        "ground": { "$ref": "#/$defs/ShotLocomotionGroundPhysics" }
+        "air": {
+          "$ref": "#/$defs/ShotLocomotionMediumPhysics"
+        },
+        "water": {
+          "$ref": "#/$defs/ShotLocomotionMediumPhysics"
+        },
+        "ground": {
+          "$ref": "#/$defs/ShotLocomotionGroundPhysics"
+        }
       },
       "additionalProperties": false
     },
     "ShotLocomotionTransitions": {
       "type": "object",
-      "required": ["enterWater", "exitWater"],
+      "required": [
+        "enterWater",
+        "exitWater"
+      ],
       "properties": {
-        "enterWater": { "$ref": "#/$defs/ShotLocomotionTransitionOutcome" },
-        "exitWater": { "$ref": "#/$defs/ShotLocomotionTransitionOutcome" }
+        "enterWater": {
+          "$ref": "#/$defs/ShotLocomotionTransitionOutcome"
+        },
+        "exitWater": {
+          "$ref": "#/$defs/ShotLocomotionTransitionOutcome"
+        }
       },
       "additionalProperties": false
     },
@@ -267,11 +299,21 @@
         "reflectorImpact"
       ],
       "properties": {
-        "entityImpact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
-        "groundContact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
-        "expiry": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
-        "destroyed": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" },
-        "reflectorImpact": { "$ref": "#/$defs/ShotLocomotionTerminalOutcome" }
+        "entityImpact": {
+          "$ref": "#/$defs/ShotLocomotionTerminalOutcome"
+        },
+        "groundContact": {
+          "$ref": "#/$defs/ShotLocomotionTerminalOutcome"
+        },
+        "expiry": {
+          "$ref": "#/$defs/ShotLocomotionTerminalOutcome"
+        },
+        "destroyed": {
+          "$ref": "#/$defs/ShotLocomotionTerminalOutcome"
+        },
+        "reflectorImpact": {
+          "$ref": "#/$defs/ShotLocomotionTerminalOutcome"
+        }
       },
       "additionalProperties": false
     },
@@ -288,19 +330,37 @@
         "terminal"
       ],
       "properties": {
-        "presetId": { "type": "string" },
-        "motionModel": { "$ref": "#/$defs/ShotLocomotionMotionModel" },
+        "presetId": {
+          "type": "string"
+        },
+        "motionModel": {
+          "$ref": "#/$defs/ShotLocomotionMotionModel"
+        },
         "maxLifespanMs": {
           "oneOf": [
-            { "type": "number" },
-            { "type": "null" }
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
-        "gravityForceMultiplier": { "type": "number" },
-        "guidanceDelayMs": { "type": "number" },
-        "media": { "$ref": "#/$defs/ShotLocomotionMedia" },
-        "transitions": { "$ref": "#/$defs/ShotLocomotionTransitions" },
-        "terminal": { "$ref": "#/$defs/ShotLocomotionTerminalPolicy" }
+        "gravityForceMultiplier": {
+          "type": "number"
+        },
+        "guidanceDelayMs": {
+          "type": "number"
+        },
+        "media": {
+          "$ref": "#/$defs/ShotLocomotionMedia"
+        },
+        "transitions": {
+          "$ref": "#/$defs/ShotLocomotionTransitions"
+        },
+        "terminal": {
+          "$ref": "#/$defs/ShotLocomotionTerminalPolicy"
+        }
       },
       "additionalProperties": false
     },
@@ -1766,7 +1826,9 @@
         },
         "productionHoldAnchor": {
           "type": "string",
-          "enum": ["host"]
+          "enum": [
+            "host"
+          ]
         },
         "constructionRate": {
           "type": "number"
@@ -1956,19 +2018,51 @@
         "cycleDistanceFrac"
       ],
       "properties": {
-        "frontOffsetXFrac": { "type": "number" },
-        "rearOffsetXFrac": { "type": "number" },
-        "lateralOffsetFrac": { "type": "number" },
-        "rootHeightFrac": { "type": "number" },
-        "frontLengthFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "rearLengthFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "rootChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "tipChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "thicknessFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "groundDownAngleDeg": { "type": "number" },
-        "groundSweepAngleDeg": { "type": "number" },
-        "waterStrokeAngleDeg": { "type": "number" },
-        "cycleDistanceFrac": { "type": "number", "exclusiveMinimum": 0 }
+        "frontOffsetXFrac": {
+          "type": "number"
+        },
+        "rearOffsetXFrac": {
+          "type": "number"
+        },
+        "lateralOffsetFrac": {
+          "type": "number"
+        },
+        "rootHeightFrac": {
+          "type": "number"
+        },
+        "frontLengthFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rearLengthFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rootChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tipChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "thicknessFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "groundDownAngleDeg": {
+          "type": "number"
+        },
+        "groundSweepAngleDeg": {
+          "type": "number"
+        },
+        "waterStrokeAngleDeg": {
+          "type": "number"
+        },
+        "cycleDistanceFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
@@ -1992,55 +2086,98 @@
         "cycleDistanceFrac"
       ],
       "properties": {
-        "pectoralOffsetXFrac": { "type": "number" },
-        "pectoralLateralOffsetFrac": { "type": "number" },
-        "pectoralHeightFrac": { "type": "number" },
-        "pectoralSpanFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "pectoralRootChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "pectoralTipChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "tailOffsetXFrac": { "type": "number" },
-        "tailSpanFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "tailChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "dorsalOffsetXFrac": { "type": "number" },
-        "dorsalHeightFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "dorsalChordFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "thicknessFrac": { "type": "number", "exclusiveMinimum": 0 },
-        "strokeAngleDeg": { "type": "number" },
-        "cycleDistanceFrac": { "type": "number", "exclusiveMinimum": 0 }
+        "pectoralOffsetXFrac": {
+          "type": "number"
+        },
+        "pectoralLateralOffsetFrac": {
+          "type": "number"
+        },
+        "pectoralHeightFrac": {
+          "type": "number"
+        },
+        "pectoralSpanFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pectoralRootChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pectoralTipChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tailOffsetXFrac": {
+          "type": "number"
+        },
+        "tailSpanFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tailChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "dorsalOffsetXFrac": {
+          "type": "number"
+        },
+        "dorsalHeightFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "dorsalChordFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "thicknessFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "strokeAngleDeg": {
+          "type": "number"
+        },
+        "cycleDistanceFrac": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
     "LocomotionLiftPhysics": {
       "type": "object",
       "required": [
-        "liftForceFromGroundSurface",
-        "gravityCounterRatio"
+        "surfaceFollowingForceFromGround",
+        "buoyancyRatio"
       ],
       "properties": {
-        "liftForceFromGroundSurface": {
+        "surfaceFollowingForceFromGround": {
           "type": "number",
           "minimum": 0,
-          "description": "Upward force strength sourced from the probe-averaged nonlinear distance response to the highest solid ground/support surface."
+          "description": "Powered support thrust strength sourced from the probe-averaged nonlinear distance response to the highest solid ground/support surface."
         },
-        "liftForceFromWaterSurface": {
+        "surfaceFollowingForceFromWater": {
           "type": "number",
           "minimum": 0,
-          "description": "Air-only upward force strength sourced from the probe-averaged nonlinear distance response to exposed water surface."
+          "description": "Powered support thrust strength sourced from the probe-averaged nonlinear distance response to exposed water."
         },
-        "gravityCounterRatio": {
+        "buoyancyRatio": {
           "type": "number",
           "minimum": 0,
           "maximum": 1,
-          "description": "Fraction of gravity passively countered at full occupancy of this medium; final force is weighted by the occupied fraction."
+          "description": "Passive buoyancy as a fraction of body weight at full medium occupancy."
         }
       },
       "additionalProperties": false
     },
     "LocomotionFluidBodyPhysics": {
       "type": "object",
-      "required": ["lift"],
+      "required": [
+        "lift"
+      ],
       "properties": {
-        "lift": { "$ref": "#/$defs/LocomotionLiftPhysics" }
+        "lift": {
+          "$ref": "#/$defs/LocomotionLiftPhysics"
+        }
       },
       "additionalProperties": false
     },
@@ -2060,7 +2197,7 @@
       },
       "additionalProperties": false
     },
-    "UnitLocomotionSurvivalPolicy": {
+    "UnitLocomotionEnvironmentalHazardPolicy": {
       "type": "object",
       "required": [
         "waterFatal",
@@ -2223,7 +2360,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2236,8 +2373,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/WheelConfig"
@@ -2251,7 +2388,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2264,8 +2401,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/TreadConfig"
@@ -2279,7 +2416,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2292,8 +2429,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/TreadConfig"
@@ -2307,7 +2444,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2320,8 +2457,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/LegConfig"
@@ -2335,15 +2472,25 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
-        "type": { "const": "flippers" },
-        "physicsPresetId": { "type": "string" },
-        "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
-        "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
-        "config": { "$ref": "#/$defs/FlipperConfig" }
+        "type": {
+          "const": "flippers"
+        },
+        "physicsPresetId": {
+          "type": "string"
+        },
+        "physics": {
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
+        },
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
+        },
+        "config": {
+          "$ref": "#/$defs/FlipperConfig"
+        }
       },
       "additionalProperties": false
     },
@@ -2353,7 +2500,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2366,8 +2513,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/HoverConfig"
@@ -2381,7 +2528,7 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
@@ -2394,8 +2541,8 @@
         "physics": {
           "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
         },
-        "survival": {
-          "$ref": "#/$defs/UnitLocomotionSurvivalPolicy"
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
           "$ref": "#/$defs/FlyingConfig"
@@ -2409,15 +2556,25 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
-        "type": { "const": "submarine" },
-        "physicsPresetId": { "type": "string" },
-        "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
-        "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
-        "config": { "$ref": "#/$defs/SwimConfig" }
+        "type": {
+          "const": "submarine"
+        },
+        "physicsPresetId": {
+          "type": "string"
+        },
+        "physics": {
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
+        },
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
+        },
+        "config": {
+          "$ref": "#/$defs/SwimConfig"
+        }
       },
       "additionalProperties": false
     },
@@ -2427,15 +2584,25 @@
         "type",
         "physicsPresetId",
         "physics",
-        "survival",
+        "environmentalHazards",
         "config"
       ],
       "properties": {
-        "type": { "const": "dive" },
-        "physicsPresetId": { "type": "string" },
-        "physics": { "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics" },
-        "survival": { "$ref": "#/$defs/UnitLocomotionSurvivalPolicy" },
-        "config": { "$ref": "#/$defs/FlyingConfig" }
+        "type": {
+          "const": "dive"
+        },
+        "physicsPresetId": {
+          "type": "string"
+        },
+        "physics": {
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
+        },
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
+        },
+        "config": {
+          "$ref": "#/$defs/FlyingConfig"
+        }
       },
       "additionalProperties": false
     },
@@ -2866,7 +3033,7 @@
         "base",
         "hp",
         "radius",
-        "bodyCenterHeight",
+        "supportPointOffsetZ",
         "supportSurface",
         "fullVisionRadius",
         "sensors",
@@ -2908,9 +3075,6 @@
         },
         "radius": {
           "$ref": "#/$defs/UnitRadiusConfig"
-        },
-        "bodyCenterHeight": {
-          "type": "number"
         },
         "supportSurface": {
           "$ref": "#/$defs/UnitSupportSurface"
@@ -3039,6 +3203,10 @@
         },
         "preventLockOnIfMyTeamIsAboveMe": {
           "type": "boolean"
+        },
+        "supportPointOffsetZ": {
+          "type": "number",
+          "description": "Vertical offset from the body center to its support point."
         }
       },
       "additionalProperties": false

@@ -1042,7 +1042,7 @@ export class EntitySlotRegistry {
       radiusOther = unit.radius.other;
       aabbHx = unit.radius.hitbox;
       aabbHy = unit.radius.hitbox;
-      aabbHz = unit.bodyCenterHeight;
+      aabbHz = unit.supportPointOffsetZ;
       unitBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
     } else if (building !== null) {
       flags |= ENTITY_SLOT_FLAG_HAS_BUILDING;

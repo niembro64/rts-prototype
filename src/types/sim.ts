@@ -200,7 +200,7 @@ export type CachedShieldPanel = {
 // `thrustDirX/Y` is the desired horizontal thrust vector mirrored into
 // native entity-state drive-input rows for the force kernel. Its
 // direction is the desired acceleration direction; its magnitude is
-// clamped to [0, 1] and scales the unit's available drive force.
+// clamped to [0, 1] and scales the unit's available propulsive force.
 // Decoupling thrust from velocity prevents the action system from
 // clobbering the velocity field mid-tick before turretSystem's lead
 // math runs.
@@ -212,7 +212,7 @@ export type Unit = {
    *  is the unit-vs-unit physics/selection spacing radius. */
   radius: EntityRadii;
   /** World-space height of the unit's authored body center above terrain. */
-  bodyCenterHeight: number;
+  supportPointOffsetZ: number;
   /** Authored unit support proxy. Unit collision remains sphere-based;
    *  this separate proxy decides whether anything can stand on the unit. */
   supportSurface: UnitSupportSurface;
@@ -995,7 +995,7 @@ export type UnitBuildConfig = {
   name: string;
   cost: ResourceCost;
   radius: EntityRadii;
-  bodyCenterHeight: number;
+  supportPointOffsetZ: number;
   supportSurface: UnitSupportSurface;
   locomotion: UnitLocomotion;
   mass: number;

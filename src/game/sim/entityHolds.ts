@@ -1,6 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity, EntityHold, EntityHoldKind } from './types';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from './unitGeometry';
+import { getUnitSupportPointOffsetZ, getUnitGroundZ } from './unitGeometry';
 import type { WorldState } from './WorldState';
 
 export type EntityHoldSpec = {
@@ -68,7 +68,7 @@ export function resolveEntityHoldPose(
   }
 
   const heldCenterOffsetZ = held.unit !== null
-    ? getUnitBodyCenterHeight(held.unit)
+    ? getUnitSupportPointOffsetZ(held.unit)
     : held.building !== null
       ? held.building.depth / 2
       : 0;

@@ -1,19 +1,14 @@
 import type { UnitLocomotion } from './types';
 import { computeLocomotionClimbProfile } from './pathfindingMobility';
-import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
-import type { UnitLocomotionType } from '@/types/unitLocomotionTypes';
 
 export type PathCostProfile = Readonly<{
-  /** Locomotion capability consumed by the abstract terrain-time cost model. */
   flatDriveAccel: number | null;
   safeDriveAccel: number;
-  surfaceGrip: number;
+  staticFrictionCoefficient: number;
 }>;
 
 export type PathTerrainFilter = Readonly<{
-  /** The authored locomotion mechanism. Compatibility flags are produced
-   * only at the WASM boundary from this field. */
-  locomotionType: UnitLocomotionType;
+  navigation: UnitLocomotion['navigation'];
   minStandstillNormalZ: number | null;
   minClimbNormalZ: number | null;
   cost: PathCostProfile;
@@ -27,7 +22,7 @@ export type PathfinderTraversalInput = Readonly<{
   allowInAir: boolean;
   flatDriveAccel: number;
   safeDriveAccel: number;
-  surfaceGrip: number;
+  staticFrictionCoefficient: number;
 }>;
 
 function finiteNormalOrZero(value: number | null | undefined): number {
@@ -43,21 +38,20 @@ function finiteNormalOrZero(value: number | null | undefined): number {
 export function resolvePathfinderTraversalInput(
   filter: PathTerrainFilter | null,
 ): PathfinderTraversalInput {
-  const capabilities = filter === null
-    ? { allowOnGround: true, allowInWater: false, allowInAir: false }
-    : getUnitLocomotionTraversalCapabilities(filter.locomotionType);
-  const normal = capabilities.allowInAir ? null : filter?.minStandstillNormalZ;
+  const navigation = filter?.navigation ??
+    { allowOnGround: true, allowInWater: false, allowInAir: false };
+  const normal = navigation.allowInAir ? null : filter?.minStandstillNormalZ;
   const minStandstillNormalZ = finiteNormalOrZero(normal);
-  const minClimbNormalZ = capabilities.allowInAir
+  const minClimbNormalZ = navigation.allowInAir
     ? 0
     : finiteNormalOrZero(filter?.minClimbNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
   return {
     minStandstillNormalZ,
     minClimbNormalZ,
-    allowOnGround: capabilities.allowOnGround,
-    allowInWater: capabilities.allowInWater,
-    allowInAir: capabilities.allowInAir,
+    allowOnGround: navigation.allowOnGround,
+    allowInWater: navigation.allowInWater,
+    allowInAir: navigation.allowInAir,
     flatDriveAccel:
       flatDriveAccel !== null &&
       flatDriveAccel !== undefined &&
@@ -66,7 +60,7 @@ export function resolvePathfinderTraversalInput(
         ? flatDriveAccel
         : 0,
     safeDriveAccel: finitePositiveOrZero(filter?.cost.safeDriveAccel),
-    surfaceGrip: finitePositiveOrZero(filter?.cost.surfaceGrip),
+    staticFrictionCoefficient: finitePositiveOrZero(filter?.cost.staticFrictionCoefficient),
   };
 }
 
@@ -77,18 +71,17 @@ function finitePositiveOrZero(value: number | undefined): number {
 export function pathTerrainFilterForLocomotion(
   locomotion: UnitLocomotion | undefined,
   mass: number | undefined,
-  thrustMultiplier?: number,
 ): PathTerrainFilter | null {
   if (locomotion === undefined || mass === undefined) return null;
-  const mobility = computeLocomotionClimbProfile(locomotion, mass, thrustMultiplier);
+  const mobility = computeLocomotionClimbProfile(locomotion, mass);
   return {
-    locomotionType: locomotion.type,
+    navigation: { ...locomotion.navigation },
     minStandstillNormalZ: mobility.minStandstillNormalZ,
     minClimbNormalZ: mobility.minClimbNormalZ,
     cost: {
       flatDriveAccel: mobility.flatDriveAccel,
       safeDriveAccel: mobility.safeDriveAccel,
-      surfaceGrip: mobility.surfaceGrip,
+      staticFrictionCoefficient: mobility.staticFrictionCoefficient,
     },
   };
 }
@@ -97,11 +90,13 @@ export function pathTerrainFilterForLocomotion(
 export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): string {
   if (filter === null) return 'default';
   return [
-    `locomotion:${filter.locomotionType}`,
+    `ground:${filter.navigation.allowOnGround}`,
+    `water:${filter.navigation.allowInWater}`,
+    `air:${filter.navigation.allowInAir}`,
     `standstill:${filter.minStandstillNormalZ ?? 'null'}`,
     `climb:${filter.minClimbNormalZ ?? 'null'}`,
     `accel:${filter.cost.flatDriveAccel ?? 'null'}`,
     `safe:${filter.cost.safeDriveAccel}`,
-    `grip:${filter.cost.surfaceGrip}`,
+    `staticFriction:${filter.cost.staticFrictionCoefficient}`,
   ].join(':');
 }

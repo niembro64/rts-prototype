@@ -1,4 +1,4 @@
-import type { SurfaceLiftProbeAggregationMode } from './unitLocomotionPresetConfig';
+import type { SurfaceFollowingProbeAggregationMode } from './unitLocomotionPresetConfig';
 
 /** Air lift uses exactly one supporting surface source at each probe. */
 export function surfaceProbeUsesWaterSurface(
@@ -14,7 +14,7 @@ export function surfaceProbeUsesWaterSurface(
 export function accumulateSurfaceProbeProposedForce(
   aggregate: number,
   proposedForce: number,
-  mode: SurfaceLiftProbeAggregationMode,
+  mode: SurfaceFollowingProbeAggregationMode,
 ): number {
   if (mode === 'max') return Math.max(aggregate, proposedForce);
   return aggregate + proposedForce;
@@ -23,7 +23,7 @@ export function accumulateSurfaceProbeProposedForce(
 export function finalizeSurfaceProbeProposedForce(
   aggregate: number,
   sampleCount: number,
-  mode: SurfaceLiftProbeAggregationMode,
+  mode: SurfaceFollowingProbeAggregationMode,
 ): number {
   if (sampleCount <= 0) return 0;
   if (mode === 'max') return aggregate;

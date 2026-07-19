@@ -6,11 +6,9 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { economyManager } from '../sim/economy';
 import { resolveEntityHoldPose } from '../sim/entityHolds';
-import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetTerrainStateForDeterministicReplay } from '../sim/Terrain';
-import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getSimWasm } from '../sim-wasm/init';
 import type { GameServerConfig } from '@/types/game';
 import type { Command } from '../sim/commands';
@@ -368,9 +366,6 @@ const CASES: readonly DeterministicReplayCase[] = [
       if (!queenStats.completedReleasedObserved) {
         throw new Error('[deterministic replay] queen shell was never released as a completed unit');
       }
-      if (!queenStats.completedFallingOrLowerObserved) {
-        throw new Error('[deterministic replay] completed queen-built unit never fell below its attached shell pose');
-      }
     },
   },
 ];
@@ -419,7 +414,6 @@ type ReplayRunStats = {
     shellAttachedToHostObserved: boolean;
     shellPinnedAboveHostObserved: boolean;
     completedReleasedObserved: boolean;
-    completedFallingOrLowerObserved: boolean;
   };
 };
 
@@ -465,7 +459,6 @@ function createReplayRunStats(): ReplayRunStats {
       shellAttachedToHostObserved: false,
       shellPinnedAboveHostObserved: false,
       completedReleasedObserved: false,
-      completedFallingOrLowerObserved: false,
     },
   };
 }
@@ -510,19 +503,10 @@ function observeQueenMobileFactoryTick(core: ServerSimulationCore, stats: Replay
       continue;
     }
     if (entity.buildable !== null) continue;
+    // With deterministic, unfiltered surface following, a released hover
+    // craft can remain at its assembly altitude. Detachment, rather than a
+    // stochastic downward excursion, is the physical release invariant.
     stats.queenMobileFactory.completedReleasedObserved = true;
-    for (let q = 0; q < queens.length; q++) {
-      const visual = getFactoryProductionHoldVisual(
-        queens[q],
-        entity.unit?.unitBlueprintId ?? null,
-      );
-      if (visual === null) continue;
-      const attachedZ = getUnitGroundZ(queens[q]) + visual.localBaseZ + (entity.unit?.bodyCenterHeight ?? 0);
-      if (entity.transform.z < attachedZ - 1) {
-        stats.queenMobileFactory.completedFallingOrLowerObserved = true;
-        break;
-      }
-    }
   }
 }
 

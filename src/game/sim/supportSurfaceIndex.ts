@@ -311,7 +311,7 @@ export class SupportSurfaceIndex {
         if (unit === null || unit.hp <= 0) continue;
         const radius = proxy.supportRadius + footprintEpsilon;
         if (dx * dx + dy * dy > radius * radius) continue;
-        topZ = entity.transform.z - unit.bodyCenterHeight + proxy.supportTopOffsetZ;
+        topZ = entity.transform.z - unit.supportPointOffsetZ + proxy.supportTopOffsetZ;
       }
       if (topZ <= bestTopZ) continue;
       if (topZ < terrainGroundZ - contactEpsilon) continue;

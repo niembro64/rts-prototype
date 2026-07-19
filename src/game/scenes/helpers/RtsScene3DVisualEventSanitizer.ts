@@ -1,7 +1,7 @@
 import { COLORS } from '@/colorsConfig';
 import { isUnitBlueprintId } from '@/types/blueprintIds';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from '../../sim/unitGeometry';
+import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../../sim/unitGeometry';
 import { getPlayerPrimaryColor, type Entity } from '../../sim/types';
 
 export const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
@@ -94,7 +94,7 @@ export function resolveDeathContext3D(
     const visualRadius = ent.unit?.radius.other
       ?? ent.unit?.radius.hitbox
       ?? 15;
-    const collisionRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
+    const collisionRadius = ent.unit ? getUnitSupportPointOffsetZ(ent.unit) : visualRadius;
     ctx = {
       unitVel: {
         x: ent.unit?.velocityX ?? 0,
@@ -119,7 +119,7 @@ export function resolveDeathContext3D(
       ?? ent.unit.radius.hitbox
       ?? ctx.visualRadius
       ?? ctx.radius;
-    const collisionRadius = getUnitBodyCenterHeight(ent.unit);
+    const collisionRadius = getUnitSupportPointOffsetZ(ent.unit);
     if (
       ctx.visualRadius === undefined ||
       ctx.collisionRadius === undefined ||

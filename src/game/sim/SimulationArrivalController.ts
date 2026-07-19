@@ -1,6 +1,4 @@
-import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
-import { UNIT_LOCOMOTION_FORCE_SCALE } from './unitLocomotionPresetConfig';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
@@ -21,7 +19,6 @@ const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 2;
 
 export class SimulationArrivalController {
-  private readonly world: WorldState;
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
   private readonly queueFlyingLoiter: (entity: Entity) => void;
@@ -52,14 +49,13 @@ export class SimulationArrivalController {
   private completionCount = 0;
 
   constructor(
-    world: WorldState,
+    _world: WorldState,
     callbacks: {
       advanceAction: (entity: Entity) => void;
       advanceActivePathPoint: (entity: Entity) => void;
       queueFlyingLoiter: (entity: Entity) => void;
     },
   ) {
-    this.world = world;
     this.advanceAction = callbacks.advanceAction;
     this.advanceActivePathPoint = callbacks.advanceActivePathPoint;
     this.queueFlyingLoiter = callbacks.queueFlyingLoiter;
@@ -93,7 +89,7 @@ export class SimulationArrivalController {
       && isFinalActionPoint
       ? ARRIVAL_BATCH_FLAG_LAST_ACTION
       : 0;
-    if (unit.locomotion.maintainFullThrustAtWaypoints) {
+    if (unit.locomotion.motionControl.maintainFullThrustAtWaypoints) {
       flags |= ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST;
     }
     this.completionFlags[index] = flags;
@@ -175,7 +171,7 @@ export class SimulationArrivalController {
     const invDistance = 1 / distance;
     entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
 
-    const maintainFullThrustAtWaypoints = unit.locomotion.maintainFullThrustAtWaypoints;
+    const maintainFullThrustAtWaypoints = unit.locomotion.motionControl.maintainFullThrustAtWaypoints;
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
     const speedLimitFactor = maintainFullThrustAtWaypoints
       ? 1
@@ -215,10 +211,6 @@ export class SimulationArrivalController {
       this.outY.subarray(0, count),
       this.active.subarray(0, count),
       dtSec,
-      this.world.thrustMultiplier,
-      UNIT_LOCOMOTION_FORCE_SCALE,
-      UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-      UNIT_MASS_MULTIPLIER,
       ARRIVAL_CONTROL_RADIUS,
       ARRIVAL_RESPONSE_TIME_SEC,
       ARRIVAL_MIN_ACCEL,

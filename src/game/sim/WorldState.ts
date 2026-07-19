@@ -180,9 +180,6 @@ export class WorldState {
   // Same list across all clients (deterministic from map size).
   public metalDeposits: MetalDeposit[] = [];
 
-  // Runtime thrust multiplier (set by GameServer based on game/demo mode)
-  public thrustMultiplier: number = 8.0;
-
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 

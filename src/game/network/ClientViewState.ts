@@ -590,7 +590,7 @@ export class ClientViewState {
     target.surfaceNormalX = 0;
     target.surfaceNormalY = 0;
     target.surfaceNormalZ = 1;
-    target.bodyCenterHeight = 0;
+    target.supportPointOffsetZ = 0;
     target.predictedGroundContact = false;
     target.orientation = null;
     target.angularVelocityX = null;
@@ -1488,7 +1488,7 @@ export class ClientViewState {
     target.x = deqEntityPos(values[base + 1]);
     target.y = deqEntityPos(values[base + 2]);
     target.z = deqEntityPos(values[base + 3]);
-    target.bodyCenterHeight = existing.unit.bodyCenterHeight;
+    target.supportPointOffsetZ = existing.unit.supportPointOffsetZ;
     target.rotation = deqRot(values[base + 4]);
     target.velocityX = deqVel(values[base + 10]);
     target.velocityY = deqVel(values[base + 11]);
@@ -4570,7 +4570,7 @@ export class ClientViewState {
           views.z[slot],
           views.hp[slot],
           views.radiusHitbox[slot],
-          Math.max(1, views.bodyCenterHeight[slot] || views.radiusOther[slot]),
+          Math.max(1, views.supportPointOffsetZ[slot] || views.radiusOther[slot]),
           mapWidth,
           mapHeight,
           renderScope,
@@ -4671,7 +4671,7 @@ export class ClientViewState {
       mapHeight,
       views.entityIds[slot] as EntityId,
     );
-    const penetration = groundY - (z - views.bodyCenterHeight[slot]);
+    const penetration = groundY - (z - views.supportPointOffsetZ[slot]);
     return isUnitGroundPenetrationInContact(penetration);
   }
 

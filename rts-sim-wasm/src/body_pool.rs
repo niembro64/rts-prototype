@@ -77,11 +77,10 @@ pub(crate) struct BodyPool {
     // linear/quadratic air drag is applied by the unit-force kernel instead;
     // unit bodies therefore leave this separate coefficient at zero.
     pub(crate) air_drag_coefficient: Vec<f64>,
-    // Per-body ground-friction multiplier. 1.0 = the full global
-    // ground-contact tangential damping; 0.0 = frictionless (keeps all
-    // tangential velocity on contact). Default 1.0 so every body that
-    // doesn't opt out behaves exactly as before.
-    pub(crate) ground_friction_scale: Vec<f64>,
+    // Per-body solid-contact tangent-velocity damping rate, in s^-1.
+    // This is independent of static friction: it decays residual sliding,
+    // whereas static friction caps actuator force.
+    pub(crate) ground_tangential_damping_rate: Vec<f64>,
 
     // Sleep state. `sleep_ticks` is f64 to match the JS side's
     // numeric counter and sit on a single ptr export.
@@ -127,7 +126,7 @@ impl BodyPool {
             restitution: vec![0.0; cap],
             ground_offset: vec![0.0; cap],
             air_drag_coefficient: vec![0.0; cap],
-            ground_friction_scale: vec![1.0; cap],
+            ground_tangential_damping_rate: vec![0.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
             entity_id: vec![-1; cap],
@@ -174,7 +173,7 @@ impl BodyPool {
         self.restitution[i] = 0.0;
         self.ground_offset[i] = 0.0;
         self.air_drag_coefficient[i] = 0.0;
-        self.ground_friction_scale[i] = 1.0;
+        self.ground_tangential_damping_rate[i] = 0.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
         self.entity_id[i] = -1;
@@ -282,7 +281,11 @@ pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
 pool_ptr_export!(pool_air_drag_coefficient_ptr, air_drag_coefficient, f64);
-pool_ptr_export!(pool_ground_friction_scale_ptr, ground_friction_scale, f64);
+pool_ptr_export!(
+    pool_ground_tangential_damping_rate_ptr,
+    ground_tangential_damping_rate,
+    f64
+);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
@@ -293,27 +296,13 @@ pub(crate) const ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST: u8 = 1 << 2;
 
 #[inline]
 pub(crate) fn arrival_horizontal_drive_accel(
-    drive_force: f64,
-    force_coupling: f64,
-    mass: f64,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
+    max_propulsive_force: f64,
+    physics_mass: f64,
 ) -> f64 {
-    let physics_mass = mass * unit_mass_multiplier;
-    if !physics_mass.is_finite()
-        || physics_mass <= 0.0
-        || !reference_mass.is_finite()
-        || reference_mass <= 0.0
-        || force_scale <= 0.0
-    {
+    if !physics_mass.is_finite() || physics_mass <= 0.0 {
         return 0.0;
     }
-
-    let coupled_force_magnitude =
-        drive_force * thrust_multiplier * force_coupling * reference_mass / force_scale;
-    coupled_force_magnitude * 1_000_000.0 / physics_mass
+    max_propulsive_force.max(0.0) * 1_000_000.0 / physics_mass
 }
 
 #[inline]
@@ -324,15 +313,10 @@ pub(crate) fn compute_arrival_control_thrust(
     body_vx: f64,
     body_vy: f64,
     radius_collision: f64,
-    drive_force: f64,
-    force_coupling: f64,
-    mass: f64,
+    max_propulsive_force: f64,
+    physics_mass: f64,
     flags: u8,
     dt_sec: f64,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
     control_radius_min: f64,
     response_time_sec: f64,
     min_accel: f64,
@@ -347,13 +331,8 @@ pub(crate) fn compute_arrival_control_thrust(
     }
 
     let max_accel = arrival_horizontal_drive_accel(
-        drive_force,
-        force_coupling,
-        mass,
-        thrust_multiplier,
-        force_scale,
-        reference_mass,
-        unit_mass_multiplier,
+        max_propulsive_force,
+        physics_mass,
     );
     if max_accel <= min_accel || !max_accel.is_finite() {
         return (dx * inv_distance, dy * inv_distance, 1);
@@ -385,16 +364,12 @@ pub(crate) fn compute_arrival_control_thrust(
     (accel_x * out_scale, accel_y * out_scale, 1)
 }
 
-fn unit_effective_coupled_drive(
+fn unit_effective_max_propulsive_force(
     p: &BodyPool,
     es: &EntityStateSlab,
     profile: &UnitForceProfileTable,
     runtime: &UnitForceRuntimeTable,
     slot: usize,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
 ) -> Option<(f64, f64)> {
     if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
         return None;
@@ -414,12 +389,9 @@ fn unit_effective_coupled_drive(
     };
     let air_fraction = 1.0 - water_fraction;
     let ground_contact = runtime_is_current && runtime.ground_contact[entity_slot] != 0;
-    let mut coupled_drive = air_fraction
-        * profile.values[pbase + UF_PROFILE_AIR_DRIVE_FORCE]
-        * profile.values[pbase + UF_PROFILE_AIR_FORCE_COUPLING]
-        + water_fraction
-            * profile.values[pbase + UF_PROFILE_WATER_DRIVE_FORCE]
-            * profile.values[pbase + UF_PROFILE_WATER_FORCE_COUPLING];
+    let mut max_propulsive_force = air_fraction
+        * profile.values[pbase + UF_PROFILE_AIR_MAX_PROPULSIVE_FORCE]
+        + water_fraction * profile.values[pbase + UF_PROFILE_WATER_MAX_PROPULSIVE_FORCE];
 
     let body_mass = if p.inv_mass[slot] > 0.0 {
         1.0 / p.inv_mass[slot]
@@ -427,67 +399,40 @@ fn unit_effective_coupled_drive(
         0.0
     };
     if ground_contact {
-        let (_, ground_drive_force) = unit_force_locomotion_magnitudes(
-            profile.values[pbase + UF_PROFILE_GROUND_DRIVE_FORCE],
-            profile.values[pbase + UF_PROFILE_GROUND_FORCE_COUPLING],
-            reference_mass,
-            thrust_multiplier,
-            force_scale,
-        );
-        let gravity_counter_ratio = air_fraction
-            * profile.values[pbase + UF_PROFILE_AIR_GRAVITY_COUNTER_RATIO].max(0.0)
-            + water_fraction
-                * profile.values[pbase + UF_PROFILE_WATER_GRAVITY_COUNTER_RATIO].max(0.0);
+        let buoyancy_ratio = air_fraction
+            * profile.values[pbase + UF_PROFILE_AIR_BUOYANCY_RATIO].max(0.0)
+            + water_fraction * profile.values[pbase + UF_PROFILE_WATER_BUOYANCY_RATIO].max(0.0);
         let normal_load =
-            body_mass * GRAVITY * (1.0 - gravity_counter_ratio).max(0.0) / 1_000_000.0;
-        let contact_limit =
-            normal_load * profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP].max(0.0);
-        let available_ground_force = ground_drive_force.min(contact_limit);
-        if thrust_multiplier > 0.0 && reference_mass > 0.0 {
-            coupled_drive +=
-                available_ground_force * force_scale / (thrust_multiplier * reference_mass);
-        }
+            body_mass * GRAVITY * (1.0 - buoyancy_ratio).max(0.0) / 1_000_000.0;
+        let contact_limit = normal_load
+            * profile.values[pbase + UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
+        max_propulsive_force += profile.values[pbase + UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE]
+            .max(0.0)
+            .min(contact_limit);
     }
-    let mut authored_mass = body_mass / unit_mass_multiplier.max(1.0e-9);
-    if !authored_mass.is_finite() {
-        authored_mass = 0.0;
-    }
-    Some((coupled_drive, authored_mass))
+    Some((max_propulsive_force, body_mass))
 }
 
 #[wasm_bindgen]
 pub fn unit_effective_drive_acceleration(
     body_slot: u32,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
 ) -> f64 {
     let p = pool();
     let es = entity_state();
     let profile = unit_force_profile_table();
     let runtime = unit_force_runtime_table();
-    let Some((coupled_drive, mass)) = unit_effective_coupled_drive(
+    let Some((max_propulsive_force, physics_mass)) = unit_effective_max_propulsive_force(
         p,
         es,
         profile,
         runtime,
         body_slot as usize,
-        thrust_multiplier,
-        force_scale,
-        reference_mass,
-        unit_mass_multiplier,
     ) else {
         return 0.0;
     };
     arrival_horizontal_drive_accel(
-        coupled_drive,
-        1.0,
-        mass,
-        thrust_multiplier,
-        force_scale,
-        reference_mass,
-        unit_mass_multiplier,
+        max_propulsive_force,
+        physics_mass,
     )
 }
 
@@ -504,10 +449,6 @@ pub fn arrival_control_step_batch(
     out_thrust_y: &mut [f64],
     out_active: &mut [u8],
     dt_sec: f64,
-    thrust_multiplier: f64,
-    force_scale: f64,
-    reference_mass: f64,
-    unit_mass_multiplier: f64,
     control_radius_min: f64,
     response_time_sec: f64,
     min_accel: f64,
@@ -530,19 +471,15 @@ pub fn arrival_control_step_batch(
     let mut active_count = 0_u32;
     for i in 0..count {
         let slot = slots[i] as usize;
-        let (mut coupled_drive, mass) = unit_effective_coupled_drive(
+        let (mut max_propulsive_force, physics_mass) = unit_effective_max_propulsive_force(
             p,
             es,
             profile,
             runtime,
             slot,
-            thrust_multiplier,
-            force_scale,
-            reference_mass,
-            unit_mass_multiplier,
         )
         .unwrap_or((0.0, 0.0));
-        coupled_drive *= drive_scale[i].max(0.0);
+        max_propulsive_force *= drive_scale[i].max(0.0);
         let (thrust_x, thrust_y, active) = compute_arrival_control_thrust(
             dx[i],
             dy[i],
@@ -550,15 +487,10 @@ pub fn arrival_control_step_batch(
             p.vel_x[slot],
             p.vel_y[slot],
             radius_collision[i],
-            coupled_drive,
-            1.0,
-            mass,
+            max_propulsive_force,
+            physics_mass,
             flags[i],
             dt_sec,
-            thrust_multiplier,
-            force_scale,
-            reference_mass,
-            unit_mass_multiplier,
             control_radius_min,
             response_time_sec,
             min_accel,
@@ -1266,28 +1198,6 @@ pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_body_slots_out: &m
     sync_count
 }
 
-#[inline]
-fn scale_body_motion_damp(damp: f64, scale: f64) -> f64 {
-    if !damp.is_finite() {
-        return 1.0;
-    }
-    let base = damp.max(0.0).min(1.0);
-    if base >= 1.0 {
-        return 1.0;
-    }
-    if base <= 0.0 {
-        return if scale <= 0.0 { 1.0 } else { 0.0 };
-    }
-    if !scale.is_finite() {
-        return base;
-    }
-    let clamped_scale = scale.max(0.0);
-    if clamped_scale <= 0.0 {
-        return 1.0;
-    }
-    base.powf(clamped_scale).max(0.0).min(1.0)
-}
-
 #[wasm_bindgen]
 pub fn pool_step_integrate(
     awake_slots: &[u32],
@@ -1295,7 +1205,6 @@ pub fn pool_step_integrate(
     ground_normals: &[f64],
     sleep_transitions_out: &mut [u32],
     dt_sec: f64,
-    ground_damp: f64,
     wind_x: f64,
     wind_y: f64,
     wind_z: f64,
@@ -1338,8 +1247,8 @@ pub fn pool_step_integrate(
         // Per-body air drag is a physical force:
         //   F = drag_coefficient * (wind_velocity - body_velocity)
         // and acceleration comes from F / mass via the pool's inv_mass.
-        // Ground contact friction remains a tangent damping term.
-        let ground_scale = p.ground_friction_scale[slot];
+        // Ground contact retains a separate tangential damping term.
+        let ground_tangential_damping_rate = p.ground_tangential_damping_rate[slot];
         let air_drag_coefficient = p.air_drag_coefficient[slot];
         let eff_air_drag_coefficient =
             if air_drag_coefficient.is_finite() && air_drag_coefficient > 0.0 {
@@ -1347,7 +1256,11 @@ pub fn pool_step_integrate(
             } else {
                 0.0
             };
-        let eff_ground_damp = scale_body_motion_damp(ground_damp, ground_scale);
+        let eff_ground_damp = if ground_tangential_damping_rate.is_finite() {
+            (-ground_tangential_damping_rate.max(0.0) * dt_sec.max(0.0)).exp()
+        } else {
+            1.0
+        };
 
         // Run the integrator on a 6-element scratch — the inline
         // helper is shared with the per-body / batched buffer paths

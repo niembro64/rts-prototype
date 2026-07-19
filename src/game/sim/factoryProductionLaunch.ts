@@ -108,13 +108,13 @@ function writeTargetAtDistance(
   distance: number,
 ): void {
   const unit = heldUnit.unit;
-  const bodyCenterHeight = unit?.bodyCenterHeight ?? 0;
+  const supportPointOffsetZ = unit?.supportPointOffsetZ ?? 0;
   const x = heldUnit.transform.x + dirX * distance;
   const y = heldUnit.transform.y + dirY * distance;
   const support = world.sampleSupportSurface(x, y);
   _targetPosition.x = x;
   _targetPosition.y = y;
-  _targetPosition.z = support.groundZ + bodyCenterHeight;
+  _targetPosition.z = support.groundZ + supportPointOffsetZ;
 }
 
 function solveLaunchToCurrentTarget(

@@ -502,7 +502,7 @@ export class ServerSimulationCore {
     entity.transform.y = y;
     entity.transform.z = Number.isFinite(entity.transform.z)
       ? entity.transform.z
-      : groundZ + unit.bodyCenterHeight;
+      : groundZ + unit.supportPointOffsetZ;
     if (!Number.isFinite(entity.transform.rotation)) {
       entity.transform.rotation = 0;
       entity.transform.rotCos = null;

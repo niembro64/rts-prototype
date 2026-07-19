@@ -23,7 +23,7 @@ export type ServerTarget = {
   surfaceNormalX: number;
   surfaceNormalY: number;
   surfaceNormalZ: number;
-  bodyCenterHeight: number;
+  supportPointOffsetZ: number;
   predictedGroundContact: boolean;
   /** Full 3-DOF orientation triad, populated when the snapshot carries
    *  an `orientation` field. Null for legacy records that only expose
@@ -41,7 +41,7 @@ export function createServerTarget(): ServerTarget {
     x: 0, y: 0, z: 0, rotation: 0,
     velocityX: 0, velocityY: 0, velocityZ: 0,
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
-    bodyCenterHeight: 0,
+    supportPointOffsetZ: 0,
     predictedGroundContact: true,
     orientation: null,
     angularVelocityX: null,
@@ -180,7 +180,7 @@ function resetServerTargetScalars(target: ServerTarget): void {
   target.surfaceNormalX = 0;
   target.surfaceNormalY = 0;
   target.surfaceNormalZ = 1;
-  target.bodyCenterHeight = 0;
+  target.supportPointOffsetZ = 0;
   target.predictedGroundContact = true;
   target.orientation = null;
   target.angularVelocityX = null;

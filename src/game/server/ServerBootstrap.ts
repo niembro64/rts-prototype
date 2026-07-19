@@ -12,7 +12,6 @@
 
 import {
   LAND_CELL_SIZE,
-  UNIT_THRUST_MULTIPLIER_GAME,
   getMapSize,
 } from '../../config';
 import { generateMetalDeposits } from '../../metalDepositConfig';
@@ -152,7 +151,6 @@ export class ServerBootstrap {
       (x, y) => world.getTerrainBedZ(x, y),
       (x, y) => world.getCachedTerrainBedNormal(x, y),
     );
-    world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     world.setActivePlayer(0 as PlayerId);
     await report(0.58, 'Creating physics world');
 
@@ -333,7 +331,6 @@ export class ServerBootstrap {
       (x, y) => world.getTerrainBedZ(x, y),
       (x, y) => world.getCachedTerrainBedNormal(x, y),
     );
-    world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     world.setActivePlayer(0 as PlayerId); // Server has no active player
 
     const commandQueue = new CommandQueue();

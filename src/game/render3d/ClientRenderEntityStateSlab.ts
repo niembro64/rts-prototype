@@ -75,7 +75,7 @@ export type ClientRenderEntityStateViews = {
   readonly orientationW: Float32Array;
   readonly hasFullOrientation: Uint8Array;
   readonly bodyOpacity: Float32Array;
-  readonly bodyCenterHeight: Float32Array;
+  readonly supportPointOffsetZ: Float32Array;
   readonly buildingBaseY: Float32Array;
   readonly buildingWidth: Float32Array;
   readonly buildingFootprintDepth: Float32Array;
@@ -214,7 +214,7 @@ export class ClientRenderEntityStateSlab {
     orientationW: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hasFullOrientation: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     bodyOpacity: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    bodyCenterHeight: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    supportPointOffsetZ: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingBaseY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingFootprintDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -418,7 +418,7 @@ export class ClientRenderEntityStateSlab {
     views.orientationW[slot] = orientation?.w ?? 1;
     views.hasFullOrientation[slot] = orientation !== null ? 1 : 0;
     views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
-    views.bodyCenterHeight[slot] = unit.bodyCenterHeight;
+    views.supportPointOffsetZ[slot] = unit.supportPointOffsetZ;
     views.bodyHudWidth[slot] = unit.radius.other * 2;
     views.hudBarsY[slot] = getUnitHudBarsY(entity);
     views.hudNameY[slot] = getUnitHudNameY(entity);
@@ -859,7 +859,7 @@ export class ClientRenderEntityStateSlab {
       orientationW: growFloat32(views.orientationW, nextCapacity),
       hasFullOrientation: growUint8(views.hasFullOrientation, nextCapacity),
       bodyOpacity: growFloat32(views.bodyOpacity, nextCapacity),
-      bodyCenterHeight: growFloat32(views.bodyCenterHeight, nextCapacity),
+      supportPointOffsetZ: growFloat32(views.supportPointOffsetZ, nextCapacity),
       buildingBaseY: growFloat32(views.buildingBaseY, nextCapacity),
       buildingWidth: growFloat32(views.buildingWidth, nextCapacity),
       buildingFootprintDepth: growFloat32(views.buildingFootprintDepth, nextCapacity),

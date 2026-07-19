@@ -10,7 +10,6 @@
       "collision": 9.6,
       "shotArmingRadius": 14.4
     },
-    "bodyCenterHeight": 5.680000000000001,
     "supportSurface": {
       "kind": "none"
     },
@@ -44,7 +43,7 @@
       "sides": 4,
       "radiusFrac": 0.55,
       "heightFrac": 0.3,
-      "rotation": 0.7853981633974483
+      "rotation": 0.785398163397
     },
     "hud": {
       "barsOffsetAboveTop": 12
@@ -59,23 +58,18 @@
     "unitLocomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -86,6 +80,11 @@
         "treadWidth": 0.15,
         "wheelRadius": 0.28,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -107,7 +106,8 @@
         "shotArmingRadius": 14.4
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 5.68
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
@@ -120,7 +120,6 @@
       "collision": 13,
       "shotArmingRadius": 19.5
     },
-    "bodyCenterHeight": 11.5,
     "supportSurface": {
       "kind": "none"
     },
@@ -154,7 +153,7 @@
       "sides": 3,
       "radiusFrac": 0.6,
       "heightFrac": 0.3,
-      "rotation": 3.141592653589793
+      "rotation": 3.14159265359
     },
     "hud": {
       "barsOffsetAboveTop": 12
@@ -169,23 +168,18 @@
     "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -195,6 +189,11 @@
         "treadWidth": 0.45,
         "wheelRadius": 0.12,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -216,7 +215,8 @@
         "shotArmingRadius": 19.5
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 11.5
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
@@ -229,7 +229,6 @@
       "collision": 15,
       "shotArmingRadius": 22.5
     },
-    "bodyCenterHeight": 58.5,
     "supportSurface": {
       "kind": "none"
     },
@@ -276,7 +275,7 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": 3.769230769230769,
+    "legAttachHeightFrac": 3.769230769231,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -286,23 +285,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -317,9 +311,9 @@
             "attachOffsetXFrac": 0.3,
             "attachOffsetYFrac": -0.2,
             "upperLegLengthFrac": 4.5,
-            "lowerLegLengthFrac": 5.3999999999999995,
-            "snapTriggerAngle": 1.4451326206513049,
-            "snapTargetAngle": -0.9738937226128359,
+            "lowerLegLengthFrac": 5.4,
+            "snapTriggerAngle": 1.445132620651,
+            "snapTargetAngle": -0.973893722613,
             "snapDistanceMultiplier": 0.74,
             "extensionThreshold": 0.96
           },
@@ -327,13 +321,18 @@
             "attachOffsetXFrac": -0.3,
             "attachOffsetYFrac": -0.3,
             "upperLegLengthFrac": 4.5,
-            "lowerLegLengthFrac": 5.3999999999999995,
-            "snapTriggerAngle": 3.1101767270538954,
-            "snapTargetAngle": -1.82212373908208,
+            "lowerLegLengthFrac": 5.4,
+            "snapTriggerAngle": 3.110176727054,
+            "snapTargetAngle": -1.822123739082,
             "snapDistanceMultiplier": 0.5,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -355,7 +354,8 @@
         "shotArmingRadius": 22.5
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 58.5
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
@@ -368,7 +368,6 @@
       "collision": 22.4,
       "shotArmingRadius": 33.6
     },
-    "bodyCenterHeight": 12.4,
     "supportSurface": {
       "kind": "none"
     },
@@ -417,23 +416,18 @@
     "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -443,6 +437,11 @@
         "treadWidth": 0.55,
         "wheelRadius": 0.12,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -464,7 +463,8 @@
         "shotArmingRadius": 33.6
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 12.4
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
@@ -477,7 +477,6 @@
       "collision": 24,
       "shotArmingRadius": 36
     },
-    "bodyCenterHeight": 11.8,
     "supportSurface": {
       "kind": "none"
     },
@@ -527,23 +526,18 @@
     "unitLocomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -554,6 +548,11 @@
         "treadWidth": 0.3,
         "wheelRadius": 0.22,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -575,7 +574,8 @@
         "shotArmingRadius": 36
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 11.8
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
@@ -588,7 +588,6 @@
       "collision": 12.1,
       "shotArmingRadius": 18.15
     },
-    "bodyCenterHeight": 8,
     "supportSurface": {
       "kind": "none"
     },
@@ -635,23 +634,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -667,8 +661,8 @@
             "attachOffsetYFrac": -0.15,
             "upperLegLengthFrac": 0.5,
             "lowerLegLengthFrac": 0.55,
-            "snapTriggerAngle": 1.4451326206513049,
-            "snapTargetAngle": -0.9738937226128359,
+            "snapTriggerAngle": 1.445132620651,
+            "snapTargetAngle": -0.973893722613,
             "snapDistanceMultiplier": 0.74,
             "extensionThreshold": 0.96
           },
@@ -677,12 +671,17 @@
             "attachOffsetYFrac": -0.15,
             "upperLegLengthFrac": 0.5,
             "lowerLegLengthFrac": 0.55,
-            "snapTriggerAngle": 3.1101767270538954,
-            "snapTargetAngle": -1.82212373908208,
+            "snapTriggerAngle": 3.110176727054,
+            "snapTargetAngle": -1.822123739082,
             "snapDistanceMultiplier": 0.5,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -704,7 +703,8 @@
         "shotArmingRadius": 18.15
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 8
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
@@ -717,7 +717,6 @@
       "collision": 36,
       "shotArmingRadius": 54
     },
-    "bodyCenterHeight": 13.6,
     "supportSurface": {
       "kind": "none"
     },
@@ -766,23 +765,18 @@
     "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -792,6 +786,11 @@
         "treadWidth": 0.6,
         "wheelRadius": 0.175,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -813,7 +812,8 @@
         "shotArmingRadius": 54
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 13.6
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
@@ -826,7 +826,6 @@
       "collision": 65,
       "shotArmingRadius": 97.5
     },
-    "bodyCenterHeight": 54,
     "supportSurface": {
       "kind": "none"
     },
@@ -893,23 +892,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -924,9 +918,9 @@
             "attachOffsetXFrac": 0.42,
             "attachOffsetYFrac": -0.28,
             "upperLegLengthFrac": 0.91,
-            "lowerLegLengthFrac": 1.0555999999999999,
-            "snapTriggerAngle": 1.319468914507713,
-            "snapTargetAngle": -0.8796459430051422,
+            "lowerLegLengthFrac": 1.0556,
+            "snapTriggerAngle": 1.319468914508,
+            "snapTargetAngle": -0.879645943005,
             "snapDistanceMultiplier": 0.7,
             "extensionThreshold": 0.96
           },
@@ -934,9 +928,9 @@
             "attachOffsetXFrac": 0.02,
             "attachOffsetYFrac": -0.36,
             "upperLegLengthFrac": 0.91,
-            "lowerLegLengthFrac": 1.0555999999999999,
-            "snapTriggerAngle": 2.261946710584651,
-            "snapTargetAngle": -1.413716694115407,
+            "lowerLegLengthFrac": 1.0556,
+            "snapTriggerAngle": 2.261946710585,
+            "snapTargetAngle": -1.413716694115,
             "snapDistanceMultiplier": 0.62,
             "extensionThreshold": 0.98
           },
@@ -944,13 +938,18 @@
             "attachOffsetXFrac": -0.48,
             "attachOffsetYFrac": -0.3,
             "upperLegLengthFrac": 0.91,
-            "lowerLegLengthFrac": 1.0555999999999999,
-            "snapTriggerAngle": 3.204424506661589,
-            "snapTargetAngle": -1.9477874452256718,
+            "lowerLegLengthFrac": 1.0556,
+            "snapTriggerAngle": 3.204424506662,
+            "snapTargetAngle": -1.947787445226,
             "snapDistanceMultiplier": 0.54,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -972,7 +971,8 @@
         "shotArmingRadius": 97.5
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 54
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
@@ -985,7 +985,6 @@
       "collision": 52,
       "shotArmingRadius": 78
     },
-    "bodyCenterHeight": 49.5,
     "supportSurface": {
       "kind": "none"
     },
@@ -1006,8 +1005,8 @@
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
-          "x": -0.2868272016354705,
-          "y": 0.8131727983645295,
+          "x": -0.286827201635,
+          "y": 0.813172798365,
           "z": 2.8
         },
         "zResolver": {
@@ -1020,8 +1019,8 @@
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
-          "x": -1.9131727983645295,
-          "y": 0.8131727983645296,
+          "x": -1.913172798365,
+          "y": 0.813172798365,
           "z": 2.8
         },
         "zResolver": {
@@ -1034,8 +1033,8 @@
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
-          "x": -1.91317279836453,
-          "y": -0.8131727983645295,
+          "x": -1.913172798365,
+          "y": -0.813172798365,
           "z": 2.8
         },
         "zResolver": {
@@ -1048,8 +1047,8 @@
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
-          "x": -0.2868272016354707,
-          "y": -0.8131727983645298,
+          "x": -0.286827201635,
+          "y": -0.813172798365,
           "z": 2.8
         },
         "zResolver": {
@@ -1118,23 +1117,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -1149,9 +1143,9 @@
             "attachOffsetXFrac": 0.4,
             "attachOffsetYFrac": -0.4,
             "upperLegLengthFrac": 1.045,
-            "lowerLegLengthFrac": 1.2539999999999998,
-            "snapTriggerAngle": 1.4451326206513049,
-            "snapTargetAngle": -0.9738937226128359,
+            "lowerLegLengthFrac": 1.254,
+            "snapTriggerAngle": 1.445132620651,
+            "snapTargetAngle": -0.973893722613,
             "snapDistanceMultiplier": 0.74,
             "extensionThreshold": 0.96
           },
@@ -1159,13 +1153,18 @@
             "attachOffsetXFrac": -0.4,
             "attachOffsetYFrac": -0.4,
             "upperLegLengthFrac": 1.045,
-            "lowerLegLengthFrac": 1.2539999999999998,
-            "snapTriggerAngle": 3.1101767270538954,
-            "snapTargetAngle": -1.82212373908208,
+            "lowerLegLengthFrac": 1.254,
+            "snapTriggerAngle": 3.110176727054,
+            "snapTargetAngle": -1.822123739082,
             "snapDistanceMultiplier": 0.5,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -1187,7 +1186,8 @@
         "shotArmingRadius": 78
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 49.5
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
@@ -1200,7 +1200,6 @@
       "collision": 54,
       "shotArmingRadius": 81
     },
-    "bodyCenterHeight": 19,
     "supportSurface": {
       "kind": "none"
     },
@@ -1248,23 +1247,18 @@
     "unitLocomotion": {
       "type": "amphibious-treads",
       "physicsPresetId": "amphibiousTreads",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 1636.788013,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 327.3576026,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -1274,6 +1268,11 @@
         "treadWidth": 0.55,
         "wheelRadius": 0.2,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -1295,7 +1294,8 @@
         "shotArmingRadius": 81
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 19
   },
   "unitSeaTurtle": {
     "unitBlueprintId": "unitSeaTurtle",
@@ -1308,7 +1308,6 @@
       "collision": 40,
       "shotArmingRadius": 60
     },
-    "bodyCenterHeight": 14,
     "supportSurface": {
       "kind": "none"
     },
@@ -1390,23 +1389,18 @@
     "unitLocomotion": {
       "type": "flippers",
       "physicsPresetId": "flippers",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 3000,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 600,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 600,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 120,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -1424,6 +1418,11 @@
         "groundSweepAngleDeg": 24,
         "waterStrokeAngleDeg": 32,
         "cycleDistanceFrac": 1.4
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -1445,7 +1444,8 @@
         "shotArmingRadius": 60
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14
   },
   "unitOrca": {
     "unitBlueprintId": "unitOrca",
@@ -1458,7 +1458,6 @@
       "collision": 45,
       "shotArmingRadius": 67.5
     },
-    "bodyCenterHeight": 10,
     "supportSurface": {
       "kind": "none"
     },
@@ -1533,23 +1532,18 @@
     "unitLocomotion": {
       "type": "submarine",
       "physicsPresetId": "submarine",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 2361.535517,
-            "gravityCounterRatio": 0.75
+            "surfaceFollowingForceFromGround": 472.3071034,
+            "buoyancyRatio": 0.75
           }
         }
       },
@@ -1569,6 +1563,11 @@
         "thicknessFrac": 0.055,
         "strokeAngleDeg": 13,
         "cycleDistanceFrac": 1.9
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -1590,7 +1589,8 @@
         "shotArmingRadius": 67.5
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 10
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
@@ -1603,7 +1603,6 @@
       "collision": 19.8,
       "shotArmingRadius": 29.7
     },
-    "bodyCenterHeight": 14.025,
     "supportSurface": {
       "kind": "none"
     },
@@ -1663,23 +1662,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -1694,9 +1688,9 @@
             "attachOffsetXFrac": 0.3,
             "attachOffsetYFrac": -0.2,
             "upperLegLengthFrac": 1.045,
-            "lowerLegLengthFrac": 1.2539999999999998,
-            "snapTriggerAngle": 1.4451326206513049,
-            "snapTargetAngle": -0.9738937226128359,
+            "lowerLegLengthFrac": 1.254,
+            "snapTriggerAngle": 1.445132620651,
+            "snapTargetAngle": -0.973893722613,
             "snapDistanceMultiplier": 0.74,
             "extensionThreshold": 0.96
           },
@@ -1704,13 +1698,18 @@
             "attachOffsetXFrac": -0.3,
             "attachOffsetYFrac": -0.2,
             "upperLegLengthFrac": 1.045,
-            "lowerLegLengthFrac": 1.2539999999999998,
-            "snapTriggerAngle": 3.1101767270538954,
-            "snapTargetAngle": -1.82212373908208,
+            "lowerLegLengthFrac": 1.254,
+            "snapTriggerAngle": 3.110176727054,
+            "snapTargetAngle": -1.822123739082,
             "snapDistanceMultiplier": 0.5,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -1732,7 +1731,8 @@
         "shotArmingRadius": 29.7
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14.025
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
@@ -1745,7 +1745,6 @@
       "collision": 24,
       "shotArmingRadius": 36
     },
-    "bodyCenterHeight": 24,
     "supportSurface": {
       "kind": "none"
     },
@@ -1799,23 +1798,18 @@
     "unitLocomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -1825,6 +1819,11 @@
         "treadWidth": 0.5,
         "wheelRadius": 0.12,
         "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -1845,7 +1844,8 @@
         "collision": 24,
         "shotArmingRadius": 36
       }
-    }
+    },
+    "supportPointOffsetZ": 24
   },
   "unitBee": {
     "unitBlueprintId": "unitBee",
@@ -1858,7 +1858,6 @@
       "collision": 10.8,
       "shotArmingRadius": 16.2
     },
-    "bodyCenterHeight": 1.3499999999999999,
     "supportSurface": {
       "kind": "none"
     },
@@ -1905,23 +1904,18 @@
     "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 110,
-            "liftForceFromWaterSurface": 40,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 22,
+            "surfaceFollowingForceFromWater": 8,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -1933,6 +1927,11 @@
         "fanRingTubeRadius": 0.035,
         "fanOutwardAngleDeg": 14,
         "fanSpinRadPerSec": -10
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -1954,7 +1953,8 @@
         "shotArmingRadius": 16.2
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 1.35
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
@@ -1967,7 +1967,6 @@
       "collision": 50,
       "shotArmingRadius": 75
     },
-    "bodyCenterHeight": 3.2,
     "supportSurface": {
       "kind": "none"
     },
@@ -2039,23 +2038,18 @@
     "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 800,
-            "liftForceFromWaterSurface": 500,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 160,
+            "surfaceFollowingForceFromWater": 100,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -2067,6 +2061,11 @@
         "fanOutwardAngleDeg": 18,
         "fanSpinRadPerSec": -10,
         "tailFanOffsetX": -4.7
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -2088,7 +2087,8 @@
         "shotArmingRadius": 75
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 3.2
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
@@ -2101,7 +2101,6 @@
       "collision": 19,
       "shotArmingRadius": 28.5
     },
-    "bodyCenterHeight": 4.5,
     "supportSurface": {
       "kind": "none"
     },
@@ -2201,23 +2200,18 @@
     "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 300,
-            "liftForceFromWaterSurface": 700,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 60,
+            "surfaceFollowingForceFromWater": 140,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -2229,6 +2223,11 @@
         "fanRingTubeRadius": 0.035,
         "fanOutwardAngleDeg": 12,
         "fanSpinRadPerSec": -9
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -2249,7 +2248,8 @@
         "collision": 19,
         "shotArmingRadius": 28.5
       }
-    }
+    },
+    "supportPointOffsetZ": 4.5
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
@@ -2262,7 +2262,6 @@
       "collision": 21.6,
       "shotArmingRadius": 32.4
     },
-    "bodyCenterHeight": 5.4,
     "supportSurface": {
       "kind": "none"
     },
@@ -2316,23 +2315,18 @@
     "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 600,
-            "liftForceFromWaterSurface": 400,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 120,
+            "surfaceFollowingForceFromWater": 80,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -2352,6 +2346,11 @@
         "jetRadius": 0.22,
         "jetLength": 0.6,
         "jetCount": 2
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -2373,7 +2372,8 @@
         "shotArmingRadius": 32.4
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 5.4
   },
   "unitDuck": {
     "unitBlueprintId": "unitDuck",
@@ -2386,8 +2386,9 @@
       "collision": 19,
       "shotArmingRadius": 28.5
     },
-    "bodyCenterHeight": 6,
-    "supportSurface": { "kind": "none" },
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "sensors": {
       "fullSightRadius": 1200,
@@ -2397,11 +2398,18 @@
       "scanRadius": 0
     },
     "mass": 175,
-    "cost": { "energy": 900, "metal": 900 },
+    "cost": {
+      "energy": 900,
+      "metal": 900
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretRocketFast",
-        "mount": { "x": 0, "y": 0, "z": 0 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "hostDirected": true,
         "requiredEngagedForFightStop": true
       }
@@ -2409,36 +2417,47 @@
     "bodyShape": {
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": -0.2, "xFrac": 0.7, "yFrac": 0.3, "zFrac": 0.28 },
-        { "kind": "oval", "offsetForward": 0.56, "xFrac": 0.24, "yFrac": 0.18, "zFrac": 0.18 }
+        {
+          "kind": "oval",
+          "offsetForward": -0.2,
+          "xFrac": 0.7,
+          "yFrac": 0.3,
+          "zFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.56,
+          "xFrac": 0.24,
+          "yFrac": 0.18,
+          "zFrac": 0.18
+        }
       ]
     },
-    "hud": { "barsOffsetAboveTop": 14 },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "deathSound": { "$audio": "event.death.unitEagle" },
+    "deathSound": {
+      "$audio": "event.death.unitEagle"
+    },
     "unitLocomotion": {
       "type": "dive",
       "physicsPresetId": "dive",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 500,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 100,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 200,
-            "gravityCounterRatio": 0.0
+            "surfaceFollowingForceFromGround": 40,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -2465,16 +2484,34 @@
         "jetRadius": 0.12,
         "jetLength": 0.3,
         "jetCount": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
-      "cost": { "energy": 900, "metal": 900 },
+      "cost": {
+        "energy": 900,
+        "metal": 900
+      },
       "mass": 175,
       "health": 300,
-      "deathExplosion": { "radius": 22, "force": 10500, "damage": 190 },
-      "radius": { "other": 16, "hitbox": 13, "collision": 19, "shotArmingRadius": 28.5 }
+      "deathExplosion": {
+        "radius": 22,
+        "force": 10500,
+        "damage": 190
+      },
+      "radius": {
+        "other": 16,
+        "hitbox": 13,
+        "collision": 19,
+        "shotArmingRadius": 28.5
+      }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 6
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
@@ -2487,7 +2524,6 @@
       "collision": 92,
       "shotArmingRadius": 138
     },
-    "bodyCenterHeight": 42,
     "supportSurface": {
       "kind": "none"
     },
@@ -2561,23 +2597,18 @@
     "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 200000,
-            "liftForceFromWaterSurface": 100000,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 40000,
+            "surfaceFollowingForceFromWater": 20000,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -2603,6 +2634,11 @@
         "jetRadius": 0.08,
         "jetLength": 0.2,
         "jetCount": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -2624,7 +2660,8 @@
         "shotArmingRadius": 138
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 42
   },
   "unitQueenBee": {
     "unitBlueprintId": "unitQueenBee",
@@ -2637,7 +2674,6 @@
       "collision": 112,
       "shotArmingRadius": 168
     },
-    "bodyCenterHeight": 52,
     "supportSurface": {
       "kind": "none"
     },
@@ -2724,23 +2760,18 @@
     "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 70000,
-            "liftForceFromWaterSurface": 100000,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 14000,
+            "surfaceFollowingForceFromWater": 20000,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -2752,6 +2783,11 @@
         "fanRingTubeRadius": 0.04,
         "fanOutwardAngleDeg": 12,
         "fanSpinRadPerSec": -9
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -2772,7 +2808,8 @@
         "collision": 112,
         "shotArmingRadius": 168
       }
-    }
+    },
+    "supportPointOffsetZ": 52
   },
   "unitQueenTick": {
     "unitBlueprintId": "unitQueenTick",
@@ -2785,7 +2822,6 @@
       "collision": 114,
       "shotArmingRadius": 171
     },
-    "bodyCenterHeight": 54,
     "supportSurface": {
       "kind": "none"
     },
@@ -2872,23 +2908,18 @@
     "unitLocomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "survival": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 50000,
-            "liftForceFromWaterSurface": 100000,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 10000,
+            "surfaceFollowingForceFromWater": 20000,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -2914,6 +2945,11 @@
         "jetRadius": 0.08,
         "jetLength": 0.2,
         "jetCount": 1
+      },
+      "environmentalHazards": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
       }
     },
     "base": {
@@ -2934,7 +2970,8 @@
         "collision": 114,
         "shotArmingRadius": 171
       }
-    }
+    },
+    "supportPointOffsetZ": 54
   },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
@@ -2947,7 +2984,6 @@
       "collision": 28,
       "shotArmingRadius": 42
     },
-    "bodyCenterHeight": 3.8,
     "supportSurface": {
       "kind": "none"
     },
@@ -3005,23 +3041,18 @@
     "unitLocomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 400,
-            "liftForceFromWaterSurface": 1200,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 80,
+            "surfaceFollowingForceFromWater": 240,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 1
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 1
           }
         }
       },
@@ -3033,6 +3064,11 @@
         "fanRingTubeRadius": 0.04,
         "fanOutwardAngleDeg": 12,
         "fanSpinRadPerSec": -9
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -3053,7 +3089,8 @@
         "collision": 28,
         "shotArmingRadius": 42
       }
-    }
+    },
+    "supportPointOffsetZ": 3.8
   },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
@@ -3066,7 +3103,6 @@
       "collision": 20,
       "shotArmingRadius": 30
     },
-    "bodyCenterHeight": 22.4,
     "supportSurface": {
       "kind": "none"
     },
@@ -3192,23 +3228,18 @@
     "unitLocomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "survival": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
-      },
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "liftForceFromWaterSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "surfaceFollowingForceFromWater": 0,
+            "buoyancyRatio": 0
           }
         },
         "water": {
           "lift": {
-            "liftForceFromGroundSurface": 0,
-            "gravityCounterRatio": 0
+            "surfaceFollowingForceFromGround": 0,
+            "buoyancyRatio": 0
           }
         }
       },
@@ -3224,8 +3255,8 @@
             "attachOffsetYFrac": -0.5,
             "upperLegLengthFrac": 1.1,
             "lowerLegLengthFrac": 1.32,
-            "snapTriggerAngle": 1.4451326206513049,
-            "snapTargetAngle": -0.9738937226128359,
+            "snapTriggerAngle": 1.445132620651,
+            "snapTargetAngle": -0.973893722613,
             "snapDistanceMultiplier": 0.74,
             "extensionThreshold": 0.96
           },
@@ -3234,12 +3265,17 @@
             "attachOffsetYFrac": -0.5,
             "upperLegLengthFrac": 1.1,
             "lowerLegLengthFrac": 1.32,
-            "snapTriggerAngle": 3.1101767270538954,
-            "snapTargetAngle": -1.82212373908208,
+            "snapTriggerAngle": 3.110176727054,
+            "snapTargetAngle": -1.822123739082,
             "snapDistanceMultiplier": 0.5,
             "extensionThreshold": 0.99
           }
         ]
+      },
+      "environmentalHazards": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
       }
     },
     "base": {
@@ -3260,6 +3296,7 @@
         "collision": 20,
         "shotArmingRadius": 30
       }
-    }
+    },
+    "supportPointOffsetZ": 22.4
   }
 }

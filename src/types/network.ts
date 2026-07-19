@@ -942,7 +942,7 @@ export type NetworkServerSnapshotEntity = {
     /** Unit radii. Static on full records and omitted from ordinary
      *  deltas unless the unit blueprint/runtime radius changes. */
     radius: { other: number | null; hitbox: number | null; collision: number | null } | null;
-    bodyCenterHeight: number | null;
+    supportPointOffsetZ: number | null;
     mass: number | null;
     /** VELOCITY_WIRE_SCALE fixed-point linear velocity. */
     velocity: Vec3 | null;

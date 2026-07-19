@@ -9,7 +9,7 @@ import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
-import { getUnitBodyCenterHeight } from '../unitGeometry';
+import { getUnitSupportPointOffsetZ } from '../unitGeometry';
 import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
 
 function eventAudioKey(
@@ -111,12 +111,12 @@ export function buildUnitDeathEvent(
   const collider = targetUnit !== null ? targetUnit.radius : undefined;
   const visualRadius = targetUnit !== null ? targetUnit.radius.other : (collider !== undefined ? collider.hitbox : 15);
   const collisionRadius = collider !== undefined ? (collider.collision ?? collider.hitbox) : visualRadius;
-  const bodyCenterHeight = getUnitBodyCenterHeight(targetUnit);
+  const supportPointOffsetZ = getUnitSupportPointOffsetZ(targetUnit);
   const radius = collider !== undefined ? collider.hitbox : visualRadius;
   const deathX = targetPhysicsBody !== null ? targetPhysicsBody.x : (targetTransform !== null ? targetTransform.x : 0);
   const deathY = targetPhysicsBody !== null ? targetPhysicsBody.y : (targetTransform !== null ? targetTransform.y : 0);
   const deathZ = targetPhysicsBody !== null ? targetPhysicsBody.z : (targetTransform !== null ? targetTransform.z : 0);
-  const baseZ = target !== undefined ? deathZ - bodyCenterHeight : undefined;
+  const baseZ = target !== undefined ? deathZ - supportPointOffsetZ : undefined;
   const unitBlueprintId = targetUnit !== null ? targetUnit.unitBlueprintId : undefined;
   const deathUnitType = unitBlueprintId && isUnitBlueprintId(unitBlueprintId) ? unitBlueprintId : undefined;
   const rotation = targetTransform !== null ? targetTransform.rotation : 0;

@@ -20,7 +20,7 @@ import {
   getUnitBlueprint,
   getUnitLocomotion,
 } from '../../sim/blueprints';
-import { getUnitLocomotionPrimaryDrivePhysics } from '../../sim/unitLocomotion';
+import { getUnitLocomotionPrimaryPropulsionPhysics } from '../../sim/unitLocomotion';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
@@ -1332,7 +1332,7 @@ export type UnitStatsOverlayInfo = {
   mass: number | null;
   costEnergy: number | null;
   costMetal: number | null;
-  locomotion: { type: string; driveForce: number; forceCoupling: number } | null;
+  locomotion: { type: string; maxPropulsiveForce: number } | null;
   weapons: UnitStatsWeaponInfo[];
   factory: UnitStatsFactoryInfo | null;
 };
@@ -1443,11 +1443,10 @@ export function buildUnitStatsOverlayInfo(
       costEnergy = bp.cost.energy * COST_MULTIPLIER;
       costMetal = bp.cost.metal * COST_MULTIPLIER;
       const runtimeLocomotion = getUnitLocomotion(unitBlueprintId);
-      const primaryPhysics = getUnitLocomotionPrimaryDrivePhysics(runtimeLocomotion);
+      const primaryPhysics = getUnitLocomotionPrimaryPropulsionPhysics(runtimeLocomotion);
       locomotion = {
         type: runtimeLocomotion.type,
-        driveForce: primaryPhysics.propulsion.driveForce,
-        forceCoupling: primaryPhysics.propulsion.forceCoupling,
+        maxPropulsiveForce: primaryPhysics.maxPropulsiveForce,
       };
     } catch {
       // Unknown blueprint: show the raw id + live hp only.

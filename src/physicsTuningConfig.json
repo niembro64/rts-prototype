@@ -1,13 +1,6 @@
 {
   "unit": {
     "massMultiplier": 10.0,
-    "locomotionForceReferenceMass": 100.0,
-    "thrustMultiplier": 20.0,
-    "driveForceAlignment": {
-      "zeroForceDot": -1.0,
-      "fullForceDot": 1.0,
-      "responseExponent": 6.0
-    },
     "hpMultiplier": 2.0,
     "initialSpawnHeightAboveGround": 3
   },

@@ -153,7 +153,7 @@ function unloadTransportCargo(
 
     passenger.transform.x = x;
     passenger.transform.y = y;
-    passenger.transform.z = groundZ + passengerUnit.bodyCenterHeight + 2;
+    passenger.transform.z = groundZ + passengerUnit.supportPointOffsetZ + 2;
     passenger.transform.rotation = transport.transform.rotation;
     passenger.transform.rotCos = null;
     passenger.transform.rotSin = null;

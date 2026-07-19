@@ -176,10 +176,10 @@ export class DyingUnitScatter3D {
     motion.vx *= linearDrag;
     motion.vy *= linearDrag;
     motion.vz *= linearDrag;
-    const angularDrag = Math.pow(DEATH_SCATTER_ANGULAR_DRAG, dtSec * 60);
-    motion.avx *= angularDrag;
-    motion.avy *= angularDrag;
-    motion.avz *= angularDrag;
+    const angularRetention = Math.pow(DEATH_SCATTER_ANGULAR_DRAG, dtSec * 60);
+    motion.avx *= angularRetention;
+    motion.avy *= angularRetention;
+    motion.avz *= angularRetention;
     return out;
   }
 

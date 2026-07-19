@@ -165,13 +165,6 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE =
  *  heavier gravity would flatten every arc into a short lob. */
 export const GRAVITY = sharedSimConstants.gravity;
 
-/** Ground-contact tangent velocity damping per 60 Hz frame.
- *  Applied only while the unit's locomotion ground point is at or
- *  below terrain height, and only to motion tangent to the terrain
- *  plane. */
-export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME =
-  sharedSimConstants.unitGroundFrictionPer60HzFrame;
-
 /** Contact tolerance for deciding whether a unit's locomotion ground
  *  point is touching terrain/support. */
 export const UNIT_GROUND_CONTACT_EPSILON =
@@ -607,41 +600,12 @@ export const SHIELD_IMPACT_VISUAL: ShieldImpactVisualConfig =
 export const UNIT_MASS_MULTIPLIER = physicsTuningConfigJson.unit.massMultiplier;
 
 /**
- * Authored locomotion drive force is converted into actual force using
- * this reference mass. A unit at this mass keeps the authored acceleration
- * envelope; heavier units accelerate and climb less for the same drive force.
- */
-export const UNIT_LOCOMOTION_FORCE_REFERENCE_MASS =
-  physicsTuningConfigJson.unit.locomotionForceReferenceMass;
-
-/**
- * Drive-force alignment response used by locomotion profiles that enable
- * driveForceScalesWithFacing. Dot products are normalized from
- * zeroForceDot..fullForceDot, then raised to responseExponent. With the
- * default -1..1, 180 deg = 0 force, 90 deg = small force, and 0 deg = full.
- */
-export const UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT =
-  physicsTuningConfigJson.unit.driveForceAlignment.zeroForceDot;
-export const UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT =
-  physicsTuningConfigJson.unit.driveForceAlignment.fullForceDot;
-export const UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT =
-  physicsTuningConfigJson.unit.driveForceAlignment.responseExponent;
-
-/**
  * Global mass multiplier for all projectiles.
  * Scales recoil on shooter and knockback on target.
  * 1.0 = use raw mass values from PROJECTILE_STATS
  * Higher = more recoil/knockback, lower = less
  */
 export const PROJECTILE_MASS_MULTIPLIER = physicsTuningConfigJson.projectile.massMultiplier;
-
-/**
- * Global thrust multiplier for all unit movement.
- * Scales the force applied when units accelerate toward waypoints.
- * Higher values = faster acceleration, higher top speed.
- * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
- */
-export const UNIT_THRUST_MULTIPLIER_GAME = physicsTuningConfigJson.unit.thrustMultiplier;
 
 /**
  * Global HP multiplier applied to every unit at creation time. The
@@ -655,7 +619,7 @@ export const UNIT_HP_MULTIPLIER = physicsTuningConfigJson.unit.hpMultiplier;
  * Vertical distance between terrain and a unit's locomotion ground
  * point at spawn. The unit body center is initialized at:
  *
- *   terrain height + bodyCenterHeight + this offset
+ *   terrain height + supportPointOffsetZ + this offset
  *
  * so newly-created units begin in freefall and settle through the same
  * gravity / terrain-spring path as every other airborne unit.

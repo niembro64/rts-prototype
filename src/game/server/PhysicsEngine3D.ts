@@ -51,10 +51,7 @@ import {
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
   UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO,
 } from '../../config';
-import {
-  getUnitGroundFrictionDamp,
-  UNIT_GROUND_CONTACT_EPSILON,
-} from '../sim/unitGroundPhysics';
+import { UNIT_GROUND_CONTACT_EPSILON } from '../sim/unitGroundPhysics';
 import {
   SUPPORT_SURFACE_CONTACT_EPSILON,
   SUPPORT_SURFACE_FOOTPRINT_EPSILON,
@@ -234,7 +231,7 @@ export class Body3D {
     groundOffset: number | undefined;
     restitution: number;
     airDragCoefficient?: number;
-    groundFrictionScale?: number;
+    groundTangentialDampingRate?: number;
     surfaceNormal: SurfaceNormal | null;
   }): Body3D {
     const views = pv();
@@ -259,7 +256,7 @@ export class Body3D {
     views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
     views.restitution[slot] = args.restitution;
     views.airDragCoefficient[slot] = args.airDragCoefficient ?? 0;
-    views.groundFrictionScale[slot] = args.groundFrictionScale ?? 1;
+    views.groundTangentialDampingRate[slot] = args.groundTangentialDampingRate ?? 0;
     views.groundOffset[slot] = args.groundOffset ?? 0;
     views.entityId[slot] = args.entityId ?? -1;
     if (args.surfaceNormal !== null) {
@@ -340,11 +337,10 @@ export class Body3D {
    *  0 means this body has no wind/air coupling. */
   get airDragCoefficient(): number { return pv().airDragCoefficient[this.slot]; }
   set airDragCoefficient(v: number) { pv().airDragCoefficient[this.slot] = v; }
-  /** Per-body solid-contact tangent-damping multiplier. This is the runtime
-   *  expansion of locomotion ground.contact.tangentDamping, not propulsion coupling or
-   *  the locomotion profile's linear friction multiplier. */
-  get groundFrictionScale(): number { return pv().groundFrictionScale[this.slot]; }
-  set groundFrictionScale(v: number) { pv().groundFrictionScale[this.slot] = v; }
+  /** Per-body solid-contact tangent-velocity damping rate, in s^-1. This is
+   * separate from static friction and from fluid resistance. */
+  get groundTangentialDampingRate(): number { return pv().groundTangentialDampingRate[this.slot]; }
+  set groundTangentialDampingRate(v: number) { pv().groundTangentialDampingRate[this.slot] = v; }
 
   get sleepTicks(): number { return pv().sleepTicks[this.slot]; }
   set sleepTicks(v: number) { pv().sleepTicks[this.slot] = v; }
@@ -516,14 +512,14 @@ export class PhysicsEngine3D {
   }
 
   /** Dynamic sphere body (units). By default spawns at (x, y) with the
-   *  authored body-center height above terrain; callers that already
+   *  authored support-point offset above terrain; callers that already
    *  have an entity transform can pass its z so visual and physics
    *  initialization stay identical. */
   createUnitBody(
     x: number,
     y: number,
     physicsRadius: number,
-    bodyCenterHeight: number,
+    supportPointOffsetZ: number,
     supportSurface: UnitSupportSurface,
     mass: number,
     label: string,
@@ -531,13 +527,13 @@ export class PhysicsEngine3D {
     initialZ: number | undefined = undefined,
     surfaceNormal: SurfaceNormal | null = null,
     airDragCoefficient: number = 0,
-    groundFrictionScale: number = 1,
+    groundTangentialDampingRate: number = 0,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
     const z = initialZ !== undefined && Number.isFinite(initialZ)
       ? initialZ
-      : this.getGroundZ(x, y) + bodyCenterHeight;
+      : this.getGroundZ(x, y) + supportPointOffsetZ;
     const body = Body3D.allocate({
       shape: 'sphere',
       isStatic: false,
@@ -551,10 +547,10 @@ export class PhysicsEngine3D {
       halfX: undefined,
       halfY: undefined,
       halfZ: undefined,
-      groundOffset: bodyCenterHeight,
+      groundOffset: supportPointOffsetZ,
       restitution: 0.2,
       airDragCoefficient,
-      groundFrictionScale,
+      groundTangentialDampingRate,
       surfaceNormal,
     });
     if (supportSurface.kind === 'discTop') {
@@ -613,7 +609,7 @@ export class PhysicsEngine3D {
       groundOffset: undefined,
       restitution: 0.1,
       airDragCoefficient: 0,
-      groundFrictionScale: 0,
+      groundTangentialDampingRate: 0,
       surfaceNormal: null,
       entityId,
     });
@@ -1352,7 +1348,6 @@ export class PhysicsEngine3D {
   *  unsupported dynamic shape so integration cannot silently split back
   *  into a TypeScript fallback path. */
   private integrate(dtSec: number, count: number, wind: WindVector3): void {
-    const groundDamp = getUnitGroundFrictionDamp(dtSec);
     // Pool readiness was enforced in the constructor, so getSimWasm
     // is guaranteed defined here. Cast through `!` to keep the
     // call sites tight without re-checking.
@@ -1381,7 +1376,6 @@ export class PhysicsEngine3D {
         groundNormalsView,
         transitionsView,
         dtSec,
-        groundDamp,
         Number.isFinite(wind.x) ? wind.x : 0,
         Number.isFinite(wind.y) ? wind.y : 0,
         Number.isFinite(wind.z) ? wind.z : 0,

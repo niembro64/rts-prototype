@@ -185,7 +185,7 @@ function getUnitSupportTopZ(entity: Entity): number {
   assertContract(unit !== null, 'expected unit support host');
   const support = unit.supportSurface;
   assertContract(support.kind === 'discTop', 'expected discTop unit support');
-  return entity.transform.z - unit.bodyCenterHeight + support.topZ;
+  return entity.transform.z - unit.supportPointOffsetZ + support.topZ;
 }
 
 function assertSpawnedOnSupport(
@@ -197,7 +197,7 @@ function assertSpawnedOnSupport(
   assertContract(unit !== null, `${message}: spawned entity must be a unit`);
   assertNear(
     unitEntity.transform.z,
-    supportTopZ + unit.bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+    supportTopZ + unit.supportPointOffsetZ + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
     message,
   );
 }
@@ -217,7 +217,7 @@ function assertFactoryShellSpawnedAboveSupport(
   );
   assertNear(
     unitEntity.transform.z,
-    supportTopZ + unit.bodyCenterHeight + clearance,
+    supportTopZ + unit.supportPointOffsetZ + clearance,
     message,
   );
 }
@@ -425,10 +425,10 @@ function assertUnitSupportContract(): void {
   assertContract(carrier.unit !== null, 'test carrier must be a unit');
   carrier.unit.supportSurface = {
     kind: 'discTop',
-    topZ: carrier.unit.bodyCenterHeight + 18,
+    topZ: carrier.unit.supportPointOffsetZ + 18,
     radius: carrier.unit.radius.collision * 1.4,
   };
-  carrier.transform.z = dry.surface.groundZ + carrier.unit.bodyCenterHeight;
+  carrier.transform.z = dry.surface.groundZ + carrier.unit.supportPointOffsetZ;
   carrier.unit.velocityX = 3;
   carrier.unit.velocityY = -4;
   carrier.unit.velocityZ = 5;
@@ -900,8 +900,8 @@ function assertQueenProductionRingMountContract(): void {
       assertNear(pylon.mount.z, 0, `${queenId} pylon mount must stay on airborne roll-axis z`);
       assertNear(
         pylonVisual.localBaseZ,
-        queen.bodyCenterHeight,
-        `${queenId} pylon visual must sit at queen body-center height`,
+        queen.supportPointOffsetZ,
+        `${queenId} pylon visual must sit at queen support-point offset`,
       );
       assertNear(
         Math.abs(pylonVisual.localOffsetY - spawnMount.mount.y * queen.radius.other),

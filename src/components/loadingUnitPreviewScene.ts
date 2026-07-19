@@ -556,7 +556,7 @@ function getPreviewProductionRing(
   return {
     producedUnitBlueprintId,
     centerX: spawnMount.mount.x * radius,
-    centerY: blueprint.bodyCenterHeight - chassisLift,
+    centerY: blueprint.supportPointOffsetZ - chassisLift,
     centerZ: spawnMount.mount.y * radius,
     ringRadius: productionHoldRingRadiusForProducedUnit(producedUnitBlueprintId),
     ringOrientation: 'forward',
@@ -752,7 +752,7 @@ function buildPreviewMirrors(
     liftGroup,
     shieldPanels,
     shieldPanelTurret?.mount.x ?? 0,
-    (shieldPanelTurret?.mount.z ?? blueprint.bodyCenterHeight) - chassisLift,
+    (shieldPanelTurret?.mount.z ?? blueprint.supportPointOffsetZ) - chassisLift,
     shieldPanelTurret?.mount.y ?? 0,
     panelHalfSide,
     panelArmLength,

@@ -30,12 +30,12 @@ export type FactoryProductionPylonVisual = {
 };
 
 export function getFactoryShellSpawnClearanceAboveSurface(
-  bp: Pick<UnitBlueprint, 'bodyCenterHeight' | 'radius'>,
+  bp: Pick<UnitBlueprint, 'supportPointOffsetZ' | 'radius'>,
 ): number {
   return Math.max(
     FACTORY_SHELL_MIN_HOLD_CLEARANCE,
     UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
-    bp.bodyCenterHeight,
+    bp.supportPointOffsetZ,
     bp.radius.collision * 0.75,
   );
 }
@@ -51,7 +51,7 @@ function productionHoldLocalBaseZ(factory: Entity, produced: UnitBlueprint): num
   if (factory.buildingBlueprintId === 'towerFabricator') {
     return fabricatorTorusHoverHeight();
   }
-  if (factory.unit !== null) return factory.unit.bodyCenterHeight;
+  if (factory.unit !== null) return factory.unit.supportPointOffsetZ;
   return getFactoryShellSpawnClearanceAboveSurface(produced);
 }
 

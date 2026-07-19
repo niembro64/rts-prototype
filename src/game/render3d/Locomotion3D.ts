@@ -321,7 +321,7 @@ export type AirborneEmitterUpdate3D = {
 /** Vertical offset (world units) by which the unit's BODY (chassis,
  *  turrets, mirrors, shield) sits above the ground plane.
  *
- *  Runtime rule: the unit blueprint's `bodyCenterHeight` is the hard
+ *  Runtime rule: the unit blueprint's `supportPointOffsetZ` is the hard
  *  source of truth. Chassis lift is derived from it so visual body
  *  center, sim center, turret mounts, and locomotion attachment all
  *  live in the same terrain-up coordinate system.

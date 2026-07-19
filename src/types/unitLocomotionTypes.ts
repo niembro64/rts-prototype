@@ -1,52 +1,35 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
-export type UnitLocomotionPropulsionPhysics = {
-  /** Absolute propulsion force owned by this locomotion preset and medium. */
-  driveForce: number;
-  /** Coupling coefficient that converts drive force into directed thrust and
-   *  attitude torque in this medium. */
-  forceCoupling: number;
-};
-
 export type UnitLocomotionResistancePhysics = {
-  /** Fraction of the global linear damping rate for this medium, in [0, 1]. */
-  frictionMultiplier: number;
-  /** Quadratic fluid drag rate. */
-  quadraticDrag: number;
-  /** Drag multipliers in body-forward, body-lateral, and world-vertical axes. */
-  directionalScale: { forward: number; lateral: number; vertical: number };
-  /** Passive angular damping supplied by this occupied fluid. */
-  angularDrag: number;
+  /** Passive translational damping rate for this medium, in s^-1. */
+  linearDampingRate: number;
+  /** Passive angular damping rate for this medium, in s^-1. */
+  angularDampingRate: number;
 };
 
 export type UnitLocomotionLiftPhysics = {
-  /** Fraction of gravity passively countered at full medium occupancy, in [0, 1]. */
-  gravityCounterRatio: number;
-  /** Upward force sourced from the probe-averaged distance to the highest
-   *  solid ground/support surface. */
-  liftForceFromGroundSurface: number;
-  /** Upward force sourced from the probe-averaged distance to exposed water.
-   *  Always zero for water-medium physics. */
-  liftForceFromWaterSurface: number;
-  /** Per-tick uniform randomization of the full-medium surface lift force. */
-  randomizationAmount: number;
-  /** EMA weight applied before medium occupancy weighting, in [0, 1). */
-  ema: number;
+  /** Passive buoyancy as a fraction of body weight at full occupancy, in [0, 1]. */
+  buoyancyRatio: number;
+  /** Powered support thrust sourced from the probe-averaged distance to the
+   *  highest solid ground/support surface. */
+  surfaceFollowingForceFromGround: number;
+  /** Powered support thrust sourced from the probe-averaged distance to exposed
+   *  water. Always zero for water-medium physics. */
+  surfaceFollowingForceFromWater: number;
 };
 
 export type UnitLocomotionGroundPhysics = {
-  propulsion: UnitLocomotionPropulsionPhysics;
-  resistance: Pick<UnitLocomotionResistancePhysics, 'frictionMultiplier'>;
-  contact: {
-    /** Coulomb-style limit on force transmitted through solid contact. */
-    surfaceGrip: number;
-    /** Tangent damping scale for the support-contact solver. */
-    tangentDamping: number;
-  };
+  /** Maximum force the ground actuator can request before traction limits it. */
+  maxPropulsiveForce: number;
+  /** Coulomb static-friction coefficient for the contact patch. */
+  staticFrictionCoefficient: number;
+  /** Passive tangent-velocity damping rate while supported, in s^-1. */
+  tangentialDampingRate: number;
 };
 
 export type UnitLocomotionFluidPhysics = {
-  propulsion: UnitLocomotionPropulsionPhysics;
+  /** Maximum directed propulsion force supplied while occupying this medium. */
+  maxPropulsiveForce: number;
   resistance: UnitLocomotionResistancePhysics;
   lift: UnitLocomotionLiftPhysics;
 };
@@ -61,8 +44,8 @@ export type UnitLocomotionPhysics = {
   water: UnitLocomotionFluidPhysics;
 };
 
-/** The authored locomotion mechanism. It is the sole source for routing
- * permissions as well as the visual rig choice. */
+/** The authored locomotion mechanism, used for the visual rig and motion
+ * presentation. Route permissions are stored separately in navigation. */
 export type UnitLocomotionType =
   | 'wheels'
   | 'treads'
@@ -77,8 +60,7 @@ export type UnitLocomotionType =
 export type SurfaceProbeSetId = '1-point' | '5-points' | '8-points';
 
 export type UnitLocomotion = {
-  /** Authored mechanism. Pathfinding derives its routing permissions from
-   *  this value; physics remains driven by the expanded preset below. */
+  /** Authored mechanism used by presentation; physics is expanded below. */
   type: UnitLocomotionType;
   /** Explicit preset expanded into the complete applicable profile at load. */
   physicsPresetId: string;
@@ -86,26 +68,34 @@ export type UnitLocomotion = {
    *  zero propulsion makes a medium inert, while concepts that do not apply
    *  to that medium are structurally absent. */
   physics: UnitLocomotionPhysics;
-  /** Environmental failure policy, independent from propulsion/lift. */
-  survival: {
+  /** Environmental failure policy, independent from propulsion and lift. */
+  environmentalHazards: {
     waterFatal: boolean;
     fatalSubmergedFraction: number;
     fatalExposureSeconds: number;
   };
-  /** Air propulsion continues along the nose with no waypoint thrust input. */
-  idleAirDrive: boolean;
-  /** True when powered drive force can only act along the body's current
-   *  forward-facing direction instead of directly along the requested vector. */
-  forwardForceRequiresFacing: boolean;
-  /** True when non-flying drive force is scaled by the configured
-   *  facing-alignment curve before being applied. */
-  driveForceScalesWithFacing: boolean;
-  /** True when waypoint arrival keeps full directed thrust instead of
-   *  braking/slowing at final waypoints or honoring action speed limits. */
-  maintainFullThrustAtWaypoints: boolean;
-  /** Named, config-authored sampling layout used for air and water
-   *  surface-lift distance responses. */
-  surfaceProbeSetId: SurfaceProbeSetId;
+  actuator: {
+    /** Axis through which the locomotion actuator can apply horizontal force. */
+    propulsionAxis: 'bodyForward' | 'worldPlanar';
+  };
+  motionControl: {
+    /** Air propulsion continues along the nose with no waypoint thrust input. */
+    cruiseWhenUncommanded: boolean;
+    /** True when waypoint arrival keeps full directed thrust instead of
+     * braking/slowing at final waypoints or honoring action speed limits. */
+    maintainFullThrustAtWaypoints: boolean;
+  };
+  surfaceFollowing: {
+    /** Named sampling layout used for air and water support forces. */
+    altitudeProbeSetId: SurfaceProbeSetId;
+  };
+  /** Explicit gameplay route permissions. Physics still determines whether
+   *  the body can actually produce useful force in an allowed domain. */
+  navigation: {
+    allowOnGround: boolean;
+    allowInAir: boolean;
+    allowInWater: boolean;
+  };
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

@@ -56,7 +56,7 @@ export function runClientServerTargetStoreContractTest(): void {
   pooled.surfaceNormalX = 0.25;
   pooled.surfaceNormalY = 0.5;
   pooled.surfaceNormalZ = 0.75;
-  pooled.bodyCenterHeight = 6;
+  pooled.supportPointOffsetZ = 6;
   pooled.predictedGroundContact = false;
   pooled.orientation = { x: 1, y: 2, z: 3, w: 4 };
   pooled.angularVelocityX = 7;
@@ -80,7 +80,7 @@ export function runClientServerTargetStoreContractTest(): void {
     reused.surfaceNormalX === 0 && reused.surfaceNormalY === 0 && reused.surfaceNormalZ === 1,
     'pooled target resets surface normal',
   );
-  assertContract(reused.bodyCenterHeight === 0, 'pooled target resets body height');
+  assertContract(reused.supportPointOffsetZ === 0, 'pooled target resets body height');
   assertContract(reused.predictedGroundContact, 'pooled target resets ground contact');
   assertContract(reused.orientation === null, 'pooled target clears orientation');
   assertContract(

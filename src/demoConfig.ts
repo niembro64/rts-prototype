@@ -133,7 +133,7 @@ export const DEMO_CONFIG = {
   centerSpawnSectorFraction: demoConfig.centerSpawnSectorFraction,
 
   /**
-   * DEMO BATTLE opening-wave body-center height above the local terrain or
+   * DEMO BATTLE opening-wave support-point offset above the local terrain or
    * water surface. Random sampling chooses (x, y), then this fixed clearance
    * determines z before the unit's physics body is created.
    */

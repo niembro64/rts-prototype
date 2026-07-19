@@ -726,9 +726,9 @@ pub struct SwimConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionLiftPhysics {
-    pub liftForceFromGroundSurface: f64,
-    pub liftForceFromWaterSurface: Option<f64>,
-    pub gravityCounterRatio: f64,
+    pub surfaceFollowingForceFromGround: f64,
+    pub surfaceFollowingForceFromWater: Option<f64>,
+    pub buoyancyRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -743,7 +743,7 @@ pub struct UnitUnitLocomotionBlueprintPhysics {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionSurvivalPolicy {
+pub struct UnitLocomotionEnvironmentalHazardPolicy {
     pub waterFatal: bool,
     pub fatalSubmergedFraction: f64,
     pub fatalExposureSeconds: f64,
@@ -796,7 +796,7 @@ pub struct UnitLocomotionBlueprintWheels {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: WheelConfig,
 }
 
@@ -805,7 +805,7 @@ pub struct UnitLocomotionBlueprintTreads {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: TreadConfig,
 }
 
@@ -814,7 +814,7 @@ pub struct UnitLocomotionBlueprintAmphibiousTreads {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: TreadConfig,
 }
 
@@ -823,7 +823,7 @@ pub struct UnitLocomotionBlueprintLegs {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: LegConfig,
 }
 
@@ -832,7 +832,7 @@ pub struct UnitLocomotionBlueprintFlippers {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: FlipperConfig,
 }
 
@@ -841,7 +841,7 @@ pub struct UnitLocomotionBlueprintHover {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: HoverConfig,
 }
 
@@ -850,7 +850,7 @@ pub struct UnitLocomotionBlueprintFlying {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: FlyingConfig,
 }
 
@@ -859,7 +859,7 @@ pub struct UnitLocomotionBlueprintSubmarine {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: SwimConfig,
 }
 
@@ -868,7 +868,7 @@ pub struct UnitLocomotionBlueprintDive {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
-    pub survival: UnitLocomotionSurvivalPolicy,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: FlyingConfig,
 }
 
@@ -1035,7 +1035,6 @@ pub struct UnitBlueprint {
     pub base: EntityBaseLedger,
     pub hp: f64,
     pub radius: UnitRadiusConfig,
-    pub bodyCenterHeight: f64,
     pub supportSurface: UnitSupportSurface,
     pub fullVisionRadius: f64,
     pub sensors: SensorCapabilityConfig,
@@ -1059,6 +1058,7 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel1Shots: Vec<String>,
     pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
     pub preventLockOnIfMyTeamIsAboveMe: Option<bool>,
+    pub supportPointOffsetZ: f64,
 }
 
 pub type RayBlueprintId = String;

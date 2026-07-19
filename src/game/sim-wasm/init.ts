@@ -543,7 +543,7 @@ import __wbg_init, {
   pool_restitution_ptr,
   pool_ground_offset_ptr,
   pool_air_drag_coefficient_ptr,
-  pool_ground_friction_scale_ptr,
+  pool_ground_tangential_damping_rate_ptr,
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
   pool_entity_id_ptr,
@@ -855,7 +855,6 @@ export interface SimWasm {
     groundNormals: Float64Array,
     sleepTransitionsOut: Uint32Array,
     dtSec: number,
-    groundDamp: number,
     windX: number,
     windY: number,
     windZ: number,
@@ -974,10 +973,6 @@ export interface SimWasm {
     outThrustY: Float64Array,
     outActive: Uint8Array,
     dtSec: number,
-    thrustMultiplier: number,
-    forceScale: number,
-    referenceMass: number,
-    unitMassMultiplier: number,
     controlRadiusMin: number,
     responseTimeSec: number,
     minAccel: number,
@@ -986,10 +981,6 @@ export interface SimWasm {
    *  blended by air/water occupancy and ground contact/load. */
   readonly unitEffectiveDriveAcceleration: (
     bodySlot: number,
-    thrustMultiplier: number,
-    forceScale: number,
-    referenceMass: number,
-    unitMassMultiplier: number,
   ) => number;
   /** TS-WASM-01B2 — body-pool-backed per-unit ground-normal EMA.
    *  Rust walks occupied dynamic body slots, samples the installed
@@ -1030,17 +1021,7 @@ export interface SimWasm {
     windX: number,
     windY: number,
     windZ: number,
-    thrustMultiplier: number,
-    forceScale: number,
-    referenceMass: number,
-    hoverOrientationK: number,
-    hoverOrientationC: number,
-    groundAngularDampingRate: number,
-    driveAlignmentZeroForceDot: number,
-    driveAlignmentFullForceDot: number,
-    driveAlignmentResponseExponent: number,
-    surfaceLiftMinimumDistanceWorld: number,
-    surfaceLiftForceMultiplier: number,
+    surfaceFollowingMinimumDistanceWorld: number,
   ) => number;
   readonly unitForceSurfaceLiftDistanceResponse: (
     distanceToSurfaceWorld: number,
@@ -3129,8 +3110,8 @@ export interface SnapshotEncodeApi {
     radiusOther: number,
     radiusHitbox: number,
     radiusCollision: number,
-    hasBodyCenterHeight: number,
-    bodyCenterHeight: number,
+    hasSupportPointOffsetZ: number,
+    supportPointOffsetZ: number,
     hasMass: number,
     mass: number,
     hasSurfaceNormal: number,
@@ -3608,17 +3589,12 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
  *  rebuild; the Rust side caches mask + CC by version pair. */
 export interface PathfinderApi {
   /** Compute and cache-source the standstill and uphill ground envelopes.
-   *  The output includes force, grip, coupling, stability, and acceleration
+   *  The output includes direct-force, traction, stability, and acceleration
    *  terms consumed by pathfinding's directional edge evaluator. */
   computeLocomotionClimbProfile: (
-    groundDriveForce: number,
-    groundForceCoupling: number,
-    surfaceGrip: number,
-    mass: number,
-    thrustMultiplier: number,
-    forceScale: number,
-    referenceMass: number,
-    unitMassMultiplier: number,
+    groundMaxPropulsiveForce: number,
+    staticFrictionCoefficient: number,
+    physicsMass: number,
     gravity: number,
     forceSafetyRatio: number,
     stabilityMaxSlopeDeg: number,
@@ -3663,7 +3639,7 @@ export interface PathfinderApi {
     /** Safety-reduced drive acceleration used for hard feasibility. */
     safeDriveAccel: number,
     /** Coulomb surface-grip coefficient used for cross-slope force budget. */
-    surfaceGrip: number,
+    staticFrictionCoefficient: number,
     /** Every route surface must first support a standstill. When true
      *  (SYMMETRIC mode), the stricter climb gate also applies downhill; when
      *  false (DIRECTIONAL), downhill uses only the standstill envelope. */
@@ -3781,7 +3757,7 @@ export interface BodyPoolViews {
   restitution: Float64Array;
   groundOffset: Float64Array;
   airDragCoefficient: Float64Array;
-  groundFrictionScale: Float64Array;
+  groundTangentialDampingRate: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;
   entityId: Int32Array;
@@ -3910,7 +3886,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         restitution: pool_restitution_ptr(),
         groundOffset: pool_ground_offset_ptr(),
         airDragCoefficient: pool_air_drag_coefficient_ptr(),
-        groundFrictionScale: pool_ground_friction_scale_ptr(),
+        groundTangentialDampingRate: pool_ground_tangential_damping_rate_ptr(),
         sleepTicks: pool_sleep_ticks_ptr(),
         flags: pool_flags_ptr(),
         entityId: pool_entity_id_ptr(),
@@ -3948,7 +3924,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           pool.restitution = f64View(ptrs.restitution);
           pool.groundOffset = f64View(ptrs.groundOffset);
           pool.airDragCoefficient = f64View(ptrs.airDragCoefficient);
-          pool.groundFrictionScale = f64View(ptrs.groundFrictionScale);
+          pool.groundTangentialDampingRate = f64View(ptrs.groundTangentialDampingRate);
           pool.sleepTicks = f64View(ptrs.sleepTicks);
           pool.flags = u8View(ptrs.flags);
           pool.entityId = i32View(ptrs.entityId);
@@ -3978,7 +3954,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         restitution: f64View(ptrs.restitution),
         groundOffset: f64View(ptrs.groundOffset),
         airDragCoefficient: f64View(ptrs.airDragCoefficient),
-        groundFrictionScale: f64View(ptrs.groundFrictionScale),
+        groundTangentialDampingRate: f64View(ptrs.groundTangentialDampingRate),
         sleepTicks: f64View(ptrs.sleepTicks),
         flags: u8View(ptrs.flags),
         entityId: i32View(ptrs.entityId),

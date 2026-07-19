@@ -840,8 +840,8 @@ export class Render3DEntities {
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
-      // sim.z - bodyCenterHeight: for a ground-resting unit sim.z is
-      // terrain + bodyCenterHeight, so the group sits at the terrain
+      // sim.z - supportPointOffsetZ: for a ground-resting unit sim.z is
+      // terrain + supportPointOffsetZ, so the group sits at the terrain
       // surface and the chassis/turret meshes stack from there.
       setVector3IfChanged(m.group.position, tx, groundZ, ty);
       setQuaternionIfChanged(
@@ -939,7 +939,7 @@ export class Render3DEntities {
         turretRows,
         turrets,
         bodyMaterialized,
-        unitRows.bodyCenterHeight[row],
+        unitRows.supportPointOffsetZ[row],
         this._smoothLiftedPos,
         this._smoothParentQuat,
         chassisTilted ? _invTiltQuat : undefined,

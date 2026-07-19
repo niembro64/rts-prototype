@@ -13,11 +13,8 @@ import {
   surfaceProbeUsesWaterSurface,
 } from '../sim/surfaceProbeAggregation';
 import {
-  UNIT_LOCOMOTION_FORCE_SCALE,
-  SURFACE_LIFT_FORCE_MULTIPLIER,
-  SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-  SURFACE_LIFT_PROBE_AGGREGATION_MODE,
-  getUnitLocomotionEffectiveFriction,
+  SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
+  SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
 } from '../sim/unitLocomotionPresetConfig';
 import {
   UNIT_GROUND_CONTACT_EPSILON,
@@ -31,17 +28,10 @@ import {
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
 import type { SurfaceLiftProbeDebugFrame } from '@/types/game';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
-import {
-  UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
-  UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
-  UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
-  UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
-  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-} from '../../config';
 import { createWorldSupportSurface } from '../sim/supportSurface';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import {
@@ -58,7 +48,6 @@ import {
 import {
   ENTITY_STATE_KIND_UNIT,
   ENTITY_STATE_NO_BODY_SLOT,
-  BODY_FLAG_SLEEPING,
   getSimWasm,
   UNIT_FORCE_BATCH_STRIDE,
   type SimWasm,
@@ -67,13 +56,8 @@ import { codeToUnitBlueprintId } from '../../types/network';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
 import { forEachSurfaceProbePoint } from '../sim/surfaceProbeSets';
 
-// Legacy WASM ABI knobs. Unit attitude now derives stiffness/damping from
-// torque authority, inertia, and active medium damping in the force kernel.
-const HOVER_ORIENTATION_K = 30;
-const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
 
 const UF_ROW_DIR_X = 0;
@@ -82,10 +66,8 @@ const UF_ROW_ROTATION = 2;
 // Row 3 reserved; Rust reads effective mass from BodyPool.
 // Rows 0-1 and 47-48 are filled by the kernel from native entity-state
 // drive-input rows when an entity slot is available.
-// Rows 4-10 (ground drive plus air lift family, including the hover EMA
-// accumulator) are filled by the kernel from wasm-side native state — see
-// ensureUnitForceProfileTable.
-const UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE = 11;
+// Profile-owned locomotion values are filled by the kernel from its native
+// blueprint table. TypeScript supplies only dynamic terrain and probe input.
 const UF_ROW_GROUND_Z = 12;
 const UF_ROW_NORMAL_X = 13;
 const UF_ROW_NORMAL_Y = 14;
@@ -98,15 +80,10 @@ const UF_ROW_ORIENTATION_W = 22;
 const UF_ROW_OMEGA_X = 23;
 const UF_ROW_OMEGA_Y = 24;
 const UF_ROW_OMEGA_Z = 25;
-// Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
-// Rows 36-45 (ground/air/water friction, water force/coupling, swim family,
-// including the swim EMA accumulator) and rows 49-50 (air force/coupling) are
-// filled by the kernel from wasm-side native state.
-const UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
-const UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE = 55;
-const UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE = 56;
+const UF_ROW_AIR_SURFACE_FOLLOWING_PROPOSED_FORCE = 55;
+const UF_ROW_WATER_SURFACE_FOLLOWING_PROPOSED_FORCE = 56;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -114,23 +91,18 @@ const UF_FLAG_IS_AIRBORNE = 1 << 2;
 const UF_FLAG_BLOCKED_OR_DEAD = 1 << 3;
 const UF_FLAG_HAS_EXTERNAL_FORCE = 1 << 4;
 const UF_FLAG_HAS_ORIENTATION = 1 << 7;
-const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
-const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
+const UF_FLAG_PROPULSION_BODY_FORWARD = 1 << 8;
 const UF_FLAG_ON_GROUND = 1 << 10;
-const UF_FLAG_HAS_AIR_SURFACE_LIFT_PROPOSED_FORCE = 1 << 14;
-const UF_FLAG_HAS_WATER_SURFACE_LIFT_PROPOSED_FORCE = 1 << 15;
-const UF_PROFILE_FLAG_IDLE_AIR_DRIVE = 1 << 16;
+const UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_PROPOSED_FORCE = 1 << 14;
+const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPOSED_FORCE = 1 << 15;
+const UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED = 1 << 16;
 const UF_PROFILE_FLAG_WATER_FATAL = 1 << 20;
-const UF_PROFILE_FLAG_AIR_SURFACE_LIFT_RANDOM_ACTIVE = 1 << 21;
-const UF_PROFILE_FLAG_WATER_SURFACE_LIFT_RANDOM_ACTIVE = 1 << 22;
 
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
 const UF_OUT_ROTATION_DIRTY = 1 << 2;
 const UF_OUT_HOVER_ORIENTATION = 1 << 3;
 const UF_OUT_WOKE_BODY = 1 << 4;
 const UF_OUT_ENTITY_STATE_SYNCED = 1 << 5;
-const UNIT_GROUND_ANGULAR_DAMPING_RATE =
-  dragRateFromVelocityFrictionPer60HzFrame(UNIT_GROUND_FRICTION_PER_60HZ_FRAME);
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
 
@@ -179,7 +151,7 @@ function ensureForceBatchCapacity(count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 32;
+const UF_PROFILE_STRIDE = 16;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -199,47 +171,27 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
     if (unitBlueprintId !== null) {
       const loco = getUnitLocomotion(unitBlueprintId);
       const { ground, air, water } = loco.physics;
-      const groundFriction = getUnitLocomotionEffectiveFriction('ground', ground);
-      const airFriction = getUnitLocomotionEffectiveFriction('air', air);
-      const waterFriction = getUnitLocomotionEffectiveFriction('water', water);
       signature += [
         codeCount,
-        ground.propulsion.driveForce,
-        ground.propulsion.forceCoupling,
-        air.lift.gravityCounterRatio,
-        air.lift.liftForceFromGroundSurface,
-        air.lift.liftForceFromWaterSurface,
-        air.lift.randomizationAmount,
-        air.lift.ema,
-        groundFriction,
-        airFriction,
-        water.propulsion.driveForce,
-        water.propulsion.forceCoupling,
-        waterFriction,
-        water.lift.gravityCounterRatio,
-        water.lift.liftForceFromGroundSurface,
-        water.lift.randomizationAmount,
-        water.lift.ema,
-        air.propulsion.driveForce,
-        air.propulsion.forceCoupling,
-        ground.contact.surfaceGrip,
-        air.resistance.quadraticDrag,
-        air.resistance.directionalScale.forward,
-        air.resistance.directionalScale.lateral,
-        air.resistance.directionalScale.vertical,
-        air.resistance.angularDrag,
-        water.resistance.quadraticDrag,
-        water.resistance.directionalScale.forward,
-        water.resistance.directionalScale.lateral,
-        water.resistance.directionalScale.vertical,
-        water.resistance.angularDrag,
-        loco.survival.fatalSubmergedFraction,
-        loco.survival.fatalExposureSeconds,
-        ground.contact.tangentDamping,
-        loco.forwardForceRequiresFacing ? 1 : 0,
-        loco.driveForceScalesWithFacing ? 1 : 0,
-        loco.idleAirDrive ? 1 : 0,
-        loco.survival.waterFatal ? 1 : 0,
+        ground.maxPropulsiveForce,
+        ground.staticFrictionCoefficient,
+        ground.tangentialDampingRate,
+        air.maxPropulsiveForce,
+        air.lift.buoyancyRatio,
+        air.lift.surfaceFollowingForceFromGround,
+        air.lift.surfaceFollowingForceFromWater,
+        air.resistance.linearDampingRate,
+        air.resistance.angularDampingRate,
+        water.maxPropulsiveForce,
+        water.lift.buoyancyRatio,
+        water.lift.surfaceFollowingForceFromGround,
+        water.resistance.linearDampingRate,
+        water.resistance.angularDampingRate,
+        loco.environmentalHazards.fatalSubmergedFraction,
+        loco.environmentalHazards.fatalExposureSeconds,
+        loco.actuator.propulsionAxis,
+        loco.motionControl.cruiseWhenUncommanded ? 1 : 0,
+        loco.environmentalHazards.waterFatal ? 1 : 0,
       ].join(':') + '|';
     }
     codeCount++;
@@ -285,53 +237,27 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     if (unitBlueprintId === null) continue;
     const loco = getUnitLocomotion(unitBlueprintId);
     const { ground, air, water } = loco.physics;
-    const groundFriction = getUnitLocomotionEffectiveFriction('ground', ground);
-    const airFriction = getUnitLocomotionEffectiveFriction('air', air);
-    const waterFriction = getUnitLocomotionEffectiveFriction('water', water);
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = ground.propulsion.driveForce;
-    values[base + 1] = ground.propulsion.forceCoupling;
-    values[base + 2] = air.lift.gravityCounterRatio;
-    values[base + 3] = air.lift.liftForceFromGroundSurface;
-    values[base + 4] = air.lift.randomizationAmount;
-    values[base + 5] = air.lift.ema;
-    values[base + 6] = groundFriction;
-    values[base + 7] = airFriction;
-    values[base + 8] = water.propulsion.driveForce;
-    values[base + 9] = water.propulsion.forceCoupling;
-    values[base + 10] = waterFriction;
-    values[base + 11] = water.lift.gravityCounterRatio;
-    values[base + 12] = water.lift.liftForceFromGroundSurface;
-    values[base + 13] = water.lift.randomizationAmount;
-    values[base + 14] = water.lift.ema;
-    values[base + 15] = air.propulsion.driveForce;
-    values[base + 16] = air.propulsion.forceCoupling;
-    values[base + 17] = ground.contact.surfaceGrip;
-    values[base + 18] = air.resistance.quadraticDrag;
-    values[base + 19] = air.resistance.directionalScale.forward;
-    values[base + 20] = air.resistance.directionalScale.lateral;
-    values[base + 21] = air.resistance.directionalScale.vertical;
-    values[base + 22] = air.resistance.angularDrag;
-    values[base + 23] = water.resistance.quadraticDrag;
-    values[base + 24] = water.resistance.directionalScale.forward;
-    values[base + 25] = water.resistance.directionalScale.lateral;
-    values[base + 26] = water.resistance.directionalScale.vertical;
-    values[base + 27] = water.resistance.angularDrag;
-    values[base + 28] = loco.survival.fatalSubmergedFraction;
-    values[base + 29] = loco.survival.fatalExposureSeconds;
-    values[base + 30] = ground.contact.tangentDamping;
-    values[base + 31] = air.lift.liftForceFromWaterSurface;
+    values[base + 0] = ground.maxPropulsiveForce;
+    values[base + 1] = ground.staticFrictionCoefficient;
+    values[base + 2] = ground.tangentialDampingRate;
+    values[base + 3] = air.maxPropulsiveForce;
+    values[base + 4] = air.lift.buoyancyRatio;
+    values[base + 5] = air.lift.surfaceFollowingForceFromGround;
+    values[base + 6] = air.lift.surfaceFollowingForceFromWater;
+    values[base + 7] = air.resistance.linearDampingRate;
+    values[base + 8] = air.resistance.angularDampingRate;
+    values[base + 9] = water.maxPropulsiveForce;
+    values[base + 10] = water.lift.buoyancyRatio;
+    values[base + 11] = water.lift.surfaceFollowingForceFromGround;
+    values[base + 12] = water.resistance.linearDampingRate;
+    values[base + 13] = water.resistance.angularDampingRate;
+    values[base + 14] = loco.environmentalHazards.fatalSubmergedFraction;
+    values[base + 15] = loco.environmentalHazards.fatalExposureSeconds;
     flags[code] =
-      (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
-      (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0) |
-      (loco.idleAirDrive ? UF_PROFILE_FLAG_IDLE_AIR_DRIVE : 0) |
-      (loco.survival.waterFatal ? UF_PROFILE_FLAG_WATER_FATAL : 0) |
-      (air.lift.randomizationAmount > 0
-        ? UF_PROFILE_FLAG_AIR_SURFACE_LIFT_RANDOM_ACTIVE
-        : 0) |
-      (water.lift.randomizationAmount > 0 && water.lift.liftForceFromGroundSurface > 0
-        ? UF_PROFILE_FLAG_WATER_SURFACE_LIFT_RANDOM_ACTIVE
-        : 0);
+      (loco.actuator.propulsionAxis === 'bodyForward' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
+      (loco.motionControl.cruiseWhenUncommanded ? UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED : 0) |
+      (loco.environmentalHazards.waterFatal ? UF_PROFILE_FLAG_WATER_FATAL : 0);
   }
   _unitForceProfileTableUploaded = true;
   _unitForceProfileSignature = profileSignature?.signature ?? '';
@@ -476,7 +402,6 @@ export class UnitForceSystem {
       const bodyZ = bodyViews.posZ[bodySlot];
       const bodyGroundOffset = bodyViews.groundOffset[bodySlot];
       const bodyRadius = bodyViews.radius[bodySlot] || 10;
-      const bodySleeping = (bodyViews.flags[bodySlot] & BODY_FLAG_SLEEPING) !== 0;
       const base = count * UNIT_FORCE_BATCH_STRIDE;
       let profileFlags = 0;
       let hasProfileFlags = false;
@@ -538,41 +463,18 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
       _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
-      // Fully-abstracted medium force profile (all opt-in, default 0/inert).
-      // Per-blueprint locomotion metadata is uploaded once to the native force
-      // profile table. Fall back to the object graph only if the slot slab is
-      // unavailable or stale.
-      let idleAirDrive = (profileFlags & UF_PROFILE_FLAG_IDLE_AIR_DRIVE) !== 0;
-      let forwardForceRequiresFacing =
-        (profileFlags & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING) !== 0;
-      let hoverRandomActive = (profileFlags & UF_PROFILE_FLAG_AIR_SURFACE_LIFT_RANDOM_ACTIVE) !== 0;
-      let swimRandomActive = (profileFlags & UF_PROFILE_FLAG_WATER_SURFACE_LIFT_RANDOM_ACTIVE) !== 0;
-      if (!hasProfileFlags) {
-        const loco = unit.locomotion;
-        idleAirDrive = loco.idleAirDrive;
-        forwardForceRequiresFacing = loco.forwardForceRequiresFacing;
-        hoverRandomActive = loco.physics.air.lift.randomizationAmount > 0;
-        swimRandomActive =
-          loco.physics.water.lift.randomizationAmount > 0 &&
-          loco.physics.water.lift.liftForceFromGroundSurface > 0;
-      }
+      const cruiseWhenUncommanded = hasProfileFlags
+        ? (profileFlags & UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED) !== 0
+        : unit.locomotion.motionControl.cruiseWhenUncommanded;
+      const propulsionBodyForward = hasProfileFlags
+        ? (profileFlags & UF_FLAG_PROPULSION_BODY_FORWARD) !== 0
+        : unit.locomotion.actuator.propulsionAxis === 'bodyForward';
       const airGroundLiftAuthored =
-        unit.locomotion.physics.air.lift.liftForceFromGroundSurface > 0;
+        unit.locomotion.physics.air.lift.surfaceFollowingForceFromGround > 0;
       const airWaterSurfaceLiftAuthored =
-        unit.locomotion.physics.air.lift.liftForceFromWaterSurface > 0;
+        unit.locomotion.physics.air.lift.surfaceFollowingForceFromWater > 0;
       const waterGroundLiftAuthored =
-        unit.locomotion.physics.water.lift.liftForceFromGroundSurface > 0;
-      const airLiftAuthored =
-        unit.locomotion.physics.air.lift.gravityCounterRatio > 0 ||
-        airGroundLiftAuthored ||
-        airWaterSurfaceLiftAuthored;
-      const waterLiftAuthored =
-        unit.locomotion.physics.water.lift.gravityCounterRatio > 0 ||
-        waterGroundLiftAuthored;
-      // Ground/air/water friction, water drive force/coupling, the swim family,
-      // swim EMA accumulator, and air angular damping rate are filled by the
-      // kernel from native profile/runtime tables.
-
+        unit.locomotion.physics.water.lift.surfaceFollowingForceFromGround > 0;
       let flags = 0;
 
       const unitHp = hasEntityState ? entityViews!.hp[entitySlot] : unit.hp;
@@ -585,9 +487,7 @@ export class UnitForceSystem {
         continue;
       }
 
-      // The facing flags (forwardForceRequiresFacing /
-      // driveForceScalesWithFacing) are blueprint constants OR'd in by
-      // the kernel from the profile table.
+      // Actuator axis is a blueprint constant OR'd in by the kernel profile.
       const dirX = hasEntityState ? entityViews!.unitThrustDirX[entitySlot] : unit.thrustDirX ?? 0;
       const dirY = hasEntityState ? entityViews!.unitThrustDirY[entitySlot] : unit.thrustDirY ?? 0;
       if (!hasEntityState) {
@@ -604,7 +504,7 @@ export class UnitForceSystem {
       if (surfaceContact) flags |= UF_FLAG_ON_GROUND;
 
       const mediumLiftActive = !buildInProgress;
-      if (idleAirDrive && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
+      if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
       if (mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE;
 
       const hasExternalForce =
@@ -620,17 +520,8 @@ export class UnitForceSystem {
       }
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
-      _forceRows[base + UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE] = 0;
-      _forceRows[base + UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE] = 0;
-
-      if (mediumLiftActive && airLiftAuthored) {
-        if (hoverRandomActive) {
-          const hoverRandomSample = this.world.nextRandom(
-            entity.ownership?.playerId ?? (0 as PlayerId),
-          );
-          _forceRows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE] = hoverRandomSample;
-        }
-      }
+      _forceRows[base + UF_ROW_AIR_SURFACE_FOLLOWING_PROPOSED_FORCE] = 0;
+      _forceRows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPOSED_FORCE] = 0;
       if (
         mediumLiftActive &&
         (airGroundLiftAuthored || waterGroundLiftAuthored || airWaterSurfaceLiftAuthored)
@@ -649,7 +540,7 @@ export class UnitForceSystem {
         let probeDirY = 0;
         const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
         if (hasThrustDir) {
-          if (forwardForceRequiresFacing) {
+          if (propulsionBodyForward) {
             probeDirX = DMath.cos(yaw);
             probeDirY = DMath.sin(yaw);
           } else {
@@ -663,7 +554,7 @@ export class UnitForceSystem {
         }
 
         this.sampleSurfaceLiftAggregatedProposedForces(
-          unit.locomotion.surfaceProbeSetId,
+          unit.locomotion.surfaceFollowing.altitudeProbeSetId,
           bodyZ,
           bodyX,
           bodyY,
@@ -673,23 +564,23 @@ export class UnitForceSystem {
           supportSurface.groundZ,
           entity.id,
           !terrainOnlySupport,
-          unit.locomotion.physics.air.lift.liftForceFromGroundSurface,
-          unit.locomotion.physics.air.lift.liftForceFromWaterSurface,
-          unit.locomotion.physics.water.lift.liftForceFromGroundSurface,
+          unit.locomotion.physics.air.lift.surfaceFollowingForceFromGround,
+          unit.locomotion.physics.air.lift.surfaceFollowingForceFromWater,
+          unit.locomotion.physics.water.lift.surfaceFollowingForceFromGround,
           airLiftMediumActive,
           waterLiftMediumActive,
           _surfaceLiftProposedForces,
           debugFrame,
         );
         if (airGroundLiftAuthored || airWaterSurfaceLiftAuthored) {
-          _forceRows[base + UF_ROW_AIR_SURFACE_LIFT_PROPOSED_FORCE] =
+          _forceRows[base + UF_ROW_AIR_SURFACE_FOLLOWING_PROPOSED_FORCE] =
             _surfaceLiftProposedForces.air;
-          flags |= UF_FLAG_HAS_AIR_SURFACE_LIFT_PROPOSED_FORCE;
+          flags |= UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_PROPOSED_FORCE;
         }
         if (waterGroundLiftAuthored) {
-          _forceRows[base + UF_ROW_WATER_SURFACE_LIFT_PROPOSED_FORCE] =
+          _forceRows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPOSED_FORCE] =
             _surfaceLiftProposedForces.water;
-          flags |= UF_FLAG_HAS_WATER_SURFACE_LIFT_PROPOSED_FORCE;
+          flags |= UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPOSED_FORCE;
         }
       }
 
@@ -747,35 +638,11 @@ export class UnitForceSystem {
         _forceRows[base + UF_ROW_OMEGA_Y] = omega.y;
         _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
       }
-      const omegaX = _forceRows[base + UF_ROW_OMEGA_X];
-      const omegaY = _forceRows[base + UF_ROW_OMEGA_Y];
-      const omegaZ = _forceRows[base + UF_ROW_OMEGA_Z];
-      const hasAngularMotionForSleep = omegaX * omegaX + omegaY * omegaY + omegaZ * omegaZ > 1e-12;
       flags |= UF_FLAG_HAS_ORIENTATION;
-
-      const mediumLiftForceActive = mediumLiftActive && (airLiftAuthored || waterLiftAuthored);
-      const willRustSkipSleeping =
-        bodySleeping &&
-        !idleAirDrive &&
-        !hasThrustDir &&
-        !hasExternalForce &&
-        !hasAngularMotionForSleep &&
-        !mediumLiftForceActive;
       if (surfaceContact) {
         if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
-      }
-
-      if (
-        !willRustSkipSleeping &&
-        mediumLiftActive &&
-        waterLiftAuthored &&
-        swimRandomActive
-      ) {
-        _forceRows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE] = this.world.nextRandom(
-          entity.ownership?.playerId ?? (0 as PlayerId),
-        );
       }
 
       _forceFlags[count] = flags;
@@ -799,17 +666,7 @@ export class UnitForceSystem {
         windX,
         windY,
         windZ,
-        this.world.thrustMultiplier,
-        UNIT_LOCOMOTION_FORCE_SCALE,
-        UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-        HOVER_ORIENTATION_K,
-        HOVER_ORIENTATION_C,
-        UNIT_GROUND_ANGULAR_DAMPING_RATE,
-        UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
-        UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
-        UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
-        SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
-        SURFACE_LIFT_FORCE_MULTIPLIER,
+        SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
       );
     });
 
@@ -1043,7 +900,7 @@ export class UnitForceSystem {
     this.probeSupportIndexReady = true;
   }
 
-  private surfaceLiftForceMultiplierFromSurfaceZ(
+  private surfaceFollowingResponseFromSurfaceZ(
     bodyZ: number,
     surfaceZ: number,
   ): number {
@@ -1073,9 +930,9 @@ export class UnitForceSystem {
     directGroundZ: number,
     ignoreEntityId: EntityId,
     includeSupportSurfaces: boolean,
-    airLiftForceFromGroundSurface: number,
-    airLiftForceFromWaterSurface: number,
-    waterLiftForceFromGroundSurface: number,
+    airSurfaceFollowingForceFromGround: number,
+    airSurfaceFollowingForceFromWater: number,
+    waterSurfaceFollowingForceFromGround: number,
     airLiftMediumActive: boolean,
     waterLiftMediumActive: boolean,
     out: { air: number; water: number },
@@ -1100,10 +957,10 @@ export class UnitForceSystem {
         );
         if (debugFrame !== undefined) {
           const usesGroundDistance =
-            (airLiftMediumActive && !waterCovered && airLiftForceFromGroundSurface > 0) ||
-            (waterLiftMediumActive && waterLiftForceFromGroundSurface > 0);
+            (airLiftMediumActive && !waterCovered && airSurfaceFollowingForceFromGround > 0) ||
+            (waterLiftMediumActive && waterSurfaceFollowingForceFromGround > 0);
           const usesWaterDistance =
-            airLiftMediumActive && waterCovered && airLiftForceFromWaterSurface > 0;
+            airLiftMediumActive && waterCovered && airSurfaceFollowingForceFromWater > 0;
           debugFrame.samples.push({
             x,
             y,
@@ -1117,40 +974,40 @@ export class UnitForceSystem {
             usesWaterDistance,
           });
         }
-        if (!waterCovered && airLiftForceFromGroundSurface > 0) {
-          const forceMultiplier = this.surfaceLiftForceMultiplierFromSurfaceZ(
+        if (!waterCovered && airSurfaceFollowingForceFromGround > 0) {
+          const forceMultiplier = this.surfaceFollowingResponseFromSurfaceZ(
             bodyZ,
             groundZ,
           );
-          const proposedForce = airLiftForceFromGroundSurface * forceMultiplier;
+          const proposedForce = airSurfaceFollowingForceFromGround * forceMultiplier;
           airProposedForceAggregate = accumulateSurfaceProbeProposedForce(
             airProposedForceAggregate,
             proposedForce,
-            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
           );
         }
-        if (waterCovered && airLiftForceFromWaterSurface > 0) {
-          const forceMultiplier = this.surfaceLiftForceMultiplierFromSurfaceZ(
+        if (waterCovered && airSurfaceFollowingForceFromWater > 0) {
+          const forceMultiplier = this.surfaceFollowingResponseFromSurfaceZ(
             bodyZ,
             WATER_LEVEL,
           );
-          const proposedForce = airLiftForceFromWaterSurface * forceMultiplier;
+          const proposedForce = airSurfaceFollowingForceFromWater * forceMultiplier;
           airProposedForceAggregate = accumulateSurfaceProbeProposedForce(
             airProposedForceAggregate,
             proposedForce,
-            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
           );
         }
-        if (waterLiftForceFromGroundSurface > 0) {
-          const forceMultiplier = this.surfaceLiftForceMultiplierFromSurfaceZ(
+        if (waterSurfaceFollowingForceFromGround > 0) {
+          const forceMultiplier = this.surfaceFollowingResponseFromSurfaceZ(
             bodyZ,
             groundZ,
           );
-          const proposedForce = waterLiftForceFromGroundSurface * forceMultiplier;
+          const proposedForce = waterSurfaceFollowingForceFromGround * forceMultiplier;
           waterProposedForceAggregate = accumulateSurfaceProbeProposedForce(
             waterProposedForceAggregate,
             proposedForce,
-            SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
           );
         }
       },
@@ -1163,16 +1020,16 @@ export class UnitForceSystem {
       );
       const airSurfaceZ = waterCovered ? WATER_LEVEL : directGroundZ;
       const airLiftForce = waterCovered
-        ? airLiftForceFromWaterSurface
-        : airLiftForceFromGroundSurface;
+        ? airSurfaceFollowingForceFromWater
+        : airSurfaceFollowingForceFromGround;
       out.air = airLiftForce > 0
-        ? airLiftForce * this.surfaceLiftForceMultiplierFromSurfaceZ(
+        ? airLiftForce * this.surfaceFollowingResponseFromSurfaceZ(
           bodyZ,
           airSurfaceZ,
         )
         : 0;
-      out.water = waterLiftForceFromGroundSurface > 0
-        ? waterLiftForceFromGroundSurface * this.surfaceLiftForceMultiplierFromSurfaceZ(
+      out.water = waterSurfaceFollowingForceFromGround > 0
+        ? waterSurfaceFollowingForceFromGround * this.surfaceFollowingResponseFromSurfaceZ(
           bodyZ,
           directGroundZ,
         )
@@ -1182,12 +1039,12 @@ export class UnitForceSystem {
     out.air = finalizeSurfaceProbeProposedForce(
       airProposedForceAggregate,
       sampleCount,
-      SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+      SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
     );
     out.water = finalizeSurfaceProbeProposedForce(
       waterProposedForceAggregate,
       sampleCount,
-      SURFACE_LIFT_PROBE_AGGREGATION_MODE,
+      SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
     );
   }
 

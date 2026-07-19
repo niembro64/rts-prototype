@@ -250,9 +250,9 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateSensorCapabilityConfig(bp.unitBlueprintId, bp.sensors);
   assertValidShotArmingRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
 
-  if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
+  if (!Number.isFinite(bp.supportPointOffsetZ) || bp.supportPointOffsetZ < 0) {
     throw new Error(
-      `Invalid bodyCenterHeight for ${bp.unitBlueprintId}: bodyCenterHeight must be a finite non-negative number`,
+      `Invalid supportPointOffsetZ for ${bp.unitBlueprintId}: supportPointOffsetZ must be a finite non-negative number`,
     );
   }
 

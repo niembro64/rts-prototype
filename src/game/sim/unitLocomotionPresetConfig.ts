@@ -1,14 +1,11 @@
 import type {
   SurfaceProbeSetId,
   UnitLocomotionGroundPhysics,
-  UnitLocomotionLiftPhysics,
-  UnitLocomotionPropulsionPhysics,
   UnitLocomotionResistancePhysics,
 } from '@/types/unitLocomotionTypes';
 import rawUnitLocomotionConfig from './unitLocomotionConfig.json';
 import {
   assertUnitLocomotionBoolean,
-  assertUnitLocomotionClosedUnitFraction,
   assertUnitLocomotionNonNegativeFinite,
   assertUnitLocomotionPositiveFinite,
   assertUnitLocomotionUnitFraction,
@@ -19,77 +16,68 @@ export const UNIT_LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 export type UnitLocomotionMediumName = (typeof UNIT_LOCOMOTION_MEDIUM_NAMES)[number];
 export type UnitLocomotionFluidMediumName = Exclude<UnitLocomotionMediumName, 'ground'>;
 
-export const UNIT_LOCOMOTION_PROPULSION_FIELDS = ['driveForce', 'forceCoupling'] as const;
-export const UNIT_LOCOMOTION_FLUID_RESISTANCE_FIELDS = [
-  'frictionMultiplier',
-  'quadraticDrag',
-  'directionalScale',
-  'angularDrag',
-] as const;
-export const UNIT_LOCOMOTION_SURFACE_LIFT_RESPONSE_FIELDS = ['randomizationAmount', 'ema'] as const;
-export const UNIT_LOCOMOTION_CONTACT_FIELDS = ['surfaceGrip', 'tangentDamping'] as const;
+/** The JSON field is deliberately named `surfaceLiftResponse` to preserve the
+ * authored contract. The zero-only values mean it has no runtime dynamics. */
+export const UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS = ['randomizationAmount', 'ema'] as const;
 
-export type UnitLocomotionPresetPropulsionPhysics = UnitLocomotionPropulsionPhysics;
-export type UnitLocomotionPresetGroundPhysics = UnitLocomotionGroundPhysics;
+export type UnitLocomotionSurfaceFollowingResponse = {
+  randomizationAmount: number;
+  ema: number;
+};
+
+export type UnitLocomotionFluidResistanceProfile = UnitLocomotionResistancePhysics;
 
 export type UnitLocomotionPresetFluidPhysics = {
-  propulsion: UnitLocomotionPresetPropulsionPhysics;
-  resistance: UnitLocomotionResistancePhysics;
-  surfaceLiftResponse: Pick<UnitLocomotionLiftPhysics, 'randomizationAmount' | 'ema'>;
+  maxPropulsiveForce: number;
+  resistanceProfileId: string;
+  /** Kept explicit and fixed at zero: surface following is deterministic and
+   * unfiltered. */
+  surfaceLiftResponse: UnitLocomotionSurfaceFollowingResponse;
 };
 
 export type UnitLocomotionPresetConfig = {
-  physics: {
-    forwardForceRequiresFacing: boolean;
-    driveForceScalesWithFacing: boolean;
-    maintainFullThrustAtWaypoints: boolean;
-    surfaceProbeSetId: SurfaceProbeSetId;
-    idleAirDrive: boolean;
-    ground: UnitLocomotionPresetGroundPhysics;
+  actuator: {
+    propulsionAxis: 'bodyForward' | 'worldPlanar';
+    ground: UnitLocomotionGroundPhysics;
     air: UnitLocomotionPresetFluidPhysics;
     water: UnitLocomotionPresetFluidPhysics;
   };
+  motionControl: {
+    maintainFullThrustAtWaypoints: boolean;
+    cruiseWhenUncommanded: boolean;
+  };
+  surfaceFollowing: {
+    altitudeProbeSetId: SurfaceProbeSetId;
+  };
+  navigation: {
+    allowOnGround: boolean;
+    allowedFluidMedia: readonly UnitLocomotionFluidMediumName[];
+  };
 };
 
-type LocomotionMediumDefaults = Record<
-  UnitLocomotionMediumName,
-  { resistance: { linearFriction: number } }
->;
-
-export const SURFACE_LIFT_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
-export type SurfaceLiftProbeAggregationMode =
-  (typeof SURFACE_LIFT_PROBE_AGGREGATION_MODES)[number];
+export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
+export type SurfaceFollowingProbeAggregationMode =
+  (typeof SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES)[number];
 
 type UnitLocomotionConfig = {
-  forceScale: number;
-  surfaceLiftDefaults: {
+  surfaceFollowingDefaults: {
     minimumDistanceWorld: number;
-    forceMultiplier: number;
-    probeAggregation: SurfaceLiftProbeAggregationMode;
+    probeAggregation: SurfaceFollowingProbeAggregationMode;
   };
-  mediumDefaults: LocomotionMediumDefaults;
+  fluidResistanceProfiles: Record<string, UnitLocomotionFluidResistanceProfile>;
   presets: Record<string, UnitLocomotionPresetConfig>;
 };
 
-function assertObject(
-  label: string,
-  value: unknown,
-): asserts value is Record<string, unknown> {
+function assertObject(label: string, value: unknown): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid unitLocomotionConfig.json: missing ${label} object`);
   }
 }
 
-function assertExactKeys(
-  label: string,
-  value: Record<string, unknown>,
-  expected: readonly string[],
-): void {
+function assertExactKeys(label: string, value: Record<string, unknown>, expected: readonly string[]): void {
   const expectedSet = new Set(expected);
   for (const key of Object.keys(value)) {
-    if (!expectedSet.has(key)) {
-      throw new Error(`Invalid unitLocomotionConfig.json: unexpected ${label}.${key}`);
-    }
+    if (!expectedSet.has(key)) throw new Error(`Invalid unitLocomotionConfig.json: unexpected ${label}.${key}`);
   }
   for (const key of expected) {
     if (!Object.prototype.hasOwnProperty.call(value, key)) {
@@ -98,44 +86,37 @@ function assertExactKeys(
   }
 }
 
-function isSurfaceLiftProbeAggregationMode(
-  value: unknown,
-): value is SurfaceLiftProbeAggregationMode {
+function isSurfaceFollowingProbeAggregationMode(value: unknown): value is SurfaceFollowingProbeAggregationMode {
   return typeof value === 'string' &&
-    (SURFACE_LIFT_PROBE_AGGREGATION_MODES as readonly string[]).includes(value);
+    (SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES as readonly string[]).includes(value);
 }
 
-function assertPropulsion(label: string, value: unknown): void {
+function assertSurfaceFollowingResponse(label: string, value: unknown): void {
   assertObject(label, value);
-  assertExactKeys(label, value, UNIT_LOCOMOTION_PROPULSION_FIELDS);
-  assertUnitLocomotionNonNegativeFinite(`${label}.driveForce`, value.driveForce as number);
-  assertUnitLocomotionNonNegativeFinite(`${label}.forceCoupling`, value.forceCoupling as number);
-}
-
-function assertFrictionMultiplier(label: string, value: unknown): void {
-  assertObject(label, value);
-  assertExactKeys(label, value, ['frictionMultiplier']);
-  assertUnitLocomotionClosedUnitFraction(
-    `${label}.frictionMultiplier`,
-    value.frictionMultiplier as number,
-  );
+  assertExactKeys(label, value, UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS);
+  assertUnitLocomotionUnitFraction(`${label}.randomizationAmount`, value.randomizationAmount as number);
+  assertUnitLocomotionUnitFraction(`${label}.ema`, value.ema as number);
+  if (value.randomizationAmount !== 0 || value.ema !== 0) {
+    throw new Error(`Invalid unitLocomotionConfig.json: ${label} must be { randomizationAmount: 0, ema: 0 }`);
+  }
 }
 
 function assertGroundPhysics(presetId: string, value: unknown): void {
-  const label = `presets.${presetId}.physics.ground`;
+  const label = `presets.${presetId}.actuator.ground`;
   assertObject(label, value);
-  assertExactKeys(label, value, ['propulsion', 'resistance', 'contact']);
-  assertPropulsion(`${label}.propulsion`, value.propulsion);
-  assertFrictionMultiplier(`${label}.resistance`, value.resistance);
-  assertObject(`${label}.contact`, value.contact);
-  assertExactKeys(`${label}.contact`, value.contact, UNIT_LOCOMOTION_CONTACT_FIELDS);
+  assertExactKeys(label, value, [
+    'maxPropulsiveForce',
+    'staticFrictionCoefficient',
+    'tangentialDampingRate',
+  ]);
+  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
   assertUnitLocomotionNonNegativeFinite(
-    `${label}.contact.surfaceGrip`,
-    value.contact.surfaceGrip as number,
+    `${label}.staticFrictionCoefficient`,
+    value.staticFrictionCoefficient as number,
   );
   assertUnitLocomotionNonNegativeFinite(
-    `${label}.contact.tangentDamping`,
-    value.contact.tangentDamping as number,
+    `${label}.tangentialDampingRate`,
+    value.tangentialDampingRate as number,
   );
 }
 
@@ -143,183 +124,155 @@ function assertFluidPhysics(
   presetId: string,
   medium: UnitLocomotionFluidMediumName,
   value: unknown,
+  resistanceProfiles: Readonly<Record<string, UnitLocomotionFluidResistanceProfile>>,
 ): void {
-  const label = `presets.${presetId}.physics.${medium}`;
+  const label = `presets.${presetId}.actuator.${medium}`;
   assertObject(label, value);
-  assertExactKeys(label, value, ['propulsion', 'resistance', 'surfaceLiftResponse']);
-  assertPropulsion(`${label}.propulsion`, value.propulsion);
-  assertObject(`${label}.resistance`, value.resistance);
-  assertExactKeys(`${label}.resistance`, value.resistance, UNIT_LOCOMOTION_FLUID_RESISTANCE_FIELDS);
-  assertUnitLocomotionClosedUnitFraction(
-    `${label}.resistance.frictionMultiplier`,
-    value.resistance.frictionMultiplier as number,
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    `${label}.resistance.quadraticDrag`,
-    value.resistance.quadraticDrag as number,
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    `${label}.resistance.angularDrag`,
-    value.resistance.angularDrag as number,
-  );
-  assertObject(`${label}.resistance.directionalScale`, value.resistance.directionalScale);
-  assertExactKeys(
-    `${label}.resistance.directionalScale`,
-    value.resistance.directionalScale,
-    ['forward', 'lateral', 'vertical'],
-  );
-  for (const axis of ['forward', 'lateral', 'vertical'] as const) {
-    assertUnitLocomotionNonNegativeFinite(
-      `${label}.resistance.directionalScale.${axis}`,
-      value.resistance.directionalScale[axis] as number,
-    );
+  assertExactKeys(label, value, ['maxPropulsiveForce', 'resistanceProfileId', 'surfaceLiftResponse']);
+  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
+  if (typeof value.resistanceProfileId !== 'string' || resistanceProfiles[value.resistanceProfileId] === undefined) {
+    throw new Error(`Invalid unitLocomotionConfig.json: unknown ${label}.resistanceProfileId`);
   }
-  assertObject(`${label}.surfaceLiftResponse`, value.surfaceLiftResponse);
-  assertExactKeys(
-    `${label}.surfaceLiftResponse`,
-    value.surfaceLiftResponse,
-    UNIT_LOCOMOTION_SURFACE_LIFT_RESPONSE_FIELDS,
-  );
-  assertUnitLocomotionUnitFraction(
-    `${label}.surfaceLiftResponse.randomizationAmount`,
-    value.surfaceLiftResponse.randomizationAmount as number,
-  );
-  assertUnitLocomotionUnitFraction(
-    `${label}.surfaceLiftResponse.ema`,
-    value.surfaceLiftResponse.ema as number,
-  );
+  assertSurfaceFollowingResponse(`${label}.surfaceLiftResponse`, value.surfaceLiftResponse);
 }
 
-function assertPreset(presetId: string, preset: UnitLocomotionPresetConfig | undefined): void {
+function assertNavigation(label: string, value: unknown): void {
+  assertObject(label, value);
+  assertExactKeys(label, value, ['allowOnGround', 'allowedFluidMedia']);
+  assertUnitLocomotionBoolean(`${label}.allowOnGround`, value.allowOnGround);
+  if (!Array.isArray(value.allowedFluidMedia)) {
+    throw new Error(`Invalid unitLocomotionConfig.json: ${label}.allowedFluidMedia must be an array`);
+  }
+  const seen = new Set<string>();
+  for (const medium of value.allowedFluidMedia) {
+    if ((medium !== 'air' && medium !== 'water') || seen.has(medium)) {
+      throw new Error(`Invalid unitLocomotionConfig.json: invalid ${label}.allowedFluidMedia`);
+    }
+    seen.add(medium);
+  }
+}
+
+function assertPreset(
+  presetId: string,
+  preset: UnitLocomotionPresetConfig | undefined,
+  resistanceProfiles: Readonly<Record<string, UnitLocomotionFluidResistanceProfile>>,
+): void {
   if (!preset || typeof preset !== 'object') {
     throw new Error(`Invalid unitLocomotionConfig.json: missing presets.${presetId} config`);
   }
   assertExactKeys(`presets.${presetId}`, preset as unknown as Record<string, unknown>, [
-    'physics',
+    'actuator',
+    'motionControl',
+    'surfaceFollowing',
+    'navigation',
   ]);
-  assertObject(`presets.${presetId}.physics`, preset.physics);
-  assertExactKeys(`presets.${presetId}.physics`, preset.physics, [
-    'forwardForceRequiresFacing',
-    'driveForceScalesWithFacing',
-    'maintainFullThrustAtWaypoints',
-    'surfaceProbeSetId',
-    'idleAirDrive',
+  assertObject(`presets.${presetId}.actuator`, preset.actuator);
+  assertExactKeys(`presets.${presetId}.actuator`, preset.actuator, [
+    'propulsionAxis',
     'ground',
     'air',
     'water',
   ]);
-  assertUnitLocomotionBoolean(
-    `presets.${presetId}.physics.forwardForceRequiresFacing`,
-    preset.physics.forwardForceRequiresFacing,
-  );
-  assertUnitLocomotionBoolean(
-    `presets.${presetId}.physics.driveForceScalesWithFacing`,
-    preset.physics.driveForceScalesWithFacing,
-  );
-  assertUnitLocomotionBoolean(
-    `presets.${presetId}.physics.maintainFullThrustAtWaypoints`,
-    preset.physics.maintainFullThrustAtWaypoints,
-  );
-  if (!isSurfaceProbeSetId(preset.physics.surfaceProbeSetId)) {
-    throw new Error(
-      `Invalid unit locomotion presets.${presetId}.physics.surfaceProbeSetId: ${String(preset.physics.surfaceProbeSetId)}`,
-    );
+  if (
+    preset.actuator.propulsionAxis !== 'bodyForward' &&
+    preset.actuator.propulsionAxis !== 'worldPlanar'
+  ) {
+    throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);
   }
-  assertUnitLocomotionBoolean(`presets.${presetId}.physics.idleAirDrive`, preset.physics.idleAirDrive);
-  assertGroundPhysics(presetId, preset.physics.ground);
-  assertFluidPhysics(presetId, 'air', preset.physics.air);
-  assertFluidPhysics(presetId, 'water', preset.physics.water);
+  assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
+  assertExactKeys(`presets.${presetId}.motionControl`, preset.motionControl, [
+    'maintainFullThrustAtWaypoints',
+    'cruiseWhenUncommanded',
+  ]);
+  assertUnitLocomotionBoolean(
+    `presets.${presetId}.motionControl.maintainFullThrustAtWaypoints`,
+    preset.motionControl.maintainFullThrustAtWaypoints,
+  );
+  assertUnitLocomotionBoolean(
+    `presets.${presetId}.motionControl.cruiseWhenUncommanded`,
+    preset.motionControl.cruiseWhenUncommanded,
+  );
+  assertObject(`presets.${presetId}.surfaceFollowing`, preset.surfaceFollowing);
+  assertExactKeys(`presets.${presetId}.surfaceFollowing`, preset.surfaceFollowing, [
+    'altitudeProbeSetId',
+  ]);
+  if (!isSurfaceProbeSetId(preset.surfaceFollowing.altitudeProbeSetId)) {
+    throw new Error(`Invalid unit locomotion presets.${presetId}.surfaceFollowing.altitudeProbeSetId`);
+  }
+  assertNavigation(`presets.${presetId}.navigation`, preset.navigation);
+  assertGroundPhysics(presetId, preset.actuator.ground);
+  assertFluidPhysics(presetId, 'air', preset.actuator.air, resistanceProfiles);
+  assertFluidPhysics(presetId, 'water', preset.actuator.water, resistanceProfiles);
 }
 
 function readUnitLocomotionConfig(): UnitLocomotionConfig {
   const config = rawUnitLocomotionConfig as unknown as Partial<UnitLocomotionConfig>;
   assertExactKeys('root', config as Record<string, unknown>, [
-    'forceScale',
-    'surfaceLiftDefaults',
-    'mediumDefaults',
+    'surfaceFollowingDefaults',
+    'fluidResistanceProfiles',
     'presets',
   ]);
-  assertUnitLocomotionPositiveFinite('forceScale', config.forceScale ?? NaN);
-  const surfaceLiftDefaults = config.surfaceLiftDefaults;
-  if (!surfaceLiftDefaults || typeof surfaceLiftDefaults !== 'object') {
-    throw new Error('Invalid unitLocomotionConfig.json: missing surfaceLiftDefaults config');
+  const defaults = config.surfaceFollowingDefaults;
+  assertObject('surfaceFollowingDefaults', defaults);
+  assertExactKeys('surfaceFollowingDefaults', defaults, ['minimumDistanceWorld', 'probeAggregation']);
+  assertUnitLocomotionPositiveFinite('surfaceFollowingDefaults.minimumDistanceWorld', defaults.minimumDistanceWorld as number);
+  if (!isSurfaceFollowingProbeAggregationMode(defaults.probeAggregation)) {
+    throw new Error('Invalid unitLocomotionConfig.json: invalid surfaceFollowingDefaults.probeAggregation');
   }
-  assertExactKeys('surfaceLiftDefaults', surfaceLiftDefaults as Record<string, unknown>, [
-    'minimumDistanceWorld',
-    'forceMultiplier',
-    'probeAggregation',
-  ]);
-  assertUnitLocomotionPositiveFinite(
-    'surfaceLiftDefaults.minimumDistanceWorld',
-    surfaceLiftDefaults.minimumDistanceWorld,
-  );
-  assertUnitLocomotionPositiveFinite(
-    'surfaceLiftDefaults.forceMultiplier',
-    surfaceLiftDefaults.forceMultiplier,
-  );
-  const probeAggregation = surfaceLiftDefaults.probeAggregation;
-  if (!isSurfaceLiftProbeAggregationMode(probeAggregation)) {
-    throw new Error(
-      'Invalid unit locomotion surfaceLiftDefaults.probeAggregation: expected ' +
-        `${SURFACE_LIFT_PROBE_AGGREGATION_MODES.join(', ')}, got ${String(probeAggregation)}`,
-    );
-  }
-  const mediumDefaults = config.mediumDefaults;
-  assertObject('mediumDefaults', mediumDefaults);
-  assertExactKeys('mediumDefaults', mediumDefaults, UNIT_LOCOMOTION_MEDIUM_NAMES);
-  for (const medium of UNIT_LOCOMOTION_MEDIUM_NAMES) {
-    const defaults = mediumDefaults[medium];
-    assertObject(`mediumDefaults.${medium}`, defaults);
-    assertExactKeys(`mediumDefaults.${medium}`, defaults, ['resistance']);
-    assertObject(`mediumDefaults.${medium}.resistance`, defaults.resistance);
-    assertExactKeys(`mediumDefaults.${medium}.resistance`, defaults.resistance, ['linearFriction']);
+  const rawProfiles = config.fluidResistanceProfiles;
+  assertObject('fluidResistanceProfiles', rawProfiles);
+  const resistanceProfiles: Record<string, UnitLocomotionFluidResistanceProfile> = {};
+  for (const [profileId, profile] of Object.entries(rawProfiles)) {
+    assertObject(`fluidResistanceProfiles.${profileId}`, profile);
+    assertExactKeys(`fluidResistanceProfiles.${profileId}`, profile, [
+      'linearDampingRate',
+      'angularDampingRate',
+    ]);
     assertUnitLocomotionNonNegativeFinite(
-      `mediumDefaults.${medium}.resistance.linearFriction`,
-      defaults.resistance.linearFriction as number,
+      `fluidResistanceProfiles.${profileId}.linearDampingRate`,
+      profile.linearDampingRate as number,
     );
+    assertUnitLocomotionNonNegativeFinite(
+      `fluidResistanceProfiles.${profileId}.angularDampingRate`,
+      profile.angularDampingRate as number,
+    );
+    resistanceProfiles[profileId] = {
+      linearDampingRate: profile.linearDampingRate as number,
+      angularDampingRate: profile.angularDampingRate as number,
+    };
   }
   const rawPresets = config.presets;
   assertObject('presets', rawPresets);
   const presets: Record<string, UnitLocomotionPresetConfig> = {};
   for (const [presetId, preset] of Object.entries(rawPresets)) {
-    assertPreset(presetId, preset);
-    presets[presetId] = preset;
+    assertPreset(presetId, preset as UnitLocomotionPresetConfig, resistanceProfiles);
+    presets[presetId] = preset as UnitLocomotionPresetConfig;
   }
   return {
-    forceScale: config.forceScale!,
-    surfaceLiftDefaults: {
-      minimumDistanceWorld: surfaceLiftDefaults.minimumDistanceWorld,
-      forceMultiplier: surfaceLiftDefaults.forceMultiplier,
-      probeAggregation,
+    surfaceFollowingDefaults: {
+      minimumDistanceWorld: defaults.minimumDistanceWorld as number,
+      probeAggregation: defaults.probeAggregation as SurfaceFollowingProbeAggregationMode,
     },
-    mediumDefaults: mediumDefaults as LocomotionMediumDefaults,
+    fluidResistanceProfiles: resistanceProfiles,
     presets,
   };
 }
 
 const UNIT_LOCOMOTION_CONFIG = readUnitLocomotionConfig();
 
-export const UNIT_LOCOMOTION_FORCE_SCALE = UNIT_LOCOMOTION_CONFIG.forceScale;
-export const SURFACE_LIFT_MINIMUM_DISTANCE_WORLD =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.minimumDistanceWorld;
-export const SURFACE_LIFT_FORCE_MULTIPLIER =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.forceMultiplier;
-export const SURFACE_LIFT_PROBE_AGGREGATION_MODE =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.probeAggregation;
+export const SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD =
+  UNIT_LOCOMOTION_CONFIG.surfaceFollowingDefaults.minimumDistanceWorld;
+export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE =
+  UNIT_LOCOMOTION_CONFIG.surfaceFollowingDefaults.probeAggregation;
 
-export const UNIT_LOCOMOTION_FRICTION_BY_MEDIUM: Readonly<Record<UnitLocomotionMediumName, number>> =
-  Object.freeze(Object.fromEntries(
-    UNIT_LOCOMOTION_MEDIUM_NAMES.map((medium) => [
-      medium,
-      UNIT_LOCOMOTION_CONFIG.mediumDefaults[medium].resistance.linearFriction,
-    ]),
-  ) as Record<UnitLocomotionMediumName, number>);
-
-export function getUnitLocomotionEffectiveFriction(
-  medium: UnitLocomotionMediumName,
-  physics: { resistance: { frictionMultiplier: number } },
-): number {
-  return UNIT_LOCOMOTION_FRICTION_BY_MEDIUM[medium] * physics.resistance.frictionMultiplier;
+export function getUnitLocomotionFluidResistance(
+  profileId: string,
+): UnitLocomotionFluidResistanceProfile {
+  const profile = UNIT_LOCOMOTION_CONFIG.fluidResistanceProfiles[profileId];
+  if (profile === undefined) {
+    throw new Error(`Invalid unit locomotion resistanceProfileId "${profileId}"`);
+  }
+  return profile;
 }
 
 export function getUnitLocomotionPreset(presetId: string): UnitLocomotionPresetConfig {

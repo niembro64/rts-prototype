@@ -52,7 +52,7 @@ import {
   decodeNetworkUnitActions,
   decodeNetworkUnitBlueprintId,
   readNetworkCombatFireState,
-  readNetworkUnitBodyCenterHeight,
+  readNetworkUnitSupportPointOffsetZ,
   readNetworkUnitMass,
   readNetworkUnitMoveState,
   readNetworkUnitRadius,
@@ -433,9 +433,9 @@ function createUnitFromNetwork(
     u,
     blueprintRadius,
   );
-  const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
-    unitBlueprint.bodyCenterHeight !== undefined
-    ? unitBlueprint.bodyCenterHeight
+  const blueprintSupportPointOffsetZ = unitBlueprint !== undefined &&
+    unitBlueprint.supportPointOffsetZ !== undefined
+    ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
   const fullVisionRadius = unitBlueprint !== undefined &&
     unitBlueprint.fullVisionRadius !== undefined
@@ -462,9 +462,9 @@ function createUnitFromNetwork(
       hp: unitHp !== null ? unitHp.curr : 100,
       maxHp: unitHp !== null ? unitHp.max : 100,
       radius,
-      bodyCenterHeight: readNetworkUnitBodyCenterHeight(
+      supportPointOffsetZ: readNetworkUnitSupportPointOffsetZ(
         u,
-        blueprintBodyCenterHeight,
+        blueprintSupportPointOffsetZ,
       ),
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
       fullVisionRadius,
@@ -631,9 +631,9 @@ function createUnitFromTypedFullWireRow(
   // Typed full rows omit immutable radii; hydrate every radius, including
   // ARM, through the same blueprint fallback as DTO snapshots.
   const radius = readNetworkUnitRadius(null, blueprintRadius);
-  const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
-    unitBlueprint.bodyCenterHeight !== undefined
-    ? unitBlueprint.bodyCenterHeight
+  const blueprintSupportPointOffsetZ = unitBlueprint !== undefined &&
+    unitBlueprint.supportPointOffsetZ !== undefined
+    ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
   const fullVisionRadius = unitBlueprint !== undefined &&
     unitBlueprint.fullVisionRadius !== undefined
@@ -666,7 +666,7 @@ function createUnitFromTypedFullWireRow(
       hp: values[base + 8],
       maxHp: values[base + 9],
       radius,
-      bodyCenterHeight: blueprintBodyCenterHeight,
+      supportPointOffsetZ: blueprintSupportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
       fullVisionRadius,
       sensors: { ...sensors },
