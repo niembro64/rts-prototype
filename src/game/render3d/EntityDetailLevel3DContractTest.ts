@@ -162,6 +162,13 @@ export function runEntityDetailLevel3DContractTest(): void {
 
   // ── BAR-style icon cross-fade band ────────────────────────────────
   assertContract(
+    Math.abs(
+      detailLevelForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX) -
+        detailRungMinLevel(DETAIL_RUNG_CLOSE),
+    ) <= 1e-6,
+    'icon fade starts exactly at the close→mid rung boundary (MID-tier onset)',
+  );
+  assertContract(
     lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX) === 0 &&
       lodProxyFadeAlphaForScreenRadius(10000) === 0,
     'no icon overlay at/above the fade-start screen radius',

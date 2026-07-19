@@ -105,19 +105,20 @@ const FULL_SCREEN_RADIUS_PX = Math.max(
   GLYPH_SCREEN_RADIUS_PX + 1,
   finitePositiveOr(detailConfig.screenRadiusPx?.full, 26),
 );
-// BAR-style icon cross-fade band: the proxy glyph fades in over the model
-// while the projected screen radius falls from iconFadeStart toward glyph.
-export const ICON_FADE_START_SCREEN_RADIUS_PX = Math.max(
-  GLYPH_SCREEN_RADIUS_PX,
-  finitePositiveOr(detailConfig.screenRadiusPx?.iconFadeStart, 8),
-);
-export const ICON_FADE_MIN_ALPHA = clamp01(
-  finitePositiveOr(detailConfig.proxyFade?.minAlpha, 0.25),
-);
 const MID_RUNG_MIN_LEVEL = clamp01(finitePositiveOr(detailConfig.rungMinLevel?.mid, 0.32));
 const CLOSE_RUNG_MIN_LEVEL = Math.max(
   MID_RUNG_MIN_LEVEL,
   clamp01(finitePositiveOr(detailConfig.rungMinLevel?.close, 0.62)),
+);
+// BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph
+// starts fading in over the model at the close→mid rung boundary radius —
+// the moment geometry drops to the MID tier — and reaches full opacity at
+// the glyph radius, where the FAR model hard-cuts.
+export const ICON_FADE_START_SCREEN_RADIUS_PX =
+  GLYPH_SCREEN_RADIUS_PX +
+  CLOSE_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+export const ICON_FADE_MIN_ALPHA = clamp01(
+  finitePositiveOr(detailConfig.proxyFade?.minAlpha, 0.25),
 );
 export const PLASMA_MEDIUM_RUNG_MIN_LEVEL = clamp01(
   finitePositiveOr(detailConfig.plasmaRungMinLevel?.medium, 0.08),
@@ -265,13 +266,14 @@ export function detailLevelForRadiusDistance(
 
 /**
  * BAR-style icon cross-fade alpha from the projected screen radius.
- * 0 while the entity is comfortably large on screen (no icon), then a
+ * 0 while the model still shows CLOSE-tier geometry (no icon), then a
  * linear ramp from ICON_FADE_MIN_ALPHA (icons are unrecognisable when
  * fainter — BAR pops them in at ~25%) up to 1 as the radius falls from
- * the fade-start threshold to the glyph threshold. The MODEL is never
- * faded: it stays fully opaque under the icon and stops drawing
- * entirely once the latched rung reaches GLYPH (where the opaque glyph
- * has fully covered it).
+ * the close→mid rung boundary (MID-tier onset) to the glyph threshold,
+ * where the FAR model hard-cuts. The MODEL is never faded: it stays
+ * fully opaque under the icon and stops drawing entirely once the
+ * latched rung reaches GLYPH (where the now-fully-opaque glyph has
+ * covered it).
  */
 export function lodProxyFadeAlphaForScreenRadius(screenRadiusPx: number): number {
   if (!ENTITY_DETAIL_ENABLED) return 0;
