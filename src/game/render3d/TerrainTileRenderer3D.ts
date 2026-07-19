@@ -90,11 +90,15 @@ import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
 import { UNIT_BLUEPRINTS, getUnitLocomotion } from '../sim/blueprints/units';
-import { computeLocomotionClimbProfile } from '../sim/pathfindingMobility';
+import { pathTerrainFilterForLocomotion } from '../sim/pathfindingTraversal';
 import {
-  PATHFINDING_STABILITY_MIN_NORMAL_Z,
-  PATHFINDING_WATER_BUFFER_CELLS,
-} from '../sim/pathfindingTuning';
+  createPathfindingDebugGrid,
+  createPathfindingDebugTraversal,
+  ensurePathfindingDebugGrid,
+  rebuildPathfindingDebugGrid,
+  rebuildPathfindingDebugPassability,
+  type PathfindingDebugGrid,
+} from '../sim/pathfindingDebugGrid';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
@@ -301,6 +305,7 @@ function normalizeTerrainNormal(normal: SimTerrainNormal): SimTerrainNormal | nu
 
 type PathingCellTerrainSample = {
   hasWater: boolean;
+  fullySubmerged: boolean;
   minNormalZ: number;
   centerHeight: number;
 };
@@ -347,6 +352,7 @@ function samplePathingCellTerrain(
   const centerSample = getTerrainMeshSample(midX, midZ, mapWidth, mapHeight);
   const centerHeight = terrainMeshHeightFromSample(centerSample);
   let hasWater = centerHeight < WATER_LEVEL;
+  let fullySubmerged = hasWater;
   let minNormalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(centerSample).nz));
   for (let i = 0; i < PATHING_CELL_EDGE_SAMPLE_POINTS.length; i++) {
     const point = PATHING_CELL_EDGE_SAMPLE_POINTS[i];
@@ -355,19 +361,11 @@ function samplePathingCellTerrain(
     const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight);
     const height = terrainMeshHeightFromSample(sample);
     if (height < WATER_LEVEL) hasWater = true;
+    else fullySubmerged = false;
     const normalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(sample).nz));
     if (normalZ < minNormalZ) minNormalZ = normalZ;
   }
-  return { hasWater, minNormalZ, centerHeight };
-}
-
-function requiredPathingNormalZ(unitMinNormalZ: number | null | undefined): number {
-  return Math.max(
-    PATHFINDING_STABILITY_MIN_NORMAL_Z,
-    unitMinNormalZ !== null && unitMinNormalZ !== undefined && Number.isFinite(unitMinNormalZ)
-      ? unitMinNormalZ
-      : 0,
-  );
+  return { hasWater, fullySubmerged, minNormalZ, centerHeight };
 }
 
 function terrainTriangleTouchesRect(
@@ -587,8 +585,9 @@ export class TerrainTileRenderer3D {
   private buildGridOccupiedMask = new Uint8Array(1);
   private buildGridMetalMask = new Uint8Array(1);
   private buildGridWaterRawMask = new Uint8Array(1);
-  private buildGridWaterBlockMask = new Uint8Array(1);
+  private buildGridWaterSubmergedMask = new Uint8Array(1);
   private pathingTerrainMinNormalZ = new Float32Array(1);
+  private pathingDebugGrid: PathfindingDebugGrid = createPathfindingDebugGrid(1);
   private pathingTerrainMaskKeyValid = false;
   private pathingTerrainMaskKeyCellsX = 0;
   private pathingTerrainMaskKeyCellsY = 0;
@@ -820,11 +819,10 @@ export class TerrainTileRenderer3D {
             '  float zeroHeightDistance = abs(vTerrainWorldPos.y);',
             '  float zeroHeightMask = 1.0 - smoothstep(uGroundDetailHeightMin, uGroundDetailHeightMax, zeroHeightDistance);',
             '  float flatGreenDetail = flatDetail * zeroHeightMask;',
-            '  // The rock zone is the exact complement: everywhere on land that the',
-            '  // grass zone does not cover. They sum to (1 - shoreline) - they never',
-            '  // overlap, and they never leave a gap. Shoreline itself stays as the',
-            '  // wetSoil base.',
-            '  float rockMask = clamp((1.0 - shoreline) - flatGreenDetail, 0.0, 1.0);',
+            '  // Rock fills the exact complement of the flat grass zone. This includes',
+            '  // shoreline and below-ground side-wall faces, which cannot use the',
+            '  // horizontal grass projection but must still receive a surface texture.',
+            '  float rockMask = 1.0 - flatGreenDetail;',
             '',
             '  // ===== Grass / sticks texture (flat 0-height zone) =====',
             '  if (uGroundDetailEnabled > 0.0) {',
@@ -849,7 +847,7 @@ export class TerrainTileRenderer3D {
             '    terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
             '  }',
             '',
-            '  // ===== Rock texture (everywhere outside the flat zone, non-shoreline) =====',
+            '  // ===== Rock texture (everywhere outside the flat grass zone) =====',
             '  if (uRockDetailEnabled > 0.0) {',
             '    // Pull base toward rock color in the rock zone (same mechanism as',
             '    // the grass pull, gated by the complement mask).',
@@ -908,7 +906,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v34';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v35';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -953,12 +951,13 @@ export class TerrainTileRenderer3D {
     if (this.buildGridWaterRawMask.length < safeCount) {
       this.buildGridWaterRawMask = new Uint8Array(safeCount);
     }
-    if (this.buildGridWaterBlockMask.length < safeCount) {
-      this.buildGridWaterBlockMask = new Uint8Array(safeCount);
+    if (this.buildGridWaterSubmergedMask.length < safeCount) {
+      this.buildGridWaterSubmergedMask = new Uint8Array(safeCount);
     }
     if (this.pathingTerrainMinNormalZ.length < safeCount) {
       this.pathingTerrainMinNormalZ = new Float32Array(safeCount);
     }
+    this.pathingDebugGrid = ensurePathfindingDebugGrid(this.pathingDebugGrid, safeCount);
   }
 
   private computeMetalDepositSignature(): number {
@@ -1080,47 +1079,19 @@ export class TerrainTileRenderer3D {
     }
   }
 
-  private refreshBuildGridWaterMask(
+  private refreshPathfindingDebugGrid(
     cellsX: number,
     cellsY: number,
     buildCellSize: number,
     terrainVersion: number,
   ): void {
     this.refreshPathingTerrainCellMask(cellsX, cellsY, buildCellSize, terrainVersion);
-    const cellCount = cellsX * cellsY;
-    this.buildGridWaterBlockMask.fill(0, 0, cellCount);
-
-    const bufferCells = PATHFINDING_WATER_BUFFER_CELLS;
-    for (let gy = 0; gy < cellsY; gy++) {
-      const rowOffset = gy * cellsX;
-      for (let gx = 0; gx < cellsX; gx++) {
-        if (this.buildGridWaterRawMask[rowOffset + gx] === 0) continue;
-        const minY = Math.max(0, gy - bufferCells);
-        const maxY = Math.min(cellsY - 1, gy + bufferCells);
-        const minX = Math.max(0, gx - bufferCells);
-        const maxX = Math.min(cellsX - 1, gx + bufferCells);
-        for (let yy = minY; yy <= maxY; yy++) {
-          const outRowOffset = yy * cellsX;
-          for (let xx = minX; xx <= maxX; xx++) {
-            this.buildGridWaterBlockMask[outRowOffset + xx] = 1;
-          }
-        }
-      }
-    }
-  }
-
-  private isPathfinderEdgeBlockedCell(
-    gx: number,
-    gy: number,
-    cellsX: number,
-    cellsY: number,
-  ): boolean {
-    const bufferCells = PATHFINDING_WATER_BUFFER_CELLS;
-    return bufferCells > 0 &&
-      (gx < bufferCells ||
-        gy < bufferCells ||
-        gx >= cellsX - bufferCells ||
-        gy >= cellsY - bufferCells);
+    rebuildPathfindingDebugGrid(this.pathingDebugGrid, {
+      cellsX,
+      cellsY,
+      terrainWater: this.buildGridWaterRawMask,
+      terrainSubmerged: this.buildGridWaterSubmergedMask,
+    });
   }
 
   private pathingTerrainMaskCacheMatches(
@@ -1165,6 +1136,7 @@ export class TerrainTileRenderer3D {
 
     const cellCount = cellsX * cellsY;
     this.buildGridWaterRawMask.fill(0, 0, cellCount);
+    this.buildGridWaterSubmergedMask.fill(0, 0, cellCount);
     this.pathingTerrainMinNormalZ.fill(1, 0, cellCount);
 
     const terrainMap = getAuthoritativeTerrainTileMap();
@@ -1188,6 +1160,7 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           this.buildGridWaterRawMask[cellIndex] = terrain.hasWater ? 1 : 0;
+          this.buildGridWaterSubmergedMask[cellIndex] = terrain.fullySubmerged ? 1 : 0;
           this.pathingTerrainMinNormalZ[cellIndex] = terrain.minNormalZ;
         }
       }
@@ -1222,6 +1195,13 @@ export class TerrainTileRenderer3D {
         );
 
         let hasWater = false;
+        const strictInset = Math.min(PATHING_CELL_SAMPLE_INSET_WU, buildCellSize * 0.25);
+        const strictMinX = minX + strictInset;
+        const strictMinZ = minZ + strictInset;
+        const strictMaxX = maxX - strictInset;
+        const strictMaxZ = maxZ - strictInset;
+        let fullySubmerged = true;
+        let foundStrictTriangle = false;
         let minNormalZ = 1;
         for (let terrainGy = minTerrainCellY; terrainGy <= maxTerrainCellY; terrainGy++) {
           for (let terrainGx = minTerrainCellX; terrainGx <= maxTerrainCellX; terrainGx++) {
@@ -1267,6 +1247,25 @@ export class TerrainTileRenderer3D {
               if (ah < WATER_LEVEL || bh < WATER_LEVEL || ch < WATER_LEVEL) {
                 hasWater = true;
               }
+              if (
+                terrainTriangleTouchesRect(
+                  ax,
+                  az,
+                  bx,
+                  bz,
+                  cx,
+                  cz,
+                  strictMinX,
+                  strictMinZ,
+                  strictMaxX,
+                  strictMaxZ,
+                )
+              ) {
+                foundStrictTriangle = true;
+                if (ah >= WATER_LEVEL || bh >= WATER_LEVEL || ch >= WATER_LEVEL) {
+                  fullySubmerged = false;
+                }
+              }
               minNormalZ = Math.min(
                 minNormalZ,
                 terrainTriangleNormalZ(ax, az, ah, bx, bz, bh, cx, cz, ch),
@@ -1275,6 +1274,8 @@ export class TerrainTileRenderer3D {
           }
         }
         this.buildGridWaterRawMask[cellIndex] = hasWater ? 1 : 0;
+        this.buildGridWaterSubmergedMask[cellIndex] =
+          fullySubmerged && foundStrictTriangle ? 1 : 0;
         this.pathingTerrainMinNormalZ[cellIndex] = minNormalZ;
       }
     }
@@ -1308,26 +1309,11 @@ export class TerrainTileRenderer3D {
     const selectedUnitLocomotion = selectedUnitBlueprint !== undefined
       ? getUnitLocomotion(selectedUnitBlueprint.unitBlueprintId)
       : null;
-    const selectedUnitClimbProfile =
+    const selectedUnitTerrainFilter =
       selectedUnitBlueprint !== undefined && selectedUnitLocomotion !== null
-        ? computeLocomotionClimbProfile(selectedUnitLocomotion, selectedUnitBlueprint.mass)
+        ? pathTerrainFilterForLocomotion(selectedUnitLocomotion, selectedUnitBlueprint.mass)
         : null;
-    const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
-      selectedUnitLocomotion !== null;
-    const selectedUnitAllowsGround = selectedUnitClimbProfile !== null
-      ? selectedUnitClimbProfile.allowOnGround === true
-      : false;
-    const selectedUnitAllowsWater = selectedUnitClimbProfile !== null
-      ? selectedUnitClimbProfile.allowInWater === true
-      : false;
-    const selectedUnitAllowsAir = selectedUnitClimbProfile !== null
-      ? selectedUnitClimbProfile.allowInAir === true
-      : false;
-    const selectedUnitRequiredNormalZ = selectedUnitClimbProfile !== null
-      ? requiredPathingNormalZ(selectedUnitClimbProfile.minStandstillNormalZ)
-      : PATHFINDING_STABILITY_MIN_NORMAL_Z;
-    const selectedUnitNeedsTerrainMask = selectedUnitPathingEnabled &&
-      !selectedUnitAllowsAir;
+    const selectedUnitPathingEnabled = selectedUnitTerrainFilter !== null;
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
@@ -1349,8 +1335,20 @@ export class TerrainTileRenderer3D {
     const cellsY = buildabilityGrid?.cellsY ?? Math.max(1, Math.ceil(this.mapHeight / buildCellSize));
     this.ensureBuildGridTexture(cellsX, cellsY);
     this.buildGridMapSizeUniform.value.set(cellsX, cellsY);
+    const selectedUnitDebugTraversal = selectedUnitTerrainFilter !== null &&
+      selectedUnitBlueprint !== undefined
+      ? createPathfindingDebugTraversal(
+          selectedUnitTerrainFilter,
+          selectedUnitBlueprint.radius.collision,
+          buildCellSize,
+        )
+      : null;
+    const selectedUnitNeedsTerrainMask = selectedUnitDebugTraversal !== null &&
+      !selectedUnitDebugTraversal.traversal.allowInAir;
 
-    const entityVersion = this.clientViewState.getEntitySetVersion();
+    const entityVersion = overlayMode === 'build'
+      ? this.clientViewState.getEntitySetVersion()
+      : 0;
     const terrainVersion = buildabilityGrid?.version ?? getTerrainVersion();
     const buildabilityConfigKey = buildabilityGrid?.configKey ?? getTerrainBuildabilityConfigKey();
     const depositSignature = this.computeMetalDepositSignature();
@@ -1371,10 +1369,25 @@ export class TerrainTileRenderer3D {
 
     const cellCount = cellsX * cellsY;
     this.ensureBuildGridMasks(cellCount);
-    this.refreshBuildGridOccupiedMask(cellsX, cellsY);
-    this.refreshBuildGridMetalMask(cellsX, cellsY);
+    if (overlayMode === 'build') {
+      this.refreshBuildGridOccupiedMask(cellsX, cellsY);
+    }
+    if (overlayMode === 'build' || overlayMode === 'metal') {
+      this.refreshBuildGridMetalMask(cellsX, cellsY);
+    }
     if (waterPathingMapEnabled || selectedUnitNeedsTerrainMask) {
-      this.refreshBuildGridWaterMask(cellsX, cellsY, buildCellSize, terrainVersion);
+      this.refreshPathfindingDebugGrid(cellsX, cellsY, buildCellSize, terrainVersion);
+    }
+    if (selectedUnitDebugTraversal !== null) {
+      rebuildPathfindingDebugPassability({
+        grid: this.pathingDebugGrid,
+        terrainWater: this.buildGridWaterRawMask,
+        terrainSubmerged: this.buildGridWaterSubmergedMask,
+        terrainNormalZ: this.pathingTerrainMinNormalZ,
+        traversal: selectedUnitDebugTraversal,
+        cellsX,
+        cellsY,
+      });
     }
 
     for (let gy = 0; gy < cellsY; gy++) {
@@ -1392,43 +1405,20 @@ export class TerrainTileRenderer3D {
           continue;
         }
         if (overlayMode.startsWith('path:')) {
-          const terrainWaterBlocked = this.buildGridWaterBlockMask[cellIndex] !== 0;
-          const terrainWaterRaw = this.buildGridWaterRawMask[cellIndex] !== 0;
-          if (!selectedUnitPathingEnabled || selectedUnitLocomotion === null) {
+          if (!selectedUnitPathingEnabled || selectedUnitDebugTraversal === null) {
             this.writeBuildGridPixel(
               offset,
-              waterPathingMapEnabled && terrainWaterBlocked
+              waterPathingMapEnabled && this.pathingDebugGrid.waterBlocked[cellIndex] !== 0
                 ? BUILD_GRID_COLOR_BLOCKED
                 : BUILD_GRID_COLOR_TRANSPARENT,
             );
             continue;
           }
-
-          if (selectedUnitAllowsAir) {
-            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_OK);
-            continue;
-          }
-
-          const occupied = this.buildGridOccupiedMask[cellIndex] !== 0;
-          if (occupied || this.isPathfinderEdgeBlockedCell(gx, gy, cellsX, cellsY)) {
-            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
-            continue;
-          }
-          const passableByMedium = terrainWaterRaw
-            ? selectedUnitAllowsWater || selectedUnitAllowsGround
-            : terrainWaterBlocked
-              ? selectedUnitAllowsWater && selectedUnitAllowsGround
-              : selectedUnitAllowsGround;
-          if (!passableByMedium) {
-            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
-            continue;
-          }
-          const terrainPassable = terrainWaterRaw && selectedUnitAllowsWater
-            ? true
-            : this.pathingTerrainMinNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
           this.writeBuildGridPixel(
             offset,
-            terrainPassable ? BUILD_GRID_COLOR_OK : BUILD_GRID_COLOR_BLOCKED,
+            this.pathingDebugGrid.passable[cellIndex] !== 0
+              ? BUILD_GRID_COLOR_OK
+              : BUILD_GRID_COLOR_BLOCKED,
           );
           continue;
         }

@@ -1,11 +1,10 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
-// Pathfinder — 2D A* on the building grid.
+// Pathfinder — 2D A* on the terrain locomotion grid.
 //
 // Phase 9: the heavy lifting (mask + CC rebuild, A* + LOS smoothing)
 // runs inside WASM. This file is now a thin wrapper that:
-//   - tracks (terrain × buildings) version pairs and packs the
-//     buildingGrid.occupiedCells() into a Float64Array so WASM can
-//     treat exact building/tower footprints as elevated terrain cells;
+//   - keeps the WASM terrain locomotion grid current; construction-grid
+//     reservations are intentionally absent from route planning;
 //   - keeps expandPathActions JS-side because it consults JS-side
 //     blueprint config and constructs UnitAction objects;
 //   - preserves the path expansion surface while traversal policy and grid
@@ -19,10 +18,9 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     faces cannot slip between center samples.
 //   • Terrain C-space inflation: configurable cells around water still
 //     blocks ground-only routes, while water-capable routes can use wet
-//     cells and the shoreline buffer. Building and tower footprints are
-//     elevated flat terrain: uphill entry is rejected by the same directed
-//     climb rule as cliffs, while top traversal and controlled descent remain
-//     subject to the unit's derived standstill envelope.
+//     cells and the shoreline buffer. Construction and hovering building
+//     footprints reserve placement squares only; they do not alter the
+//     terrain locomotion surface.
 //   • Air-capable queries ignore terrain blocking so water and slope do
 //     not force them onto land-only routes; they still stay inside the map.
 //   • Connected-component pre-flight for symmetric blockers only. Every dry
@@ -34,7 +32,6 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     gets cleared and the visualization doesn't draw a fake
 //     straight line through obstacles.
 
-import type { BuildingGrid } from './buildGrid';
 import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
@@ -43,7 +40,7 @@ import {
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ActionType, UnitPathPoint } from './types';
-import { ensurePathfinderGrid } from './pathfinderGridCache';
+import { ensurePathfinderTerrain } from './pathfinderTerrainCache';
 import {
   resolvePathfinderTraversalInput,
   type PathTerrainFilter,
@@ -82,12 +79,11 @@ function findPath(
   startX: number, startY: number,
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
-  buildingGrid: BuildingGrid,
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
 ): { points: Vec2[]; resolution: PathResolution } {
-  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
+  ensurePathfinderTerrain(mapWidth, mapHeight);
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   const sim = getSimWasm()!;
   const count = sim.pathfinder.findPath(
@@ -231,7 +227,6 @@ export function expandPathPlan(
   startX: number, startY: number,
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
-  buildingGrid: BuildingGrid,
   goalZ: number | null,
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
@@ -244,7 +239,6 @@ export function expandPathPlan(
     goalY,
     mapWidth,
     mapHeight,
-    buildingGrid,
     terrainFilter,
     unitRadius,
     symmetricSlope,
@@ -277,7 +271,6 @@ export function expandPathPoints(
   startX: number, startY: number,
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
-  buildingGrid: BuildingGrid,
   goalZ: number | null,
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
@@ -290,7 +283,6 @@ export function expandPathPoints(
     goalY,
     mapWidth,
     mapHeight,
-    buildingGrid,
     goalZ,
     terrainFilter,
     unitRadius,
@@ -326,12 +318,11 @@ export function isPathSegmentTraversable(
   point: UnitPathPoint,
   mapWidth: number,
   mapHeight: number,
-  buildingGrid: BuildingGrid,
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
 ): boolean {
-  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
+  ensurePathfinderTerrain(mapWidth, mapHeight);
   _pathValidationScratch[0] = startX;
   _pathValidationScratch[1] = startY;
   _pathValidationScratch[2] = point.x;
@@ -348,13 +339,12 @@ export function isPathPlanTraversable(
   points: readonly UnitPathPoint[],
   mapWidth: number,
   mapHeight: number,
-  buildingGrid: BuildingGrid,
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
 ): boolean {
   if (points.length === 0) return false;
-  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
+  ensurePathfinderTerrain(mapWidth, mapHeight);
   const requiredLength = (points.length + 1) * 2;
   if (_pathValidationScratch.length < requiredLength) {
     let capacity = _pathValidationScratch.length;

@@ -2403,9 +2403,9 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretRocketFast",
+        "turretBlueprintId": "turretBeamMega",
         "mount": {
-          "x": 0,
+          "x": 0.56,
           "y": 0,
           "z": 0
         },
@@ -2422,13 +2422,6 @@
           "xFrac": 0.7,
           "yFrac": 0.3,
           "zFrac": 0.28
-        },
-        {
-          "kind": "oval",
-          "offsetForward": 0.56,
-          "xFrac": 0.24,
-          "yFrac": 0.18,
-          "zFrac": 0.18
         }
       ]
     },

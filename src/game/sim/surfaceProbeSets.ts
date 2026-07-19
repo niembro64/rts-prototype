@@ -2,11 +2,6 @@ import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
 import rawSurfaceProbeConfig from './surfaceProbeConfig.json';
 
 export const SURFACE_PROBE_SET_IDS = ['single', 'few', 'many'] as const;
-const SURFACE_PROBE_SET_POINT_COUNTS: Record<SurfaceProbeSetId, number> = {
-  single: 1,
-  few: 5,
-  many: 8,
-};
 export type SurfaceProbePoint = Readonly<{
   /** Integer lattice coordinate in units of the one shared probe spacing. */
   forward: number;
@@ -88,12 +83,6 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
         lateral: point.lateral,
       });
     });
-    const expectedPointCount = SURFACE_PROBE_SET_POINT_COUNTS[setId];
-    if (points.length !== expectedPointCount) {
-      throw new Error(
-        `Invalid surfaceProbeConfig.json: ${setId} must contain ${expectedPointCount} points`,
-      );
-    }
     if (points.filter((point) => point.forward === 0 && point.lateral === 0).length !== 1) {
       throw new Error(`Invalid surfaceProbeConfig.json: ${setId} must contain one center point`);
     }

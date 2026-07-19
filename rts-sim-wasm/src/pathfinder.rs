@@ -6,20 +6,16 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
-//  Phase 9 — Pathfinder: A* over the build/walk grid in WASM
+//  Phase 9 — Pathfinder: A* over the terrain locomotion grid in WASM
 //
 //  Mirrors src/game/sim/Pathfinder.ts. Full pipeline (ensureMaskAndCC,
 //  snap-to-component, A*, Bresenham LOS smoothing) runs inside one
 //  WASM call. JS-side Pathfinder.ts becomes a thin wrapper that
-//  forwards (start, goal, mapWidth, mapHeight, buildingGrid.occupiedCells,
-//  terrainFilter) and reads the smoothed waypoint scratch. Building and
-//  tower footprints are elevated terrain cells: flat on top, vertical
-//  on the sides, and governed by the same standstill and directed climb
-//  rules as hills and cliffs.
+//  forwards terrain traversal inputs and reads the smoothed waypoint scratch.
+//  Construction-grid reservations and hovering building footprints are not
+//  terrain cells and never change locomotion routing.
 //
-//  Mask + CC are cached internally; JS passes the terrain + building
-//  version pair on each call, the Rust side rebuilds only when the
-//  pair changes.
+//  Mask + CC are cached internally by terrain version.
 //
 //  Terrain sampling reads directly from the in-WASM TerrainGrid
 //  (Phase 8) — no boundary crossings during a rebuild. ~9 k cells in
@@ -55,7 +51,6 @@ pub(crate) struct PathfinderState {
     /// that merely contains a sliver of water.
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
-    terrain_base_height: Vec<f32>,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
     cc_labels: Vec<i16>,
@@ -65,12 +60,13 @@ pub(crate) struct PathfinderState {
     /// not routed through gaps narrower than it can fit. Independent of unit
     /// size, so it is cached once per mask rather than per radius.
     clearance: Vec<u16>,
-    /// Clearance from map edges and structure footprints only. Water-capable
-    /// and bed-walking queries use this so wet cells are not self-obstacles.
+    /// Clearance from map edges only. Water-capable and bed-walking queries
+    /// use this so wet cells are not self-obstacles.
     medium_clearance: Vec<u16>,
-    /// Clearance from dry shore, map edges, and structure footprints. Pure
-    /// water navigation uses this configuration-space field so the body's
-    /// collision disk stays in navigable water rather than clipping a beach.
+    /// Clearance from dry shore and map edges. Pure water navigation uses
+    /// this configuration-space field so the shared shoreline buffer and
+    /// the body's collision disk stay in navigable water rather than
+    /// clipping a beach.
     water_clearance: Vec<u16>,
 
     // A* scratch (reused per query)
@@ -92,10 +88,8 @@ pub(crate) struct PathfinderState {
     cur_required_clearance: i32,
     cur_symmetric_slope: bool,
 
-    // Cache keys — invalidated on terrain/building/grid-dim change.
+    // Cache key — invalidated on terrain/grid-dimension change.
     terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
-    full_mask_key: u128,   // = tVer | bVer | gridW | gridH
-    full_mask_grid_id: u32,
 
     // Sorted snap offsets — populated once per grid-dim change.
     snap_offsets: Vec<(i16, i16)>,
@@ -186,7 +180,6 @@ impl PathfinderState {
             terrain_water: Vec::new(),
             terrain_submerged: Vec::new(),
             terrain_edge_blocked: Vec::new(),
-            terrain_base_height: Vec::new(),
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             cc_labels: Vec::new(),
@@ -204,8 +197,6 @@ impl PathfinderState {
             cur_required_clearance: 0,
             cur_symmetric_slope: false,
             terrain_only_key: u64::MAX,
-            full_mask_key: u128::MAX,
-            full_mask_grid_id: u32::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
             path_scratch: Vec::new(),
@@ -261,8 +252,6 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     if state.grid_w == grid_w && state.grid_h == grid_h && state.n == n {
         // Same dims — just invalidate caches so the next rebuild fires.
         state.terrain_only_key = u64::MAX;
-        state.full_mask_key = u128::MAX;
-        state.full_mask_grid_id = u32::MAX;
         state.map_width = map_width;
         state.map_height = map_height;
         return;
@@ -282,10 +271,6 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.terrain_submerged.resize(n, 0);
     state.terrain_edge_blocked.clear();
     state.terrain_edge_blocked.resize(n, 0);
-    state.terrain_base_height.clear();
-    state
-        .terrain_base_height
-        .resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_height.clear();
     state
         .terrain_height
@@ -316,8 +301,6 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.bfs_queue.clear();
     state.bfs_queue.resize(n, 0);
     state.terrain_only_key = u64::MAX;
-    state.full_mask_key = u128::MAX;
-    state.full_mask_grid_id = u32::MAX;
     pathfinder_build_snap_offsets(state);
 }
 
@@ -431,7 +414,6 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
             let (has_water, fully_submerged, nz, height) = pathfinder_sample_cell_terrain(gx, gy);
-            state.terrain_base_height[idx] = height;
             state.terrain_height[idx] = height;
             state.terrain_normal_z[idx] = nz;
             if has_water {
@@ -475,6 +457,97 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
             }
             state.terrain_blocked[out_idx] = blk;
         }
+    }
+
+    // Locomotion is a terrain concern. Construction-grid occupancy reserves
+    // build squares only; it must not become elevated terrain, a path blocker,
+    // or a clearance source here. Hovering structures therefore never change
+    // the movement surface a unit plans across.
+    state.blocked.copy_from_slice(&state.terrain_blocked);
+
+    // Clearance distance fields: Chebyshev cell-distance from each open cell
+    // to the nearest terrain obstacle (0 for obstacle cells). Ground-only
+    // clearance treats water + map edges as obstacles. Medium clearance treats
+    // only map edges as obstacles, so amphibious and bed-walking routes do not
+    // make wet cells self-blocking. Water-only clearance treats every
+    // non-submerged shore cell as an obstacle, keeping an aquatic body's
+    // collision disk in water.
+    for idx in 0..n {
+        state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
+        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] == 1 {
+            0
+        } else {
+            u16::MAX
+        };
+        state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
+            || state.terrain_edge_blocked[idx] == 1
+        {
+            0
+        } else {
+            u16::MAX
+        };
+    }
+    pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
+    pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
+    pathfinder_rebuild_clearance_distance(&mut state.water_clearance, grid_w, grid_h);
+
+    // CC labelling is an obstacle pre-flight only: slope capability is
+    // query-specific and directional, so it cannot be encoded in one shared
+    // undirected label.
+    state.cc_labels.fill(0);
+    let mut next_label: i16 = 1;
+    for seed in 0..state.n {
+        if state.blocked[seed] == 1 || state.cc_labels[seed] != 0 {
+            continue;
+        }
+        if next_label > 32_000 {
+            break;
+        }
+        state.cc_labels[seed] = next_label;
+        let mut q_head = 0usize;
+        let mut q_tail = 0usize;
+        state.bfs_queue[q_tail] = seed as u32;
+        q_tail += 1;
+        while q_head < q_tail {
+            let idx = state.bfs_queue[q_head] as i32;
+            q_head += 1;
+            let cgx = idx % grid_w;
+            let cgy = (idx - cgx) / grid_w;
+            for dy in -1..=1 {
+                let ny = cgy + dy;
+                if ny < 0 || ny >= grid_h {
+                    continue;
+                }
+                let row = ny * grid_w;
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 && !PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
+                        continue;
+                    }
+                    let nx = cgx + dx;
+                    if nx < 0 || nx >= grid_w {
+                        continue;
+                    }
+                    let nidx = (row + nx) as usize;
+                    if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 {
+                        let side_x = (cgy * grid_w + nx) as usize;
+                        let side_y = (ny * grid_w + cgx) as usize;
+                        if state.blocked[side_x] == 1 || state.blocked[side_y] == 1 {
+                            continue;
+                        }
+                    }
+                    state.cc_labels[nidx] = next_label;
+                    state.bfs_queue[q_tail] = nidx as u32;
+                    q_tail += 1;
+                }
+            }
+        }
+        next_label += 1;
     }
 
     state.terrain_only_key = key;
@@ -535,169 +608,40 @@ pub(crate) fn pathfinder_rebuild_clearance_distance(
     }
 }
 
-/// Rebuilds the full blocked mask + CC labels from the terrain mask
-/// + a flat list of building cells (gx, gy, roofTopZ triples).
-/// JS passes terrain/building versions plus a building-grid identity so
-/// the rebuild can short-circuit when nothing has changed.
+/// Rebuilds the locomotion mask and CC labels from authoritative terrain.
+/// Construction-grid occupancy is intentionally excluded: build reservations
+/// and route surfaces are separate systems.
 #[wasm_bindgen]
-pub fn pathfinder_rebuild_mask_and_cc(
-    building_cells: &[f64],
-    terrain_version: u32,
-    building_version: u32,
-    building_grid_id: u32,
-) {
+pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
     let state = pathfinder_state();
     pathfinder_rebuild_terrain_mask(state, terrain_version);
-
-    // Cache key over (tVer, bVer, gridW, gridH).
-    let key = ((terrain_version as u128) << 96)
-        | ((building_version as u128) << 64)
-        | ((state.grid_w as u128) << 32)
-        | (state.grid_h as u128);
-    if key == state.full_mask_key && building_grid_id == state.full_mask_grid_id {
-        return;
-    }
-
-    // Start from cached terrain mask.
-    let grid_w = state.grid_w;
-    let grid_h = state.grid_h;
-    state.blocked.copy_from_slice(&state.terrain_blocked);
-    state
-        .terrain_height
-        .copy_from_slice(&state.terrain_base_height);
-
-    let mut i = 0usize;
-    while i + 2 < building_cells.len() {
-        let gx = building_cells[i].floor() as i32;
-        let gy = building_cells[i + 1].floor() as i32;
-        let roof_top_z = building_cells[i + 2];
-        i += 3;
-        if gx < 0 || gy < 0 || gx >= grid_w || gy >= grid_h {
-            continue;
-        }
-        let idx = (gy * grid_w + gx) as usize;
-        let base_h = state.terrain_base_height[idx] as f64;
-        if base_h.is_finite() && roof_top_z.is_finite() && roof_top_z > 0.0 {
-            state.terrain_height[idx] = (base_h + roof_top_z) as f32;
-        }
-        // The top is flat, but every footprint boundary is a vertical side.
-        // Equal-height roof traversal exits before the normal gate; uphill
-        // entry from terrain into this cell must see the side as unclimbable.
-        state.terrain_normal_z[idx] = 0.0;
-        state.blocked[idx] = 0;
-    }
-
-    // Clearance distance fields: Chebyshev cell-distance from each open cell
-    // to the nearest OBSTACLE cell (0 for obstacle cells). Ground-only
-    // clearance treats water + map edges + building footprints as obstacles.
-    // Medium clearance treats only map edges + building footprints as
-    // obstacles, so amphibious and bed-walking routes do not make wet cells
-    // self-blocking. Water-only clearance treats every non-submerged shore
-    // cell as an obstacle, keeping an aquatic body's collision disk in water.
-    // Building footprints seed every field because buildings are walkable
-    // elevated terrain rather than `blocked` cells, but a unit routing past
-    // one must still hold its body clear of the vertical sides.
-    {
-        let n = state.n;
-        for idx in 0..n {
-            state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
-            state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] == 1 {
-                0
-            } else {
-                u16::MAX
-            };
-            state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
-                || state.terrain_edge_blocked[idx] == 1
-            {
-                0
-            } else {
-                u16::MAX
-            };
-        }
-        // Seed building footprints as clearance obstacles (see comment above).
-        let mut bi = 0usize;
-        while bi + 2 < building_cells.len() {
-            let bgx = building_cells[bi].floor() as i32;
-            let bgy = building_cells[bi + 1].floor() as i32;
-            bi += 3;
-            if bgx >= 0 && bgy >= 0 && bgx < grid_w && bgy < grid_h {
-                let idx = (bgy * grid_w + bgx) as usize;
-                state.clearance[idx] = 0;
-                state.medium_clearance[idx] = 0;
-                state.water_clearance[idx] = 0;
-            }
-        }
-        pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
-        pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
-        pathfinder_rebuild_clearance_distance(&mut state.water_clearance, grid_w, grid_h);
-    }
-
-    // CC labelling via BFS over open cells. This is an obstacle pre-flight
-    // only: slope capability is query-specific and its climb envelope is
-    // directional, so one shared undirected label cannot encode it.
-    state.cc_labels.fill(0);
-    let mut next_label: i16 = 1;
-    for seed in 0..state.n {
-        if state.blocked[seed] == 1 || state.cc_labels[seed] != 0 {
-            continue;
-        }
-        if next_label > 32_000 {
-            break;
-        }
-        state.cc_labels[seed] = next_label;
-        let mut q_head = 0usize;
-        let mut q_tail = 0usize;
-        state.bfs_queue[q_tail] = seed as u32;
-        q_tail += 1;
-        while q_head < q_tail {
-            let idx = state.bfs_queue[q_head] as i32;
-            q_head += 1;
-            let cgx = idx % grid_w;
-            let cgy = (idx - cgx) / grid_w;
-            for dy in -1..=1 {
-                let ny = cgy + dy;
-                if ny < 0 || ny >= grid_h {
-                    continue;
-                }
-                let row = ny * grid_w;
-                for dx in -1..=1 {
-                    if dx == 0 && dy == 0 {
-                        continue;
-                    }
-                    if dx != 0 && dy != 0 && !PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
-                        continue;
-                    }
-                    let nx = cgx + dx;
-                    if nx < 0 || nx >= grid_w {
-                        continue;
-                    }
-                    let nidx = (row + nx) as usize;
-                    if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 {
-                        continue;
-                    }
-                    if dx != 0 && dy != 0 {
-                        let side_x = (cgy * grid_w + nx) as usize;
-                        let side_y = (ny * grid_w + cgx) as usize;
-                        if state.blocked[side_x] == 1 || state.blocked[side_y] == 1 {
-                            continue;
-                        }
-                    }
-                    state.cc_labels[nidx] = next_label;
-                    state.bfs_queue[q_tail] = nidx as u32;
-                    q_tail += 1;
-                }
-            }
-        }
-        next_label += 1;
-    }
-
-    state.full_mask_key = key;
-    state.full_mask_grid_id = building_grid_id;
 }
 
 #[inline]
 pub(crate) fn pathfinder_is_water_only_traversal(traversal: PathfinderTraversal) -> bool {
     !traversal.allow_air && traversal.allow_water && !traversal.allow_ground
+}
+
+/// Translate the land-side water dilation into the opposite configuration
+/// space for pure-water navigation. Land treats every cell within
+/// `PATHFINDING_WATER_BUFFER_CELLS` of water as blocked, then applies the
+/// body's hard clearance from that expanded obstacle. Water must do the
+/// mirror image: first reserve the same number of cells from dry shore, then
+/// apply the body's hard clearance from the resulting shore buffer.
+///
+/// A zero-radius query still needs one open cell beyond the inclusive buffer:
+/// distance zero is the dry-shore obstacle itself, just as a land cell inside
+/// the inclusive water dilation is blocked.
+#[inline]
+pub(crate) fn pathfinder_required_water_clearance_cells(
+    hard_clearance_cells: i32,
+) -> i32 {
+    let shore_buffer = PATHFINDING_WATER_BUFFER_CELLS.max(0);
+    if hard_clearance_cells > 0 {
+        hard_clearance_cells.saturating_add(shore_buffer)
+    } else {
+        shore_buffer.saturating_add(1)
+    }
 }
 
 /// Water-only movement is a volume-occupancy class: its reference point must
@@ -763,7 +707,12 @@ pub(crate) fn pathfinder_is_cell_passable(
     } else {
         state.clearance[idx]
     };
-    if (clearance as i32) < state.cur_required_clearance {
+    let required_clearance = if water_only {
+        pathfinder_required_water_clearance_cells(state.cur_required_clearance)
+    } else {
+        state.cur_required_clearance
+    };
+    if (clearance as i32) < required_clearance {
         return false;
     }
     true
@@ -984,7 +933,11 @@ fn pathfinder_clearance_at(
     traversal: PathfinderTraversal,
 ) -> i32 {
     if pathfinder_is_water_only_traversal(traversal) {
-        state.water_clearance[idx] as i32
+        // Match ground-space clearance: land measures from the water mask
+        // after it has been dilated by the shared shore buffer, so water must
+        // measure from dry shore after removing the same buffer.
+        (state.water_clearance[idx] as i32)
+            .saturating_sub(PATHFINDING_WATER_BUFFER_CELLS.max(0))
     } else if state.terrain_water[idx] == 1 || traversal.allow_water {
         state.medium_clearance[idx] as i32
     } else {
@@ -1470,8 +1423,9 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
 /// (x, y) f64 pairs; returns the waypoint count.
 ///
-/// Note: caller must have run pathfinder_init + pathfinder_rebuild_mask_and_cc
-/// for the current terrain/building state before calling this.
+/// Note: caller must have run pathfinder_init +
+/// pathfinder_rebuild_terrain_mask_and_cc for the current terrain state
+/// before calling this.
 #[wasm_bindgen]
 pub fn pathfinder_find_path(
     start_x: f64,
@@ -2015,8 +1969,8 @@ mod tests {
     }
 
     #[test]
-    fn water_only_navigation_requires_submerged_cells_and_shore_clearance() {
-        let mut state = open_test_state(5, 1);
+    fn water_only_navigation_mirrors_land_water_buffer_and_body_clearance() {
+        let mut state = open_test_state(7, 1);
         let traversal = PathfinderTraversal {
             min_standstill_normal_z: 0.0,
             min_climb_normal_z: 0.0,
@@ -2024,26 +1978,33 @@ mod tests {
             allow_water: true,
             allow_air: false,
         };
-        // Every cell touches water, but only cells 1..=4 have enough water
+        // Every cell touches water, but only cells 1..=6 have enough water
         // volume to occupy. This models a sloped shoreline cell at index 0.
         state.terrain_water.fill(1);
-        state.terrain_submerged = vec![0, 1, 1, 1, 1];
-        state.water_clearance = vec![0, 1, 2, 3, 4];
+        state.terrain_submerged = vec![0, 1, 1, 1, 1, 1, 1];
+        state.water_clearance = vec![0, 1, 2, 3, 4, 5, 6];
 
         state.cur_required_clearance = 0;
         assert!(
             !pathfinder_is_cell_passable(&state, 0, traversal),
             "a shoreline cell that merely touches water is not pure-water navigable"
         );
-        assert!(pathfinder_is_cell_passable(&state, 1, traversal));
+        assert!(
+            !pathfinder_is_cell_passable(&state, 2, traversal),
+            "pure-water navigation must reserve the same inclusive shore buffer as land"
+        );
+        assert!(
+            pathfinder_is_cell_passable(&state, 3, traversal),
+            "the first water cell beyond the shared shore buffer is usable"
+        );
 
         state.cur_required_clearance = 3;
         assert!(
-            !pathfinder_is_cell_passable(&state, 2, traversal),
-            "a body's collision disk must remain clear of the dry shore"
+            !pathfinder_is_cell_passable(&state, 4, traversal),
+            "body clearance must be measured beyond, not instead of, the shore buffer"
         );
-        assert!(pathfinder_is_cell_passable(&state, 3, traversal));
-        assert_eq!(pathfinder_clearance_at(&state, 3, traversal), 3);
+        assert!(pathfinder_is_cell_passable(&state, 5, traversal));
+        assert_eq!(pathfinder_clearance_at(&state, 5, traversal), 3);
     }
 
     #[test]

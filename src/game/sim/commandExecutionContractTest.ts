@@ -1460,7 +1460,7 @@ export function runCommandExecutionContractTest(): void {
     'gather wait should release every ready group member once all remaining markers are active',
   );
 
-  const open = resolvePathableFormationTarget(world, grid, unit, 180, 240);
+  const open = resolvePathableFormationTarget(world, unit, 180, 240);
   assertNear(open.x, 180, 'open formation target x should remain exact');
   assertNear(open.y, 240, 'open formation target y should remain exact');
   assertNear(open.z, world.getGroundZ(180, 240), 'open formation target z should use terrain');
@@ -1471,28 +1471,26 @@ export function runCommandExecutionContractTest(): void {
   const blockGridY = blockedCell.gy - 4;
   grid.place(blockGridX, blockGridY, 9, 9, 9001, 2, true);
 
-  const snapped = resolvePathableFormationTarget(
+  const reservedTarget = resolvePathableFormationTarget(
     world,
-    grid,
     unit,
     blockedTarget.x,
     blockedTarget.y,
   );
-  const snappedCell = grid.worldToGrid(snapped.x, snapped.y);
-  const insideBlockedFootprint =
-    snappedCell.gx >= blockGridX &&
-    snappedCell.gx < blockGridX + 9 &&
-    snappedCell.gy >= blockGridY &&
-    snappedCell.gy < blockGridY + 9;
-
-  assertContract(
-    !insideBlockedFootprint,
-    'blocked formation target must snap outside occupied movement footprint',
+  assertNear(
+    reservedTarget.x,
+    blockedTarget.x,
+    'build reservations must not displace a formation locomotion target',
   );
   assertNear(
-    snapped.z,
-    world.getGroundZ(snapped.x, snapped.y),
-    'snapped formation target z should follow snapped terrain',
+    reservedTarget.y,
+    blockedTarget.y,
+    'build reservations must not displace a formation locomotion target',
+  );
+  assertNear(
+    reservedTarget.z,
+    world.getGroundZ(reservedTarget.x, reservedTarget.y),
+    'formation target inside a build reservation should use terrain height',
   );
 
   const queueWorld = new WorldState(1, 512, 512);

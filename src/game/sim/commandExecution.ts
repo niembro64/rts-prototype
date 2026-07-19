@@ -114,7 +114,6 @@ import {
   getLastActionIntentFinalIndex,
   getUnitActionTargetId,
 } from './unitActionIntents';
-import type { BuildingGrid } from './buildGrid';
 import { expandPathPoints } from './Pathfinder';
 import { pathTerrainFilterForLocomotion } from './pathfindingTraversal';
 import { canBuilderUpgradeMetalExtractor, isUpgradeableMetalExtractorTarget } from './metalExtractorUpgrade';
@@ -517,14 +516,12 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   // Handle individual targets (line move)
   if (command.individualTargets && command.individualTargets.length === entityIds.length) {
     const queueFront = commandQueuesInFront(command);
-    const buildingGrid = ctx.constructionSystem.getGrid();
     for (let i = 0; i < entityIds.length; i++) {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
       const resolvedTarget = resolvePathableFormationTarget(
         ctx.world,
-        buildingGrid,
         unit,
         target.x,
         target.y,
@@ -596,7 +593,6 @@ function clampToMap(value: number, max: number): number {
 
 export function resolvePathableFormationTarget(
   world: WorldState,
-  buildingGrid: BuildingGrid,
   unit: Entity,
   targetX: number,
   targetY: number,
@@ -615,7 +611,6 @@ export function resolvePathableFormationTarget(
     y,
     world.mapWidth,
     world.mapHeight,
-    buildingGrid,
     world.getGroundZ(x, y),
     pathTerrainFilterForLocomotion(
       unitComponent.locomotion,

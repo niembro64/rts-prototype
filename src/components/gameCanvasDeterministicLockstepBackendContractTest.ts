@@ -101,7 +101,6 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
         index: 0,
         actionHash: 123,
         terrainVersion: 456,
-        buildingGridVersion: 789,
         goalX: commander.transform.x + 16,
         goalY: commander.transform.y,
         goalZ: commander.transform.z,

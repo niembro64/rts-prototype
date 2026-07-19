@@ -7,7 +7,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}/budget-annihilation/`;
 const OUTPUT_DIR = new URL('../artifacts/lod-visual-regression/', import.meta.url);
 const TIERS = ['High', 'Medium', 'Low'];
 const CATEGORIES = [
-  { button: 'Units', slug: 'units', expected: 23, rowsPerSheet: 6 },
+  { button: 'Units', slug: 'units', expected: 24, rowsPerSheet: 6 },
   { button: 'Buildings', slug: 'buildings', expected: 6, rowsPerSheet: 6 },
   { button: 'Towers', slug: 'towers', expected: 4, rowsPerSheet: 4 },
 ];

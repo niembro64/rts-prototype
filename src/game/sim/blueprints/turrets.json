@@ -680,7 +680,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "other": 15
+      "other": 8
     },
     "headOnly": true,
     "constructionEmitter": null,

@@ -165,7 +165,6 @@ function buildClientRoutePreview(
     index: 0,
     actionHash: 0,
     terrainVersion: 0,
-    buildingGridVersion: 0,
     goalX: goal?.x ?? fallback.x,
     goalY: goal?.y ?? fallback.y,
     goalZ: goal?.z,

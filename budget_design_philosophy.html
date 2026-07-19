@@ -839,10 +839,20 @@
         shelf. The planner may use such a node only when the complete touched geometry is inside
         the unit&rsquo;s standstill envelope; uphill edges must additionally fit its climb budget.
       </p>
+      <h3>Build reservations and locomotion surfaces are separate</h3>
+      <p>
+        The construction grid answers whether a building may reserve a placement square. The
+        locomotion grid answers whether a unit&rsquo;s body may traverse the authoritative terrain at
+        that position. These are deliberately different questions: construction occupancy, towers,
+        and hovering buildings do not become pathfinding terrain, hard blockers, clearance sources,
+        or route-cache invalidators. Units plan across the terrain beneath a hovering structure;
+        any intentional physical collision or transport rule belongs to its own physics system,
+        never to build-square pathing.
+      </p>
       <ul class="rule-list">
         <li>Water, map bounds, and hard blockers remain symmetric blockers for ground pathfinding.</li>
         <li>Other units may be ignored by the global path calculation; local collision, steering, and arrival control handle moving-unit congestion.</li>
-        <li>Buildings and towers are terrain in the pathfinding model: their footprints provide flat elevated tops and vertical sides. Routes go around unsupported walls; a unit already on a roof can cross its supported flat surface, but planning does not treat a fall down the wall as ordinary traversable ground.</li>
+        <li>Build squares are construction reservations, not locomotion squares. A hovering building never blocks, raises, lowers, or widens the clearance requirements of a terrain route.</li>
         <li>Standstill validity is a surface rule in every direction; powered climb capability is an additional directed edge rule.</li>
         <li>Shared connected-component shortcuts encode only invariant obstacles. Unit-specific standstill and directional climb rules remain query-time tests.</li>
         <li>Line-of-sight path smoothing must run the same directed edge checks as A*, so smoothing cannot erase a necessary climb gate.</li>
@@ -864,7 +874,7 @@
         receives those waypoints, it does not receive pre-expanded path points. It plans the route
         from its actual current position to the first waypoint only when it starts moving, then plans
         from waypoint to waypoint as each leg becomes active. If it is pushed off route, stalls,
-        a building changes the path mask, terrain changes, or a dynamic target moves enough to make
+        terrain changes or a dynamic target moves enough to make
         the current leg stale, the current pathfinding points are discarded and recomputed. The
         durable waypoint list remains intact.
       </p>
@@ -872,7 +882,7 @@
         <li>Do not store pathfinder-expanded intermediate points in the same array as authored command waypoints.</li>
         <li>Do not serialize pathfinding points as gameplay intent; serialize waypoints and let the local server simulation regenerate movement plans.</li>
         <li>Factory rally routes and fabricator-provided routes are high-level waypoint lists. Produced units resolve those lists against their own locomotion profile and current world state.</li>
-        <li>Pathfinding is leg-local and demand-driven: plan the active leg, cache it while valid, and throw it away on completion, obstruction, stale progress, terrain/building-version change, or target drift.</li>
+        <li>Pathfinding is leg-local and demand-driven: plan the active leg, cache it while valid, and throw it away on completion, obstruction, stale progress, terrain change, or target drift.</li>
         <li>Patrol and fight loops re-enter the planner per leg rather than baking one permanent expanded loop. The path should adapt to the battlefield, while the waypoint loop remains the command.</li>
       </ul>
 

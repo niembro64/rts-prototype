@@ -282,7 +282,7 @@ import __wbg_init, {
   spatial_slot_kind,
   pathfinder_init,
   pathfinder_compute_locomotion_climb_profile,
-  pathfinder_rebuild_mask_and_cc,
+  pathfinder_rebuild_terrain_mask_and_cc,
   pathfinder_find_path,
   pathfinder_last_result_status,
   pathfinder_validate_path,
@@ -3569,8 +3569,8 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
 
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
- *  WASM call. Caller passes the building-occupied cells list per
- *  rebuild; the Rust side caches mask + CC by version pair. */
+ *  WASM call. The mask is rebuilt from terrain only; construction
+ *  reservations deliberately remain outside locomotion pathfinding. */
 export interface PathfinderApi {
   /** Compute and cache-source the standstill and uphill ground envelopes.
    *  The output includes direct-force, traction, stability, and acceleration
@@ -3590,17 +3590,9 @@ export interface PathfinderApi {
    *  Idempotent if map size is unchanged. Recomputes cell counts as
    *  `ceil(mapW/20), ceil(mapH/20)`. */
   init: (mapWidth: number, mapHeight: number) => void;
-  /** Rebuild blocked mask + CC labels from `buildingCells` (flat
-   *  Float64Array of interleaved gx, gy, pathTopZ triples). The
-   *  terrain mask is cached by `terrainVersion`; full mask + CC by terrain/building
-   *  versions plus the JS-side building-grid identity — no-op when
-   *  nothing has changed. */
-  rebuildMaskAndCc: (
-    buildingCells: Float64Array,
-    terrainVersion: number,
-    buildingVersion: number,
-    buildingGridId: number,
-  ) => void;
+  /** Rebuild the terrain-only locomotion mask and connected components.
+   *  Build-grid reservations deliberately do not enter this surface. */
+  rebuildTerrainMaskAndCc: (terrainVersion: number) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
    *  waypoint COUNT (not the f64 element count). Effective route-domain
@@ -4144,7 +4136,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         pathfinder: {
           init: pathfinder_init,
           computeLocomotionClimbProfile: pathfinder_compute_locomotion_climb_profile,
-          rebuildMaskAndCc: pathfinder_rebuild_mask_and_cc,
+          rebuildTerrainMaskAndCc: pathfinder_rebuild_terrain_mask_and_cc,
           findPath: pathfinder_find_path,
           lastResultStatus: pathfinder_last_result_status,
           validatePath: pathfinder_validate_path,
@@ -4634,6 +4626,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runUnitLocomotionContractTest();
         const { runPathfindingMobilityContractTest } = await import('../sim/pathfindingMobilityContractTest');
         runPathfindingMobilityContractTest();
+        const { runPathfindingDebugGridContractTest } = await import('../sim/pathfindingDebugGridContractTest');
+        runPathfindingDebugGridContractTest();
         const { runUnitWaterLiftLocomotionContractTest } = await import('../sim/blueprints/unitWaterLiftLocomotionContractTest');
         runUnitWaterLiftLocomotionContractTest();
         const { runShotLocomotionContractTest } = await import('../sim/shotLocomotionContractTest');

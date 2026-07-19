@@ -69,7 +69,6 @@ export type UnitPathPlan = {
   index: number;
   actionHash: number;
   terrainVersion: number;
-  buildingGridVersion: number;
   goalX: number;
   goalY: number;
   goalZ?: number;

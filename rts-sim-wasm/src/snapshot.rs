@@ -7102,16 +7102,15 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_building_top_cells_are_walkable_terrain() {
+    pub(crate) fn pathfinder_build_reservations_do_not_change_locomotion_surface() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
-        // Factory-spawned units can begin on the factory's occupied
-        // footprint. The footprint is elevated terrain with a flat top,
-        // not a blocker that should force an origin-side escape point.
-        let building_cells = [10.0, 10.0, 60.0];
-        pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
+        // Construction reservations are deliberately absent from the
+        // locomotion surface. A hovered factory's build footprint cannot
+        // change this flat-terrain route.
+        pathfinder_rebuild_terrain_mask_and_cc(10_001);
         let count = pathfinder_find_path(
             210.0, 210.0, 320.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
             0.0, false,
@@ -7125,15 +7124,14 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_does_not_rescue_a_blocked_start_near_a_building() {
+    pub(crate) fn pathfinder_does_not_rescue_a_map_edge_start() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
         // The current cell is in the map-edge buffer. It used to be snapped
         // toward the goal; an invalid start now remains stranded.
-        let building_cells = [1.0, 10.0, 60.0];
-        pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
+        pathfinder_rebuild_terrain_mask_and_cc(10_002);
         let count = pathfinder_find_path(
             30.0, 210.0, 80.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
             0.0, false,
@@ -7147,17 +7145,16 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_ground_units_do_not_climb_building_sides() {
+    pub(crate) fn pathfinder_routes_through_build_reservation_space() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
-        let building_cells = [1.0, 10.0, 60.0];
-        pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
+        pathfinder_rebuild_terrain_mask_and_cc(10_003);
         let count = pathfinder_find_path(
-            80.0,
+            160.0,
             210.0,
-            30.0,
+            240.0,
             210.0,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
@@ -7170,16 +7167,13 @@ mod sim_kernel_tests {
             0.0,
             false,
         );
-        assert!(count >= 1);
+        assert_eq!(count, 1);
 
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
         let last = (count as usize - 1) * 2;
-        assert!(
-            waypoints[last] < 20.0 || waypoints[last] >= 40.0,
-            "ground path must not enter elevated building footprint"
-        );
         assert!((waypoints[last + 1] - 210.0).abs() < 1.0e-9);
+        assert!((waypoints[last] - 240.0).abs() < 1.0e-9);
     }
 
     fn install_pathfinder_water_strip_test_terrain() {
@@ -7279,11 +7273,11 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_water_medium_allows_crossing_water_blocked_cells() {
+    pub(crate) fn pathfinder_medium_permissions_respect_water_strip_buffer() {
         let _guard = lock_tests();
         install_pathfinder_water_strip_test_terrain();
         pathfinder_init(320.0, 180.0);
-        pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
+        pathfinder_rebuild_terrain_mask_and_cc(10_031);
 
         let ground_only_count = pathfinder_find_path(
             70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
@@ -7388,15 +7382,16 @@ mod sim_kernel_tests {
         };
         assert_eq!(stranded_water_waypoints, &[70.0, 90.0]);
 
-        // The goal lies in a shoreline cell that contains some water but also
-        // dry beach. A water-only path must snap back to wholly submerged
-        // water instead of emitting the raw beach click as its final waypoint.
+        // This strip contains only one fully submerged cell. The shared
+        // two-cell shore buffer leaves no legal pure-water waypoint, so a
+        // water-only unit must remain stranded rather than being routed along
+        // a beach-adjacent sliver of water.
         let shore_goal_count = pathfinder_find_path(
             170.0, 90.0, 190.0, 90.0, 0.0, 0.0, false, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
         assert_eq!(shore_goal_count, 1);
-        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
         let shore_goal_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (shore_goal_count as usize) * 2)
         };
@@ -7564,7 +7559,7 @@ mod sim_kernel_tests {
         let _guard = lock_tests();
         install_pathfinder_cliff_test_terrain();
         pathfinder_init(200.0, 100.0);
-        pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
+        pathfinder_rebuild_terrain_mask_and_cc(10_004);
 
         let count = pathfinder_find_path(
             90.0, 50.0, 110.0, 50.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
@@ -7583,7 +7578,7 @@ mod sim_kernel_tests {
         let _guard = lock_tests();
         install_pathfinder_cliff_test_terrain();
         pathfinder_init(200.0, 100.0);
-        pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
+        pathfinder_rebuild_terrain_mask_and_cc(10_005);
 
         let count = pathfinder_find_path(
             110.0,
@@ -7712,7 +7707,7 @@ mod sim_kernel_tests {
         let _guard = lock_tests();
         install_pathfinder_sloped_wall_escape_test_terrain();
         pathfinder_init(200.0, 100.0);
-        pathfinder_rebuild_mask_and_cc(&[], 10_006, 20_006, 30_006);
+        pathfinder_rebuild_terrain_mask_and_cc(10_006);
 
         let count = pathfinder_find_path(
             100.0,

@@ -12,7 +12,6 @@ import type {
   AreaDamageSource,
   DamageResult,
   HitInfo,
-  DeathContext,
   KnockbackInfo,
 } from './types';
 import {
@@ -120,7 +119,6 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
   for (let i = 0; i < _damageBatchCount; i++) {
     _damageBatchEntities[i] = undefined;
-    _damageBatchDeathContexts[i] = undefined;
   }
   _damageBatchCount = 0;
   _damageBatchEntityIds.clear();
@@ -290,12 +288,20 @@ let _damageBatchCapacity = 0;
 let _damageBatchCount = 0;
 const _damageBatchEntityIds = new Set<EntityId>();
 let _damageBatchEntities: Array<Entity | undefined> = [];
-let _damageBatchDeathContexts: Array<DeathContext | undefined> = [];
 let _damageBatchEnabled = new Uint8Array(0);
 let _damageBatchTargetKind = new Uint8Array(0);
 let _damageBatchHp = new Float64Array(0);
 let _damageBatchDamage = new Float64Array(0);
 let _damageBatchBuildingFortified = new Uint8Array(0);
+// Directional death context is needed only when this hit kills a unit.
+// Keep its scalar components alongside the batch so normal hits do not
+// allocate two Vec2s plus a wrapper object in the damage hot path.
+let _damageBatchHasDeathContext = new Uint8Array(0);
+let _damageBatchPenetrationDirX = new Float64Array(0);
+let _damageBatchPenetrationDirY = new Float64Array(0);
+let _damageBatchAttackerVelX = new Float64Array(0);
+let _damageBatchAttackerVelY = new Float64Array(0);
+let _damageBatchAttackMagnitude = new Float64Array(0);
 let _damageBatchOutHp = new Float64Array(0);
 let _damageBatchOutEffectiveDamage = new Float64Array(0);
 let _damageBatchOutFlags = new Uint8Array(0);
@@ -367,12 +373,17 @@ function trimDamageBuffers(): void {
   _damageBatchCapacity = 0;
   _damageBatchCount = 0;
   _damageBatchEntities = [];
-  _damageBatchDeathContexts = [];
   _damageBatchEnabled = new Uint8Array(0);
   _damageBatchTargetKind = new Uint8Array(0);
   _damageBatchHp = new Float64Array(0);
   _damageBatchDamage = new Float64Array(0);
   _damageBatchBuildingFortified = new Uint8Array(0);
+  _damageBatchHasDeathContext = new Uint8Array(0);
+  _damageBatchPenetrationDirX = new Float64Array(0);
+  _damageBatchPenetrationDirY = new Float64Array(0);
+  _damageBatchAttackerVelX = new Float64Array(0);
+  _damageBatchAttackerVelY = new Float64Array(0);
+  _damageBatchAttackMagnitude = new Float64Array(0);
   _damageBatchOutHp = new Float64Array(0);
   _damageBatchOutEffectiveDamage = new Float64Array(0);
   _damageBatchOutFlags = new Uint8Array(0);
@@ -450,14 +461,25 @@ function ensureDamageBatchCapacity(count: number): void {
   const prevHp = _damageBatchHp;
   const prevDamage = _damageBatchDamage;
   const prevBuildingFortified = _damageBatchBuildingFortified;
+  const prevHasDeathContext = _damageBatchHasDeathContext;
+  const prevPenetrationDirX = _damageBatchPenetrationDirX;
+  const prevPenetrationDirY = _damageBatchPenetrationDirY;
+  const prevAttackerVelX = _damageBatchAttackerVelX;
+  const prevAttackerVelY = _damageBatchAttackerVelY;
+  const prevAttackMagnitude = _damageBatchAttackMagnitude;
   _damageBatchCapacity = next;
   _damageBatchEntities.length = next;
-  _damageBatchDeathContexts.length = next;
   _damageBatchEnabled = new Uint8Array(next);
   _damageBatchTargetKind = new Uint8Array(next);
   _damageBatchHp = new Float64Array(next);
   _damageBatchDamage = new Float64Array(next);
   _damageBatchBuildingFortified = new Uint8Array(next);
+  _damageBatchHasDeathContext = new Uint8Array(next);
+  _damageBatchPenetrationDirX = new Float64Array(next);
+  _damageBatchPenetrationDirY = new Float64Array(next);
+  _damageBatchAttackerVelX = new Float64Array(next);
+  _damageBatchAttackerVelY = new Float64Array(next);
+  _damageBatchAttackMagnitude = new Float64Array(next);
   _damageBatchOutHp = new Float64Array(next);
   _damageBatchOutEffectiveDamage = new Float64Array(next);
   _damageBatchOutFlags = new Uint8Array(next);
@@ -466,6 +488,12 @@ function ensureDamageBatchCapacity(count: number): void {
   _damageBatchHp.set(prevHp);
   _damageBatchDamage.set(prevDamage);
   _damageBatchBuildingFortified.set(prevBuildingFortified);
+  _damageBatchHasDeathContext.set(prevHasDeathContext);
+  _damageBatchPenetrationDirX.set(prevPenetrationDirX);
+  _damageBatchPenetrationDirY.set(prevPenetrationDirY);
+  _damageBatchAttackerVelX.set(prevAttackerVelX);
+  _damageBatchAttackerVelY.set(prevAttackerVelY);
+  _damageBatchAttackMagnitude.set(prevAttackMagnitude);
 }
 
 function ensureAreaDamageCapacity(count: number): void {
@@ -1966,32 +1994,48 @@ export class DamageSystem {
       return result;
     }
 
-    _reusableHits.length = 0;
     const hits = _reusableHits;
+    let candidateCount = 0;
     for (let row = 0; row < segmentRowCount; row++) {
       if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
-      const hit: HitInfo = {
-        entityId: _segmentDamageEntityIds[row],
-        t: _segmentDamageOutT[row],
-        isUnit: _segmentDamageIsUnit[row] !== 0,
-        isBuilding: _segmentDamageIsBuilding[row] !== 0,
-        isProjectile: _segmentDamageIsProjectile[row] !== 0,
-      };
-      const hostEntityId = _segmentDamageHostEntityIds[row];
-      if (hostEntityId !== hit.entityId) {
-        hit.hostEntityId = hostEntityId;
+      let hit = hits[candidateCount];
+      if (hit === undefined) {
+        hit = {
+          entityId: NO_ENTITY_ID,
+          hostEntityId: NO_ENTITY_ID,
+          t: 0,
+          isUnit: false,
+          isBuilding: false,
+          isProjectile: false,
+        };
+        hits[candidateCount] = hit;
       }
-      hits.push(hit);
+      hit.entityId = _segmentDamageEntityIds[row];
+      hit.t = _segmentDamageOutT[row];
+      hit.isUnit = _segmentDamageIsUnit[row] !== 0;
+      hit.isBuilding = _segmentDamageIsBuilding[row] !== 0;
+      hit.isProjectile = _segmentDamageIsProjectile[row] !== 0;
+      const hostEntityId = _segmentDamageHostEntityIds[row];
+      hit.hostEntityId = hostEntityId !== hit.entityId ? hostEntityId : NO_ENTITY_ID;
+      candidateCount++;
     }
+    hits.length = candidateCount;
 
     // Sort by T and apply damage in order
     hits.sort((a, b) => a.t - b.t);
 
     let hitCount = 0;
-    for (const hit of hits) {
+    for (let hitIndex = 0; hitIndex < candidateCount; hitIndex++) {
       if (hitCount >= source.maxHits) break;
+      const hit = hits[hitIndex];
+      if (hit === undefined) continue;
 
-      const entity = this.world.getEntity(hit.hostEntityId ?? hit.entityId);
+      const hostEntityId = hit.hostEntityId;
+      const entity = this.world.getEntity(
+        hostEntityId === undefined || hostEntityId === NO_ENTITY_ID
+          ? hit.entityId
+          : hostEntityId,
+      );
       if (!entity) continue;
 
       this.applySweptDamageHit(
@@ -2040,11 +2084,18 @@ export class DamageSystem {
     const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
     const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
-    this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
-      penetrationDir: { x: penNormX, y: penNormY },
-      attackerVel: { x: attackerVelX, y: attackerVelY },
-      attackMagnitude: source.damage,
-    });
+    this.queueDamageToEntityBatch(
+      entity,
+      source.damage,
+      result,
+      source.sourceEntityId,
+      true,
+      penNormX,
+      penNormY,
+      attackerVelX,
+      attackerVelY,
+      source.damage,
+    );
     if (result.truncationT === null) {
       result.truncationT = hitT;
     }
@@ -2241,11 +2292,18 @@ export class DamageSystem {
       if (liveBodyOverlaps) {
         // For area damage, penetration direction is from explosion center
         // through unit (same as knockback direction - outward from center).
-        this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
-          penetrationDir: { x: dirX, y: dirY },
-          attackerVel: { x: forceX, y: forceY },
-          attackMagnitude: damage,
-        });
+        this.queueDamageToEntityBatch(
+          unit,
+          damage,
+          result,
+          source.sourceEntityId,
+          true,
+          dirX,
+          dirY,
+          forceX,
+          forceY,
+          damage,
+        );
         result.hitEntityIds.push(unit.id);
 
         // Add knockback (direction is from center outward)
@@ -2257,11 +2315,18 @@ export class DamageSystem {
 
       for (let turretRow = fallbackStart; turretRow < fallbackEnd; turretRow++) {
         if ((_areaTurretDamageOutFlags[turretRow] & DAMAGE_AREA_FLAG_OVERLAP) === 0) continue;
-        this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
-          penetrationDir: { x: dirX, y: dirY },
-          attackerVel: { x: forceX, y: forceY },
-          attackMagnitude: damage,
-        });
+        this.queueDamageToEntityBatch(
+          unit,
+          damage,
+          result,
+          source.sourceEntityId,
+          true,
+          dirX,
+          dirY,
+          forceX,
+          forceY,
+          damage,
+        );
         result.hitEntityIds.push(unit.id);
       }
     }
@@ -2415,11 +2480,18 @@ export class DamageSystem {
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const bForceX = dirX * bForce;
       const bForceY = dirY * bForce;
-      this.queueDamageToEntityBatch(building, damage, result, source.sourceEntityId, {
-        penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: bForceX, y: bForceY },
-        attackMagnitude: damage,
-      });
+      this.queueDamageToEntityBatch(
+        building,
+        damage,
+        result,
+        source.sourceEntityId,
+        true,
+        dirX,
+        dirY,
+        bForceX,
+        bForceY,
+        damage,
+      );
       result.hitEntityIds.push(building.id);
     }
     clearAreaDamageEntities(areaRowCount);
@@ -2458,11 +2530,18 @@ export class DamageSystem {
       const forceX = dirX * force;
       const forceY = dirY * force;
       const forceZ = dirZ * force;
-      this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
-        penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: forceX, y: forceY },
-        attackMagnitude: damage,
-      });
+      this.queueDamageToEntityBatch(
+        unit,
+        damage,
+        result,
+        source.sourceEntityId,
+        true,
+        dirX,
+        dirY,
+        forceX,
+        forceY,
+        damage,
+      );
       result.hitEntityIds.push(unit.id);
 
       if (
@@ -2547,11 +2626,18 @@ export class DamageSystem {
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const bForceX = dirX * bForce;
       const bForceY = dirY * bForce;
-      this.queueDamageToEntityBatch(building, damage, result, source.sourceEntityId, {
-        penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: bForceX, y: bForceY },
-        attackMagnitude: damage,
-      });
+      this.queueDamageToEntityBatch(
+        building,
+        damage,
+        result,
+        source.sourceEntityId,
+        true,
+        dirX,
+        dirY,
+        bForceX,
+        bForceY,
+        damage,
+      );
       result.hitEntityIds.push(building.id);
     }
 
@@ -2564,7 +2650,12 @@ export class DamageSystem {
     damage: number,
     result: DamageResult,
     sourceEntityId: EntityId,
-    deathContext: DeathContext | undefined = undefined,
+    hasDeathContext: boolean = false,
+    penetrationDirX: number = 0,
+    penetrationDirY: number = 0,
+    attackerVelX: number = 0,
+    attackerVelY: number = 0,
+    attackMagnitude: number = 0,
   ): void {
     if (_damageBatchEntityIds.has(entity.id)) {
       this.flushDamageBatch(result, sourceEntityId);
@@ -2600,12 +2691,17 @@ export class DamageSystem {
     const row = _damageBatchCount++;
     _damageBatchEntityIds.add(entity.id);
     _damageBatchEntities[row] = entity;
-    _damageBatchDeathContexts[row] = deathContext;
     _damageBatchEnabled[row] = 1;
     _damageBatchTargetKind[row] = targetKind;
     _damageBatchHp[row] = currentHp;
     _damageBatchDamage[row] = damage;
     _damageBatchBuildingFortified[row] = buildingFortified ? 1 : 0;
+    _damageBatchHasDeathContext[row] = hasDeathContext ? 1 : 0;
+    _damageBatchPenetrationDirX[row] = penetrationDirX;
+    _damageBatchPenetrationDirY[row] = penetrationDirY;
+    _damageBatchAttackerVelX[row] = attackerVelX;
+    _damageBatchAttackerVelY[row] = attackerVelY;
+    _damageBatchAttackMagnitude[row] = attackMagnitude;
   }
 
   private flushDamageBatch(result: DamageResult, sourceEntityId: EntityId): void {
@@ -2647,9 +2743,18 @@ export class DamageSystem {
         if (killed && !result.killedUnitIds.has(entity.id)) {
           result.killedUnitIds.add(entity.id);
           this.recordKiller(result, entity.id, sourceEntityId);
-          const deathContext = _damageBatchDeathContexts[i];
-          if (deathContext) {
-            result.deathContexts.set(entity.id, deathContext);
+          if (_damageBatchHasDeathContext[i] !== 0) {
+            result.deathContexts.set(entity.id, {
+              penetrationDir: {
+                x: _damageBatchPenetrationDirX[i],
+                y: _damageBatchPenetrationDirY[i],
+              },
+              attackerVel: {
+                x: _damageBatchAttackerVelX[i],
+                y: _damageBatchAttackerVelY[i],
+              },
+              attackMagnitude: _damageBatchAttackMagnitude[i],
+            });
           }
         }
       } else if (targetKind === DAMAGE_TARGET_KIND_BUILDING && entity.building !== null) {
@@ -2672,7 +2777,6 @@ export class DamageSystem {
 
     for (let i = 0; i < count; i++) {
       _damageBatchEntities[i] = undefined;
-      _damageBatchDeathContexts[i] = undefined;
     }
     _damageBatchCount = 0;
     _damageBatchEntityIds.clear();

@@ -145,8 +145,8 @@ type FormationRouteMetadata = {
 // ── Stuck-detection / replanning constants ────────────────────────
 //
 // A unit that wants to move (thrust set) but isn't actually moving
-// is a strong signal its current path is stale — a building went up
-// across it, an explosion knocked it sideways, or another unit is
+// is a strong signal its current path is stale — terrain changed, an
+// explosion knocked it sideways, or another unit is
 // physically blocking the next waypoint. Replanning from the unit's
 // CURRENT position to the trip's final destination produces a fresh
 // route that respects the new world state.
@@ -552,14 +552,12 @@ export class Simulation {
     unit: Unit,
     action: UnitAction,
     terrainVersion: number,
-    buildingGridVersion: number,
   ): boolean {
     const plan = unit.activePath;
     return this.isUnitAtValidPathingStart(entity) &&
       plan !== null &&
       plan.actionHash === unit.actionHash &&
       plan.terrainVersion === terrainVersion &&
-      plan.buildingGridVersion === buildingGridVersion &&
       plan.goalX === action.x &&
       plan.goalY === action.y &&
       plan.goalZ === action.z &&
@@ -629,12 +627,10 @@ export class Simulation {
   private formationRouteCacheKey(
     metadata: FormationRouteMetadata,
     terrainVersion: number,
-    buildingGridVersion: number,
     filter: PathTerrainFilter | null,
   ): string {
     return [
       terrainVersion,
-      buildingGridVersion,
       this.world.slopePathMode,
       pathTerrainFilterCacheKey(filter),
       metadata.radius,
@@ -677,16 +673,13 @@ export class Simulation {
   private expandFormationRoutePoints(
     action: UnitAction,
     metadata: FormationRouteMetadata,
-    buildingGrid: ReturnType<ConstructionSystem['getGrid']>,
     terrainVersion: number,
-    buildingGridVersion: number,
     terrainFilter: PathTerrainFilter | null,
     entity: Entity,
   ): ExpandedPathPlan | null {
     const key = this.formationRouteCacheKey(
       metadata,
       terrainVersion,
-      buildingGridVersion,
       terrainFilter,
     );
     let anchorPlan = this.formationRouteCache.get(key);
@@ -699,7 +692,6 @@ export class Simulation {
         metadata.goalY,
         this.world.mapWidth,
         this.world.mapHeight,
-        buildingGrid,
         action.z ?? null,
         terrainFilter,
         metadata.radius,
@@ -728,7 +720,6 @@ export class Simulation {
       translated.points,
       this.world.mapWidth,
       this.world.mapHeight,
-      buildingGrid,
       terrainFilter,
       unit.radius.collision,
       this.world.slopePathMode === 'symmetric',
@@ -745,10 +736,8 @@ export class Simulation {
     const unit = entity.unit;
     if (!unit) return null;
 
-    const buildingGrid = this.constructionSystem.getGrid();
     const terrainVersion = getTerrainVersion();
-    const buildingGridVersion = buildingGrid.getVersion();
-    if (this.isActivePathValid(entity, unit, action, terrainVersion, buildingGridVersion)) {
+    if (this.isActivePathValid(entity, unit, action, terrainVersion)) {
       return unit.activePath;
     }
 
@@ -761,9 +750,7 @@ export class Simulation {
       ? this.expandFormationRoutePoints(
           action,
           formationRoute,
-          buildingGrid,
           terrainVersion,
-          buildingGridVersion,
           terrainFilter,
           entity,
         )
@@ -776,7 +763,6 @@ export class Simulation {
         action.y,
         this.world.mapWidth,
         this.world.mapHeight,
-        buildingGrid,
         action.z ?? null,
         terrainFilter,
         unit.radius.collision,
@@ -789,7 +775,6 @@ export class Simulation {
       index: 0,
       actionHash: unit.actionHash,
       terrainVersion,
-      buildingGridVersion,
       goalX: action.x,
       goalY: action.y,
       goalZ: action.z,
@@ -859,7 +844,6 @@ export class Simulation {
       point,
       this.world.mapWidth,
       this.world.mapHeight,
-      this.constructionSystem.getGrid(),
       this.pathTerrainFilterForUnit(entity),
       unit.radius.collision,
       this.world.slopePathMode === 'symmetric',

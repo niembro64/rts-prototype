@@ -21,9 +21,7 @@
       "points": [
         { "forward": 0, "lateral": 0 },
         { "forward": 1, "lateral": 0 },
-        { "forward": 2, "lateral": 0 },
         { "forward": 3, "lateral": 0 },
-        { "forward": 4, "lateral": 0 },
         { "forward": 0, "lateral": 1 },
         { "forward": 0, "lateral": -1 },
         { "forward": -1, "lateral": 0 }
