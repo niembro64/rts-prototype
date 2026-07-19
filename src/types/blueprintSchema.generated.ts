@@ -498,12 +498,11 @@ export type SwimConfig = {
   pectoralSpanFrac: number;
   pectoralRootChordFrac: number;
   pectoralTipChordFrac: number;
-  tailOffsetXFrac: number;
-  tailSpanFrac: number;
-  tailChordFrac: number;
-  dorsalOffsetXFrac: number;
-  dorsalHeightFrac: number;
-  dorsalChordFrac: number;
+  rearFanOffsetXFrac: number;
+  rearFanHeightFrac: number;
+  rearFanRadius: number;
+  rearFanRingTubeRadius: number;
+  rearFanSpinRadPerSec: number;
   thicknessFrac: number;
   strokeAngleDeg: number;
   cycleDistanceFrac: number;

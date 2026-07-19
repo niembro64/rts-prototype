@@ -5,7 +5,6 @@ import type {
   UnitLocomotion,
   UnitLocomotionFluidPhysics,
   UnitLocomotionGroundPhysics,
-  UnitLocomotionMediumPhysics,
   UnitLocomotionPhysics,
   UnitLocomotionType,
 } from '@/types/unitLocomotionTypes';
@@ -109,7 +108,6 @@ function createRuntimeFluidPhysics(
     buoyancyRatio,
   );
   return {
-    maxPropulsiveForce: presetPhysics.maxPropulsiveForce,
     resistance: { ...getUnitLocomotionFluidResistance(presetPhysics.resistanceProfileId) },
     lift: {
       buoyancyRatio,
@@ -148,7 +146,10 @@ export function createUnitLocomotion(
     physicsPresetId,
     physics,
     environmentalHazards: { ...environmentalHazards },
-    actuator: { propulsionAxis: preset.actuator.propulsionAxis },
+    actuator: {
+      maxPropulsiveForce: preset.actuator.maxPropulsiveForce,
+      propulsionAxis: preset.actuator.propulsionAxis,
+    },
     motionControl: { ...preset.motionControl },
     surfaceFollowing: { ...preset.surfaceFollowing },
     navigation: {
@@ -174,7 +175,6 @@ function cloneGroundPhysics(physics: UnitLocomotionGroundPhysics): UnitLocomotio
 
 function cloneFluidPhysics(physics: UnitLocomotionFluidPhysics): UnitLocomotionFluidPhysics {
   return {
-    maxPropulsiveForce: physics.maxPropulsiveForce,
     resistance: { ...physics.resistance },
     lift: { ...physics.lift },
   };
@@ -197,17 +197,4 @@ export function cloneUnitLocomotion(
     surfaceFollowing: { ...locomotion.surfaceFollowing },
     navigation: { ...locomotion.navigation },
   };
-}
-
-export function getUnitLocomotionPrimaryPropulsionPhysics(
-  locomotion: UnitLocomotion,
-): UnitLocomotionMediumPhysics {
-  const media = [
-    locomotion.physics.ground,
-    locomotion.physics.air,
-    locomotion.physics.water,
-  ] as const;
-  return media.reduce((primary, candidate) =>
-    candidate.maxPropulsiveForce > primary.maxPropulsiveForce ? candidate : primary,
-  );
 }

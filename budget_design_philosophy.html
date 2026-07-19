@@ -939,16 +939,16 @@
         ground + water.
       </p>
       <p>
-        Locomotion is grouped by physical responsibility. Ground owns
-        <code>maxPropulsiveForce</code>, <code>staticFrictionCoefficient</code>, and
-        <code>tangentialDampingRate</code>. Air and water each own one direct
-        <code>maxPropulsiveForce</code> plus a named resistance profile with exactly
-        <code>linearDampingRate</code> and <code>angularDampingRate</code>. There is no
-        hidden force multipliers, reference-mass scales, global thrust scales, anisotropic
-        direction scales, or quadratic terms between authored values and the force law.
+        Locomotion is grouped by physical responsibility. The actuator owns one
+        <code>maxPropulsiveForce</code> for the chassis; it can apply that budget only in a
+        navigation-enabled medium. Ground owns <code>staticFrictionCoefficient</code> and
+        <code>tangentialDampingRate</code>. Air and water each own a named resistance profile
+        with exactly <code>linearDampingRate</code> and <code>angularDampingRate</code>. There
+        are no hidden force multipliers, reference-mass scales, global thrust scales,
+        anisotropic direction scales, or quadratic terms between authored values and the force law.
       </p>
       <ul class="rule-list">
-        <li><strong>Propulsion</strong> is a maximum directed force in the active medium. The simulator applies <code>a = F / m</code>, so mass matters directly and a unit has one clear force budget to tune.</li>
+        <li><strong>Propulsion</strong> is one maximum directed chassis force. It is enabled only in a navigation-permitted medium; the simulator applies <code>a = F / m</code>, so mass matters directly and a unit has one clear force budget to tune.</li>
         <li><strong>Static friction</strong> is contact traction: ground propulsion is limited by <code>normalLoad * staticFrictionCoefficient</code>. It is not a velocity-resistance setting.</li>
         <li><strong>Tangential damping</strong> is a supported-contact velocity decay rate. It damps residual sliding along the contact plane and is therefore separate from static friction: one caps commanded force, the other removes existing tangential velocity.</li>
         <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>
@@ -3177,7 +3177,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, <code>navigation</code>, and separate environmental hazards. Ground has maximum propulsive force, static friction, and tangential damping; air and water have maximum propulsive force plus one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. The loader validates this authored hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
+        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, <code>navigation</code>, and separate environmental hazards. The actuator has one maximum propulsive-force budget; navigation determines the media where it is available. Ground has static friction and tangential damping; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. The loader validates this authored hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

@@ -7187,6 +7187,7 @@ mod sim_kernel_tests {
         const CELLS_Y: i32 = 9;
         const CELL_SIZE: f64 = 20.0;
         const WATER_GX: i32 = 8;
+        const SHORE_GX: i32 = WATER_GX + 1;
 
         let cell_count = (CELLS_X * CELLS_Y) as usize;
         let mut vertex_coords: Vec<f64> = Vec::new();
@@ -7228,19 +7229,26 @@ mod sim_kernel_tests {
         for gy in 0..CELLS_Y {
             for gx in 0..CELLS_X {
                 cell_triangle_offsets.push(cell_triangle_indices.len() as i32);
-                let h = if gx == WATER_GX {
-                    TERRAIN_WATER_LEVEL - 10.0
+                let below_water = TERRAIN_WATER_LEVEL - 10.0;
+                let above_water = TERRAIN_WATER_LEVEL + 10.0;
+                let (h00, h10, h01, h11) = if gx == WATER_GX {
+                    (below_water, below_water, below_water, below_water)
+                } else if gx == SHORE_GX {
+                    // A cell with a real wet-to-dry beach slope. It must be
+                    // a broad water-contact cell for ground avoidance, but it
+                    // must never be a pure-water destination.
+                    (below_water, above_water, below_water, above_water)
                 } else {
-                    TERRAIN_WATER_LEVEL + 10.0
+                    (above_water, above_water, above_water, above_water)
                 };
                 let x0 = gx as f64 * CELL_SIZE;
                 let y0 = gy as f64 * CELL_SIZE;
                 let x1 = x0 + CELL_SIZE;
                 let y1 = y0 + CELL_SIZE;
-                let v00 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y0, h);
-                let v10 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y0, h);
-                let v01 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y1, h);
-                let v11 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y1, h);
+                let v00 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y0, h00);
+                let v10 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y0, h10);
+                let v01 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y1, h01);
+                let v11 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y1, h11);
                 let t0 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v10, v11);
                 let t1 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v11, v01);
                 cell_triangle_indices.push(t0);
@@ -7379,6 +7387,34 @@ mod sim_kernel_tests {
             )
         };
         assert_eq!(stranded_water_waypoints, &[70.0, 90.0]);
+
+        // The goal lies in a shoreline cell that contains some water but also
+        // dry beach. A water-only path must snap back to wholly submerged
+        // water instead of emitting the raw beach click as its final waypoint.
+        let shore_goal_count = pathfinder_find_path(
+            170.0, 90.0, 190.0, 90.0, 0.0, 0.0, false, true, false, 0.0, 0.0, 0.0,
+            0.0, false,
+        );
+        assert_eq!(shore_goal_count, 1);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
+        let shore_goal_waypoints = unsafe {
+            std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (shore_goal_count as usize) * 2)
+        };
+        assert_eq!(shore_goal_waypoints, &[170.0, 90.0]);
+        assert_eq!(
+            pathfinder_validate_path(
+                &[170.0, 90.0, 190.0, 90.0],
+                0.0,
+                0.0,
+                false,
+                true,
+                false,
+                0.0,
+                false,
+            ),
+            0,
+            "a water-only segment must reject the partly dry shoreline cell",
+        );
 
         let amphibious_count = pathfinder_find_path(
             70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, true, false, 0.0, 0.0, 0.0,

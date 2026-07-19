@@ -171,18 +171,19 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
     if (unitBlueprintId !== null) {
       const loco = getUnitLocomotion(unitBlueprintId);
       const { ground, air, water } = loco.physics;
+      const { maxPropulsiveForce } = loco.actuator;
       signature += [
         codeCount,
-        ground.maxPropulsiveForce,
+        loco.navigation.allowOnGround ? maxPropulsiveForce : 0,
         ground.staticFrictionCoefficient,
         ground.tangentialDampingRate,
-        air.maxPropulsiveForce,
+        loco.navigation.allowInAir ? maxPropulsiveForce : 0,
         air.lift.buoyancyRatio,
         air.lift.surfaceFollowingForceFromGround,
         air.lift.surfaceFollowingForceFromWater,
         air.resistance.linearDampingRate,
         air.resistance.angularDampingRate,
-        water.maxPropulsiveForce,
+        loco.navigation.allowInWater ? maxPropulsiveForce : 0,
         water.lift.buoyancyRatio,
         water.lift.surfaceFollowingForceFromGround,
         water.resistance.linearDampingRate,
@@ -237,17 +238,18 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     if (unitBlueprintId === null) continue;
     const loco = getUnitLocomotion(unitBlueprintId);
     const { ground, air, water } = loco.physics;
+    const { maxPropulsiveForce } = loco.actuator;
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = ground.maxPropulsiveForce;
+    values[base + 0] = loco.navigation.allowOnGround ? maxPropulsiveForce : 0;
     values[base + 1] = ground.staticFrictionCoefficient;
     values[base + 2] = ground.tangentialDampingRate;
-    values[base + 3] = air.maxPropulsiveForce;
+    values[base + 3] = loco.navigation.allowInAir ? maxPropulsiveForce : 0;
     values[base + 4] = air.lift.buoyancyRatio;
     values[base + 5] = air.lift.surfaceFollowingForceFromGround;
     values[base + 6] = air.lift.surfaceFollowingForceFromWater;
     values[base + 7] = air.resistance.linearDampingRate;
     values[base + 8] = air.resistance.angularDampingRate;
-    values[base + 9] = water.maxPropulsiveForce;
+    values[base + 9] = loco.navigation.allowInWater ? maxPropulsiveForce : 0;
     values[base + 10] = water.lift.buoyancyRatio;
     values[base + 11] = water.lift.surfaceFollowingForceFromGround;
     values[base + 12] = water.resistance.linearDampingRate;
@@ -558,7 +560,6 @@ export class UnitForceSystem {
           bodyZ,
           bodyX,
           bodyY,
-          bodyRadius,
           probeDirX,
           probeDirY,
           supportSurface.groundZ,
@@ -924,7 +925,6 @@ export class UnitForceSystem {
     bodyZ: number,
     bodyX: number,
     bodyY: number,
-    bodyRadius: number,
     probeDirX: number,
     probeDirY: number,
     directGroundZ: number,
@@ -946,9 +946,8 @@ export class UnitForceSystem {
       bodyY,
       probeDirX,
       probeDirY,
-      bodyRadius,
-      (x, y, role) => {
-        const groundZ = role === 'center'
+      (x, y, isCenter) => {
+        const groundZ = isCenter
           ? directGroundZ
           : this.sampleSurfaceLiftSupportZAt(x, y, ignoreEntityId, includeSupportSurfaces);
         const waterCovered = surfaceProbeUsesWaterSurface(
@@ -965,7 +964,7 @@ export class UnitForceSystem {
             x,
             y,
             bodyZ,
-            role,
+            isCenter,
             groundDistanceWorld: getSurfaceLiftDistanceToSurfaceWorld(bodyZ, groundZ),
             usesGroundDistance,
             waterDistanceWorld: waterCovered

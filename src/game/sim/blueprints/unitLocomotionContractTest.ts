@@ -12,6 +12,10 @@ import {
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import { getAllUnitBlueprints } from './units';
 import rawLocomotionConfig from '../unitLocomotionConfig.json';
+import {
+  forEachSurfaceProbePoint,
+  getSurfaceProbeSpacing,
+} from '../surfaceProbeSets';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[locomotion contract] ${message}`);
@@ -31,22 +35,42 @@ function expectLocomotionError(blueprint: UnitLocomotionBlueprint, message: stri
 }
 
 export function runUnitLocomotionContractTest(): void {
+  const probeSpacing = getSurfaceProbeSpacing().world;
+  const fewSamples: Array<{ x: number; y: number }> = [];
+  const manySamples: Array<{ x: number; y: number }> = [];
+  forEachSurfaceProbePoint('few', 0, 0, 1, 0, (x, y) => {
+    fewSamples.push({ x, y });
+  });
+  forEachSurfaceProbePoint('many', 0, 0, 1, 0, (x, y) => {
+    manySamples.push({ x, y });
+  });
+  assertContract(
+    fewSamples[1]?.x === probeSpacing &&
+      manySamples[1]?.x === probeSpacing &&
+      manySamples[2]?.x === 2 * probeSpacing &&
+      manySamples[3]?.x === 3 * probeSpacing &&
+      manySamples[4]?.x === 4 * probeSpacing &&
+      manySamples[5]?.y === probeSpacing &&
+      manySamples[6]?.y === -probeSpacing &&
+      manySamples[7]?.x === -probeSpacing,
+    'all multi-point surface-probe layouts use the one shared spacing lattice',
+  );
+
   for (const [presetId, rawPreset] of Object.entries(rawLocomotionConfig.presets)) {
     const preset = getUnitLocomotionPreset(presetId);
     const ground = preset.actuator.ground;
     assertContract(
-      ground.maxPropulsiveForce >= 0 &&
+      preset.actuator.maxPropulsiveForce >= 0 &&
         ground.staticFrictionCoefficient >= 0 &&
         ground.tangentialDampingRate >= 0,
-      `${presetId} ground physics is finite and non-negative`,
+      `${presetId} has one finite actuator force budget and ground contact physics`,
+    );
+    assertContract(
+      rawPreset.actuator.maxPropulsiveForce === preset.actuator.maxPropulsiveForce,
+      `${presetId} preserves its one authored actuator force budget`,
     );
     for (const medium of ['air', 'water'] as const) {
-      const authored = rawPreset.actuator[medium];
       const runtime = preset.actuator[medium];
-      assertContract(
-        authored.maxPropulsiveForce === runtime.maxPropulsiveForce,
-        `${presetId}.${medium} owns a direct maximum propulsive force`,
-      );
       const resistance = getUnitLocomotionFluidResistance(runtime.resistanceProfileId);
       assertContract(
         resistance.linearDampingRate >= 0 && resistance.angularDampingRate >= 0,
@@ -70,9 +94,9 @@ export function runUnitLocomotionContractTest(): void {
     const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
     const clone = cloneUnitLocomotion(runtime);
     assertContract(
-      clone.physics.ground.maxPropulsiveForce === runtime.physics.ground.maxPropulsiveForce &&
+      clone.actuator.maxPropulsiveForce === runtime.actuator.maxPropulsiveForce &&
         clone.navigation.allowOnGround === runtime.navigation.allowOnGround,
-      `${blueprint.unitBlueprintId} locomotion cloning preserves direct physics and navigation`,
+      `${blueprint.unitBlueprintId} locomotion cloning preserves actuator and navigation`,
     );
     assertContract(
       runtime.physics.air.lift.surfaceFollowingForceFromGround ===
@@ -91,16 +115,17 @@ export function runUnitLocomotionContractTest(): void {
 
   const eagle = getUnitLocomotion('unitEagle');
   assertContract(
-    eagle.navigation.allowInAir && eagle.physics.air.maxPropulsiveForce > 0,
-    'Eagle has explicit air navigation and direct air propulsion',
+    eagle.navigation.allowInAir && eagle.actuator.maxPropulsiveForce > 0,
+    'Eagle has explicit air navigation and an actuator force budget',
   );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(
     !orca.navigation.allowOnGround &&
       orca.navigation.allowInWater &&
-      orca.physics.water.maxPropulsiveForce > 0 &&
-      orca.physics.ground.maxPropulsiveForce === 0,
-    'Orca is water-navigable through its navigation and water-force profiles',
+      orca.actuator.maxPropulsiveForce > 0 &&
+      !orca.motionControl.maintainFullThrustAtWaypoints &&
+      !orca.motionControl.cruiseWhenUncommanded,
+    'Orca is water-navigable and brakes to stop at a waypoint',
   );
 
   const incompleteAirLift = cloneBlueprint(getUnitBlueprint('unitEagle').unitLocomotion);

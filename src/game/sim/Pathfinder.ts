@@ -59,8 +59,8 @@ export type ExpandedPathPlan = {
 };
 
 /** When true, every path produced by `expandPathActions` is walked
- *  segment-by-segment and any world-space sample that lands over
- *  water is logged. */
+ *  segment-by-segment and any world-space sample outside its exclusive
+ *  ground or water domain is logged. */
 const VALIDATE_PATHS = GAME_DIAGNOSTICS.pathValidation;
 
 /** Spacing (world units) between water-check samples along each
@@ -164,6 +164,50 @@ function validatePathDoesNotCrossWater(
   return false;
 }
 
+/** Walk a water-only route and report any dry sample. This mirrors the
+ * planner's strict-submersion rule and catches accidental raw beach goals in
+ * development before they become a visible beaching regression. */
+function validatePathStaysInWater(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  path: ReadonlyArray<Vec2>,
+  mapWidth: number, mapHeight: number,
+): boolean {
+  let prevX = startX;
+  let prevY = startY;
+  for (let segIdx = 0; segIdx < path.length; segIdx++) {
+    const wp = path[segIdx];
+    const dx = wp.x - prevX;
+    const dy = wp.y - prevY;
+    const length = DMath.sqrt(dx * dx + dy * dy);
+    const samples = length >= 1
+      ? Math.max(2, Math.ceil(length / VALIDATE_SAMPLE_STEP_WU))
+      : 1;
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const x = prevX + dx * t;
+      const y = prevY + dy * t;
+      if (!isWaterAt(x, y, mapWidth, mapHeight)) {
+        debugWarn(
+          VALIDATE_PATHS,
+          '[Pathfinder] water-only route leaves water at (%d,%d) on segment %d — segment (%d,%d)→(%d,%d), full path (%d,%d)→(%d,%d) with %d waypoints',
+          Math.round(x), Math.round(y),
+          segIdx,
+          Math.round(prevX), Math.round(prevY),
+          Math.round(wp.x), Math.round(wp.y),
+          Math.round(startX), Math.round(startY),
+          Math.round(goalX), Math.round(goalY),
+          path.length,
+        );
+        return true;
+      }
+    }
+    prevX = wp.x;
+    prevY = wp.y;
+  }
+  return false;
+}
+
 // ── Public entry: expandPathPoints / expandPathActions ───────────
 
 /** Plan a path from (startX, startY) to (goalX, goalY) and return one
@@ -210,6 +254,8 @@ export function expandPathPlan(
     const traversal = resolvePathfinderTraversalInput(terrainFilter);
     if (!traversal.allowInWater && !traversal.allowInAir) {
       validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
+    } else if (traversal.allowInWater && !traversal.allowOnGround && !traversal.allowInAir) {
+      validatePathStaysInWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
     }
   }
   const out: UnitPathPoint[] = [];

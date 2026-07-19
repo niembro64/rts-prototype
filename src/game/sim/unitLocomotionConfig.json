@@ -36,14 +36,13 @@
   "presets": {
     "wheels": {
       "actuator": {
+        "maxPropulsiveForce": 26.666666666667,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 26.666666666667,
           "staticFrictionCoefficient": 0.55,
           "tangentialDampingRate": 0.835487663482
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -51,7 +50,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -64,7 +62,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "1-point"
+        "altitudeProbeSetId": "single"
       },
       "navigation": {
         "allowOnGround": true,
@@ -73,14 +71,13 @@
     },
     "treads": {
       "actuator": {
+        "maxPropulsiveForce": 45.333333333333,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 45.333333333333,
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -88,7 +85,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -101,7 +97,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "1-point"
+        "altitudeProbeSetId": "single"
       },
       "navigation": {
         "allowOnGround": true,
@@ -110,14 +106,13 @@
     },
     "amphibiousTreads": {
       "actuator": {
+        "maxPropulsiveForce": 8.613333333333,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 8.613333333333,
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -125,7 +120,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 2.666666666667,
           "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -138,7 +132,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "5-points"
+        "altitudeProbeSetId": "few"
       },
       "navigation": {
         "allowOnGround": true,
@@ -149,14 +143,13 @@
     },
     "flippers": {
       "actuator": {
+        "maxPropulsiveForce": 4,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 3.333333333333,
           "staticFrictionCoefficient": 0.15,
           "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -164,7 +157,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 4,
           "resistanceProfileId": "water-tracked",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -177,7 +169,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "8-points"
+        "altitudeProbeSetId": "many"
       },
       "navigation": {
         "allowOnGround": true,
@@ -188,14 +180,13 @@
     },
     "submarine": {
       "actuator": {
+        "maxPropulsiveForce": 5,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0,
           "tangentialDampingRate": 0
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-submersible",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -203,7 +194,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 5,
           "resistanceProfileId": "water-submersible",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -212,11 +202,11 @@
         }
       },
       "motionControl": {
-        "maintainFullThrustAtWaypoints": true,
+        "maintainFullThrustAtWaypoints": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "5-points"
+        "altitudeProbeSetId": "few"
       },
       "navigation": {
         "allowOnGround": false,
@@ -227,14 +217,13 @@
     },
     "legs": {
       "actuator": {
+        "maxPropulsiveForce": 11.8,
         "propulsionAxis": "worldPlanar",
         "ground": {
-          "maxPropulsiveForce": 11.8,
           "staticFrictionCoefficient": 1,
           "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "air-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -242,7 +231,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -255,7 +243,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "1-point"
+        "altitudeProbeSetId": "single"
       },
       "navigation": {
         "allowOnGround": true,
@@ -264,14 +252,13 @@
     },
     "hover": {
       "actuator": {
+        "maxPropulsiveForce": 0.106666666667,
         "propulsionAxis": "worldPlanar",
         "ground": {
-          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.5,
           "tangentialDampingRate": 0.759534239529
         },
         "air": {
-          "maxPropulsiveForce": 0.106666666667,
           "resistanceProfileId": "air-hover",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -279,7 +266,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -292,7 +278,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "8-points"
+        "altitudeProbeSetId": "many"
       },
       "navigation": {
         "allowOnGround": false,
@@ -304,14 +290,13 @@
     },
     "dive": {
       "actuator": {
+        "maxPropulsiveForce": 0.4,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
         },
         "air": {
-          "maxPropulsiveForce": 0.4,
           "resistanceProfileId": "air-flight",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -319,7 +304,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0.4,
           "resistanceProfileId": "water-submersible",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -332,7 +316,7 @@
         "cruiseWhenUncommanded": true
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "8-points"
+        "altitudeProbeSetId": "few"
       },
       "navigation": {
         "allowOnGround": false,
@@ -344,14 +328,13 @@
     },
     "flying": {
       "actuator": {
+        "maxPropulsiveForce": 1.2,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
         },
         "air": {
-          "maxPropulsiveForce": 1.2,
           "resistanceProfileId": "air-flight",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -359,7 +342,6 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
           "resistanceProfileId": "water-standard",
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
@@ -372,7 +354,7 @@
         "cruiseWhenUncommanded": true
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "8-points"
+        "altitudeProbeSetId": "many"
       },
       "navigation": {
         "allowOnGround": false,

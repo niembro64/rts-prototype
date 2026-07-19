@@ -28,7 +28,6 @@ export type UnitLocomotionSurfaceFollowingResponse = {
 export type UnitLocomotionFluidResistanceProfile = UnitLocomotionResistancePhysics;
 
 export type UnitLocomotionPresetFluidPhysics = {
-  maxPropulsiveForce: number;
   resistanceProfileId: string;
   /** Kept explicit and fixed at zero: surface following is deterministic and
    * unfiltered. */
@@ -37,6 +36,7 @@ export type UnitLocomotionPresetFluidPhysics = {
 
 export type UnitLocomotionPresetConfig = {
   actuator: {
+    maxPropulsiveForce: number;
     propulsionAxis: 'bodyForward' | 'worldPlanar';
     ground: UnitLocomotionGroundPhysics;
     air: UnitLocomotionPresetFluidPhysics;
@@ -105,11 +105,9 @@ function assertGroundPhysics(presetId: string, value: unknown): void {
   const label = `presets.${presetId}.actuator.ground`;
   assertObject(label, value);
   assertExactKeys(label, value, [
-    'maxPropulsiveForce',
     'staticFrictionCoefficient',
     'tangentialDampingRate',
   ]);
-  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
   assertUnitLocomotionNonNegativeFinite(
     `${label}.staticFrictionCoefficient`,
     value.staticFrictionCoefficient as number,
@@ -128,8 +126,7 @@ function assertFluidPhysics(
 ): void {
   const label = `presets.${presetId}.actuator.${medium}`;
   assertObject(label, value);
-  assertExactKeys(label, value, ['maxPropulsiveForce', 'resistanceProfileId', 'surfaceLiftResponse']);
-  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
+  assertExactKeys(label, value, ['resistanceProfileId', 'surfaceLiftResponse']);
   if (typeof value.resistanceProfileId !== 'string' || resistanceProfiles[value.resistanceProfileId] === undefined) {
     throw new Error(`Invalid unitLocomotionConfig.json: unknown ${label}.resistanceProfileId`);
   }
@@ -168,6 +165,7 @@ function assertPreset(
   ]);
   assertObject(`presets.${presetId}.actuator`, preset.actuator);
   assertExactKeys(`presets.${presetId}.actuator`, preset.actuator, [
+    'maxPropulsiveForce',
     'propulsionAxis',
     'ground',
     'air',
@@ -179,6 +177,10 @@ function assertPreset(
   ) {
     throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);
   }
+  assertUnitLocomotionNonNegativeFinite(
+    `presets.${presetId}.actuator.maxPropulsiveForce`,
+    preset.actuator.maxPropulsiveForce,
+  );
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
   assertExactKeys(`presets.${presetId}.motionControl`, preset.motionControl, [
     'maintainFullThrustAtWaypoints',

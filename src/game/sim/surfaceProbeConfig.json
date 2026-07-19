@@ -1,41 +1,32 @@
 {
+  "spacing": {
+    "world": 225
+  },
   "sets": {
-    "1-point": {
-      "reach": {
-        "world": 0,
-        "bodyRadiusMultiplier": 0
-      },
+    "single": {
       "points": [
-        { "forward": 0, "lateral": 0, "role": "center" }
+        { "forward": 0, "lateral": 0 }
       ]
     },
-    "5-points": {
-      "reach": {
-        "world": 0,
-        "bodyRadiusMultiplier": 1
-      },
+    "few": {
       "points": [
-        { "forward": 0, "lateral": 0, "role": "center" },
-        { "forward": 1, "lateral": 0, "role": "forward" },
-        { "forward": -1, "lateral": 0, "role": "rear" },
-        { "forward": 0, "lateral": 1, "role": "side" },
-        { "forward": 0, "lateral": -1, "role": "side" }
+        { "forward": 0, "lateral": 0 },
+        { "forward": 1, "lateral": 0 },
+        { "forward": -1, "lateral": 0 },
+        { "forward": 0, "lateral": 1 },
+        { "forward": 0, "lateral": -1 }
       ]
     },
-    "8-points": {
-      "reach": {
-        "world": 900,
-        "bodyRadiusMultiplier": 1
-      },
+    "many": {
       "points": [
-        { "forward": 0, "lateral": 0, "role": "center" },
-        { "forward": 0.25, "lateral": 0, "role": "forward" },
-        { "forward": 0.5, "lateral": 0, "role": "forward" },
-        { "forward": 0.75, "lateral": 0, "role": "forward" },
-        { "forward": 1, "lateral": 0, "role": "forward" },
-        { "forward": 0, "lateral": 0.25, "role": "side" },
-        { "forward": 0, "lateral": -0.25, "role": "side" },
-        { "forward": -0.25, "lateral": 0, "role": "rear" }
+        { "forward": 0, "lateral": 0 },
+        { "forward": 1, "lateral": 0 },
+        { "forward": 2, "lateral": 0 },
+        { "forward": 3, "lateral": 0 },
+        { "forward": 4, "lateral": 0 },
+        { "forward": 0, "lateral": 1 },
+        { "forward": 0, "lateral": -1 },
+        { "forward": -1, "lateral": 0 }
       ]
     }
   }

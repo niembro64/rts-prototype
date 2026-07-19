@@ -40,12 +40,15 @@ export function computeLocomotionClimbProfile(
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
   const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation;
+  const groundMaxPropulsiveForce = allowOnGround
+    ? locomotion.actuator.maxPropulsiveForce
+    : 0;
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
   const physicsMass = mass * UNIT_MASS_MULTIPLIER;
   const cacheKey = [
-    groundPhysics.maxPropulsiveForce,
+    groundMaxPropulsiveForce,
     groundPhysics.staticFrictionCoefficient,
     physicsMass,
     GRAVITY,
@@ -63,7 +66,7 @@ export function computeLocomotionClimbProfile(
     throw new Error('Pathfinding mobility requires the authoritative simulation WASM to be initialized');
   }
   const computed = sim.pathfinder.computeLocomotionClimbProfile(
-    groundPhysics.maxPropulsiveForce,
+    groundMaxPropulsiveForce,
     groundPhysics.staticFrictionCoefficient,
     physicsMass,
     GRAVITY,

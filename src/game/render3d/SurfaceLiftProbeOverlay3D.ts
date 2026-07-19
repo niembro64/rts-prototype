@@ -2,10 +2,7 @@ import * as THREE from 'three';
 import { getAirLiftProbeDebug } from '@/clientBarConfig';
 import type { Entity } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import {
-  type SurfaceProbePointRole,
-  getSurfaceProbePointCount,
-} from '../sim/surfaceProbeSets';
+import { getSurfaceProbePointCount } from '../sim/surfaceProbeSets';
 import type { EntityId } from '@/types/sim';
 import type { SurfaceLiftProbeDebugFrame } from '@/types/game';
 import {
@@ -19,7 +16,6 @@ const GROUND_LINE_RADIUS = 3.5;
 const WATER_LINE_RADIUS = 0.35;
 const MIN_VISIBLE_LINE_LENGTH = 0.01;
 const RENDER_ORDER = 92;
-const FORWARD_PROBE_COLOR = new THREE.Color(0x36e6ff);
 const BODY_PROBE_COLOR = new THREE.Color(0xffd447);
 const DIRECT_PROBE_COLOR = new THREE.Color(0xff7a36);
 
@@ -131,7 +127,14 @@ export class SurfaceLiftProbeOverlay3D {
         const sample = frame.samples[sampleIndex];
         const { x, y: z, bodyZ: bodyY } = sample;
         if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(bodyY)) continue;
-        this.writeMarkerInstance(markers, markerCursor, x, bodyY, z, probeColor(sample.role));
+        this.writeMarkerInstance(
+          markers,
+          markerCursor,
+          x,
+          bodyY,
+          z,
+          sample.isCenter ? DIRECT_PROBE_COLOR : BODY_PROBE_COLOR,
+        );
         markerCursor++;
         if (
           sample.usesGroundDistance &&
@@ -278,10 +281,4 @@ function unitShouldShowSurfaceLiftProbes(entity: Entity): boolean {
   return unit.locomotion.physics.air.lift.surfaceFollowingForceFromGround > 0 ||
     unit.locomotion.physics.air.lift.surfaceFollowingForceFromWater > 0 ||
     unit.locomotion.physics.water.lift.surfaceFollowingForceFromGround > 0;
-}
-
-function probeColor(role: SurfaceProbePointRole): THREE.Color {
-  if (role === 'center') return DIRECT_PROBE_COLOR;
-  if (role === 'forward') return FORWARD_PROBE_COLOR;
-  return BODY_PROBE_COLOR;
 }

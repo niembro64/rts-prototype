@@ -19,8 +19,6 @@ export type UnitLocomotionLiftPhysics = {
 };
 
 export type UnitLocomotionGroundPhysics = {
-  /** Maximum force the ground actuator can request before traction limits it. */
-  maxPropulsiveForce: number;
   /** Coulomb static-friction coefficient for the contact patch. */
   staticFrictionCoefficient: number;
   /** Passive tangent-velocity damping rate while supported, in s^-1. */
@@ -28,15 +26,9 @@ export type UnitLocomotionGroundPhysics = {
 };
 
 export type UnitLocomotionFluidPhysics = {
-  /** Maximum directed propulsion force supplied while occupying this medium. */
-  maxPropulsiveForce: number;
   resistance: UnitLocomotionResistancePhysics;
   lift: UnitLocomotionLiftPhysics;
 };
-
-export type UnitLocomotionMediumPhysics =
-  | UnitLocomotionGroundPhysics
-  | UnitLocomotionFluidPhysics;
 
 export type UnitLocomotionPhysics = {
   ground: UnitLocomotionGroundPhysics;
@@ -57,7 +49,7 @@ export type UnitLocomotionType =
   | 'submarine'
   | 'dive';
 
-export type SurfaceProbeSetId = '1-point' | '5-points' | '8-points';
+export type SurfaceProbeSetId = 'single' | 'few' | 'many';
 
 export type UnitLocomotion = {
   /** Authored mechanism used by presentation; physics is expanded below. */
@@ -65,8 +57,7 @@ export type UnitLocomotion = {
   /** Explicit preset expanded into the complete applicable profile at load. */
   physicsPresetId: string;
   /** Fully-abstracted medium physics. Every unit owns each medium profile;
-   *  zero propulsion makes a medium inert, while concepts that do not apply
-   *  to that medium are structurally absent. */
+   *  concepts that do not apply to a medium are structurally absent. */
   physics: UnitLocomotionPhysics;
   /** Environmental failure policy, independent from propulsion and lift. */
   environmentalHazards: {
@@ -75,6 +66,10 @@ export type UnitLocomotion = {
     fatalExposureSeconds: number;
   };
   actuator: {
+    /** One maximum horizontal force budget for this chassis. It is available
+     * only in media permitted by navigation; traction and resistance then
+     * determine the resulting motion. */
+    maxPropulsiveForce: number;
     /** Axis through which the locomotion actuator can apply horizontal force. */
     propulsionAxis: 'bodyForward' | 'worldPlanar';
   };

@@ -539,13 +539,23 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
         }
         case 'submarine': {
           const rig = buildSwimRig(root, radius, locomotion.config, undefined, tier);
+          const fanRing = rig.rearFan.group.children[0] as THREE.Mesh;
+          assertContract(
+            rig.pectoralHinges.length === 2 && fanRing.isMesh &&
+              fanRing.geometry.type === (tier === 'far' ? 'RingGeometry' : 'TorusGeometry'),
+            `${unitId}/${tier} submarine keeps two front fins and a tiered rear hover-fan duct`,
+          );
           return {
             rig,
             count: objectTriangleCount(root),
             signature: {
               root: transformTuple(rig.group),
               pectorals: rig.pectoralHinges.map(transformTuple),
-              tail: transformTuple(rig.tailHinge),
+              rearFan: {
+                group: transformTuple(rig.rearFan.group),
+                emitter: transformTuple(rig.rearFan.emitter),
+                exhaustSpeed: n(rig.rearFan.exhaustSpeed),
+              },
               cycle: [n(rig.cycleDistance), n(rig.strokeAngle)],
             },
           };
@@ -696,7 +706,6 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
       locomotion.contact.initialized = true;
       locomotion.pectoralHinges[0].rotation.z = 0.3;
       locomotion.pectoralHinges[1].rotation.z = -0.3;
-      locomotion.tailHinge.rotation.y = 0.4;
       return;
   }
 }

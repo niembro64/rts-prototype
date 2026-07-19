@@ -1,12 +1,17 @@
-// SwimRig3D — cetacean-style pectoral fins, dorsal fin, and horizontally
-// paired tail flukes. This is a presentation rig only; the authoritative
-// water propulsion/lift profile lives in the `submarine` locomotion preset.
+// SwimRig3D — two pectoral control fins and a rear ducted propulsor. This is
+// a presentation rig only; the authoritative water propulsion/lift profile
+// lives in the `submarine` locomotion preset.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { SwimConfig } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import {
+  appendHoverFanSmoke,
+  buildRearPropulsionFan,
+  type HoverFan,
+} from './HoverRig3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   type LocomotionBase,
@@ -16,6 +21,7 @@ import {
   rollingLocomotionBodyActive,
   sampleRollingContactDistance,
 } from './LocomotionRigShared3D';
+import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 const DEG_TO_RAD = Math.PI / 180;
 const swimMaterials = new Map<number, THREE.MeshBasicMaterial>();
@@ -25,7 +31,7 @@ export type SwimMesh = {
   type: 'swim';
   group: THREE.Group;
   pectoralHinges: [THREE.Group, THREE.Group];
-  tailHinge: THREE.Group;
+  rearFan: HoverFan;
   contact: RollingContactState;
   cycleDistance: number;
   strokeAngle: number;
@@ -62,37 +68,13 @@ function taperedPanelGeometry(
   return geometry;
 }
 
-function dorsalGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  const key = `${tier}:dorsal`;
-  let geometry = panelGeometries.get(key);
-  if (geometry !== undefined) return geometry;
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.55, 0);
-  shape.lineTo(0.45, 0);
-  shape.lineTo(-0.2, 1);
-  shape.closePath();
-  geometry = tier === 'far'
-    ? new THREE.ShapeGeometry(shape)
-    : new THREE.ExtrudeGeometry(shape, {
-      depth: 1,
-      bevelEnabled: tier === 'close',
-      bevelSegments: tier === 'close' ? 1 : 0,
-      bevelSize: tier === 'close' ? 0.03 : 0,
-      bevelThickness: tier === 'close' ? 0.05 : 0,
-      steps: 1,
-    });
-  if (tier !== 'far') geometry.translate(0, 0, -0.5);
-  geometry.computeVertexNormals();
-  panelGeometries.set(key, geometry);
-  return geometry;
-}
-
 export function buildSwimRig(
   unitGroup: THREE.Group,
   radius: number,
   cfg: SwimConfig,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
+  entityId = 0,
 ): SwimMesh {
   const group = new THREE.Group();
   const material = getLocomotionMatByCache(
@@ -124,35 +106,16 @@ export function buildSwimRig(
     group.add(hinge);
   }
 
-  const tailHinge = new THREE.Group();
-  tailHinge.position.set(radius * cfg.tailOffsetXFrac, 0, 0);
-  const tailGeometry = taperedPanelGeometry(0.32, geometryTier);
-  for (const side of [-1, 1] as const) {
-    const fluke = new THREE.Mesh(tailGeometry, material);
-    fluke.scale.set(
-      Math.max(0.5, radius * cfg.tailChordFrac),
-      thickness,
-      side * Math.max(0.5, radius * cfg.tailSpanFrac * 0.5),
-    );
-    tailHinge.add(fluke);
-  }
-  group.add(tailHinge);
-
-  const dorsal = new THREE.Mesh(dorsalGeometry(geometryTier), material);
-  dorsal.position.set(radius * cfg.dorsalOffsetXFrac, 0, 0);
-  dorsal.scale.set(
-    Math.max(0.5, radius * cfg.dorsalChordFrac),
-    Math.max(0.5, radius * cfg.dorsalHeightFrac),
-    thickness,
+  const rearFan = buildRearPropulsionFan(
+    group, radius, cfg, entityId, ownerId, geometryTier,
   );
-  group.add(dorsal);
 
   unitGroup.add(group);
   const mesh: SwimMesh = {
     type: 'swim',
     group,
     pectoralHinges,
-    tailHinge,
+    rearFan,
     contact: rollingContact(0, 0),
     cycleDistance: Math.max(1, radius * cfg.cycleDistanceFrac),
     strokeAngle: cfg.strokeAngleDeg * DEG_TO_RAD,
@@ -166,18 +129,20 @@ export function updateSwimRig(
   mesh: SwimMesh,
   pose: LocomotionRenderPose,
   _dtMs: number,
+  smokeOut?: SmokePuffEmitter[],
 ): boolean {
   sampleRollingContactDistance(pose, mesh.contact);
   poseSwimRigAtCycle(mesh, mesh.contact.phase / mesh.cycleDistance * Math.PI * 2);
-  return rollingLocomotionBodyActive(pose);
+  const active = rollingLocomotionBodyActive(pose);
+  if (active && smokeOut) appendHoverFanSmoke(mesh.rearFan, smokeOut);
+  return active;
 }
 
 /** Deterministic pose helper shared by the loading preview. */
 export function poseSwimRigAtCycle(mesh: SwimMesh, cycle: number): void {
   const stroke = Math.sin(cycle) * mesh.strokeAngle;
-  // Orcas drive their horizontal flukes vertically, while pectoral fins
-  // counter-phase subtly to keep the silhouette alive without looking avian.
-  mesh.tailHinge.rotation.z = stroke;
+  // The two forward control fins counter-phase subtly while the fixed rear
+  // fan supplies the propulsive visual.
   mesh.pectoralHinges[0].rotation.x = 0.08 - stroke * 0.22;
   mesh.pectoralHinges[1].rotation.x = -0.08 + stroke * 0.22;
 }

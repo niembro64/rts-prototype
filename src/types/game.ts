@@ -97,7 +97,7 @@ export type SurfaceLiftProbeDebugSample = {
   x: number;
   y: number;
   bodyZ: number;
-  role: 'center' | 'forward' | 'side' | 'rear';
+  isCenter: boolean;
   /** Exact clamped distance used by any ground/solid lift contribution. */
   groundDistanceWorld: number;
   usesGroundDistance: boolean;

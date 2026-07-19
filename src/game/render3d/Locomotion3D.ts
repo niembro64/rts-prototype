@@ -219,10 +219,7 @@ export function captureLocomotionState(
       return {
         type: 'swim',
         contact: captureRollingContact(locomotion.contact),
-        hingeQuaternions: [
-          ...locomotion.pectoralHinges.map(quaternionTuple),
-          quaternionTuple(locomotion.tailHinge),
-        ],
+        hingeQuaternions: locomotion.pectoralHinges.map(quaternionTuple),
       };
   }
 }
@@ -303,7 +300,7 @@ export function applyLocomotionState(
     case 'swim': {
       const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'swim' }>;
       applyRollingContact(locomotion.contact, state.contact);
-      const hinges: THREE.Object3D[] = [...locomotion.pectoralHinges, locomotion.tailHinge];
+      const hinges: THREE.Object3D[] = [...locomotion.pectoralHinges];
       for (let i = 0; i < hinges.length; i++) {
         const q = state.hingeQuaternions[i];
         if (q) hinges[i].quaternion.set(q[0], q[1], q[2], q[3]);
@@ -460,7 +457,7 @@ export function buildLocomotion(
     }
     case 'submarine': {
       const mesh = buildSwimRig(
-        unitGroup, unitRadius, loc.config, ownerId, geometryTier,
+        unitGroup, unitRadius, loc.config, ownerId, geometryTier, entity.id,
       );
       mesh.geometryKey = geometryKey;
       return mesh;
@@ -514,7 +511,7 @@ export function updateLocomotion(
         airborneEmitters?.pose,
       );
     case 'swim':
-      return updateSwimRig(mesh, pose, dtMs);
+      return updateSwimRig(mesh, pose, dtMs, hoverSmokeEmitters);
   }
 }
 

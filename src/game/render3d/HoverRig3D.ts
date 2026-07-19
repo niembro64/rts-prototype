@@ -74,6 +74,7 @@ const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
+const REARWARD_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 
 function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   const ratioKey = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
@@ -308,11 +309,21 @@ export function setHoverFanAnimationTime(timeSec: number): void {
   }
 }
 
-type HoverFan = {
+export type HoverFan = {
   group: THREE.Group;
   emitter: THREE.Object3D;
   smoke: SmokePuffEmitter;
   exhaustSpeed: number;
+};
+
+/** Shared rear-facing duct geometry for watercraft and hovercraft. The fan
+ * is visual only: locomotion physics never depends on it. */
+export type RearPropulsionFanConfig = {
+  rearFanOffsetXFrac: number;
+  rearFanHeightFrac: number;
+  rearFanRadius: number;
+  rearFanRingTubeRadius: number;
+  rearFanSpinRadPerSec: number;
 };
 
 export type HoverMesh = {
@@ -447,6 +458,54 @@ function buildFan(
       phase: entityId * 4 + fanIndex,
     },
   };
+}
+
+/** Builds the same ducted-fan assembly used by hover locomotion, but points
+ * its exhaust along the chassis' rearward axis for a propeller-like drive. */
+export function buildRearPropulsionFan(
+  parent: THREE.Group,
+  unitRadius: number,
+  cfg: RearPropulsionFanConfig,
+  entityId: number,
+  ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
+): HoverFan {
+  return buildFan(
+    parent,
+    {
+      localX: unitRadius * cfg.rearFanOffsetXFrac,
+      localY: unitRadius * cfg.rearFanHeightFrac,
+      localZ: 0,
+      fanRadius: Math.max(1, unitRadius * cfg.rearFanRadius),
+      ringTubeRadius: Math.max(0.35, unitRadius * cfg.rearFanRingTubeRadius),
+      outwardAngleRad: 0,
+      fanSpinRadPerSec: cfg.rearFanSpinRadPerSec,
+      exhaustDirection: REARWARD_EXHAUST_DIR,
+      smokeProfile: getSmokeProfile('locomotionHovercraft'),
+    },
+    entityId,
+    0,
+    ownerId,
+    geometryTier,
+  );
+}
+
+/** Appends one world-space plume emitter for a reusable fan assembly. */
+export function appendHoverFanSmoke(
+  fan: HoverFan,
+  smokeOut: SmokePuffEmitter[],
+): void {
+  fan.emitter.getWorldPosition(_fanWorldPos);
+  fan.group.getWorldQuaternion(_fanWorldQuat);
+  _fanWorldDir.copy(LOCAL_EXHAUST_DIR).applyQuaternion(_fanWorldQuat).normalize();
+
+  fan.smoke.x = _fanWorldPos.x;
+  fan.smoke.y = _fanWorldPos.z;
+  fan.smoke.z = _fanWorldPos.y;
+  fan.smoke.vx = _fanWorldDir.x * fan.exhaustSpeed;
+  fan.smoke.vy = _fanWorldDir.z * fan.exhaustSpeed;
+  fan.smoke.vz = _fanWorldDir.y * fan.exhaustSpeed;
+  smokeOut.push(fan.smoke);
 }
 
 export function buildAlbatrosHoverFans(
@@ -711,17 +770,7 @@ export function updateHoverFans(
       continue;
     }
 
-    fan.emitter.getWorldPosition(_fanWorldPos);
-    fan.group.getWorldQuaternion(_fanWorldQuat);
-    _fanWorldDir.copy(LOCAL_EXHAUST_DIR).applyQuaternion(_fanWorldQuat).normalize();
-
-    fan.smoke.x = _fanWorldPos.x;
-    fan.smoke.y = _fanWorldPos.z;
-    fan.smoke.z = _fanWorldPos.y;
-    fan.smoke.vx = _fanWorldDir.x * fan.exhaustSpeed;
-    fan.smoke.vy = _fanWorldDir.z * fan.exhaustSpeed;
-    fan.smoke.vz = _fanWorldDir.y * fan.exhaustSpeed;
-    smokeOut.push(fan.smoke);
+    appendHoverFanSmoke(fan, smokeOut);
   }
   return true;
 }

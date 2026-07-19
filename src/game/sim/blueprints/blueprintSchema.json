@@ -2075,12 +2075,11 @@
         "pectoralSpanFrac",
         "pectoralRootChordFrac",
         "pectoralTipChordFrac",
-        "tailOffsetXFrac",
-        "tailSpanFrac",
-        "tailChordFrac",
-        "dorsalOffsetXFrac",
-        "dorsalHeightFrac",
-        "dorsalChordFrac",
+        "rearFanOffsetXFrac",
+        "rearFanHeightFrac",
+        "rearFanRadius",
+        "rearFanRingTubeRadius",
+        "rearFanSpinRadPerSec",
         "thicknessFrac",
         "strokeAngleDeg",
         "cycleDistanceFrac"
@@ -2107,27 +2106,22 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
-        "tailOffsetXFrac": {
+        "rearFanOffsetXFrac": {
           "type": "number"
         },
-        "tailSpanFrac": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "tailChordFrac": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "dorsalOffsetXFrac": {
+        "rearFanHeightFrac": {
           "type": "number"
         },
-        "dorsalHeightFrac": {
+        "rearFanRadius": {
           "type": "number",
           "exclusiveMinimum": 0
         },
-        "dorsalChordFrac": {
+        "rearFanRingTubeRadius": {
           "type": "number",
           "exclusiveMinimum": 0
+        },
+        "rearFanSpinRadPerSec": {
+          "type": "number"
         },
         "thicknessFrac": {
           "type": "number",

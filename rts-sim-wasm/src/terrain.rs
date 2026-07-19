@@ -3776,6 +3776,73 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
     }
 }
 
+/// Returns true only when the interior of a rectangle is covered by terrain
+/// triangles whose three vertices all lie below the water plane.  This is the
+/// conservative water-navigation counterpart to
+/// `terrain_accumulate_touching_triangle_safety`: a cell that merely touches
+/// water is useful for keeping land routes out, but it is not enough volume
+/// for a water-only body to occupy.
+pub(crate) fn terrain_touching_triangles_are_submerged(
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+) -> bool {
+    let t = terrain_grid();
+    if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
+        return false;
+    }
+
+    let min_cell_x = ((min_x / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_x - 1);
+    let max_cell_x = ((max_x / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_x - 1);
+    let min_cell_y = ((min_y / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_y - 1);
+    let max_cell_y = ((max_y / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_y - 1);
+
+    let mut found_triangle = false;
+    for cy in min_cell_y..=max_cell_y {
+        for cx in min_cell_x..=max_cell_x {
+            let cell_idx = (cy * t.cells_x + cx) as usize;
+            if cell_idx + 1 >= t.cell_triangle_offsets.len() {
+                continue;
+            }
+            let start = t.cell_triangle_offsets[cell_idx].max(0) as usize;
+            let end = t.cell_triangle_offsets[cell_idx + 1]
+                .max(0) as usize;
+            let end = end.min(t.cell_triangle_indices.len());
+            for ref_idx in start..end {
+                let tri = t.cell_triangle_indices[ref_idx];
+                if tri < 0 {
+                    continue;
+                }
+                let sample = match terrain_triangle_sample_from_index(t, tri as usize) {
+                    Some(sample) => sample,
+                    None => continue,
+                };
+                if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
+                    continue;
+                }
+                found_triangle = true;
+                let (_, _, _, _, _, ah, _, _, bh, _, _, ch) = sample;
+                if ah >= TERRAIN_WATER_LEVEL
+                    || bh >= TERRAIN_WATER_LEVEL
+                    || ch >= TERRAIN_WATER_LEVEL
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    found_triangle
+}
+
 pub(crate) fn terrain_triangle_sample_at(
     t: &TerrainGrid,
     px: f64,

@@ -12,15 +12,15 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   for (const presetId of ['flippers', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
-      preset.actuator.ground.maxPropulsiveForce >= 0 &&
+      preset.actuator.maxPropulsiveForce >= 0 &&
         preset.actuator.ground.staticFrictionCoefficient >= 0,
-      `${presetId} declares direct ground force and static friction`,
+      `${presetId} declares one actuator force budget and static friction`,
     );
     for (const medium of ['air', 'water'] as const) {
       const fluid = preset.actuator[medium];
       assertContract(
-        fluid.maxPropulsiveForce >= 0 && fluid.resistanceProfileId.length > 0,
-        `${presetId}.${medium} declares direct propulsion and one resistance profile`,
+        fluid.resistanceProfileId.length > 0,
+        `${presetId}.${medium} declares one resistance profile`,
       );
       for (const field of UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS) {
         assertContract(
@@ -39,9 +39,9 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   const seaTurtle = getUnitLocomotion('unitSeaTurtle');
   assertContract(
     seaTurtle.physics.water.lift.buoyancyRatio === 1 &&
-      seaTurtle.physics.water.lift.surfaceFollowingForceFromGround > 0 &&
-      seaTurtle.physics.air.lift.surfaceFollowingForceFromWater > 0,
-    'Sea Turtle holds the waterline with explicit buoyancy and surface-following forces',
+      seaTurtle.physics.water.lift.surfaceFollowingForceFromGround === 0 &&
+      seaTurtle.physics.air.lift.surfaceFollowingForceFromWater === 0,
+    'Sea Turtle is neutrally buoyant underwater without a powered surface-following hover force',
   );
   assertContract(
     getUnitBlueprint('unitSeaTurtle').radius.collision <

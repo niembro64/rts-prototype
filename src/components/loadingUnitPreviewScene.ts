@@ -831,6 +831,7 @@ function animatePreviewLocomotion(
       return;
     case 'swim':
       poseSwimRigAtCycle(rig.mesh, active ? stride : 0);
+      setHoverFanAnimationTime(active ? timeSec * motionScale : 0);
       return;
     case 'treads':
       animatePreviewTreads(rig.mesh, active ? stride : 0);

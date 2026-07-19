@@ -11,7 +11,6 @@ import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
-import { getUnitLocomotionPrimaryPropulsionPhysics } from '@/game/sim/unitLocomotion';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   ShotBlueprint,
@@ -237,10 +236,9 @@ function buildEconomySection(
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
-  const primaryPhysics = getUnitLocomotionPrimaryPropulsionPhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Maximum propulsive force', fmt(primaryPhysics.maxPropulsiveForce)),
+    stat('Maximum propulsive force', fmt(runtime.actuator.maxPropulsiveForce)),
     node('Route media', labelCase(runtime.type), undefined, [
       stat(
         'Media',
@@ -431,14 +429,12 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   const items: LoadingUnitInfoNode[] = [];
   const air = locomotion.physics.air;
   if (
-    air.maxPropulsiveForce > 0 ||
     air.resistance.linearDampingRate > 0 ||
     air.lift.buoyancyRatio > 0 ||
     air.lift.surfaceFollowingForceFromGround > 0 ||
     air.lift.surfaceFollowingForceFromWater > 0
   ) {
     const airChildren = [
-      stat('Maximum propulsive force', fmt(air.maxPropulsiveForce)),
       stat('Linear damping rate', fmt(air.resistance.linearDampingRate, 2)),
       stat('Angular damping rate', fmt(air.resistance.angularDampingRate, 2)),
     ];
@@ -460,13 +456,11 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
 
   const water = locomotion.physics.water;
   if (
-    water.maxPropulsiveForce > 0 ||
     water.resistance.linearDampingRate > 0 ||
     water.lift.buoyancyRatio > 0 ||
     water.lift.surfaceFollowingForceFromGround > 0
   ) {
     const waterChildren = [
-      stat('Maximum propulsive force', fmt(water.maxPropulsiveForce)),
       stat('Linear damping rate', fmt(water.resistance.linearDampingRate, 2)),
       stat('Angular damping rate', fmt(water.resistance.angularDampingRate, 2)),
     ];
