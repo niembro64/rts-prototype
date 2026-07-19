@@ -22,7 +22,6 @@ import {
   DETAIL_LEVEL_GLYPH,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
-  ICON_FADE_MIN_ALPHA,
   PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
   detailLevelForRung,
 } from './EntityDetailLevel3D';
@@ -176,7 +175,7 @@ export function runEntityLod3DContractTest(): void {
     const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
     assertContract(
       !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
-        bandFadeAlpha >= ICON_FADE_MIN_ALPHA && bandFadeAlpha < 1,
+        bandFadeAlpha > 0 && bandFadeAlpha < 1,
       'AUTO mode cross-fades the icon in over the still-drawn unit model',
     );
     groundUnit.transform.y = -10000;

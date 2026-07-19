@@ -112,14 +112,12 @@ const CLOSE_RUNG_MIN_LEVEL = Math.max(
 );
 // BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph
 // starts fading in over the model at the close→mid rung boundary radius —
-// the moment geometry drops to the MID tier — and reaches full opacity at
-// the glyph radius, where the FAR model hard-cuts.
+// the moment geometry drops to the MID tier — ramping smoothly from alpha
+// 0 there to full opacity at the glyph radius, where the FAR model
+// hard-cuts.
 export const ICON_FADE_START_SCREEN_RADIUS_PX =
   GLYPH_SCREEN_RADIUS_PX +
   CLOSE_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
-export const ICON_FADE_MIN_ALPHA = clamp01(
-  finitePositiveOr(detailConfig.proxyFade?.minAlpha, 0.25),
-);
 export const PLASMA_MEDIUM_RUNG_MIN_LEVEL = clamp01(
   finitePositiveOr(detailConfig.plasmaRungMinLevel?.medium, 0.08),
 );
@@ -267,9 +265,8 @@ export function detailLevelForRadiusDistance(
 /**
  * BAR-style icon cross-fade alpha from the projected screen radius.
  * 0 while the model still shows CLOSE-tier geometry (no icon), then a
- * linear ramp from ICON_FADE_MIN_ALPHA (icons are unrecognisable when
- * fainter — BAR pops them in at ~25%) up to 1 as the radius falls from
- * the close→mid rung boundary (MID-tier onset) to the glyph threshold,
+ * smooth linear ramp from 0 up to 1 as the radius falls from the
+ * close→mid rung boundary (MID-tier onset) to the glyph threshold,
  * where the FAR model hard-cuts. The MODEL is never faded: it stays
  * fully opaque under the icon and stops drawing entirely once the
  * latched rung reaches GLYPH (where the now-fully-opaque glyph has
@@ -280,9 +277,8 @@ export function lodProxyFadeAlphaForScreenRadius(screenRadiusPx: number): number
   if (!Number.isFinite(screenRadiusPx)) return 0;
   if (screenRadiusPx >= ICON_FADE_START_SCREEN_RADIUS_PX) return 0;
   if (screenRadiusPx <= GLYPH_SCREEN_RADIUS_PX) return 1;
-  const t = (ICON_FADE_START_SCREEN_RADIUS_PX - screenRadiusPx) /
+  return (ICON_FADE_START_SCREEN_RADIUS_PX - screenRadiusPx) /
     (ICON_FADE_START_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
-  return ICON_FADE_MIN_ALPHA + (1 - ICON_FADE_MIN_ALPHA) * t;
 }
 
 /**

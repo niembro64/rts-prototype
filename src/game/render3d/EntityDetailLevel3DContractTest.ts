@@ -6,7 +6,6 @@ import {
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
-  ICON_FADE_MIN_ALPHA,
   ICON_FADE_START_SCREEN_RADIUS_PX,
   PLASMA_DETAIL_HYSTERESIS_LEVEL,
   PLASMA_HIGH_RUNG_MIN_LEVEL,
@@ -173,12 +172,16 @@ export function runEntityDetailLevel3DContractTest(): void {
       lodProxyFadeAlphaForScreenRadius(10000) === 0,
     'no icon overlay at/above the fade-start screen radius',
   );
+  assertContract(
+    lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX - 0.01) < 0.01,
+    'the icon fade begins smoothly from alpha 0 (no pop-in)',
+  );
   const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + 4) / 2;
   const bandAlpha = lodProxyFadeAlphaForScreenRadius(bandPx);
   assertContract(
     bandPx >= ICON_FADE_START_SCREEN_RADIUS_PX ||
-      (bandAlpha >= ICON_FADE_MIN_ALPHA && bandAlpha < 1),
-    'inside the band the icon alpha sits between the pop-in floor and 1',
+      (bandAlpha > 0 && bandAlpha < 1),
+    'inside the band the icon alpha sits strictly between 0 and 1',
   );
   assertContract(
     lodProxyFadeAlphaForScreenRadius(0) === 1,
