@@ -250,6 +250,43 @@
         "allowedFluidMedia": []
       }
     },
+    "amphibiousLegs": {
+      "actuator": {
+        "maxPropulsiveForce": 11.8,
+        "propulsionAxis": "worldPlanar",
+        "ground": {
+          "staticFrictionCoefficient": 1,
+          "tangentialDampingRate": 1.519068479057
+        },
+        "air": {
+          "resistanceProfileId": "air-standard",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        },
+        "water": {
+          "resistanceProfileId": "water-standard",
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "single"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": [
+          "water"
+        ]
+      }
+    },
     "hover": {
       "actuator": {
         "maxPropulsiveForce": 0.106666666667,

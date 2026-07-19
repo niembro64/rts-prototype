@@ -69,7 +69,7 @@
         "water": {
           "lift": {
             "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "buoyancyRatio": 0
           }
         }
       },
@@ -645,7 +645,7 @@
         "water": {
           "lift": {
             "surfaceFollowingForceFromGround": 0,
-            "buoyancyRatio": 1
+            "buoyancyRatio": 0
           }
         }
       },
@@ -3219,7 +3219,7 @@
     },
     "unitLocomotion": {
       "type": "legs",
-      "physicsPresetId": "legs",
+      "physicsPresetId": "amphibiousLegs",
       "physics": {
         "air": {
           "lift": {

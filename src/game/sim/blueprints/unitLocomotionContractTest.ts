@@ -11,6 +11,7 @@ import {
 } from '../unitLocomotionPresetConfig';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import { getAllUnitBlueprints } from './units';
+import { UNIT_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import rawLocomotionConfig from '../unitLocomotionConfig.json';
 import {
   forEachSurfaceProbePoint,
@@ -33,6 +34,46 @@ function expectLocomotionError(blueprint: UnitLocomotionBlueprint, message: stri
   }
   throw new Error(`[locomotion contract] expected invalid locomotion: ${message}`);
 }
+
+type ExpectedLocomotionDomain = Readonly<{
+  type: UnitLocomotionBlueprint['type'];
+  allowOnGround: boolean;
+  allowInAir: boolean;
+  allowInWater: boolean;
+  waterFatal: boolean;
+}>;
+
+/**
+ * This is an explicit roster policy rather than a visual-type inference.
+ * The same leg rig may be a land-only bot or the Commander's seabed-walking
+ * chassis; navigation and survival stay deliberate data decisions.
+ */
+const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDomain>> = {
+  unitJackal: { type: 'wheels', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitLynx: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitDaddy: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitBadger: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitMongoose: { type: 'wheels', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitMammoth: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitFormik: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitWidow: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitHippo: { type: 'amphibious-treads', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitSeaTurtle: { type: 'flippers', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitOrca: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitTarantula: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitLoris: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitDragonfly: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitConstructionDrone: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitEagle: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitDuck: { type: 'dive', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitAlbatros: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitQueenBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitQueenTick: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitTransport: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitCommander: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+};
 
 export function runUnitLocomotionContractTest(): void {
   const probeSpacing = getSurfaceProbeSpacing().world;
@@ -112,6 +153,43 @@ export function runUnitLocomotionContractTest(): void {
       `${blueprint.unitBlueprintId} route permissions come from navigation, not visual type`,
     );
   }
+
+  assertContract(
+    Object.keys(EXPECTED_ROSTER_LOCOMOTION).length === UNIT_BLUEPRINT_IDS.length,
+    'every unit has an explicit locomotion-domain policy',
+  );
+  for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {
+    const expected = EXPECTED_ROSTER_LOCOMOTION[unitBlueprintId];
+    const runtime = getUnitLocomotion(unitBlueprintId);
+    assertContract(expected !== undefined, `${unitBlueprintId} has a locomotion-domain policy`);
+    assertContract(
+      runtime.type === expected.type &&
+        runtime.navigation.allowOnGround === expected.allowOnGround &&
+        runtime.navigation.allowInAir === expected.allowInAir &&
+        runtime.navigation.allowInWater === expected.allowInWater &&
+        runtime.environmentalHazards.waterFatal === expected.waterFatal,
+      `${unitBlueprintId} matches its intended ground, air, and water locomotion`,
+    );
+  }
+
+  for (const unitBlueprintId of ['unitJackal', 'unitTick'] as const) {
+    const locomotion = getUnitLocomotion(unitBlueprintId);
+    assertContract(
+      locomotion.physics.water.lift.buoyancyRatio === 0,
+      `${unitBlueprintId} is a water-fatal land unit, not a floating one`,
+    );
+  }
+
+  const commander = getUnitLocomotion('unitCommander');
+  assertContract(
+    commander.physicsPresetId === 'amphibiousLegs' &&
+      commander.navigation.allowOnGround &&
+      commander.navigation.allowInWater &&
+      !commander.navigation.allowInAir &&
+      !commander.environmentalHazards.waterFatal &&
+      commander.physics.water.lift.buoyancyRatio === 0,
+    'Commander uses its leg rig to walk the seabed, rather than floating or flying',
+  );
 
   const eagle = getUnitLocomotion('unitEagle');
   assertContract(
