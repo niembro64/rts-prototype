@@ -116,6 +116,17 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'BAR build/production grid prices must use gui_gridmenu.lua normal metal #f5f5f5 and energy #ffff00 colors',
   );
   assertContract(
+    COLORS.ui.selectionPanel.buildMenuCategoryBorders.Economy === '#64e880' &&
+      COLORS.ui.selectionPanel.buildMenuCategoryBorders.Defense === '#ff5a5a' &&
+      COLORS.ui.selectionPanel.buildMenuCategoryBorders.Intel === '#70c4ff' &&
+      COLORS.ui.selectionPanel.buildMenuCategoryBorders.Production === '#ffd66b' &&
+      /const BUILD_MENU_CATEGORY_BORDER_COLORS: Record<BuildMenuCategory, string> =\s*SELECTION_PANEL\.buildMenuCategoryBorders;/.test(selectionPanelSource) &&
+      /:style="\{ '--btn-color': buildOptionBorderColor\(bo\.category\) \}"/.test(selectionPanelSource) &&
+      /\.bar-grid-cell\.build-btn \{\s*border-color:\s*color-mix\(in srgb, var\(--btn-color\) 48%, transparent\);/.test(selectionPanelSource) &&
+      /\.bar-grid-cell\.build-btn:hover,[\s\S]{0,700}border-color:\s*color-mix\(in srgb, var\(--btn-color\) 92%, transparent\);/.test(selectionPanelSource),
+    'build options must inherit the annihilation-plus-plus Economy/Combat/Utility/Production accent frames at rest and on hover or selection',
+  );
+  assertContract(
     WAYPOINT_COLOR_CSS.move === '#a3ffa3' &&
       WAYPOINT_COLOR_CSS.patrol === '#babaff' &&
       WAYPOINT_COLOR_CSS.fight === '#e680ff' &&

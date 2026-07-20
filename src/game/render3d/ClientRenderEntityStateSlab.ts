@@ -61,6 +61,7 @@ export type ClientRenderEntityStateViews = {
   readonly groundY: Float32Array;
   readonly radiusOther: Float32Array;
   readonly radiusHitbox: Float32Array;
+  readonly radiusCollision: Float32Array;
   readonly lodProxyRadius: Float32Array;
   readonly lodProxyGlyph: Uint8Array;
   readonly normalX: Float32Array;
@@ -200,6 +201,7 @@ export class ClientRenderEntityStateSlab {
     groundY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     radiusOther: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     radiusHitbox: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    radiusCollision: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     lodProxyRadius: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     lodProxyGlyph: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -403,6 +405,7 @@ export class ClientRenderEntityStateSlab {
     views.groundY[slot] = getUnitGroundZ(entity);
     views.radiusOther[slot] = unit.radius.other || unit.radius.hitbox || 15;
     views.radiusHitbox[slot] = unit.radius.hitbox;
+    views.radiusCollision[slot] = unit.radius.collision;
     views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
     views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
     views.normalX[slot] = unit.surfaceNormal.nx;
@@ -471,6 +474,7 @@ export class ClientRenderEntityStateSlab {
     views.z[slot] = getBuildingCombatCenterZ(entity);
     views.rotation[slot] = entity.transform.rotation;
     views.radiusHitbox[slot] = 0;
+    views.radiusCollision[slot] = 0;
     views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
     views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
     views.buildingBaseY[slot] = entity.transform.z - building.depth / 2;
@@ -527,6 +531,7 @@ export class ClientRenderEntityStateSlab {
     this.views.turretCount[slot] = 0;
     this.views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
     this.views.radiusHitbox[slot] = 0;
+    this.views.radiusCollision[slot] = 0;
     this.views.hasFullOrientation[slot] = 0;
     this.views.lodProxyRadius[slot] = 0;
     this.views.lodProxyGlyph[slot] = 0;
@@ -680,6 +685,7 @@ export class ClientRenderEntityStateSlab {
     this.views.turretCount.fill(0);
     this.views.passiveTurretIndex.fill(NO_PASSIVE_TURRET_INDEX);
     this.views.radiusHitbox.fill(0);
+    this.views.radiusCollision.fill(0);
     this.views.lodProxyRadius.fill(0);
     this.views.lodProxyGlyph.fill(0);
     this.views.bodyHudWidth.fill(0);
@@ -716,6 +722,7 @@ export class ClientRenderEntityStateSlab {
       assertNear('groundY', views.groundY[slot], getUnitGroundZ(entity));
       assertNear('radiusOther', views.radiusOther[slot], unit.radius.other || unit.radius.hitbox || 15);
       assertNear('radiusHitbox', views.radiusHitbox[slot], unit.radius.hitbox);
+      assertNear('radiusCollision', views.radiusCollision[slot], unit.radius.collision);
       assertNear('lodProxyRadius', views.lodProxyRadius[slot], entityLodProxyRadius3D(entity));
       assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
       assertNear('velocityX', views.velocityX[slot], unit.velocityX);
@@ -845,6 +852,7 @@ export class ClientRenderEntityStateSlab {
       groundY: growFloat32(views.groundY, nextCapacity),
       radiusOther: growFloat32(views.radiusOther, nextCapacity),
       radiusHitbox: growFloat32(views.radiusHitbox, nextCapacity),
+      radiusCollision: growFloat32(views.radiusCollision, nextCapacity),
       lodProxyRadius: growFloat32(views.lodProxyRadius, nextCapacity),
       lodProxyGlyph: growUint8(views.lodProxyGlyph, nextCapacity),
       normalX: growFloat32(views.normalX, nextCapacity),

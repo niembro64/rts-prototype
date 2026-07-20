@@ -1,3 +1,3 @@
 {
-  "spawnInverseCostWeighting": true
+  "unitSpawnDistribution": "flat-distribution"
 }

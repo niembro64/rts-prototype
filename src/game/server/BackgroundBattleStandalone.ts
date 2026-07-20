@@ -6,16 +6,12 @@ import type { WorldState } from '../sim/WorldState';
 import { aimTurretsToward } from '../sim/turretInit';
 import type { PhysicsEngine3D as PhysicsEngine } from './PhysicsEngine3D';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
-import {
-  BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
-} from '../../config';
+import { BACKGROUND_UNIT_SPAWN_DISTRIBUTION } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
-import { isFarFromWater, isWaterAt } from '../sim/Terrain';
 import {
   makeMapOvalMetrics,
   mapOvalPointAt,
-  type MapOvalMetrics,
 } from '../sim/mapOval';
 import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
@@ -26,7 +22,8 @@ import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
 const BACKGROUND_UNIT_BLUEPRINT_ID_SET = new Set<string>(BACKGROUND_UNIT_BLUEPRINT_IDS);
 
-// Pre-computed inverse-cost weights for background unit selection.
+// Pre-computed inverse-cost weights for the optional weighted background
+// selection mode. The flat mode samples the same enabled roster uniformly.
 // Cached across spawn calls but RE-BUILT whenever the allowedUnitBlueprintIds
 // signature changes — without this the original lazy cache would
 // keep picking from a stale type list after a toggle, then those
@@ -116,13 +113,33 @@ function selectUnitBlueprintId(
 ): string | null {
   // No allowed types → caller will skip the spawn.
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
-  if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
+  if (BACKGROUND_UNIT_SPAWN_DISTRIBUTION === 'inverse-cost') {
     return selectWeightedUnitBlueprintId(rngNext, allowedUnitBlueprintIds);
-  } else if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size > 0) {
+  }
+  if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size > 0) {
     const allowed = resolveAllowedSortedList(allowedUnitBlueprintIds);
     return allowed[Math.floor(rngNext() * allowed.length)];
   }
   return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(rngNext() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
+}
+
+/** A shuffled cycle makes the opening wave genuinely flat: every enabled
+ * blueprint appears once before any one of them appears twice. */
+function shuffledInitialFlatRoster(
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined,
+  rngNext: () => number,
+): string[] {
+  const roster = allowedUnitBlueprintIds === undefined
+    ? [...BACKGROUND_UNIT_BLUEPRINT_IDS]
+    : Array.from(allowedUnitBlueprintIds).filter((id) => BACKGROUND_UNIT_BLUEPRINT_ID_SET.has(id));
+  roster.sort();
+  for (let i = roster.length - 1; i > 0; i--) {
+    const j = Math.floor(rngNext() * (i + 1));
+    const swap = roster[i];
+    roster[i] = roster[j];
+    roster[j] = swap;
+  }
+  return roster;
 }
 
 // Spawn a single unit at a specific position with the configured demo waypoints.
@@ -181,165 +198,37 @@ function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): n
   return count;
 }
 
-/** Keep one live-unit slot available for every seeded offshore production
- * line. Water factories are inserted before land factories, so they claim
- * these slots on the first production tick instead of being starved by the
- * demo's center battle or reinforcement filler. */
-function offshoreFactoryProductionReserve(world: WorldState, playerId: PlayerId): number {
+/** Keep one live-unit slot available for every seeded Fabricator repeat line.
+ * The quick-start center wave must not fill the cap before the one-factory-
+ * per-unit demo layout can visibly produce its first shell. */
+function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId): number {
   let count = 0;
   for (const factory of world.getFactoriesByPlayer(playerId)) {
+    if (factory.buildingBlueprintId !== 'towerFabricator') continue;
     const factoryComponent = factory.factory;
     if (factoryComponent === null) continue;
     const selected = factoryComponent.selectedUnitBlueprintId;
-    if (selected !== null && DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(selected)) {
+    if (
+      factoryComponent.repeatProduction === true &&
+      selected !== null &&
+      BACKGROUND_UNIT_BLUEPRINT_ID_SET.has(selected)
+    ) {
       count++;
     }
   }
   return count;
 }
 
-/**
- * The opening wave must represent the units the live demo base can produce,
- * rather than a separately-maintained background roster. Normally every
- * Fabricator has one repeat-build selection by this point. The fallback keeps
- * direct callers (which may not create demo bases first) useful and still
- * honors an explicit unit filter.
- */
-function initialProductionRosterForPlayer(
-  world: WorldState,
-  playerId: PlayerId,
-  allowedUnitBlueprintIds: ReadonlySet<string> | undefined,
-): ReadonlySet<string> {
-  const produced = new Set<string>();
-  for (const factory of world.getFactoriesByPlayer(playerId)) {
-    const factoryComponent = factory.factory;
-    if (factoryComponent === null) continue;
-    const unitBlueprintId = factoryComponent.selectedUnitBlueprintId;
-    if (unitBlueprintId === null) continue;
-    if (!BACKGROUND_UNIT_BLUEPRINT_ID_SET.has(unitBlueprintId)) continue;
-    if (allowedUnitBlueprintIds !== undefined && !allowedUnitBlueprintIds.has(unitBlueprintId)) continue;
-    produced.add(unitBlueprintId);
-  }
-  if (produced.size > 0) return produced;
-
-  const fallback = new Set<string>();
-  const sourceUnitBlueprintIds = allowedUnitBlueprintIds ?? BACKGROUND_UNIT_BLUEPRINT_IDS;
-  for (const unitBlueprintId of sourceUnitBlueprintIds) {
-    if (BACKGROUND_UNIT_BLUEPRINT_ID_SET.has(unitBlueprintId)) {
-      fallback.add(unitBlueprintId);
-    }
-  }
-  return fallback;
-}
-
-/** Remove only after a unit has been created. A terrain preset with no viable
- * point for one medium must not make us silently declare that type covered. */
-function nextInitialCoverageUnitBlueprintId(
-  pendingUnitBlueprintIds: readonly string[],
-  productionRoster: ReadonlySet<string>,
-): string | null {
-  for (let i = 0; i < pendingUnitBlueprintIds.length; i++) {
-    const unitBlueprintId = pendingUnitBlueprintIds[i];
-    if (productionRoster.has(unitBlueprintId)) return unitBlueprintId;
-  }
-  return null;
-}
-
-function removeInitialCoverageUnitBlueprintId(
-  pendingUnitBlueprintIds: string[],
-  unitBlueprintId: string,
-): void {
-  const index = pendingUnitBlueprintIds.indexOf(unitBlueprintId);
-  if (index >= 0) pendingUnitBlueprintIds.splice(index, 1);
-}
-
-function isWaterLineUnitBlueprintId(unitBlueprintId: string): boolean {
-  return DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(unitBlueprintId);
-}
-
-type WaterSpawnPath = {
-  readonly spawn: { x: number; y: number };
-  readonly forward: { x: number; y: number };
-  readonly backward: { x: number; y: number };
-};
-
-function waterFactoryFallbackPoint(
-  world: WorldState,
-  playerId: PlayerId,
-  unitBlueprintId: string,
-): { x: number; y: number } | null {
-  for (const factory of world.getFactoriesByPlayer(playerId)) {
-    const factoryComponent = factory.factory;
-    if (factoryComponent === null || factoryComponent.selectedUnitBlueprintId !== unitBlueprintId) continue;
-    const point = { x: factory.transform.x, y: factory.transform.y };
-    if (isWaterAt(point.x, point.y, world.mapWidth, world.mapHeight)) return point;
-  }
-  return null;
-}
-
-/**
- * Water-line units belong on the outer water ring. Requiring the spawn and
- * both patrol ends to be water keeps their first order traversable; the
- * fallback is the matching offshore Fabricator, whose completed placement is
- * already validated as water.
- */
-function sampleWaterSpawnPath(
-  world: WorldState,
-  oval: MapOvalMetrics,
-  playerId: PlayerId,
-  unitBlueprintId: string,
-  maxAttempts: number,
-): WaterSpawnPath | null {
-  const outerSpawnRadius = oval.minDim / 2 - DEMO_CONFIG.spawnMarginPx;
-  const innerRadius = outerSpawnRadius * 0.72;
-  const patrolArc = Math.PI / Math.max(3, world.playerCount * 2);
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const angle = world.nextRandom(playerId) * Math.PI * 2;
-    const radius = innerRadius + world.nextRandom(playerId) * (outerSpawnRadius - innerRadius);
-    const spawn = mapOvalPointAt(oval, angle, radius);
-    const forward = mapOvalPointAt(oval, angle + patrolArc, radius);
-    const backward = mapOvalPointAt(oval, angle - patrolArc, radius);
-    if (
-      isWaterAt(spawn.x, spawn.y, world.mapWidth, world.mapHeight) &&
-      isWaterAt(forward.x, forward.y, world.mapWidth, world.mapHeight) &&
-      isWaterAt(backward.x, backward.y, world.mapWidth, world.mapHeight)
-    ) {
-      return { spawn, forward, backward };
-    }
-  }
-
-  const fallback = waterFactoryFallbackPoint(world, playerId, unitBlueprintId);
-  if (fallback === null) return null;
-  return { spawn: fallback, forward: fallback, backward: fallback };
-}
-
-function sampleCenterSpawnPoint(
-  oval: MapOvalMetrics,
+/** The opening wave deliberately ignores terrain, medium, and path
+ * suitability. Every enabled unit uses this same uniform center disk. */
+function sampleInitialCenterSpawnPoint(
+  oval: ReturnType<typeof makeMapOvalMetrics>,
   centerRadius: number,
-  mapWidth: number,
-  mapHeight: number,
-  waterBuffer: number,
-  maxAttempts: number,
   rngNext: () => number,
-): { x: number; y: number } | null {
-  let dryFallback: { x: number; y: number } | null = null;
-  let anyFallback: { x: number; y: number } | null = null;
-
-  for (let k = 0; k < maxAttempts; k++) {
-    const spawnAngle = rngNext() * Math.PI * 2;
-    const spawnDist = DMath.sqrt(rngNext()) * centerRadius;
-    const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
-    anyFallback = point;
-    if (!dryFallback && isFarFromWater(point.x, point.y, mapWidth, mapHeight, 0)) {
-      dryFallback = point;
-    }
-    if (isFarFromWater(point.x, point.y, mapWidth, mapHeight, waterBuffer)) {
-      return point;
-    }
-  }
-
-  return dryFallback ?? anyFallback;
+): { x: number; y: number } {
+  const spawnAngle = rngNext() * Math.PI * 2;
+  const spawnDist = DMath.sqrt(rngNext()) * centerRadius;
+  return mapOvalPointAt(oval, spawnAngle, spawnDist);
 }
 
 // Spawn units for the background battle. Teams + their angular bands
@@ -376,28 +265,6 @@ export function spawnBackgroundUnitsStandalone(
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
   const cx = oval.cx;
   const cy = oval.cy;
-  const initialProductionRostersByPlayer = new Map<PlayerId, ReadonlySet<string>>();
-  const pendingInitialCoverageUnitBlueprintIdsByPlayer = new Map<PlayerId, string[]>();
-
-  if (initialSpawn) {
-    for (const playerId of players) {
-      const roster = initialProductionRosterForPlayer(
-        world,
-        playerId,
-        allowedUnitBlueprintIds,
-      );
-      initialProductionRostersByPlayer.set(playerId, roster);
-      const pendingUnitBlueprintIds: string[] = [];
-      for (const unitBlueprintId of roster) {
-        pendingUnitBlueprintIds.push(unitBlueprintId);
-      }
-      // Keep the guaranteed prefix deterministic independently of insertion
-      // order in entity storage; its random world positions still vary by
-      // seed. Each player gets this prefix so the opening fight stays fair.
-      pendingUnitBlueprintIds.sort();
-      pendingInitialCoverageUnitBlueprintIdsByPlayer.set(playerId, pendingUnitBlueprintIds);
-    }
-  }
 
   // Each team's angular position on the spawn oval (matches the layout
   // used for commanders / solars / factories in spawn.ts).
@@ -407,111 +274,59 @@ export function spawnBackgroundUnitsStandalone(
   }
 
   if (initialSpawn) {
-    // Every player's opening wave reserves one placement for each unit that
-    // its live demo Fabricators are producing, then fills every remaining slot
-    // using the existing weighted random selector. Land/air units spawn in
-    // the center oval; water-line units spawn at random outer-water positions.
-    // This keeps the demo's immediate mid-map clash while guaranteeing that
-    // its initial presentation covers the production roster whenever the cap
-    // has enough opening slots.
-    //
-    // Water exclusion: each candidate (x, y) is rejection-sampled
-    // against `isFarFromWater`. If the buffered search fails, fall
-    // back to an unbuffered dry candidate, then finally to the last
-    // sampled center-radius point. The demo's startup contract is to
-    // fill the center battle immediately instead of silently dropping
-    // units on terrain presets whose center disk is mostly water.
+    // Every opening unit draws from the enabled roster under the configured
+    // distribution, then drops into the same center disk. The flat mode uses
+    // a shuffled repeating roster; this intentionally performs no terrain,
+    // water, path, or factory-roster suitability checks.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
-    const waterBuffer = DEMO_CONFIG.centerSpawnWaterBufferPx;
-    const maxAttempts = DEMO_CONFIG.centerSpawnWaterMaxAttempts;
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
-      const productionReserve = offshoreFactoryProductionReserve(world, playerId);
-      const productionRoster = initialProductionRostersByPlayer.get(playerId) ??
-        initialProductionRosterForPlayer(world, playerId, allowedUnitBlueprintIds);
-      const pendingInitialCoverageUnitBlueprintIds =
-        pendingInitialCoverageUnitBlueprintIdsByPlayer.get(playerId) ?? [];
+      const productionReserve = seededFabricatorProductionReserve(world, playerId);
+      const flatRoster = BACKGROUND_UNIT_SPAWN_DISTRIBUTION === 'flat-distribution'
+        ? shuffledInitialFlatRoster(allowedUnitBlueprintIds, () => world.nextRandom(playerId))
+        : null;
       // Commander is already live and counts against the cap. Fill the center
-      // battle only to cap - commander - offshore production reservations.
+      // battle only to cap - commander - repeat-production reservations.
       const totalPerPlayer = Math.max(0, unitCapPerPlayer - 1 - productionReserve);
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        const coverageUnitBlueprintId = nextInitialCoverageUnitBlueprintId(
-          pendingInitialCoverageUnitBlueprintIds,
-          productionRoster,
-        );
-        const unitBlueprintId = coverageUnitBlueprintId ?? selectUnitBlueprintId(
-          () => world.nextRandom(playerId),
-          productionRoster,
-        );
+        const unitBlueprintId = flatRoster !== null
+          ? flatRoster[i % flatRoster.length] ?? null
+          : selectUnitBlueprintId(
+              () => world.nextRandom(playerId),
+              allowedUnitBlueprintIds,
+            );
         if (unitBlueprintId === null) continue;
 
-        let unit: Entity | null;
-        if (isWaterLineUnitBlueprintId(unitBlueprintId)) {
-          const waterPath = sampleWaterSpawnPath(
-            world,
-            oval,
-            playerId,
-            unitBlueprintId,
-            maxAttempts,
-          );
-          if (waterPath === null) continue;
-          const initialZ = world.getGroundZ(waterPath.spawn.x, waterPath.spawn.y) +
-            DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
-          unit = spawnUnit(
-            world, physics, playerId, waterPath.spawn.x, waterPath.spawn.y,
-            [
-              { x: waterPath.forward.x, y: waterPath.forward.y, z: null, type: 'patrol' },
-              { x: waterPath.backward.x, y: waterPath.backward.y, z: null, type: 'patrol' },
-            ],
-            unitBlueprintId,
-            initialZ,
-          );
-        } else {
-          const spawn = sampleCenterSpawnPoint(
-            oval,
-            centerRadius,
-            mapWidth,
-            mapHeight,
-            waterBuffer,
-            maxAttempts,
-            () => world.nextRandom(playerId),
-          );
-          if (spawn === null) continue;
-
-          // Two patrol waypoints along the spawn → opposite-through-center
-          // line: units march across, return to their spawn arc, and repeat.
-          // Keeps the front from collapsing into a static knot once the
-          // initial wave makes contact.
-          const targetX = cx - (spawn.x - cx);
-          const targetY = cy - (spawn.y - cy);
-          const initialZ = world.getGroundZ(spawn.x, spawn.y) +
-            DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
-          unit = spawnUnit(
-            world, physics, playerId, spawn.x, spawn.y,
-            [
-              { x: targetX, y: targetY, z: null, type: 'patrol' },
-              { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
-            ],
-            unitBlueprintId,
-            initialZ,
-          );
-        }
+        const spawn = sampleInitialCenterSpawnPoint(
+          oval,
+          centerRadius,
+          () => world.nextRandom(playerId),
+        );
+        // Every initial locomotion type receives the same patrol shape.
+        const targetX = cx - (spawn.x - cx);
+        const targetY = cy - (spawn.y - cy);
+        const initialZ = world.getGroundZ(spawn.x, spawn.y) +
+          DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
+        const unit = spawnUnit(
+          world, physics, playerId, spawn.x, spawn.y,
+          [
+            { x: targetX, y: targetY, z: null, type: 'patrol' },
+            { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
+          ],
+          unitBlueprintId,
+          initialZ,
+        );
         if (unit === null) continue;
         spawned.push(unit);
-        if (coverageUnitBlueprintId !== null) {
-          removeInitialCoverageUnitBlueprintId(
-            pendingInitialCoverageUnitBlueprintIds,
-            coverageUnitBlueprintId,
-          );
-        }
       }
     }
   } else {
-    // Reinforcements: one unit per team at their base sector arc, heading
-    // toward map center. Same angular layout as the initial spawn.
+    // Reinforcements stay on their team base-sector arcs and head toward map
+    // center. This is intentionally separate from the unconstrained opening
+    // wave above.
     const spawnRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     const sectorAngle = (2 * Math.PI / numPlayers) * DEMO_CONFIG.centerSpawnSectorFraction;
 
@@ -520,7 +335,7 @@ export function spawnBackgroundUnitsStandalone(
       const pUnits = world.getUnitsByPlayer(playerId).length;
       const reinforcementCeiling = Math.max(
         1,
-        unitCapPerPlayer - offshoreFactoryProductionReserve(world, playerId),
+        unitCapPerPlayer - seededFabricatorProductionReserve(world, playerId),
       );
       if (pUnits >= reinforcementCeiling) continue;
 

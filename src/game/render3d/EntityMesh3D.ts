@@ -82,7 +82,7 @@ export type EntityMesh = {
    *  bodyShape is the authored source; this key only identifies the
    *  matching instanced geometry pool. */
   bodyShapeKey: string;
-  bodyShape?: UnitBodyShape;
+  bodyShape?: UnitBodyShape | null;
   turrets: TurretMesh[];
   mirrors?: ShieldPanelMesh;
   locomotion?: Locomotion3DMesh;

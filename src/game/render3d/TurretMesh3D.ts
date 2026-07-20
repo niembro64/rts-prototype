@@ -139,6 +139,9 @@ type TurretMesh3DDeps = {
    *  instead. Barrels still build and pivot at headRadius regardless,
    *  same as the existing hideHead-but-with-barrels path. */
   skipHead?: boolean;
+  /** Explicitly omit the turret head while retaining its functional
+   *  emitter. Used when the host's shield sphere is its full body. */
+  hideHead?: boolean;
   /** When true, BUILD the per-barrel Mesh objects but DON'T attach
    *  them to spinGroup — the caller is rendering barrels through the
    *  shared instanced barrel pools and reads the Mesh's position /
@@ -211,6 +214,7 @@ export function buildTurretMesh3D(
   const noBodySphere = headRadius <= 0;
   const hideHead =
     turretOff ||
+    deps.hideHead === true ||
     gfx.turretStyle === 'simple' ||
     !featureVisibleAtDetail('turretHead', detailLevel) ||
     (isShield && !showShieldEmitterCore) ||

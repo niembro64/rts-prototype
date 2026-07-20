@@ -116,6 +116,10 @@ function isLocomotionSupportSurfaceProvider(entity: Entity): boolean {
   const unit = entity.unit;
   return unit !== null && unit.hp > 0 && unit.supportSurface.kind === 'discTop';
 }
+
+function entityHasShieldEmission(entity: Entity): boolean {
+  return entity.combat?.turrets.some((turret) => turret.config.shot?.type === 'shield') === true;
+}
 import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
@@ -792,7 +796,8 @@ export class ClientViewState {
       targetTurret.angularVelocity = deqRot(rows[rowBase + 1]);
       targetTurret.pitch = deqRot(rows[rowBase + 2]);
       targetTurret.pitchVelocity = deqRot(rows[rowBase + 3]);
-      targetTurret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+      const shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+      targetTurret.shieldRange = shieldRange;
       if (i >= entityTurretLimit || entityTurrets === undefined) continue;
       const entityTurret = entityTurrets[i];
       if (rows[rowBase + 10] !== 0) {
@@ -803,6 +808,17 @@ export class ClientViewState {
       }
       entityTurret.target = rows[rowBase + 6] !== 0 ? (rows[rowBase + 7] | 0) as EntityId : null;
       entityTurret.state = codeToTurretState(rows[rowBase + 5]);
+      if (entityTurret.config.shot?.type === 'shield') {
+        // Shield range is visible physical state. ShieldRenderPacket3D reads
+        // the render entity, so it cannot remain only on the server target.
+        entityTurret.shield = shieldRange === null
+          ? null
+          : {
+            range: shieldRange,
+            transition: shieldRange,
+            onTimeMs: shieldRange > 0 ? entityTurret.shield?.onTimeMs ?? 0 : 0,
+          };
+      }
     }
     return true;
   }
@@ -1435,7 +1451,11 @@ export class ClientViewState {
       existing.factory.carrierSpawnEnabled = values[base + 65] !== 0;
     }
 
-    const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
+    // Shields are required visual state, not optional emissions. Refresh them
+    // at the wire update even while prediction defers ordinary turret poses.
+    const refreshTurretsNow = copiedTurretRows && (
+      !deferPredictedTurretRenderRefresh || entityHasShieldEmission(existing)
+    );
     if (refreshHealth || refreshTurretsNow) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
@@ -2602,7 +2622,11 @@ export class ClientViewState {
       : false;
     if (hasFactoryFields && !refreshFactory) return false;
 
-    const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
+    // Shields are required visual state, not optional emissions. Refresh them
+    // at the wire update even while prediction defers ordinary turret poses.
+    const refreshTurretsNow = copiedTurretRows && (
+      !deferPredictedTurretRenderRefresh || entityHasShieldEmission(existing)
+    );
     if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
     } else if (refreshHealth || refreshTurretsNow || refreshFactory) {
@@ -4672,7 +4696,7 @@ export class ClientViewState {
       views.entityIds[slot] as EntityId,
     );
     const penetration = groundY - (z - views.supportPointOffsetZ[slot]);
-    return isUnitGroundPenetrationInContact(penetration);
+    return isUnitGroundPenetrationInContact(penetration, views.radiusCollision[slot]);
   }
 
   private entityUsesFarLod3D(

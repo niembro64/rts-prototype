@@ -124,9 +124,21 @@ export class UnitMeshBuilder3D {
     const group = new THREE.Group();
     const blueprint = this.getUnitBlueprint(entity);
     const isAlbatros = blueprint?.unitBlueprintId === 'unitAlbatros';
-    const authoredBodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
-    const bodyShape =
-      unitGfx.unitShape === 'circles' ? LOW_DETAIL_UNIT_BODY_SHAPE : authoredBodyShape;
+    const bodyIsShieldEmitter = blueprint?.bodyShape === null && turrets.some(
+      (turret) => turret.config.shot?.type === 'shield' &&
+        turret.config.shot.barrier !== undefined,
+    );
+    // A null body is an authored visual absence, not a request for the
+    // generic fallback or low-detail sphere. Units such as Daddy use a
+    // turret-hosted visual as their sole body.
+    const authoredBodyShape = blueprint === undefined
+      ? FALLBACK_UNIT_BODY_SHAPE
+      : blueprint.bodyShape;
+    const bodyShape = authoredBodyShape === null
+      ? null
+      : unitGfx.unitShape === 'circles'
+        ? LOW_DETAIL_UNIT_BODY_SHAPE
+        : authoredBodyShape;
     const geometryTier = geometryTierForDetail(detailLevel);
     // Poly chassis pools own immutable geometry. Include the tier so a
     // Close bevelled body can never be reused by a Mid/Far instance (or
@@ -209,6 +221,7 @@ export class UnitMeshBuilder3D {
       unitGfx,
       useDetailedUnitInstancing,
       blueprint?.dgun?.turretBlueprintId,
+      bodyIsShieldEmitter,
       detailLevel,
     );
     this.buildProductionHoldRing(
@@ -317,6 +330,7 @@ export class UnitMeshBuilder3D {
     unitGfx: GraphicsConfig,
     useDetailedUnitInstancing: boolean,
     commanderDgunTurretBlueprintId: string | undefined,
+    bodyIsShieldEmitter: boolean,
     detailLevel: number,
   ): TurretMesh[] {
     const turretMeshes: TurretMesh[] = [];
@@ -329,11 +343,17 @@ export class UnitMeshBuilder3D {
       const showShieldEmitterCore = isShield &&
         turret.config.shot?.type === 'shield' &&
         turret.config.shot.barrier !== undefined;
+      // A bodyless shield host deliberately uses its oscillating shield
+      // sphere as the entire body. Ray heads are normally small spheres,
+      // so hide the overlapping beam head while retaining the beam's mount,
+      // aim, and emission behavior.
+      const hideBeamHead = bodyIsShieldEmitter && turret.config.shot?.type === 'beam';
       const hideHead =
         turretOff ||
         unitGfx.turretStyle === 'simple' ||
         (isShield && !showShieldEmitterCore) ||
-        isConstructionEmitter;
+        isConstructionEmitter ||
+        hideBeamHead;
       let headSlot: number | undefined;
       if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot(
@@ -351,6 +371,7 @@ export class UnitMeshBuilder3D {
         shieldEmitterMat: this.getPrimaryMat(ownerId),
         showShieldEmitterCore,
         skipHead: headSlot !== undefined,
+        hideHead: hideBeamHead,
         skipBarrels: false,
         detailLevel,
       });

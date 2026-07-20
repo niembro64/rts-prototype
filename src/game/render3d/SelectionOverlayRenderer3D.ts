@@ -649,7 +649,7 @@ export class SelectionOverlayRenderer3D {
       sampledSupportY: roundSupportDiagnostic(support.groundZ),
       bodyGroundY: roundSupportDiagnostic(bodyGroundY),
       penetration: roundSupportDiagnostic(penetration),
-      contact: isUnitGroundPenetrationInContact(penetration),
+      contact: isUnitGroundPenetrationInContact(penetration, unit.radius.collision),
       velocity: {
         x: roundSupportDiagnostic(unit.velocityX),
         y: roundSupportDiagnostic(unit.velocityY),

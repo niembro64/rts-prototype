@@ -589,7 +589,7 @@ function buildPreviewBody(
   const chassis = new THREE.Group();
   if (blueprint.unitBlueprintId === 'unitAlbatros') {
     buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
-  } else {
+  } else if (blueprint.bodyShape !== null) {
     const bodyEntry = getBodyGeom(blueprint.bodyShape, geometryTier);
     for (const part of bodyEntry.parts) {
       const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
@@ -616,11 +616,18 @@ function buildPreviewTurrets(
   geometryTier: PrimitiveGeometryTier,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
+  const bodyIsShieldEmitter = blueprint.bodyShape === null && turrets.some(
+    (turret) => turret.config.shot?.type === 'shield' &&
+      turret.config.shot.barrier !== undefined,
+  );
   let productionPylonOrdinal = 0;
   for (const turret of turrets) {
     const showShieldEmitterCore =
-      unitBlueprintId === 'unitAlbatros' &&
+      (unitBlueprintId === 'unitAlbatros' || bodyIsShieldEmitter) &&
       turret.config.barrel?.type === 'complexSingleEmitter';
+    const hideBeamHead =
+      bodyIsShieldEmitter &&
+      turret.config.shot?.type === 'beam';
     const turretMesh = buildTurretMesh3D(liftGroup, turret, PREVIEW_GFX, {
       headGeom: turretHeadGeom,
       barrelGeom,
@@ -629,6 +636,7 @@ function buildPreviewTurrets(
       turretAccentMat: materials.turretAccent,
       shieldEmitterMat: materials.mirrorShiny,
       showShieldEmitterCore,
+      hideHead: hideBeamHead,
       skipHead: false,
       skipBarrels: false,
       detailLevel: detailLevelForGeometryTier(geometryTier),
@@ -787,9 +795,15 @@ function buildPreviewLegs(
   for (const leg of all) {
     const legGroup = new THREE.Group();
     group.add(legGroup);
-    const hipY = blueprint.legAttachHeightFrac !== null
-      ? blueprint.legAttachHeightFrac * radius
-      : chassisLift + getSegmentMidYAt(blueprint.bodyShape, radius, leg.attachOffsetX);
+    let hipY: number;
+    if (blueprint.legAttachHeightFrac !== null) {
+      hipY = blueprint.legAttachHeightFrac * radius;
+    } else {
+      if (blueprint.bodyShape === null) {
+        throw new Error('A legged bodyless preview requires legAttachHeightFrac.');
+      }
+      hipY = chassisLift + getSegmentMidYAt(blueprint.bodyShape, radius, leg.attachOffsetX);
+    }
     const upperLen = leg.upperLegLength;
     const lowerLen = leg.lowerLegLength;
     const restDistance = (upperLen + lowerLen) * leg.snapDistanceMultiplier;

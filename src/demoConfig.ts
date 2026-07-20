@@ -112,12 +112,6 @@ export const DEMO_CONFIG = {
   factoryFightWaypointDistance: demoConfig.factoryFightWaypointDistance,
 
   /**
-   * Whether AI uses inverse-cost weighting when picking units to queue.
-   * true = cheaper units queued more often. false = all units equally likely.
-   */
-  aiInverseCostWeighting: demoConfig.aiInverseCostWeighting,
-
-  /**
    * Initial unit spawn radius from map center, as a ratio of map height.
    * Units cluster on an arc near their team's base sector at this radius
    * (between map center and the spawn circle) and fight toward the
@@ -138,23 +132,4 @@ export const DEMO_CONFIG = {
    * determines z before the unit's physics body is created.
    */
   initialUnitSpawnHeightAboveSurface: validatedInitialUnitSpawnHeightAboveSurface(),
-
-  /**
-   * Minimum sim-unit clearance from any water cell when picking an
-   * initial spawn position. Each candidate (x, y) and 8 cardinal
-   * points at this radius are tested; if any is over water the
-   * candidate is rejected. 0 disables the check (legacy behaviour).
-   * Tuned around 2 build-grid cells = 40 wu so units land with collision-radius
-   * slack and a tick of inertia headroom before they could possibly
-   * brush the shoreline.
-   */
-  centerSpawnWaterBufferPx: demoConfig.centerSpawnWaterBufferPx,
-
-  /**
-   * How many candidate positions to try per unit when rejection-
-   * sampling away from water. After this many failures the spawn is
-   * skipped (no fallback into water). 32 keeps total work bounded
-   * even on maps where most of the central disk is submerged.
-   */
-  centerSpawnWaterMaxAttempts: demoConfig.centerSpawnWaterMaxAttempts,
 };

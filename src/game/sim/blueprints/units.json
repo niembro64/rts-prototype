@@ -249,7 +249,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 4
+          "z": 4.5
         },
         "hostDirected": true,
         "requiredEngagedForFightStop": true
@@ -259,17 +259,13 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 2.5
+          "z": 4.5
         },
         "hostDirected": false,
         "requiredEngagedForFightStop": false
       }
     ],
-    "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0.12,
-      "yFrac": 0.12
-    },
+    "bodyShape": null,
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -1383,12 +1379,12 @@
         "air": {
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingInverseForceFromWater": 800
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 200,
+            "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
           }
         }

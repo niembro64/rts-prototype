@@ -223,6 +223,7 @@ export type GameCanvasClientControlBarModel = {
   readonly dragPanEnabled: boolean;
   readonly showServerControls: boolean;
   readonly triangleDebug: boolean;
+  readonly waterTriangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly airLiftProbeDebug: boolean;
@@ -272,6 +273,7 @@ export type GameCanvasClientControlBarModel = {
   changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;
   toggleDragPan(): void;
   toggleTriangleDebug(): void;
+  toggleWaterTriangleDebug(): void;
   toggleWallTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleAirLiftProbeDebug(): void;

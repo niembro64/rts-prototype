@@ -69,6 +69,9 @@ export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 // so terrain and overlay layers do not hide them.
 export const WAYPOINT_GROUND_LIFT = worldRenderConfigJson.waypointGroundLift;
 
+/** Render-only dimensions for the open-bottom world slab. */
+export const WORLD_BOX_RENDER_CONFIG = worldRenderConfigJson.worldBox;
+
 export const GOOD_TPS = telemetryConfigJson.goodTps;
 
 // =============================================================================
@@ -665,13 +668,26 @@ export function getMapSize(
 // BACKGROUND GAME SETTINGS
 // =============================================================================
 
-/**
- * Unit spawn distribution for background battle.
- * - true: Inverse cost weighting (cheaper units spawn more frequently)
- * - false: Flat distribution (all units equally likely)
- */
-export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING =
-  backgroundBattleConfigJson.spawnInverseCostWeighting;
+/** Background battle unit-generation distributions authored in
+ * `backgroundBattleConfig.json`. */
+export const BACKGROUND_UNIT_SPAWN_DISTRIBUTIONS = [
+  'flat-distribution',
+  'inverse-cost',
+] as const;
+export type BackgroundUnitSpawnDistribution =
+  (typeof BACKGROUND_UNIT_SPAWN_DISTRIBUTIONS)[number];
+
+function readBackgroundUnitSpawnDistribution(): BackgroundUnitSpawnDistribution {
+  const value = backgroundBattleConfigJson.unitSpawnDistribution;
+  if (value === 'flat-distribution' || value === 'inverse-cost') return value;
+  throw new Error(
+    'backgroundBattleConfig.unitSpawnDistribution must be "flat-distribution" or "inverse-cost"',
+  );
+}
+
+/** Distribution shared by opening/reinforcement selection and AI factory
+ * selection. `flat-distribution` gives every enabled blueprint equal odds. */
+export const BACKGROUND_UNIT_SPAWN_DISTRIBUTION = readBackgroundUnitSpawnDistribution();
 
 // Re-export audio config
 

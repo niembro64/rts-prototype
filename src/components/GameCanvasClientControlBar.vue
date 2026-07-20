@@ -635,6 +635,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleTriangleDebug"
         >TRIS</BarButton>
         <BarButton
+          :active="model.waterTriangleDebug"
+          title="WATER TRIS - highlight every triangle in the rendered water surface and its floating-square perimeter curtains"
+          @click="model.toggleWaterTriangleDebug"
+        >WATER TRIS</BarButton>
+        <BarButton
           :active="model.wallTriangleDebug"
           title="WALL TRIS - show only terrain triangles classified as D-PLATEAU wall faces"
           @click="model.toggleWallTriangleDebug"

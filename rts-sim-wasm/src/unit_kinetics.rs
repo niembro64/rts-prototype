@@ -1050,7 +1050,10 @@ pub fn unit_force_step_batch(
         let mut thrust_force_z = 0.0;
         let ground_z = rows[base + UF_ROW_GROUND_Z];
         let computed_ground_contact =
-            is_in_contact(ground_z - (p.pos_z[slot] - p.ground_offset[slot]));
+            is_in_locomotion_contact(
+                ground_z - (p.pos_z[slot] - p.ground_offset[slot]),
+                p.radius[slot],
+            );
         let ground_contact = flag & UF_FLAG_ON_GROUND != 0 || computed_ground_contact;
         if let Some(runtime_slot) = runtime_slot {
             runtime.ground_contact[runtime_slot] = if ground_contact { 1 } else { 0 };
@@ -1504,6 +1507,21 @@ mod tests {
             unit_force_water_fraction(TERRAIN_WATER_LEVEL + radius * 0.5, radius),
             5.0 / 32.0,
         );
+    }
+
+    #[test]
+    fn locomotion_contact_reaches_one_collision_radius_above_support() {
+        // This threshold is shared by every locomotion profile: a body can
+        // take the slope and use ground drive while its physical contact
+        // spring is still closing the final collision-radius gap.
+        assert!(is_in_locomotion_contact(-40.0, 40.0));
+        assert!(is_in_locomotion_contact(-39.999, 40.0));
+        assert!(!is_in_locomotion_contact(-40.001, 40.0));
+
+        // An invalid radius keeps the old near-touching fallback instead of
+        // accidentally marking an unbounded gap as locomotion contact.
+        assert!(is_in_locomotion_contact(-UNIT_GROUND_CONTACT_EPSILON, 0.0));
+        assert!(!is_in_locomotion_contact(-0.01, f64::NAN));
     }
 
     #[test]

@@ -252,13 +252,12 @@ export class ThreeApp {
     this._visibleSunDisk = this.scene.getObjectByName('VisibleSunDisk') ?? null;
     this.syncWaterBoundaryPresentation();
 
-    // No standalone ground slab — the land tiles ARE the world's
-    // mass. TerrainTileRenderer3D extends each tile cube far below
-    // y=0 (see CUBE_FLOOR_Y) so the side walls read as the substrate
-    // / "earth" of the map when viewed from oblique angles. This
-    // keeps a single source of truth for the ground surface (the
-    // terrain heightmap drives the cubes) and avoids z-fighting
-    // between a separate slab and the cube floors.
+    // No standalone ground slab — the terrain mesh is the world's top.
+    // TerrainTileRenderer3D extends the outer perimeter down by a
+    // map-relative depth, so its side walls read as the substrate / "earth"
+    // of the map when viewed from oblique angles. This keeps one source of
+    // truth for the ground surface and avoids a separate slab that could
+    // z-fight with terrain.
     void backgroundColor;
 
     // World group for entities

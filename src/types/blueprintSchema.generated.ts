@@ -773,7 +773,7 @@ export type UnitBlueprint = {
   mass: number;
   cost: ResourceCost;
   turrets: TurretMount[];
-  bodyShape: UnitBodyShape;
+  bodyShape: UnitBodyShape | null;
   hud: EntityHudBlueprint;
   legAttachHeightFrac: number | null;
   unitLocomotion: UnitLocomotionBlueprint;

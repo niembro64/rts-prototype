@@ -3118,7 +3118,14 @@
           }
         },
         "bodyShape": {
-          "$ref": "#/$defs/UnitBodyShape"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UnitBodyShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "hud": {
           "$ref": "#/$defs/EntityHudBlueprint"

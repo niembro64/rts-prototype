@@ -255,15 +255,21 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
 }
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
+const EMPTY_BODY_GEOM: BodyGeomEntry = {
+  parts: [],
+  topY: 0,
+  isSmooth: true,
+};
 
 /** Look up or build the 3D chassis geometry for an authored body shape.
  *  Returned parts live in unit-radius-1 space; call sites scale the
  *  chassis parent group by the unit's render radius so each part's
  *  offset and scale both multiply uniformly. */
 export function getBodyGeom(
-  bodyShape: UnitBodyShape,
+  bodyShape: UnitBodyShape | null,
   tier: PrimitiveGeometryTier = 'close',
 ): BodyGeomEntry {
+  if (bodyShape === null) return EMPTY_BODY_GEOM;
   const key = `${tier}:${getUnitBodyShapeKey(bodyShape)}`;
   const cached = CACHE.get(key);
   if (cached) return cached;
@@ -328,9 +334,10 @@ type BodyEdgeTemplate = {
  *  Used by Debris3D to produce "body chunk" pieces the same size and
  *  position as the panels of the source chassis, not generic small boxes. */
 export function getBodyEdgeTemplates(
-  bodyShape: UnitBodyShape,
+  bodyShape: UnitBodyShape | null,
   unitRadius: number,
 ): BodyEdgeTemplate[] {
+  if (bodyShape === null) return [];
   const spec = bodyShape;
   const out: BodyEdgeTemplate[] = [];
 

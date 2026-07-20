@@ -255,7 +255,12 @@ pub fn render_unit_pose_compute(count: u32) {
             s.input[ib + 18] as f64,
             s.input[ib + 19] as f64,
         ];
-        let use_full_orientation = airborne && s.input[ib + 20] != 0.0;
+        // Orientation is authoritative body state, not an airborne-only
+        // presentation feature. In particular, an amphibian may be supported
+        // by a sloped lake bed while still occupying water. The force kernel
+        // has already chosen flat-up versus the support normal, so rendering
+        // must present that quaternion for every locomotion profile.
+        let use_full_orientation = s.input[ib + 20] != 0.0;
         let body_center_z = s.input[ib + 21] as f64;
         let collision_radius = s.input[ib + 22] as f64;
 
@@ -1525,5 +1530,32 @@ mod tests {
         approx(mapped[1], (-yaw * 0.5).sin(), 1e-12);
         approx(mapped[2], 0.0, 1e-12);
         approx(mapped[3], (-yaw * 0.5).cos(), 1e-12);
+    }
+
+    #[test]
+    fn supported_water_unit_uses_authoritative_orientation() {
+        {
+            let scratch = render_unit_pose_scratch();
+            scratch.input[..RENDER_UNIT_POSE_INPUT_STRIDE].fill(0.0);
+            // A non-airborne unit with a support-driven pitch. This is the
+            // Sea Turtle case: water occupancy does not erase its lake-bed
+            // attitude once locomotion support is reachable.
+            scratch.input[6] = 1.0;
+            scratch.input[17] = 0.2;
+            scratch.input[19] = (1.0_f32 - 0.2_f32 * 0.2_f32).sqrt();
+            scratch.input[20] = 1.0;
+            scratch.input[22] = 40.0;
+        }
+
+        render_unit_pose_compute(1);
+        let scratch = render_unit_pose_scratch();
+        assert_eq!(
+            scratch.output[15], 2.0,
+            "all authoritative unit orientations must reach presentation"
+        );
+        assert!(
+            scratch.output[2].abs() > 0.19,
+            "the non-airborne support tilt must not fall back to a flat terrain pose"
+        );
     }
 }

@@ -169,7 +169,7 @@ function sampleLocomotionGroundContact(
   return {
     grounded:
       suspensionAllowsContact &&
-      isUnitGroundPenetrationInContact(penetration),
+      isUnitGroundPenetrationInContact(penetration, unit.radius.collision),
     groundY,
     penetration,
   };

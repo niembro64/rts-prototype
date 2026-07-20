@@ -138,6 +138,15 @@ export function getDebrisUnitProfile(
 
   const chassisLiftY = getChassisLiftY(bp, r);
   const staticFragments: DebrisStaticFragment[] = [];
+  const bodyIsShieldEmitter = bp.bodyShape === null && bp.turrets.some((mount) => {
+    try {
+      const turret = getTurretBlueprint(mount.turretBlueprintId);
+      return turret.emissionKind === 'shield' &&
+        turret.barrel?.type === 'complexSingleEmitter';
+    } catch {
+      return false;
+    }
+  });
 
   // --- Locomotion ---
   const loc = bp.unitLocomotion;
@@ -188,9 +197,15 @@ export function getDebrisUnitProfile(
       const hipZ = lc.attachOffsetY;
       // Hip Y matches Locomotion3D: either an authored absolute
       // attach height or the lifted midpoint of the body segment.
-      const hipY = bp.legAttachHeightFrac !== null
-        ? bp.legAttachHeightFrac * r
-        : chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
+      let hipY: number;
+      if (bp.legAttachHeightFrac !== null) {
+        hipY = bp.legAttachHeightFrac * r;
+      } else {
+        if (bp.bodyShape === null) {
+          throw new Error('A legged bodyless unit requires legAttachHeightFrac.');
+        }
+        hipY = chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
+      }
       const restDist =
         (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
       const footA = lc.snapTargetAngle;
@@ -236,6 +251,12 @@ export function getDebrisUnitProfile(
       continue;
     }
     if (tb.constructionEmitter) {
+      turretMounts.push(null);
+      continue;
+    }
+    if (bodyIsShieldEmitter && tb.emissionKind === 'ray') {
+      // The live bodyless shield host hides its overlapping ray head;
+      // rays have no physical barrel, so it contributes no debris either.
       turretMounts.push(null);
       continue;
     }

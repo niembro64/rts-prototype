@@ -1050,7 +1050,7 @@ pub struct UnitBlueprint {
     pub mass: f64,
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,
-    pub bodyShape: UnitBodyShape,
+    pub bodyShape: Option<UnitBodyShape>,
     pub hud: EntityHudBlueprint,
     pub legAttachHeightFrac: Option<f64>,
     pub unitLocomotion: UnitLocomotionBlueprint,

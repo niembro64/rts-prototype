@@ -31,7 +31,8 @@ export const TREAD_CHASSIS_LIFT_Y = 10;
 /** Stable identity for a unit body shape. This is the only render/cache
  *  key for chassis geometry; unit blueprints author bodyShape, not a
  *  second renderer id that can drift from the actual geometry. */
-export function getUnitBodyShapeKey(bodyShape: UnitBodyShape): string {
+export function getUnitBodyShapeKey(bodyShape: UnitBodyShape | null): string {
+  if (bodyShape === null) return 'none';
   const cached = BODY_SHAPE_KEY_CACHE.get(bodyShape);
   if (cached !== undefined) return cached;
   const key = JSON.stringify(bodyShape);
@@ -44,9 +45,10 @@ export function getUnitBodyShapeKey(bodyShape: UnitBodyShape): string {
  *  shapes are built from terrain-up: bottoms at local Y=0 and tops at
  *  getBodyTopY, so the center is the midpoint of that authored volume. */
 function getBodyCenterLocalY(
-  bodyShape: UnitBodyShape,
+  bodyShape: UnitBodyShape | null,
   unitRadius: number,
 ): number {
+  if (bodyShape === null) return 0;
   return getBodyTopY(bodyShape, unitRadius) * 0.5;
 }
 
@@ -70,7 +72,8 @@ export function getChassisLiftY(
 /** Body-top height in unit-radius-1 space for the given body shape.
  *  Multiply by a unit's render radius to get the world-space Y where
  *  the turret mounts (and therefore the barrel base height). */
-export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
+export function getBodyTopFrac(bodyShape: UnitBodyShape | null): number {
+  if (bodyShape === null) return 0;
   const key = getUnitBodyShapeKey(bodyShape);
   const cached = TOP_Y_CACHE.get(key);
   if (cached !== undefined) return cached;
@@ -96,7 +99,7 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
 
 /** World-space body-top Y for a unit with the given body shape and
  *  visual unit radius. */
-export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): number {
+export function getBodyTopY(bodyShape: UnitBodyShape | null, unitRadius: number): number {
   return getBodyTopFrac(bodyShape) * unitRadius;
 }
 

@@ -49,6 +49,7 @@ import {
 } from '../../config';
 import { getGroundDetailTexture } from './GroundDetailTexture';
 import { getRockDetailTexture } from './RockDetailTexture';
+import { getWorldBoxFloorY } from './WorldBoxGeometry3D';
 import {
   FOG_OF_WAR_SHADE_FRAGMENT_PARS,
   FogOfWarShade3D,
@@ -106,7 +107,6 @@ import {
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
 
-const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
@@ -2019,6 +2019,7 @@ export class TerrainTileRenderer3D {
           if (Math.abs(ax) <= boundaryEps && Math.abs(bx) <= boundaryEps) return { nx: -1, nz: 0 };
           return null;
         };
+        const worldBoxFloorY = getWorldBoxFloorY(this.mapWidth, this.mapHeight);
         for (const edge of edgeCounts.values()) {
           if (edge.count !== 1) continue;
           const normal = wallNormal(edge.a, edge.b);
@@ -2045,14 +2046,14 @@ export class TerrainTileRenderer3D {
           const topBOff = topB * 3;
           const floorA = pushWallVertex(
             terrainPositions[topAOff],
-            CUBE_FLOOR_Y,
+            worldBoxFloorY,
             terrainPositions[topAOff + 2],
             normal.nx,
             normal.nz,
           );
           const floorB = pushWallVertex(
             terrainPositions[topBOff],
-            CUBE_FLOOR_Y,
+            worldBoxFloorY,
             terrainPositions[topBOff + 2],
             normal.nx,
             normal.nz,

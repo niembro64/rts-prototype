@@ -2633,6 +2633,20 @@ pub(crate) fn is_in_contact(penetration: f64) -> bool {
     penetration >= -UNIT_GROUND_CONTACT_EPSILON
 }
 
+/// Locomotion support deliberately reaches farther than physical collision.
+/// A unit may use slope-oriented drive/attitude when its locomotion point is
+/// within one collision radius of the sampled support, while the contact
+/// spring still waits for `is_in_contact` above.
+#[inline]
+pub(crate) fn is_in_locomotion_contact(penetration: f64, collision_radius: f64) -> bool {
+    let reach = if collision_radius.is_finite() && collision_radius > 0.0 {
+        collision_radius
+    } else {
+        UNIT_GROUND_CONTACT_EPSILON
+    };
+    penetration >= -reach
+}
+
 #[inline]
 pub(crate) fn ground_spring_accel(penetration: f64, normal_velocity: f64) -> f64 {
     if !is_in_contact(penetration) {

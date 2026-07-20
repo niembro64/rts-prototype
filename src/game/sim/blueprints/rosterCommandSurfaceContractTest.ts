@@ -560,6 +560,11 @@ export function runRosterCommandSurfaceContractTest(): void {
       allowedUnitBlueprintIds,
     );
     if (structureBlueprintId === 'towerFabricator') {
+      assertSameMembers(
+        'towerFabricator demo repeat-production roster',
+        allowedUnitBlueprintIds,
+        BUILDABLE_UNIT_BLUEPRINT_IDS,
+      );
       assertBarFactoryMembershipMatchesUnitdefs(
         'towerFabricator',
         allowedUnitBlueprintIds,

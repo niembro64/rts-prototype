@@ -42,6 +42,7 @@ import {
   SUPPORT_SURFACE_CONTACT_EPSILON,
   type SupportSurfaceMaterialKind,
   type WorldSupportSurface,
+  writeTerrainSupportSurface,
 } from './supportSurface';
 import type {
   BuildingBlueprintId,
@@ -344,9 +345,23 @@ function assertTerrainAndWaterContract(): void {
   assertContract(dry.surface.walkable, 'solid terrain support must be walkable');
 
   const water = findSurfacePoint(world, 'water');
-  assertContract(water.surface.supportKind === 'water', 'water sample must be water support');
-  assertContract(water.surface.supportEntityId === null, 'water support must not have an entity id');
-  assertContract(!water.surface.walkable, 'water support must not be walkable');
+  assertContract(water.surface.supportKind === 'terrain', 'water-covered terrain must remain terrain support');
+  assertContract(water.surface.materialKind === 'water', 'water coverage must remain a material classification');
+  assertContract(water.surface.supportEntityId === null, 'water-covered terrain must not have an entity id');
+  assertContract(!water.surface.walkable, 'water-covered terrain must not be walkable');
+
+  const underwaterBed = writeTerrainSupportSurface(
+    createWorldSupportSurface(),
+    -80,
+    { nx: 0.3, ny: -0.4, nz: 0.8660254037844386 },
+    true,
+    1,
+  );
+  assertContract(underwaterBed.supportKind === 'terrain', 'an underwater bed must retain its terrain source');
+  assertContract(underwaterBed.materialKind === 'water', 'an underwater bed must retain water occupancy');
+  assertNear(underwaterBed.normalX, 0.3, 'underwater terrain support must preserve its normal x');
+  assertNear(underwaterBed.normalY, -0.4, 'underwater terrain support must preserve its normal y');
+  assertNear(underwaterBed.normalZ, 0.8660254037844386, 'underwater terrain support must preserve its normal z');
 }
 
 function assertBuildingSupportContract(): void {

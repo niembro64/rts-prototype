@@ -1110,6 +1110,7 @@ const {
   fogShade,
   materialExplosions,
   triangleDebug,
+  waterTriangleDebug,
   wallTriangleDebug,
   buildGridDebug,
   airLiftProbeDebug,
@@ -1170,6 +1171,7 @@ const {
   toggleFogShade,
   toggleMaterialExplosions,
   toggleTriangleDebug,
+  toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
   toggleAirLiftProbeDebug,
@@ -2006,6 +2008,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   dragPanEnabled: dragPanEnabled.value,
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
+  waterTriangleDebug: waterTriangleDebug.value,
   wallTriangleDebug: wallTriangleDebug.value,
   buildGridDebug: buildGridDebug.value,
   airLiftProbeDebug: airLiftProbeDebug.value,
@@ -2055,6 +2058,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeClientUnitGroundNormalEmaMode,
   toggleDragPan,
   toggleTriangleDebug,
+  toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
   toggleAirLiftProbeDebug,
@@ -2201,6 +2205,7 @@ watchEffect(() => {
   m.dragPanEnabled = dragPanEnabled.value;
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;
+  m.waterTriangleDebug = waterTriangleDebug.value;
   m.wallTriangleDebug = wallTriangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
   m.airLiftProbeDebug = airLiftProbeDebug.value;

@@ -123,8 +123,8 @@
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
-          "maxPropulsiveForce": 3.333333333333,
-          "staticFrictionCoefficient": 0.99,
+          "maxPropulsiveForce": 8,
+          "staticFrictionCoefficient": 2,
           "tangentialDampingRate": 7.595342395285
         },
         "air": {

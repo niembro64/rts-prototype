@@ -340,11 +340,19 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     const counts = entries.map((entry) => entry.parts.reduce(
       (sum, part) => sum + triangleCount(part.geometry), 0,
     ));
-    assertContract(counts.every((count) => count > 0), `${unitId} body resolves H/M/L geometry`);
-    assertDescending(`${unitId} body`, counts);
+    if (blueprint.bodyShape === null) {
+      assertContract(
+        counts.every((count) => count === 0),
+        `${unitId} has no standalone chassis geometry at H/M/L`,
+      );
+    } else {
+      assertContract(counts.every((count) => count > 0), `${unitId} body resolves H/M/L geometry`);
+      assertDescending(`${unitId} body`, counts);
+    }
     if (unitId === 'unitMongoose') {
       assertContract(
-        blueprint.bodyShape.kind === 'polygon' &&
+        blueprint.bodyShape !== null &&
+          blueprint.bodyShape.kind === 'polygon' &&
           blueprint.bodyShape.bevelEnabled === false,
         'Mongoose explicitly disables polygon body bevels',
       );

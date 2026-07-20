@@ -1,4 +1,5 @@
-// WaterRenderer3D — transparent water surface at WATER_LEVEL.
+// WaterRenderer3D — transparent water surface at WATER_LEVEL with an
+// open-bottom perimeter curtain in floating-square modes.
 //
 // In infinity mode water is one large horizontal plane. The submerged land
 // that makes CIRCLE perimeter mode continuous is emitted by
@@ -6,12 +7,17 @@
 // and off-map terrain share one material/shader/color path.
 
 import * as THREE from 'three';
-import { getWaterBoundaryMode, type WaterBoundaryMode } from '@/clientBarConfig';
-import { TILE_FLOOR_Y, WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
+import {
+  getWaterBoundaryMode,
+  getWaterTriangleDebug,
+  type WaterBoundaryMode,
+} from '@/clientBarConfig';
+import { WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import { getFloatingWaterOverhang, getWorldBoxFloorY } from './WorldBoxGeometry3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -33,21 +39,21 @@ import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 // jitter.
 const WATER_DEPTH_OFFSET_FACTOR = 0;
 const WATER_DEPTH_OFFSET_UNITS = 64;
-const FLOATING_WATER_MIN_OVERHANG = 8;
-const FLOATING_WATER_MAX_OVERHANG = 48;
-const FLOATING_WATER_OVERHANG_FRACTION = 0.006;
-const FLOATING_WATER_MIN_BOTTOM_MARGIN = 8;
-const FLOATING_WATER_MAX_BOTTOM_MARGIN = 32;
-const FLOATING_WATER_BOTTOM_MARGIN_FRACTION = 0.004;
+const WATER_TRIANGLE_DEBUG_COLOR = 0xfff17a;
+const WATER_TRIANGLE_DEBUG_OPACITY = 0.95;
 
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;
   private waterGeometry: THREE.BufferGeometry;
   private waterMaterial: THREE.MeshBasicMaterial;
+  private waterTriangleLines: THREE.LineSegments;
+  private waterTriangleGeometry: THREE.BufferGeometry;
+  private waterTriangleMaterial: THREE.LineBasicMaterial;
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
   private lastVisible = true;
+  private lastTriangleDebugVisible = false;
   private lastOpacity = Number.NaN;
   private lastWaterBoundaryMode: WaterBoundaryMode | null = null;
 
@@ -79,6 +85,29 @@ export class WaterRenderer3D {
     this.waterMesh.frustumCulled = false;
     this.lastVisible = this.waterMesh.visible;
     parent.add(this.waterMesh);
+
+    // The water is indexed triangle geometry just like terrain: two faces for
+    // the infinity surface and ten faces for the floating-square top plus its
+    // four perimeter curtains. Keep its debug wireframe as a separate
+    // depth-tested overlay so WATER TRIS exposes those actual triangles
+    // without changing the water material or surface level.
+    this.waterTriangleGeometry = new THREE.BufferGeometry();
+    this.waterTriangleMaterial = new THREE.LineBasicMaterial({
+      color: WATER_TRIANGLE_DEBUG_COLOR,
+      transparent: true,
+      opacity: WATER_TRIANGLE_DEBUG_OPACITY,
+      depthWrite: false,
+      depthTest: true,
+      toneMapped: false,
+    });
+    this.waterTriangleLines = new THREE.LineSegments(
+      this.waterTriangleGeometry,
+      this.waterTriangleMaterial,
+    );
+    this.waterTriangleLines.renderOrder = TRANSPARENT_RENDER_ORDER_3D.waterSurface + 0.1;
+    this.waterTriangleLines.frustumCulled = false;
+    this.waterTriangleLines.visible = false;
+    parent.add(this.waterTriangleLines);
   }
 
   /** Canonical rendered water geometry for camera/cursor first-surface
@@ -117,21 +146,13 @@ export class WaterRenderer3D {
   }
 
   private buildFloatingSquareGeometry(): void {
-    const shorterAxis = Math.max(1, Math.min(this.mapWidth, this.mapHeight));
-    const overhang = Math.max(
-      FLOATING_WATER_MIN_OVERHANG,
-      Math.min(FLOATING_WATER_MAX_OVERHANG, shorterAxis * FLOATING_WATER_OVERHANG_FRACTION),
-    );
-    const bottomMargin = Math.max(
-      FLOATING_WATER_MIN_BOTTOM_MARGIN,
-      Math.min(FLOATING_WATER_MAX_BOTTOM_MARGIN, shorterAxis * FLOATING_WATER_BOTTOM_MARGIN_FRACTION),
-    );
+    const overhang = getFloatingWaterOverhang();
     const x0 = -overhang;
     const z0 = -overhang;
     const x1 = this.mapWidth + overhang;
     const z1 = this.mapHeight + overhang;
     const topY = WATER_LEVEL;
-    const bottomY = Math.min(TILE_FLOOR_Y, WATER_LEVEL) - bottomMargin;
+    const bottomY = getWorldBoxFloorY(this.mapWidth, this.mapHeight);
 
     const positions: number[] = [];
     const normals: number[] = [];
@@ -156,12 +177,9 @@ export class WaterRenderer3D {
       x1, topY, z1,
       x0, topY, z1,
     ], 0, 1, 0, true);
-    pushFace([
-      x0, bottomY, z0,
-      x1, bottomY, z0,
-      x1, bottomY, z1,
-      x0, bottomY, z1,
-    ], 0, -1, 0);
+    // The map is an open-bottom slab. These four overhanging water curtains
+    // close its visible outer perimeter; an unseen horizontal bottom would
+    // only add fill and triangles.
     pushFace([
       x0, bottomY, z0,
       x1, bottomY, z0,
@@ -208,6 +226,9 @@ export class WaterRenderer3D {
     } else {
       this.buildFloatingSquareGeometry();
     }
+    this.waterTriangleGeometry.dispose();
+    this.waterTriangleGeometry = new THREE.WireframeGeometry(this.waterGeometry);
+    this.waterTriangleLines.geometry = this.waterTriangleGeometry;
     this.built = true;
     this.lastWaterBoundaryMode = mode;
   }
@@ -221,6 +242,7 @@ export class WaterRenderer3D {
     const opacity = WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity;
     if (opacity <= 0) {
       this.setVisible(false);
+      this.setTriangleDebugVisible(false);
       return;
     }
     const waterBoundaryMode = getWaterBoundaryMode();
@@ -232,6 +254,7 @@ export class WaterRenderer3D {
       this.lastOpacity = opacity;
     }
     this.setVisible(true);
+    this.setTriangleDebugVisible(getWaterTriangleDebug());
   }
 
   private setVisible(visible: boolean): void {
@@ -240,9 +263,18 @@ export class WaterRenderer3D {
     this.lastVisible = visible;
   }
 
+  private setTriangleDebugVisible(visible: boolean): void {
+    if (this.lastTriangleDebugVisible === visible) return;
+    this.waterTriangleLines.visible = visible;
+    this.lastTriangleDebugVisible = visible;
+  }
+
   destroy(): void {
     this.waterMesh.parent?.remove(this.waterMesh);
+    this.waterTriangleLines.parent?.remove(this.waterTriangleLines);
     this.waterGeometry.dispose();
     this.waterMaterial.dispose();
+    this.waterTriangleGeometry.dispose();
+    this.waterTriangleMaterial.dispose();
   }
 }

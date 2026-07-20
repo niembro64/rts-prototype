@@ -71,6 +71,7 @@ type ClientDefaults = {
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly triangleDebug: boolean;
+  readonly waterTriangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly airLiftProbeDebug: boolean;
@@ -140,6 +141,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     fogShade: FOG_PRESENTATION.enabledByDefault,
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
+    waterTriangleDebug: pickDefault(clientBarConfig.waterTriangleDebug, mode),
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     airLiftProbeDebug: pickDefault(clientBarConfig.airLiftProbeDebug, mode),
@@ -216,6 +218,7 @@ export const CLIENT_CONFIG = {
   fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
+  waterTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.waterTriangleDebug },
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   airLiftProbeDebug: { default: DEMO_CLIENT_DEFAULTS.airLiftProbeDebug },
@@ -294,6 +297,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     fogShade: { default: defaults.fogShade },
     materialExplosions: { default: defaults.materialExplosions },
     triangleDebug: { default: defaults.triangleDebug },
+    waterTriangleDebug: { default: defaults.waterTriangleDebug },
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
     airLiftProbeDebug: { default: defaults.airLiftProbeDebug },
@@ -351,6 +355,7 @@ type ClientStorageKeyName =
   | 'fogShade'
   | 'materialExplosions'
   | 'triangleDebug'
+  | 'waterTriangleDebug'
   | 'wallTriangleDebug'
   | 'buildGridDebug'
   | 'airLiftProbeDebug'
@@ -391,6 +396,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'fogShade',
   'materialExplosions',
   'triangleDebug',
+  'waterTriangleDebug',
   'wallTriangleDebug',
   'buildGridDebug',
   'airLiftProbeDebug',
@@ -481,6 +487,7 @@ let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentFogShade: boolean = _cd.fogShade.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
+let currentWaterTriangleDebug: boolean = _cd.waterTriangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentAirLiftProbeDebug: boolean = _cd.airLiftProbeDebug.default;
@@ -555,6 +562,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentFogShade = cd.fogShade.default;
   currentMaterialExplosions = cd.materialExplosions.default;
   currentTriangleDebug = cd.triangleDebug.default;
+  currentWaterTriangleDebug = cd.waterTriangleDebug.default;
   currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentAirLiftProbeDebug = cd.airLiftProbeDebug.default;
@@ -642,6 +650,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedTriangleDebug = readPersisted(keys.triangleDebug);
   if (storedTriangleDebug !== null) {
     currentTriangleDebug = storedTriangleDebug === 'true';
+  }
+  const storedWaterTriangleDebug = readPersisted(keys.waterTriangleDebug);
+  if (storedWaterTriangleDebug !== null) {
+    currentWaterTriangleDebug = storedWaterTriangleDebug === 'true';
   }
   const storedWallTriangleDebug = readPersisted(keys.wallTriangleDebug);
   if (storedWallTriangleDebug !== null) {
@@ -1060,6 +1072,15 @@ export function getTriangleDebug(): boolean {
 export function setTriangleDebug(enabled: boolean): void {
   currentTriangleDebug = enabled;
   persist(activeStorageKeys().triangleDebug, String(enabled));
+}
+
+export function getWaterTriangleDebug(): boolean {
+  return currentWaterTriangleDebug;
+}
+
+export function setWaterTriangleDebug(enabled: boolean): void {
+  currentWaterTriangleDebug = enabled;
+  persist(activeStorageKeys().waterTriangleDebug, String(enabled));
 }
 
 export function getWallTriangleDebug(): boolean {

@@ -1,7 +1,12 @@
 import type { EntityId } from './types';
 import { UNIT_GROUND_CONTACT_EPSILON } from './unitGroundPhysics';
 
-export type SupportSurfaceKind = 'terrain' | 'water' | 'building' | 'unit';
+/**
+ * The geometry that can support a body. Fluid occupancy is deliberately not
+ * part of this identity: a lake bed is still terrain even when water covers
+ * it. `materialKind` carries the separate medium/navigation classification.
+ */
+export type SupportSurfaceKind = 'terrain' | 'building' | 'unit';
 export type SupportSurfaceMaterialKind = 'solid' | 'water';
 
 export type WorldSupportSurface = {
@@ -47,11 +52,14 @@ export function writeTerrainSupportSurface(
   sourceKey: number,
 ): WorldSupportSurface {
   out.groundZ = groundZ;
-  out.normalX = inWater ? 0 : normal.nx;
-  out.normalY = inWater ? 0 : normal.ny;
-  out.normalZ = inWater ? 1 : normal.nz;
+  // The caller chooses which terrain geometry it sampled: the visual water
+  // plane or the physical lake bed. Never replace that geometry's normal just
+  // because water occupies the point; support and medium are independent.
+  out.normalX = normal.nx;
+  out.normalY = normal.ny;
+  out.normalZ = normal.nz;
   out.supportEntityId = null;
-  out.supportKind = inWater ? 'water' : 'terrain';
+  out.supportKind = 'terrain';
   out.materialKind = inWater ? 'water' : 'solid';
   out.supportVelocityX = 0;
   out.supportVelocityY = 0;

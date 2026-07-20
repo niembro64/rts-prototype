@@ -6,17 +6,17 @@ import { BUILDABLE_UNIT_BLUEPRINT_IDS, getNormalizedUnitCost, getUnitBlueprint }
 import { factoryProductionSystem } from './factoryProduction';
 import { getFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { isEntityActive } from './buildableHelpers';
-import { DEMO_CONFIG } from '../../demoConfig';
+import { BACKGROUND_UNIT_SPAWN_DISTRIBUTION } from '../../config';
 import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 
-// Precomputed inverse-cost weights (cheaper units queued more often)
+// Precomputed weights for the shared background unit-generation mode.
 let weights: { id: string; weight: number }[] = [];
 let totalWeight = 0;
 
 function initWeights(): void {
   if (weights.length > 0) return;
   for (const id of BUILDABLE_UNIT_BLUEPRINT_IDS) {
-    const w = DEMO_CONFIG.aiInverseCostWeighting
+    const w = BACKGROUND_UNIT_SPAWN_DISTRIBUTION === 'inverse-cost'
       ? 1 / Math.max(getNormalizedUnitCost(getUnitBlueprint(id)), 0.01)
       : 1;
     weights.push({ id, weight: w });

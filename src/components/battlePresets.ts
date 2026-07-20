@@ -67,22 +67,6 @@ function allBuildings(): readonly string[] {
 function allTowers(): readonly string[] {
   return TOWER_BLUEPRINT_IDS;
 }
-function demoUnits(): readonly string[] {
-  return [
-    'unitLynx',
-    'unitBadger',
-    'unitTick',
-    'unitLoris',
-    'unitWidow',
-    'unitHippo',
-    'unitSeaTurtle',
-    'unitOrca',
-    'unitBee',
-    'unitDragonfly',
-    'unitEagle',
-    'unitAlbatros',
-  ];
-}
 
 // Shared subsystem toggles that historically lived as inline
 // BATTLE_CONFIG defaults. Folding them into the presets means every
@@ -108,7 +92,7 @@ function buildPresets(): readonly BattlePreset[] {
   return [
     {
       name: DEMO_BATTLE_DEFAULT_PRESET_NAME,
-      units: demoUnits(),
+      units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,

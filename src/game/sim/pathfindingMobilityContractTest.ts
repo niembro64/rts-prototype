@@ -68,8 +68,8 @@ export function runPathfindingMobilityContractTest(): void {
     seaTurtleClimb.allowOnGround &&
       seaTurtleClimb.allowInWater &&
       seaTurtleClimb.maxSlopeDeg !== null &&
-      seaTurtleClimb.maxSlopeDeg >= 30,
-    'Sea Turtle remains amphibious and can climb a steep beach from the water',
+      seaTurtleClimb.maxSlopeDeg >= 60,
+    'Sea Turtle remains amphibious and has enough supported ground force to climb a steep beach from the water',
   );
   assertContract(
     seaTurtleLocomotion.physics.ground.tangentialDampingRate >

@@ -674,6 +674,12 @@
         "hint": "rgba(255, 255, 255, 0.4)",
         "key": "rgba(255, 255, 255, 0.5)"
       },
+      "buildMenuCategoryBorders": {
+        "Economy": "#64e880",
+        "Defense": "#ff5a5a",
+        "Intel": "#70c4ff",
+        "Production": "#ffd66b"
+      },
       "unitBlueprintId": {
         "unitCommander": "#ffd700",
         "towerFabricator": "#88ff88"

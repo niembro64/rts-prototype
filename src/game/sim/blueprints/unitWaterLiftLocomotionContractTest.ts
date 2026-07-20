@@ -40,13 +40,14 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
 
   const seaTurtle = getUnitLocomotion('unitSeaTurtle');
   assertContract(
-    seaTurtle.physics.ground.maxPropulsiveForce < seaTurtle.physics.water.maxPropulsiveForce &&
+    seaTurtle.physics.ground.maxPropulsiveForce >= seaTurtle.physics.water.maxPropulsiveForce * 2 &&
+      seaTurtle.physics.ground.staticFrictionCoefficient >= 2 &&
       seaTurtle.physics.air.maxPropulsiveForce === 0 &&
       !seaTurtle.navigation.allowInAir &&
-      seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
       seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
-      seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater > 0,
-    'Sea Turtle uses its water drive and ground traction for a beach transition without gaining fast land air drive',
+      seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater === 0,
+    'Sea Turtle keeps a high-grip ground actuator through the water-to-air transition without using a surface lift',
   );
   assertContract(
     getUnitBlueprint('unitSeaTurtle').radius.collision <

@@ -29,8 +29,9 @@ export type CameraFovDegrees = number;
 export type LodMode = 'auto' | 'high' | 'medium' | 'low';
 /** Presentation-only treatment of the map/water boundary.
  *    infinity             — extend water and perimeter terrain to a fake horizon.
- *    floating-square      — cut off the real map and render water as a shallow
- *                           cuboid slightly larger than the map footprint.
+ *    floating-square      — cut off the real map and render water as an
+ *                           open-bottom perimeter curtain slightly larger
+ *                           than the map footprint.
  *    floating-square-sea  — floating-square geometry with a solid sea-colored
  *                           background and no visible sky/sun disk. */
 export type WaterBoundaryMode =
@@ -133,6 +134,8 @@ export type ClientBarConfig = {
    *  knockback, or the dying shell materialization fade. */
   readonly materialExplosions: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
+  /** Draws the actual indexed triangle edges in the rendered water mesh. */
+  readonly waterTriangleDebug: BooleanSetting;
   readonly wallTriangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
   /** Draws selected units' configured surface-lift probe points and

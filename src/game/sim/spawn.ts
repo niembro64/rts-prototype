@@ -29,6 +29,7 @@ import {
 import { angleDeltaAbs } from '../math';
 import { isWaterAt } from './Terrain';
 import { fabricatorTorusOuterRadius } from './blueprints';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
 export {  getPlayerBaseAngle } from './playerLayout';
 
@@ -63,6 +64,11 @@ function buildPlacementSearchOffsets(radius: number): readonly GridOffset[] {
 const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
   INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS,
 );
+// A complete demo roster can be much denser than the shared structure arcs,
+// especially on rectangular maps. Fabricators may fan across nearby free grid
+// cells while remaining inside their team's dedicated production sector.
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(24);
+const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
 const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
   METAL_EXTRACTOR_PLACEMENT_SEARCH_RADIUS_CELLS,
 );
@@ -241,6 +247,7 @@ function placeCompleteBuilding(
   factoryWaypoint: InitialFactoryWaypointConfig,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
+  acceptCandidate: ((x: number, y: number) => boolean) | null = null,
 ): Entity | null {
   const config = getBuildingConfig(buildingBlueprintId);
   const grid = construction.getGrid();
@@ -249,6 +256,15 @@ function placeCompleteBuilding(
 
   for (let i = 0; i < searchOffsets.length; i++) {
     const offset = searchOffsets[i];
+    if (acceptCandidate !== null) {
+      const candidate = grid.getBuildingCenter(
+        baseGrid.gx + offset.dx,
+        baseGrid.gy + offset.dy,
+        config.placementGridWidth,
+        config.placementGridHeight,
+      );
+      if (!acceptCandidate(candidate.x, candidate.y)) continue;
+    }
     const entity = construction.startBuilding(
       world,
       buildingBlueprintId,
@@ -403,6 +419,31 @@ function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void 
   factory.factory.repeatProduction = true;
 }
 
+function assertFactoryRepeatCoverage(
+  factories: readonly Entity[],
+  unitBlueprintIds: readonly string[],
+  playerId: PlayerId,
+): void {
+  const missing = new Set(unitBlueprintIds);
+  for (let i = 0; i < factories.length; i++) {
+    const factory = factories[i].factory;
+    if (factory === null || factory === undefined) {
+      throw new Error(`Demo base factory for player ${playerId} must have factory state`);
+    }
+    const selected = factory.selectedUnitBlueprintId;
+    if (factory.repeatProduction !== true || selected === null) {
+      throw new Error(`Demo base factory for player ${playerId} must start in repeat production`);
+    }
+    missing.delete(selected);
+  }
+  if (factories.length !== unitBlueprintIds.length || missing.size > 0) {
+    throw new Error(
+      `Demo base factory coverage failed for player ${playerId}; missing repeat Fabricators for: ` +
+        [...missing].join(', '),
+    );
+  }
+}
+
 function placeFactoryArcRowForUnitBlueprintIds(
   world: WorldState,
   construction: ConstructionSystem,
@@ -415,6 +456,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
   factoryWaypoint: InitialFactoryWaypointConfig,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
+  acceptCandidate: ((x: number, y: number) => boolean) | null = null,
 ): Entity[] {
   const count = unitBlueprintIds.length;
   if (count <= 0) return [];
@@ -435,6 +477,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
       factoryWaypoint,
       searchOffsets,
       acceptCompleted,
+      acceptCandidate,
     );
     if (!factory) continue;
     seedFactoryRepeatBuild(factory, unitBlueprintIds[j]);
@@ -447,14 +490,30 @@ function placeFactoryArcRowForUnitBlueprintIds(
 function isFabricatorOverWater(world: WorldState, entity: Entity): boolean {
   const building = entity.building;
   if (building === null) return false;
-  const sampleRadius = fabricatorTorusOuterRadius(building.width, building.height) * 0.72;
+  return isFabricatorFootprintOverWater(
+    world,
+    entity.transform.x,
+    entity.transform.y,
+    building.width,
+    building.height,
+  );
+}
+
+function isFabricatorFootprintOverWater(
+  world: WorldState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const sampleRadius = fabricatorTorusOuterRadius(width, height) * 0.72;
   for (let i = 0; i < 8; i++) {
     const angle = i * Math.PI / 4;
-    const x = entity.transform.x + DMath.cos(angle) * sampleRadius;
-    const y = entity.transform.y + DMath.sin(angle) * sampleRadius;
-    if (!isWaterAt(x, y, world.mapWidth, world.mapHeight)) return false;
+    const sampleX = x + DMath.cos(angle) * sampleRadius;
+    const sampleY = y + DMath.sin(angle) * sampleRadius;
+    if (!isWaterAt(sampleX, sampleY, world.mapWidth, world.mapHeight)) return false;
   }
-  return isWaterAt(entity.transform.x, entity.transform.y, world.mapWidth, world.mapHeight);
+  return isWaterAt(x, y, world.mapWidth, world.mapHeight);
 }
 
 function configureOuterWaterFactoryWaypoints(
@@ -535,6 +594,9 @@ export function spawnInitialBases(
     availableUnitBlueprintIds,
     waterFactoryUnitBlueprintIdSet,
   );
+  const fabricatorConfig = getBuildingConfig('towerFabricator');
+  const fabricatorWidth = fabricatorConfig.gridWidth * BUILD_GRID_CELL_SIZE;
+  const fabricatorHeight = fabricatorConfig.gridHeight * BUILD_GRID_CELL_SIZE;
 
   // Concentric radii — each ring is explicit so the demo layout can be
   // tuned the same way metal deposit rings are tuned.
@@ -582,6 +644,10 @@ export function spawnInitialBases(
   // one-player maps too: one commander gets one team slice and one
   // divider slice, rather than a special full-circle layout.
   const sectorAngle = getPlayerBuildArcAngle(playerCount, DEMO_CONFIG.arcSectorFraction);
+  // The complete one-Fabricator-per-unit roster needs more room than the
+  // shared structure arcs. It may occupy the full team sector, but never
+  // crosses into the alternating divider sector.
+  const factorySectorAngle = getPlayerBuildArcAngle(playerCount, 1);
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
@@ -625,18 +691,18 @@ export function spawnInitialBases(
       ));
     }
 
-    // Fabricator arcs — one ordinary land Fabricator per available demo unit
-    // blueprint, plus one outer-water Fabricator per water-capable production
-    // line: Sea Turtle, Orca, and Duck.
+    // Fabricator arcs — exactly one Fabricator per available demo unit.
+    // Water-capable lines use the outer-water ring; every other line uses the
+    // land ring across the full team sector. Each begins in repeat production
+    // of its assigned unit.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster. Gated by the towerFabricator
     // tower toggle — disabling it removes the demo's whole factory ring.
     if (isTowerEnabled('towerFabricator')) {
       // Offshore factories are inserted first so the deterministic factory
-      // update order lets their reserved cap slots produce water-line shells
-      // before ordinary land production considers the cap.
-      entities.push(...placeFactoryArcRowForUnitBlueprintIds(
+      // update order is stable across every one-per-unit production line.
+      const waterFactories = placeFactoryArcRowForUnitBlueprintIds(
         world,
         construction,
         waterFactoryUnitBlueprintIds,
@@ -649,7 +715,7 @@ export function spawnInitialBases(
         ),
         playerId,
         factoryWaypoint,
-        INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
+        WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
         (entity) => {
           if (!isFabricatorOverWater(world, entity)) return false;
           configureOuterWaterFactoryWaypoints(
@@ -660,11 +726,25 @@ export function spawnInitialBases(
           );
           return true;
         },
-      ));
-      entities.push(...placeFactoryArcRowForUnitBlueprintIds(
+        (x, y) => isFabricatorFootprintOverWater(
+          world,
+          x,
+          y,
+          fabricatorWidth,
+          fabricatorHeight,
+        ),
+      );
+      const landFactories = placeFactoryArcRowForUnitBlueprintIds(
         world, construction, factoryUnitBlueprintIds,
-        oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
+        oval, factoryRadius, baseAngle, factorySectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      );
+      assertFactoryRepeatCoverage(
+        [...waterFactories, ...landFactories],
+        [...waterFactoryUnitBlueprintIds, ...factoryUnitBlueprintIds],
+        playerId,
+      );
+      entities.push(...waterFactories, ...landFactories);
     }
 
     // megaBeam tower arc — covers the approach to the base from the

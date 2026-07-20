@@ -18,9 +18,7 @@ import {
   SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
   SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
 } from '../sim/surfaceProbeSets';
-import {
-  UNIT_GROUND_CONTACT_EPSILON,
-} from '../sim/unitGroundPhysics';
+import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { WATER_LEVEL, getTerrainVersion } from '../sim/Terrain';
 import {
   ENTITY_CHANGED_ROT,
@@ -444,7 +442,10 @@ export class UnitForceSystem {
       const supportSurfaceContact =
         supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
       const supportPenetration = supportSurface.groundZ - (bodyZ - bodyGroundOffset);
-      const surfaceContact = supportPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
+      const locomotionGroundContact = isUnitGroundPenetrationInContact(
+        supportPenetration,
+        bodyRadius,
+      );
       const buildFlags = hasEntityState ? entityViews!.buildFlags[entitySlot] : 0;
       const buildInProgress = hasEntityState
         ? (
@@ -510,7 +511,7 @@ export class UnitForceSystem {
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
       const thrustInputMag = hasThrustDir ? DMath.sqrt(dirLenSq) : 0;
 
-      if (surfaceContact) flags |= UF_FLAG_ON_GROUND;
+      if (locomotionGroundContact) flags |= UF_FLAG_ON_GROUND;
 
       const mediumLiftActive = !buildInProgress;
       if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
@@ -660,7 +661,7 @@ export class UnitForceSystem {
         _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
       }
       flags |= UF_FLAG_HAS_ORIENTATION;
-      if (surfaceContact) {
+      if (locomotionGroundContact) {
         if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
@@ -889,7 +890,10 @@ export class UnitForceSystem {
       terrainSurface.normalY = _forceTerrainGroundNormals[normalBase + 1];
       terrainSurface.normalZ = _forceTerrainGroundNormals[normalBase + 2];
       terrainSurface.supportEntityId = null;
-      terrainSurface.supportKind = inWater ? 'water' : 'terrain';
+      // A terrain bed remains terrain when a fluid covers it. The material
+      // row carries water occupancy/navigation; the support row carries the
+      // actual geometry used for traction and attitude.
+      terrainSurface.supportKind = 'terrain';
       terrainSurface.materialKind = inWater ? 'water' : 'solid';
       terrainSurface.supportVelocityX = 0;
       terrainSurface.supportVelocityY = 0;
@@ -907,11 +911,6 @@ export class UnitForceSystem {
       terrainBedNormal,
       _forceTerrainSurface,
     );
-    if (terrainSurface.materialKind === 'water') {
-      terrainSurface.normalX = terrainBedNormal.nx;
-      terrainSurface.normalY = terrainBedNormal.ny;
-      terrainSurface.normalZ = terrainBedNormal.nz;
-    }
     return this.physics.sampleSupportSurface(body, terrainSurface, out);
   }
 

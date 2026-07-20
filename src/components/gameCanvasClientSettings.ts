@@ -37,6 +37,7 @@ import {
   getRenderMode,
   getSoundToggle,
   getTriangleDebug,
+  getWaterTriangleDebug,
   getWallTriangleDebug,
   getUnitRadiusToggle,
   getWaypointDetail,
@@ -74,6 +75,7 @@ import {
   setRenderMode,
   setSoundToggle,
   setTriangleDebug,
+  setWaterTriangleDebug,
   setWallTriangleDebug,
   setUnitRadiusToggle,
   setWaypointDetail,
@@ -133,6 +135,7 @@ export function useGameCanvasClientSettings({
   const fogShade = ref<boolean>(getFogShade());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
   const triangleDebug = ref<boolean>(getTriangleDebug());
+  const waterTriangleDebug = ref<boolean>(getWaterTriangleDebug());
   const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const airLiftProbeDebug = ref<boolean>(getAirLiftProbeDebug());
@@ -218,6 +221,7 @@ export function useGameCanvasClientSettings({
     fogShade.value = getFogShade();
     materialExplosions.value = getMaterialExplosions();
     triangleDebug.value = getTriangleDebug();
+    waterTriangleDebug.value = getWaterTriangleDebug();
     wallTriangleDebug.value = getWallTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
     airLiftProbeDebug.value = getAirLiftProbeDebug();
@@ -425,6 +429,12 @@ export function useGameCanvasClientSettings({
     const newValue = !triangleDebug.value;
     setTriangleDebug(newValue);
     triangleDebug.value = newValue;
+  }
+
+  function toggleWaterTriangleDebug(): void {
+    const newValue = !waterTriangleDebug.value;
+    setWaterTriangleDebug(newValue);
+    waterTriangleDebug.value = newValue;
   }
 
   function toggleWallTriangleDebug(): void {
@@ -659,6 +669,7 @@ export function useGameCanvasClientSettings({
     fogShade,
     materialExplosions,
     triangleDebug,
+    waterTriangleDebug,
     wallTriangleDebug,
     buildGridDebug,
     airLiftProbeDebug,
@@ -721,6 +732,7 @@ export function useGameCanvasClientSettings({
     toggleFogShade,
     toggleMaterialExplosions,
     toggleTriangleDebug,
+    toggleWaterTriangleDebug,
     toggleWallTriangleDebug,
     toggleBuildGridDebug,
     toggleAirLiftProbeDebug,

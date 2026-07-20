@@ -311,7 +311,7 @@ export function buildLegs(
   r: number,
   cfg: BlueprintLegConfig,
   legStyle: LegStyle,
-  bodyShape: UnitBodyShape,
+  bodyShape: UnitBodyShape | null,
   chassisLiftY: number,
   legAttachHeightFrac: number | null,
   legRenderer: LegInstancedRenderer,
@@ -353,9 +353,15 @@ export function buildLegs(
     // body segment the leg sits under. Units whose visible body is a
     // turret can author legAttachHeightFrac as an absolute terrain-up
     // height fraction, in the same coordinate system as turret mount.z.
-    const hipY = legAttachHeightFrac !== null
-      ? legAttachHeightFrac * r
-      : chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
+    let hipY: number;
+    if (legAttachHeightFrac !== null) {
+      hipY = legAttachHeightFrac * r;
+    } else {
+      if (bodyShape === null) {
+        throw new Error('A legged bodyless unit requires legAttachHeightFrac.');
+      }
+      hipY = chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
+    }
 
     // Build the leg object with placeholder slot indices first, then
     // alloc — the alloc relocator callbacks need to write back to

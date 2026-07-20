@@ -227,6 +227,8 @@ const isStaticOnlySelection = computed(() =>
 );
 const SELECTION_PANEL = COLORS.ui.selectionPanel;
 const BUTTON_COLORS = SELECTION_PANEL.buttons;
+const BUILD_MENU_CATEGORY_BORDER_COLORS: Record<BuildMenuCategory, string> =
+  SELECTION_PANEL.buildMenuCategoryBorders;
 const BAR_WAYPOINT_COMMAND_COUNT = 3;
 const BAR_ORDER_PANEL_HEIGHT_VH = 14;
 const BAR_FLOW_ELEMENT_PADDING_VH = 0.3;
@@ -558,6 +560,10 @@ function hotkey(commandId: CommandHotkeyId): string {
 
 function publicAssetSrc(path: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
+}
+
+function buildOptionBorderColor(category: BuildMenuCategory): string {
+  return BUILD_MENU_CATEGORY_BORDER_COLORS[category];
 }
 
 type BarGroupIconId =
@@ -2400,6 +2406,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             type="button"
             class="action-btn build-btn thumbnail-action-btn bar-grid-cell"
             :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
+            :style="{ '--btn-color': buildOptionBorderColor(bo.category) }"
             :title="costTitle(`Build ${bo.label}`, bo.cost, undefined, bo.metalCost, bo.energyCost)"
             @click="clickBuildGridOption(bo.buildingBlueprintId)"
           >
@@ -4916,6 +4923,21 @@ kbd {
   background: var(--selection-panel-button-bg);
   border-color: var(--selection-panel-button-border);
   box-shadow: none;
+}
+
+/* Build options keep the category-coded frame used by annihilation-plus-plus:
+ * a quiet accent while idle, then nearly full-strength while focused or active. */
+.bar-grid-cell.build-btn {
+  border-color: color-mix(in srgb, var(--btn-color) 48%, transparent);
+}
+
+.bar-grid-cell.build-btn:hover,
+.bar-grid-cell.build-btn:focus-visible,
+.bar-grid-cell.build-btn.active,
+.options-panel.bar-hotkey-preset .bar-grid-cell.build-btn.action-btn:hover,
+.options-panel.bar-hotkey-preset .bar-grid-cell.build-btn.action-btn:focus-visible,
+.options-panel.bar-hotkey-preset .bar-grid-cell.build-btn.action-btn.active {
+  border-color: color-mix(in srgb, var(--btn-color) 92%, transparent);
 }
 
 .btn-label {

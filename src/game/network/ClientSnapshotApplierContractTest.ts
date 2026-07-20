@@ -195,6 +195,71 @@ export function runShieldFarLodRenderPacketContractTest(): void {
   );
 }
 
+function runTypedShieldRangePresentationContractTest(): void {
+  for (const [id, blueprintId] of [[912, 'unitWidow'], [913, 'unitDaddy']] as const) {
+    const source = createUnitFromBlueprintEntity(
+      {
+        generateEntityId: () => id,
+        sampleSupportSurface: () => FLAT_SUPPORT,
+      },
+      0,
+      0,
+      1 as PlayerId,
+      blueprintId,
+      { allocateSubEntityIds: false },
+    );
+    const sourceShield = source.combat?.turrets.find((turret) =>
+      turret.config.shot?.type === 'shield' && turret.config.shot.barrier !== undefined);
+    if (sourceShield === undefined) {
+      throw new Error(`[client snapshot applier contract] ${blueprintId} fixture requires a shield turret`);
+    }
+    sourceShield.shield = { transition: 0, range: 0, onTimeMs: 0 };
+
+    resetEntitySnapshotPool();
+    const initial = serializeEntitySnapshot(source, undefined, {} as WorldState);
+    resetEntitySnapshotPool();
+    if (initial === null) {
+      throw new Error(`[client snapshot applier contract] ${blueprintId} initial shield snapshot must serialize`);
+    }
+    const view = new ClientViewState();
+    view.applyNetworkState(snapshot(1, [initial]));
+    const collapsedPacket = collectShieldRenderPacket(view, false);
+    assertContract(
+      collapsedPacket.count === 1 && collapsedPacket.progress[0] === 0,
+      `${blueprintId} must begin with its collapsed shield in the render packet`,
+    );
+
+    sourceShield.shield = { transition: 1, range: 1, onTimeMs: 100 };
+    const typedTurretRows: NetworkServerSnapshotEntity[] = [];
+    resetEntitySnapshotPool();
+    registerEntitySnapshotWireSource(typedTurretRows);
+    const typedTurretRow = serializeEntityDeltaSnapshot(
+      source,
+      ENTITY_CHANGED_TURRETS,
+      {} as WorldState,
+    );
+    if (typedTurretRow !== null) {
+      typedTurretRows.push(typedTurretRow as NetworkServerSnapshotEntity);
+    }
+    assertContract(
+      (typedTurretRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+      `${blueprintId} shield update must use the typed turret path`,
+    );
+    view.applyNetworkState(deltaSnapshot(2, typedTurretRows), {
+      syncEconomy: undefined,
+      deferPredictedTurretRenderRefresh: true,
+    });
+    resetEntitySnapshotPool();
+
+    const raisedPacket = collectShieldRenderPacket(view, false);
+    assertContract(
+      raisedPacket.count === 1 && Math.abs((raisedPacket.progress[0] ?? 0) - 1) < 0.000001,
+      `${blueprintId} typed shield updates must reach the render packet`,
+    );
+    view.assertRenderEntityStateParity(id);
+  }
+}
+
 function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
   return {
     hp: null,
@@ -2462,4 +2527,5 @@ export function runClientSnapshotApplierContractTest(): void {
   // This fixture allocates shared entity slots, so keep it last to avoid
   // perturbing the legacy hot-motion assertions above.
   runShieldFarLodRenderPacketContractTest();
+  runTypedShieldRangePresentationContractTest();
 }

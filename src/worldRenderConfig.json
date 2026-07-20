@@ -1,6 +1,11 @@
 {
   "landTileGroundLift": 0,
   "waypointGroundLift": 12,
+  "worldBox": {
+    "waterExtensionWorldUnits": 200,
+    "depthAverageAxisFraction": 0.25,
+    "detail": "Water extends this far beyond every terrain edge. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
+  },
   "horizonRenderExtend": 180000,
   "sun": {
     "azimuthRad": -0.7853981633974483,
