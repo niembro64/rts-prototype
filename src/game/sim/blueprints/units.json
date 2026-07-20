@@ -1384,7 +1384,7 @@
         },
         "water": {
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromGround": 700,
             "surfaceFollowingProportionalForceFromWater": 0
           }
         }
