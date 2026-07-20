@@ -31,7 +31,7 @@ export class RtsScene3DCameraFramingSystem {
     private readonly playerIds: readonly PlayerId[],
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly cameraBattleKind: CameraBattleKind,
-    private readonly getSurfaceY: (x: number, z: number) => number,
+    private readonly getTerrainY: (x: number, z: number) => number,
     private readonly getSelectedUnits: () => readonly Entity[],
   ) {}
 
@@ -125,7 +125,7 @@ export class RtsScene3DCameraFramingSystem {
 
     const cx = commander.transform.x;
     const cz = commander.transform.y;
-    this.threeApp.orbit.setTarget(cx, this.getSurfaceY(cx, cz), cz);
+    this.threeApp.orbit.setTarget(cx, this.getTerrainY(cx, cz), cz);
 
     const forwardX = this.mapWidth / 2 - cx;
     const forwardZ = this.mapHeight / 2 - cz;
@@ -157,7 +157,7 @@ export class RtsScene3DCameraFramingSystem {
     );
     return {
       x: spawn.x,
-      y: this.getSurfaceY(spawn.x, spawn.y),
+      y: this.getTerrainY(spawn.x, spawn.y),
       z: spawn.y,
     };
   }
@@ -167,7 +167,7 @@ export class RtsScene3DCameraFramingSystem {
     const z = this.mapHeight / 2;
     return {
       x,
-      y: focus === 'map-origin-use-map-height' ? this.getSurfaceY(x, z) : 0,
+      y: focus === 'map-origin-use-map-height' ? this.getTerrainY(x, z) : 0,
       z,
     };
   }

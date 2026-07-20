@@ -1,6 +1,8 @@
 export type CameraAnchorScreen = 'cursor' | 'screen-center';
 
-export type CameraAnchorTerrain = 'plane-2d' | 'terrain-3d' | 'terrain-3d-water';
+/** Camera anchors resolve only against the terrain bed. Water is a rendered
+ * surface, not a camera input surface. */
+export type CameraAnchorTerrain = 'plane-2d' | 'terrain-3d';
 
 export type CameraAnchor = {
   readonly screen: CameraAnchorScreen;

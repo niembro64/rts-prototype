@@ -112,19 +112,19 @@
   "anchor": {
     "zoomIn": {
       "screen": "cursor",
-      "terrain": "terrain-3d-water"
+      "terrain": "terrain-3d"
     },
     "zoomOut": {
       "screen": "screen-center",
-      "terrain": "terrain-3d-water"
+      "terrain": "terrain-3d"
     },
     "rotate": {
       "screen": "cursor",
-      "terrain": "terrain-3d-water"
+      "terrain": "terrain-3d"
     },
     "pan": {
       "screen": "cursor",
-      "terrain": "terrain-3d-water"
+      "terrain": "terrain-3d"
     }
   }
 }

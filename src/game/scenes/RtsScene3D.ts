@@ -78,7 +78,7 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
-  getSurfaceHeight,
+  getTerrainMeshHeight,
   setTerrainTeamCount,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
@@ -108,7 +108,6 @@ import type {
 import {
   CAMERA_CONSTRAINTS,
   WORLD_PADDING_PERCENT,
-  LAND_CELL_SIZE,
 } from '../../config';
 
 type RtsScene3DConfig = {
@@ -384,7 +383,7 @@ export class RtsScene3D {
       this.playerIds,
       () => this.localPlayerId,
       cameraBattleKind,
-      (x, z) => getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
+      (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
       () => this.selectionSystem.getSelectedUnits(),
     );
     this.cameras = this.cameraControl.cameras;
@@ -1491,7 +1490,7 @@ export class RtsScene3D {
     this.cameraControl.showMapOverview(
       this.mapWidth,
       this.mapHeight,
-      getSurfaceHeight(centerX, centerY, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
+      getTerrainMeshHeight(centerX, centerY, this.mapWidth, this.mapHeight),
     );
   }
 

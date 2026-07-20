@@ -20,9 +20,9 @@
 // one continuous eased motion to the combined destination.
 //
 // Cursor pinning is 3D-accurate when a `getCursorWorldPoint` callback
-// is supplied: the scene raycasts the actual rendered geometry
-// (terrain, etc.) instead of a flat y=0 plane, so wheel zoom anchors
-// at the real point under the cursor. In anchor-distance-relative
+// is supplied: the scene raycasts the terrain bed instead of a flat y=0
+// plane, so wheel zoom anchors at the real point under the cursor. Water
+// never participates in camera input. In anchor-distance-relative
 // movement mode, pan drag also uses the cursor's actual world depth
 // to compute world-per-pixel. In absolute-world mode, the same
 // pan/orbit directions are used with fixed world-unit movement
@@ -260,9 +260,8 @@ export class OrbitCamera {
   private farReferenceDistance: number;
   private lostTerrainRecovery: CameraLostTerrainRecoveryConfig =
     DEFAULT_LOST_TERRAIN_RECOVERY_CONFIG;
-  /** Receives a camera frustum and reports whether an actual rendered map
-   * surface (terrain or water) intersects it. Installed by the scene once
-   * those renderers exist. */
+  /** Receives a camera frustum and reports whether the terrain bounds
+   * intersect it. Installed by the scene once terrain exists. */
   private surfaceVisibilityChecker?: (frustum: THREE.Frustum) => boolean;
   private mapRecoveryActive = false;
   private mapRecoveryPitch = this.pitch;
@@ -305,10 +304,10 @@ export class OrbitCamera {
    *  use cursor for both so paired wheel ticks are inverse. The
    *  orbit drag and touch twist use `rotateAnchor`, and pan uses
    *  `panAnchor` for its grab-depth capture. */
-  private zoomInAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
-  private zoomOutAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
-  private rotateAnchor: CameraAnchor = { screen: 'screen-center', terrain: 'terrain-3d-water' };
-  private panAnchorMode: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
+  private zoomInAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d' };
+  private zoomOutAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d' };
+  private rotateAnchor: CameraAnchor = { screen: 'screen-center', terrain: 'terrain-3d' };
+  private panAnchorMode: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d' };
 
   private dragMode: 'none' | 'orbit' | 'pan' | 'height-pan' = 'none';
   private lastMouseX = 0;
@@ -1152,8 +1151,7 @@ export class OrbitCamera {
     p0: THREE.Vector3 | null,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    // A water-horizon anchor can be vastly farther away than the visible map.
-    // Clamp the factor BEFORE it translates target + eye around that anchor,
+    // Clamp the factor BEFORE it translates target + eye around an anchor,
     // so an outward zoom ends exactly on the eye-distance rail instead of
     // leaving an impossible target/rail combination for the distance solver.
     const railSafeFactor = p0
@@ -1966,9 +1964,9 @@ export class OrbitCamera {
 
   /**
    * Install the scene-owned, allocation-free surface visibility test. It is
-   * deliberately a frustum test over the actual terrain/water extents instead
-   * of a screen-center ray: terrain in a viewport corner still counts as
-   * visible and must not trigger recovery.
+   * deliberately a frustum test over terrain bounds instead of a screen-center
+   * ray: terrain in a viewport corner still counts as visible and must not
+   * trigger recovery. Water never prevents camera recovery.
    */
   setSurfaceVisibilityChecker(
     checker: ((frustum: THREE.Frustum) => boolean) | undefined,

@@ -1,8 +1,8 @@
 // CursorGround — single canonical screen-ray service for terrain picks.
-// Camera anchors call `pickWorld` with an explicit terrain mode; command
-// inputs call `pickSim`. Both paths resolve through the same first-surface
-// raycast so a click on a mountain top cannot skip through to terrain behind
-// the mountain.
+// Camera anchors call `pickWorld` against the terrain bed; command inputs call
+// `pickSim`, which can still resolve the first rendered terrain-or-water
+// surface. Both paths preserve first-hit ordering so a click on a mountain top
+// cannot skip through to terrain behind the mountain.
 //
 // Three coord ↔ sim coord mapping (the project-wide convention):
 //   sim.x  = three.x
@@ -35,6 +35,10 @@ export type SimGroundPoint = {
   y: number;
   z: number;
 };
+
+/** Water is available to command picking only. Camera anchors are constrained
+ * by CameraAnchorTerrain and therefore cannot select this surface. */
+type CursorPickSurface = CameraAnchorTerrain | 'terrain-3d-water';
 
 export class CursorGround {
   private camera: THREE.PerspectiveCamera;
@@ -86,8 +90,9 @@ export class CursorGround {
    *  The caller supplies the terrain axis explicitly:
    *  - plane-2d: project against the flat y=0 building plane.
    *  - terrain-3d: return the raw rendered terrain hit.
-   *  - terrain-3d-water: return whichever rendered terrain/water surface
-   *    the ray reaches first.
+   *
+   *  CameraAnchorTerrain intentionally has no water option: every camera
+   *  gesture follows the terrain bed, including beneath lakes.
    *
    *  The returned Vector3 is a SHARED scratch — read it immediately
    *  or copy if you need to retain. */
@@ -97,11 +102,7 @@ export class CursorGround {
     terrainMode: CameraAnchorTerrain,
   ): THREE.Vector3 | null {
     if (!this.setRayFromClient(clientX, clientY)) return null;
-    // Camera anchors must remain defined even beyond finite floating-map
-    // geometry, so terrain-3d-water may fall back to the infinite horizontal
-    // water plane. Command picking below deliberately does not enable that
-    // fallback, preventing off-map orders.
-    return this.pickWorldFromCurrentRay(terrainMode, true);
+    return this.pickWorldFromCurrentRay(terrainMode);
   }
 
   /** Fast peripheral picker for the optional 8/16 zoom-neighborhood rays.
@@ -127,16 +128,14 @@ export class CursorGround {
     if (ray.direction.y >= -1e-6) return null;
     let height = Number.isFinite(referenceSurfaceHeight)
       ? referenceSurfaceHeight
-      : terrainMode === 'terrain-3d-water'
-        ? WATER_LEVEL
-        : 0;
+      : 0;
 
     for (let i = 0; i < ZOOM_SAMPLE_HEIGHT_ITERATIONS; i++) {
       const t = (height - ray.origin.y) / ray.direction.y;
       if (!Number.isFinite(t) || t < 0) return null;
       const x = ray.origin.x + t * ray.direction.x;
       const z = ray.origin.z + t * ray.direction.z;
-      const nextHeight = this.zoomSampleSurfaceHeight(x, z, terrainMode);
+      const nextHeight = this.zoomSampleSurfaceHeight(x, z);
       if (!Number.isFinite(nextHeight)) return null;
       const converged = Math.abs(nextHeight - height) <= ZOOM_SAMPLE_HEIGHT_CONVERGENCE;
       height = nextHeight;
@@ -152,19 +151,10 @@ export class CursorGround {
     );
   }
 
-  private zoomSampleSurfaceHeight(
-    x: number,
-    z: number,
-    terrainMode: CameraAnchorTerrain,
-  ): number {
+  private zoomSampleSurfaceHeight(x: number, z: number): number {
     const insideTerrain = x >= 0 && x <= this.mapWidth && z >= 0 && z <= this.mapHeight;
-    if (!insideTerrain) {
-      return terrainMode === 'terrain-3d-water' ? WATER_LEVEL : Number.NaN;
-    }
-    const terrainHeight = getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight);
-    return terrainMode === 'terrain-3d-water'
-      ? Math.max(terrainHeight, WATER_LEVEL)
-      : terrainHeight;
+    if (!insideTerrain) return Number.NaN;
+    return getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight);
   }
 
   private setRayFromClient(clientX: number, clientY: number): boolean {
@@ -196,8 +186,7 @@ export class CursorGround {
   }
 
   private pickWorldFromCurrentRay(
-    terrainMode: CameraAnchorTerrain,
-    allowUnboundedWaterFallback = false,
+    terrainMode: CursorPickSurface,
   ): THREE.Vector3 | null {
     if (terrainMode === 'plane-2d') return this.pickPlaneRay();
 
@@ -210,7 +199,7 @@ export class CursorGround {
     // and could appear to stop working over open water/off-land areas.
     const terrainHit = this.pickFirstTerrainSurfaceRay(this.terrainMesh === undefined);
     if (terrainHit) this.terrainCandidate.copy(terrainHit);
-    const waterHit = this.pickFirstWaterSurfaceRay(allowUnboundedWaterFallback);
+    const waterHit = this.pickFirstWaterSurfaceRay();
     if (waterHit) this.waterCandidate.copy(waterHit);
     if (!terrainHit) return waterHit ? this.worldHit.copy(this.waterCandidate) : null;
     if (!waterHit) return this.worldHit.copy(this.terrainCandidate);
@@ -239,7 +228,7 @@ export class CursorGround {
     return this.pickFirstTerrainSurfaceBySampling();
   }
 
-  private pickFirstWaterSurfaceRay(allowUnboundedFallback: boolean): THREE.Vector3 | null {
+  private pickFirstWaterSurfaceRay(): THREE.Vector3 | null {
     if (this.waterMesh) {
       this.waterHits.length = 0;
       this.raycaster.intersectObject(this.waterMesh, false, this.waterHits);
@@ -253,9 +242,7 @@ export class CursorGround {
         }
       }
     }
-    return allowUnboundedFallback
-      ? this.pickHorizontalPlaneRay(WATER_LEVEL)
-      : null;
+    return null;
   }
 
   private pickFirstTerrainSurfaceBySampling(): THREE.Vector3 | null {
@@ -326,15 +313,15 @@ export class CursorGround {
 
   /** Cursor → command target point in SIM coords
    *  (sim.x = three.x, sim.y = three.z, sim.z = three.y).
-   *  Commands use the same first rendered terrain-or-water hit as camera
-   *  anchors.
+   *  Commands use the first rendered terrain-or-water hit. Camera anchors
+   *  always use terrain instead.
    *  The z component carries the chosen altitude for renderers /
    *  handlers that need it.
    *  Returns null on miss; callers should treat that as "command
    *  cannot be issued from this cursor position". */
   pickSim(clientX: number, clientY: number): SimGroundPoint | null {
     if (!this.setRayFromClient(clientX, clientY)) return null;
-    const w = this.pickWorldFromCurrentRay('terrain-3d-water', false);
+    const w = this.pickWorldFromCurrentRay('terrain-3d-water');
     if (!w) return null;
     this.simHit.x = w.x;
     this.simHit.y = w.z;
