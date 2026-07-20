@@ -17,7 +17,7 @@ import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
-import { getFloatingWaterOverhang, getWorldBoxFloorY } from './WorldBoxGeometry3D';
+import { getFloatingWaterOverhang, getWaterBoxFloorY } from './WorldBoxGeometry3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -153,7 +153,9 @@ export class WaterRenderer3D {
     const x1 = this.mapWidth + overhang;
     const z1 = this.mapHeight + overhang;
     const topY = WATER_LEVEL;
-    const bottomY = getWorldBoxFloorY(this.mapWidth, this.mapHeight);
+    // Curtains reach the same authored overhang BELOW the land slab's floor
+    // that the water extends past every terrain edge.
+    const bottomY = getWaterBoxFloorY(this.mapWidth, this.mapHeight);
 
     const positions: number[] = [];
     const normals: number[] = [];

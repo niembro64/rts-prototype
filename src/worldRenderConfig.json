@@ -4,7 +4,7 @@
   "worldBox": {
     "waterExtensionWorldUnits": 200,
     "depthAverageAxisFraction": 0.25,
-    "detail": "Water extends this far beyond every terrain edge. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
+    "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
   },
   "horizonRenderExtend": 180000,
   "sun": {
