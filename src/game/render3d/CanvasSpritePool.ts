@@ -20,6 +20,8 @@ type CanvasSpritePoolOptions<TState, TPaintArgs extends unknown[]> = {
   debugName: string;
   textureFilter?: 'linear' | 'nearest';
   material?: Omit<THREE.SpriteMaterialParameters, 'map'>;
+  /** Explicit transparent-world ordering for every pooled sprite. */
+  renderOrder?: number;
   maxRetainedSlots?: number;
   emptyRetainedSlots?: number;
   shrinkCooldownFrames?: number;
@@ -188,6 +190,7 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
       map: texture,
     });
     const sprite = new THREE.Sprite(material);
+    sprite.renderOrder = this.options.renderOrder ?? 0;
     const base = { sprite, canvas, ctx, texture, material };
     const slot: CanvasSpriteSlot<TState> = {
       ...base,

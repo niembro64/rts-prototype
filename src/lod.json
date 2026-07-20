@@ -1,10 +1,9 @@
 {
   "entity": {
-    "enabled": true,
-    "autoHighToLowDistance": 3600
+    "enabled": true
   },
   "detail": {
-    "comment": "Continuous screen-coverage detail. An entity's detail level L in [0,1] comes from its projected screen radius at the reference viewport height: L=0 at/below screenRadiusPx.glyph (the entity is the flat point-sprite proxy), L=1 at/above screenRadiusPx.full. Between the ends, discrete RUNGS (far/mid/close, min L per rung in rungMinLevel) pick the geometry segment tier and which named features are built. Features snap to rung boundaries on purpose: one hysteresis (hysteresisLevel, in L units) covers every transition, and a whole zoom sweep costs at most three mesh transitions per entity. rebuildBudgetPerFrame caps how many meshes may rebuild per frame during camera sweeps; entities over budget keep their previous rung until a later frame. The BAR-style icon cross-fade is fully derived, not authored: the proxy glyph is drawn ON TOP of the still-fully-opaque model, alpha ramping linearly from 0 at the close->mid rung boundary radius (glyph + rungMinLevel.close * (full - glyph) — the moment geometry drops to the MID tier) to 1 at/below the glyph radius, where the FAR model stops drawing entirely and the opaque glyph replaces it.",
+    "comment": "AUTO measures projected screen coverage only to choose one of the same three authored detail rungs used by the manual controls: close/HIGH, mid/MED, or far/LOW. The continuous L value is an internal threshold metric, never a fourth visual tier. One hysteresis (hysteresisLevel, in L units) covers every AUTO transition, and a whole zoom sweep costs at most three mesh transitions per entity. rebuildBudgetPerFrame caps how many meshes may rebuild per frame during camera sweeps; entities over budget keep their previous rung until a later frame. The only extra presentation state is the BAR-style strategic glyph: it fades in on top of the still-opaque LOW model, then replaces that model after the glyph threshold.",
     "enabled": true,
     "referenceViewportHeightPx": 1080,
     "screenRadiusPx": {
@@ -14,16 +13,6 @@
     "rungMinLevel": {
       "mid": 0.32,
       "close": 0.62
-    },
-    "plasmaRungMinLevel": {
-      "comment": "Plasma-only visual rungs. Lower values keep the richer projectile mesh visible farther from the camera. HIGH now extends modestly beyond the general close rung; MEDIUM extends roughly twice as far before falling to the four-triangle LOW mesh.",
-      "medium": 0.08,
-      "high": 0.52,
-      "hysteresis": 0.03
-    },
-    "plasmaSizeScaling": {
-      "comment": "Constant-angular-size LOD law. The smallest authored plasma (radius 2 * tail multiplier 24) has a 48-world-unit tail and keeps the existing thresholds. Larger plasma transition distances scale linearly by actualTailLength/referenceTailLengthWorld.",
-      "referenceTailLengthWorld": 48
     },
     "hysteresisLevel": 0.05,
     "rebuildBudgetPerFrame": {
@@ -73,15 +62,10 @@
       "buildingAnimationMinRung": "far"
     },
     "effectSpawnScale": {
-      "comment": "Continuous spawn-count scaling by L: full at/above fullAbove, ramping down to the floor value at/below zeroBelow.",
-      "smoke": { "zeroBelow": 0.02, "fullAbove": 0.5, "floor": 0 },
-      "explosion": { "zeroBelow": 0.02, "fullAbove": 0.6, "floor": 0.18 },
-      "debris": { "zeroBelow": 0.15, "fullAbove": 0.6, "floor": 0 }
-    },
-    "environment": {
-      "comment": "Environment props hide when their projected screen radius drops below these thresholds (px at the reference viewport height).",
-      "grassMinScreenRadiusPx": 3,
-      "treeMinScreenRadiusPx": 1.5
+      "comment": "Per-authored-rung spawn scales. AUTO resolves to exactly one of these three values; glyph/removal spawns no effect geometry.",
+      "smoke": { "close": 1, "mid": 0.65, "far": 0.3 },
+      "explosion": { "close": 1, "mid": 0.7, "far": 0.35 },
+      "debris": { "close": 1, "mid": 0.6, "far": 0.25 }
     }
   }
 }

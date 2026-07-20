@@ -34,8 +34,11 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
-import { simPositionUsesLowLodDistance3D } from '../render3d/EntityLod3D';
-import { detailLevelForViewPosition } from '../render3d/EntityDetailLevel3D';
+import {
+  DETAIL_RUNG_GLYPH,
+  detailLevelForViewPosition,
+  detailRungForLevel,
+} from '../render3d/EntityDetailLevel3D';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { BarBuildCategoryId } from '../input/buildMenuLayout';
@@ -888,12 +891,8 @@ export class RtsScene3D {
       waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
       isPositionLowLod: (simX, simY, simZ) =>
-        simPositionUsesLowLodDistance3D(
-          this.threeApp.camera,
-          simX,
-          simY,
-          simZ,
-        ),
+        detailRungForLevel(this.positionVisualDetailLevel(simX, simY, simZ)) ===
+          DETAIL_RUNG_GLYPH,
       positionVisualDetailLevel: (simX, simY, simZ) =>
         this.positionVisualDetailLevel(simX, simY, simZ),
     });

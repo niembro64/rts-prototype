@@ -341,4 +341,20 @@ export class CursorGround {
     this.simHit.z = w.y;
     return this.simHit;
   }
+
+  /** Cursor → terrain-bed point in SIM coords.
+   *
+   *  This is a direct raycast against the authoritative terrain mesh, even
+   *  beneath water. The resulting x/y/z is therefore the same true terrain
+   *  point an above-water land click would use; water never participates in
+   *  waypoint picking. */
+  pickTerrainBedSim(clientX: number, clientY: number): SimGroundPoint | null {
+    if (!this.setRayFromClient(clientX, clientY)) return null;
+    const w = this.pickFirstTerrainSurfaceRay();
+    if (!w) return null;
+    this.simHit.x = w.x;
+    this.simHit.y = w.z;
+    this.simHit.z = w.y;
+    return this.simHit;
+  }
 }

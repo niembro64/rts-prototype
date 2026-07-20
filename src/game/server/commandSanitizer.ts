@@ -318,13 +318,28 @@ function sanitizeTerrainGroundPoint(
     : { x: point.x, y: point.y, z: world.getGroundZ(point.x, point.y) };
 }
 
+/** Waypoint altitude is always the physical terrain bed. Unlike generic
+ * ground-target commands, a waypoint must never inherit the water plane as
+ * an authored destination: the lake bed is terrain even while submerged. */
+function sanitizeWaypointGroundPoint(
+  world: WorldState,
+  x: unknown,
+  y: unknown,
+  z: unknown = undefined,
+): GroundPoint | null {
+  const point = sanitizeGroundPoint(world, x, y, z);
+  return point === null
+    ? null
+    : { x: point.x, y: point.y, z: world.getTerrainBedZ(point.x, point.y) };
+}
+
 function sanitizeWaypointTarget(world: WorldState, target: unknown): WaypointTarget | null {
   if (!target || typeof target !== 'object') return null;
   const record = target as Record<string, unknown>;
-  const point = sanitizeGroundPoint(world, record.x, record.y);
+  const point = sanitizeWaypointGroundPoint(world, record.x, record.y);
   return point === null
     ? null
-    : { x: point.x, y: point.y, z: world.getGroundZ(point.x, point.y) };
+    : { x: point.x, y: point.y, z: point.z };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -457,7 +472,12 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
     };
   }
 
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeWaypointGroundPoint(
+    world,
+    command.targetX,
+    command.targetY,
+    command.targetZ,
+  );
   return point === null
     ? null
     : {
@@ -946,7 +966,12 @@ function sanitizeSetRallyPointCommand(
   world: WorldState,
   tick: number,
 ): SetRallyPointCommand | null {
-  const point = sanitizeGroundPoint(world, command.rallyX, command.rallyY, command.rallyZ);
+  const point = sanitizeWaypointGroundPoint(
+    world,
+    command.rallyX,
+    command.rallyY,
+    command.rallyZ,
+  );
   const waypointType = sanitizeWaypointType(command.waypointType);
   return !isEntityId(command.factoryId) || point === null || waypointType === null
     ? null

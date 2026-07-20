@@ -368,6 +368,7 @@ export class Render3DEntities {
       scope: this.scope,
       radiusSphereGeom: this.radiusSphereGeom,
       isEntityEmissionFarLod: (entity) => this.isEntityEmissionFarLod(entity),
+      entityDetailRung: (entity) => this.entityDetailRung?.(entity),
     });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The

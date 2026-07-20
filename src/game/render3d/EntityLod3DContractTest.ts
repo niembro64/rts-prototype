@@ -12,18 +12,12 @@ import {
   ENTITY_LOD_PROXY_GLYPH_TRIANGLE,
   EntityLodState3D,
   entityLodProxyGlyph3D,
-  entityUsesLowLodDistance3D,
-  plasmaEntityDetailLevelForView,
-  simPositionUsesLowLodDistance3D,
 } from './EntityLod3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import {
-  DETAIL_LEVEL_FULL,
-  DETAIL_LEVEL_GLYPH,
+  DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
-  PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-  detailLevelForRung,
 } from './EntityDetailLevel3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -65,62 +59,32 @@ function entityAt(id: number, x: number, y: number, z: number): Entity {
   } as Entity;
 }
 
-function assertEmissionParity(
-  lod: EntityLodState3D,
-  camera: THREE.Camera,
-  entity: Entity,
-  label: string,
-): void {
-  const direct = entityUsesLowLodDistance3D(camera, entity);
-  const cached = lod.entityUsesLowLodDistance(camera, entity);
-  assertContract(cached === direct, `${label} cached emission LOD matches direct distance`);
-}
-
 export function runEntityLod3DContractTest(): void {
-  const lod = new EntityLodState3D();
   const camera = cameraAt(0, 0, 0);
-  const entity = entityAt(101, 3, 4, 0);
   const previousLodMode = getLodMode();
 
   try {
-    lod.beginFrame();
-    assertEmissionParity(lod, camera, entity, 'near entity');
-    assertContract(
-      !entityUsesLowLodDistance3D(camera, entity),
-      'near emissions stay HIGH',
-    );
-
-    entity.transform.y = 10000;
-    lod.beginFrame();
-    assertEmissionParity(lod, camera, entity, 'far entity');
-    assertContract(
-      lod.entityUsesLowLodDistance(camera, entity) ===
-        simPositionUsesLowLodDistance3D(
-          camera,
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.z,
-        ),
-      'cached emission LOD matches explicit sim-position calculation',
-    );
-    assertContract(
-      entityUsesLowLodDistance3D(camera, entity),
-      'far emissions switch to LOW',
-    );
-
     const bodyLod = new EntityLodState3D();
     const body = entityAt(202, 0, 0, 0);
     setLodMode('low');
     bodyLod.beginFrame();
     assertContract(
-      bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
-      'LOW mode always forces entity LOD proxies',
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), body) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), body) === DETAIL_RUNG_FAR,
+      'LOW mode selects real Low geometry for every entity, not a proxy special case',
+    );
+    setLodMode('medium');
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityDetailRungForView(viewAt(camera), body) === DETAIL_RUNG_MID,
+      'MED mode selects the same Medium rung for a non-host entity',
     );
     setLodMode('high');
     bodyLod.beginFrame();
     assertContract(
-      !bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
-      'HIGH mode never allows entity LOD proxies',
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), body) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), body) === DETAIL_RUNG_CLOSE,
+      'HIGH mode selects the same High rung for a non-host entity',
     );
     setLodMode('auto');
     body.transform.x = 0;
@@ -170,13 +134,20 @@ export function runEntityLod3DContractTest(): void {
         bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
       'AUTO mode draws near units as full models with no icon overlay',
     );
+    groundUnit.transform.y = -2000;
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID,
+      'AUTO Medium resolves to the exact manual MED rung',
+    );
     groundUnit.transform.y = -4000;
     bodyLod.beginFrame();
     const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
     assertContract(
       !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_FAR &&
         bandFadeAlpha > 0 && bandFadeAlpha < 1,
-      'AUTO mode cross-fades the icon in over the still-drawn unit model',
+      'AUTO Low resolves to the exact manual LOW model while its icon cross-fades in',
     );
     groundUnit.transform.y = -10000;
     bodyLod.beginFrame();
@@ -219,41 +190,6 @@ export function runEntityLod3DContractTest(): void {
     assertContract(
       entityLodProxyGlyph3D(commanderUnit) === ENTITY_LOD_PROXY_GLYPH_CROSS,
       'commander units take precedence over builder proxy glyphs',
-    );
-
-    const referencePlasma = entityAt(401, 0, -900, 0);
-    const fiveTimesPlasma = entityAt(402, 0, -4500, 0);
-    setLodMode('auto');
-    const referencePlasmaLevel = plasmaEntityDetailLevelForView(
-      viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-    );
-    const fiveTimesPlasmaLevel = plasmaEntityDetailLevelForView(
-      viewAt(camera), fiveTimesPlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5,
-    );
-    assertContract(
-      Math.abs(referencePlasmaLevel - fiveTimesPlasmaLevel) < 1e-12,
-      'five-times-longer plasma reaches the same geometry LOD five times farther away',
-    );
-    setLodMode('high');
-    assertContract(
-      plasmaEntityDetailLevelForView(
-        viewAt(camera), fiveTimesPlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5,
-      ) === DETAIL_LEVEL_FULL,
-      'manual HIGH still pins every plasma size to High geometry',
-    );
-    setLodMode('low');
-    assertContract(
-      plasmaEntityDetailLevelForView(
-        viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-      ) === DETAIL_LEVEL_GLYPH,
-      'manual LOW still pins every plasma size to Low geometry',
-    );
-    setLodMode('medium');
-    assertContract(
-      plasmaEntityDetailLevelForView(
-        viewAt(camera), referencePlasma, PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-      ) === detailLevelForRung(DETAIL_RUNG_MID),
-      'manual MED pins every plasma size to Medium geometry',
     );
 
     const structure = entityAt(306, 0, 0, 0);

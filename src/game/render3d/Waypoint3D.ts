@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import type { Entity, UnitAction } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
-import { getSurfaceHeight } from '../sim/Terrain';
+import { getTerrainBedHeight } from '../sim/Terrain';
 import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
@@ -143,6 +143,9 @@ export class Waypoint3D {
   // Line buffer (path segments + rect outlines) — screen-space 3D ribbons.
   private lineBatch: GroundLineBatch3D;
   private readonly lineWidthPx: number;
+  /** Waypoints draw before transparent water so terrain-level paths remain
+   * visible through it while terrain depth still hides them behind hills. */
+  private readonly renderOrder: number;
 
   // Point buffer (dot markers).
   private dotGeom: THREE.BufferGeometry;
@@ -167,7 +170,9 @@ export class Waypoint3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.getEntity = getEntity;
-    this.lineWidthPx = overlayLines.style('waypoint').widthPx;
+    const waypointStyle = overlayLines.style('waypoint');
+    this.lineWidthPx = waypointStyle.widthPx;
+    this.renderOrder = waypointStyle.renderOrder;
     this.lineBatch = overlayLines.createBatch('waypoint', STYLE.initialLineCap);
     parent.add(this.lineBatch.mesh);
     this.flagPool = new CanvasSpritePool<FlagState, [number]>({
@@ -179,6 +184,7 @@ export class Waypoint3D {
       emptyRetainedSlots: 0,
       shrinkCooldownFrames: WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: 16,
+      renderOrder: this.renderOrder,
       makeState: () => ({ lastColor: -1 }),
       configureSprite: configureFlagSprite,
       repaint: repaintFlag,
@@ -192,6 +198,7 @@ export class Waypoint3D {
       emptyRetainedSlots: 0,
       shrinkCooldownFrames: WAYPOINT_LABEL_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: 24,
+      renderOrder: this.renderOrder,
       makeState: () => ({ lastColor: -1, lastText: '' }),
       configureSprite: configureLabelSprite,
       repaint: repaintLabel,
@@ -225,22 +232,16 @@ export class Waypoint3D {
     });
     this.dotMesh = new THREE.Points(this.dotGeom, dotMat);
     this.dotMesh.frustumCulled = false;
-    this.dotMesh.renderOrder = 5;
+    this.dotMesh.renderOrder = this.renderOrder;
     parent.add(this.dotMesh);
   }
 
   // ── helpers ──────────────────────────────────────────────────────
 
-  /** Resolve the rendered y for a waypoint XY. Prefers `hint` when
-   *  provided — that's the action's stored z, which carries either
-   *  the user's click altitude (from CursorGround.pickSim) or the
-   *  pathfinder's terrain sample at a JPS-introduced intermediate.
-   *  Falls back to a fresh terrain sample only when the action lacks
-   *  z (synthetic / legacy data with no click origin). The added
-   *  worldLift stays identical to the original "surfaceZ" semantics
-   *  so tuning carries over verbatim. */
-  private resolveY(x: number, y: number, hint?: number): number {
-    return (hint ?? getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE))
+  /** Resolve every waypoint visual against terrain, never the water plane
+   * or a stored legacy click altitude. */
+  private resolveY(x: number, y: number): number {
+    return getTerrainBedHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE)
       + STYLE.worldLift;
   }
 
@@ -273,16 +274,11 @@ export class Waypoint3D {
 
   /** Push a long line A→B as several short sub-segments that follow
    *  the terrain so the line hugs the ground instead of cutting
-   *  through hills. Endpoints (`az`, `bz`) optionally pin the line
-   *  start / end to the action's stored altitude — when the click
-   *  landed on a hilltop, the line's final point sits exactly on the
-   *  hilltop instead of a half-cell-rounded terrain re-sample. The
-   *  intermediate steps still terrain-sample so the line traces the
-   *  ground between waypoints (the unit walks the ground). */
+   *  through hills. Every sample uses the terrain bed, including beneath
+   *  water, so a line cannot rise onto the water plane. */
   private pushTerrainLine(
     ax: number, ay: number, bx: number, by: number,
     color: number, alpha: number,
-    az?: number, bz?: number,
   ): void {
     const c = hexToRgb01(color);
     const dx = bx - ax;
@@ -291,14 +287,12 @@ export class Waypoint3D {
     const steps = Math.max(1, Math.ceil(length / STYLE.subStep));
     let prevX = ax;
     let prevY = ay;
-    let prevZ = this.resolveY(prevX, prevY, az);
+    let prevZ = this.resolveY(prevX, prevY);
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const nx = ax + dx * t;
       const ny = ay + dy * t;
-      // Last step pins to the b-endpoint's altitude (when provided)
-      // so a click on a hilltop's final dot meets the line cleanly.
-      const nz = i === steps ? this.resolveY(nx, ny, bz) : this.resolveY(nx, ny);
+      const nz = this.resolveY(nx, ny);
       this.pushSegment(prevX, prevY, prevZ, nx, ny, nz, c.r, c.g, c.b, alpha);
       prevX = nx; prevY = ny; prevZ = nz;
     }
@@ -307,13 +301,11 @@ export class Waypoint3D {
   /** Push a hollow square outline centered on (x, y) at terrain
    *  elevation — used for build / repair commands. Edges go into
    *  the same line buffer as path lines. */
-  private pushRectOutline(
-    x: number, y: number, color: number, zHint?: number,
-  ): void {
+  private pushRectOutline(x: number, y: number, color: number): void {
     const c = hexToRgb01(color);
     const a = STYLE.lineAlpha;
     const h = STYLE.rectWorldSize / 2;
-    const z = this.resolveY(x, y, zHint);
+    const z = this.resolveY(x, y);
     // Four corners traversed counterclockwise.
     const cx0 = x - h, cy0 = y - h;
     const cx1 = x + h, cy1 = y - h;
@@ -327,13 +319,13 @@ export class Waypoint3D {
 
   private pushDot(
     state: { dotCount: number },
-    x: number, y: number, color: number, zHint?: number, alpha = 1,
+    x: number, y: number, color: number, alpha = 1,
   ): void {
     if (state.dotCount + 1 > this.dotCap) {
       this.growDotCap(state.dotCount + 1);
     }
     const o = state.dotCount * 3;
-    const z = this.resolveY(x, y, zHint);
+    const z = this.resolveY(x, y);
     this.dotPositions[o + 0] = x;
     this.dotPositions[o + 1] = z;
     this.dotPositions[o + 2] = y;
@@ -348,7 +340,7 @@ export class Waypoint3D {
     state.dotCount++;
   }
 
-  private actionDisplayPoint(a: UnitAction): { x: number; y: number; z?: number } {
+  private actionDisplayPoint(a: UnitAction): { x: number; y: number } {
     // Entity-targeting orders (attack / guard / repair / reclaim / capture /
     // resurrect / build) draw to the target's LIVE position so a queued line
     // follows a moving target (e.g. guarding or attacking a moving unit),
@@ -363,24 +355,24 @@ export class Waypoint3D {
         }
       }
     }
-    return { x: a.x, y: a.y, z: a.z };
+    return { x: a.x, y: a.y };
   }
 
   /** Pool slot for a flag sprite. Lazily creates a small canvas
    *  on first use; recolors only when the team color changes. */
-  private acquireFlag(i: number, color: number, x: number, y: number, zHint?: number): void {
+  private acquireFlag(i: number, color: number, x: number, y: number): void {
     const slot = this.flagPool.acquire(i);
     this.flagPool.repaintIfChanged(slot, color);
-    const z = this.resolveY(x, y, zHint);
+    const z = this.resolveY(x, y);
     // Centerline of the sprite raised by half its height so the pole
     // base meets the terrain rather than hovering above it.
     slot.sprite.position.set(x, z + STYLE.flagWorldSize / 2, y);
   }
 
-  private acquireLabel(i: number, text: string, color: number, x: number, y: number, zHint?: number): void {
+  private acquireLabel(i: number, text: string, color: number, x: number, y: number): void {
     const slot = this.labelPool.acquire(i);
     this.labelPool.repaintIfChanged(slot, text, color);
-    const z = this.resolveY(x, y, zHint);
+    const z = this.resolveY(x, y);
     slot.sprite.position.set(x, z + STYLE.labelWorldSize, y);
   }
 
@@ -407,10 +399,8 @@ export class Waypoint3D {
     let flagCount = 0;
     let labelCount = 0;
 
-    // Per-unit action chains. Action `z` (when present) is the
-    // click-derived altitude carried through from CursorGround.pickSim
-    // — used directly so a waypoint dot on a hilltop sits ON the
-    // hilltop, not at a terrain re-sample that may differ.
+    // Per-unit action chains. Waypoint visuals always resample their
+    // terrain-bed elevation, including under water.
     //
     // `actions` is durable intent; `activePath` is the disposable resolved
     // plan for actions[0]. SIMPLE connects authored waypoints conventionally.
@@ -424,7 +414,6 @@ export class Waypoint3D {
       if (!unit || !actions || actions.length === 0) continue;
       let prevX = u.transform.x;
       let prevY = u.transform.y;
-      let prevZ: number | undefined = u.transform.z;
       const previewPoints = detailed ? unit.activePath?.points : undefined;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
@@ -435,26 +424,24 @@ export class Waypoint3D {
         if (detailed && i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
           for (let k = 0; k < previewPoints.length; k++) {
             const pt = previewPoints[k];
-            this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha, prevZ, pt.z);
-            this.pushDot(state, pt.x, pt.y, color, pt.z, STYLE.pathIntermediateAlpha);
+            this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha);
+            this.pushDot(state, pt.x, pt.y, color, STYLE.pathIntermediateAlpha);
             prevX = pt.x;
             prevY = pt.y;
-            prevZ = pt.z;
           }
         }
         if (!detailed) {
-          this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
+          this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha);
         }
         // User waypoint marker + queue-order label.
         if (a.type === 'build' || a.type === 'repair') {
-          this.pushRectOutline(p.x, p.y, color, p.z);
+          this.pushRectOutline(p.x, p.y, color);
         } else {
-          this.pushDot(state, p.x, p.y, color, p.z);
+          this.pushDot(state, p.x, p.y, color);
         }
-        this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y, p.z);
+        this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y);
         prevX = p.x;
         prevY = p.y;
-        prevZ = p.z;
       }
       // Patrol return — link the last patrol waypoint back to the first
       // with a dimmer line.
@@ -465,7 +452,6 @@ export class Waypoint3D {
           this.pushTerrainLine(
             last.x, last.y, first.x, first.y,
             ACTION_COLORS['patrol'], STYLE.patrolReturnAlpha,
-            last.z, first.z,
           );
         }
       }
@@ -481,35 +467,31 @@ export class Waypoint3D {
       if (!factory) continue;
       const startX = b.transform.x;
       const startY = b.transform.y;
-      const startZ: number | undefined = b.transform.z;
       const route = factory.defaultWaypoints;
 
       if (route !== null && route.length > 0) {
         let prevX = startX;
         let prevY = startY;
-        let prevZ: number | undefined = startZ;
         let firstPatrolIdx = -1;
         let lastPatrolIdx = -1;
         for (let i = 0; i < route.length; i++) {
           const wp = route[i];
           const color = WAYPOINT_COLORS[wp.type as keyof typeof WAYPOINT_COLORS]
             ?? COLORS.units.turret.barrel.colorHex;
-          const wz = wp.z ?? undefined;
-          this.pushTerrainLine(prevX, prevY, wp.x, wp.y, color, STYLE.lineAlpha, prevZ, wz);
-          this.pushDot(state, wp.x, wp.y, color, wz);
+          this.pushTerrainLine(prevX, prevY, wp.x, wp.y, color, STYLE.lineAlpha);
+          this.pushDot(state, wp.x, wp.y, color);
           if (wp.type === 'patrol') {
             if (firstPatrolIdx < 0) firstPatrolIdx = i;
             lastPatrolIdx = i;
           }
           prevX = wp.x;
           prevY = wp.y;
-          prevZ = wz;
         }
         // Flag marks the rally (route[0]) — the first leg units head to.
         const flag = route[0];
         const flagColor = WAYPOINT_COLORS[flag.type as keyof typeof WAYPOINT_COLORS]
           ?? COLORS.units.turret.barrel.colorHex;
-        this.acquireFlag(flagCount++, flagColor, flag.x, flag.y, flag.z ?? undefined);
+        this.acquireFlag(flagCount++, flagColor, flag.x, flag.y);
         // Patrol loop-back: dim line from the last patrol leg to the first.
         if (firstPatrolIdx >= 0 && lastPatrolIdx > firstPatrolIdx) {
           const lastWp = route[lastPatrolIdx];
@@ -517,7 +499,6 @@ export class Waypoint3D {
           this.pushTerrainLine(
             lastWp.x, lastWp.y, firstWp.x, firstWp.y,
             WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
-            lastWp.z ?? undefined, firstWp.z ?? undefined,
           );
         }
         continue;
@@ -525,16 +506,14 @@ export class Waypoint3D {
 
       const color = WAYPOINT_COLORS[factory.rallyType as keyof typeof WAYPOINT_COLORS]
         ?? COLORS.units.turret.barrel.colorHex;
-      const z = factory.rallyZ ?? undefined;
-      this.pushTerrainLine(startX, startY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha, startZ, z);
-      this.pushDot(state, factory.rallyX, factory.rallyY, color, z);
-      this.acquireFlag(flagCount++, color, factory.rallyX, factory.rallyY, z);
+      this.pushTerrainLine(startX, startY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha);
+      this.pushDot(state, factory.rallyX, factory.rallyY, color);
+      this.acquireFlag(flagCount++, color, factory.rallyX, factory.rallyY);
       // Single-point patrol loops back to the factory.
       if (factory.rallyType === 'patrol') {
         this.pushTerrainLine(
           factory.rallyX, factory.rallyY, startX, startY,
           WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
-          z, startZ,
         );
       }
     }

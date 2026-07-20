@@ -15,6 +15,7 @@ import type {
   ResurrectCommand,
   SetFactoryGuardCommand,
   SetFactoryRepeatProductionCommand,
+  SetRallyPointCommand,
   SetFireEnabledCommand,
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
@@ -583,6 +584,21 @@ export function runCommandSanitizerContractTest(): void {
     'fireDGun command must preserve BAR unit target ids and the rendered fallback click altitude',
   );
 
+  const terrainBedMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 8,
+    entityIds: [7],
+    targetX: 14,
+    targetY: 15,
+    targetZ: 999,
+    waypointType: 'move',
+    queue: false,
+  });
+  assertContract(
+    terrainBedMove.targetZ === world.getTerrainBedZ(14, 15),
+    'move waypoint must derive z from the terrain bed rather than the water surface',
+  );
+
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {
     type: 'move',
     tick: 8,
@@ -597,9 +613,23 @@ export function runCommandSanitizerContractTest(): void {
     'move formationSpeed=slowest must survive sanitizer',
   );
   assertContract(
-    formationSpeedMove.individualTargets?.[0]?.z === world.getGroundZ(14, 15) &&
-    formationSpeedMove.individualTargets?.[1]?.z === world.getGroundZ(24, 25),
-    'move individualTargets must derive z from authoritative terrain',
+    formationSpeedMove.individualTargets?.[0]?.z === world.getTerrainBedZ(14, 15) &&
+    formationSpeedMove.individualTargets?.[1]?.z === world.getTerrainBedZ(24, 25),
+    'move individualTargets must derive z from the terrain bed',
+  );
+
+  const rally = sanitizeRequired<SetRallyPointCommand>(world, {
+    type: 'setRallyPoint',
+    tick: 8,
+    factoryId: 11,
+    rallyX: 14,
+    rallyY: 15,
+    rallyZ: 999,
+    waypointType: 'move',
+  });
+  assertContract(
+    rally.rallyZ === world.getTerrainBedZ(14, 15),
+    'factory rally waypoint must derive z from the terrain bed',
   );
 
   const rotatedBuild = sanitizeRequired<StartBuildCommand>(world, {

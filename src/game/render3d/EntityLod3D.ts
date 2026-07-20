@@ -1,15 +1,11 @@
 import type * as THREE from 'three';
-import {
-  ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
-  ENTITY_LOD_ENABLED,
-} from '@/config';
+import { ENTITY_LOD_ENABLED } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
 import { isRayType } from '@/types/shotTypes';
 import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
 import {
   DETAIL_LEVEL_FULL,
-  DETAIL_LEVEL_GLYPH,
   DETAIL_RADIUS_FLOOR_BEAM,
   DETAIL_RADIUS_FLOOR_PROJECTILE,
   DETAIL_RUNG_CLOSE,
@@ -23,11 +19,9 @@ import {
   detailRungWithHysteresis,
   detailScreenRadiusPx,
   lodProxyFadeAlphaForScreenRadius,
-  plasmaDetailRadiusForTailLength,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
-const DEFAULT_ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE = 3600;
 const MIN_ENTITY_LOD_RADIUS = 1;
 const ENTITY_LOD_BODY_CHANNEL = 'body';
 const LOD_STATE_STALE_FRAME_LIMIT = 120;
@@ -47,16 +41,8 @@ export type EntityLodProxyGlyph3D =
   | typeof ENTITY_LOD_PROXY_GLYPH_SQUARE
   | typeof ENTITY_LOD_PROXY_GLYPH_CROSS;
 
-function finitePositiveOr(value: number, fallback: number): number {
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
 function entityLodEnabled(): boolean {
   return ENTITY_LOD_ENABLED;
-}
-
-function isAuthoredGeometryHost(entity: Entity): boolean {
-  return entity.unit != null || entity.building != null;
 }
 
 function cameraFovYRad(camera: THREE.Camera): number {
@@ -204,43 +190,9 @@ export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
   return ENTITY_LOD_PROXY_GLYPH_CIRCLE;
 }
 
-function entityLodHighToLowDistance3D(): number {
-  return finitePositiveOr(
-    ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
-    DEFAULT_ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
-  );
-}
-
-function entityLodHighToLowDistanceSq3D(): number {
-  const distance = entityLodHighToLowDistance3D();
-  return distance * distance;
-}
-
-export function entityUsesLowLodDistance3D(
-  camera: THREE.Camera,
-  entity: Entity,
-): boolean {
-  return simPositionUsesLowLodDistance3D(
-    camera,
-    entity.transform.x,
-    entity.transform.y,
-    entity.transform.z,
-  );
-}
-
-export function simPositionUsesLowLodDistance3D(
-  camera: THREE.Camera,
-  simX: number,
-  simY: number,
-  simZ: number,
-): boolean {
-  return simPositionCameraDistanceSq3D(camera, simX, simY, simZ) >=
-    entityLodHighToLowDistanceSq3D();
-}
-
 /**
- * Continuous per-entity detail level for callers without a render-loop
- * cache. 1 = full fidelity, 0 = proxy glyph, screen-coverage in between.
+ * Screen-coverage metric for callers without a render-loop cache. It is used
+ * only to choose a rung; rendered output is always HIGH, MED, LOW, or glyph.
  * No hysteresis — use {@link EntityLodState3D.entityDetailRungForView}
  * for anything that triggers rebuilds.
  */
@@ -248,11 +200,7 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') {
-    return isAuthoredGeometryHost(entity)
-      ? detailLevelForRung(DETAIL_RUNG_FAR)
-      : DETAIL_LEVEL_GLYPH;
-  }
+  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(entityCameraDistanceSq3D(camera, entity)),
@@ -270,37 +218,9 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') {
-    return isAuthoredGeometryHost(entity)
-      ? detailLevelForRung(DETAIL_RUNG_FAR)
-      : DETAIL_LEVEL_GLYPH;
-  }
+  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
-    Math.sqrt(simPositionViewDistanceSq3D(
-      view,
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.z,
-    )),
-    view.fovYRad,
-  );
-}
-
-/** Plasma-specific projected-detail level. In AUTO, its visual tail length
- * scales the transition distance by the constant-angular-size law; manual
- * HIGH/MED/LOW modes pin the matching authored geometry rung. */
-export function plasmaEntityDetailLevelForView(
-  view: RenderViewState3D,
-  entity: Entity,
-  tailLengthWorld: number,
-): number {
-  const lodMode = getLodMode();
-  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-  return detailLevelForRadiusDistance(
-    plasmaDetailRadiusForTailLength(tailLengthWorld),
     Math.sqrt(simPositionViewDistanceSq3D(
       view,
       entity.transform.x,
@@ -415,11 +335,7 @@ export class EntityLodState3D {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-    if (lodMode === 'low') {
-      return isAuthoredGeometryHost(entity)
-        ? detailLevelForRung(DETAIL_RUNG_FAR)
-        : DETAIL_LEVEL_GLYPH;
-    }
+    if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
     return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
@@ -453,9 +369,7 @@ export class EntityLodState3D {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
     if (lodMode === 'medium') return DETAIL_RUNG_MID;
-    if (lodMode === 'low') {
-      return isAuthoredGeometryHost(entity) ? DETAIL_RUNG_FAR : DETAIL_RUNG_GLYPH;
-    }
+    if (lodMode === 'low') return DETAIL_RUNG_FAR;
 
     const entityId = entity.id;
     if (canIndexClientEntityId(entityId)) {
@@ -509,13 +423,8 @@ export class EntityLodState3D {
       return false;
     }
     if (lodMode === 'low') {
-      if (isAuthoredGeometryHost(entity)) {
-        this.deleteChannelEntity(channel, entity.id);
-        return false;
-      }
-      this.proxyIdsForChannel(channel).add(entity.id);
-      this.lastSeenForChannel(channel).set(entity.id, this.frame);
-      return true;
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
     }
     if (!entityLodEnabled()) {
       // Proxying is off, but the detail ladder's latched-rung state must
@@ -560,13 +469,8 @@ export class EntityLodState3D {
       return false;
     }
     if (lodMode === 'low') {
-      if (isAuthoredGeometryHost(entity)) {
-        this.deleteChannelEntity(channel, entity.id);
-        return false;
-      }
-      this.proxyIdsForChannel(channel).add(entity.id);
-      this.lastSeenForChannel(channel).set(entity.id, this.frame);
-      return true;
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
     }
     if (!entityLodEnabled()) {
       // Proxying is off, but the detail ladder's latched-rung state must
@@ -587,30 +491,19 @@ export class EntityLodState3D {
   }
 
   /**
-   * Continuous detail level for this entity, reusing the per-frame cached
-   * camera distance. 1 = full fidelity, 0 = glyph.
+   * Screen-coverage metric for this entity, reusing the per-frame cached
+   * camera distance. Callers must resolve it to the shared three-rung ladder.
    */
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-    if (lodMode === 'low') {
-      return isAuthoredGeometryHost(entity)
-        ? detailLevelForRung(DETAIL_RUNG_FAR)
-        : DETAIL_LEVEL_GLYPH;
-    }
+    if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
     return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
     );
-  }
-
-  entityUsesLowLodDistance(
-    camera: THREE.Camera,
-    entity: Entity,
-  ): boolean {
-    return this.entityCameraDistanceSq(camera, entity) >= entityLodHighToLowDistanceSq3D();
   }
 
   private deleteChannelEntity(channel: string, entityId: EntityId): void {

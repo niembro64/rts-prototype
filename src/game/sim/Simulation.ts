@@ -664,7 +664,7 @@ export class Simulation {
       out[i] = {
         x,
         y,
-        z: this.world.getGroundZ(x, y),
+        z: this.world.getTerrainBedZ(x, y),
       };
     }
     return { points: out, resolution };

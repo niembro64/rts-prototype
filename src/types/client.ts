@@ -24,8 +24,8 @@ export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
 /** Main camera vertical field of view, in degrees. BAR hotkeys may adjust
  *  the configured value in 5-degree steps at runtime. */
 export type CameraFovDegrees = number;
-/** Renderer visual LOD policy. AUTO follows projected screen coverage.
- *  HIGH, MEDIUM, and LOW freeze visuals at the matching authored rung. */
+/** Renderer visual LOD policy. AUTO uses projected screen coverage to select
+ *  the exact same HIGH, MEDIUM, or LOW authored rung as the manual modes. */
 export type LodMode = 'auto' | 'high' | 'medium' | 'low';
 /** Presentation-only treatment of the map/water boundary.
  *    infinity             — extend water and perimeter terrain to a fake horizon.

@@ -99,7 +99,7 @@
       "projectileEnvelope": { "widthPx": 2.5, "groundLift": 9, "renderOrder": 22 },
       "sight": { "widthPx": 2, "groundLift": 9, "renderOrder": 25 },
       "radarBoundary": { "widthPx": 2, "groundLift": 9, "renderOrder": 24 },
-      "waypoint": { "widthPx": 2.5, "groundLift": 12, "renderOrder": 5 },
+      "waypoint": { "widthPx": 2.5, "groundLift": 12, "renderOrder": 4.25 },
       "drag": { "widthPx": 3.5, "groundLift": 1, "renderOrder": 16 }
     }
   }

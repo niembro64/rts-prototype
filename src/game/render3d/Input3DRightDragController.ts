@@ -37,7 +37,7 @@ function unitCanAttack(unit: Entity): boolean {
   }
   return false;
 }
-import { getSurfaceHeight, isWaterAt } from '../sim/Terrain';
+import { getTerrainBedHeight, isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
 import {
   resolveProjectileSelectionGroundReach,
@@ -102,7 +102,7 @@ export class Input3DRightDragController {
 
   handleMouseMove(e: MouseEvent): void {
     this.config.applyCursor(this.waypointCursorKind());
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    const world = this.config.picker.raycastTerrainBed(e.clientX, e.clientY);
     if (!world) return;
     const selectedUnits = this.source().getSelectedUnits();
     this.linePath.append(world.x, world.y, selectedUnits.length, world.z);
@@ -240,7 +240,7 @@ export class Input3DRightDragController {
       }
     }
 
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    const world = this.config.picker.raycastTerrainBed(e.clientX, e.clientY);
     if (!world) return;
 
     if (!preserveFormationMove) {
@@ -419,7 +419,7 @@ export class Input3DRightDragController {
     const selectedUnits = source.getSelectedUnits();
     const tick = this.config.getTick();
     const bounds = this.config.getMapSampleBounds();
-    const z = getSurfaceHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
+    const z = getTerrainBedHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
 
     if (selectedUnits.length > 0) {
       const repairCmd = buildRepairOrGuardCommandAt(
@@ -581,7 +581,7 @@ export class Input3DRightDragController {
     ) {
       return undefined;
     }
-    return getSurfaceHeight(x, y, width, height, LAND_CELL_SIZE);
+    return getTerrainBedHeight(x, y, width, height, LAND_CELL_SIZE);
   }
 
   private resetLineDrag(): void {

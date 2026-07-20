@@ -193,6 +193,9 @@ export class RtsScene3DRenderPhase {
   private readonly unitRenderPacket = new UnitRenderPacket3D();
   private readonly buildingRenderPacket = new BuildingRenderPacket3D();
   private readonly entityLod = new EntityLodState3D();
+  /** The active frame's shared LOD view. Every visual channel consults this
+   * rather than a second distance-only emission cutoff. */
+  private currentLodView: RenderViewState3D | null = null;
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     unitRows: this.unitRenderPacket,
     buildingRows: this.buildingRenderPacket,
@@ -366,6 +369,7 @@ export class RtsScene3DRenderPhase {
     const cameraQuad = cameraFootprint.quad;
     const cameraView = this.updateCameraViewBasis(this.threeApp.camera);
     this.entityLod.beginFrame();
+    this.currentLodView = renderFrameState.view;
     this.renderScope.setQuad(
       cameraQuad,
       cameraFootprint.bounds,
@@ -507,6 +511,7 @@ export class RtsScene3DRenderPhase {
       entityRenderer,
       (entity) => this.entityEmissionUsesFarLod(entity),
       renderFrameState.view,
+      (entity) => this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
     );
     phaseNow = performance.now();
     timings.beamMs = phaseNow - phaseMark;
@@ -766,7 +771,8 @@ export class RtsScene3DRenderPhase {
   }
 
   private entityEmissionUsesFarLod(entity: Entity): boolean {
-    return this.entityLod.entityUsesLowLodDistance(this.threeApp.camera, entity);
+    return this.currentLodView !== null &&
+      this.entityUsesFarLod(entity, this.currentLodView);
   }
 
   private filterNearLodProjectiles(

@@ -25,7 +25,6 @@ import {
 } from '../sim/blueprints';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
-import { PLASMA_TAIL_LENGTH_MULT } from '../sim/shotProfiles';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Turret } from '../sim/types';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
@@ -36,9 +35,7 @@ import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
-  PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
   detailLevelForRung,
-  plasmaLodDistanceScaleForTailLength,
 } from './EntityDetailLevel3D';
 import {
   PLASMA_PROJECTILE_TRIANGLE_COUNTS,
@@ -990,7 +987,6 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
 }
 
 function runEmissionRegistryContracts(): void {
-  let smallestPlasmaTailLength = Number.POSITIVE_INFINITY;
   for (const shotId of SHOT_BLUEPRINT_IDS) {
     const blueprint = getShotBlueprint(shotId);
     const counts = blueprint.type === 'plasma'
@@ -998,19 +994,7 @@ function runEmissionRegistryContracts(): void {
       : ROCKET_PROJECTILE_TRIANGLE_COUNTS;
     assertContract(counts.high > 0 && counts.medium > 0 && counts.low > 0, `${shotId} resolves H/M/L geometry`);
     assertDescending(shotId, [counts.high, counts.medium, counts.low]);
-    if (blueprint.type === 'plasma') {
-      const tailLength = blueprint.radius.other * PLASMA_TAIL_LENGTH_MULT;
-      smallestPlasmaTailLength = Math.min(smallestPlasmaTailLength, tailLength);
-      assertContract(
-        plasmaLodDistanceScaleForTailLength(tailLength) >= 1,
-        `${shotId} never transitions closer than the smallest plasma baseline`,
-      );
-    }
   }
-  assertContract(
-    smallestPlasmaTailLength === PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-    `plasma LOD reference ${PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD} matches authored smallest tail ${smallestPlasmaTailLength}`,
-  );
   for (const rayId of RAY_BLUEPRINT_IDS) {
     assertContract(getRayBlueprint(rayId).rayBlueprintId === rayId, `${rayId} participates in shared beam H/M/L geometry`);
   }

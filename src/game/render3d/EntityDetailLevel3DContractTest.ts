@@ -7,14 +7,9 @@ import {
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
   ICON_FADE_START_SCREEN_RADIUS_PX,
-  PLASMA_DETAIL_HYSTERESIS_LEVEL,
-  PLASMA_HIGH_RUNG_MIN_LEVEL,
-  PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-  PLASMA_MEDIUM_RUNG_MIN_LEVEL,
   beamStyleForDetail,
   debrisSpawnScaleForDetail,
   detailLevelForRung,
-  detailLevelForRadiusDistance,
   detailLevelForViewPosition,
   detailLevelForScreenRadius,
   detailRungForLevel,
@@ -26,10 +21,6 @@ import {
   geometryTierForDetail,
   legStyleForDetail,
   lodProxyFadeAlphaForScreenRadius,
-  plasmaDetailRungForLevel,
-  plasmaDetailRungWithHysteresis,
-  plasmaDetailRadiusForTailLength,
-  plasmaLodDistanceScaleForTailLength,
   projectileStyleForDetail,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
@@ -262,71 +253,6 @@ export function runEntityDetailLevel3DContractTest(): void {
     'a glyph-latched entity at full level jumps straight to close',
   );
 
-  // Plasma keeps its richer meshes farther out than the shared entity ladder.
-  assertContract(
-    PLASMA_HIGH_RUNG_MIN_LEVEL < detailRungMinLevel(DETAIL_RUNG_CLOSE),
-    'plasma high resolution extends beyond the general close rung',
-  );
-  assertContract(
-    PLASMA_MEDIUM_RUNG_MIN_LEVEL < detailRungMinLevel(DETAIL_RUNG_MID) / 2,
-    'plasma medium resolution extends substantially beyond the general mid rung',
-  );
-  assertContract(
-    plasmaDetailRungForLevel(0) === DETAIL_RUNG_FAR,
-    'zero-detail plasma still resolves to its real low-triangle mesh',
-  );
-  assertContract(
-    plasmaDetailRungWithHysteresis(
-      DETAIL_RUNG_CLOSE,
-      PLASMA_HIGH_RUNG_MIN_LEVEL - PLASMA_DETAIL_HYSTERESIS_LEVEL / 2,
-    ) === DETAIL_RUNG_CLOSE,
-    'plasma high remains latched inside its downgrade margin',
-  );
-  assertContract(
-    plasmaDetailRungWithHysteresis(
-      DETAIL_RUNG_MID,
-      PLASMA_MEDIUM_RUNG_MIN_LEVEL - PLASMA_DETAIL_HYSTERESIS_LEVEL * 1.5,
-    ) === DETAIL_RUNG_FAR,
-    'plasma medium downgrades after clearing its farther low threshold',
-  );
-  assertContract(
-    plasmaDetailRungWithHysteresis(
-      DETAIL_RUNG_FAR,
-      PLASMA_MEDIUM_RUNG_MIN_LEVEL + PLASMA_DETAIL_HYSTERESIS_LEVEL * 1.5,
-    ) === DETAIL_RUNG_MID,
-    'plasma low upgrades only after clearing the medium margin',
-  );
-
-  // Plasma size scaling follows projected angular size: screen size is
-  // proportional to world size / distance, so a K-times-longer tail reaches
-  // the same LOD threshold at K times the camera distance.
-  assertContract(
-    plasmaLodDistanceScaleForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD) === 1,
-    'smallest plasma tail retains the existing transition distances exactly',
-  );
-  assertContract(
-    plasmaLodDistanceScaleForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * 5) === 5,
-    'five-times-longer plasma holds each geometry tier five times farther away',
-  );
-  const referenceDistance = 900;
-  const largeScale = 5;
-  const referencePlasmaLevel = detailLevelForRadiusDistance(
-    plasmaDetailRadiusForTailLength(PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD),
-    referenceDistance,
-    fov,
-  );
-  const largePlasmaLevel = detailLevelForRadiusDistance(
-    plasmaDetailRadiusForTailLength(
-      PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD * largeScale,
-    ),
-    referenceDistance * largeScale,
-    fov,
-  );
-  assertContract(
-    Math.abs(referencePlasmaLevel - largePlasmaLevel) < 1e-12,
-    'equal angular tail sizes resolve the same continuous plasma detail level',
-  );
-
   // ── Features: monotonic ladder, all-on at full, all-off at glyph ──
   for (const feature of DETAIL_FEATURES) {
     assertContract(featureVisibleAtDetail(feature, DETAIL_LEVEL_FULL), `${feature} is visible at full`);
@@ -399,21 +325,26 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(unitShapeForDetail(DETAIL_LEVEL_FULL, 'full') === 'full', 'full keeps unit shape ceiling');
   assertContract(unitShapeForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'full', 'unit low geometry keeps authored bodies');
 
-  // ── Effect spawn scales: continuous, monotonic ────────────────────
+  // ── Effect spawn scales: one value per H/M/L rung ──────────────────
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full smoke is full scale');
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph smoke is suppressed');
   assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full explosions are full scale');
-  assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) < 1, 'glyph explosions are reduced');
-  assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) > 0, 'glyph explosions keep a floor flash');
+  assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph explosions are suppressed');
   assertContract(debrisSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full debris is full scale');
   assertContract(debrisSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph debris is suppressed');
   for (const scale of [smokeSpawnScaleForDetail, explosionSpawnScaleForDetail, debrisSpawnScaleForDetail]) {
-    let previous = -1;
-    for (let level = 0; level <= 1.0001; level += 0.1) {
-      const value = scale(Math.min(1, level));
-      assertContract(value >= previous, 'effect spawn scales are monotonic in L');
-      previous = value;
-    }
+    const low = scale(detailLevelForRung(DETAIL_RUNG_FAR));
+    const medium = scale(detailLevelForRung(DETAIL_RUNG_MID));
+    assertContract(low > 0 && medium >= low, 'each effect has ordered Low/Medium spawn scales');
+    assertContract(
+      scale(0.001) === low && scale(detailLevelForRung(DETAIL_RUNG_FAR)) === low,
+      'effect output is constant throughout the Low rung',
+    );
+    assertContract(
+      scale(detailLevelForRung(DETAIL_RUNG_MID)) === medium &&
+        scale(detailRungMinLevel(DETAIL_RUNG_CLOSE) - 0.001) === medium,
+      'effect output is constant throughout the Medium rung',
+    );
   }
 
   // ── Rebuild band + graphics ceiling ───────────────────────────────

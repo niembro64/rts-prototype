@@ -43,6 +43,7 @@ import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_MID,
   detailRungForLevel,
+  type DetailRung,
 } from './EntityDetailLevel3D';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
@@ -88,6 +89,7 @@ type BeamConfigFile = {
 };
 
 type BeamEmissionLodResolver = (entity: Entity) => boolean;
+type BeamDetailRungResolver = (entity: Entity) => DetailRung;
 
 export type BeamSegmentPoseScratch3D = {
   a: THREE.Vector3;
@@ -602,6 +604,7 @@ export class BeamRenderer3D {
     turretMountResolver?: TurretMountResolver,
     isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
     view?: RenderViewState3D,
+    entityDetailRung?: BeamDetailRungResolver,
   ): void {
     if (
       projectiles.length === 0 &&
@@ -669,8 +672,9 @@ export class BeamRenderer3D {
       const useLowLodSegments =
         BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
         isEntityEmissionLowLod(e);
-      const detailLevel = view ? entityDetailLevelForView(view, e) : 1;
-      const detailRung = detailRungForLevel(detailLevel);
+      const detailRung = entityDetailRung?.(e) ?? detailRungForLevel(
+        view ? entityDetailLevelForView(view, e) : 1,
+      );
       const beamStyle = graphicsConfig?.beamStyle ?? 'complex';
       const useImposterSegments =
         useLowLodSegments || beamStyle === 'simple' || detailRung < DETAIL_RUNG_MID;

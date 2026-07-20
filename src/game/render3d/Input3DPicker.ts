@@ -49,6 +49,12 @@ export class Input3DPicker {
     return this.cursorGround.pickSim(clientX, clientY);
   }
 
+  /** Waypoint pick: raycast the actual terrain, including terrain submerged
+   * by water. */
+  raycastTerrainBed(clientX: number, clientY: number): SimGroundPoint | null {
+    return this.cursorGround.pickTerrainBedSim(clientX, clientY);
+  }
+
   /** Pick the entity under the cursor in true 3D, independent of how it
    *  is rendered. Casts the camera ray and intersects each entity's
    *  world-space selection sphere (centered on its body, at its real

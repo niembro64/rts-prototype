@@ -134,7 +134,7 @@ function directFactoryRallyActions(
       type: 'patrol',
       x: startX,
       y: startY,
-      z: world.sampleSupportSurface(startX, startY).groundZ,
+      z: world.getTerrainBedZ(startX, startY),
     });
   }
   for (let i = 0; i < route.length; i++) {
@@ -146,7 +146,7 @@ function directFactoryRallyActions(
       type: wp.type,
       x: wp.x,
       y: wp.y,
-      z: wp.z ?? world.sampleSupportSurface(wp.x, wp.y).groundZ,
+      z: wp.z ?? world.getTerrainBedZ(wp.x, wp.y),
     });
   }
   return { actions, patrolStartIndex };

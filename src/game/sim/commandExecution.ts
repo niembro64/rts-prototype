@@ -576,7 +576,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         command.waypointType,
         command.queue,
         ctx,
-        ctx.world.getGroundZ(targetX, targetY),
+        ctx.world.getTerrainBedZ(targetX, targetY),
         queueFront,
         commandQueueInsertIndex(command),
         speedLimitFactors?.get(unit.id),
@@ -601,7 +601,7 @@ export function resolvePathableFormationTarget(
   const x = clampToMap(targetX, world.mapWidth);
   const y = clampToMap(targetY, world.mapHeight);
   if (unitComponent === null) {
-    return { x, y, z: world.getGroundZ(x, y) };
+    return { x, y, z: world.getTerrainBedZ(x, y) };
   }
 
   const points = expandPathPoints(
@@ -611,7 +611,7 @@ export function resolvePathableFormationTarget(
     y,
     world.mapWidth,
     world.mapHeight,
-    world.getGroundZ(x, y),
+    world.getTerrainBedZ(x, y),
     pathTerrainFilterForLocomotion(
       unitComponent.locomotion,
       unitComponent.mass,
@@ -621,8 +621,8 @@ export function resolvePathableFormationTarget(
   );
   const final = points[points.length - 1];
   return final !== undefined
-    ? { x: final.x, y: final.y, z: final.z ?? world.getGroundZ(final.x, final.y) }
-    : { x, y, z: world.getGroundZ(x, y) };
+    ? { x: final.x, y: final.y, z: final.z ?? world.getTerrainBedZ(final.x, final.y) }
+    : { x, y, z: world.getTerrainBedZ(x, y) };
 }
 
 function groupFormationSpacing(maxCollisionRadius: number): number {
@@ -2805,7 +2805,7 @@ function copyPatrolStartActionFromAnchor(
       type: 'patrol',
       x: anchor.x,
       y: anchor.y,
-      z: anchor.z ?? world.getGroundZ(anchor.x, anchor.y),
+      z: anchor.z ?? world.getTerrainBedZ(anchor.x, anchor.y),
     };
   }
   const x = entity.transform.x;
@@ -2814,7 +2814,7 @@ function copyPatrolStartActionFromAnchor(
     type: 'patrol',
     x,
     y,
-    z: world.getGroundZ(x, y),
+    z: world.getTerrainBedZ(x, y),
   };
 }
 

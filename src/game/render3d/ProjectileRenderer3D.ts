@@ -23,18 +23,14 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
-import {
-  entityDetailLevelForView,
-  plasmaEntityDetailLevelForView,
-} from './EntityLod3D';
+import { entityDetailLevelForView } from './EntityLod3D';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
+  detailLevelForRung,
   detailRungForLevel,
   type DetailRung,
-  plasmaDetailRungForLevel,
-  plasmaDetailRungWithHysteresis,
   projectileStyleForDetail,
 } from './EntityDetailLevel3D';
 import { ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
@@ -251,6 +247,9 @@ type ProjectileRenderer3DOptions = {
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
+  /** The shared host/projectile AUTO resolver. It gives every entity the
+   * exact HIGH/MED/LOW rung selected for this frame. */
+  entityDetailRung?: (entity: Entity) => DetailRung | undefined;
 };
 
 const NEVER_EMISSION_FAR_LOD = (): boolean => false;
@@ -261,6 +260,7 @@ export class ProjectileRenderer3D {
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
   private readonly isEntityEmissionFarLod: (entity: Entity) => boolean;
+  private readonly entityDetailRung: (entity: Entity) => DetailRung | undefined;
 
   private readonly projectileGeom = createPrimitiveSphereGeometry('projectile', 'close');
   private readonly projectileCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'close');
@@ -327,7 +327,6 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
-  private readonly plasmaDetailRungs = new IndexedEntityIdMap<DetailRung>();
   private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
   // Scratch buffers reused across projectiles to avoid per-frame allocs.
   // resampleTrailCenterline fills tailCenterline with the drawn ring
@@ -360,6 +359,7 @@ export class ProjectileRenderer3D {
     this.radiusSphereGeom = options.radiusSphereGeom;
     this.isEntityEmissionFarLod =
       options.isEntityEmissionFarLod ?? NEVER_EMISSION_FAR_LOD;
+    this.entityDetailRung = options.entityDetailRung ?? (() => undefined);
 
     this.sphereInstanced = new THREE.InstancedMesh(
       this.projectileGeom,
@@ -526,9 +526,10 @@ export class ProjectileRenderer3D {
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
       const isPlasma = shotProfile?.runtime.type === 'plasma';
       const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
-      const detailLevel = isPlasma
-        ? plasmaEntityDetailLevelForView(frameState.view, e, tailLength)
-        : entityDetailLevelForView(frameState.view, e);
+      const sharedRung = this.entityDetailRung(e);
+      const detailLevel = sharedRung === undefined
+        ? entityDetailLevelForView(frameState.view, e)
+        : detailLevelForRung(sharedRung);
       const projectileStyle = projectileStyleForDetail(
         detailLevel,
         frameState.gfx.projectileStyle,
@@ -555,7 +556,7 @@ export class ProjectileRenderer3D {
         // DOT/CORE graphics ceilings still shed to the minimum plasma mesh;
         // they no longer make the projectile disappear altogether.
         const rung = drawProjectileTail
-          ? this.resolvePlasmaDetailRung(e.id, detailLevel)
+          ? sharedRung ?? detailRungForLevel(detailLevel)
           : DETAIL_RUNG_FAR;
         if (rung === DETAIL_RUNG_CLOSE && plasmaHighCount < PROJECTILE_INSTANCED_CAP) {
           const drawnSpan = this.resampleTrailCenterline(
@@ -599,7 +600,6 @@ export class ProjectileRenderer3D {
         continue;
       }
 
-      this.plasmaDetailRungs.delete(e.id);
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'
         : 'none';
@@ -614,7 +614,7 @@ export class ProjectileRenderer3D {
         tailLength,
         tailRadius,
       );
-      const rawRocketRung = detailRungForLevel(detailLevel);
+      const rawRocketRung = sharedRung ?? detailRungForLevel(detailLevel);
       const rocketRung = emissionFarLod || (!drawProjectileTail && !drawProjectileFins)
         ? DETAIL_RUNG_FAR
         : rawRocketRung;
@@ -803,9 +803,6 @@ export class ProjectileRenderer3D {
       for (const id of this.trailStamps.keys()) {
         if (!seen.has(id)) this.trailStamps.delete(id);
       }
-      for (const id of this.plasmaDetailRungs.keys()) {
-        if (!seen.has(id)) this.plasmaDetailRungs.delete(id);
-      }
       this.lastProjectileEntitySetVersion = entitySetVersion;
       this.lastProjectileScopeVersion = scopeVersion;
     }
@@ -834,7 +831,6 @@ export class ProjectileRenderer3D {
       disposeMesh(mesh, { material: false, geometry: false });
     }
     this.seenProjectileIds.clear();
-    this.plasmaDetailRungs.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
     disposeGeometries([
@@ -856,15 +852,6 @@ export class ProjectileRenderer3D {
       this.projMatCollision,
       this.projMatExplosion,
     ]);
-  }
-
-  private resolvePlasmaDetailRung(entityId: EntityId, level: number): DetailRung {
-    const previous = this.plasmaDetailRungs.get(entityId);
-    const next = previous === undefined
-      ? plasmaDetailRungForLevel(level)
-      : plasmaDetailRungWithHysteresis(previous, level);
-    this.plasmaDetailRungs.set(entityId, next);
-    return next;
   }
 
   // Shifts older stamps one slot deeper (dropping the oldest if at cap)

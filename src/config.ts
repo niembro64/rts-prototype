@@ -291,16 +291,13 @@ export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds bac
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
-// Emission far-LOD channel: HUD/names/smoke/sprays/decals shed for
-// entities at/after this camera distance. The BODY detail ladder (mesh
-// tiers + glyph flip) is screen-coverage based instead — see
-// ENTITY_DETAIL_CONFIG.
+// Shared entity detail ladder switch. Every visual follows the same
+// screen-coverage-selected HIGH/MED/LOW rungs; there is no separate
+// distance-only emission LOD channel.
 export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
-export const ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE =
-  lodConfigJson.entity.autoHighToLowDistance;
 
-// Continuous screen-coverage detail ladder (rungs, thresholds, animation
-// shedding, effect spawn scales). Tuning lives in lod.json `detail`;
+// Screen-coverage-selected three-rung detail ladder (thresholds, animation
+// shedding, and per-rung effect scales). Tuning lives in lod.json `detail`;
 // EntityDetailLevel3D interprets it.
 export const ENTITY_DETAIL_CONFIG = lodConfigJson.detail;
 

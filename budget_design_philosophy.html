@@ -882,6 +882,7 @@
         <li>Do not store pathfinder-expanded intermediate points in the same array as authored command waypoints.</li>
         <li>Do not serialize pathfinding points as gameplay intent; serialize waypoints and let the local server simulation regenerate movement plans.</li>
         <li>Factory rally routes and fabricator-provided routes are high-level waypoint lists. Produced units resolve those lists against their own locomotion profile and current world state.</li>
+        <li>Every waypoint, rally marker, connecting line, and drag preview resolves from the raw terrain-ray hit. Water is never a waypoint surface: a waypoint under a lake sits on the lake bed the cursor actually pointed at and remains visible through the transparent water.</li>
         <li>Pathfinding is leg-local and demand-driven: plan the active leg, cache it while valid, and throw it away on completion, obstruction, stale progress, terrain change, or target drift.</li>
         <li>Patrol and fight loops re-enter the planner per leg rather than baking one permanent expanded loop. The path should adapt to the battlefield, while the waypoint loop remains the command.</li>
       </ul>
@@ -1224,6 +1225,42 @@
         expensive. If a visual cannot be supported at scale, simplify the visual contract or the
         renderer's structure first. The sim remains physical; rendering stays downstream of that
         physical truth.
+      </p>
+    </section>
+
+    <section>
+      <h2>One Shared Entity Detail Ladder</h2>
+      <p>
+        Entity detail is a single presentation contract, not a collection of
+        subsystem-specific quality switches. The CLIENT LOD control exposes
+        exactly three authored levels: <strong>HIGH</strong>,
+        <strong>MED</strong>, and <strong>LOW</strong>. In AUTO, projected
+        screen coverage chooses between those same three complete levels. AUTO
+        never invents an in-between mesh, a plasma-only rung, or a separate
+        distance cutoff for emissions, HUD, or animation.
+      </p>
+      <ul class="rule-list">
+        <li><strong>HIGH</strong> is the close rung: the complete authored visual and its high geometry tier.</li>
+        <li><strong>MED</strong> is the middle rung: the same authored assembly at its medium geometry and feature budget.</li>
+        <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule.</li>
+        <li>The only fourth state is removal: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. The fade is a transition to removal, not another detail level.</li>
+      </ul>
+      <p>
+        This ladder applies to every visual part of an entity together:
+        chassis/body, every mounted turret and barrel, shields, construction
+        and resource-pylon assemblies, locomotion rigs and their animation,
+        projectiles, beams, trails, smoke, sprays, impacts, debris, health
+        and name presentation, and static resource/environment visuals. A
+        part may be intentionally absent at a named rung, but it may not use
+        a private fourth mesh budget or a different AUTO threshold system.
+      </p>
+      <p>
+        AUTO may use continuous projected-size math and hysteresis internally
+        to avoid oscillation at a boundary. That math is only a selector for
+        HIGH/MED/LOW. Rebuild budgets may delay a swap by a frame; they do not
+        create a fourth quality result. The definitive tuning and feature
+        assignments live in <code>lod.json</code>; renderers consume the
+        resolved rung rather than reinterpreting camera distance themselves.
       </p>
     </section>
 

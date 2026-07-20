@@ -1,11 +1,10 @@
-// Continuous entity visual detail from projected screen coverage.
+// Three-rung entity visual detail selected from projected screen coverage.
 //
-// Every entity gets a detail level L in [0,1] derived from its projected
+// Every entity gets an internal coverage metric L in [0,1] derived from its projected
 // screen radius at a fixed reference viewport height (resolution/DPR
 // invariant): L = 0 at/below the glyph radius — the entity is the flat
-// point-sprite proxy — and L = 1 at/above the full-detail radius. Between
-// the ends, discrete RUNGS pick the geometry segment tier and which named
-// features are built:
+// point-sprite proxy — and L = 1 at/above the full-detail radius. L only
+// selects one discrete authored RUNG; it is never a visual level itself:
 //
 //   GLYPH (0)  point-sprite proxy (BAR-style strategic icon); the icon
 //              cross-fades in over the model beforehand — see
@@ -14,10 +13,11 @@
 //   MID   (2)  medium-poly geometry, full authored unit silhouette and rig
 //   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
 //
-// Features snap to rung boundaries on purpose: one hysteresis covers every
-// transition and a whole zoom sweep costs at most three mesh transitions
-// per entity. Thresholds live in lod.json `detail`; this module is pure
-// (no THREE) and interprets that config.
+// AUTO and the manual controls therefore resolve to the exact same three
+// visual states. Features snap to rung boundaries on purpose: one hysteresis
+// covers every transition and a whole zoom sweep costs at most three mesh
+// transitions per entity. Thresholds live in lod.json `detail`; this module
+// is pure (no THREE) and interprets that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
@@ -79,11 +79,10 @@ function clamp01(value: number): number {
   return value;
 }
 
-type EffectSpawnScaleConfig = {
-  zeroBelow: number;
-  fullAbove: number;
-  floor: number;
-};
+type EffectSpawnScaleConfig = Record<
+  'close' | 'mid' | 'far',
+  number
+>;
 
 function rungFromName(name: unknown, fallback: DetailRung): DetailRung {
   switch (name) {
@@ -118,19 +117,6 @@ const CLOSE_RUNG_MIN_LEVEL = Math.max(
 export const ICON_FADE_START_SCREEN_RADIUS_PX =
   GLYPH_SCREEN_RADIUS_PX +
   CLOSE_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
-export const PLASMA_MEDIUM_RUNG_MIN_LEVEL = clamp01(
-  finitePositiveOr(detailConfig.plasmaRungMinLevel?.medium, 0.08),
-);
-export const PLASMA_HIGH_RUNG_MIN_LEVEL = Math.max(
-  PLASMA_MEDIUM_RUNG_MIN_LEVEL,
-  clamp01(finitePositiveOr(detailConfig.plasmaRungMinLevel?.high, 0.52)),
-);
-export const PLASMA_DETAIL_HYSTERESIS_LEVEL = clamp01(
-  finitePositiveOr(detailConfig.plasmaRungMinLevel?.hysteresis, 0.03),
-);
-export const PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD = finitePositiveOr(
-  detailConfig.plasmaSizeScaling?.referenceTailLengthWorld, 48,
-);
 export const DETAIL_HYSTERESIS_LEVEL = clamp01(
   finitePositiveOr(detailConfig.hysteresisLevel, 0.05));
 export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
@@ -200,28 +186,22 @@ export const LOCOMOTION_FAR_FRAME_STRIDE = Math.max(
 
 function effectSpawnScaleConfig(
   key: 'smoke' | 'explosion' | 'debris',
-  zeroBelow: number,
-  fullAbove: number,
-  floor: number,
+  mid: number,
+  far: number,
 ): EffectSpawnScaleConfig {
   const authored = detailConfig.effectSpawnScale?.[key] as
     | Partial<EffectSpawnScaleConfig>
     | undefined;
   return {
-    zeroBelow: clamp01(authored?.zeroBelow ?? zeroBelow),
-    fullAbove: clamp01(authored?.fullAbove ?? fullAbove),
-    floor: clamp01(authored?.floor ?? floor),
+    close: clamp01(authored?.close ?? 1),
+    mid: clamp01(authored?.mid ?? mid),
+    far: clamp01(authored?.far ?? far),
   };
 }
 
-const SMOKE_SPAWN_SCALE = effectSpawnScaleConfig('smoke', 0.02, 0.5, 0);
-const EXPLOSION_SPAWN_SCALE = effectSpawnScaleConfig('explosion', 0.02, 0.6, 0.18);
-const DEBRIS_SPAWN_SCALE = effectSpawnScaleConfig('debris', 0.15, 0.6, 0);
-
-export const ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX = finitePositiveOr(
-  detailConfig.environment?.grassMinScreenRadiusPx, 3);
-export const ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX = finitePositiveOr(
-  detailConfig.environment?.treeMinScreenRadiusPx, 1.5);
+const SMOKE_SPAWN_SCALE = effectSpawnScaleConfig('smoke', 0.65, 0.3);
+const EXPLOSION_SPAWN_SCALE = effectSpawnScaleConfig('explosion', 0.7, 0.35);
+const DEBRIS_SPAWN_SCALE = effectSpawnScaleConfig('debris', 0.6, 0.25);
 
 // ── Screen-coverage math ────────────────────────────────────────────
 
@@ -281,27 +261,6 @@ export function lodProxyFadeAlphaForScreenRadius(screenRadiusPx: number): number
     (ICON_FADE_START_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
 }
 
-/**
- * Constant-angular-size scaling for plasma geometry LOD. Projected size is
- * proportional to world size / camera distance, so preserving the same
- * on-screen tail size moves every transition distance linearly with tail
- * length. Values below the smallest authored reference never pull the current
- * baseline transitions closer.
- */
-export function plasmaLodDistanceScaleForTailLength(tailLengthWorld: number): number {
-  const tailLength = finitePositiveOr(
-    tailLengthWorld,
-    PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD,
-  );
-  return Math.max(1, tailLength / PLASMA_LOD_REFERENCE_TAIL_LENGTH_WORLD);
-}
-
-/** Effective detail radius whose projected size enforces the distance law. */
-export function plasmaDetailRadiusForTailLength(tailLengthWorld: number): number {
-  return DETAIL_RADIUS_FLOOR_PROJECTILE *
-    plasmaLodDistanceScaleForTailLength(tailLengthWorld);
-}
-
 /** Detail level for a bare sim position (effect events, smoke emitters)
  *  where no entity radius is at hand — uses the effect radius floor. */
 export function detailLevelForViewPosition(
@@ -315,14 +274,11 @@ export function detailLevelForViewPosition(
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-  const dx = view.cameraX - simX;
-  const dy = view.cameraY - simZ;
-  const dz = view.cameraZ - simY;
-  return detailLevelForRadiusDistance(
+  return detailLevelForRung(detailRungForLevel(detailLevelForRadiusDistance(
     radiusWorld,
-    Math.sqrt(dx * dx + dy * dy + dz * dz),
+    Math.hypot(view.cameraX - simX, view.cameraY - simZ, view.cameraZ - simY),
     view.fovYRad,
-  );
+  )));
 }
 
 // ── Rung ladder ─────────────────────────────────────────────────────
@@ -331,40 +287,6 @@ export function detailRungForLevel(level: number): DetailRung {
   if (level <= DETAIL_LEVEL_GLYPH) return DETAIL_RUNG_GLYPH;
   if (level >= CLOSE_RUNG_MIN_LEVEL) return DETAIL_RUNG_CLOSE;
   if (level >= MID_RUNG_MIN_LEVEL) return DETAIL_RUNG_MID;
-  return DETAIL_RUNG_FAR;
-}
-
-/** Plasma uses its own farther-reaching geometry ladder. Its LOW mesh is
- *  still real triangle geometry, so level zero maps to FAR rather than the
- *  generic point-sprite GLYPH rung. */
-export function plasmaDetailRungForLevel(level: number): DetailRung {
-  if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL) return DETAIL_RUNG_CLOSE;
-  if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL) return DETAIL_RUNG_MID;
-  return DETAIL_RUNG_FAR;
-}
-
-export function plasmaDetailRungWithHysteresis(
-  currentRung: DetailRung,
-  level: number,
-): DetailRung {
-  const current = currentRung === DETAIL_RUNG_GLYPH
-    ? DETAIL_RUNG_FAR
-    : currentRung;
-  const h = PLASMA_DETAIL_HYSTERESIS_LEVEL;
-
-  if (current === DETAIL_RUNG_CLOSE) {
-    if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL - h) return DETAIL_RUNG_CLOSE;
-    return level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL - h
-      ? DETAIL_RUNG_MID
-      : DETAIL_RUNG_FAR;
-  }
-  if (current === DETAIL_RUNG_MID) {
-    if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_CLOSE;
-    if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL - h) return DETAIL_RUNG_MID;
-    return DETAIL_RUNG_FAR;
-  }
-  if (level >= PLASMA_HIGH_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_CLOSE;
-  if (level >= PLASMA_MEDIUM_RUNG_MIN_LEVEL + h) return DETAIL_RUNG_MID;
   return DETAIL_RUNG_FAR;
 }
 
@@ -489,13 +411,15 @@ export function treadsAnimatedForDetail(level: number, ceiling: boolean): boolea
   return ceiling;
 }
 
-// ── Effect spawn scales (continuous in L) ───────────────────────────
+// ── Effect spawn scales (one value per authored rung) ────────────────
 
 function effectSpawnScale(config: EffectSpawnScaleConfig, level: number): number {
-  if (level >= config.fullAbove) return 1;
-  if (level <= config.zeroBelow) return config.floor;
-  const t = (level - config.zeroBelow) / (config.fullAbove - config.zeroBelow);
-  return config.floor + (1 - config.floor) * t;
+  switch (detailRungForLevel(level)) {
+    case DETAIL_RUNG_CLOSE: return config.close;
+    case DETAIL_RUNG_MID: return config.mid;
+    case DETAIL_RUNG_FAR: return config.far;
+    default: return 0;
+  }
 }
 
 export function smokeSpawnScaleForDetail(level: number): number {

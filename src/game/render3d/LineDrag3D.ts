@@ -30,9 +30,9 @@ import { createPrimitiveRingGeometry, createPrimitiveSphereGeometry } from './Pr
 // terrain overlays. Keep these tied to the persistent waypoint lift so
 // issued commands and the drag preview stay visually aligned.
 //
-// The DragState's points / targets carry the click-altitude `z` from
-// CursorGround.pickSim (sim coord = three.y), so the preview rides the
-// rendered terrain instead of a fixed plane. LINE_LIFT / DOT_LIFT are
+// The DragState's points / targets carry the terrain-bed altitude `z` from
+// the waypoint picker (sim coord = three.y), so the preview rides terrain
+// below water instead of a fixed plane or the water surface. LINE_LIFT / DOT_LIFT are
 // added on top of that altitude so the ribbon clears the ground without
 // z-fighting on slopes. The constants below are the legacy fixed-plane
 // values, used only as a fallback when a point's z is missing
@@ -64,6 +64,7 @@ export class LineDrag3D {
   // width, depth-occluded), drawn through the traced drag points.
   private readonly lineBatch: GroundLineBatch3D;
   private readonly lineWidthPx: number;
+  private readonly waypointRenderOrder: number;
   private linePoints = new Float32Array(0);
 
   // Filled sphere for each target; thin white ring around it for contrast
@@ -81,13 +82,16 @@ export class LineDrag3D {
 
   constructor(parentWorld: THREE.Group, overlayLines: OverlayLineSystem) {
     this.root = new THREE.Group();
-    // Render after entities but before HUD overlays so dots draw on top of
-    // the chassis but beneath the 2D SVG layer (which lives in the DOM).
-    this.root.renderOrder = 16;
+    // Waypoint previews draw before transparent water so their terrain-bed
+    // path remains legible through the surface. Terrain depth still occludes
+    // a route behind a hill.
+    this.waypointRenderOrder = overlayLines.style('waypoint').renderOrder;
+    this.root.renderOrder = this.waypointRenderOrder;
     parentWorld.add(this.root);
 
     this.lineWidthPx = overlayLines.style('drag').widthPx;
     this.lineBatch = overlayLines.createBatch('drag', 64);
+    this.lineBatch.mesh.renderOrder = this.waypointRenderOrder;
     this.root.add(this.lineBatch.mesh);
 
     this.ringMat = new THREE.MeshBasicMaterial({
@@ -171,7 +175,7 @@ export class LineDrag3D {
     let mesh = this.dotPool[i];
     if (!mesh) {
       mesh = new THREE.Mesh(this.dotGeom);
-      mesh.renderOrder = 17;
+      mesh.renderOrder = this.waypointRenderOrder;
       this.root.add(mesh);
       this.dotPool.push(mesh);
     }
@@ -184,7 +188,7 @@ export class LineDrag3D {
     if (!mesh) {
       mesh = new THREE.Mesh(this.ringGeom, this.ringMat);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.renderOrder = 18;
+      mesh.renderOrder = this.waypointRenderOrder;
       this.root.add(mesh);
       this.ringPool.push(mesh);
     }

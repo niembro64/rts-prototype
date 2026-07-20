@@ -50,7 +50,7 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 };
 
 const LOD_MODE_TITLES: Record<LodMode, string> = {
-  auto: 'Choose visual detail automatically from projected screen size',
+  auto: 'Choose the same HIGH, MED, or LOW visual rung automatically from projected screen size',
   high: 'Freeze all visual detail at the high-resolution rung',
   medium: 'Freeze all visual detail at the medium-resolution rung',
   low: 'Freeze all visual detail at the low-resolution rung',

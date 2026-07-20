@@ -36,7 +36,7 @@ import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
   isWaterAt,
-  getSurfaceHeight,
+  getTerrainBedHeight,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ActionType, UnitPathPoint } from './types';
@@ -261,7 +261,7 @@ export function expandPathPlan(
     const isFinalUnsnapped = isFinal && goalZ !== null && px === goalX && py === goalY;
     const z = isFinalUnsnapped
       ? goalZ
-      : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
+      : getTerrainBedHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
     out.push({ x: px, y: py, z });
   }
   return { points: out, resolution: result.resolution };
