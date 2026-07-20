@@ -238,7 +238,9 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Maximum propulsive force', fmt(runtime.actuator.maxPropulsiveForce)),
+    stat('Ground propulsive force', fmt(runtime.physics.ground.maxPropulsiveForce)),
+    stat('Water propulsive force', fmt(runtime.physics.water.maxPropulsiveForce)),
+    stat('Air propulsive force', fmt(runtime.physics.air.maxPropulsiveForce)),
     node('Route media', labelCase(runtime.type), undefined, [
       stat(
         'Media',

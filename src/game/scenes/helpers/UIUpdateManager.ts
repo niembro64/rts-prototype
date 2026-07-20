@@ -1331,7 +1331,12 @@ export type UnitStatsOverlayInfo = {
   mass: number | null;
   costEnergy: number | null;
   costMetal: number | null;
-  locomotion: { type: string; maxPropulsiveForce: number } | null;
+  locomotion: {
+    type: string;
+    groundMaxPropulsiveForce: number;
+    airMaxPropulsiveForce: number;
+    waterMaxPropulsiveForce: number;
+  } | null;
   weapons: UnitStatsWeaponInfo[];
   factory: UnitStatsFactoryInfo | null;
 };
@@ -1444,7 +1449,9 @@ export function buildUnitStatsOverlayInfo(
       const runtimeLocomotion = getUnitLocomotion(unitBlueprintId);
       locomotion = {
         type: runtimeLocomotion.type,
-        maxPropulsiveForce: runtimeLocomotion.actuator.maxPropulsiveForce,
+        groundMaxPropulsiveForce: runtimeLocomotion.physics.ground.maxPropulsiveForce,
+        airMaxPropulsiveForce: runtimeLocomotion.physics.air.maxPropulsiveForce,
+        waterMaxPropulsiveForce: runtimeLocomotion.physics.water.maxPropulsiveForce,
       };
     } catch {
       // Unknown blueprint: show the raw id + live hp only.

@@ -1383,13 +1383,13 @@
         "air": {
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingInverseForceFromWater": 0
+            "surfaceFollowingInverseForceFromWater": 800
           }
         },
         "water": {
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 300,
-            "surfaceFollowingProportionalForceFromWater": 0.001
+            "surfaceFollowingInverseForceFromGround": 200,
+            "surfaceFollowingProportionalForceFromWater": 0
           }
         }
       },
@@ -1531,7 +1531,7 @@
         "water": {
           "lift": {
             "surfaceFollowingInverseForceFromGround": 100,
-            "surfaceFollowingProportionalForceFromWater": 0.1
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },
@@ -2429,7 +2429,7 @@
         },
         "water": {
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 40,
+            "surfaceFollowingInverseForceFromGround": 90,
             "surfaceFollowingProportionalForceFromWater": 0
           }
         }

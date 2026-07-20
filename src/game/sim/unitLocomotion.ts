@@ -10,7 +10,6 @@ import type {
   UnitLocomotionWaterFluidPhysics,
 } from '@/types/unitLocomotionTypes';
 import {
-  getUnitLocomotionFluidResistance,
   getUnitLocomotionPreset,
   type UnitLocomotionPresetConfig,
 } from './unitLocomotionPresetConfig';
@@ -103,7 +102,11 @@ function createRuntimeAirFluidPhysics(
     surfaceFollowingInverseForceFromWater,
   );
   return {
-    resistance: { ...getUnitLocomotionFluidResistance(presetPhysics.resistanceProfileId) },
+    maxPropulsiveForce: presetPhysics.maxPropulsiveForce,
+    resistance: {
+      linearDampingRate: presetPhysics.linearDampingRate,
+      angularDampingRate: presetPhysics.angularDampingRate,
+    },
     lift: {
       surfaceFollowingInverseForceFromGround,
       surfaceFollowingInverseForceFromWater,
@@ -136,7 +139,11 @@ function createRuntimeWaterFluidPhysics(
     surfaceFollowingProportionalForceFromWater,
   );
   return {
-    resistance: { ...getUnitLocomotionFluidResistance(presetPhysics.resistanceProfileId) },
+    maxPropulsiveForce: presetPhysics.maxPropulsiveForce,
+    resistance: {
+      linearDampingRate: presetPhysics.linearDampingRate,
+      angularDampingRate: presetPhysics.angularDampingRate,
+    },
     lift: {
       surfaceFollowingInverseForceFromGround,
       surfaceFollowingProportionalForceFromWater,
@@ -174,7 +181,6 @@ export function createUnitLocomotion(
     physics,
     environmentalHazards: { ...environmentalHazards },
     actuator: {
-      maxPropulsiveForce: preset.actuator.maxPropulsiveForce,
       propulsionAxis: preset.actuator.propulsionAxis,
     },
     motionControl: { ...preset.motionControl },
@@ -204,6 +210,7 @@ function cloneAirFluidPhysics(
   physics: UnitLocomotionAirFluidPhysics,
 ): UnitLocomotionAirFluidPhysics {
   return {
+    maxPropulsiveForce: physics.maxPropulsiveForce,
     resistance: { ...physics.resistance },
     lift: { ...physics.lift },
   };
@@ -213,6 +220,7 @@ function cloneWaterFluidPhysics(
   physics: UnitLocomotionWaterFluidPhysics,
 ): UnitLocomotionWaterFluidPhysics {
   return {
+    maxPropulsiveForce: physics.maxPropulsiveForce,
     resistance: { ...physics.resistance },
     lift: { ...physics.lift },
   };

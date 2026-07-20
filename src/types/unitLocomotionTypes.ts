@@ -26,6 +26,8 @@ export type UnitLocomotionWaterLiftPhysics = {
 };
 
 export type UnitLocomotionGroundPhysics = {
+  /** Maximum directed propulsion force while supported by solid ground. */
+  maxPropulsiveForce: number;
   /** Coulomb static-friction coefficient for the contact patch. */
   staticFrictionCoefficient: number;
   /** Passive tangent-velocity damping rate while supported, in s^-1. */
@@ -33,11 +35,15 @@ export type UnitLocomotionGroundPhysics = {
 };
 
 export type UnitLocomotionAirFluidPhysics = {
+  /** Maximum directed propulsion force while occupying air. */
+  maxPropulsiveForce: number;
   resistance: UnitLocomotionResistancePhysics;
   lift: UnitLocomotionAirLiftPhysics;
 };
 
 export type UnitLocomotionWaterFluidPhysics = {
+  /** Maximum directed propulsion force while occupying water. */
+  maxPropulsiveForce: number;
   resistance: UnitLocomotionResistancePhysics;
   lift: UnitLocomotionWaterLiftPhysics;
 };
@@ -78,10 +84,6 @@ export type UnitLocomotion = {
     fatalExposureSeconds: number;
   };
   actuator: {
-    /** One maximum horizontal force budget for this chassis. It is available
-     * only in media permitted by navigation; traction and resistance then
-     * determine the resulting motion. */
-    maxPropulsiveForce: number;
     /** Axis through which the locomotion actuator can apply horizontal force. */
     propulsionAxis: 'bodyForward' | 'worldPlanar';
   };

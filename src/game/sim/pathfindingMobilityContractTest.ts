@@ -52,4 +52,28 @@ export function runPathfindingMobilityContractTest(): void {
       );
     }
   }
+
+  const seaTurtleBlueprint = getAllUnitBlueprints().find(
+    (blueprint) => blueprint.unitBlueprintId === 'unitSeaTurtle',
+  );
+  if (seaTurtleBlueprint === undefined) {
+    throw new Error('[pathfinding mobility contract] Sea Turtle blueprint is missing');
+  }
+  const seaTurtleLocomotion = getUnitLocomotion(seaTurtleBlueprint.unitBlueprintId);
+  const seaTurtleClimb = computeLocomotionClimbProfile(
+    seaTurtleLocomotion,
+    seaTurtleBlueprint.mass,
+  );
+  assertContract(
+    seaTurtleClimb.allowOnGround &&
+      seaTurtleClimb.allowInWater &&
+      seaTurtleClimb.maxSlopeDeg !== null &&
+      seaTurtleClimb.maxSlopeDeg >= 30,
+    'Sea Turtle remains amphibious and can climb a steep beach from the water',
+  );
+  assertContract(
+    seaTurtleLocomotion.physics.ground.tangentialDampingRate >
+      seaTurtleLocomotion.physics.water.resistance.linearDampingRate,
+    'Sea Turtle has stronger dry-land damping than underwater drag, keeping its land pace slow',
+  );
 }

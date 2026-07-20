@@ -1,56 +1,26 @@
 {
-  "surfaceFollowingDefaults": {
-    "minimumDistanceWorld": 10,
-    "probeAggregation": "average"
-  },
-  "fluidResistanceProfiles": {
-    "air-standard": {
-      "linearDampingRate": 3.077597663253,
-      "angularDampingRate": 3.077597663253
-    },
-    "air-hover": {
-      "linearDampingRate": 1,
-      "angularDampingRate": 1
-    },
-    "air-submersible": {
-      "linearDampingRate": 0.55,
-      "angularDampingRate": 1
-    },
-    "air-flight": {
-      "linearDampingRate": 1.65,
-      "angularDampingRate": 3
-    },
-    "water-standard": {
-      "linearDampingRate": 8,
-      "angularDampingRate": 4
-    },
-    "water-tracked": {
-      "linearDampingRate": 3.25,
-      "angularDampingRate": 4
-    },
-    "water-submersible": {
-      "linearDampingRate": 0.875,
-      "angularDampingRate": 3
-    }
-  },
   "presets": {
     "wheels": {
       "actuator": {
-        "maxPropulsiveForce": 26.666666666667,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 26.666666666667,
           "staticFrictionCoefficient": 0.55,
           "tangentialDampingRate": 0.835487663482
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -71,21 +41,25 @@
     },
     "treads": {
       "actuator": {
-        "maxPropulsiveForce": 45.333333333333,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 45.333333333333,
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-tracked",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.25,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -106,21 +80,25 @@
     },
     "amphibiousTreads": {
       "actuator": {
-        "maxPropulsiveForce": 8.613333333333,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 8.613333333333,
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-tracked",
+          "maxPropulsiveForce": 2.666666666667,
+          "linearDampingRate": 3.25,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -143,21 +121,25 @@
     },
     "flippers": {
       "actuator": {
-        "maxPropulsiveForce": 4,
         "propulsionAxis": "bodyForward",
         "ground": {
-          "staticFrictionCoefficient": 0.15,
-          "tangentialDampingRate": 1.519068479057
+          "maxPropulsiveForce": 3.333333333333,
+          "staticFrictionCoefficient": 0.99,
+          "tangentialDampingRate": 7.595342395285
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-tracked",
+          "maxPropulsiveForce": 4,
+          "linearDampingRate": 3.25,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -180,21 +162,25 @@
     },
     "submarine": {
       "actuator": {
-        "maxPropulsiveForce": 5,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0,
           "tangentialDampingRate": 0
         },
         "air": {
-          "resistanceProfileId": "air-submersible",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 0.55,
+          "angularDampingRate": 1,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-submersible",
+          "maxPropulsiveForce": 20,
+          "linearDampingRate": 3,
+          "angularDampingRate": 3,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -217,21 +203,25 @@
     },
     "legs": {
       "actuator": {
-        "maxPropulsiveForce": 11.8,
         "propulsionAxis": "worldPlanar",
         "ground": {
+          "maxPropulsiveForce": 11.8,
           "staticFrictionCoefficient": 1,
           "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -252,21 +242,25 @@
     },
     "amphibiousLegs": {
       "actuator": {
-        "maxPropulsiveForce": 11.8,
         "propulsionAxis": "worldPlanar",
         "ground": {
+          "maxPropulsiveForce": 11.8,
           "staticFrictionCoefficient": 1,
           "tangentialDampingRate": 1.519068479057
         },
         "air": {
-          "resistanceProfileId": "air-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-standard",
+          "maxPropulsiveForce": 11.8,
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -289,21 +283,25 @@
     },
     "hover": {
       "actuator": {
-        "maxPropulsiveForce": 0.106666666667,
         "propulsionAxis": "worldPlanar",
         "ground": {
+          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.5,
           "tangentialDampingRate": 0.759534239529
         },
         "air": {
-          "resistanceProfileId": "air-hover",
+          "maxPropulsiveForce": 0.106666666667,
+          "linearDampingRate": 1,
+          "angularDampingRate": 1,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-standard",
+          "maxPropulsiveForce": 0.106666666667,
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -327,21 +325,25 @@
     },
     "dive": {
       "actuator": {
-        "maxPropulsiveForce": 0.4,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
         },
         "air": {
-          "resistanceProfileId": "air-flight",
+          "maxPropulsiveForce": 0.4,
+          "linearDampingRate": 1.65,
+          "angularDampingRate": 3,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-submersible",
+          "maxPropulsiveForce": 0.4,
+          "linearDampingRate": 0.875,
+          "angularDampingRate": 3,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
@@ -365,21 +367,25 @@
     },
     "flying": {
       "actuator": {
-        "maxPropulsiveForce": 1.2,
         "propulsionAxis": "bodyForward",
         "ground": {
+          "maxPropulsiveForce": 0,
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
         },
         "air": {
-          "resistanceProfileId": "air-flight",
+          "maxPropulsiveForce": 1.2,
+          "linearDampingRate": 1.65,
+          "angularDampingRate": 3,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0
           }
         },
         "water": {
-          "resistanceProfileId": "water-standard",
+          "maxPropulsiveForce": 0,
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,
             "ema": 0

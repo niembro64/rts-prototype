@@ -389,9 +389,16 @@ fn unit_effective_max_propulsive_force(
     };
     let air_fraction = 1.0 - water_fraction;
     let ground_contact = runtime_is_current && runtime.ground_contact[entity_slot] != 0;
-    let mut max_propulsive_force = air_fraction
-        * profile.values[pbase + UF_PROFILE_AIR_MAX_PROPULSIVE_FORCE]
-        + water_fraction * profile.values[pbase + UF_PROFILE_WATER_MAX_PROPULSIVE_FORCE];
+    // Arrival steering uses the same occupancy-weighted medium budget as the
+    // force kernel, so braking and drive intent stay continuous at the
+    // waterline for every locomotion preset.
+    let mut max_propulsive_force = unit_force_occupancy_weighted_positive_value(
+        profile.values[pbase + UF_PROFILE_AIR_MAX_PROPULSIVE_FORCE],
+        air_fraction,
+    ) + unit_force_occupancy_weighted_positive_value(
+        profile.values[pbase + UF_PROFILE_WATER_MAX_PROPULSIVE_FORCE],
+        water_fraction,
+    );
 
     let body_mass = if p.inv_mass[slot] > 0.0 {
         1.0 / p.inv_mass[slot]

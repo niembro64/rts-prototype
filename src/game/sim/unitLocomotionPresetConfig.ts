@@ -7,7 +7,6 @@ import rawUnitLocomotionConfig from './unitLocomotionConfig.json';
 import {
   assertUnitLocomotionBoolean,
   assertUnitLocomotionNonNegativeFinite,
-  assertUnitLocomotionPositiveFinite,
   assertUnitLocomotionUnitFraction,
 } from './unitLocomotionValidation';
 import { isSurfaceProbeSetId } from './surfaceProbeSets';
@@ -25,10 +24,8 @@ export type UnitLocomotionSurfaceFollowingResponse = {
   ema: number;
 };
 
-export type UnitLocomotionFluidResistanceProfile = UnitLocomotionResistancePhysics;
-
-export type UnitLocomotionPresetFluidPhysics = {
-  resistanceProfileId: string;
+export type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics & {
+  maxPropulsiveForce: number;
   /** Kept explicit and fixed at zero: surface following is deterministic and
    * unfiltered. */
   surfaceLiftResponse: UnitLocomotionSurfaceFollowingResponse;
@@ -36,7 +33,6 @@ export type UnitLocomotionPresetFluidPhysics = {
 
 export type UnitLocomotionPresetConfig = {
   actuator: {
-    maxPropulsiveForce: number;
     propulsionAxis: 'bodyForward' | 'worldPlanar';
     ground: UnitLocomotionGroundPhysics;
     air: UnitLocomotionPresetFluidPhysics;
@@ -55,16 +51,7 @@ export type UnitLocomotionPresetConfig = {
   };
 };
 
-export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
-export type SurfaceFollowingProbeAggregationMode =
-  (typeof SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES)[number];
-
 type UnitLocomotionConfig = {
-  surfaceFollowingDefaults: {
-    minimumDistanceWorld: number;
-    probeAggregation: SurfaceFollowingProbeAggregationMode;
-  };
-  fluidResistanceProfiles: Record<string, UnitLocomotionFluidResistanceProfile>;
   presets: Record<string, UnitLocomotionPresetConfig>;
 };
 
@@ -86,11 +73,6 @@ function assertExactKeys(label: string, value: Record<string, unknown>, expected
   }
 }
 
-function isSurfaceFollowingProbeAggregationMode(value: unknown): value is SurfaceFollowingProbeAggregationMode {
-  return typeof value === 'string' &&
-    (SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES as readonly string[]).includes(value);
-}
-
 function assertSurfaceFollowingResponse(label: string, value: unknown): void {
   assertObject(label, value);
   assertExactKeys(label, value, UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS);
@@ -105,9 +87,11 @@ function assertGroundPhysics(presetId: string, value: unknown): void {
   const label = `presets.${presetId}.actuator.ground`;
   assertObject(label, value);
   assertExactKeys(label, value, [
+    'maxPropulsiveForce',
     'staticFrictionCoefficient',
     'tangentialDampingRate',
   ]);
+  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
   assertUnitLocomotionNonNegativeFinite(
     `${label}.staticFrictionCoefficient`,
     value.staticFrictionCoefficient as number,
@@ -122,14 +106,18 @@ function assertFluidPhysics(
   presetId: string,
   medium: UnitLocomotionFluidMediumName,
   value: unknown,
-  resistanceProfiles: Readonly<Record<string, UnitLocomotionFluidResistanceProfile>>,
 ): void {
   const label = `presets.${presetId}.actuator.${medium}`;
   assertObject(label, value);
-  assertExactKeys(label, value, ['resistanceProfileId', 'surfaceLiftResponse']);
-  if (typeof value.resistanceProfileId !== 'string' || resistanceProfiles[value.resistanceProfileId] === undefined) {
-    throw new Error(`Invalid unitLocomotionConfig.json: unknown ${label}.resistanceProfileId`);
-  }
+  assertExactKeys(label, value, [
+    'maxPropulsiveForce',
+    'linearDampingRate',
+    'angularDampingRate',
+    'surfaceLiftResponse',
+  ]);
+  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
+  assertUnitLocomotionNonNegativeFinite(`${label}.linearDampingRate`, value.linearDampingRate as number);
+  assertUnitLocomotionNonNegativeFinite(`${label}.angularDampingRate`, value.angularDampingRate as number);
   assertSurfaceFollowingResponse(`${label}.surfaceLiftResponse`, value.surfaceLiftResponse);
 }
 
@@ -152,7 +140,6 @@ function assertNavigation(label: string, value: unknown): void {
 function assertPreset(
   presetId: string,
   preset: UnitLocomotionPresetConfig | undefined,
-  resistanceProfiles: Readonly<Record<string, UnitLocomotionFluidResistanceProfile>>,
 ): void {
   if (!preset || typeof preset !== 'object') {
     throw new Error(`Invalid unitLocomotionConfig.json: missing presets.${presetId} config`);
@@ -165,7 +152,6 @@ function assertPreset(
   ]);
   assertObject(`presets.${presetId}.actuator`, preset.actuator);
   assertExactKeys(`presets.${presetId}.actuator`, preset.actuator, [
-    'maxPropulsiveForce',
     'propulsionAxis',
     'ground',
     'air',
@@ -177,10 +163,6 @@ function assertPreset(
   ) {
     throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);
   }
-  assertUnitLocomotionNonNegativeFinite(
-    `presets.${presetId}.actuator.maxPropulsiveForce`,
-    preset.actuator.maxPropulsiveForce,
-  );
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
   assertExactKeys(`presets.${presetId}.motionControl`, preset.motionControl, [
     'maintainFullThrustAtWaypoints',
@@ -203,79 +185,24 @@ function assertPreset(
   }
   assertNavigation(`presets.${presetId}.navigation`, preset.navigation);
   assertGroundPhysics(presetId, preset.actuator.ground);
-  assertFluidPhysics(presetId, 'air', preset.actuator.air, resistanceProfiles);
-  assertFluidPhysics(presetId, 'water', preset.actuator.water, resistanceProfiles);
+  assertFluidPhysics(presetId, 'air', preset.actuator.air);
+  assertFluidPhysics(presetId, 'water', preset.actuator.water);
 }
 
 function readUnitLocomotionConfig(): UnitLocomotionConfig {
   const config = rawUnitLocomotionConfig as unknown as Partial<UnitLocomotionConfig>;
-  assertExactKeys('root', config as Record<string, unknown>, [
-    'surfaceFollowingDefaults',
-    'fluidResistanceProfiles',
-    'presets',
-  ]);
-  const defaults = config.surfaceFollowingDefaults;
-  assertObject('surfaceFollowingDefaults', defaults);
-  assertExactKeys('surfaceFollowingDefaults', defaults, ['minimumDistanceWorld', 'probeAggregation']);
-  assertUnitLocomotionPositiveFinite('surfaceFollowingDefaults.minimumDistanceWorld', defaults.minimumDistanceWorld as number);
-  if (!isSurfaceFollowingProbeAggregationMode(defaults.probeAggregation)) {
-    throw new Error('Invalid unitLocomotionConfig.json: invalid surfaceFollowingDefaults.probeAggregation');
-  }
-  const rawProfiles = config.fluidResistanceProfiles;
-  assertObject('fluidResistanceProfiles', rawProfiles);
-  const resistanceProfiles: Record<string, UnitLocomotionFluidResistanceProfile> = {};
-  for (const [profileId, profile] of Object.entries(rawProfiles)) {
-    assertObject(`fluidResistanceProfiles.${profileId}`, profile);
-    assertExactKeys(`fluidResistanceProfiles.${profileId}`, profile, [
-      'linearDampingRate',
-      'angularDampingRate',
-    ]);
-    assertUnitLocomotionNonNegativeFinite(
-      `fluidResistanceProfiles.${profileId}.linearDampingRate`,
-      profile.linearDampingRate as number,
-    );
-    assertUnitLocomotionNonNegativeFinite(
-      `fluidResistanceProfiles.${profileId}.angularDampingRate`,
-      profile.angularDampingRate as number,
-    );
-    resistanceProfiles[profileId] = {
-      linearDampingRate: profile.linearDampingRate as number,
-      angularDampingRate: profile.angularDampingRate as number,
-    };
-  }
+  assertExactKeys('root', config as Record<string, unknown>, ['presets']);
   const rawPresets = config.presets;
   assertObject('presets', rawPresets);
   const presets: Record<string, UnitLocomotionPresetConfig> = {};
   for (const [presetId, preset] of Object.entries(rawPresets)) {
-    assertPreset(presetId, preset as UnitLocomotionPresetConfig, resistanceProfiles);
+    assertPreset(presetId, preset as UnitLocomotionPresetConfig);
     presets[presetId] = preset as UnitLocomotionPresetConfig;
   }
-  return {
-    surfaceFollowingDefaults: {
-      minimumDistanceWorld: defaults.minimumDistanceWorld as number,
-      probeAggregation: defaults.probeAggregation as SurfaceFollowingProbeAggregationMode,
-    },
-    fluidResistanceProfiles: resistanceProfiles,
-    presets,
-  };
+  return { presets };
 }
 
 const UNIT_LOCOMOTION_CONFIG = readUnitLocomotionConfig();
-
-export const SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD =
-  UNIT_LOCOMOTION_CONFIG.surfaceFollowingDefaults.minimumDistanceWorld;
-export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE =
-  UNIT_LOCOMOTION_CONFIG.surfaceFollowingDefaults.probeAggregation;
-
-export function getUnitLocomotionFluidResistance(
-  profileId: string,
-): UnitLocomotionFluidResistanceProfile {
-  const profile = UNIT_LOCOMOTION_CONFIG.fluidResistanceProfiles[profileId];
-  if (profile === undefined) {
-    throw new Error(`Invalid unit locomotion resistanceProfileId "${profileId}"`);
-  }
-  return profile;
-}
 
 export function getUnitLocomotionPreset(presetId: string): UnitLocomotionPresetConfig {
   const preset = UNIT_LOCOMOTION_CONFIG.presets[presetId];

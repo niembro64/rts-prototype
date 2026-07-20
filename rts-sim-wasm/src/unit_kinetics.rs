@@ -355,6 +355,21 @@ fn unit_force_full_medium_surface_lift(
     }
 }
 
+/// Apply a positive full-medium physics value to the part of a body that
+/// occupies that medium. Air and water are complementary volume fractions,
+/// not mutually exclusive modes, so this is shared by propulsion, lift, and
+/// angular resistance.
+#[inline]
+pub(crate) fn unit_force_occupancy_weighted_positive_value(
+    full_medium_value: f64,
+    occupied_fraction: f64,
+) -> f64 {
+    if !full_medium_value.is_finite() || !occupied_fraction.is_finite() {
+        return 0.0;
+    }
+    full_medium_value.max(0.0) * occupied_fraction.clamp(0.0, 1.0)
+}
+
 /** Canonical reciprocal-distance response shared by air and water surface
  * lift. Force magnitude is deliberately not an input: authored force strength
  * and distance response are independent physical quantities. */
@@ -475,6 +490,44 @@ pub(crate) fn unit_force_project_horizontal_onto_slope(
         1.0
     };
     (tx * inv, ty * inv, tz * inv)
+}
+
+/// A directed air or water force that meets a supporting surface cannot keep
+/// pushing through that surface. Resolve its horizontal drive direction along
+/// the contact tangent, exactly as ground drive does; this gives an
+/// amphibious unit an uphill component while it still has fluid drive at the
+/// shoreline.
+#[inline]
+fn unit_force_planar_drive_direction_for_contact(
+    ground_contact: bool,
+    dir_x: f64,
+    dir_y: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
+) -> (f64, f64, f64) {
+    if ground_contact {
+        unit_force_project_horizontal_onto_slope(dir_x, dir_y, normal_x, normal_y, normal_z)
+    } else {
+        (dir_x, dir_y, 0.0)
+    }
+}
+
+/// Convert a world-space movement request into a signed throttle for a
+/// body-forward actuator. A positive request drives along the nose, while a
+/// request opposite the nose applies reverse thrust. This lets the arrival
+/// controller brake a swimmer before it overshoots a waypoint instead of
+/// continuing to accelerate through the turn.
+#[inline]
+fn unit_force_body_forward_throttle(
+    requested_dir_x: f64,
+    requested_dir_y: f64,
+    forward_x: f64,
+    forward_y: f64,
+    thrust_scale: f64,
+) -> f64 {
+    let projection = requested_dir_x * forward_x + requested_dir_y * forward_y;
+    projection.clamp(-1.0, 1.0) * thrust_scale.clamp(0.0, 1.0)
 }
 
 #[inline]
@@ -971,14 +1024,25 @@ pub fn unit_force_step_batch(
         } else {
             (0.0, 0.0)
         };
-        let (drive_dir_x, drive_dir_y, has_drive_dir) = if has_thrust && thrust_input_mag > 0.0 {
+        let (drive_dir_x, drive_dir_y, has_drive_dir, drive_thrust_scale) = if has_thrust && thrust_input_mag > 0.0 {
             if propulsion_body_forward {
-                (forward_x, forward_y, true)
+                (
+                    forward_x,
+                    forward_y,
+                    true,
+                    unit_force_body_forward_throttle(
+                        requested_dir_x,
+                        requested_dir_y,
+                        forward_x,
+                        forward_y,
+                        thrust_scale,
+                    ),
+                )
             } else {
-                (requested_dir_x, requested_dir_y, true)
+                (requested_dir_x, requested_dir_y, true, thrust_scale)
             }
         } else {
-            (0.0, 0.0, false)
+            (0.0, 0.0, false, 0.0)
         };
 
         let mut thrust_force_x = 0.0;
@@ -1007,7 +1071,7 @@ pub fn unit_force_step_batch(
             let mut air_target_dir_y = 0.0;
             let mut air_has_target_dir = false;
             let air_thrust_scale = if has_thrust {
-                thrust_scale
+                drive_thrust_scale
             } else if cruise_when_uncommanded {
                 1.0
             } else {
@@ -1044,21 +1108,35 @@ pub fn unit_force_step_batch(
             };
             let full_medium_surface_lift = unit_force_full_medium_surface_lift(proposed_force);
             if medium_lift_enabled && full_medium_surface_lift > 0.0 {
-                thrust_force_z += air_fraction * full_medium_surface_lift;
+                thrust_force_z += unit_force_occupancy_weighted_positive_value(
+                    full_medium_surface_lift,
+                    air_fraction,
+                );
             }
 
             if air_has_target_dir {
-                let thrust_mag =
-                    air_max_propulsive_force * air_fraction * air_thrust_scale;
-                if cruise_when_uncommanded || propulsion_body_forward {
+                let thrust_mag = unit_force_occupancy_weighted_positive_value(
+                    air_max_propulsive_force,
+                    air_fraction,
+                ) * air_thrust_scale;
+                let (air_drive_dir_x, air_drive_dir_y) = if cruise_when_uncommanded || propulsion_body_forward {
                     // Aircraft-style locomotion: engine thrust follows the nose, while
                     // the requested movement direction is only the yaw target below.
-                    thrust_force_x += forward_x * thrust_mag;
-                    thrust_force_y += forward_y * thrust_mag;
+                    (forward_x, forward_y)
                 } else {
-                    thrust_force_x += air_target_dir_x * thrust_mag;
-                    thrust_force_y += air_target_dir_y * thrust_mag;
-                }
+                    (air_target_dir_x, air_target_dir_y)
+                };
+                let (tx, ty, tz) = unit_force_planar_drive_direction_for_contact(
+                    ground_contact,
+                    air_drive_dir_x,
+                    air_drive_dir_y,
+                    rows[base + UF_ROW_NORMAL_X],
+                    rows[base + UF_ROW_NORMAL_Y],
+                    rows[base + UF_ROW_NORMAL_Z],
+                );
+                thrust_force_x += tx * thrust_mag;
+                thrust_force_y += ty * thrust_mag;
+                thrust_force_z += tz * thrust_mag;
             }
             let air_linear_damping_rate = rows[base + UF_ROW_AIR_LINEAR_DAMPING_RATE];
             if air_linear_damping_rate > 0.0 && body_mass > 0.0 {
@@ -1082,10 +1160,21 @@ pub fn unit_force_step_batch(
 
         if water_medium_active {
             if has_drive_dir && water_max_propulsive_force > 0.0 {
-                let mag =
-                    water_max_propulsive_force * water_fraction * thrust_scale;
-                thrust_force_x += drive_dir_x * mag;
-                thrust_force_y += drive_dir_y * mag;
+                let mag = unit_force_occupancy_weighted_positive_value(
+                    water_max_propulsive_force,
+                    water_fraction,
+                ) * drive_thrust_scale;
+                let (tx, ty, tz) = unit_force_planar_drive_direction_for_contact(
+                    ground_contact,
+                    drive_dir_x,
+                    drive_dir_y,
+                    rows[base + UF_ROW_NORMAL_X],
+                    rows[base + UF_ROW_NORMAL_Y],
+                    rows[base + UF_ROW_NORMAL_Z],
+                );
+                thrust_force_x += tx * mag;
+                thrust_force_y += ty * mag;
+                thrust_force_z += tz * mag;
             }
 
             let inverse_lift_force_from_ground_surface =
@@ -1104,7 +1193,10 @@ pub fn unit_force_step_batch(
                 };
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(proposed_force);
                 if full_medium_surface_lift > 0.0 {
-                    thrust_force_z += water_fraction * full_medium_surface_lift;
+                    thrust_force_z += unit_force_occupancy_weighted_positive_value(
+                        full_medium_surface_lift,
+                        water_fraction,
+                    );
                 }
             }
 
@@ -1123,7 +1215,10 @@ pub fn unit_force_step_batch(
                 };
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(proposed_force);
                 if full_medium_surface_lift > 0.0 {
-                    thrust_force_z += water_fraction * full_medium_surface_lift;
+                    thrust_force_z += unit_force_occupancy_weighted_positive_value(
+                        full_medium_surface_lift,
+                        water_fraction,
+                    );
                 }
             }
 
@@ -1157,7 +1252,7 @@ pub fn unit_force_step_batch(
                 * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             let available_ground_force = ground_max_propulsive_force.min(contact_force_limit);
             if has_drive_dir {
-                let thrust_mag = available_ground_force * thrust_scale;
+                let thrust_mag = available_ground_force * drive_thrust_scale;
                 let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
                     drive_dir_x,
                     drive_dir_y,
@@ -1204,14 +1299,25 @@ pub fn unit_force_step_batch(
             if attitude_ground_contact {
                 angular_damping += rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             }
-            angular_damping += air_fraction * air_angular_damping_rate.max(0.0);
-            angular_damping += water_fraction * water_angular_damping_rate.max(0.0);
+            angular_damping += unit_force_occupancy_weighted_positive_value(
+                air_angular_damping_rate,
+                air_fraction,
+            );
+            angular_damping += unit_force_occupancy_weighted_positive_value(
+                water_angular_damping_rate,
+                water_fraction,
+            );
             let attitude_max_propulsive_force = (if attitude_ground_contact {
                 ground_max_propulsive_force
             } else {
                 0.0
-            }) + air_fraction * air_max_propulsive_force
-                + water_fraction * water_max_propulsive_force;
+            }) + unit_force_occupancy_weighted_positive_value(
+                air_max_propulsive_force,
+                air_fraction,
+            ) + unit_force_occupancy_weighted_positive_value(
+                water_max_propulsive_force,
+                water_fraction,
+            );
 
             if unit_force_attitude_step(
                 rows,
@@ -1398,6 +1504,47 @@ mod tests {
             unit_force_water_fraction(TERRAIN_WATER_LEVEL + radius * 0.5, radius),
             5.0 / 32.0,
         );
+    }
+
+    #[test]
+    fn positive_medium_values_are_weighted_by_occupied_volume() {
+        assert_near(unit_force_occupancy_weighted_positive_value(8.0, 0.0), 0.0);
+        assert_near(unit_force_occupancy_weighted_positive_value(8.0, 0.25), 2.0);
+        assert_near(unit_force_occupancy_weighted_positive_value(8.0, 0.75), 6.0);
+        assert_near(
+            unit_force_occupancy_weighted_positive_value(8.0, 0.25)
+                + unit_force_occupancy_weighted_positive_value(8.0, 0.75),
+            8.0,
+        );
+        assert_near(unit_force_occupancy_weighted_positive_value(-8.0, 0.5), 0.0);
+        assert_near(
+            unit_force_occupancy_weighted_positive_value(8.0, f64::NAN),
+            0.0,
+        );
+    }
+
+    #[test]
+    fn fluid_drive_uses_the_supported_slope_tangent_at_a_shoreline() {
+        let slope_normal_z = 3.0_f64.sqrt() * 0.5;
+        let (airborne_x, airborne_y, airborne_z) =
+            unit_force_planar_drive_direction_for_contact(false, 1.0, 0.0, -0.5, 0.0, slope_normal_z);
+        assert_near(airborne_x, 1.0);
+        assert_near(airborne_y, 0.0);
+        assert_near(airborne_z, 0.0);
+
+        let (contact_x, contact_y, contact_z) =
+            unit_force_planar_drive_direction_for_contact(true, 1.0, 0.0, -0.5, 0.0, slope_normal_z);
+        assert_near(contact_x, slope_normal_z);
+        assert_near(contact_y, 0.0);
+        assert_near(contact_z, 0.5);
+    }
+
+    #[test]
+    fn body_forward_drive_allows_arrival_control_to_reverse_brake() {
+        assert_near(unit_force_body_forward_throttle(1.0, 0.0, 1.0, 0.0, 1.0), 1.0);
+        assert_near(unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 1.0), -1.0);
+        assert_near(unit_force_body_forward_throttle(0.0, 1.0, 1.0, 0.0, 1.0), 0.0);
+        assert_near(unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 0.4), -0.4);
     }
 
     #[test]

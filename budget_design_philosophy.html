@@ -949,16 +949,17 @@
         ground + water.
       </p>
       <p>
-        Locomotion is grouped by physical responsibility. The actuator owns one
-        <code>maxPropulsiveForce</code> for the chassis; it can apply that budget only in a
-        navigation-enabled medium. Ground owns <code>staticFrictionCoefficient</code> and
-        <code>tangentialDampingRate</code>. Air and water each own a named resistance profile
-        with exactly <code>linearDampingRate</code> and <code>angularDampingRate</code>. There
+        Locomotion is grouped by physical responsibility. Ground, air, and water each own an
+        explicit <code>maxPropulsiveForce</code>. Navigation permissions select legal route
+        cells; they do not disable an authored air or water force while the body physically
+        occupies that medium.
+        Ground also owns <code>staticFrictionCoefficient</code> and <code>tangentialDampingRate</code>.
+        Air and water each own <code>linearDampingRate</code> and <code>angularDampingRate</code>. There
         are no hidden force multipliers, reference-mass scales, global thrust scales,
         anisotropic direction scales, or quadratic terms between authored values and the force law.
       </p>
       <ul class="rule-list">
-        <li><strong>Propulsion</strong> is one maximum directed chassis force. It is enabled only in a navigation-permitted medium; the simulator applies <code>a = F / m</code>, so mass matters directly and a unit has one clear force budget to tune.</li>
+        <li><strong>Propulsion</strong> is a separate maximum directed force for ground, air, and water. Air and water forces are weighted by their occupied volume fractions, independently of route permission; when a body contacts a slope, every directed drive resolves along that supporting tangent rather than into the terrain. The simulator applies <code>a = F / m</code>, so mass matters directly and each medium can be tuned independently.</li>
         <li><strong>Static friction</strong> is contact traction: ground propulsion is limited by <code>normalLoad * staticFrictionCoefficient</code>. It is not a velocity-resistance setting.</li>
         <li><strong>Tangential damping</strong> is a supported-contact velocity decay rate. It damps residual sliding along the contact plane and is therefore separate from static friction: one caps commanded force, the other removes existing tangential velocity.</li>
         <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>

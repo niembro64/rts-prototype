@@ -1,4 +1,4 @@
-import type { SurfaceFollowingProbeAggregationMode } from './unitLocomotionPresetConfig';
+import type { SurfaceFollowingProbeAggregationMode } from './surfaceProbeSets';
 
 /** Air lift uses exactly one supporting surface source at each probe. */
 export function surfaceProbeUsesWaterSurface(

@@ -1,5 +1,5 @@
 import { getSimWasm } from '../sim-wasm/init';
-import { SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD } from './unitLocomotionPresetConfig';
+import { SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD } from './surfaceProbeSets';
 
 /** Exact signed-altitude clamp used before the inverse-distance response. */
 export function getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ: number, surfaceZ: number): number {

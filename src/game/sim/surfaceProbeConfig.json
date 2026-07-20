@@ -1,4 +1,8 @@
 {
+  "surfaceFollowingDefaults": {
+    "minimumDistanceWorld": 10,
+    "probeAggregation": "average"
+  },
   "spacing": {
     "world": 225
   },
@@ -11,6 +15,7 @@
     "few": {
       "points": [
         { "forward": 0, "lateral": 0 },
+        { "forward": 1, "lateral": 0 },
         { "forward": 2, "lateral": 0 },
         { "forward": -1, "lateral": 0 },
         { "forward": 0, "lateral": 1 },
@@ -20,6 +25,7 @@
     "many": {
       "points": [
         { "forward": 0, "lateral": 0 },
+        { "forward": 1, "lateral": 0 },
         { "forward": 2, "lateral": 0 },
         { "forward": 4, "lateral": 0 },
         { "forward": 0, "lateral": 1 },

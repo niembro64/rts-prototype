@@ -6,7 +6,6 @@ import {
 } from '../unitLocomotion';
 import {
   UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS,
-  getUnitLocomotionFluidResistance,
   getUnitLocomotionPreset,
 } from '../unitLocomotionPresetConfig';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
@@ -101,21 +100,26 @@ export function runUnitLocomotionContractTest(): void {
     const preset = getUnitLocomotionPreset(presetId);
     const ground = preset.actuator.ground;
     assertContract(
-      preset.actuator.maxPropulsiveForce >= 0 &&
+      ground.maxPropulsiveForce >= 0 &&
         ground.staticFrictionCoefficient >= 0 &&
         ground.tangentialDampingRate >= 0,
-      `${presetId} has one finite actuator force budget and ground contact physics`,
+      `${presetId}.ground owns propulsion and contact physics`,
     );
     assertContract(
-      rawPreset.actuator.maxPropulsiveForce === preset.actuator.maxPropulsiveForce,
-      `${presetId} preserves its one authored actuator force budget`,
+      rawPreset.actuator.ground.maxPropulsiveForce === ground.maxPropulsiveForce,
+      `${presetId}.ground preserves its authored propulsion force`,
     );
     for (const medium of ['air', 'water'] as const) {
       const runtime = preset.actuator[medium];
-      const resistance = getUnitLocomotionFluidResistance(runtime.resistanceProfileId);
       assertContract(
-        resistance.linearDampingRate >= 0 && resistance.angularDampingRate >= 0,
-        `${presetId}.${medium} resolves one linear and one angular damping rate`,
+        runtime.maxPropulsiveForce >= 0 &&
+          runtime.linearDampingRate >= 0 &&
+          runtime.angularDampingRate >= 0,
+        `${presetId}.${medium} owns propulsion plus linear and angular damping`,
+      );
+      assertContract(
+        rawPreset.actuator[medium].maxPropulsiveForce === runtime.maxPropulsiveForce,
+        `${presetId}.${medium} preserves its authored propulsion force`,
       );
       for (const field of UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS) {
         assertContract(
@@ -135,9 +139,11 @@ export function runUnitLocomotionContractTest(): void {
     const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
     const clone = cloneUnitLocomotion(runtime);
     assertContract(
-      clone.actuator.maxPropulsiveForce === runtime.actuator.maxPropulsiveForce &&
+      clone.physics.ground.maxPropulsiveForce === runtime.physics.ground.maxPropulsiveForce &&
+        clone.physics.air.maxPropulsiveForce === runtime.physics.air.maxPropulsiveForce &&
+        clone.physics.water.maxPropulsiveForce === runtime.physics.water.maxPropulsiveForce &&
         clone.navigation.allowOnGround === runtime.navigation.allowOnGround,
-      `${blueprint.unitBlueprintId} locomotion cloning preserves actuator and navigation`,
+      `${blueprint.unitBlueprintId} locomotion cloning preserves per-medium propulsion and navigation`,
     );
     assertContract(
       runtime.physics.air.lift.surfaceFollowingInverseForceFromGround ===
@@ -153,6 +159,13 @@ export function runUnitLocomotionContractTest(): void {
     assertContract(
       getUnitLocomotionTraversalCapabilities(runtime).allowInAir === runtime.navigation.allowInAir,
       `${blueprint.unitBlueprintId} route permissions come from navigation, not visual type`,
+    );
+    assertContract(
+      runtime.physics.air.maxPropulsiveForce ===
+        getUnitLocomotionPreset(runtime.physicsPresetId).actuator.air.maxPropulsiveForce &&
+        runtime.physics.water.maxPropulsiveForce ===
+          getUnitLocomotionPreset(runtime.physicsPresetId).actuator.water.maxPropulsiveForce,
+      `${blueprint.unitBlueprintId} retains authored air and water drive independently of route permission`,
     );
   }
 
@@ -187,14 +200,15 @@ export function runUnitLocomotionContractTest(): void {
 
   const eagle = getUnitLocomotion('unitEagle');
   assertContract(
-    eagle.navigation.allowInAir && eagle.actuator.maxPropulsiveForce > 0,
-    'Eagle has explicit air navigation and an actuator force budget',
+    eagle.navigation.allowInAir && eagle.physics.air.maxPropulsiveForce > 0,
+    'Eagle has explicit air navigation and air propulsion',
   );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(
-    !orca.navigation.allowOnGround &&
+      !orca.navigation.allowOnGround &&
       orca.navigation.allowInWater &&
-      orca.actuator.maxPropulsiveForce > 0 &&
+      orca.physics.ground.maxPropulsiveForce === 0 &&
+      orca.physics.water.maxPropulsiveForce > 0 &&
       !orca.motionControl.maintainFullThrustAtWaypoints &&
       !orca.motionControl.cruiseWhenUncommanded,
     'Orca is water-navigable and brakes to stop at a waypoint',

@@ -2,6 +2,10 @@ import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
 import rawSurfaceProbeConfig from './surfaceProbeConfig.json';
 
 export const SURFACE_PROBE_SET_IDS = ['single', 'few', 'many'] as const;
+export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
+export type SurfaceFollowingProbeAggregationMode =
+  (typeof SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES)[number];
+
 export type SurfaceProbePoint = Readonly<{
   /** Integer lattice coordinate in units of the one shared probe spacing. */
   forward: number;
@@ -17,7 +21,15 @@ export type SurfaceProbeSet = Readonly<{
   points: readonly SurfaceProbePoint[];
 }>;
 
+export type SurfaceFollowingDefaults = Readonly<{
+  /** Minimum distance passed to the inverse-distance lift response. */
+  minimumDistanceWorld: number;
+  /** How force proposals from a preset's named probe layout are combined. */
+  probeAggregation: SurfaceFollowingProbeAggregationMode;
+}>;
+
 type SurfaceProbeConfig = {
+  surfaceFollowingDefaults: SurfaceFollowingDefaults;
   spacing: SurfaceProbeSpacing;
   sets: Record<SurfaceProbeSetId, SurfaceProbeSet>;
 };
@@ -52,9 +64,32 @@ function assertFinite(label: string, value: unknown): asserts value is number {
   }
 }
 
+function isSurfaceFollowingProbeAggregationMode(
+  value: unknown,
+): value is SurfaceFollowingProbeAggregationMode {
+  return typeof value === 'string' &&
+    (SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES as readonly string[]).includes(value);
+}
+
 function readSurfaceProbeConfig(): SurfaceProbeConfig {
   assertObject('root', rawSurfaceProbeConfig);
-  assertExactKeys('root', rawSurfaceProbeConfig, ['spacing', 'sets']);
+  assertExactKeys('root', rawSurfaceProbeConfig, ['surfaceFollowingDefaults', 'spacing', 'sets']);
+  assertObject('surfaceFollowingDefaults', rawSurfaceProbeConfig.surfaceFollowingDefaults);
+  assertExactKeys(
+    'surfaceFollowingDefaults',
+    rawSurfaceProbeConfig.surfaceFollowingDefaults,
+    ['minimumDistanceWorld', 'probeAggregation'],
+  );
+  assertFinite(
+    'surfaceFollowingDefaults.minimumDistanceWorld',
+    rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld,
+  );
+  if (rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld <= 0) {
+    throw new Error('Invalid surfaceProbeConfig.json: surfaceFollowingDefaults.minimumDistanceWorld must be positive');
+  }
+  if (!isSurfaceFollowingProbeAggregationMode(rawSurfaceProbeConfig.surfaceFollowingDefaults.probeAggregation)) {
+    throw new Error('Invalid surfaceProbeConfig.json: invalid surfaceFollowingDefaults.probeAggregation');
+  }
   assertObject('spacing', rawSurfaceProbeConfig.spacing);
   assertExactKeys('spacing', rawSurfaceProbeConfig.spacing, ['world']);
   assertFinite('spacing.world', rawSurfaceProbeConfig.spacing.world);
@@ -89,6 +124,10 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
     sets[setId] = Object.freeze({ points: Object.freeze(points) });
   }
   return {
+    surfaceFollowingDefaults: Object.freeze({
+      minimumDistanceWorld: rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld,
+      probeAggregation: rawSurfaceProbeConfig.surfaceFollowingDefaults.probeAggregation,
+    }),
     spacing: Object.freeze({
       world: rawSurfaceProbeConfig.spacing.world,
     }),
@@ -97,6 +136,11 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
 }
 
 const SURFACE_PROBE_CONFIG = readSurfaceProbeConfig();
+
+export const SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD =
+  SURFACE_PROBE_CONFIG.surfaceFollowingDefaults.minimumDistanceWorld;
+export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE =
+  SURFACE_PROBE_CONFIG.surfaceFollowingDefaults.probeAggregation;
 
 export function isSurfaceProbeSetId(value: unknown): value is SurfaceProbeSetId {
   return typeof value === 'string' &&

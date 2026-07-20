@@ -12,15 +12,17 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   for (const presetId of ['flippers', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
-      preset.actuator.maxPropulsiveForce >= 0 &&
+      preset.actuator.ground.maxPropulsiveForce >= 0 &&
         preset.actuator.ground.staticFrictionCoefficient >= 0,
-      `${presetId} declares one actuator force budget and static friction`,
+      `${presetId}.ground declares propulsion and static friction`,
     );
     for (const medium of ['air', 'water'] as const) {
       const fluid = preset.actuator[medium];
       assertContract(
-        fluid.resistanceProfileId.length > 0,
-        `${presetId}.${medium} declares one resistance profile`,
+        fluid.maxPropulsiveForce >= 0 &&
+          fluid.linearDampingRate >= 0 &&
+          fluid.angularDampingRate >= 0,
+        `${presetId}.${medium} owns propulsion plus linear and angular damping`,
       );
       for (const field of UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS) {
         assertContract(
@@ -38,10 +40,13 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
 
   const seaTurtle = getUnitLocomotion('unitSeaTurtle');
   assertContract(
-    seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+    seaTurtle.physics.ground.maxPropulsiveForce < seaTurtle.physics.water.maxPropulsiveForce &&
+      seaTurtle.physics.air.maxPropulsiveForce === 0 &&
+      !seaTurtle.navigation.allowInAir &&
+      seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
       seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
       seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater > 0,
-    'Sea Turtle declares independent inverse bottom and proportional water-surface lift channels',
+    'Sea Turtle uses its water drive and ground traction for a beach transition without gaining fast land air drive',
   );
   assertContract(
     getUnitBlueprint('unitSeaTurtle').radius.collision <
@@ -53,7 +58,8 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   assertContract(
     orca.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
       orca.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
-      orca.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
-    'Orca retains its inverse lakebed controller without an air surface swimmer controller',
+      orca.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
+      orca.physics.water.resistance.linearDampingRate >= 3,
+    'Orca retains its inverse lakebed controller and enough water drag to settle at waypoints',
   );
 }

@@ -14,9 +14,10 @@ import {
   surfaceProbeUsesWaterSurface,
 } from '../sim/surfaceProbeAggregation';
 import {
+  forEachSurfaceProbePoint,
   SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
   SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
-} from '../sim/unitLocomotionPresetConfig';
+} from '../sim/surfaceProbeSets';
 import {
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
@@ -57,7 +58,6 @@ import { codeToUnitBlueprintId } from '../../types/network';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { forEachSurfaceProbePoint } from '../sim/surfaceProbeSets';
 
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
 
@@ -175,18 +175,20 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
     if (unitBlueprintId !== null) {
       const loco = getUnitLocomotion(unitBlueprintId);
       const { ground, air, water } = loco.physics;
-      const { maxPropulsiveForce } = loco.actuator;
       signature += [
         codeCount,
-        loco.navigation.allowOnGround ? maxPropulsiveForce : 0,
+        loco.navigation.allowOnGround ? ground.maxPropulsiveForce : 0,
         ground.staticFrictionCoefficient,
         ground.tangentialDampingRate,
-        loco.navigation.allowInAir ? maxPropulsiveForce : 0,
+        // Navigation permissions select legal route cells. They must not erase
+        // a physical medium drive: a partly exposed amphibian still needs its
+        // air force while crossing the waterline.
+        air.maxPropulsiveForce,
         air.lift.surfaceFollowingInverseForceFromGround,
         air.lift.surfaceFollowingInverseForceFromWater,
         air.resistance.linearDampingRate,
         air.resistance.angularDampingRate,
-        loco.navigation.allowInWater ? maxPropulsiveForce : 0,
+        water.maxPropulsiveForce,
         water.lift.surfaceFollowingInverseForceFromGround,
         water.lift.surfaceFollowingProportionalForceFromWater,
         water.resistance.linearDampingRate,
@@ -241,17 +243,18 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     if (unitBlueprintId === null) continue;
     const loco = getUnitLocomotion(unitBlueprintId);
     const { ground, air, water } = loco.physics;
-    const { maxPropulsiveForce } = loco.actuator;
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = loco.navigation.allowOnGround ? maxPropulsiveForce : 0;
+    values[base + 0] = loco.navigation.allowOnGround ? ground.maxPropulsiveForce : 0;
     values[base + 1] = ground.staticFrictionCoefficient;
     values[base + 2] = ground.tangentialDampingRate;
-    values[base + 3] = loco.navigation.allowInAir ? maxPropulsiveForce : 0;
+    // Air and water drives are physics, not pathfinding permissions. The
+    // kernel weights each by the body's occupied fraction of that medium.
+    values[base + 3] = air.maxPropulsiveForce;
     values[base + 4] = air.lift.surfaceFollowingInverseForceFromGround;
     values[base + 5] = air.lift.surfaceFollowingInverseForceFromWater;
     values[base + 6] = air.resistance.linearDampingRate;
     values[base + 7] = air.resistance.angularDampingRate;
-    values[base + 8] = loco.navigation.allowInWater ? maxPropulsiveForce : 0;
+    values[base + 8] = water.maxPropulsiveForce;
     values[base + 9] = water.lift.surfaceFollowingInverseForceFromGround;
     values[base + 10] = water.lift.surfaceFollowingProportionalForceFromWater;
     values[base + 11] = water.resistance.linearDampingRate;
@@ -541,13 +544,13 @@ export class UnitForceSystem {
         const debugFrame = this.surfaceLiftProbeDebugEntityIds.has(entity.id)
           ? this.createSurfaceLiftProbeDebugFrame(entity.id)
           : undefined;
-        const waterFraction = debugFrame !== undefined
-          ? sim.unitForceWaterFraction(bodyZ, bodyRadius)
-          : 0;
-        const airLiftMediumActive = debugFrame !== undefined && waterFraction < 1 &&
+        // Surface support is gameplay physics, not a debug-only feature. The
+        // overlay merely records the samples; every unit still needs its
+        // occupied-medium support proposal during an ordinary simulation tick.
+        const waterFraction = sim.unitForceWaterFraction(bodyZ, bodyRadius);
+        const airLiftMediumActive = waterFraction < 1 &&
           (airGroundInverseLiftAuthored || airWaterInverseLiftAuthored);
-        const waterLiftMediumActive = debugFrame !== undefined &&
-          waterFraction > 0 &&
+        const waterLiftMediumActive = waterFraction > 0 &&
           (waterGroundInverseLiftAuthored || waterSurfaceProportionalLiftAuthored);
         let probeDirX = 0;
         let probeDirY = 0;

@@ -41,7 +41,7 @@ export function computeLocomotionClimbProfile(
   const groundPhysics = locomotion.physics.ground;
   const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation;
   const groundMaxPropulsiveForce = allowOnGround
-    ? locomotion.actuator.maxPropulsiveForce
+    ? groundPhysics.maxPropulsiveForce
     : 0;
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
