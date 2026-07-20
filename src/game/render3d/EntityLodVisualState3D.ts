@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { ConstructionEmitterRig, ResourcePylonRig } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
+import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 
 type Vec3State = readonly [number, number, number];
 type TransformState = Readonly<{
@@ -184,9 +185,6 @@ export function applyEntityLodVisualState3D(
   if (state === undefined) return;
   mesh.visualBankRoll = state.visualBankRoll;
   mesh.solarOpenAmount = state.solarOpenAmount;
-  // The new solar geometry begins in its authored open pose. Leaving the
-  // applied-pose marker unset makes the animation controller immediately
-  // reapply the retained open amount to the replacement leaf meshes.
   mesh.solarPetalPoseAmount = undefined;
 
   const emitters = constructionEmitters(mesh);
@@ -201,6 +199,15 @@ export function applyEntityLodVisualState3D(
     for (let i = 0; i < mesh.buildingDetails.length; i++) {
       const transforms = state.buildingDetailTransforms[i];
       if (transforms) applySubtree(mesh.buildingDetails[i].mesh, transforms);
+    }
+    // Building detail lists legitimately differ by LOD rung. Solar leaves
+    // must never inherit a positional transform from a different detail role;
+    // derive all four leaf/panel transforms from the retained semantic pose.
+    if (
+      mesh.solarOpenAmount !== undefined &&
+      applySolarCollectorPetalPose(mesh.buildingDetails, mesh.solarOpenAmount)
+    ) {
+      mesh.solarPetalPoseAmount = mesh.solarOpenAmount;
     }
   }
 }

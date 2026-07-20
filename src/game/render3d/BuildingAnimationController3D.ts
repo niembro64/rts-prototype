@@ -18,8 +18,7 @@ import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import {
-  writeSolarPetalMatrix,
-  type SolarPetalAnimation,
+  applySolarCollectorPetalPose,
 } from './SolarCollectorMesh3D';
 import type {
   ConstructionEmitterRig,
@@ -40,9 +39,10 @@ import {
 } from './BuildingResourcePylonAnimator3D';
 import { windRotorAngularSpeed } from './WindKinematics3D';
 
-// Open/close pose transitions are discrete local state changes, not
-// snapshot rotation fields. They use local, named controller response rates.
-const SOLAR_PETAL_ANIM_ALPHA = 0.16;
+// Open/close pose transitions are discrete local state changes, not snapshot
+// rotation fields. One fixed progress duration makes closing the exact reverse
+// of opening, including the symmetric pose easing in SolarCollectorMesh3D.
+const SOLAR_PETAL_TRANSITION_DURATION_SEC = 0.6;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
 const EXTRACTOR_ROTOR_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
@@ -53,7 +53,6 @@ const WIND_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
  *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
  *  solar petal animator's feel — smooth but not laggy. */
 const BUILDING_FORTIFY_ANIM_ALPHA = 0.12;
-const _solarPetalDirection = new THREE.Vector3();
 const _extractorBladeQuat = new THREE.Quaternion();
 const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
@@ -236,7 +235,7 @@ export class BuildingAnimationController3D {
     _timeMs: number,
   ): void {
     this.resourcePylonAnimator.refreshActiveQueue();
-    this.updateActiveSolarAnimations();
+    this.updateActiveSolarAnimations(currentDtMs / 1000);
 
     this.updateActiveWindAnimations();
     this.updateActiveExtractorAnimations(spinDt);
@@ -310,11 +309,16 @@ export class BuildingAnimationController3D {
     );
   }
 
-  private updateActiveSolarAnimations(): void {
+  private updateActiveSolarAnimations(deltaSec: number): void {
     for (let i = 0; i < this.activeSolarBuildings.length;) {
       const entry = this.activeSolarBuildings[i];
       const detailsReady = entry.mesh.buildingCachedDetailsReady === true;
-      if (this.updateSolarCollectorAnimation(entry.mesh, entry.entity, detailsReady)) {
+      if (this.updateSolarCollectorAnimation(
+        entry.mesh,
+        entry.entity,
+        detailsReady,
+        deltaSec,
+      )) {
         i++;
       } else {
         removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
@@ -326,8 +330,9 @@ export class BuildingAnimationController3D {
     if (entry.entity.buildingBlueprintId !== 'buildingSolar' || !entry.mesh.buildingDetails) return false;
     const target = this.solarTargetAmount(entry.entity);
     const current = entry.mesh.solarOpenAmount ?? target;
-    const appliedPose = entry.mesh.solarPetalPoseAmount ?? 1;
-    return Math.abs(target - current) >= BUILDING_RIG_IDLE_EPSILON ||
+    const appliedPose = entry.mesh.solarPetalPoseAmount;
+    return appliedPose === undefined ||
+      Math.abs(target - current) >= BUILDING_RIG_IDLE_EPSILON ||
       Math.abs(target - appliedPose) >= BUILDING_RIG_IDLE_EPSILON;
   }
 
@@ -617,44 +622,22 @@ export class BuildingAnimationController3D {
     m: EntityMesh,
     e: Entity,
     detailsReady: boolean,
+    deltaSec: number,
   ): boolean {
     if (e.buildingBlueprintId !== 'buildingSolar' || !m.buildingDetails) return false;
     if (!detailsReady) return this.solarAnimationNeedsFrame({ id: e.id, entity: e, mesh: m });
     const target = this.solarTargetAmount(e);
     const current = m.solarOpenAmount ?? target;
-    const next = Math.abs(target - current) < 0.002
-      ? target
-      : current + (target - current) * SOLAR_PETAL_ANIM_ALPHA;
+    const progressDelta = Number.isFinite(deltaSec)
+      ? Math.max(0, deltaSec) / SOLAR_PETAL_TRANSITION_DURATION_SEC
+      : 0;
+    const next = target > current
+      ? Math.min(target, current + progressDelta)
+      : Math.max(target, current - progressDelta);
     m.solarOpenAmount = next;
-
-    const t = next * next * (3 - 2 * next);
-    for (const detail of m.buildingDetails) {
-      if (
-        detail.role !== 'solarLeaf' &&
-        detail.role !== 'solarPanel' &&
-        detail.role !== 'solarTeamAccent'
-      ) continue;
-      const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
-      if (!anim) continue;
-      _solarPetalDirection
-        .copy(anim.closedDirection)
-        .lerp(anim.openDirection, t)
-        .normalize();
-      writeSolarPetalMatrix(
-        detail.mesh.matrix,
-        anim.width,
-        anim.length,
-        anim.hinge,
-        anim.tangent,
-        _solarPetalDirection,
-        anim.inset,
-        anim.normalOffset,
-        anim.thickness,
-        anim.panelSideHint,
-      );
-      detail.mesh.matrixWorldNeedsUpdate = true;
+    if (applySolarCollectorPetalPose(m.buildingDetails, next)) {
+      m.solarPetalPoseAmount = next;
     }
-    m.solarPetalPoseAmount = next;
     return Math.abs(target - next) >= BUILDING_RIG_IDLE_EPSILON;
   }
 

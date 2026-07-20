@@ -118,6 +118,51 @@ const _solarPetalXAxis = new THREE.Vector3();
 const _solarPetalYAxis = new THREE.Vector3();
 const _solarPetalZAxis = new THREE.Vector3();
 
+function isSolarPetalDetail(detail: BuildingDetailMesh): boolean {
+  return detail.role === 'solarLeaf' ||
+    detail.role === 'solarPanel' ||
+    detail.role === 'solarTeamAccent';
+}
+
+/** Apply one canonical open/closed pose to every visible solar leaf. This is
+ * used both by the live animator and by mesh construction/LOD transfer, so a
+ * rebuilt collector never relies on detail-array ordering to recover a pose. */
+export function applySolarCollectorPetalPose(
+  details: readonly BuildingDetailMesh[] | undefined,
+  openAmount: number,
+): boolean {
+  if (details === undefined) return false;
+  const amount = Number.isFinite(openAmount)
+    ? Math.min(1, Math.max(0, openAmount))
+    : 1;
+  const t = amount * amount * (3 - 2 * amount);
+  let applied = false;
+  for (const detail of details) {
+    if (!isSolarPetalDetail(detail)) continue;
+    const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
+    if (!anim) continue;
+    _solarPetalDirection
+      .copy(anim.closedDirection)
+      .lerp(anim.openDirection, t)
+      .normalize();
+    writeSolarPetalMatrix(
+      detail.mesh.matrix,
+      anim.width,
+      anim.length,
+      anim.hinge,
+      anim.tangent,
+      _solarPetalDirection,
+      anim.inset,
+      anim.normalOffset,
+      anim.thickness,
+      anim.panelSideHint,
+    );
+    detail.mesh.matrixWorldNeedsUpdate = true;
+    applied = true;
+  }
+  return applied;
+}
+
 export function buildSolarCollector(
   width: number,
   depth: number,

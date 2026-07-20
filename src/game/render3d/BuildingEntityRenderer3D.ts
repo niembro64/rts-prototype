@@ -21,6 +21,7 @@ import {
 import type { EntityMesh } from './EntityMesh3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
+import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
@@ -242,6 +243,9 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     detail.mesh.userData.entityId = entity.id;
     group.add(detail.mesh);
   }
+  const solarOpenAmount = entity.building?.activeState?.open === false ? 0 : 1;
+  const solarPetalPoseApplied = shapeType === 'buildingSolar' &&
+    applySolarCollectorPetalPose(visibleDetails, solarOpenAmount);
 
   const buildingTurretMeshes: TurretMesh[] = [];
   const buildingTurrets = entity.combat?.turrets;
@@ -308,7 +312,8 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     buildingBodyless: shape.bodyless === true,
-    solarOpenAmount: entity.building?.activeState?.open === false ? 0 : 1,
+    solarOpenAmount,
+    solarPetalPoseAmount: solarPetalPoseApplied ? solarOpenAmount : undefined,
   };
 }
 

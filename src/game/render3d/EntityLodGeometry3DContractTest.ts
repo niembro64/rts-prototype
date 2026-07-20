@@ -80,6 +80,7 @@ import {
   applyEntityLodVisualState3D,
   captureEntityLodVisualState3D,
 } from './EntityLodVisualState3D';
+import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import {
   buildEnvironmentGrassLodGeometry,
   environmentLodFlatMaterialSpec,
@@ -939,6 +940,36 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
       state,
     );
   }
+
+  const solarBlueprint = getBuildingBlueprint('buildingSolar');
+  const solarWidth = solarBlueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+  const solarDepth = solarBlueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+  const solarHigh = buildBuildingShape(
+    solarBlueprint.renderProfile, solarWidth, solarDepth, material, 'buildingSolar', 'close',
+  );
+  const solarLow = buildBuildingShape(
+    solarBlueprint.renderProfile, solarWidth, solarDepth, material, 'buildingSolar', 'far',
+  );
+  const solarOpenAmount = 0.37;
+  assertContract(
+    applySolarCollectorPetalPose(solarHigh.details, solarOpenAmount),
+    'solar High mesh exposes animated petals',
+  );
+  const solarSource = visualStateMesh({
+    buildingDetails: solarHigh.details,
+    solarOpenAmount,
+    solarPetalPoseAmount: solarOpenAmount,
+  });
+  const solarTarget = visualStateMesh({ buildingDetails: solarLow.details });
+  applyEntityLodVisualState3D(solarTarget, captureEntityLodVisualState3D(solarSource));
+  const solarPose = (details: NonNullable<EntityMesh['buildingDetails']>) => details
+    .filter((detail) => detail.role === 'solarLeaf' || detail.role === 'solarPanel')
+    .map((detail) => ({ role: detail.role, transform: transformTuple(detail.mesh) }));
+  assertSame(
+    'solar petal pose survives High-to-Low rebuild without detail-index drift',
+    solarPose(solarTarget.buildingDetails!),
+    solarPose(solarSource.buildingDetails!),
+  );
 
   const head = createPrimitiveSphereGeometry('turret', 'close');
   const barrel = createPrimitiveCylinderGeometry('turret', 'close');
