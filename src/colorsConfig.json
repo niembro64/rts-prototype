@@ -892,17 +892,17 @@
     "commandCursor": {
       "outline": "#05070d",
       "white": "#f6faff",
-      "move": "#4ade5f",
+      "move": "#3fe05e",
       "fight": "#f24fb0",
       "patrol": "#3aa8ff",
-      "attack": "#ff4048",
-      "guard": "#4fdcf0",
+      "attack": "#ff3b45",
+      "guard": "#49dcf2",
       "repair": "#ffd23e",
-      "reclaim": "#6fe05a",
+      "reclaim": "#8ef06f",
       "build": "#ffc23a",
-      "dgun": "#ff5a2c",
-      "ping": "#8fe9ff",
-      "game": "#eef2f8"
+      "dgun": "#ff4a2a",
+      "ping": "#7fe6ff",
+      "game": "#dfe6ee"
     },
     "barThemes": {
       "battle": {
