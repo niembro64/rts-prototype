@@ -43,11 +43,14 @@ export type CommandCursorKind =
 
 const S = COLORS.ui.commandCursor;
 
-// The artwork is authored in a 64-unit square. That is also the cursor's
-// logical (CSS px) footprint, so hotspots are expressed directly in artwork
-// coordinates — no scaling math. High-DPI variants are the same art emitted at
-// 2x / 3x this pixel size (see DENSITIES).
+// The artwork is authored in a 64-unit square (VIEWBOX). DISPLAY is the cursor's
+// on-screen (CSS px) footprint at 1x density — tune this to make every cursor
+// bigger or smaller. Hotspots, authored in VIEWBOX coordinates, are scaled to
+// DISPLAY space in buildCascade. High-DPI variants are the same art emitted at
+// 2x / 3x the display size (see DENSITIES), so shrinking DISPLAY keeps them
+// crisp rather than just downsampling one bitmap.
 const VIEWBOX = 64;
+const DISPLAY = 22;
 const DENSITIES = [2, 3] as const;
 
 // ---------------------------------------------------------------------------
@@ -264,11 +267,14 @@ function svgDataUrl(inner: string, sizePx: number): string {
 // Build the ordered cascade of `cursor` values (least → most preferred). The
 // caller assigns each in turn; the last value the engine understands wins.
 function buildCascade(inner: string, spec: CursorSpec): string[] {
-  const { hotX, hotY, fallback } = spec;
-  const base = svgDataUrl(inner, VIEWBOX);
+  const { fallback } = spec;
+  const scale = DISPLAY / VIEWBOX;
+  const hotX = Math.round(spec.hotX * scale);
+  const hotY = Math.round(spec.hotY * scale);
+  const base = svgDataUrl(inner, DISPLAY);
   const set = [
     `url("${base}") 1x`,
-    ...DENSITIES.map((d) => `url("${svgDataUrl(inner, VIEWBOX * d)}") ${d}x`),
+    ...DENSITIES.map((d) => `url("${svgDataUrl(inner, DISPLAY * d)}") ${d}x`),
   ].join(', ');
   return [
     // 1. Bare keyword — always valid, so the cursor is never left unset.
