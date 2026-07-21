@@ -10,6 +10,10 @@ export type CameraAnchor = {
 };
 
 export type CameraMovementScaleMode =
+  /** Recoil SpringController parity: distance-relative wheel law, controller-
+   * distance pan rate, focus-on-terrain tracking, cardinal yaw lock, and BAR's
+   * cursor-in / center-out zoom edge handling. */
+  | 'bar-spring'
   | 'anchor-distance-relative'
   | 'absolute-world'
   | 'absolute-world-momentum';
@@ -91,7 +95,7 @@ export type CameraZoomInLimitMode = 'none' | 'zoom-max';
 export type CameraTargetBoundsMode = 'none' | 'map-padding';
 
 export type CameraConstraintConfig = {
-  /** 'zoom-max' derives the closest orbit distance from zoom.max. */
+  /** 'zoom-max' enables the configured closest orbit-distance rail. */
   readonly zoomInLimit: CameraZoomInLimitMode;
   /** 'map-padding' keeps the orbit target inside the padded map region. */
   readonly targetBounds: CameraTargetBoundsMode;
@@ -108,10 +112,7 @@ export type CameraLostTerrainRecoveryConfig = {
 };
 
 /** How the orbit camera resolves a frame where the eye would sit below
- *  terrain. Every mode keeps the camera looking at the orbit target, and
- *  NONE of them write terrain back into the orbit state (so zoom limits
- *  stay absolute and history-independent). They differ only in which
- *  rendered quantity absorbs the clearance:
+ *  terrain. Every mode keeps the camera looking at the orbit target:
  *
  *  - 'none'       — no clearance; the eye may pass under the heightfield.
  *  - 'raiseEye'   — lift only the eye's Y until it clears. Keeps the
@@ -121,5 +122,12 @@ export type CameraLostTerrainRecoveryConfig = {
  *  - 'clampPitch' — steepen the pitch (swing the eye up the orbit arc)
  *                   until it clears. Keeps the eye ON the orbit sphere at
  *                   the stored distance and the focus centered; only the
- *                   effective pitch diverges from the stored pitch. */
-export type CameraTerrainCollisionMode = 'none' | 'raiseEye' | 'clampPitch';
+ *                   effective pitch diverges from the stored pitch.
+ *  - 'persistRaiseEye' — translate eye and focus upward together and commit
+ *                   that translation as ordinary state. It never lowers the
+ *                   camera later and stores no pre-collision recovery pose. */
+export type CameraTerrainCollisionMode =
+  | 'none'
+  | 'raiseEye'
+  | 'clampPitch'
+  | 'persistRaiseEye';

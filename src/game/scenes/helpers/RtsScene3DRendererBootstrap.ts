@@ -186,6 +186,10 @@ export function bootstrapRtsScene3DRenderers(
       referenceSurfaceHeight,
     )
   );
+  threeApp.orbit.setWorldRayTracer((origin, direction, terrainMode, fallbackPlaneHeight) =>
+    cursorGround.pickWorldRay(origin, direction, terrainMode, fallbackPlaneHeight)
+  );
+  threeApp.orbit.setTerrainCollisionFloorHeight(WATER_LEVEL);
   threeApp.orbit.setTerrainSampler((x, z) =>
     getTerrainMeshHeight(x, z, mapWidth, mapHeight)
   );

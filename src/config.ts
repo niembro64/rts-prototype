@@ -21,6 +21,7 @@ import type {
   CameraConstraintConfig,
   CameraLostTerrainRecoveryConfig,
   CameraMovementConfig,
+  CameraTerrainCollisionMode,
   CameraZoomDistanceSamplingConfig,
 } from './types/camera';
 import {
@@ -730,6 +731,10 @@ export const ENTITY_HUD_FADE_END_DISTANCE_FRAC = entityHudConfigJson.fadeEndDist
  *  camera's pitch angle against the terrain. */
 export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
 
+/** BAR's first-frame Spring-camera rx=2.6 converted to this controller's
+ * angle-from-vertical convention: pitch = PI - rx. */
+export const CAMERA_INITIAL_PITCH_RADIANS = cameraConfigJson.initialPitchRadians;
+
 /** Orbit-camera EMA time constant for each configured smoothing mode. */
 export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
   Readonly<Record<CameraSmoothMode, number>>;
@@ -739,14 +744,16 @@ export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
  *  baseDistance / ZOOM_MAX. */
 export const ZOOM_MAX = cameraConfigJson.zoom.max;
 
+/** BAR's game-level Spring-camera closest focus distance. */
+export const ZOOM_MIN_ORBIT_DISTANCE = cameraConfigJson.zoom.minOrbitDistance;
+
 /** BAR Spring-camera zoom-out rail: controller distance is capped at 1.333x
  * the map's larger horizontal dimension. */
 export const ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR =
   cameraConfigJson.zoom.maxOrbitDistanceMapFactor;
 
-/** Maximum rendered camera-eye distance from the map center origin. This
- *  is the same world-unit distance shown in the CLIENT bar's ZOOM readout
- *  and acts as the authored zoom-out rail. */
+/** Display reference for rendered eye distance in the CLIENT bar. The actual
+ * BAR zoom-out rail is controller distance = 1.333x the larger map axis. */
 export const ZOOM_MAX_MAP_CENTER_DISTANCE = cameraConfigJson.zoom.maxMapCenterDistance;
 
 /** Far-distance reference for HUD fade, expressed as a multiple of the
@@ -789,6 +796,14 @@ export const CAMERA_CONSTRAINTS =
  * the viewport. Normal zoom/pan/orbit behavior is unaffected. */
 export const CAMERA_LOST_TERRAIN_RECOVERY =
   cameraConfigJson.lostTerrainRecovery as CameraLostTerrainRecoveryConfig;
+
+/** Eye-versus-terrain resolution. persistRaiseEye is the sole intentional
+ * departure from BAR: the resolved vertical lift is committed to controller
+ * state instead of disappearing after the eye clears the mountain. */
+export const CAMERA_TERRAIN_COLLISION = cameraConfigJson.terrainCollision as {
+  readonly mode: CameraTerrainCollisionMode;
+  readonly minClearance: number;
+};
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
 export type CameraBattleFocus =

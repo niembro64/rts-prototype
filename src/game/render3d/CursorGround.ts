@@ -105,6 +105,27 @@ export class CursorGround {
     return this.pickWorldFromCurrentRay(terrainMode);
   }
 
+  /** BAR SpringController's controller-space trace. Unlike pickWorld(), the
+   * ray origin can be the camera's destination eye while its direction still
+   * comes from the currently rendered cursor ray. If terrain is missed, BAR
+   * falls back to the supplied horizontal focus plane. */
+  pickWorldRay(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    terrainMode: CameraAnchorTerrain,
+    fallbackPlaneHeight: number,
+  ): THREE.Vector3 | null {
+    if (direction.lengthSq() <= 1e-12) return null;
+    this.raycaster.ray.origin.copy(origin);
+    this.raycaster.ray.direction.copy(direction).normalize();
+    if (terrainMode === 'plane-2d') {
+      return this.pickHorizontalPlaneRay(fallbackPlaneHeight);
+    }
+    const terrainHit = this.pickFirstTerrainSurfaceRay(this.terrainMesh === undefined);
+    if (terrainHit) return terrainHit;
+    return this.pickHorizontalPlaneRay(fallbackPlaneHeight);
+  }
+
   /** Fast peripheral picker for the optional 8/16 zoom-neighborhood rays.
    *  Unlike pickWorld(), this never traverses the full terrain or water mesh.
    *  It projects the screen ray onto a candidate horizontal surface, samples

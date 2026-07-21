@@ -59,10 +59,7 @@ export class RtsScene3DCameraFramingSystem {
     this.applyCameraFollow();
     this.threeApp.orbit.tick(deltaSec);
     if (defaults.autoRotate && defaults.autoRotateRate !== 0) {
-      this.threeApp.orbit.setOrbitAngles(
-        this.threeApp.orbit.yaw + defaults.autoRotateRate * deltaSec,
-        this.threeApp.orbit.pitch,
-      );
+      this.threeApp.orbit.rotateYawBy(defaults.autoRotateRate * deltaSec);
     }
   }
 

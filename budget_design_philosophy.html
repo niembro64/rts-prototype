@@ -1274,11 +1274,12 @@
         are data, exhaustively enumerated, not policy hardcoded inside a picker.
       </p>
       <p>
-        Every camera operation that pivots or pins on the world &mdash; wheel zoom-in, wheel
-        zoom-out, orbit rotate, and drag pan &mdash; needs exactly one anchor point in 3D space.
-        That point is the answer to two independent questions, and each question is its own config
-        axis. Collapsing them into a single mode enum, or hardcoding either one, is the drift this
-        rule exists to prevent.
+        Every configurable anchor-based camera operation answers two independent questions, and
+        each question remains its own config axis. Collapsing them into a single mode enum is the
+        drift this rule exists to prevent. The canonical <code>bar-spring</code> mode keeps BAR&rsquo;s
+        fixed controller semantics: orbit rotates around controller focus, pan uses controller
+        distance, zoom-in uses the cursor ray, and zoom-out uses the center ray. Its unused generic
+        rotate/pan anchor fields stay in the shared config shape but do not replace those rules.
       </p>
 
       <h3>Axis one &mdash; where on the screen (<code>anchorPointCameraScreen</code>)</h3>
@@ -1297,9 +1298,9 @@
         <li><code>terrain-3d</code> &mdash; the actual rendered terrain heightfield, including the real basin floor below water. The anchor follows hills and valleys exactly as drawn; water is never a camera surface.</li>
       </ul>
       <p>
-        The two axes are orthogonal: two screen choices times two terrain choices is four anchor
-        behaviors, and all four must be reachable by setting the two configs &mdash; never by adding
-        a special-case branch. A gesture&rsquo;s anchor is fully described by its
+        In anchor-configurable movement modes the two axes are orthogonal: two screen choices times
+        two terrain choices is four anchor behaviors, and all four remain reachable by setting the
+        two configs. A configurable gesture&rsquo;s anchor is fully described by its
         <code>(screen, terrain)</code> pair, and one shared resolver takes that pair and returns the
         point. Each gesture names its own pair, so a reversal or a tumble can anchor differently
         from a dolly.
@@ -1313,10 +1314,17 @@
         pixel to move a fixed world amount.
       </p>
       <ul class="rule-list">
-        <li><code>anchor-distance-relative</code> &mdash; the current terrain-aware feel: wheel and pinch zoom move by a fraction of the camera-to-anchor distance, and pan derives world-per-pixel from the depth grabbed by the cursor.</li>
+        <li><code>bar-spring</code> &mdash; the canonical battle mode. It follows Recoil&rsquo;s SpringController/BAR contract: wheel distance uses BAR&rsquo;s asymmetric factor, pan derives pixel size from controller distance, focus tracks the terrain bed, yaw uses cardinal locking, scroll-in follows the cursor, and scroll-out remains centered.</li>
+        <li><code>anchor-distance-relative</code> &mdash; an alternate terrain-aware feel: wheel and pinch zoom move by a fraction of the camera-to-anchor distance, and pan derives world-per-pixel from the depth grabbed by the cursor.</li>
         <li><code>absolute-world</code> &mdash; pan uses fixed world-units-per-pixel, orbit uses fixed radians-per-pixel, and zoom uses fixed signed world-unit distance steps, so terrain height and current camera-to-surface distance do not change the amount of movement.</li>
         <li><code>absolute-world-momentum</code> &mdash; absolute-world movement with velocity-sensitive gain. Center-click pan, zoom-in, zoom-out, alt-center-click orbit, and ctrl-center-click height-pan each own an explicit momentum block with <code>enabled</code>, <code>minGain</code>, <code>maxGain</code>, <code>velocityForMaxGain</code>, and <code>curve</code>. This is input acceleration, not post-release camera drift; the camera stops receiving movement when the gesture stops.</li>
       </ul>
+      <p>
+        Middle mouse is hold-to-pan in the browser battle camera. BAR&rsquo;s optional quick-click
+        locked-scroll toggle is deliberately disabled here because browser pointer lock hides the
+        cursor and makes a short drag indistinguishable from a stuck pan. Mouse-up, window blur,
+        or a subsequent motion reporting no held middle button must terminate the gesture.
+      </p>
       <p>
         This movement metric is not terrain collision. Collision decides whether the rendered eye
         may clip through terrain. Anchoring decides which world point a gesture references. The
@@ -1338,13 +1346,15 @@
         default battle camera contract.
       </p>
 
-      <h3>The battle camera is allowed to pass through terrain</h3>
+      <h3>The battle camera follows BAR terrain handling with a permanent lift</h3>
       <p>
-        Camera anchoring may reference terrain as an input surface, but the camera body itself does
-        not have a terrain clearance rule in battle config. Zoom, pan, height-pan, and orbit are
-        free camera motions; they may place the eye below hills or under the map if the input asks
-        for it. Terrain should not push back on camera movement, silently lift the eye, or rewrite
-        orbit distance.
+        The battle camera keeps BAR&rsquo;s five-world-unit clearance above
+        <code>max(terrain bed, water level)</code> beneath its eye; anchoring and focus still use the
+        real bed below water. The one intentional difference is persistence: when that floor lifts the eye,
+        translate the focus upward by the same amount and commit that translation into ordinary
+        camera state. There is no remembered pre-collision pose, recovery interpolation, or later
+        downward correction after the camera clears the mountain. Terrain response never rebuilds
+        yaw, pitch, or orbit distance and therefore cannot ratchet or wedge those rails.
       </p>
     </section>
 

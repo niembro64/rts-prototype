@@ -1,6 +1,8 @@
 import {
+  barCameraLockedYaw,
   barCameraRelativeZoomFactor,
   barCameraWheelTicks,
+  persistentTerrainRaise,
 } from './OrbitCamera';
 
 function assertContract(condition: boolean, message: string): void {
@@ -43,5 +45,31 @@ export function runOrbitCameraContractTest(): void {
   assertContract(
     barCameraRelativeZoomFactor(-100, 0.175) > 0,
     'batched inward wheel input must remain a valid positive zoom factor',
+  );
+
+  const halfPi = Math.PI * 0.5;
+  assertContract(
+    close(barCameraLockedYaw(halfPi * 0.05), 0)
+      && close(barCameraLockedYaw(-halfPi * 0.05), 0),
+    'BAR cardinal lock must retain a symmetric dead zone around a cardinal',
+  );
+  assertContract(
+    close(barCameraLockedYaw(halfPi * 1.1), halfPi)
+      && close(barCameraLockedYaw(-halfPi * 1.1), -halfPi),
+    'BAR cardinal lock must land exactly on positive and negative cardinals',
+  );
+
+  const firstLift = persistentTerrainRaise(90, 100, 5);
+  assertContract(
+    close(firstLift, 15),
+    'terrain penetration must resolve to exactly the missing vertical clearance',
+  );
+  assertContract(
+    close(persistentTerrainRaise(90 + firstLift, 100, 5), 0),
+    'a committed terrain lift must not accumulate on the next frame',
+  );
+  assertContract(
+    close(persistentTerrainRaise(90 + firstLift, 80, 5), 0),
+    'clearing the mountain must never synthesize a downward recovery',
   );
 }

@@ -27,15 +27,16 @@ import {
   CAMERA_ROTATE_ANCHOR,
   CAMERA_PAN_ANCHOR,
   CAMERA_FOV_DEGREES,
+  CAMERA_INITIAL_PITCH_RADIANS,
   CAMERA_MOVEMENT_CONFIG,
   CAMERA_CONSTRAINTS,
   SKY_RENDER_CONFIG,
-  ZOOM_MAX,
+  ZOOM_MIN_ORBIT_DISTANCE,
   ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR,
-  ZOOM_MAX_MAP_CENTER_DISTANCE,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
   CAMERA_LOST_TERRAIN_RECOVERY,
+  CAMERA_TERRAIN_COLLISION,
   CAMERA_ZOOM_DISTANCE_SAMPLING,
 } from '../../config';
 import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
@@ -220,17 +221,17 @@ export class ThreeApp {
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
     // region of the map as the 2D camera at its default zoom.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
-    const minDistance =
-      CAMERA_CONSTRAINTS.zoomInLimit === 'zoom-max'
-        ? baseDistance / Math.max(1e-6, ZOOM_MAX)
-        : undefined;
+    const minDistance = CAMERA_CONSTRAINTS.zoomInLimit === 'zoom-max'
+      ? ZOOM_MIN_ORBIT_DISTANCE
+      : undefined;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
       minDistance,
       maxDistance: Math.max(mapWidth, mapHeight) * ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR,
-      maxCameraDistanceFromOrigin: ZOOM_MAX_MAP_CENTER_DISTANCE,
       cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       lostTerrainRecovery: CAMERA_LOST_TERRAIN_RECOVERY,
+      minTerrainClearance: CAMERA_TERRAIN_COLLISION.minClearance,
+      terrainCollisionMode: CAMERA_TERRAIN_COLLISION.mode,
       zoomStepFraction: ZOOM_STEP_FRACTION,
       zoomDistanceSampling: CAMERA_ZOOM_DISTANCE_SAMPLING,
       movementConfig: CAMERA_MOVEMENT_CONFIG,
@@ -247,7 +248,7 @@ export class ThreeApp {
       targetZ: mapHeight / 2,
       distance: baseDistance,
       yaw: this.orbit.yaw,
-      pitch: Math.PI * 0.28,
+      pitch: CAMERA_INITIAL_PITCH_RADIANS,
     });
 
     installSunLighting(this.scene, mapWidth, mapHeight);

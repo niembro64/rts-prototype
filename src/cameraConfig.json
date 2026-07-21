@@ -1,5 +1,6 @@
 {
   "fovDegrees": 45,
+  "initialPitchRadians": 0.541592653589793,
   "smoothingTauSeconds": {
     "snap": 0.0,
     "fast": 0.05,
@@ -10,11 +11,12 @@
   "worldPaddingPercent": 0.0,
   "zoom": {
     "max": 40.0,
+    "minOrbitDistance": 300.0,
     "maxOrbitDistanceMapFactor": 1.333,
     "maxMapCenterDistance": 50000.0,
     "stepFraction": 0.175,
     "distanceSampling": {
-      "pointMode": "seventeen",
+      "pointMode": "single",
       "distanceAggregation": "min",
       "ringPointCount": 8,
       "innerRadiusPixels": 100.0,
@@ -33,11 +35,15 @@
     "targetBounds": "map-padding"
   },
   "lostTerrainRecovery": {
-    "enabled": true,
+    "enabled": false,
     "emaTauSeconds": 0.35
   },
+  "terrainCollision": {
+    "mode": "persistRaiseEye",
+    "minClearance": 5.0
+  },
   "movement": {
-    "scaleMode": "anchor-distance-relative",
+    "scaleMode": "bar-spring",
     "centerClickPan": {
       "absoluteWorldUnitsPerPixel": 5.0,
       "momentum": {

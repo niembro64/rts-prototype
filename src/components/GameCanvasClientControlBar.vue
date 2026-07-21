@@ -534,7 +534,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Rendered camera-eye distance from the map center origin, in world units. The configured zoom-out rail is ${fmtCount4(ZOOM_MAX_MAP_CENTER_DISTANCE)}.`">ZOOM:</BarLabel>
+        <BarLabel :title="`Rendered camera-eye distance from the map center origin, in world units. ${fmtCount4(ZOOM_MAX_MAP_CENTER_DISTANCE)} is the telemetry display reference; the camera rail follows BAR and scales with map size.`">ZOOM:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

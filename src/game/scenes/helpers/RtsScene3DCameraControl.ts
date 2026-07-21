@@ -1,12 +1,13 @@
 import type { SceneCameraState } from '@/types/game';
 import type { CameraViewMode } from '@/types/client';
+import { CAMERA_INITIAL_PITCH_RADIANS } from '../../../config';
 import type { OrbitCamera } from '../../render3d/OrbitCamera';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 
 const CAMERA_VIEW_MODE_PITCH: Record<CameraViewMode, number> = {
   overhead: Math.PI * 0.06,
   ta: Math.PI * 0.25,
-  spring: Math.PI * 0.36,
+  spring: CAMERA_INITIAL_PITCH_RADIANS,
 };
 const CAMERA_VIEW_MODE_CYCLE: readonly CameraViewMode[] = ['overhead', 'ta', 'spring'];
 const VIEW_RADIUS_STEP_FACTOR = 1.125;
