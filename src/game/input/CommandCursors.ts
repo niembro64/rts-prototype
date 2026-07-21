@@ -1,10 +1,26 @@
 // Original, vector-first command cursors for the battlefield canvas.
 //
-// SVG is deliberate here: each cursor has a 64px intrinsic canvas (the usual
-// browser-safe upper bound is 128px) and remains crisp when the OS or browser
-// increases pointer scale.  The artwork is authored from first principles;
-// its high-contrast outline and action colours follow the familiar RTS visual
-// language without using any external cursor art or animation frames.
+// Visual language: high-DPI "cousins" of the Beyond All Reason command cursors
+// (bold arrows colour-coded by action; centred reticles / rings for target
+// actions), authored from first principles here — no external cursor art or
+// animation frames are used.
+//
+// Crispness strategy (this is the important part):
+//   A plain `cursor: url("data:image/svg+xml,...") x y` is rasterised by the
+//   engine at the cursor's *logical* CSS size. On a Retina panel — and worse,
+//   when macOS is set to a large pointer — the OS then upscales that low-res
+//   bitmap, so the cursor looks fuzzy no matter how clean the vector art is.
+//   The fix is to hand the engine a genuinely high-resolution bitmap via
+//   `image-set()`, providing 2x and 3x density variants of the same SVG. We
+//   emit each variant at a larger intrinsic pixel size so the rasteriser has
+//   real pixels to work with, and the OS has a dense bitmap to enlarge.
+//
+//   `image-set()` in `cursor` is spelled differently across engines (Chrome:
+//   unprefixed; older WebKit: `-webkit-image-set`), and an unsupported cursor
+//   value must never poison the whole declaration. So `getCommandCursorStyle`
+//   returns an ordered *cascade* of candidate values (least → most preferred);
+//   the caller assigns each to `style.cursor` in turn and the last one the
+//   engine actually understands wins (an unsupported assignment is a no-op).
 
 import { COLORS } from '@/colorsConfig';
 
@@ -25,180 +41,262 @@ export type CommandCursorKind =
   | 'ping'
   | 'factoryWaypoint';
 
-type CursorSpec = {
-  svg: string;
-  hotX: number;
-  hotY: number;
-  fallback: string;
-};
-
 const S = COLORS.ui.commandCursor;
 
-// The drawing grid is intentionally smaller than the intrinsic SVG size.
-// This keeps a large, high-resolution backing image while retaining a clear
-// command-cursor footprint and enough transparent edge room for wide strokes.
-const VIEWBOX_SIZE = 48;
-const CURSOR_SIZE = 64;
-const CURSOR_SCALE = CURSOR_SIZE / VIEWBOX_SIZE;
+// The artwork is authored in a 64-unit square. That is also the cursor's
+// logical (CSS px) footprint, so hotspots are expressed directly in artwork
+// coordinates — no scaling math. High-DPI variants are the same art emitted at
+// 2x / 3x this pixel size (see DENSITIES).
+const VIEWBOX = 64;
+const DENSITIES = [2, 3] as const;
 
-function svg(inner: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CURSOR_SIZE}" height="${CURSOR_SIZE}" viewBox="0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}">${inner}</svg>`;
-}
+// ---------------------------------------------------------------------------
+// Drawing helpers
+// ---------------------------------------------------------------------------
 
-function hotspot(value: number): number {
-  return Math.round(value * CURSOR_SCALE);
-}
+// A chunky, slightly bevelled pointer with its tip at the top-left. The whole
+// arrow is filled with the action colour (BAR/`icexuick` convention) so the
+// command reads from colour alone; an optional badge marks sub-variants.
+const ARROW_PATH = 'M9 7 L9 45 L19.5 35.5 L26 49 L31.5 46.5 L25 33 L38 33 Z';
 
-function cursorUrl(spec: CursorSpec): string {
-  const data = encodeURIComponent(spec.svg)
-    .replace(/'/g, '%27')
-    .replace(/"/g, '%22');
-  return `url("data:image/svg+xml,${data}") ${spec.hotX} ${spec.hotY}, ${spec.fallback}`;
-}
-
-function outlined(
-  inner: string,
-  color: string,
-  innerWidth = 2.6,
-  outlineWidth = 6.5,
-): string {
+function arrow(color: string, badge = ''): string {
   return `
-    <g fill="none" stroke="${S.outline}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round">${inner}</g>
-    <g fill="none" stroke="${color}" stroke-width="${innerWidth}" stroke-linecap="round" stroke-linejoin="round">${inner}</g>
+    <path d="${ARROW_PATH}" fill="none" stroke="${S.outline}" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${ARROW_PATH}" fill="${color}" stroke="${S.outline}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M11.4 11 L11.4 39" stroke="${S.white}" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>
+    <path d="M12.6 13 L23 30" stroke="${S.white}" stroke-width="1.3" stroke-linecap="round" opacity="0.5"/>
+    ${badge}
   `;
 }
 
-function pointer(
-  color: string,
-  accents = '',
-): string {
+// A filled disc (dark-rimmed) at the arrow's lower-right that carries a glyph.
+function badge(cx: number, cy: number, r: number, fill: string, glyph: string): string {
   return `
-    <path d="M7 5.5 33.5 18.1 22.1 21.8 16.7 35.1Z" fill="${S.outline}" stroke="${S.outline}" stroke-width="3.5" stroke-linejoin="round"/>
-    <path d="M8.8 7.9 29.6 18 20.2 21 16.2 30.8Z" fill="${color}" stroke="${S.white}" stroke-width="1.15" stroke-linejoin="round"/>
-    <path d="M13.2 11.2 23.7 17.3 18.3 19" fill="none" stroke="${S.white}" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
-    ${accents}
+    <circle cx="${cx}" cy="${cy}" r="${r + 2.4}" fill="${S.outline}"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/>
+    ${glyph}
   `;
 }
 
-// Normal and move deliberately share an arrow silhouette: move is the
-// familiar command-arrow, while the normal cursor remains neutral and white.
-const GAME = svg(pointer(S.game, `
-  <path d="M19.5 33.6 24.9 39" fill="none" stroke="${S.outline}" stroke-width="5.1" stroke-linecap="round"/>
-  <path d="M19.5 33.6 24.9 39" fill="none" stroke="${S.game}" stroke-width="2.15" stroke-linecap="round"/>
-`));
+// Two-pass stroked path: a wide dark outline under a thinner coloured stroke,
+// giving the high-contrast readable-on-any-terrain look.
+function stroked(d: string, color: string, inner = 3.6, outline = 8): string {
+  return `
+    <path d="${d}" fill="none" stroke="${S.outline}" stroke-width="${outline}" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="${inner}" stroke-linecap="round" stroke-linejoin="round"/>
+  `;
+}
 
-const SELECT = svg(outlined(`
-  <path d="M16 6v6M16 36v6M6 16h6M36 16h6"/>
-  <path d="M10 10h5M33 10h5M10 38h5M33 38h5"/>
-  <path d="m16 20 4 4-4 4-4-4Z"/>
-`, S.ping, 2.4, 6.2));
+// Evenly spaced radial spikes around a centre (used by the d-gun burst ring).
+function spikes(cx: number, cy: number, r1: number, r2: number, color: string, inner: number, outline: number): string {
+  const d = [0, 45, 90, 135, 180, 225, 270, 315]
+    .map((deg) => {
+      const a = (deg * Math.PI) / 180;
+      const x1 = (cx + Math.cos(a) * r1).toFixed(1);
+      const y1 = (cy + Math.sin(a) * r1).toFixed(1);
+      const x2 = (cx + Math.cos(a) * r2).toFixed(1);
+      const y2 = (cy + Math.sin(a) * r2).toFixed(1);
+      return `M${x1} ${y1} L${x2} ${y2}`;
+    })
+    .join(' ');
+  return `
+    <path d="${d}" fill="none" stroke="${S.outline}" stroke-width="${outline}" stroke-linecap="round"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="${inner}" stroke-linecap="round"/>
+  `;
+}
 
-const MOVE = svg(pointer(S.move, `
-  <path d="M25.6 29.4 34.2 38M29.7 29.2l4.7 4.7M25.4 33.6l4.7 4.7" fill="none" stroke="${S.outline}" stroke-width="5.3" stroke-linecap="round"/>
-  <path d="M25.6 29.4 34.2 38M29.7 29.2l4.7 4.7M25.4 33.6l4.7 4.7" fill="none" stroke="${S.move}" stroke-width="2.1" stroke-linecap="round"/>
-`));
+// One recycle-arrow segment, rotated three times for the reclaim glyph.
+const RECYCLE_SEGMENT = 'M24 16 L40 16 L37 12 L44 12 L48 19 L44 26 L41 22 L28 22 Z';
+function recycle(color: string): string {
+  const rot = [0, 120, 240];
+  const outline = rot
+    .map((a) => `<path d="${RECYCLE_SEGMENT}" transform="rotate(${a} 32 32)" fill="none" stroke="${S.outline}" stroke-width="7" stroke-linejoin="round"/>`)
+    .join('');
+  const fill = rot
+    .map((a) => `<path d="${RECYCLE_SEGMENT}" transform="rotate(${a} 32 32)" fill="${color}" stroke="${S.outline}" stroke-width="1.2" stroke-linejoin="round"/>`)
+    .join('');
+  return outline + fill;
+}
 
-const FIGHT = svg(pointer(S.fight, `
-  <circle cx="35.4" cy="10.9" r="5.2" fill="${S.outline}"/>
-  <circle cx="35.4" cy="10.9" r="3.1" fill="none" stroke="${S.fight}" stroke-width="1.8"/>
-  <path d="M35.4 3.9v2.5M35.4 15.4v2.5M28.4 10.9h2.5M39.9 10.9h2.5" fill="none" stroke="${S.white}" stroke-width="1.55" stroke-linecap="round"/>
-`));
+// ---------------------------------------------------------------------------
+// Cursor artwork (inner SVG, authored in the 64-unit viewBox)
+// ---------------------------------------------------------------------------
 
-const PATROL = svg(pointer(S.patrol, `
-  <path d="M29.2 30.8a8.8 8.8 0 0 0 9.6-1.7M38.8 29.1l-1.1 5.2M38.8 29.1l-5.3.7" fill="none" stroke="${S.outline}" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M29.2 30.8a8.8 8.8 0 0 0 9.6-1.7M38.8 29.1l-1.1 5.2M38.8 29.1l-5.3.7" fill="none" stroke="${S.patrol}" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"/>
-`));
+const CORNER_RETICLE = 'M18 24 V18 H24 M40 18 H46 V24 M46 40 V46 H40 M24 46 H18 V40';
+const BUILD_FRAME = 'M14 22 V14 H22 M42 14 H50 V22 M50 42 V50 H42 M22 50 H14 V42';
 
-const ATTACK = svg(outlined(`
-  <circle cx="24" cy="24" r="9.3"/>
-  <path d="M24 5.5v7M24 35.5v7M5.5 24h7M35.5 24h7"/>
-  <path d="m20.6 24 3.4-3.4 3.4 3.4-3.4 3.4Z"/>
-`, S.attack, 2.7, 6.8));
+const ART: Record<Exclude<CommandCursorKind, 'default'>, string> = {
+  // Neutral pointer.
+  game: arrow(S.game),
 
-const GUARD = svg(`
-  <path d="M24 5.5 38 11v9.2c0 9.4-5.4 16.2-14 21.1-8.6-4.9-14-11.7-14-21.1V11Z" fill="${S.outline}" stroke="${S.outline}" stroke-width="3.1" stroke-linejoin="round"/>
-  <path d="M24 8.8 35 13v7.1c0 7.4-4.1 12.9-11 17.1-6.9-4.2-11-9.7-11-17.1V13Z" fill="${S.guard}" stroke="${S.white}" stroke-width="1.2" stroke-linejoin="round"/>
-  <path d="M24 15.4v13.5M17.3 22.1h13.4" fill="none" stroke="${S.white}" stroke-width="2.25" stroke-linecap="round"/>
-`);
+  // Move: colour alone carries the command.
+  move: arrow(S.move),
 
-const REPAIR = svg(pointer(S.repair, `
-  <path d="m29.1 28.5 8.8 8.8M34.7 25.7a5.7 5.7 0 0 1-7.8-7.8l3.2 3.2 3.1-3.1-3.2-3.2a5.7 5.7 0 0 1 7.8 7.8Z" fill="${S.outline}" stroke="${S.outline}" stroke-width="2.7" stroke-linejoin="round"/>
-  <path d="m29.1 28.5 8.8 8.8M34.7 25.7a5.7 5.7 0 0 1-7.8-7.8l3.2 3.2 3.1-3.1-3.2-3.2a5.7 5.7 0 0 1 7.8 7.8Z" fill="none" stroke="${S.repair}" stroke-width="1.8" stroke-linejoin="round"/>
-  <circle cx="38.7" cy="38.2" r="2.4" fill="${S.repair}" stroke="${S.white}" stroke-width="1"/>
-`));
+  // Fight (move-and-engage): arrow + crossed-blades mark (pommels sell it as
+  // swords rather than an X/"cancel").
+  fight: arrow(S.fight, `
+    <g stroke-linecap="round" stroke-linejoin="round">
+      <g stroke="${S.outline}" stroke-width="7"><path d="M37 52 L51 38"/><path d="M51 52 L37 38"/></g>
+      <g stroke="${S.fight}" stroke-width="4.2"><path d="M37 52 L51 38"/><path d="M51 52 L37 38"/></g>
+      <g stroke="${S.white}" stroke-width="1.7"><path d="M37 52 L51 38"/><path d="M51 52 L37 38"/></g>
+      <g stroke="${S.outline}" stroke-width="2.2" fill="${S.white}"><circle cx="37" cy="52" r="2"/><circle cx="51" cy="52" r="2"/></g>
+    </g>
+  `),
 
-const RECLAIM = svg(outlined(`
-  <path d="M24 6.5 32.8 12l-2.8 1.6 4.2 6.6 3-1.7v10.3H26.9l3-1.8-4.2-6.6-2.6 1.6Z"/>
-  <path d="m12.5 18.6 8.8-5.4v3.2h7.8v-3.5l8.9 5.4-5.2 8.9-1.8-3.1h-7.6v3.4l-8.9-5.3Z" transform="rotate(120 24 24)"/>
-  <path d="m12.5 18.6 8.8-5.4v3.2h7.8v-3.5l8.9 5.4-5.2 8.9-1.8-3.1h-7.6v3.4l-8.9-5.3Z" transform="rotate(240 24 24)"/>
-`, S.reclaim, 1.9, 5.8));
+  // Patrol: arrow + looping-arrow badge.
+  patrol: arrow(S.patrol, badge(45, 46, 12, S.patrol, `
+    <path d="M39.5 47.5 a6 6 0 1 1 3 4.2" fill="none" stroke="${S.outline}" stroke-width="4.6" stroke-linecap="round"/>
+    <path d="M39.5 47.5 a6 6 0 1 1 3 4.2" fill="none" stroke="${S.white}" stroke-width="2.1" stroke-linecap="round"/>
+    <path d="M37.5 42 l1.6 5.6 l5.4 -2.2" fill="none" stroke="${S.outline}" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M37.5 42 l1.6 5.6 l5.4 -2.2" fill="none" stroke="${S.white}" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>
+  `)),
 
-const BUILD = svg(outlined(`
-  <path d="M8 17V9h8M32 9h8v8M40 31v8h-8M16 39H8v-8"/>
-  <path d="M17 17h14v14H17Z"/>
-  <path d="M24 20v8M20 24h8"/>
-`, S.build, 2.55, 6.4));
+  // Repair: arrow + wrench badge.
+  repair: arrow(S.repair, badge(45.5, 46, 12.5, S.repair, `
+    <g stroke="${S.outline}" stroke-width="7" stroke-linecap="round"><path d="M40.5 51.5 L49 43"/></g>
+    <path d="M52.5 39.2 a5 5 0 0 0 -6.6 6.6 l-6 6 a2.4 2.4 0 0 0 3.4 3.4 l6 -6 a5 5 0 0 0 6.6 -6.6 l-3.4 3.4 -3 -3 Z"
+          fill="${S.white}" stroke="${S.outline}" stroke-width="2.2" stroke-linejoin="round"/>
+  `)),
 
-const BLOCKED = svg(outlined(`
-  <circle cx="24" cy="24" r="15.2"/>
-  <path d="m13.2 34.8 21.6-21.6"/>
-`, S.attack, 2.9, 7));
+  // Attack: red corner-bracket reticle + centre dot.
+  attack: `
+    ${stroked(CORNER_RETICLE, S.attack)}
+    <circle cx="32" cy="32" r="4.6" fill="${S.outline}"/>
+    <circle cx="32" cy="32" r="2.4" fill="${S.attack}"/>
+  `,
 
-const DGUN = svg(`
-  <circle cx="24" cy="24" r="15.5" fill="${S.outline}" stroke="${S.outline}" stroke-width="3.2"/>
-  <circle cx="24" cy="24" r="12.4" fill="none" stroke="${S.dgun}" stroke-width="2.4"/>
-  <path d="m27.4 9.9-10 14h6.8l-3.1 14.2 10.6-15h-6.8Z" fill="${S.dgun}" stroke="${S.white}" stroke-width="1.25" stroke-linejoin="round"/>
-  <path d="M24 4.5v3M24 40.5v3M4.5 24h3M40.5 24h3" fill="none" stroke="${S.white}" stroke-width="1.55" stroke-linecap="round"/>
-`);
+  // Blocked: red no-entry.
+  blocked: `
+    <circle cx="32" cy="32" r="19" fill="none" stroke="${S.outline}" stroke-width="8.5"/>
+    <circle cx="32" cy="32" r="19" fill="none" stroke="${S.attack}" stroke-width="4"/>
+    ${stroked('M19 45 L45 19', S.attack, 4, 8.5)}
+  `,
 
-const PING = svg(outlined(`
-  <path d="M24 8.2c-6.1 0-11.1 4.8-11.1 10.8 0 7.7 7.2 13.9 11.1 20.7 3.9-6.8 11.1-13 11.1-20.7 0-6-5-10.8-11.1-10.8Z"/>
-  <circle cx="24" cy="19" r="3"/>
-  <path d="M24 3.8v1.6M7.3 19H9M39 19h1.7"/>
-`, S.ping, 2.35, 6.1));
+  // Guard/assist: cyan shield + plus.
+  guard: `
+    <path d="M32 10 L48 16 V30 c0 12 -7 20 -16 25 -9 -5 -16 -13 -16 -25 V16 Z"
+          fill="none" stroke="${S.outline}" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M32 10 L48 16 V30 c0 12 -7 20 -16 25 -9 -5 -16 -13 -16 -25 V16 Z"
+          fill="${S.guard}" stroke="${S.outline}" stroke-width="1.4" stroke-linejoin="round"/>
+    <g stroke="${S.outline}" stroke-width="6" stroke-linecap="round"><path d="M32 22 V38 M24 30 H40"/></g>
+    <g stroke="${S.white}" stroke-width="3" stroke-linecap="round"><path d="M32 22 V38 M24 30 H40"/></g>
+  `,
 
-const FACTORY_WAYPOINT = svg(outlined(`
-  <path d="M13 41V8"/>
-  <path d="M13 9h23l-5.4 7 5.4 7H13"/>
-  <path d="M8.4 41h9.2"/>
-  <path d="M22 34h16M33.5 29.5 38 34l-4.5 4.5"/>
-`, S.move, 2.45, 6.3));
+  // Reclaim: three chasing recycle arrows.
+  reclaim: recycle(S.reclaim),
 
-const CURSOR_SPECS: Record<Exclude<CommandCursorKind, 'default'>, CursorSpec> = {
-  game: { svg: GAME, hotX: hotspot(7), hotY: hotspot(5.5), fallback: 'default' },
-  select: { svg: SELECT, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  move: { svg: MOVE, hotX: hotspot(7), hotY: hotspot(5.5), fallback: 'crosshair' },
-  fight: { svg: FIGHT, hotX: hotspot(7), hotY: hotspot(5.5), fallback: 'crosshair' },
-  patrol: { svg: PATROL, hotX: hotspot(7), hotY: hotspot(5.5), fallback: 'crosshair' },
-  attack: { svg: ATTACK, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  guard: { svg: GUARD, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  repair: { svg: REPAIR, hotX: hotspot(7), hotY: hotspot(5.5), fallback: 'crosshair' },
-  reclaim: { svg: RECLAIM, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  build: { svg: BUILD, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  blocked: { svg: BLOCKED, hotX: hotspot(24), hotY: hotspot(24), fallback: 'not-allowed' },
-  dgun: { svg: DGUN, hotX: hotspot(24), hotY: hotspot(24), fallback: 'crosshair' },
-  ping: { svg: PING, hotX: hotspot(24), hotY: hotspot(19), fallback: 'crosshair' },
-  factoryWaypoint: { svg: FACTORY_WAYPOINT, hotX: hotspot(13), hotY: hotspot(41), fallback: 'crosshair' },
+  // Build: gold placement frame + grid plus.
+  build: `
+    ${stroked(BUILD_FRAME, S.build)}
+    <g stroke="${S.outline}" stroke-width="6.5" stroke-linecap="round"><path d="M32 24 V40 M24 32 H40"/></g>
+    <g stroke="${S.build}" stroke-width="3" stroke-linecap="round"><path d="M32 24 V40 M24 32 H40"/></g>
+  `,
+
+  // D-gun: burst ring with radial spikes + a bolt.
+  dgun: `
+    <circle cx="32" cy="32" r="15.5" fill="none" stroke="${S.outline}" stroke-width="8"/>
+    <circle cx="32" cy="32" r="15.5" fill="none" stroke="${S.dgun}" stroke-width="3.6"/>
+    ${spikes(32, 32, 15.5, 22, S.dgun, 3.2, 7)}
+    <path d="M35 20 L25 34 h6 l-2 10 l10 -14 h-6 Z" fill="${S.white}" stroke="${S.outline}" stroke-width="2.2" stroke-linejoin="round"/>
+  `,
+
+  // Selection marquee: ice crosshair reticle.
+  select: `
+    ${stroked('M32 12 V24 M32 40 V52 M12 32 H24 M40 32 H52', S.ping, 3.2, 7.5)}
+    <circle cx="32" cy="32" r="4.4" fill="none" stroke="${S.outline}" stroke-width="5"/>
+    <circle cx="32" cy="32" r="4.4" fill="none" stroke="${S.ping}" stroke-width="2.4"/>
+  `,
+
+  // Map ping: marker pin (hotspot at the pin tip).
+  ping: `
+    <path d="M32 12 c-8 0 -14 6 -14 14 c0 10 14 24 14 24 s14 -14 14 -24 c0 -8 -6 -14 -14 -14 Z"
+          fill="none" stroke="${S.outline}" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M32 12 c-8 0 -14 6 -14 14 c0 10 14 24 14 24 s14 -14 14 -24 c0 -8 -6 -14 -14 -14 Z"
+          fill="${S.ping}" stroke="${S.outline}" stroke-width="1.4" stroke-linejoin="round"/>
+    <circle cx="32" cy="26" r="5.2" fill="${S.outline}"/>
+    <circle cx="32" cy="26" r="2.8" fill="${S.white}"/>
+  `,
+
+  // Factory rally point: flag + arrow (hotspot at the pole base).
+  factoryWaypoint: `
+    <g fill="none" stroke="${S.outline}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 54 V12"/>
+      <path d="M16 14 H44 L37 22 L44 30 H16"/>
+      <path d="M28 44 H46 M40 38 L48 44 L40 50"/>
+    </g>
+    <path d="M16 14 H44 L37 22 L44 30 H16 Z" fill="${S.move}"/>
+    <g fill="none" stroke="${S.move}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 54 V12"/>
+      <path d="M28 44 H46 M40 38 L48 44 L40 50"/>
+    </g>
+  `,
 };
 
-const CURSOR_STYLES: Record<CommandCursorKind, string> = {
-  default: cursorUrl(CURSOR_SPECS.game),
-  game: cursorUrl(CURSOR_SPECS.game),
-  select: cursorUrl(CURSOR_SPECS.select),
-  move: cursorUrl(CURSOR_SPECS.move),
-  fight: cursorUrl(CURSOR_SPECS.fight),
-  patrol: cursorUrl(CURSOR_SPECS.patrol),
-  attack: cursorUrl(CURSOR_SPECS.attack),
-  guard: cursorUrl(CURSOR_SPECS.guard),
-  repair: cursorUrl(CURSOR_SPECS.repair),
-  reclaim: cursorUrl(CURSOR_SPECS.reclaim),
-  build: cursorUrl(CURSOR_SPECS.build),
-  blocked: cursorUrl(CURSOR_SPECS.blocked),
-  dgun: cursorUrl(CURSOR_SPECS.dgun),
-  ping: cursorUrl(CURSOR_SPECS.ping),
-  factoryWaypoint: cursorUrl(CURSOR_SPECS.factoryWaypoint),
+// ---------------------------------------------------------------------------
+// CSS value generation
+// ---------------------------------------------------------------------------
+
+type CursorSpec = { hotX: number; hotY: number; fallback: string };
+
+const SPECS: Record<Exclude<CommandCursorKind, 'default'>, CursorSpec> = {
+  game: { hotX: 9, hotY: 7, fallback: 'default' },
+  move: { hotX: 9, hotY: 7, fallback: 'crosshair' },
+  fight: { hotX: 9, hotY: 7, fallback: 'crosshair' },
+  patrol: { hotX: 9, hotY: 7, fallback: 'crosshair' },
+  repair: { hotX: 9, hotY: 7, fallback: 'crosshair' },
+  attack: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  guard: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  reclaim: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  build: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  blocked: { hotX: 32, hotY: 32, fallback: 'not-allowed' },
+  dgun: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  select: { hotX: 32, hotY: 32, fallback: 'crosshair' },
+  ping: { hotX: 32, hotY: 50, fallback: 'crosshair' },
+  factoryWaypoint: { hotX: 16, hotY: 54, fallback: 'crosshair' },
 };
 
-export function getCommandCursorStyle(kind: CommandCursorKind): string {
-  return CURSOR_STYLES[kind] ?? CURSOR_STYLES.default;
+function svgDataUrl(inner: string, sizePx: number): string {
+  const markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${sizePx}" height="${sizePx}" viewBox="0 0 ${VIEWBOX} ${VIEWBOX}">${inner}</svg>`;
+  const encoded = encodeURIComponent(markup).replace(/'/g, '%27').replace(/"/g, '%22');
+  return `data:image/svg+xml,${encoded}`;
+}
+
+// Build the ordered cascade of `cursor` values (least → most preferred). The
+// caller assigns each in turn; the last value the engine understands wins.
+function buildCascade(inner: string, spec: CursorSpec): string[] {
+  const { hotX, hotY, fallback } = spec;
+  const base = svgDataUrl(inner, VIEWBOX);
+  const set = [
+    `url("${base}") 1x`,
+    ...DENSITIES.map((d) => `url("${svgDataUrl(inner, VIEWBOX * d)}") ${d}x`),
+  ].join(', ');
+  return [
+    // 1. Bare keyword — always valid, so the cursor is never left unset.
+    fallback,
+    // 2. Plain single-resolution SVG — works everywhere `url()` cursors do.
+    `url("${base}") ${hotX} ${hotY}, ${fallback}`,
+    // 3. High-DPI via legacy WebKit spelling.
+    `-webkit-image-set(${set}) ${hotX} ${hotY}, ${fallback}`,
+    // 4. High-DPI via the standard spelling (preferred).
+    `image-set(${set}) ${hotX} ${hotY}, ${fallback}`,
+  ];
+}
+
+const CASCADES: Record<CommandCursorKind, string[]> = (() => {
+  const built = {} as Record<CommandCursorKind, string[]>;
+  for (const kind of Object.keys(SPECS) as Array<Exclude<CommandCursorKind, 'default'>>) {
+    built[kind] = buildCascade(ART[kind], SPECS[kind]);
+  }
+  built.default = built.game;
+  return built;
+})();
+
+/**
+ * The ordered list of `cursor` CSS values for a command, least → most
+ * preferred. Assign each to `element.style.cursor` in order so the most
+ * capable value the engine supports (high-DPI `image-set`) wins while older
+ * engines fall back cleanly.
+ */
+export function getCommandCursorStyle(kind: CommandCursorKind): string[] {
+  return CASCADES[kind] ?? CASCADES.default;
 }

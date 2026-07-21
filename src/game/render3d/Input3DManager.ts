@@ -2460,7 +2460,14 @@ export class Input3DManager {
   private applyCursor(kind: CommandCursorKind): void {
     if (this.appliedCursor === kind) return;
     this.appliedCursor = kind;
-    this.canvas.style.cursor = getCommandCursorStyle(kind);
+    // getCommandCursorStyle returns a cascade of candidate values ordered
+    // least -> most preferred. Assigning each in turn lets the most capable
+    // value the engine supports (high-DPI image-set) win, while an unsupported
+    // value is a no-op that leaves the previous valid one in place.
+    const candidates = getCommandCursorStyle(kind);
+    const style = this.canvas.style;
+    style.cursor = '';
+    for (const value of candidates) style.cursor = value;
   }
 
   private waypointCursorKind(): CommandCursorKind {

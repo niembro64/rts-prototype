@@ -890,19 +890,19 @@
       }
     },
     "commandCursor": {
-      "outline": "#02040a",
-      "white": "#f7fbff",
-      "move": "#54e96a",
-      "fight": "#e052f7",
-      "patrol": "#3fa8ff",
-      "attack": "#ff4d5f",
-      "guard": "#70e9f1",
-      "repair": "#ffe45b",
-      "reclaim": "#b7ef9b",
-      "build": "#ffd44a",
-      "dgun": "#ff7181",
-      "ping": "#e8f8ff",
-      "game": "#f1e8d5"
+      "outline": "#05070d",
+      "white": "#f6faff",
+      "move": "#4ade5f",
+      "fight": "#f24fb0",
+      "patrol": "#3aa8ff",
+      "attack": "#ff4048",
+      "guard": "#4fdcf0",
+      "repair": "#ffd23e",
+      "reclaim": "#6fe05a",
+      "build": "#ffc23a",
+      "dgun": "#ff5a2c",
+      "ping": "#8fe9ff",
+      "game": "#eef2f8"
     },
     "barThemes": {
       "battle": {
