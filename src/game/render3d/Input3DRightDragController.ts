@@ -328,7 +328,9 @@ export class Input3DRightDragController {
       );
       this.beginLineDrag(queueMode);
       this.preserveFormationDrag = false;
-      this.config.applyCursor('factoryWaypoint');
+      // Factory rally points use the same command cursor (move/fight/patrol) as
+      // units, matching BAR: the cursor reflects the command, not the target.
+      this.config.applyCursor(this.waypointCursorKind());
       this.linePath.startWithFixedTarget(world.x, world.y, world.z);
     }
   }

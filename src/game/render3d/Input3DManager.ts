@@ -2554,7 +2554,8 @@ export class Input3DManager {
       : null;
     if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
     if (haveUnits) return this.waypointCursorKind();
-    if (this.rightDrag.hasSelectedFactories()) return 'factoryWaypoint';
+    // Factory rally previews the command cursor (move/fight/patrol) like units.
+    if (this.rightDrag.hasSelectedFactories()) return this.waypointCursorKind();
     return 'game';
   }
 

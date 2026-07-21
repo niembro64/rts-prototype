@@ -38,8 +38,7 @@ export type CommandCursorKind =
   | 'build'
   | 'blocked'
   | 'dgun'
-  | 'ping'
-  | 'factoryWaypoint';
+  | 'ping';
 
 const S = COLORS.ui.commandCursor;
 
@@ -219,20 +218,6 @@ const ART: Record<Exclude<CommandCursorKind, 'default'>, string> = {
     <circle cx="32" cy="26" r="5.2" fill="${S.outline}"/>
     <circle cx="32" cy="26" r="2.8" fill="${S.white}"/>
   `,
-
-  // Factory rally point: flag + arrow (hotspot at the pole base).
-  factoryWaypoint: `
-    <g fill="none" stroke="${S.outline}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M16 54 V12"/>
-      <path d="M16 14 H44 L37 22 L44 30 H16"/>
-      <path d="M28 44 H46 M40 38 L48 44 L40 50"/>
-    </g>
-    <path d="M16 14 H44 L37 22 L44 30 H16 Z" fill="${S.move}"/>
-    <g fill="none" stroke="${S.move}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M16 54 V12"/>
-      <path d="M28 44 H46 M40 38 L48 44 L40 50"/>
-    </g>
-  `,
 };
 
 // ---------------------------------------------------------------------------
@@ -255,7 +240,6 @@ const SPECS: Record<Exclude<CommandCursorKind, 'default'>, CursorSpec> = {
   dgun: { hotX: 32, hotY: 32, fallback: 'crosshair' },
   select: { hotX: 32, hotY: 32, fallback: 'crosshair' },
   ping: { hotX: 32, hotY: 50, fallback: 'crosshair' },
-  factoryWaypoint: { hotX: 16, hotY: 54, fallback: 'crosshair' },
 };
 
 function svgDataUrl(inner: string, sizePx: number): string {
