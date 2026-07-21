@@ -739,6 +739,11 @@ export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
  *  baseDistance / ZOOM_MAX. */
 export const ZOOM_MAX = cameraConfigJson.zoom.max;
 
+/** BAR Spring-camera zoom-out rail: controller distance is capped at 1.333x
+ * the map's larger horizontal dimension. */
+export const ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR =
+  cameraConfigJson.zoom.maxOrbitDistanceMapFactor;
+
 /** Maximum rendered camera-eye distance from the map center origin. This
  *  is the same world-unit distance shown in the CLIENT bar's ZOOM readout
  *  and acts as the authored zoom-out rail. */
@@ -752,18 +757,15 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
   cameraConfigJson.farReferenceDistanceFactor;
 
 /**
- * Per-wheel-tick zoom fraction. Each scroll-IN moves the camera
- * this fraction of the way toward the world point under the
- * cursor (the actual rendered ground/water hit, not a flat-plane
- * approximation). Scroll-OUT applies the inverse factor 1/(1−f),
- * so a scroll-in followed by a scroll-out lands back at the same
- * camera state.
+ * Per-wheel-tick zoom fraction. Each scroll-IN moves the camera toward the
+ * configured terrain-bed anchor. BAR's SpringController uses an asymmetric
+ * linear factor for each normalized wheel unit:
  *
  *   factor_in  = (1 − f)         → distance shrinks by f
- *   factor_out = 1 / (1 − f)     → exact inverse of factor_in
+ *   factor_out = (1 + f)         → distance grows by f
  *
- * 0.125 keeps roughly the historical 1.125-multiplier "feel" but
- * the cursor's world point stays pinned through the move.
+ * BAR's default ScrollWheelSpeed=25 and controller coefficient 0.007 make
+ * f=0.175. The configured anchor remains pinned through the move.
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 

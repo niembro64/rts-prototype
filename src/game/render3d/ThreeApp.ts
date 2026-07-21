@@ -31,6 +31,7 @@ import {
   CAMERA_CONSTRAINTS,
   SKY_RENDER_CONFIG,
   ZOOM_MAX,
+  ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR,
   ZOOM_MAX_MAP_CENTER_DISTANCE,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
@@ -225,6 +226,7 @@ export class ThreeApp {
         : undefined;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
       minDistance,
+      maxDistance: Math.max(mapWidth, mapHeight) * ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR,
       maxCameraDistanceFromOrigin: ZOOM_MAX_MAP_CENTER_DISTANCE,
       cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,

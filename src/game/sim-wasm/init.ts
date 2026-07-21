@@ -4677,6 +4677,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
         runInput3DKeyboardControllerContractTest();
+        const { runOrbitCameraContractTest } = await import('../render3d/OrbitCameraContractTest');
+        runOrbitCameraContractTest();
         const { runInput3DModeClickControllerContractTest } = await import('../render3d/Input3DModeClickControllerContractTest');
         runInput3DModeClickControllerContractTest();
         const { runInput3DTargetTypeTrackerContractTest } = await import('../render3d/Input3DTargetTypeTrackerContractTest');

@@ -49,6 +49,16 @@ const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
 const KEYBOARD_CAMERA_FAST_MULTIPLIER = 2.5;
 const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
+// Recoil's Spring camera receives one SDL wheel unit per physical notch and
+// multiplies it by ScrollWheelSpeed=25. Its 0.007 zoom coefficient therefore
+// produces a 0.175 distance change per notch. Browser wheel events are less
+// regular: the same notch is normally 100 pixels, three lines, or one page.
+// Reduce all three DOM modes to the controller unit BAR actually consumes.
+const WHEEL_PIXELS_PER_TICK = 100;
+const WHEEL_LINES_PER_TICK = 3;
+const BAR_FAST_POINTER_MULTIPLIER = 4;
+const BAR_FAST_WHEEL_MULTIPLIER = 2;
+const BAR_TILT_RADIANS_PER_WHEEL_TICK = 0.125;
 
 const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = {
   pointMode: 'seventeen',
@@ -129,6 +139,8 @@ type OrbitCameraOptions = {
    *  unbounded camera; terrain clearance is handled separately at render
    *  time and never writes back into the orbit state. */
   minDistance?: number;
+  /** BAR/Recoil's map-relative far controller-distance rail. */
+  maxDistance?: number;
   /** Farthest rendered camera-eye distance from an origin point. Used for
    *  the app's zoom-out rail. */
   maxCameraDistanceFromOrigin?: number;
@@ -143,13 +155,10 @@ type OrbitCameraOptions = {
   lostTerrainRecovery?: CameraLostTerrainRecoveryConfig;
   minPitch?: number;
   maxPitch?: number;
-  /** Relative-mode per-wheel-tick zoom fraction. Each scroll-IN moves the
-   *  camera this fraction of the way toward the cursor's actual
-   *  rendered ground point (raycast against the scene); scroll-
-   *  OUT applies the inverse factor 1/(1−f) so paired in/out
-   *  ticks cancel exactly. Distance and target both scale by the
-   *  same factor, which keeps the cursor pixel pinned to its
-   *  world point through the move. */
+  /** Relative-mode per-wheel-tick zoom fraction. BAR's default wheel speed
+   *  makes this 0.175: scroll-IN uses (1-f), scroll-OUT uses (1+f).
+   *  Distance and target both scale by the resulting factor, which keeps the
+   *  configured anchor pixel pinned through the move. */
   zoomStepFraction?: number;
   /** Screen-space terrain neighborhood used to derive the distance scalar
    *  for relative zoom movement. */
@@ -215,6 +224,33 @@ export type CameraZoomTerrainSampleSnapshot = {
   version: number;
 };
 
+/** Convert a DOM wheel delta into the platform-independent wheel unit used by
+ * BAR/Recoil. Exported so the browser-input edge cases have a small, pure
+ * contract surface independent of Three.js and the DOM event dispatcher. */
+export function barCameraWheelTicks(
+  delta: number,
+  deltaMode: number,
+): number {
+  if (!Number.isFinite(delta) || delta === 0) return 0;
+  // WheelEvent.DOM_DELTA_LINE/PAGE are specified as 1 and 2. Use the numeric
+  // values so this pure helper is also safe in Node-based contract tests.
+  if (deltaMode === 1) return delta / WHEEL_LINES_PER_TICK;
+  if (deltaMode === 2) return delta;
+  // DOM_DELTA_PIXEL is zero. Unknown modes are safest treated as pixels too.
+  return delta / WHEEL_PIXELS_PER_TICK;
+}
+
+/** Recoil SpringController's default relative zoom law. It is intentionally
+ * asymmetric: one notch in is x0.825 and one notch out is x1.175. */
+export function barCameraRelativeZoomFactor(
+  signedTicks: number,
+  stepFraction: number,
+): number {
+  if (!Number.isFinite(signedTicks) || signedTicks === 0) return 1;
+  const fraction = Math.max(0, Number.isFinite(stepFraction) ? stepFraction : 0);
+  return Math.max(1e-6, 1 + signedTicks * fraction);
+}
+
 export class OrbitCamera {
   public camera: THREE.PerspectiveCamera;
 
@@ -254,6 +290,7 @@ export class OrbitCamera {
   public smoothTauSec = 0;
 
   private minDistance = 1e-6;
+  private maxDistance = Infinity;
   private maxCameraDistanceFromOrigin = Infinity;
   private cameraDistanceOrigin = new THREE.Vector3();
   /** HUD-fade far reference (see getFarReferenceDistance). Not a clamp. */
@@ -301,8 +338,8 @@ export class OrbitCamera {
   /** Anchor pair for each gesture. The wheel handler reads
    *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
    *  the two halves of the zoom can use different anchors. Defaults
-   *  use cursor for both so paired wheel ticks are inverse. The
-   *  orbit drag and touch twist use `rotateAnchor`, and pan uses
+   *  may use cursor for both. The orbit drag and touch twist use
+   *  `rotateAnchor`, and pan uses
    *  `panAnchor` for its grab-depth capture. */
   private zoomInAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d' };
   private zoomOutAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d' };
@@ -314,6 +351,10 @@ export class OrbitCamera {
   private lastMouseY = 0;
   private lastMouseTimeMs = Number.NEGATIVE_INFINITY;
   private lastWheelTimeMs = Number.NEGATIVE_INFINITY;
+  /** Recoil discards the first relative-motion event after entering its
+   * hidden-cursor mode because several platforms report a warp delta. Pointer
+   * lock has the same edge case in browsers. */
+  private ignoreNextLockedMouseMove = false;
   private touchMode: 'none' | 'pan' | 'pinch' = 'none';
   private touchLastCenterX = 0;
   private touchLastCenterY = 0;
@@ -374,6 +415,8 @@ export class OrbitCamera {
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseMove: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
+  private onPointerLockChange: () => void;
+  private onWindowBlur: () => void;
   private onTouchStart: (e: TouchEvent) => void;
   private onTouchMove: (e: TouchEvent) => void;
   private onTouchEnd: (e: TouchEvent) => void;
@@ -388,6 +431,9 @@ export class OrbitCamera {
     this.canvas = canvas;
     if (opts.minDistance !== undefined && Number.isFinite(opts.minDistance)) {
       this.minDistance = Math.max(1e-6, opts.minDistance);
+    }
+    if (opts.maxDistance !== undefined && Number.isFinite(opts.maxDistance)) {
+      this.maxDistance = Math.max(this.minDistance, opts.maxDistance);
     }
     if (
       opts.maxCameraDistanceFromOrigin !== undefined &&
@@ -414,7 +460,7 @@ export class OrbitCamera {
     }
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
-    this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
+    this.zoomStepFraction = opts.zoomStepFraction ?? 0.175;
     this.zoomDistanceSampling = opts.zoomDistanceSampling
       ?? DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG;
     const zoomRingPointCount = Math.max(
@@ -465,26 +511,51 @@ export class OrbitCamera {
       //   scroll up   (delta < 0)  → zoom in
       //   scroll down (delta > 0)  → zoom out
       //
-      // Browsers commonly remap Shift + wheel into horizontal
-      // deltaX scrolling. Treat that as the same wheel gesture so
-      // Shift remains fine zoom instead of making zoom appear dead.
+      // Browsers commonly remap Shift + wheel into horizontal deltaX
+      // scrolling. It is still BAR's movefast wheel gesture.
       const wheelDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
       if (wheelDelta === 0) return;
 
-      const zoomingIn = wheelDelta < 0;
+      let signedTicks = barCameraWheelTicks(
+        wheelDelta,
+        e.deltaMode,
+      );
+      if (signedTicks === 0) return;
+      // BAR binds Shift to movefast. SpringController scales wheel input by
+      // 2x and pointer movement by 4x with the engine defaults.
+      if (e.shiftKey) signedTicks *= BAR_FAST_WHEEL_MULTIPLIER;
+
+      // BAR's Ctrl+wheel path tilts immediately instead of zooming. Chromium
+      // also marks trackpad pinch events as Ctrl+pixel-wheel, however; retain
+      // pinch-to-zoom for those fine-grained synthetic events.
+      const browserTrackpadPinch = e.ctrlKey
+        && e.deltaMode === 0
+        && Math.abs(wheelDelta) < WHEEL_PIXELS_PER_TICK;
+      if (e.ctrlKey && !browserTrackpadPinch) {
+        this.pitch = Math.min(
+          this.maxPitch,
+          Math.max(
+            this.minPitch,
+            this.pitch + signedTicks * BAR_TILT_RADIANS_PER_WHEEL_TICK,
+          ),
+        );
+        this.apply();
+        return;
+      }
+
+      const zoomingIn = signedTicks < 0;
       const zoomMovement = zoomingIn
         ? this.movementConfig.zoomIn
         : this.movementConfig.zoomOut;
-      const inputGain = this.wheelMomentumGain(e, wheelDelta, zoomMovement.momentum);
-      // Each zoom direction still has its own configurable anchor, but
-      // the default is cursor for both directions. That keeps paired
-      // scroll-in / scroll-out ticks symmetric instead of making a
-      // reversal pivot around a different world point.
+      const inputGain = this.wheelMomentumGain(e, signedTicks, zoomMovement.momentum);
+      // Each zoom direction has its own configured anchor. BAR's battle
+      // default is cursor-in and screen-center-out.
       const anchor = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
       this.zoomWheelAt(
         e.clientX,
         e.clientY,
         zoomingIn,
+        Math.abs(signedTicks),
         inputGain,
         anchor,
         zoomMovement.absoluteWorldUnitsPerWheelTick,
@@ -502,53 +573,62 @@ export class OrbitCamera {
       if (this.dragMode === 'pan' || this.dragMode === 'height-pan') {
         this.capturePanAnchor(e.clientX, e.clientY);
       } else if (this.dragMode === 'orbit') {
-        // Capture pivot + start camera position + start yaw/pitch
-        // for a RIGID tumble around the cursor's 3D ground point.
-        // Nothing about the camera (position, orientation, yaw,
-        // pitch) changes at drag-start — the camera stays exactly
-        // where it was, looking exactly where it was. Only on
-        // subsequent mousemoves do yaw/pitch deltas accumulate and
-        // drive a rigid rotation of the camera around the pivot,
-        // so the pivot stays anchored on screen but the camera
-        // doesn't re-center on it.
-        //
-        // Pivot location follows `rotateAnchor`: by default the
-        // ground point at the SCREEN CENTER (the framed view
-        // tumbles around itself), or the ground point under the
-        // cursor when configured. Same picker either way — both
-        // return null if the chosen point misses geometry, in
-        // which case we fall through to the no-pivot orbit branch.
-        const hit = this._anchorWorldPoint(e.clientX, e.clientY, this.rotateAnchor);
-        if (hit) {
-          this.orbitPivot.copy(hit);
-          // Make sure the camera position is up-to-date before we
-          // capture it as the rigid-rotation reference.
-          this.apply();
-          this.orbitStartCamPos.copy(this.camera.position);
-          this.orbitStartYaw = this.yaw;
-          this.orbitStartPitch = this.pitch;
-          this.orbitStartDistance = this.distance;
-          this.orbitYawAccum = 0;
-          this.orbitPitchAccum = 0;
-          this.orbitPivotActive = true;
-        } else {
-          this.orbitPivotActive = false;
+        this.captureOrbitPivot(e.clientX, e.clientY);
+      }
+
+      // Recoil switches to relative mouse input for camera scrolling. Pointer
+      // lock is the browser equivalent: long pans/orbits keep receiving deltas
+      // at a window edge and cannot jump when the pointer leaves and returns.
+      // Failure is harmless (embedded browsers may deny it); absolute deltas
+      // remain as the fallback below.
+      if (document.pointerLockElement !== this.canvas) {
+        try {
+          const lockRequest = this.canvas.requestPointerLock();
+          if (lockRequest && typeof lockRequest.catch === 'function') {
+            void lockRequest.catch(() => undefined);
+          }
+        } catch {
+          // Pointer lock is optional; retain ordinary drag behavior.
         }
       }
     };
 
     this.onMouseMove = (e) => {
       if (this.dragMode === 'none') return;
-      const dx = e.clientX - this.lastMouseX;
-      const dy = e.clientY - this.lastMouseY;
+      // Recoil reads moverotate/movetilt state for every motion event rather
+      // than only on mouse-down. Changing Alt/Ctrl during a held drag must
+      // switch modes without applying the accumulated delta from the old one.
+      const requestedDragMode = e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan';
+      if (requestedDragMode !== this.dragMode) {
+        this.dragMode = requestedDragMode;
+        if (requestedDragMode === 'orbit') {
+          this.captureOrbitPivot(e.clientX, e.clientY);
+        } else {
+          this.orbitPivotActive = false;
+          this.capturePanAnchor(e.clientX, e.clientY);
+        }
+        this.lastMouseX = e.clientX;
+        this.lastMouseY = e.clientY;
+        this.lastMouseTimeMs = e.timeStamp;
+        return;
+      }
+      const pointerLocked = document.pointerLockElement === this.canvas;
+      if (pointerLocked && this.ignoreNextLockedMouseMove) {
+        this.ignoreNextLockedMouseMove = false;
+        this.lastMouseTimeMs = e.timeStamp;
+        return;
+      }
+      const dx = pointerLocked ? e.movementX : e.clientX - this.lastMouseX;
+      const dy = pointerLocked ? e.movementY : e.clientY - this.lastMouseY;
       const momentum = this.pointerMomentumForDragMode(this.dragMode);
-      const inputGain = this.mouseMomentumGain(
+      let inputGain = this.mouseMomentumGain(
         dx,
         dy,
         e.timeStamp,
         this.lastMouseTimeMs,
         momentum,
       );
+      if (e.shiftKey) inputGain *= BAR_FAST_POINTER_MULTIPLIER;
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
       this.lastMouseTimeMs = e.timeStamp;
@@ -676,6 +756,38 @@ export class OrbitCamera {
       if (e.button !== 1) return;
       this.dragMode = 'none';
       this.orbitPivotActive = false;
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    };
+
+    this.onPointerLockChange = () => {
+      if (document.pointerLockElement === this.canvas) {
+        // requestPointerLock() resolves asynchronously. A quick click can be
+        // released before it resolves; immediately unwind that stale lock.
+        if (this.dragMode === 'none') {
+          document.exitPointerLock();
+          return;
+        }
+        // Match Recoil's ignoreMove flag on entry. Some browsers synthesize a
+        // delta from the old cursor coordinate to the lock coordinate.
+        this.ignoreNextLockedMouseMove = true;
+      } else {
+        this.ignoreNextLockedMouseMove = false;
+        // Escape/lost lock is a camera-drag cancellation. This prevents the
+        // next absolute event from being measured against the lock position.
+        this.dragMode = 'none';
+        this.orbitPivotActive = false;
+        this.panAnchorValid = false;
+      }
+      this.lastMouseTimeMs = Number.NEGATIVE_INFINITY;
+    };
+
+    this.onWindowBlur = () => {
+      // A lost mouse-up must never leave the camera consuming movements when
+      // the player returns to the tab.
+      this.dragMode = 'none';
+      this.orbitPivotActive = false;
+      this.panAnchorValid = false;
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     };
 
     this.onTouchStart = (e) => {
@@ -751,6 +863,8 @@ export class OrbitCamera {
     canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
+    window.addEventListener('blur', this.onWindowBlur);
     canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
     canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
     canvas.addEventListener('touchend', this.onTouchEnd, { passive: false });
@@ -778,12 +892,13 @@ export class OrbitCamera {
     clientX: number,
     clientY: number,
     zoomingIn: boolean,
+    wheelTicks: number,
     inputGain: number,
     anchor: CameraAnchor,
     absoluteWorldUnitsPerWheelTick: number,
   ): void {
     if (this.usesAbsoluteWorldMovement()) {
-      const step = Math.max(0, absoluteWorldUnitsPerWheelTick) * inputGain;
+      const step = Math.max(0, absoluteWorldUnitsPerWheelTick) * wheelTicks * inputGain;
       this.zoomByWorldStepAt(clientX, clientY, zoomingIn ? -step : step, anchor);
       return;
     }
@@ -792,8 +907,8 @@ export class OrbitCamera {
     // rails and shifts the target by the same factor around the
     // selected anchor. Absolute modes take the branch above so in/out
     // use the same fixed world-step path with only the sign flipped.
-    const f = this.zoomStepFraction;
-    const factor = zoomingIn ? 1 - f : 1 / (1 - f);
+    const signedTicks = zoomingIn ? -wheelTicks : wheelTicks;
+    const factor = barCameraRelativeZoomFactor(signedTicks, this.zoomStepFraction);
     this.zoomByFactorAt(clientX, clientY, factor, anchor);
   }
 
@@ -1229,11 +1344,31 @@ export class OrbitCamera {
         * ((1 - factor) / baseInFraction)
       );
     }
-    const baseOutFactor = 1 / (1 - baseInFraction);
+    const baseOutFactor = 1 + baseInFraction;
     return (
       this.movementConfig.zoomOut.absoluteWorldUnitsPerWheelTick
       * ((factor - 1) / (baseOutFactor - 1))
     );
+  }
+
+  /** Capture the complete start pose for the philosophy's anchored rigid
+   * tumble. Keeping this in one path is important because BAR permits Alt to
+   * be pressed or released while middle mouse remains held. */
+  private captureOrbitPivot(clientX: number, clientY: number): void {
+    const hit = this._anchorWorldPoint(clientX, clientY, this.rotateAnchor);
+    if (!hit) {
+      this.orbitPivotActive = false;
+      return;
+    }
+    this.orbitPivot.copy(hit);
+    this.apply();
+    this.orbitStartCamPos.copy(this.camera.position);
+    this.orbitStartYaw = this.yaw;
+    this.orbitStartPitch = this.pitch;
+    this.orbitStartDistance = this.distance;
+    this.orbitYawAccum = 0;
+    this.orbitPitchAccum = 0;
+    this.orbitPivotActive = true;
   }
 
   private capturePanAnchor(clientX: number, clientY: number): void {
@@ -1469,7 +1604,10 @@ export class OrbitCamera {
     pitch: number,
   ): number {
     const baseDistance = Number.isFinite(distance) ? distance : this.minDistance;
-    const minClamped = Math.max(this.minDistance, baseDistance);
+    const minClamped = Math.min(
+      this.maxDistance,
+      Math.max(this.minDistance, baseDistance),
+    );
     if (!Number.isFinite(this.maxCameraDistanceFromOrigin)) return minClamped;
 
     const sinP = Math.sin(pitch);
@@ -2128,11 +2266,14 @@ export class OrbitCamera {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+    window.removeEventListener('blur', this.onWindowBlur);
     this.canvas.removeEventListener('touchstart', this.onTouchStart);
     this.canvas.removeEventListener('touchmove', this.onTouchMove);
     this.canvas.removeEventListener('touchend', this.onTouchEnd);
     this.canvas.removeEventListener('touchcancel', this.onTouchEnd);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.canvas.style.touchAction = this.previousTouchAction;
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 }
