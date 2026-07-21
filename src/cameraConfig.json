@@ -1,10 +1,17 @@
 {
   "fovDegrees": 45,
   "initialPitchRadians": 0.541592653589793,
+  "transitionMode": "bar-spring-dampened",
   "smoothingTauSeconds": {
     "snap": 0.0,
     "fast": 0.05,
     "mid": 0.12,
+    "slow": 0.4
+  },
+  "barSpringHalfLifeSeconds": {
+    "snap": 0.0,
+    "fast": 0.1,
+    "mid": 0.18,
     "slow": 0.4
   },
   "panMultiplier": 4.0,

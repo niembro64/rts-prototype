@@ -39,6 +39,7 @@ import type {
   CameraMovementConfig,
   CameraMovementScaleMode,
   CameraTerrainCollisionMode,
+  CameraTransitionMode,
   CameraZoomDistanceAggregation,
   CameraZoomDistanceSamplingConfig,
 } from '../../types/camera';
@@ -154,6 +155,8 @@ type OrbitCameraOptions = {
   /** Recover a lost map view by EMAing the eye and view angle toward the
    * configured map-origin point. Disabled by default for standalone callers. */
   lostTerrainRecovery?: CameraLostTerrainRecoveryConfig;
+  /** Render interpolation: Recoil's velocity spring or the prior EMA path. */
+  transitionMode?: CameraTransitionMode;
   minPitch?: number;
   maxPitch?: number;
   /** Relative-mode per-wheel-tick zoom fraction. BAR's default wheel speed
@@ -247,6 +250,18 @@ export function barCameraWheelTicks(
   return delta / WHEEL_PIXELS_PER_TICK;
 }
 
+export type CameraMouseDragMode = 'orbit' | 'pan' | 'height-pan';
+
+/** Modifier contract for held middle-mouse camera control. Alt deliberately
+ * wins when both modifiers are held. */
+export function cameraMouseDragModeForModifiers(
+  altKey: boolean,
+  ctrlKey: boolean,
+): CameraMouseDragMode {
+  if (altKey) return 'orbit';
+  return ctrlKey ? 'height-pan' : 'pan';
+}
+
 /** Recoil SpringController's default relative zoom law. It is intentionally
  * asymmetric: one notch in is x0.825 and one notch out is x1.175. */
 export function barCameraRelativeZoomFactor(
@@ -256,6 +271,22 @@ export function barCameraRelativeZoomFactor(
   if (!Number.isFinite(signedTicks) || signedTicks === 0) return 1;
   const fraction = Math.max(0, Number.isFinite(stepFraction) ? stepFraction : 0);
   return Math.max(1e-6, 1 + signedTicks * fraction);
+}
+
+/** Ctrl-height pan and persistent terrain clearance both become the same
+ * ordinary focus-height offset. Explicit zoom-in scales that offset toward
+ * the terrain together with orbit distance; zoom-out leaves it unchanged. */
+export function barCameraZoomElevationOffset(
+  elevationOffset: number,
+  oldDistance: number,
+  nextDistance: number,
+  zoomingIn: boolean,
+): number {
+  if (!Number.isFinite(elevationOffset)) return 0;
+  if (!zoomingIn || !(oldDistance > 0) || !Number.isFinite(nextDistance)) {
+    return elevationOffset;
+  }
+  return elevationOffset * Math.min(1, Math.max(0, nextDistance / oldDistance));
 }
 
 /** Recoil's GetRotationWithCardinalLock, translated literally. The raw yaw is
@@ -287,6 +318,41 @@ export function persistentTerrainRaise(
   return Math.max(0, terrainY + Math.max(0, clearance) - eyeY);
 }
 
+export type BarSpringDamperStep = {
+  value: number;
+  velocity: number;
+};
+
+/** Literal scalar port of Recoil SpringDampers.cpp. `halfLifeSeconds` and
+ * `dtSeconds` use seconds instead of the engine's milliseconds; their ratio,
+ * and therefore the result, is identical. Pass `out` on hot paths. */
+export function barSpringDamperStep(
+  value: number,
+  velocity: number,
+  goal: number,
+  halfLifeSeconds: number,
+  dtSeconds: number,
+  out: BarSpringDamperStep = { value: 0, velocity: 0 },
+): BarSpringDamperStep {
+  const halfLife = Math.max(0, halfLifeSeconds);
+  const dt = Math.max(0, dtSeconds);
+  if (halfLife <= 0 || dt <= 0) {
+    out.value = halfLife <= 0 ? goal : value;
+    out.velocity = halfLife <= 0 ? 0 : velocity;
+    return out;
+  }
+  // Recoil: damping = (4*ln(2)/(halflife+eps))/2. Scale its 1e-5ms
+  // epsilon into seconds so the browser port follows the same edge behavior.
+  const damping = (2 * Math.LN2) / (halfLife + 1e-8);
+  const x = damping * dt;
+  const eydt = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const j0 = value - goal;
+  const j1 = velocity + j0 * damping;
+  out.value = eydt * (j0 + j1 * dt) + goal;
+  out.velocity = eydt * (velocity - j1 * damping * dt);
+  return out;
+}
+
 export class OrbitCamera {
   public camera: THREE.PerspectiveCamera;
 
@@ -314,18 +380,23 @@ export class OrbitCamera {
   private toTargetX = 0;
   private toTargetY = 0;
   private toTargetZ = 0;
-  // Smooth-destination YAW. Mirrors the to-target pattern: tick() EMAs
-  // the rendered `yaw` toward this along the shortest arc. Every direct
-  // yaw write (orbit drag, twist, setOrbitAngles, setState) keeps
-  // `toYaw === yaw`, so the yaw EMA is inert except when a follow driver
-  // (follow-behind) parks `toYaw` on a different angle. No `toPitch`:
-  // pitch is never machine-driven, so it stays a direct write.
+  // Controller rotation destination. EMA mode normally keeps pitch direct;
+  // BAR spring-dampened mode transitions the active camera's rotation toward
+  // both values while preserving independent angular velocity.
   private toYaw = 0;
+  private toPitch = this.pitch;
 
-  /** EMA time-constant in seconds. 0 disables smoothing (snap mode).
-   *  After tau seconds the rendered state is ~63% of the way to the
-   *  to-state; after 3·tau ~95%. */
-  public smoothTauSec = 0;
+  /** Selected transition scalar in seconds: EMA time constant in `ema` mode,
+   * Recoil spring half-life in `bar-spring-dampened`, or 0 for snap. */
+  public transitionSeconds = 0;
+  private transitionMode: CameraTransitionMode = 'ema';
+  private barRenderInitialized = false;
+  private readonly barPositionVelocity = new THREE.Vector3();
+  private barYawVelocity = 0;
+  private barPitchVelocity = 0;
+  private barFovGoalDegrees = 45;
+  private barFovVelocity = 0;
+  private readonly barDamperStepScratch = { value: 0, velocity: 0 };
 
   private minDistance = 1e-6;
   private maxDistance = Infinity;
@@ -457,6 +528,8 @@ export class OrbitCamera {
   private _barWantedEyeTmp = new THREE.Vector3();
   private _barTraceOriginTmp = new THREE.Vector3();
   private _barTraceHitTmp = new THREE.Vector3();
+  private _barGoalEyeTmp = new THREE.Vector3();
+  private _barLookDirectionTmp = new THREE.Vector3();
   private _mapRecoveryOriginClipTmp = new THREE.Vector3();
   private _mapRecoveryEyeOffsetTmp = new THREE.Vector3();
   private _surfaceVisibilityFrustum = new THREE.Frustum();
@@ -501,6 +574,8 @@ export class OrbitCamera {
       );
     }
     this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
+    this.transitionMode = opts.transitionMode ?? this.transitionMode;
+    this.barFovGoalDegrees = this.camera.fov;
     const recovery = opts.lostTerrainRecovery;
     if (recovery !== undefined) {
       this.lostTerrainRecovery = {
@@ -556,6 +631,7 @@ export class OrbitCamera {
     this.toTargetY = this.target.y;
     this.toTargetZ = this.target.z;
     this.toYaw = this.yaw;
+    this.toPitch = this.pitch;
     this.barRawYaw = this.yaw;
     this.previousTouchAction = canvas.style.touchAction;
     canvas.style.touchAction = 'none';
@@ -581,14 +657,21 @@ export class OrbitCamera {
 
       // BAR's Ctrl+wheel path tilts immediately instead of zooming.
       if (e.ctrlKey) {
-        this.pitch = Math.min(
+        const nextPitch = Math.min(
           this.maxPitch,
           Math.max(
             this.minPitch,
-            this.pitch + signedTicks * BAR_TILT_RADIANS_PER_WHEEL_TICK,
+            this.controllerPitch() + signedTicks * BAR_TILT_RADIANS_PER_WHEEL_TICK,
           ),
         );
-        this.apply();
+        if (this.usesBarSpringTransition()) {
+          this.toPitch = nextPitch;
+          this.applyDestinationIfSnap();
+        } else {
+          this.pitch = nextPitch;
+          this.toPitch = nextPitch;
+          this.apply();
+        }
         return;
       }
 
@@ -681,13 +764,19 @@ export class OrbitCamera {
         if (this.usesBarSpringMovement()) {
           const radiansPerPixel = this.orbitRadiansPerPixel();
           this.barRawYaw -= scaledDx * radiansPerPixel;
-          this.yaw = barCameraLockedYaw(this.barRawYaw);
-          this.pitch = Math.min(
+          const nextYaw = barCameraLockedYaw(this.barRawYaw);
+          const nextPitch = Math.min(
             this.maxPitch,
-            Math.max(this.minPitch, this.pitch + scaledDy * radiansPerPixel),
+            Math.max(this.minPitch, this.controllerPitch() + scaledDy * radiansPerPixel),
           );
-          this.toYaw = this.yaw;
-          this.apply();
+          this.toYaw = nextYaw;
+          this.toPitch = nextPitch;
+          if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+          else {
+            this.yaw = nextYaw;
+            this.pitch = nextPitch;
+            this.apply();
+          }
           return;
         }
         // RIGID TUMBLE around the cursor's 3D ground pivot. The
@@ -908,9 +997,13 @@ export class OrbitCamera {
   }
 
   private applyDestinationIfSnap(): void {
+    if (this.usesBarSpringTransition()) {
+      if (this.transitionSeconds === 0) this.snapBarRenderToController();
+      return;
+    }
     // Snap mode applies inputs directly to the rendered state.
     // EMA mode leaves the rendered state and lets tick() ease.
-    if (this.smoothTauSec !== 0) return;
+    if (this.transitionSeconds !== 0) return;
     this.distance = this.toDistance;
     this.target.x = this.toTargetX;
     this.target.y = this.toTargetY;
@@ -959,6 +1052,19 @@ export class OrbitCamera {
     return this.movementScaleMode === 'bar-spring';
   }
 
+  private usesBarSpringTransition(): boolean {
+    return this.usesBarSpringMovement()
+      && this.transitionMode === 'bar-spring-dampened';
+  }
+
+  private controllerYaw(): number {
+    return this.usesBarSpringTransition() ? this.toYaw : this.yaw;
+  }
+
+  private controllerPitch(): number {
+    return this.usesBarSpringTransition() ? this.toPitch : this.pitch;
+  }
+
   private usesMomentumGain(): boolean {
     return this.movementScaleMode === 'absolute-world-momentum';
   }
@@ -982,13 +1088,10 @@ export class OrbitCamera {
   private mouseDragModeForModifiers(
     altKey: boolean,
     ctrlKey: boolean,
-  ): 'orbit' | 'pan' | 'height-pan' {
-    if (altKey) return 'orbit';
-    // In SpringController Ctrl is movetilt for the wheel only. Held MMB with
-    // Ctrl still pans; height-pan remains available to the prototype's
-    // explicit keyboard actions and to non-BAR movement modes.
-    if (this.usesBarSpringMovement()) return 'pan';
-    return ctrlKey ? 'height-pan' : 'pan';
+  ): CameraMouseDragMode {
+    // Intentional Budget Annihilation extension: BAR uses Ctrl only for wheel
+    // tilt, but Ctrl+MMB keeps our horizontal/world-height drag plane.
+    return cameraMouseDragModeForModifiers(altKey, ctrlKey);
   }
 
   private momentumGainForVelocity(
@@ -1065,14 +1168,34 @@ export class OrbitCamera {
     const factor = barCameraRelativeZoomFactor(signedTicks, this.zoomStepFraction);
     const oldDistance = this.toDistance;
     const scaledDistance = this.clampBarDistance(oldDistance * factor);
+    const elevationOffset = this.barFocusElevationOffset(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+    );
+    const zoomElevationOffset = barCameraZoomElevationOffset(
+      elevationOffset,
+      oldDistance,
+      scaledDistance,
+      signedTicks < 0,
+    );
+    const applyDistanceOnly = (): void => {
+      this.toDistance = scaledDistance;
+      this.toTargetY = this.barFocusSurfaceHeight(
+        this.toTargetX,
+        this.toTargetZ,
+        zoomElevationOffset,
+        this.toTargetY,
+      );
+      this.clearZoomTerrainSamples();
+      this.applyDestinationIfSnap();
+    };
 
     // BAR's default cursorZoomOut=false: zooming out from screen center keeps
     // the focus fixed. A screen-center zoom-in likewise follows camera forward
     // and needs no focus translation.
     if (anchor.screen === 'screen-center') {
-      this.toDistance = scaledDistance;
-      this.clearZoomTerrainSamples();
-      this.applyDestinationIfSnap();
+      applyDistanceOnly();
       return;
     }
 
@@ -1082,14 +1205,12 @@ export class OrbitCamera {
       this.toTargetZ,
       oldDistance,
       this.toYaw,
-      this.pitch,
+      this.controllerPitch(),
       this._barControllerEyeTmp,
     );
     const renderedRay = this.barScreenRayDirection(clientX, clientY, anchor);
     if (!renderedRay || !this.traceWorldRay) {
-      this.toDistance = scaledDistance;
-      this.clearZoomTerrainSamples();
-      this.applyDestinationIfSnap();
+      applyDistanceOnly();
       return;
     }
 
@@ -1097,25 +1218,18 @@ export class OrbitCamera {
       controllerEye,
       renderedRay,
       anchor.terrain,
-      this.toTargetY,
+      this.toTargetY - elevationOffset,
     );
     if (!rayHit) {
-      this.toDistance = scaledDistance;
-      this.applyDestinationIfSnap();
+      applyDistanceOnly();
       return;
     }
     const cursorDistance = controllerEye.distanceTo(rayHit);
     if (!(cursorDistance > 0)) {
-      this.toDistance = scaledDistance;
-      this.applyDestinationIfSnap();
+      applyDistanceOnly();
       return;
     }
 
-    const elevationOffset = this.barFocusElevationOffset(
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-    );
     this._barViewForwardTmp.set(
       this.toTargetX - controllerEye.x,
       this.toTargetY - controllerEye.y,
@@ -1138,7 +1252,8 @@ export class OrbitCamera {
         wantedEye,
         this._barViewForwardTmp,
         anchor.terrain,
-        elevationOffset,
+        zoomElevationOffset,
+        this.toTargetY - elevationOffset,
       );
       if (!target) return null;
       return {
@@ -1156,8 +1271,8 @@ export class OrbitCamera {
       if (result && result.distance > this.maxDistance) result = null;
     }
     if (!result || !(result.distance > 0)) {
-      if (signedTicks < 0) this.toDistance = scaledDistance;
-      this.applyDestinationIfSnap();
+      if (signedTicks < 0) applyDistanceOnly();
+      else this.applyDestinationIfSnap();
       return;
     }
 
@@ -1166,7 +1281,7 @@ export class OrbitCamera {
     this.toTargetY = this.barFocusSurfaceHeight(
       this.toTargetX,
       this.toTargetZ,
-      elevationOffset,
+      zoomElevationOffset,
       result.target.y,
     );
     this.toDistance = this.clampBarDistance(result.distance);
@@ -1203,7 +1318,8 @@ export class OrbitCamera {
       elevationOffset,
       this.toTargetY,
     );
-    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, BAR_RESET_PITCH));
+    this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, BAR_RESET_PITCH));
+    if (!this.usesBarSpringTransition()) this.pitch = this.toPitch;
     this.toDistance = this.clampBarDistance(
       Math.hypot(this.toTargetX, this.toTargetZ) * 1.5,
     );
@@ -1271,6 +1387,7 @@ export class OrbitCamera {
     direction: THREE.Vector3,
     terrainMode: CameraAnchorTerrain,
     elevationOffset: number,
+    fallbackBaseHeight: number,
   ): THREE.Vector3 | null {
     if (!this.traceWorldRay) return null;
     const translatedOrigin = this._barTraceOriginTmp.copy(origin);
@@ -1279,7 +1396,7 @@ export class OrbitCamera {
       translatedOrigin,
       direction,
       terrainMode,
-      this.toTargetY - elevationOffset,
+      fallbackBaseHeight,
     );
     if (!hit) return null;
     return this._barTraceHitTmp.copy(hit).setY(hit.y + elevationOffset);
@@ -1712,10 +1829,11 @@ export class OrbitCamera {
     // near horizontal. Drag direction is RTS / 2D-camera convention:
     // cursor drag direction = camera drag direction in world.
     const scale = this.panWorldScale(mode);
-    const rx = Math.cos(this.yaw);
-    const rz = Math.sin(this.yaw);
-    const fx = Math.sin(this.yaw);
-    const fz = -Math.cos(this.yaw);
+    const panYaw = this.controllerYaw();
+    const rx = Math.cos(panYaw);
+    const rz = Math.sin(panYaw);
+    const fx = Math.sin(panYaw);
+    const fz = -Math.cos(panYaw);
     const elevationOffset = this.usesBarSpringMovement()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
@@ -1737,8 +1855,9 @@ export class OrbitCamera {
   private panHeightByScreenDelta(dx: number, dy: number): void {
     if (dx === 0 && dy === 0) return;
     const scale = this.panWorldScale('height-pan');
-    const rx = Math.cos(this.yaw);
-    const rz = Math.sin(this.yaw);
+    const panYaw = this.controllerYaw();
+    const rx = Math.cos(panYaw);
+    const rz = Math.sin(panYaw);
     const elevationOffset = this.usesBarSpringMovement()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
@@ -1800,24 +1919,36 @@ export class OrbitCamera {
     const radiansPerPixel = this.orbitRadiansPerPixel();
     if (this.usesBarSpringMovement()) {
       this.barRawYaw -= dx * radiansPerPixel;
-      this.yaw = barCameraLockedYaw(this.barRawYaw);
-      this.pitch += dy * radiansPerPixel;
+      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      this.toPitch = Math.min(
+        this.maxPitch,
+        Math.max(this.minPitch, this.controllerPitch() + dy * radiansPerPixel),
+      );
+      if (!this.usesBarSpringTransition()) {
+        this.yaw = this.toYaw;
+        this.pitch = this.toPitch;
+      }
     } else {
       this.yaw -= dx * radiansPerPixel;
       this.pitch += dy * radiansPerPixel;
+      this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
+      this.toYaw = this.yaw;
+      this.toPitch = this.pitch;
     }
-    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
-    this.toYaw = this.yaw;
-    this.apply();
+    if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+    else this.apply();
   }
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
     if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
     if (this.usesBarSpringMovement()) {
       this.barRawYaw += yawDelta;
-      this.yaw = barCameraLockedYaw(this.barRawYaw);
-      this.toYaw = this.yaw;
-      this.apply();
+      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+      else {
+        this.yaw = this.toYaw;
+        this.apply();
+      }
       return;
     }
     const oldYaw = this.yaw;
@@ -1904,6 +2035,30 @@ export class OrbitCamera {
    *  Keeping both states constrained avoids a smoothing tug-of-war at
    *  map edges and zoom rails. */
   private constrainTargets(): void {
+    if (this.usesBarSpringTransition()) {
+      const elevationOffset = this.barFocusElevationOffset(
+        this.toTargetX,
+        this.toTargetY,
+        this.toTargetZ,
+      );
+      this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
+      this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
+      this.toTargetY = this.barFocusSurfaceHeight(
+        this.toTargetX,
+        this.toTargetZ,
+        elevationOffset,
+        this.toTargetY,
+      );
+      this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.toPitch));
+      // SpringController has no map-center eye sphere. Its focus is map-bound
+      // and curDist is independently clamped to minDist/maxDist.
+      this.toDistance = this.clampBarDistance(this.toDistance);
+      // BAR exposes controller focus/distance immediately while the active
+      // camera's eye and rotation transition independently toward them.
+      this.target.set(this.toTargetX, this.toTargetY, this.toTargetZ);
+      this.distance = this.toDistance;
+      return;
+    }
     const renderedElevationOffset = this.usesBarSpringMovement()
       ? this.barFocusElevationOffset(this.target.x, this.target.y, this.target.z)
       : 0;
@@ -1932,22 +2087,27 @@ export class OrbitCamera {
         this.toTargetY,
       );
     }
-    this.distance = this.constrainOrbitDistance(
-      this.distance,
-      this.target.x,
-      this.target.y,
-      this.target.z,
-      this.yaw,
-      this.pitch,
-    );
-    this.toDistance = this.constrainOrbitDistance(
-      this.toDistance,
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-      this.toYaw,
-      this.pitch,
-    );
+    if (this.usesBarSpringMovement()) {
+      this.distance = this.clampBarDistance(this.distance);
+      this.toDistance = this.clampBarDistance(this.toDistance);
+    } else {
+      this.distance = this.constrainOrbitDistance(
+        this.distance,
+        this.target.x,
+        this.target.y,
+        this.target.z,
+        this.yaw,
+        this.pitch,
+      );
+      this.toDistance = this.constrainOrbitDistance(
+        this.toDistance,
+        this.toTargetX,
+        this.toTargetY,
+        this.toTargetZ,
+        this.toYaw,
+        this.pitch,
+      );
+    }
   }
 
   private constrainOrbitDistance(
@@ -2211,6 +2371,15 @@ export class OrbitCamera {
    *  while panning. The persistent mode only translates Y and never recovers
    *  yaw, pitch, or distance from a collision-adjusted pose. */
   apply(): void {
+    if (this.usesBarSpringTransition()) {
+      this.prepareBarControllerGoal();
+      if (!this.barRenderInitialized || this.transitionSeconds <= 0) {
+        this.snapBarRenderToController();
+      } else {
+        this.applyBarRenderedPose();
+      }
+      return;
+    }
     this.constrainTargets();
     // Resolve the sampler once; undefined disables clearance (mode 'none',
     // no sampler installed, or zero clearance).
@@ -2261,6 +2430,99 @@ export class OrbitCamera {
     this.camera.updateMatrixWorld();
   }
 
+  /** Resolve BAR controller state into its desired eye. Terrain clearance is
+   * part of controller GetPos; the active camera transitions toward this pose
+   * separately in tick(). */
+  private prepareBarControllerGoal(): THREE.Vector3 {
+    this.constrainTargets();
+    const goal = this.cameraPositionForState(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toDistance,
+      this.toYaw,
+      this.toPitch,
+      this._barGoalEyeTmp,
+    );
+    const sample = this.minTerrainClearance > 0 ? this.getTerrainHeight : undefined;
+    if (sample && this.terrainCollisionMode === 'persistRaiseEye') {
+      const floorY = Math.max(sample(goal.x, goal.z), this.terrainCollisionFloorHeight);
+      const lift = persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
+      if (lift > 0) {
+        this.toTargetY += lift;
+        this.target.y = this.toTargetY;
+        goal.y += lift;
+      }
+    } else if (sample && this.terrainCollisionMode === 'raiseEye') {
+      const floorY = Math.max(sample(goal.x, goal.z), this.terrainCollisionFloorHeight);
+      goal.y += persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
+    }
+    return goal;
+  }
+
+  private snapBarRenderToController(): void {
+    const goal = this.prepareBarControllerGoal();
+    this.camera.position.copy(goal);
+    this.yaw = this.toYaw;
+    this.pitch = this.toPitch;
+    this.barPositionVelocity.set(0, 0, 0);
+    this.barYawVelocity = 0;
+    this.barPitchVelocity = 0;
+    this.camera.fov = this.barFovGoalDegrees;
+    this.barFovVelocity = 0;
+    this.camera.updateProjectionMatrix();
+    this.barRenderInitialized = true;
+    this.applyBarRenderedPose();
+  }
+
+  private applyBarRenderedPose(): void {
+    const sinPitch = Math.sin(this.pitch);
+    this._barLookDirectionTmp.set(
+      -sinPitch * Math.sin(this.yaw),
+      -Math.cos(this.pitch),
+      sinPitch * Math.cos(this.yaw),
+    );
+    this._cameraLookAtTmp.copy(this.camera.position).add(this._barLookDirectionTmp);
+    this.camera.lookAt(this._cameraLookAtTmp);
+    this.camera.updateMatrixWorld();
+  }
+
+  /** Resolve terrain against the active, transitioning eye, not just the
+   * controller destination. This covers a spring path crossing a ridge whose
+   * endpoint is already on clear terrain. In the persistent mode, only any
+   * height beyond the controller's already-resolved goal is committed. That
+   * avoids double-counting a destination lift, and clearing the ridge later
+   * has no prior height or downward velocity to recover. */
+  private resolveBarRenderedTerrainCollision(goal: THREE.Vector3): void {
+    if (this.minTerrainClearance <= 0 || this.terrainCollisionMode === 'none') return;
+    const sample = this.getTerrainHeight;
+    if (!sample) return;
+    const terrainY = Math.max(
+      sample(this.camera.position.x, this.camera.position.z),
+      this.terrainCollisionFloorHeight,
+    );
+    const lift = persistentTerrainRaise(
+      this.camera.position.y,
+      terrainY,
+      this.minTerrainClearance,
+    );
+    if (!(lift > 0)) return;
+
+    this.camera.position.y += lift;
+    if (this.terrainCollisionMode !== 'persistRaiseEye') return;
+
+    const controllerLift = Math.max(0, this.camera.position.y - goal.y);
+    if (controllerLift > 0) {
+      this.toTargetY += controllerLift;
+      this.target.y = this.toTargetY;
+      goal.y += controllerLift;
+    }
+    // The collision is now ordinary controller height. Retaining a downward
+    // spring velocity here would be hidden recovery memory and can repeatedly
+    // drive the eye back into the same ridge.
+    this.barPositionVelocity.y = 0;
+  }
+
   /** Set orbit target (and the to-target) without changing
    *  distance/yaw/pitch. Useful for explicit camera centers — e.g.
    *  centerCameraOnCommander — that should NOT animate via EMA
@@ -2270,6 +2532,7 @@ export class OrbitCamera {
     this.toTargetX = x;
     this.toTargetY = y;
     this.toTargetZ = z;
+    if (this.usesBarSpringTransition()) this.barRenderInitialized = false;
     this.apply();
   }
 
@@ -2303,7 +2566,8 @@ export class OrbitCamera {
       this.barRawYaw = behindYaw;
       this.toYaw = barCameraLockedYaw(behindYaw);
     } else {
-      this.toYaw = behindYaw ?? this.yaw;
+      this.toYaw = behindYaw
+        ?? (this.usesBarSpringTransition() ? this.toYaw : this.yaw);
     }
     this.applyDestinationIfSnap();
   }
@@ -2338,22 +2602,43 @@ export class OrbitCamera {
    *  follow-behind ease stops cleanly instead of chasing a stale
    *  target. Cheap no-op when already equal. */
   syncToYaw(): void {
+    if (this.usesBarSpringTransition()) return;
     this.toYaw = this.yaw;
   }
 
   setDistance(distance: number): void {
     if (!Number.isFinite(distance)) return;
-    const d = this.constrainOrbitDistance(
-      distance,
-      this.target.x,
-      this.target.y,
-      this.target.z,
-      this.yaw,
-      this.pitch,
-    );
+    const d = this.usesBarSpringMovement()
+      ? this.clampBarDistance(distance)
+      : this.constrainOrbitDistance(
+          distance,
+          this.target.x,
+          this.target.y,
+          this.target.z,
+          this.controllerYaw(),
+          this.controllerPitch(),
+        );
     this.distance = d;
     this.toDistance = d;
+    if (this.usesBarSpringTransition()) this.barRenderInitialized = false;
     this.apply();
+  }
+
+  /** Set the controller FOV. Recoil's spring transition treats FOV as a
+   * third active-camera channel beside position and rotation. */
+  setFovDegrees(fovDegrees: number): void {
+    const next = Math.min(179, Math.max(1, fovDegrees));
+    if (!Number.isFinite(next)) return;
+    if (this.usesBarSpringTransition()) {
+      if (Math.abs(this.barFovGoalDegrees - next) < 0.001) return;
+      this.barFovGoalDegrees = next;
+      if (this.transitionSeconds === 0) this.snapBarRenderToController();
+      return;
+    }
+    if (Math.abs(this.camera.fov - next) < 0.001) return;
+    this.camera.fov = next;
+    this.barFovGoalDegrees = next;
+    this.camera.updateProjectionMatrix();
   }
 
   /** Far reference distance for HUD fade — keyed to map size so the fade
@@ -2366,9 +2651,11 @@ export class OrbitCamera {
 
   setOrbitAngles(yaw: number, pitch: number): void {
     this.barRawYaw = yaw;
-    this.yaw = this.usesBarSpringMovement() ? barCameraLockedYaw(yaw) : yaw;
-    this.toYaw = this.yaw;
-    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));
+    this.toYaw = this.usesBarSpringMovement() ? barCameraLockedYaw(yaw) : yaw;
+    this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));
+    this.yaw = this.toYaw;
+    this.pitch = this.toPitch;
+    if (this.usesBarSpringTransition()) this.barRenderInitialized = false;
     this.apply();
   }
 
@@ -2378,12 +2665,14 @@ export class OrbitCamera {
     if (!Number.isFinite(delta) || delta === 0) return;
     if (this.usesBarSpringMovement()) {
       this.barRawYaw += delta;
-      this.yaw = barCameraLockedYaw(this.barRawYaw);
+      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      if (!this.usesBarSpringTransition()) this.yaw = this.toYaw;
     } else {
       this.yaw += delta;
+      this.toYaw = this.yaw;
     }
-    this.toYaw = this.yaw;
-    this.apply();
+    if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+    else this.apply();
   }
 
   setTargetBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
@@ -2426,35 +2715,40 @@ export class OrbitCamera {
     this.toTargetX = state.targetX;
     this.toTargetY = state.targetY;
     this.toTargetZ = state.targetZ;
-    this.distance = this.constrainOrbitDistance(
-      Number.isFinite(state.distance) ? state.distance : this.minDistance,
-      state.targetX,
-      state.targetY,
-      state.targetZ,
-      state.yaw,
-      state.pitch,
-    );
+    const requestedDistance = Number.isFinite(state.distance) ? state.distance : this.minDistance;
+    this.distance = this.usesBarSpringMovement()
+      ? this.clampBarDistance(requestedDistance)
+      : this.constrainOrbitDistance(
+          requestedDistance,
+          state.targetX,
+          state.targetY,
+          state.targetZ,
+          state.yaw,
+          state.pitch,
+        );
     this.toDistance = this.distance;
     this.barRawYaw = state.yaw;
-    this.yaw = this.usesBarSpringMovement()
+    this.toYaw = this.usesBarSpringMovement()
       ? barCameraLockedYaw(state.yaw)
       : state.yaw;
-    this.toYaw = this.yaw;
-    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));
+    this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));
+    this.yaw = this.toYaw;
+    this.pitch = this.toPitch;
+    if (this.usesBarSpringTransition()) this.barRenderInitialized = false;
     this.apply();
   }
 
-  /** Set the EMA time-constant in seconds for smooth zoom + pan.
-   *  0 = snap (each input applies instantly, original behavior).
-   *  Any positive value enables exponential smoothing of all
-   *  to-state changes (zoom dolly + pan target shift) at that
-   *  time-constant. Idempotent. Setting to 0 mid-animation snaps
-   *  the rendered state to the to-state so it doesn't look frozen. */
-  setSmoothTau(seconds: number): void {
+  /** Set the selected transition duration scalar: BAR half-life or EMA time
+   * constant. Setting 0 mid-transition snaps and clears spring velocity. */
+  setTransitionSeconds(seconds: number): void {
     const clamped = Math.max(0, seconds);
-    if (this.smoothTauSec === clamped) return;
-    this.smoothTauSec = clamped;
+    if (this.transitionSeconds === clamped) return;
+    this.transitionSeconds = clamped;
     if (clamped === 0) {
+      if (this.usesBarSpringTransition()) {
+        this.snapBarRenderToController();
+        return;
+      }
       this.distance = this.toDistance;
       this.target.x = this.toTargetX;
       this.target.y = this.toTargetY;
@@ -2468,10 +2762,14 @@ export class OrbitCamera {
    *  the to-state via EMA: alpha = 1 − exp(−dt / tau). Cheap no-op
    *  when tau is 0 or already converged. */
   tick(dtSec: number): void {
+    if (this.usesBarSpringTransition()) {
+      this.tickBarSpringTransition(dtSec);
+      return;
+    }
     const recoveringMap = this.updateLostTerrainRecovery();
     const tau = recoveringMap
       ? this.lostTerrainRecovery.emaTauSeconds
-      : this.smoothTauSec;
+      : this.transitionSeconds;
     if (tau <= 0) return;
     const dDist = this.toDistance - this.distance;
     const dX = this.toTargetX - this.target.x;
@@ -2522,6 +2820,90 @@ export class OrbitCamera {
     this.yaw += dYaw * alpha;
     this.pitch += dPitch * alpha;
     this.apply();
+  }
+
+  /** Recoil UpdateTransitionSpringDampened, applied to the actual rendered
+   * eye and rotation. Controller state is already current in the to-fields. */
+  private tickBarSpringTransition(dtSec: number): void {
+    this.updateLostTerrainRecovery();
+    if (!(dtSec > 0)) return;
+    if (this.transitionSeconds <= 0 || !this.barRenderInitialized) {
+      this.snapBarRenderToController();
+      return;
+    }
+    const goal = this.prepareBarControllerGoal();
+    const halfLife = this.transitionSeconds;
+    const step = this.barDamperStepScratch;
+
+    barSpringDamperStep(
+      this.camera.position.x,
+      this.barPositionVelocity.x,
+      goal.x,
+      halfLife,
+      dtSec,
+      step,
+    );
+    this.camera.position.x = step.value;
+    this.barPositionVelocity.x = step.velocity;
+    barSpringDamperStep(
+      this.camera.position.y,
+      this.barPositionVelocity.y,
+      goal.y,
+      halfLife,
+      dtSec,
+      step,
+    );
+    this.camera.position.y = step.value;
+    this.barPositionVelocity.y = step.velocity;
+    barSpringDamperStep(
+      this.camera.position.z,
+      this.barPositionVelocity.z,
+      goal.z,
+      halfLife,
+      dtSec,
+      step,
+    );
+    this.camera.position.z = step.value;
+    this.barPositionVelocity.z = step.velocity;
+
+    this.resolveBarRenderedTerrainCollision(goal);
+
+    barSpringDamperStep(
+      this.yaw,
+      this.barYawVelocity,
+      this.toYaw,
+      halfLife,
+      dtSec,
+      step,
+    );
+    this.yaw = step.value;
+    this.barYawVelocity = step.velocity;
+    barSpringDamperStep(
+      this.pitch,
+      this.barPitchVelocity,
+      this.toPitch,
+      halfLife,
+      dtSec,
+      step,
+    );
+    this.pitch = step.value;
+    this.barPitchVelocity = step.velocity;
+
+    barSpringDamperStep(
+      this.camera.fov,
+      this.barFovVelocity,
+      this.barFovGoalDegrees,
+      halfLife,
+      dtSec,
+      step,
+    );
+    if (this.camera.fov !== step.value) {
+      this.camera.fov = step.value;
+      this.camera.updateProjectionMatrix();
+    }
+    this.barFovVelocity = step.velocity;
+
+    this.applyBarRenderedPose();
   }
 
   /**

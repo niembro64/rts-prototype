@@ -22,6 +22,7 @@ import type {
   CameraLostTerrainRecoveryConfig,
   CameraMovementConfig,
   CameraTerrainCollisionMode,
+  CameraTransitionMode,
   CameraZoomDistanceSamplingConfig,
 } from './types/camera';
 import {
@@ -735,9 +736,19 @@ export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegree
  * angle-from-vertical convention: pitch = PI - rx. */
 export const CAMERA_INITIAL_PITCH_RADIANS = cameraConfigJson.initialPitchRadians;
 
+/** BAR's velocity-based transition is canonical. Set `ema` to retain the
+ * prototype's previous first-order destination smoothing. */
+export const CAMERA_TRANSITION_MODE =
+  cameraConfigJson.transitionMode as CameraTransitionMode;
+
 /** Orbit-camera EMA time constant for each configured smoothing mode. */
 export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
   Readonly<Record<CameraSmoothMode, number>>;
+
+/** Recoil CamSpringHalflife values in seconds. BAR defaults to 100ms; the
+ * same half-life applies to active-camera position, rotation, and FOV. */
+export const CAMERA_BAR_SPRING_HALF_LIFE_SECONDS =
+  cameraConfigJson.barSpringHalfLifeSeconds as Readonly<Record<CameraSmoothMode, number>>;
 
 /** Maximum zoom level (zoomed in). When camera constraints use
  *  zoomInLimit='zoom-max', this becomes the closest orbit distance via

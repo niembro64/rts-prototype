@@ -1,7 +1,10 @@
 import {
   barCameraLockedYaw,
   barCameraRelativeZoomFactor,
+  barCameraZoomElevationOffset,
+  barSpringDamperStep,
   barCameraWheelTicks,
+  cameraMouseDragModeForModifiers,
   persistentTerrainRaise,
 } from './OrbitCamera';
 
@@ -14,6 +17,16 @@ function close(actual: number, expected: number): boolean {
 }
 
 export function runOrbitCameraContractTest(): void {
+  assertContract(
+    cameraMouseDragModeForModifiers(false, false) === 'pan'
+      && cameraMouseDragModeForModifiers(false, true) === 'height-pan',
+    'Ctrl+MMB must switch ordinary forward/back pan to world-height pan',
+  );
+  assertContract(
+    cameraMouseDragModeForModifiers(true, true) === 'orbit',
+    'Alt+MMB orbit must take precedence when Ctrl is also held',
+  );
+
   assertContract(
     close(barCameraWheelTicks(100, 0), 1)
       && close(barCameraWheelTicks(-100, 0), -1),
@@ -46,6 +59,14 @@ export function runOrbitCameraContractTest(): void {
     barCameraRelativeZoomFactor(-100, 0.175) > 0,
     'batched inward wheel input must remain a valid positive zoom factor',
   );
+  assertContract(
+    close(barCameraZoomElevationOffset(100, 1000, 825, true), 82.5),
+    'zoom-in must consume Ctrl-pan height together with orbit distance',
+  );
+  assertContract(
+    close(barCameraZoomElevationOffset(100, 1000, 1175, false), 100),
+    'ordinary zoom-out must not synthesize additional focus height',
+  );
 
   const halfPi = Math.PI * 0.5;
   assertContract(
@@ -71,5 +92,28 @@ export function runOrbitCameraContractTest(): void {
   assertContract(
     close(persistentTerrainRaise(90 + firstLift, 80, 5), 0),
     'clearing the mountain must never synthesize a downward recovery',
+  );
+
+  const springStep = barSpringDamperStep(0, 0, 10, 0.1, 0.016);
+  assertContract(
+    close(springStep.value, 0.20977523036288304)
+      && close(springStep.velocity, 24.638872833929465),
+    'BAR transition must match Recoil SpringDampers.cpp for position and velocity',
+  );
+  const continuedStep = barSpringDamperStep(
+    springStep.value,
+    springStep.velocity,
+    10,
+    0.1,
+    0.016,
+  );
+  assertContract(
+    continuedStep.value > springStep.value && continuedStep.velocity > 0,
+    'BAR transition must retain velocity between render frames',
+  );
+  const snappedStep = barSpringDamperStep(2, -50, 7, 0, 0.016);
+  assertContract(
+    close(snappedStep.value, 7) && close(snappedStep.velocity, 0),
+    'zero BAR half-life must snap and clear transition velocity',
   );
 }

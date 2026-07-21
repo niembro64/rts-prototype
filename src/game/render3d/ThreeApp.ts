@@ -28,6 +28,7 @@ import {
   CAMERA_PAN_ANCHOR,
   CAMERA_FOV_DEGREES,
   CAMERA_INITIAL_PITCH_RADIANS,
+  CAMERA_TRANSITION_MODE,
   CAMERA_MOVEMENT_CONFIG,
   CAMERA_CONSTRAINTS,
   SKY_RENDER_CONFIG,
@@ -230,6 +231,7 @@ export class ThreeApp {
       cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       lostTerrainRecovery: CAMERA_LOST_TERRAIN_RECOVERY,
+      transitionMode: CAMERA_TRANSITION_MODE,
       minTerrainClearance: CAMERA_TERRAIN_COLLISION.minClearance,
       terrainCollisionMode: CAMERA_TERRAIN_COLLISION.mode,
       zoomStepFraction: ZOOM_STEP_FRACTION,
@@ -338,10 +340,7 @@ export class ThreeApp {
   }
 
   setCameraFovDegrees(fovDegrees: number): void {
-    const next = Math.min(179, Math.max(1, fovDegrees));
-    if (Math.abs(this.camera.fov - next) < 0.001) return;
-    this.camera.fov = next;
-    this.camera.updateProjectionMatrix();
+    this.orbit.setFovDegrees(fovDegrees);
   }
 
   /** Force every material currently in the scene to create its shader program

@@ -18,6 +18,11 @@ export type CameraMovementScaleMode =
   | 'absolute-world'
   | 'absolute-world-momentum';
 
+/** Rendered-camera transition applied after controller state changes. */
+export type CameraTransitionMode =
+  | 'bar-spring-dampened'
+  | 'ema';
+
 export type CameraInputMomentumConfig = {
   /** false = no velocity gain; the gesture always uses gain 1. */
   readonly enabled: boolean;

@@ -1,7 +1,9 @@
 import { getCameraFollowMode, getCameraSmoothMode } from '@/clientBarConfig';
 import {
   CAMERA_BATTLE_DEFAULTS,
+  CAMERA_BAR_SPRING_HALF_LIFE_SECONDS,
   CAMERA_SMOOTH_TAU_SECONDS,
+  CAMERA_TRANSITION_MODE,
   type CameraBattleKind,
   type CameraBattleFocus,
 } from '../../../config';
@@ -47,12 +49,12 @@ export class RtsScene3DCameraFramingSystem {
       yaw: this.povYawForLocalSeat(),
       pitch: this.threeApp.orbit.pitch,
     });
-    this.threeApp.orbit.setSmoothTau(this.cameraSmoothTauSec());
+    this.threeApp.orbit.setTransitionSeconds(this.cameraTransitionSeconds());
   }
 
   tickCameraSmoothing(deltaSec: number): void {
     const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
-    this.threeApp.orbit.setSmoothTau(this.cameraSmoothTauSec());
+    this.threeApp.orbit.setTransitionSeconds(this.cameraTransitionSeconds());
     // Push the follow destination into the orbit to-state BEFORE the EMA
     // step, so following rides the same camera-smooth half-life as
     // pan/zoom and mode switches transition smoothly (see followStep).
@@ -169,8 +171,11 @@ export class RtsScene3DCameraFramingSystem {
     };
   }
 
-  private cameraSmoothTauSec(): number {
-    return CAMERA_SMOOTH_TAU_SECONDS[getCameraSmoothMode()];
+  private cameraTransitionSeconds(): number {
+    const mode = getCameraSmoothMode();
+    return CAMERA_TRANSITION_MODE === 'bar-spring-dampened'
+      ? CAMERA_BAR_SPRING_HALF_LIFE_SECONDS[mode]
+      : CAMERA_SMOOTH_TAU_SECONDS[mode];
   }
 
   private povYawForLocalSeat(): number {
