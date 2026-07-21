@@ -40,6 +40,55 @@ import {
   quantizeRotation as qRot,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
+import {
+  PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_X,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
+  PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
+  PROJECTILE_SPAWN_FLAG_BEAM,
+  PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE,
+  PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
+  PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE,
+  PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE,
+  PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE,
+  PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN,
+  PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID,
+  PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
+  PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
+  getProjectileBeamPointWireFlags,
+  getProjectileSpawnWireFlags,
+  projectileBeamEndpointDamageableFromFlags,
+} from './projectileWireFlags';
+export {
+  PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_X,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
+  PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
+  PROJECTILE_SPAWN_FLAG_BEAM,
+  PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE,
+  PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
+  PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE,
+  PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE,
+  PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE,
+  PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN,
+  PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID,
+  PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
+  PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
+};
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
@@ -53,30 +102,6 @@ export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
 // A smaller cap would silently drop a reflection vertex and draw the
 // beam straight through the reflector on clients.
 const PROJECTILE_BEAM_POINT_CAP = BEAM_MAX_SEGMENTS + 1;
-
-export const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
-export const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE = 0x002;
-export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE = 0x004;
-export const PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE = 0x008;
-export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE = 0x010;
-export const PROJECTILE_SPAWN_FLAG_BEAM = 0x020;
-export const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID = 0x040;
-export const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE = 0x080;
-export const PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE = 0x100;
-export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE = 0x200;
-export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID = 0x400;
-export const PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID = 0x800;
-
-export const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
-export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
-export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
-
-export const PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID = 0x01;
-export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND = 0x02;
-export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID = 0x08;
-export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X = 0x10;
-export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y = 0x20;
-export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z = 0x40;
 
 export type ProjectileSnapshotWireSource = {
   spawns: Float64WireRows;
@@ -363,28 +388,7 @@ export function writeProjectileSpawnWireRow(
   values[base + 28] = spawn.sourceTeamId;
   values[base + 29] = spawn.spawnTick;
   values[base + 30] = spawn.parentShotEntityId ?? 0;
-  let flags = 0;
-  if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
-  if (spawn.sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
-  if (spawn.sourceTurretEntityId !== null) {
-    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID;
-  }
-  if (spawn.parentShotEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID;
-  if (spawn.isDGun !== null) {
-    flags |= spawn.isDGun
-      ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
-      : PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE;
-  }
-  if (spawn.fromParentDetonation !== null) {
-    flags |= spawn.fromParentDetonation
-      ? PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE
-      : PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE;
-  }
-  if (spawn.beam !== null) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
-  if (spawn.targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
-  if (spawn.homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
-  values[base + 31] = flags;
+  values[base + 31] = getProjectileSpawnWireFlags(spawn);
 }
 
 function copyProjectileSpawnIntoWireRow(spawn: NetworkServerSnapshotProjectileSpawn): void {
@@ -654,16 +658,7 @@ export function writeBeamPointWireRow(
   values[base + 3] = point.vx;
   values[base + 4] = point.vy;
   values[base + 5] = point.vz;
-  let flags = 0;
-  if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
-  if (point.reflectorKind !== null) {
-    flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-  }
-  if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
-  if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
-  if (point.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
-  if (point.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
-  values[base + 6] = flags;
+  values[base + 6] = getProjectileBeamPointWireFlags(point);
   values[base + 7] = point.reflectorEntityId ?? 0;
   values[base + 8] = point.reflectorPlayerId ?? 0;
   values[base + 9] = point.normalX ?? 0;
@@ -910,16 +905,6 @@ export function copyProjectileWireSourceSpawnRowFromSourceInto(
   return true;
 }
 
-export function copyProjectileWireSourceSpawnRowInto(
-  projectiles: ProjectileSnapshot,
-  rowIndex: number,
-  out: NetworkServerSnapshotProjectileSpawn,
-): boolean {
-  const source = getActiveProjectileSnapshotWireSource(projectiles);
-  return source !== undefined &&
-    copyProjectileWireSourceSpawnRowFromSourceInto(source, rowIndex, out);
-}
-
 export function forEachProjectileWireSourceSpawn(
   projectiles: ProjectileSnapshot,
   scratch: NetworkServerSnapshotProjectileSpawn,
@@ -1077,13 +1062,7 @@ export function forEachProjectileWireSourceBeamUpdate(
     scratch.obstructionT = (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
       ? headers[base + 2]
       : null;
-    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
-      scratch.endpointDamageable = true;
-    } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
-      scratch.endpointDamageable = false;
-    } else {
-      scratch.endpointDamageable = null;
-    }
+    scratch.endpointDamageable = projectileBeamEndpointDamageableFromFlags(flags);
     scratch.points.length = pointCount;
     for (let p = 0; p < pointCount; p++) {
       copyProjectileWireSourceBeamPointRowFromSourceInto(
@@ -1107,14 +1086,6 @@ export type ProjectileWireSourceBeamUpdateFieldsVisitor = (
   pointCount: number,
 ) => void;
 
-export function forEachProjectileWireSourceBeamUpdateFields(
-  projectiles: ProjectileSnapshot,
-  visitor: ProjectileWireSourceBeamUpdateFieldsVisitor,
-): boolean {
-  const source = getActiveProjectileSnapshotWireSource(projectiles);
-  return forEachProjectileWireSourceBeamUpdateFieldsFromSource(source, visitor);
-}
-
 export function forEachProjectileWireSourceBeamUpdateFieldsFromSource(
   source: ProjectileSnapshotWireSource | undefined,
   visitor: ProjectileWireSourceBeamUpdateFieldsVisitor,
@@ -1130,14 +1101,7 @@ export function forEachProjectileWireSourceBeamUpdateFieldsFromSource(
     const flags = headers[base + 1];
     const pointCount = Math.max(0, headers[base + 3]) | 0;
     if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
-    let endpointDamageable: boolean | null;
-    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
-      endpointDamageable = true;
-    } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
-      endpointDamageable = false;
-    } else {
-      endpointDamageable = null;
-    }
+    const endpointDamageable = projectileBeamEndpointDamageableFromFlags(flags);
     visitor(
       headers[base + 0],
       (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0

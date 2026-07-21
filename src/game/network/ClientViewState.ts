@@ -31,7 +31,11 @@ import type { MinimapEntity } from '@/types/ui';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { economyManager } from '../sim/economy';
-import { createEntityFromNetwork, createEntityFromTypedFullWireRow } from './helpers';
+import {
+  createEntityFromNetwork,
+  createEntityFromTypedFullWireRow,
+  readFactoryWaypointFromWire,
+} from './helpers';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -131,7 +135,6 @@ import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
-  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
@@ -142,11 +145,8 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   copyProjectileWireSourceSpawnRowFromSourceInto,
+  forEachProjectileWireSourceBeamUpdateFieldsFromSource,
   getActiveProjectileSnapshotWireSource,
-  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
-  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
-  PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
-  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
@@ -715,39 +715,20 @@ export class ClientViewState {
     source: ProjectileSnapshotWireSource | undefined,
     now: number,
   ): boolean {
-    if (source === undefined) return false;
-    const rows = source.beamUpdates;
-    if (rows.count === 0) return false;
-    const headers = rows.values;
-    const pointValues = source.beamPoints.values;
-    let pointOffset = 0;
-    for (let i = 0; i < rows.count; i++) {
-      const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
-      const flags = headers[base + 1];
-      const pointCount = Math.max(0, headers[base + 3]) | 0;
-      if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
-      let endpointDamageable: boolean | null;
-      if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
-        endpointDamageable = true;
-      } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
-        endpointDamageable = false;
-      } else {
-        endpointDamageable = null;
-      }
+    return forEachProjectileWireSourceBeamUpdateFieldsFromSource(
+      source,
+      (id, obstructionT, endpointDamageable, pointValues, pointOffset, pointCount) => {
       this.projectileStore.applyBeamUpdateWireFields(
-        headers[base + 0] as EntityId,
-        (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
-          ? headers[base + 2]
-          : null,
+        id as EntityId,
+        obstructionT,
         endpointDamageable,
         pointValues,
         pointOffset,
         pointCount,
         now,
       );
-      pointOffset += pointCount;
-    }
-    return true;
+      },
+    );
   }
 
   private copyNetworkTurretsToTarget(
@@ -1838,24 +1819,6 @@ export class ClientViewState {
     return true;
   }
 
-  private readFactoryWaypointFromWire(
-    source: EntitySnapshotWireSource,
-    offset: number,
-  ): FactoryDefaultWaypoint | null {
-    if (offset < 0 || offset >= source.waypointRows.count) return null;
-    const values = source.waypointRows.values;
-    const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
-    const typeSlot = values[base + 4] | 0;
-    const type = source.waypointStrings[typeSlot];
-    if (type !== 'move' && type !== 'fight' && type !== 'patrol') return null;
-    return {
-      x: values[base + 0],
-      y: values[base + 1],
-      z: values[base + 2] !== 0 ? values[base + 3] : null,
-      type,
-    };
-  }
-
   private applyBuildingFactoryTypedFields(
     existing: Entity,
     source: EntitySnapshotWireSource,
@@ -1894,7 +1857,7 @@ export class ClientViewState {
     const rallyCount = values[base + 30] | 0;
     const rallyOffset = values[base + 33] | 0;
     if (rallyCount <= 0) return false;
-    const rally = this.readFactoryWaypointFromWire(source, rallyOffset);
+    const rally = readFactoryWaypointFromWire(source, rallyOffset);
     if (rally === null) return false;
     factory.rallyX = rally.x;
     factory.rallyY = rally.y;
@@ -1912,7 +1875,7 @@ export class ClientViewState {
         ? existingRoute as FactoryDefaultWaypoint[]
         : new Array<FactoryDefaultWaypoint>(routeCount);
       for (let i = 0; i < routeCount; i++) {
-        const waypoint = this.readFactoryWaypointFromWire(source, routeOffset + i);
+        const waypoint = readFactoryWaypointFromWire(source, routeOffset + i);
         if (waypoint === null) return false;
         let dst = route[i];
         if (dst === undefined) {

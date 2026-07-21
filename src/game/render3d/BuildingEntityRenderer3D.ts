@@ -49,6 +49,7 @@ import {
   setObjectVisibleIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import { growFloat32Array } from './typedArrayRenderUtils';
 import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
@@ -1435,20 +1436,12 @@ export class BuildingEntityRenderer3D {
   private ensureTurretAimInputCapacity(count: number): void {
     const needed = count * TURRET_AIM_INPUT_STRIDE;
     if (this.turretAimInput.length >= needed) return;
-    let next = this.turretAimInput.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.turretAimInput);
-    this.turretAimInput = expanded;
+    this.turretAimInput = growFloat32Array(this.turretAimInput, needed);
   }
 
   private ensureBuildingPoseInputCapacity(count: number): void {
     const needed = count * BUILDING_POSE_INPUT_STRIDE;
     if (this.buildingPoseInput.length >= needed) return;
-    let next = this.buildingPoseInput.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.buildingPoseInput);
-    this.buildingPoseInput = expanded;
+    this.buildingPoseInput = growFloat32Array(this.buildingPoseInput, needed);
   }
 }

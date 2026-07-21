@@ -42,6 +42,10 @@ import {
   setObjectVisibleIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import {
+  growFloat32Array,
+  writePositionQuaternion,
+} from './typedArrayRenderUtils';
 
 export class UnitTurretPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -450,13 +454,7 @@ export class UnitTurretPose3D {
 
     const base = index * TURRET_HEAD_INPUT_STRIDE;
     const input = this.headInput;
-    input[base] = parentPosition.x;
-    input[base + 1] = parentPosition.y;
-    input[base + 2] = parentPosition.z;
-    input[base + 3] = parentQuaternion.x;
-    input[base + 4] = parentQuaternion.y;
-    input[base + 5] = parentQuaternion.z;
-    input[base + 6] = parentQuaternion.w;
+    writePositionQuaternion(input, base, parentPosition, parentQuaternion);
     input[base + 7] = root.position.x;
     input[base + 8] = root.position.y;
     input[base + 9] = root.position.z;
@@ -507,14 +505,12 @@ export class UnitTurretPose3D {
     input[base + 11] = chassisTiltInverse ? 1 : 0;
 
     const poseBase = index * 7;
-    const parentPose = this.aimParentPose;
-    parentPose[poseBase] = parentPosition.x;
-    parentPose[poseBase + 1] = parentPosition.y;
-    parentPose[poseBase + 2] = parentPosition.z;
-    parentPose[poseBase + 3] = parentQuaternion.x;
-    parentPose[poseBase + 4] = parentQuaternion.y;
-    parentPose[poseBase + 5] = parentQuaternion.z;
-    parentPose[poseBase + 6] = parentQuaternion.w;
+    writePositionQuaternion(
+      this.aimParentPose,
+      poseBase,
+      parentPosition,
+      parentQuaternion,
+    );
 
     this.aimTurretMeshes[index] = turretMesh;
     this.aimEntities[index] = entity;
@@ -571,13 +567,7 @@ export class UnitTurretPose3D {
     const spinQuat = spinGroup?.quaternion;
     const base = index * TURRET_BARREL_INPUT_STRIDE;
     const input = this.barrelInput;
-    input[base] = parentPosition.x;
-    input[base + 1] = parentPosition.y;
-    input[base + 2] = parentPosition.z;
-    input[base + 3] = parentQuaternion.x;
-    input[base + 4] = parentQuaternion.y;
-    input[base + 5] = parentQuaternion.z;
-    input[base + 6] = parentQuaternion.w;
+    writePositionQuaternion(input, base, parentPosition, parentQuaternion);
     input[base + 7] = root.position.x;
     input[base + 8] = root.position.y;
     input[base + 9] = root.position.z;
@@ -617,39 +607,23 @@ export class UnitTurretPose3D {
   private ensureBarrelInputCapacity(count: number): void {
     const needed = count * TURRET_BARREL_INPUT_STRIDE;
     if (this.barrelInput.length >= needed) return;
-    let next = this.barrelInput.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.barrelInput);
-    this.barrelInput = expanded;
+    this.barrelInput = growFloat32Array(this.barrelInput, needed);
   }
 
   private ensureHeadInputCapacity(count: number): void {
     const needed = count * TURRET_HEAD_INPUT_STRIDE;
     if (this.headInput.length >= needed) return;
-    let next = this.headInput.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.headInput);
-    this.headInput = expanded;
+    this.headInput = growFloat32Array(this.headInput, needed);
   }
 
   private ensureAimInputCapacity(count: number): void {
     const needed = count * TURRET_AIM_INPUT_STRIDE;
     if (this.aimInput.length < needed) {
-      let next = this.aimInput.length;
-      while (next < needed) next *= 2;
-      const expanded = new Float32Array(next);
-      expanded.set(this.aimInput);
-      this.aimInput = expanded;
+      this.aimInput = growFloat32Array(this.aimInput, needed);
     }
 
     const poseNeeded = count * 7;
     if (this.aimParentPose.length >= poseNeeded) return;
-    let nextPose = this.aimParentPose.length;
-    while (nextPose < poseNeeded) nextPose *= 2;
-    const expandedPose = new Float32Array(nextPose);
-    expandedPose.set(this.aimParentPose);
-    this.aimParentPose = expandedPose;
+    this.aimParentPose = growFloat32Array(this.aimParentPose, poseNeeded);
   }
 }

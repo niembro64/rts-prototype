@@ -7,6 +7,10 @@ import {
   UnitChassisMatrixBatch3D,
 } from './UnitChassisMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import {
+  growFloat32Array,
+  writePositionQuaternion,
+} from './typedArrayRenderUtils';
 
 const WRITE_SMOOTH = 0;
 const WRITE_POLY = 1;
@@ -128,13 +132,7 @@ export class UnitChassisInstancePose3D {
 
     const base = index * CHASSIS_PART_INPUT_STRIDE;
     const input = this.input;
-    input[base] = parentPosition.x;
-    input[base + 1] = parentPosition.y;
-    input[base + 2] = parentPosition.z;
-    input[base + 3] = parentQuaternion.x;
-    input[base + 4] = parentQuaternion.y;
-    input[base + 5] = parentQuaternion.z;
-    input[base + 6] = parentQuaternion.w;
+    writePositionQuaternion(input, base, parentPosition, parentQuaternion);
     input[base + 7] = radius;
     input[base + 8] = part.x;
     input[base + 9] = part.y;
@@ -154,10 +152,6 @@ export class UnitChassisInstancePose3D {
   private ensureInputCapacity(count: number): void {
     const needed = count * CHASSIS_PART_INPUT_STRIDE;
     if (this.input.length >= needed) return;
-    let next = this.input.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.input);
-    this.input = expanded;
+    this.input = growFloat32Array(this.input, needed);
   }
 }

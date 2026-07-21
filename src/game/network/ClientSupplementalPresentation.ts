@@ -5,6 +5,7 @@ import type { ProjectileSpawnQueue } from './ProjectileSpawnQueue';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
   type BeamPathTarget,
+  copyBeamPointState,
   ensureBeamPoint,
   shrinkBeamPoints,
   snapBeamPathDisplayToTarget,
@@ -58,17 +59,6 @@ function beamPointStateDiffers(a: BeamPoint, b: BeamPoint): boolean {
   );
 }
 
-function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
-  dst.x = src.x; dst.y = src.y; dst.z = src.z;
-  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
-  dst.reflectorEntityId = src.reflectorEntityId;
-  dst.reflectorKind = src.reflectorKind;
-  dst.reflectorPlayerId = src.reflectorPlayerId;
-  dst.normalX = src.normalX;
-  dst.normalY = src.normalY;
-  dst.normalZ = src.normalZ;
-}
-
 function copyBeamPointStateAtPosition(
   dst: BeamPoint,
   src: BeamPoint,
@@ -76,14 +66,10 @@ function copyBeamPointStateAtPosition(
   y: number,
   z: number,
 ): void {
-  dst.x = x; dst.y = y; dst.z = z;
-  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
-  dst.reflectorEntityId = src.reflectorEntityId;
-  dst.reflectorKind = src.reflectorKind;
-  dst.reflectorPlayerId = src.reflectorPlayerId;
-  dst.normalX = src.normalX;
-  dst.normalY = src.normalY;
-  dst.normalZ = src.normalZ;
+  copyBeamPointState(dst, src);
+  dst.x = x;
+  dst.y = y;
+  dst.z = z;
 }
 
 function seedBeamPointPositionScalars(

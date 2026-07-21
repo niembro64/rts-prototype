@@ -1,6 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+import { growFloat32Array } from './typedArrayRenderUtils';
 
 const AIRBORNE_EMITTER_INPUT_STRIDE = 24;
 const AIRBORNE_EMITTER_OUTPUT_STRIDE = 6;
@@ -238,20 +239,12 @@ export class AirborneEmitterBatch3D {
   private ensureInputCapacity(count: number): void {
     const needed = count * this.inputStride;
     if (this.input.length >= needed) return;
-    let next = this.input.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.input);
-    this.input = expanded;
+    this.input = growFloat32Array(this.input, needed);
   }
 
   private ensureOutputCapacity(count: number): void {
     const needed = count * this.outputStride;
     if (this.output.length >= needed) return;
-    let next = this.output.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.output);
-    this.output = expanded;
+    this.output = growFloat32Array(this.output, needed);
   }
 }

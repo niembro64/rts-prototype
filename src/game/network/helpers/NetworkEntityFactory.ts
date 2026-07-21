@@ -278,7 +278,7 @@ function createBuildingTurretsFromWire(
   }
 }
 
-function readFactoryWaypointFromWire(
+export function readFactoryWaypointFromWire(
   source: EntitySnapshotWireSource,
   offset: number,
 ): FactoryDefaultWaypoint | null {

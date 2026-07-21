@@ -1,4 +1,4 @@
-import type { Entity, EntityId, Turret } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
@@ -22,11 +22,14 @@ import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
 } from './EntityLod3D';
+import {
+  getPassiveTurretIndex,
+  NO_PASSIVE_TURRET_INDEX,
+} from './turretRenderHelpers3D';
 
 const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
 const SNAPSHOT_PRESENCE_MAX_MARK = 0xffffffff;
 const NO_OWNER_ID = 0;
-const NO_PASSIVE_TURRET_INDEX = -1;
 
 export const CLIENT_RENDER_ENTITY_FLAG_SELECTED = 1;
 export const CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS = 1 << 1;
@@ -127,22 +130,6 @@ function growInt16(source: Int16Array, nextCapacity: number): Int16Array {
   const next = new Int16Array(nextCapacity);
   next.set(source);
   return next;
-}
-
-const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
-
-function passiveTurretIndex(turrets: readonly Turret[]): number {
-  if (turrets.length === 0) return NO_PASSIVE_TURRET_INDEX;
-  const cached = passiveTurretIndexCache.get(turrets);
-  if (cached !== undefined) return cached;
-  for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].config.passive) {
-      passiveTurretIndexCache.set(turrets, i);
-      return i;
-    }
-  }
-  passiveTurretIndexCache.set(turrets, NO_PASSIVE_TURRET_INDEX);
-  return NO_PASSIVE_TURRET_INDEX;
 }
 
 function assertNear(label: string, actual: number, expected: number, tolerance = 1e-3): void {
@@ -323,7 +310,7 @@ export class ClientRenderEntityStateSlab {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
       views.turretCount[slot] = turrets?.length ?? 0;
       views.passiveTurretIndex[slot] = turrets !== undefined
-        ? passiveTurretIndex(turrets)
+        ? getPassiveTurretIndex(turrets)
         : NO_PASSIVE_TURRET_INDEX;
       this.markSlotDirty(slot);
       return slot;
@@ -439,7 +426,7 @@ export class ClientRenderEntityStateSlab {
     views.groundContactEnabled[slot] = unit.suspension?.legContact === false ? 0 : 1;
     views.turretCount[slot] = turrets?.length ?? 0;
     views.passiveTurretIndex[slot] = turrets !== undefined
-      ? passiveTurretIndex(turrets)
+      ? getPassiveTurretIndex(turrets)
       : NO_PASSIVE_TURRET_INDEX;
     views.flags[slot] = flags;
     views.unitBlueprintIds[slot] = unit.unitBlueprintId;

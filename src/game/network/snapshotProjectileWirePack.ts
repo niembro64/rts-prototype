@@ -37,6 +37,10 @@ import {
   type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
 import {
+  getProjectileBeamPointWireFlags,
+  getProjectileSpawnWireFlags,
+} from './projectileWireFlags';
+import {
   PACKED_BINARY_ROW_COUNT_BYTES,
   PackedBinaryReader,
   PackedBinaryWriter,
@@ -207,7 +211,7 @@ function packProjectileSpawns(
 
   for (let i = 0; i < spawns.length; i++) {
     const spawn = spawns[i];
-    const flags = computeSpawnFlags(spawn);
+    const flags = getProjectileSpawnWireFlags(spawn);
     let group = groupsByFlags[flags];
     if (group === undefined) {
       group = {
@@ -290,31 +294,6 @@ function packProjectileSpawnsFromSource(
   }
   out.setUint32LE(0, rows.count);
   return out.finishBytes();
-}
-
-function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number {
-  let flags = 0;
-  if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
-  if (spawn.sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
-  if (spawn.sourceTurretEntityId !== null) {
-    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID;
-  }
-  if (spawn.parentShotEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID;
-  if (spawn.isDGun !== null) {
-    flags |= spawn.isDGun
-      ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
-      : PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE;
-  }
-  if (spawn.fromParentDetonation !== null) {
-    flags |= spawn.fromParentDetonation
-      ? PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE
-      : PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE;
-  }
-  if (spawn.beam !== null) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
-  if (spawn.targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
-  if (spawn.homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
-  return flags;
 }
 
 function writeSpawnRow(
@@ -973,15 +952,7 @@ function writeBeamPoint(
   writer: PackedBinaryWriter,
   point: NetworkServerSnapshotBeamPoint,
 ): void {
-  let flags = 0;
-  if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
-  if (point.reflectorKind !== null) {
-    flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-  }
-  if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
-  if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
-  if (point.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
-  if (point.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
+  const flags = getProjectileBeamPointWireFlags(point);
   writer.writeVarUint(flags);
   writer.writeVarInt(point.x);
   writer.writeVarInt(point.y);

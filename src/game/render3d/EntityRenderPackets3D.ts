@@ -33,11 +33,14 @@ import type {
   ClientRenderTurretStateSlab,
   ClientRenderTurretStateViews,
 } from './ClientRenderTurretStateSlab';
+import {
+  getPassiveTurretIndex,
+  NO_PASSIVE_TURRET_INDEX,
+} from './turretRenderHelpers3D';
 
 const ENTITY_RENDER_PACKET_INITIAL_CAP = 4096;
 const ENTITY_RENDER_REMOVAL_INITIAL_CAP = 256;
 const NO_OWNER_ID = 0;
-const NO_PASSIVE_TURRET_INDEX = -1;
 
 const ENTITY_RENDER_FLAG_SELECTED = CLIENT_RENDER_ENTITY_FLAG_SELECTED;
 const ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS = CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS;
@@ -50,7 +53,6 @@ const UNIT_RENDER_FLAG_AIRBORNE = CLIENT_RENDER_UNIT_FLAG_AIRBORNE;
 const UNIT_RENDER_FLAG_HAS_SUSPENSION = CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION;
 const ENTITY_RENDER_FLAG_LOD_PROXY = 1 << 9;
 const EMPTY_TURRETS: readonly Turret[] = [];
-const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
 
 function growFloat32(
   source: Float32Array<ArrayBuffer>,
@@ -148,20 +150,6 @@ function entityRenderFlagsFromState(
   if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
   if (lodProxy) flags |= ENTITY_RENDER_FLAG_LOD_PROXY;
   return flags;
-}
-
-function passiveTurretIndex(turrets: readonly Turret[]): number {
-  if (turrets.length === 0) return NO_PASSIVE_TURRET_INDEX;
-  const cached = passiveTurretIndexCache.get(turrets);
-  if (cached !== undefined) return cached;
-  for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].config.passive) {
-      passiveTurretIndexCache.set(turrets, i);
-      return i;
-    }
-  }
-  passiveTurretIndexCache.set(turrets, NO_PASSIVE_TURRET_INDEX);
-  return NO_PASSIVE_TURRET_INDEX;
 }
 
 export class UnitRenderPacket3D {
@@ -267,7 +255,7 @@ export class UnitRenderPacket3D {
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
     this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
     this.turretCount[cursor] = turretRows.length;
-    this.passiveTurretIndex[cursor] = passiveTurretIndex(turretRows);
+    this.passiveTurretIndex[cursor] = getPassiveTurretIndex(turretRows);
     let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
     const locomotionType = unit.locomotion.type;
     if (locomotionType === 'hover' || locomotionType === 'flying' || locomotionType === 'dive') {

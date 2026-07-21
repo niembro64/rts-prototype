@@ -21,9 +21,6 @@ import { serializeProjectileSnapshot } from '../network/stateSerializerProjectil
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
-  appendBasicEntityWireRowDirectFromState,
-  appendBuildingHotEntityWireRowDirectFromState,
-  appendUnitMotionEntityWireRowDirectFromState,
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
@@ -53,11 +50,11 @@ import {
   type SerializedListenerSnapshot,
 } from './ServerSnapshotWirePayload';
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
-import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import {
-  ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
-  ENTITY_UNIT_SLAB_DELTA_FIELDS,
-} from './snapshotMotionDeltaPolicy';
+  tryAppendBuildingSlabDeltaRowFromState,
+  tryAppendUnitSlabDeltaRowFromState,
+} from './snapshotSlabDeltaRows';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
@@ -1229,73 +1226,13 @@ export class ServerSnapshotPublisher {
   ): boolean {
     const entityViews = entitySlotRegistry.getViews();
     if (
-      this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
-      this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot)
+      tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
+      tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot)
     ) {
       entities.push(undefined as unknown as NetworkServerSnapshotEntity);
       return true;
     }
     return false;
-  }
-
-  private tryAppendUnitSlabDeltaRowFromState(
-    id: EntityId,
-    changedFields: number,
-    entityViews: EntityStateViews | null,
-    slot = -1,
-  ): boolean {
-    if (changedFields === 0 || (changedFields & ~ENTITY_UNIT_SLAB_DELTA_FIELDS) !== 0) {
-      return false;
-    }
-    if (entityViews === null) return false;
-    let resolvedSlot = slot;
-    if (
-      resolvedSlot < 0 ||
-      resolvedSlot >= entityViews.capacity ||
-      entityViews.entityId[resolvedSlot] !== id
-    ) {
-      resolvedSlot = entitySlotRegistry.getSlot(id);
-    }
-    if (
-      resolvedSlot < 0 ||
-      resolvedSlot >= entityViews.capacity ||
-      entityViews.entityId[resolvedSlot] !== id
-    ) {
-      return false;
-    }
-    return appendUnitMotionEntityWireRowDirectFromState(
-      entityViews,
-      resolvedSlot,
-      changedFields,
-    );
-  }
-
-  private tryAppendBuildingSlabDeltaRowFromState(
-    id: EntityId,
-    changedFields: number,
-    entityViews: EntityStateViews | null,
-    slot = -1,
-  ): boolean {
-    if (entityViews === null) return false;
-    let resolvedSlot = slot;
-    if (
-      resolvedSlot < 0 ||
-      resolvedSlot >= entityViews.capacity ||
-      entityViews.entityId[resolvedSlot] !== id
-    ) {
-      resolvedSlot = entitySlotRegistry.getSlot(id);
-    }
-    if (
-      resolvedSlot < 0 ||
-      resolvedSlot >= entityViews.capacity ||
-      entityViews.entityId[resolvedSlot] !== id
-    ) {
-      return false;
-    }
-    if ((changedFields & ~ENTITY_BASIC_TRANSFORM_DELTA_FIELDS) === 0) {
-      return appendBasicEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
-    }
-    return appendBuildingHotEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
   }
 
   private listenerNeedsStaticMap(

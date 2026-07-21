@@ -278,7 +278,7 @@ export function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
   return point;
 }
 
-function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
+export function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.x = src.x; dst.y = src.y; dst.z = src.z;
   dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
   dst.reflectorEntityId = src.reflectorEntityId;

@@ -16,6 +16,10 @@ import {
   setObjectVisibleIfChanged,
 } from './threeTransformWriteUtils';
 import type { ClientRenderTurretHostRows } from './ClientRenderTurretStateSlab';
+import {
+  growFloat32Array,
+  writePositionQuaternion,
+} from './typedArrayRenderUtils';
 
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -182,13 +186,7 @@ export class ShieldPanelPose3D {
 
     const base = index * SHIELD_PANEL_INPUT_STRIDE;
     const input = this.input;
-    input[base] = parentPosition.x;
-    input[base + 1] = parentPosition.y;
-    input[base + 2] = parentPosition.z;
-    input[base + 3] = parentQuaternion.x;
-    input[base + 4] = parentQuaternion.y;
-    input[base + 5] = parentQuaternion.z;
-    input[base + 6] = parentQuaternion.w;
+    writePositionQuaternion(input, base, parentPosition, parentQuaternion);
     input[base + 7] = root.position.x;
     input[base + 8] = root.position.y;
     input[base + 9] = root.position.z;
@@ -241,14 +239,12 @@ export class ShieldPanelPose3D {
     input[base + 11] = chassisTiltInverse ? 1 : 0;
 
     const poseBase = index * 7;
-    const parentPose = this.aimParentPose;
-    parentPose[poseBase] = parentPosition.x;
-    parentPose[poseBase + 1] = parentPosition.y;
-    parentPose[poseBase + 2] = parentPosition.z;
-    parentPose[poseBase + 3] = parentQuaternion.x;
-    parentPose[poseBase + 4] = parentQuaternion.y;
-    parentPose[poseBase + 5] = parentQuaternion.z;
-    parentPose[poseBase + 6] = parentQuaternion.w;
+    writePositionQuaternion(
+      this.aimParentPose,
+      poseBase,
+      parentPosition,
+      parentQuaternion,
+    );
 
     this.aimEntities[index] = entity;
     this.aimMirrors[index] = mirrors;
@@ -257,29 +253,17 @@ export class ShieldPanelPose3D {
   private ensureInputCapacity(count: number): void {
     const needed = count * SHIELD_PANEL_INPUT_STRIDE;
     if (this.input.length >= needed) return;
-    let next = this.input.length;
-    while (next < needed) next *= 2;
-    const expanded = new Float32Array(next);
-    expanded.set(this.input);
-    this.input = expanded;
+    this.input = growFloat32Array(this.input, needed);
   }
 
   private ensureAimCapacity(count: number): void {
     const needed = count * TURRET_AIM_INPUT_STRIDE;
     if (this.aimInput.length < needed) {
-      let next = this.aimInput.length;
-      while (next < needed) next *= 2;
-      const expanded = new Float32Array(next);
-      expanded.set(this.aimInput);
-      this.aimInput = expanded;
+      this.aimInput = growFloat32Array(this.aimInput, needed);
     }
 
     const poseNeeded = count * 7;
     if (this.aimParentPose.length >= poseNeeded) return;
-    let nextPose = this.aimParentPose.length;
-    while (nextPose < poseNeeded) nextPose *= 2;
-    const expandedPose = new Float32Array(nextPose);
-    expandedPose.set(this.aimParentPose);
-    this.aimParentPose = expandedPose;
+    this.aimParentPose = growFloat32Array(this.aimParentPose, poseNeeded);
   }
 }

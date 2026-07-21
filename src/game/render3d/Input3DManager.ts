@@ -192,7 +192,6 @@ type AutoGroupPresetBank = AutoGroupPresetSlots[];
 
 export class Input3DManager {
   private canvas: HTMLCanvasElement;
-  private orbit: ThreeApp['orbit'];
   private context: InputContext;
   private entitySource: EntitySource;
   private commandSink: ClientCommandSink;
@@ -281,8 +280,6 @@ export class Input3DManager {
   private rightDrag: Input3DRightDragController;
   private modeClicks: Input3DModeClickController;
   private queueInsertIndex: number | null = null;
-  private pointerClientX = Number.NaN;
-  private pointerClientY = Number.NaN;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -323,7 +320,6 @@ export class Input3DManager {
     cursorGround: CursorGround,
   ) {
     this.canvas = threeApp.renderer.domElement;
-    this.orbit = threeApp.orbit;
     this.context = context;
     this.entitySource = entitySource;
     this.commandSink = commandSink;
@@ -2915,8 +2911,6 @@ export class Input3DManager {
   }
 
   private handleMouseDown(e: MouseEvent): void {
-    this.pointerClientX = e.clientX;
-    this.pointerClientY = e.clientY;
     // Button 0 = left (select / mode-click), Button 2 = right
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
     if (e.button === 2 && this.buildGridCategory !== null) {
@@ -2949,8 +2943,6 @@ export class Input3DManager {
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    this.pointerClientX = e.clientX;
-    this.pointerClientY = e.clientY;
     if (
       this.leftDown ||
       this.rightDrag.active ||
@@ -2978,8 +2970,6 @@ export class Input3DManager {
   }
 
   private handleMouseUp(e: MouseEvent): void {
-    this.pointerClientX = e.clientX;
-    this.pointerClientY = e.clientY;
     if (this.modeClicks.handleMouseUp(e)) return;
     if (e.button === 2 && this.rightDrag.active) {
       this.rightDrag.handleMouseUp(e);
