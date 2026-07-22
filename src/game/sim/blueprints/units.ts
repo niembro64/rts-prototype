@@ -269,10 +269,10 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 
   if (bp.unitLocomotion.type === 'legs') {
     const config = bp.unitLocomotion.config;
-    const choppingRatio = config.choppingSphere.radiusAverageFootSphereOriginDistanceRatio;
+    const choppingRatio = config.choppingSphere.radiusLegLengthRatio;
     if (!Number.isFinite(choppingRatio) || choppingRatio <= 0) {
       throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusAverageFootSphereOriginDistanceRatio must be finite and positive`,
+        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be finite and positive`,
       );
     }
     const globalValues = [

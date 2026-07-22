@@ -702,7 +702,7 @@ pub struct LegLayoutEntry {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegChoppingSphere {
-    pub radiusAverageFootSphereOriginDistanceRatio: f64,
+    pub radiusLegLengthRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

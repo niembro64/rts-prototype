@@ -4,6 +4,7 @@ import {
   resolveLegChoppingSphereRadius,
   resolveLegChoppedSphereVelocityTarget,
   resolveLegSnapRayOrigin,
+  resolveLegSnapRayPointVelocity,
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
 
@@ -12,9 +13,13 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runLegRig3DContractTest(): void {
+  const pointVelocity = { x: 0, z: 0 };
+  resolveLegSnapRayPointVelocity(13, 24, 10, 20, 500, pointVelocity);
+  assertContract(pointVelocity.x === 6 && pointVelocity.z === 8,
+    'snap targeting measures the ray-origin point own frame-to-frame velocity');
   assertContract(
-    resolveLegChoppingSphereRadius([10, 14], 0.5) === 6,
-    'chopping radius is the authored ratio of average foot-sphere origin distance',
+    resolveLegChoppingSphereRadius(15, 0.4) === 6,
+    'chopping radius is the authored ratio of total leg length',
   );
   const sphere = {
     centerX: 0,

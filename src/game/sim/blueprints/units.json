@@ -312,22 +312,22 @@
           "radiusLegLengthRatio": 0.5
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.5
+          "radiusLegLengthRatio": 0.5
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.3,
-              "yUnitRadiusRatio": -0.2
+              "xUnitRadiusRatio": 0.5,
+              "yUnitRadiusRatio": -0.5
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.3,
-              "yUnitRadiusRatio": -0.3
+              "xUnitRadiusRatio": -0.5,
+              "yUnitRadiusRatio": -0.5
             }
           }
         ]
@@ -667,22 +667,22 @@
           "radiusLegLengthRatio": 0.7
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.8
+          "radiusLegLengthRatio": 0.3
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.3,
-              "yUnitRadiusRatio": -0.3
+              "xUnitRadiusRatio": 0.22,
+              "yUnitRadiusRatio": -0.22
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.3,
-              "yUnitRadiusRatio": -0.3
+              "xUnitRadiusRatio": -0.22,
+              "yUnitRadiusRatio": -0.22
             }
           }
         ]
@@ -927,14 +927,14 @@
           "lower": { "lengthUnitRadiusRatio": 1.0556 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.5,
-          "radiusLegLengthRatio": 0.5
+          "originExtensionRatio": 0.3,
+          "radiusLegLengthRatio": 0.7
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.8
+          "radiusLegLengthRatio": 0.3
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
@@ -1159,14 +1159,14 @@
           "lower": { "lengthUnitRadiusRatio": 1.254 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.5,
-          "radiusLegLengthRatio": 0.5
+          "originExtensionRatio": 0.3,
+          "radiusLegLengthRatio": 0.7
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.8
+          "radiusLegLengthRatio": 0.3
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
@@ -1709,26 +1709,26 @@
           "lower": { "lengthUnitRadiusRatio": 1.254 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.5,
-          "radiusLegLengthRatio": 0.5
+          "originExtensionRatio": 0.4,
+          "radiusLegLengthRatio": 0.6
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.8
+          "radiusLegLengthRatio": 0.3
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.3,
-              "yUnitRadiusRatio": -0.2
+              "xUnitRadiusRatio": 0.5,
+              "yUnitRadiusRatio": -0.5
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.3,
-              "yUnitRadiusRatio": -0.2
+              "xUnitRadiusRatio": -0.5,
+              "yUnitRadiusRatio": -0.5
             }
           }
         ]
@@ -3280,31 +3280,31 @@
         "lowerThickness": 7,
         "hipRadius": 5,
         "kneeRadius": 7,
-        "lerpDuration": 20,
+        "lerpDuration": 300,
         "segments": {
           "upper": { "lengthUnitRadiusRatio": 1.1 },
           "lower": { "lengthUnitRadiusRatio": 1.32 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.5,
-          "radiusLegLengthRatio": 0.5
+          "originExtensionRatio": 0.3,
+          "radiusLegLengthRatio": 0.7
         },
         "choppingSphere": {
-          "radiusAverageFootSphereOriginDistanceRatio": 0.8
+          "radiusLegLengthRatio": 0.3
         },
         "snapRay": {
-          "originBoundarySpanRatio": 0.65
+          "originBoundarySpanRatio": 0.55
         },
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.4,
+              "xUnitRadiusRatio": 0.5,
               "yUnitRadiusRatio": -0.5
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.4,
+              "xUnitRadiusRatio": -0.5,
               "yUnitRadiusRatio": -0.5
             }
           }

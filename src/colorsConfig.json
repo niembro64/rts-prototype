@@ -366,7 +366,7 @@
           "colorHex": "#44ffcc",
           "opacity": 0.4
         },
-        "debugInnerExclusionSphere": {
+        "debugChoppingSphere": {
           "colorHex": "#ff4f87",
           "opacity": 0.5
         },

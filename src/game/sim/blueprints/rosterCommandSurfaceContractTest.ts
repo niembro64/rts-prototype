@@ -581,6 +581,9 @@ export function runRosterCommandSurfaceContractTest(): void {
         allowedUnitBlueprintIds,
         'bar-grid',
       );
+      const additionalFactoryUnitBlueprintIds = allowedUnitBlueprintIds.filter(
+        (unitBlueprintId) => !BAR_EQUIVALENT_FACTORY_SLOT_INDEX.has(unitBlueprintId),
+      );
       for (const [unitBlueprintId, slotIndex] of BAR_EQUIVALENT_FACTORY_SLOT_INDEX) {
         assertContract(
           barGridFactoryUnitCells[slotIndex] === unitBlueprintId,
@@ -588,8 +591,10 @@ export function runRosterCommandSurfaceContractTest(): void {
         );
       }
       assertContract(
-        barGridFactoryUnitCells.length === BAR_GRID_SLOT_COUNT * 3,
-        'towerFabricator BAR-grid factory cells must preserve vehicle, bot, and air pages from BAR final labGrids assignments',
+        barGridFactoryUnitCells.length === BAR_GRID_SLOT_COUNT * (
+          3 + Math.ceil(additionalFactoryUnitBlueprintIds.length / BAR_GRID_SLOT_COUNT)
+        ),
+        'towerFabricator BAR-grid factory cells must preserve three BAR pages and append pages for every additional unit',
       );
       assertContract(
         UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.type === 'hover' &&
@@ -608,54 +613,58 @@ export function runRosterCommandSurfaceContractTest(): void {
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 5] === null,
         'towerFabricator BAR-grid factory cells must keep empty BAR final labGrids vehicle/bot/air slots instead of compacting options',
       );
-      for (const hiddenNonBarUnitBlueprintId of ['unitLoris'] as const) {
+      for (const additionalUnitBlueprintId of additionalFactoryUnitBlueprintIds) {
         assertContract(
-          !buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes(hiddenNonBarUnitBlueprintId),
-          `towerFabricator prototype factory menu must not expose ${hiddenNonBarUnitBlueprintId} because it has no BAR T1 analogue`,
+          buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes(additionalUnitBlueprintId),
+          `towerFabricator prototype factory menu must expose additional option ${additionalUnitBlueprintId}`,
         );
         assertContract(
-          !barGridFactoryUnitBlueprintIds.includes(hiddenNonBarUnitBlueprintId),
-          `towerFabricator BAR-grid factory menu must hide ${hiddenNonBarUnitBlueprintId} because it has no BAR T1 analogue`,
-        );
-        assertContract(
-          resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
-            repeatProduction: true,
-            productionQueue: [],
-          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) === null,
-          `towerFabricator prototype factory presets must reject ${hiddenNonBarUnitBlueprintId} because it is not an authored BAR-equivalent build option`,
+          barGridFactoryUnitBlueprintIds.includes(additionalUnitBlueprintId),
+          `towerFabricator BAR-grid factory menu must expose additional option ${additionalUnitBlueprintId}`,
         );
         assertContract(
           resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
+            selectedUnitBlueprintId: additionalUnitBlueprintId,
             repeatProduction: true,
             productionQueue: [],
-          }, new Set(barGridFactoryUnitBlueprintIds)) === null,
-          `towerFabricator BAR-grid factory presets must reject hidden ${hiddenNonBarUnitBlueprintId}`,
+          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) !== null,
+          `towerFabricator prototype factory presets must accept ${additionalUnitBlueprintId}`,
         );
         assertContract(
           resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
+            selectedUnitBlueprintId: additionalUnitBlueprintId,
             repeatProduction: true,
             productionQueue: [],
-          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy'))) === null,
-          `towerFabricator BAR-legacy factory presets must reject hidden ${hiddenNonBarUnitBlueprintId}`,
+          }, new Set(barGridFactoryUnitBlueprintIds)) !== null,
+          `towerFabricator BAR-grid factory presets must accept ${additionalUnitBlueprintId}`,
+        );
+        assertContract(
+          resolveFactoryProductionPresetReplay({
+            selectedUnitBlueprintId: additionalUnitBlueprintId,
+            repeatProduction: true,
+            productionQueue: [],
+          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy'))) !== null,
+          `towerFabricator BAR-legacy factory presets must accept ${additionalUnitBlueprintId}`,
         );
       }
       assertContract(
         buildBarClassicFactoryUnitBlueprintIds(allowedUnitBlueprintIds).join('|') ===
-          BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER.join('|'),
-        'towerFabricator BAR-legacy classic factory menu must follow BAR buildmenu_sorting order',
+          [...BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
+        'towerFabricator BAR-legacy classic factory menu must preserve BAR sorting and append every additional unit',
       );
       assertContract(
         buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-grid').join('|') ===
-          BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER.join('|'),
-        'towerFabricator BAR-grid factory keyboard slots must match the displayed BAR-equivalent grid order',
+          [...BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
+        'towerFabricator BAR-grid factory keyboard slots must match the complete displayed grid order',
       );
       assertContract(
         buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy').join('|') ===
-          BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER.join('|'),
-        'towerFabricator BAR-legacy factory keyboard slots must match the displayed classic buildmenu order',
+          [...BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
+        'towerFabricator BAR-legacy factory keyboard slots must match the complete classic menu order',
+      );
+      assertContract(
+        barGridFactoryUnitBlueprintIds.includes('unitDaddy'),
+        'towerFabricator BAR-grid factory menu must expose Daddy',
       );
     }
   }

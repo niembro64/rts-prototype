@@ -626,7 +626,7 @@ function resetEveryCustomHotkey(): void {
         >MATEXP</BarButton>
         <BarButton
           :active="model.legsRadiusToggle"
-          title="Show the authored chopped snap envelope: cyan foot spheres, the pink terrain-rooted chopping sphere, yellow snap-ray origin dots, and rays that stop at the first boundary hit."
+          title="Show the authored chopped snap envelope: cyan foot spheres, pink attachment-ground chopping spheres, yellow snap-ray origin dots, and first-hit rays following each dot's own velocity."
           @click="model.toggleLegsRadius"
         >LEG RAD</BarButton>
         <BarButton

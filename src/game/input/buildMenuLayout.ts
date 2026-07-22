@@ -5,7 +5,6 @@ import {
   type BuildMenuCategory,
 } from '../sim/blueprints/displayRosters';
 import {
-  isBarCommandHotkeyPreset,
   isBarGridCommandHotkeyPreset,
   isBarLegacyCommandHotkeyPreset,
   type CommandHotkeyId,
@@ -211,7 +210,6 @@ export function buildBarClassicFactoryUnitBlueprintIds(
   allowedUnitBlueprintIds: readonly string[],
 ): string[] {
   return allowedUnitBlueprintIds
-    .filter((unitBlueprintId) => BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS.has(unitBlueprintId))
     .map((unitBlueprintId, originalIndex): IndexedUnitBlueprintId => ({ unitBlueprintId, originalIndex }))
     .sort((a, b) => {
       const sortDelta =
@@ -247,6 +245,22 @@ export function buildBarGridFactoryUnitBlueprintCells(
     cells[fallbackSlotIndex] = unitBlueprintId;
   }
 
+  // Preserve the exact BAR-equivalent pages above, then append every locally
+  // authored production option that has no BAR analogue. Factory capability
+  // must not disappear merely because the active hotkey preset is BAR-shaped.
+  const additionalUnitBlueprintIds = allowedUnitBlueprintIds.filter((unitBlueprintId) =>
+    !BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS.has(unitBlueprintId),
+  );
+  if (additionalUnitBlueprintIds.length > 0) {
+    const additionalStartIndex = allowedBarEquivalentUnitBlueprintIds.length > 0 ? cells.length : 0;
+    const requiredCellCount = additionalStartIndex + additionalUnitBlueprintIds.length;
+    const totalCellCount = Math.ceil(requiredCellCount / BAR_GRID_SLOT_COUNT) * BAR_GRID_SLOT_COUNT;
+    while (cells.length < totalCellCount) cells.push(null);
+    for (let i = 0; i < additionalUnitBlueprintIds.length; i++) {
+      cells[additionalStartIndex + i] = additionalUnitBlueprintIds[i];
+    }
+  }
+
   return cells;
 }
 
@@ -262,11 +276,7 @@ export function buildFactoryUnitBlueprintIdsForPreset(
       (unitBlueprintId): unitBlueprintId is string => unitBlueprintId !== null,
     );
   }
-  return isBarCommandHotkeyPreset(presetId)
-    ? allowedUnitBlueprintIds.filter((unitBlueprintId) =>
-        BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS.has(unitBlueprintId),
-      )
-    : [...allowedUnitBlueprintIds];
+  return [...allowedUnitBlueprintIds];
 }
 
 export function buildFactoryUnitGridCellsForPreset(

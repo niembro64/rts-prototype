@@ -13,6 +13,28 @@ export type LegSnapSphereLocal = {
 };
 
 export type LegSnapSpherePoint = { x: number; y: number; z: number };
+export type LegSnapRayVelocity = { x: number; z: number };
+
+/** Measure the snap-ray origin's own planar velocity from consecutive derived
+ *  world points. */
+export function resolveLegSnapRayPointVelocity(
+  currentX: number,
+  currentZ: number,
+  previousX: number,
+  previousZ: number,
+  dtMs: number,
+  out: LegSnapRayVelocity,
+): LegSnapRayVelocity {
+  if (!(dtMs > 1e-6)) {
+    out.x = 0;
+    out.z = 0;
+    return out;
+  }
+  const inverseSeconds = 1000 / dtMs;
+  out.x = (currentX - previousX) * inverseSeconds;
+  out.z = (currentZ - previousZ) * inverseSeconds;
+  return out;
+}
 
 /** Place the snap-ray origin along the outward span from the chopping-sphere
  *  surface to the foot-sphere's outward surface. */
@@ -39,19 +61,12 @@ export function resolveLegSnapRayOrigin(
   return out;
 }
 
-/** Size the shared inner boundary from the authored ratio of the average
- *  locomotion-origin-to-foot-sphere-origin distance. */
+/** Size each attachment-ground chopping sphere from total leg length. */
 export function resolveLegChoppingSphereRadius(
-  footSphereOriginDistances: readonly number[],
-  averageDistanceRatio: number,
+  totalLegLength: number,
+  radiusLegLengthRatio: number,
 ): number {
-  if (footSphereOriginDistances.length === 0) return 0;
-  let distanceSum = 0;
-  for (const distance of footSphereOriginDistances) {
-    distanceSum += Math.max(0, distance);
-  }
-  return distanceSum / footSphereOriginDistances.length
-    * Math.max(0, averageDistanceRatio);
+  return Math.max(0, totalLegLength) * Math.max(0, radiusLegLengthRatio);
 }
 
 /** Resolve the entire snap envelope from the only authored inputs it needs:
@@ -81,8 +96,8 @@ export function resolveLegSnapSphereLocal(
   return out;
 }
 
-/** The usable foot envelope is the outer foot sphere minus the shared inner
- *  locomotion-root sphere. Boundaries themselves remain valid planting sites. */
+/** The usable foot envelope is the outer foot sphere minus its leg's
+ *  attachment-ground chopping sphere. Boundaries remain valid planting sites. */
 export function legChoppedSphereNeedsStep(
   footToOuterCenterDistanceSq: number,
   outerRadius: number,
@@ -95,9 +110,9 @@ export function legChoppedSphereNeedsStep(
     || footToInnerCenterDistanceSq < inner * inner;
 }
 
-/** Cast a horizontal ray from the authored ray-origin point in current velocity
- *  direction and return its first boundary with either the central exclusion
- *  sphere or the outer foot sphere. */
+/** Cast a horizontal ray from the authored ray-origin point in that point's
+ *  measured velocity direction and return its first boundary with either the
+ *  attachment-ground chopping sphere or the outer foot sphere. */
 export function resolveLegChoppedSphereVelocityTarget(
   rayOrigin: LegSnapSpherePoint,
   footCenter: LegSnapSpherePoint,

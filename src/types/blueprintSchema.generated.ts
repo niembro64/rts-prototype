@@ -482,7 +482,7 @@ export type LegLayoutEntry = {
 };
 
 export type LegChoppingSphere = {
-  radiusAverageFootSphereOriginDistanceRatio: number;
+  radiusLegLengthRatio: number;
 };
 
 export type LegSnapRay = {

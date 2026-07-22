@@ -2011,10 +2011,10 @@
     "LegChoppingSphere": {
       "type": "object",
       "required": [
-        "radiusAverageFootSphereOriginDistanceRatio"
+        "radiusLegLengthRatio"
       ],
       "properties": {
-        "radiusAverageFootSphereOriginDistanceRatio": {
+        "radiusLegLengthRatio": {
           "type": "number"
         }
       },

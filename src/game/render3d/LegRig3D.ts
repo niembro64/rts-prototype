@@ -1,7 +1,8 @@
 // LegRig3D — world-space leg rig for legged units (arachnid family).
 // Each foot is planted at a real WORLD XYZ point on terrain and stays
 // there until the body's derived ground-centered snap sphere passes it.
-// It then travels to the sphere surface in the unit's velocity direction. The visible leg is two cylinders
+// It then travels to the sphere surface in its snap-ray point's measured
+// velocity direction. The visible leg is two cylinders
 // (upper hip→knee + lower knee→ground endpoint) drawn through a shared
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
@@ -59,6 +60,7 @@ import {
   resolveLegChoppingSphereRadius,
   resolveLegChoppedSphereVelocityTarget,
   resolveLegSnapRayOrigin,
+  resolveLegSnapRayPointVelocity,
   resolveLegSnapSphereLocal,
   type LegSnapSphereLocal,
 } from './LegGait3D';
@@ -128,10 +130,10 @@ const restSphereMat = new THREE.LineBasicMaterial({
   opacity: COLORS.units.locomotion.leg.debugRestSphere.opacity,
   depthWrite: false,
 });
-const innerExclusionSphereMat = new THREE.LineBasicMaterial({
-  color: COLORS.units.locomotion.leg.debugInnerExclusionSphere.colorHex,
+const choppingSphereMat = new THREE.LineBasicMaterial({
+  color: COLORS.units.locomotion.leg.debugChoppingSphere.colorHex,
   transparent: true,
-  opacity: COLORS.units.locomotion.leg.debugInnerExclusionSphere.opacity,
+  opacity: COLORS.units.locomotion.leg.debugChoppingSphere.opacity,
   depthWrite: false,
 });
 const snapRayOriginPointGeom = createPrimitiveSphereGeometry('debug', 'far');
@@ -157,7 +159,7 @@ const debugSpokeAxis = new THREE.Vector3(1, 0, 0);
  *  point on the terrain — it stays at that exact ground spot
  *  regardless of how the body moves or yaws, just like a real foot
  *  pinned against the ground. The trigger and target use its outer foot sphere
- *  minus the shared locomotion-root exclusion sphere. */
+ *  minus its own attachment-ground chopping sphere. */
 export type LegContactState = 'planted' | 'stepping' | 'free';
 
 export type LegInstance = {
@@ -197,6 +199,11 @@ export type LegInstance = {
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
+  /** Previous derived snap-ray origin used to measure this point's own
+   *  world-space planar velocity, including chassis rotation. */
+  lastSnapRayOriginX: number;
+  lastSnapRayOriginZ: number;
+  snapRayOriginInitialized: boolean;
 
   /** Slot index into LegInstancedRenderer's upper-cylinder pool. -1
    *  means "no slot" (pool exhausted on alloc, or leg has no upper
@@ -215,6 +222,8 @@ export type LegInstance = {
   lowerThick: number;
   /** LEG-RAD debug viz: this leg's derived outer foot sphere. */
   restSphere?: THREE.LineSegments;
+  /** LEG-RAD debug viz: attachment-ground chopping sphere for this leg. */
+  choppingSphere?: THREE.LineSegments;
   snapBoundaryRay?: THREE.Line;
   snapRayOriginPoint?: THREE.Mesh;
   /** LEG-REACH debug viz: the exact hip-centered maximum extension
@@ -236,9 +245,6 @@ export type LegMesh = {
   legs: LegInstance[];
   config: BlueprintLegConfig;
   legStyle: LegStyle;
-  /** One terrain-rooted sphere removed from every leg's outer foot sphere. */
-  innerExclusionRadius: number;
-  innerExclusionSphere?: THREE.LineSegments;
   /** Longest authored leg on the unit. Used by render-only contact
    *  hysteresis so chassis bob is judged relative to what the feet
    *  can plausibly absorb. */
@@ -268,6 +274,9 @@ export type LegStateSnapshot = ReadonlyArray<{
   lerpDuration: number;
   initialized: boolean;
   phaseShift01: 0 | 1;
+  lastSnapRayOriginX: number;
+  lastSnapRayOriginZ: number;
+  snapRayOriginInitialized: boolean;
 }>;
 
 /** Capture per-leg state from a legged locomotion mesh into a plain
@@ -285,6 +294,9 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       lerpDuration: leg.lerpDuration,
       initialized: leg.initialized,
       phaseShift01: leg.phaseShift01,
+      lastSnapRayOriginX: leg.lastSnapRayOriginX,
+      lastSnapRayOriginZ: leg.lastSnapRayOriginZ,
+      snapRayOriginInitialized: leg.snapRayOriginInitialized,
     });
   }
   return out;
@@ -310,6 +322,9 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.lerpDuration = src.lerpDuration;
     dst.initialized = src.initialized;
     dst.phaseShift01 = src.phaseShift01;
+    dst.lastSnapRayOriginX = src.lastSnapRayOriginX;
+    dst.lastSnapRayOriginZ = src.lastSnapRayOriginZ;
+    dst.snapRayOriginInitialized = src.snapRayOriginInitialized;
   }
 }
 
@@ -387,6 +402,9 @@ export function buildLegs(
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
+      lastSnapRayOriginX: 0,
+      lastSnapRayOriginZ: 0,
+      snapRayOriginInitialized: false,
       upperSlot: -1,
       lowerSlot: -1,
       hipJointSlot: -1,
@@ -419,35 +437,16 @@ export function buildLegs(
   // Longest leg drives only the visual-ground contact hysteresis. Each leg's
   // snap sphere is derived independently from its authored ratios.
   let maxLegLength = 0;
-  const footSphereOriginDistances = new Array<number>(allConfigs.length);
-  let configIndex = 0;
   for (const c of allConfigs) {
     const tl = totalLegLength(c);
     if (tl > maxLegLength) maxLegLength = tl;
-    resolveLegSnapSphereLocal(
-      c.attachOffsetX,
-      c.attachOffsetY,
-      tl,
-      c.footSphereOriginExtensionRatio,
-      c.footSphereRadiusLegLengthRatio,
-      _snapSphereLocal,
-    );
-    footSphereOriginDistances[configIndex++] = Math.hypot(
-      _snapSphereLocal.centerX,
-      _snapSphereLocal.centerZ,
-    );
   }
-  const innerExclusionRadius = resolveLegChoppingSphereRadius(
-    footSphereOriginDistances,
-    cfg.choppingSphere.radiusAverageFootSphereOriginDistanceRatio,
-  );
   return {
     type: 'legs',
     group,
     legs,
     config: cfg,
     legStyle,
-    innerExclusionRadius,
     maxLegLength,
     visualGrounded: true,
     poseInitialized: false,
@@ -507,9 +506,8 @@ export function updateLegs(
   resetLegsAcrossPoseDiscontinuity(mesh, pose);
 
   // World-planted feet. Each per-leg sphere derives its ground origin and
-  // radius from authored ratios. One shared terrain-rooted sphere, sized from
-  // average foot-sphere-origin distance, removes the inner portion of every
-  // foot envelope.
+  // radius from authored ratios. Each leg has its own terrain-rooted chopping
+  // sphere beneath its attachment, sized from total leg length.
   const showViz = getLegsRadiusToggle();
   const showReachViz = getLegsReachToggle();
   const wasVisualGrounded = mesh.visualGrounded;
@@ -549,40 +547,13 @@ export function updateLegs(
     );
   }
 
-  const innerSphereWorldX = pose.baseX;
-  const innerSphereWorldZ = pose.baseZ;
-  const innerSphereWorldY = getLocomotionSurfaceHeight(
-    innerSphereWorldX,
-    innerSphereWorldZ,
-    mapWidth,
-    mapHeight,
-    entity.id,
-  );
-  _innerSphereCenterPoint.x = innerSphereWorldX;
-  _innerSphereCenterPoint.y = innerSphereWorldY;
-  _innerSphereCenterPoint.z = innerSphereWorldZ;
-  if (showViz) {
-    if (!mesh.innerExclusionSphere) {
-      mesh.innerExclusionSphere = new THREE.LineSegments(
-        restSphereGeom,
-        innerExclusionSphereMat,
-      );
-      mesh.group.add(mesh.innerExclusionSphere);
-    }
-    mesh.innerExclusionSphere.visible = true;
-    mesh.innerExclusionSphere.position.set(
-      innerSphereWorldX,
-      innerSphereWorldY,
-      innerSphereWorldZ,
-    );
-    mesh.innerExclusionSphere.scale.setScalar(mesh.innerExclusionRadius);
-  } else if (mesh.innerExclusionSphere) {
-    mesh.innerExclusionSphere.visible = false;
-  }
-
   for (const leg of mesh.legs) {
     const c = leg.config;
     const tl = totalLegLength(c);
+    const choppingSphereRadius = resolveLegChoppingSphereRadius(
+      tl,
+      mesh.config.choppingSphere.radiusLegLengthRatio,
+    );
     const hipLocalX = c.attachOffsetX;
     const hipLocalY = leg.hipY;
     const hipLocalZ = c.attachOffsetY;
@@ -602,6 +573,18 @@ export function updateLegs(
     const hipWorldX = _worldOut.x;
     const hipWorldY = _worldOut.y;
     const hipWorldZ = _worldOut.z;
+    const innerSphereWorldX = hipWorldX;
+    const innerSphereWorldZ = hipWorldZ;
+    const innerSphereWorldY = getLocomotionSurfaceHeight(
+      innerSphereWorldX,
+      innerSphereWorldZ,
+      mapWidth,
+      mapHeight,
+      entity.id,
+    );
+    _innerSphereCenterPoint.x = innerSphereWorldX;
+    _innerSphereCenterPoint.y = innerSphereWorldY;
+    _innerSphereCenterPoint.z = innerSphereWorldZ;
 
     transformChassisToWorld(
       _snapSphereLocal.centerX, FOOT_Y, _snapSphereLocal.centerZ,
@@ -640,7 +623,7 @@ export function updateLegs(
       _snapSphereCenterPoint,
       sphereRadius,
       _innerSphereCenterPoint,
-      mesh.innerExclusionRadius,
+      choppingSphereRadius,
       mesh.config.snapRay.originBoundarySpanRatio,
       _snapRayOriginPoint,
     );
@@ -651,6 +634,21 @@ export function updateLegs(
       mapHeight,
       entity.id,
     );
+    _snapRayVelocity.x = 0;
+    _snapRayVelocity.z = 0;
+    if (leg.snapRayOriginInitialized) {
+      resolveLegSnapRayPointVelocity(
+        _snapRayOriginPoint.x,
+        _snapRayOriginPoint.z,
+        leg.lastSnapRayOriginX,
+        leg.lastSnapRayOriginZ,
+        dtMs,
+        _snapRayVelocity,
+      );
+    }
+    leg.lastSnapRayOriginX = _snapRayOriginPoint.x;
+    leg.lastSnapRayOriginZ = _snapRayOriginPoint.z;
+    leg.snapRayOriginInitialized = true;
 
     // LEG-RAD viz: exact ground-centered sphere used by both trigger and target.
     if (showViz) {
@@ -661,14 +659,28 @@ export function updateLegs(
       leg.restSphere.visible = true;
       leg.restSphere.position.set(sphereWorldX, sphereWorldY, sphereWorldZ);
       leg.restSphere.scale.setScalar(sphereRadius);
+      if (!leg.choppingSphere) {
+        leg.choppingSphere = new THREE.LineSegments(
+          restSphereGeom,
+          choppingSphereMat,
+        );
+        mesh.group.add(leg.choppingSphere);
+      }
+      leg.choppingSphere.visible = true;
+      leg.choppingSphere.position.set(
+        innerSphereWorldX,
+        innerSphereWorldY,
+        innerSphereWorldZ,
+      );
+      leg.choppingSphere.scale.setScalar(choppingSphereRadius);
       resolveLegChoppedSphereVelocityTarget(
         _snapRayOriginPoint,
         _snapSphereCenterPoint,
         sphereRadius,
         _innerSphereCenterPoint,
-        mesh.innerExclusionRadius,
-        pose.velocityX,
-        pose.velocityZ,
+        choppingSphereRadius,
+        _snapRayVelocity.x,
+        _snapRayVelocity.z,
         _snapSphereOutwardPoint,
         _snapSphereTargetPoint,
       );
@@ -720,6 +732,7 @@ export function updateLegs(
       }
     } else {
       if (leg.restSphere) leg.restSphere.visible = false;
+      if (leg.choppingSphere) leg.choppingSphere.visible = false;
       if (leg.snapBoundaryRay) leg.snapBoundaryRay.visible = false;
       if (leg.snapRayOriginPoint) leg.snapRayOriginPoint.visible = false;
     }
@@ -775,7 +788,7 @@ export function updateLegs(
         innerSphereWorldX,
         innerSphereWorldY,
         innerSphereWorldZ,
-        mesh.innerExclusionRadius,
+        choppingSphereRadius,
         entity.id,
         mapWidth,
         mapHeight,
@@ -799,9 +812,9 @@ export function updateLegs(
         innerSphereWorldX,
         innerSphereWorldY,
         innerSphereWorldZ,
-        mesh.innerExclusionRadius,
-        pose.velocityX,
-        pose.velocityZ,
+        choppingSphereRadius,
+        _snapRayVelocity.x,
+        _snapRayVelocity.z,
         entity.id,
         mapWidth,
         mapHeight,
@@ -831,7 +844,7 @@ export function updateLegs(
         outerDistSq,
         sphereRadius,
         innerDistSq,
-        mesh.innerExclusionRadius,
+        choppingSphereRadius,
       )
     ) {
       beginLegStepToChoppedSphereBoundary(
@@ -849,9 +862,9 @@ export function updateLegs(
         innerSphereWorldX,
         innerSphereWorldY,
         innerSphereWorldZ,
-        mesh.innerExclusionRadius,
-        pose.velocityX,
-        pose.velocityZ,
+        choppingSphereRadius,
+        _snapRayVelocity.x,
+        _snapRayVelocity.z,
         entity.id,
         mapWidth,
         mapHeight,
@@ -938,6 +951,7 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.initialized = false;
       leg.contactState = 'free';
       leg.lerpProgress = 0;
+      leg.snapRayOriginInitialized = false;
     }
   }
   mesh.lastBaseX = pose.baseX;
@@ -1184,6 +1198,7 @@ const _snapSphereCenterPoint = { x: 0, y: 0, z: 0 };
 const _innerSphereCenterPoint = { x: 0, y: 0, z: 0 };
 const _snapSphereOutwardPoint = { x: 0, y: 0, z: 0 };
 const _snapRayOriginPoint = { x: 0, y: 0, z: 0 };
+const _snapRayVelocity = { x: 0, z: 0 };
 const _snapSphereTargetPoint = { x: 0, y: 0, z: 0 };
 const _debugSpokeDirection = new THREE.Vector3();
 const _footSurface: LocomotionFootSurfaceSample = {
@@ -1205,7 +1220,6 @@ function updateUnsupportedLegPose(
   vLocalForward: number,
   vLocalLateral: number,
 ): boolean {
-  if (mesh.innerExclusionSphere) mesh.innerExclusionSphere.visible = false;
   const bodyBaseY = pose.baseY;
   const bodyGroundY = getLocomotionSurfaceHeight(
     pose.baseX,
@@ -1222,7 +1236,9 @@ function updateUnsupportedLegPose(
   let needsFrame = airborneLegBodyActive(pose);
 
   for (const leg of mesh.legs) {
+    leg.snapRayOriginInitialized = false;
     if (leg.restSphere) leg.restSphere.visible = false;
+    if (leg.choppingSphere) leg.choppingSphere.visible = false;
     if (leg.snapBoundaryRay) leg.snapBoundaryRay.visible = false;
     if (leg.snapRayOriginPoint) leg.snapRayOriginPoint.visible = false;
     if (leg.reachSphere) leg.reachSphere.visible = false;
