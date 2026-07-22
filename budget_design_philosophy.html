@@ -1325,7 +1325,10 @@
         chase current controller state. <code>ema</code> retains the prototype&rsquo;s previous first-order
         transition. BAR wheel input itself does not gain movement from wheel-event velocity; the
         continuing motion after a wheel event is active-camera spring velocity, not accelerated
-        scroll input.
+        scroll input. <code>bar-discrete-event</code> therefore maps every signed browser wheel
+        event to one BAR wheel unit regardless of OS-accelerated DOM magnitude.
+        <code>dom-continuous-delta</code> retains raw fractional DOM-delta conversion as an explicit
+        option for continuous devices.
       </p>
       <p>
         Middle mouse is hold-to-pan in the browser battle camera. BAR&rsquo;s optional quick-click

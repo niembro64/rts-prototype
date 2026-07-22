@@ -28,23 +28,41 @@ export function runOrbitCameraContractTest(): void {
   );
 
   assertContract(
-    close(barCameraWheelTicks(100, 0), 1)
-      && close(barCameraWheelTicks(-100, 0), -1),
+    close(barCameraWheelTicks(100, 0, 'dom-continuous-delta'), 1)
+      && close(barCameraWheelTicks(-100, 0, 'dom-continuous-delta'), -1),
     '100 DOM pixels must equal one signed BAR/Recoil wheel unit',
   );
   assertContract(
-    close(barCameraWheelTicks(3, 1), 1)
-      && close(barCameraWheelTicks(-3, 1), -1),
+    close(barCameraWheelTicks(3, 1, 'dom-continuous-delta'), 1)
+      && close(barCameraWheelTicks(-3, 1, 'dom-continuous-delta'), -1),
     'three DOM lines must equal one signed BAR/Recoil wheel unit',
   );
   assertContract(
-    close(barCameraWheelTicks(1, 2), 1)
-      && close(barCameraWheelTicks(-1, 2), -1),
+    close(barCameraWheelTicks(1, 2, 'dom-continuous-delta'), 1)
+      && close(barCameraWheelTicks(-1, 2, 'dom-continuous-delta'), -1),
     'one DOM page must equal one signed BAR/Recoil wheel unit',
   );
   assertContract(
-    close(barCameraWheelTicks(25, 0), 0.25),
+    close(barCameraWheelTicks(25, 0, 'dom-continuous-delta'), 0.25),
     'trackpad pixel deltas must retain fractional wheel movement',
+  );
+  assertContract(
+    close(barCameraWheelTicks(4, 0, 'bar-discrete-event'), 1)
+      && close(barCameraWheelTicks(480, 0, 'bar-discrete-event'), 1)
+      && close(barCameraWheelTicks(-960, 0, 'bar-discrete-event'), -1),
+    'BAR discrete wheel clicks must ignore accelerated DOM delta magnitude',
+  );
+  const spacedClicks = [4, 4, 4, 4, 4].reduce(
+    (sum, delta) => sum + barCameraWheelTicks(delta, 0, 'bar-discrete-event'),
+    0,
+  );
+  const rapidClicks = [4, 16, 52, 180, 480].reduce(
+    (sum, delta) => sum + barCameraWheelTicks(delta, 0, 'bar-discrete-event'),
+    0,
+  );
+  assertContract(
+    close(spacedClicks, 5) && close(rapidClicks, 5),
+    'five rapid clicks and five spaced clicks must deliver the same BAR input',
   );
 
   assertContract(

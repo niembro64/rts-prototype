@@ -201,7 +201,7 @@
     "projRangeToggles": "proj-range-toggles",
     "unitRadiusToggles": "unit-radius-toggles",
     "legsRadius": "legs-radius",
-    "cameraSmooth": "camera-smooth",
+    "cameraSmooth": "camera-smooth-v2",
     "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
     "waterBoundaryMode": "water-boundary-mode",

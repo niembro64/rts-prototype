@@ -18,6 +18,13 @@ export type CameraMovementScaleMode =
   | 'absolute-world'
   | 'absolute-world-momentum';
 
+export type CameraWheelInputMode =
+  /** Treat each browser wheel event as one BAR/SDL wheel unit. This removes
+   * OS/browser acceleration from notched-wheel input. */
+  | 'bar-discrete-event'
+  /** Preserve the previous raw DOM delta conversion for continuous devices. */
+  | 'dom-continuous-delta';
+
 /** Rendered-camera transition applied after controller state changes. */
 export type CameraTransitionMode =
   | 'bar-spring-dampened'
@@ -50,6 +57,7 @@ export type CameraOrbitMovementConfig = {
 
 export type CameraMovementConfig = {
   readonly scaleMode: CameraMovementScaleMode;
+  readonly wheelInputMode: CameraWheelInputMode;
   /** Middle-click drag pan. */
   readonly centerClickPan: CameraPanMovementConfig;
   /** Wheel zoom-in. */

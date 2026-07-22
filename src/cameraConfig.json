@@ -4,13 +4,13 @@
   "transitionMode": "bar-spring-dampened",
   "smoothingTauSeconds": {
     "snap": 0.0,
-    "fast": 0.05,
+    "fast": 0.02,
     "mid": 0.12,
     "slow": 0.4
   },
   "barSpringHalfLifeSeconds": {
     "snap": 0.0,
-    "fast": 0.1,
+    "fast": 0.02,
     "mid": 0.18,
     "slow": 0.4
   },
@@ -51,6 +51,7 @@
   },
   "movement": {
     "scaleMode": "bar-spring",
+    "wheelInputMode": "bar-discrete-event",
     "centerClickPan": {
       "absoluteWorldUnitsPerPixel": 5.0,
       "momentum": {

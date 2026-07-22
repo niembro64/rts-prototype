@@ -40,6 +40,7 @@ import type {
   CameraMovementScaleMode,
   CameraTerrainCollisionMode,
   CameraTransitionMode,
+  CameraWheelInputMode,
   CameraZoomDistanceAggregation,
   CameraZoomDistanceSamplingConfig,
 } from '../../types/camera';
@@ -50,11 +51,11 @@ const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
 const KEYBOARD_CAMERA_FAST_MULTIPLIER = 2.5;
 const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
-// Recoil's Spring camera receives one SDL wheel unit per physical notch and
-// multiplies it by ScrollWheelSpeed=25. Its 0.007 zoom coefficient therefore
-// produces a 0.175 distance change per notch. Browser wheel events are less
-// regular: the same notch is normally 100 pixels, three lines, or one page.
-// Reduce all three DOM modes to the controller unit BAR actually consumes.
+// Recoil's Spring camera multiplies one SDL wheel unit by ScrollWheelSpeed=25;
+// its 0.007 zoom coefficient therefore produces a 0.175 distance change per
+// notch. These DOM-unit scales are retained only for the configurable
+// continuous-delta path. Canonical BAR discrete input ignores accelerated
+// browser magnitude and maps each event to one signed controller unit.
 const WHEEL_PIXELS_PER_TICK = 100;
 const WHEEL_LINES_PER_TICK = 3;
 const BAR_FAST_POINTER_MULTIPLIER = 4;
@@ -80,6 +81,7 @@ const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = 
 
 const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
   scaleMode: 'anchor-distance-relative',
+  wheelInputMode: 'dom-continuous-delta',
   centerClickPan: {
     absoluteWorldUnitsPerPixel: 2,
     momentum: {
@@ -240,8 +242,13 @@ export type CameraZoomTerrainSampleSnapshot = {
 export function barCameraWheelTicks(
   delta: number,
   deltaMode: number,
+  inputMode: CameraWheelInputMode = 'dom-continuous-delta',
 ): number {
   if (!Number.isFinite(delta) || delta === 0) return 0;
+  // SDL hands BAR one signed wheel unit for an ordinary notched-wheel event.
+  // Browser pixel deltas can grow when the OS accelerates rapid scrolling;
+  // magnitude must not turn one physical click into several controller units.
+  if (inputMode === 'bar-discrete-event') return Math.sign(delta);
   // WheelEvent.DOM_DELTA_LINE/PAGE are specified as 1 and 2. Use the numeric
   // values so this pure helper is also safe in Node-based contract tests.
   if (deltaMode === 1) return delta / WHEEL_LINES_PER_TICK;
@@ -649,6 +656,7 @@ export class OrbitCamera {
       let signedTicks = barCameraWheelTicks(
         wheelDelta,
         e.deltaMode,
+        this.movementConfig.wheelInputMode,
       );
       if (signedTicks === 0) return;
       // BAR binds Shift to movefast. SpringController scales wheel input by

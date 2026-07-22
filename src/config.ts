@@ -745,8 +745,8 @@ export const CAMERA_TRANSITION_MODE =
 export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
   Readonly<Record<CameraSmoothMode, number>>;
 
-/** Recoil CamSpringHalflife values in seconds. BAR defaults to 100ms; the
- * same half-life applies to active-camera position, rotation, and FOV. */
+/** Recoil CamSpringHalflife values in seconds. The same selected half-life
+ * applies to active-camera position, rotation, and FOV. */
 export const CAMERA_BAR_SPRING_HALF_LIFE_SECONDS =
   cameraConfigJson.barSpringHalfLifeSeconds as Readonly<Record<CameraSmoothMode, number>>;
 
