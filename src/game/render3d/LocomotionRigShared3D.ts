@@ -7,14 +7,22 @@
 // chassis→world transform legs use for hip / rest / target sampling
 // per frame, the IK solver, and a couple of pure math utilities.
 
-/** Canonical presentation pose consumed by every locomotion rig. It is
- *  assembled from the same batched position/quaternion used to draw the
- *  chassis, so world-space appendages cannot drift onto a different pose
- *  timeline. Three coordinates use x/y-up/z ordering. */
+/** Canonical presentation pose consumed by every locomotion rig. It carries
+ *  both the terrain footprint used by ground-contact sampling and the exact
+ *  batched chassis root used by world-space appendages. Both share the final
+ *  rendered quaternion and presentation timeline. Three coordinates use
+ *  x/y-up/z ordering. */
 export type LocomotionRenderPose = {
+  /** Terrain-footprint pose used by ground-contact rigs. */
   baseX: number;
   baseY: number;
   baseZ: number;
+  /** Exact lifted body-center position used to draw the chassis. World-space
+   * rigs such as legs must anchor attachments here so airborne bank cannot
+   * rotate them around the terrain footprint instead of the chassis. */
+  rootX: number;
+  rootY: number;
+  rootZ: number;
   quaternionX: number;
   quaternionY: number;
   quaternionZ: number;
@@ -207,6 +215,29 @@ export function transformChassisToWorld(
   out.x = pose.baseX + x + qw * tx + (qy * tz - qz * ty);
   out.y = pose.baseY + y + qw * ty + (qz * tx - qx * tz);
   out.z = pose.baseZ + z + qw * tz + (qx * ty - qy * tx);
+}
+
+/** Transform a point expressed relative to the rendered chassis root. Unlike
+ * `transformChassisToWorld`, translation comes from the exact lifted position
+ * consumed by the chassis instance writer. */
+export function transformChassisRootToWorld(
+  cx: number, cy: number, cz: number,
+  pose: LocomotionRenderPose,
+  out: { x: number; y: number; z: number },
+): void {
+  const x = cx;
+  const y = cy;
+  const z = cz;
+  const qx = pose.quaternionX;
+  const qy = pose.quaternionY;
+  const qz = pose.quaternionZ;
+  const qw = pose.quaternionW;
+  const tx = 2 * (qy * z - qz * y);
+  const ty = 2 * (qz * x - qx * z);
+  const tz = 2 * (qx * y - qy * x);
+  out.x = pose.rootX + x + qw * tx + (qy * tz - qz * ty);
+  out.y = pose.rootY + y + qw * ty + (qz * tx - qx * tz);
+  out.z = pose.rootZ + z + qw * tz + (qx * ty - qy * tx);
 }
 
 /** 3D IK (law of cosines, lifted into 3D) — returns the knee world

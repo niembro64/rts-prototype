@@ -46,7 +46,7 @@ import {
   emaAlpha,
   kneeFromIK,
   rollingLocomotionBodyActive,
-  transformChassisToWorld,
+  transformChassisRootToWorld,
   transformWorldVectorToChassis,
 } from './LocomotionRigShared3D';
 import { clamp, clamp01 } from '../math';
@@ -245,6 +245,10 @@ export type LegMesh = {
   legs: LegInstance[];
   config: BlueprintLegConfig;
   legStyle: LegStyle;
+  /** Authored chassis lift above the terrain footprint. Leg layout values are
+   * authored in footprint-local coordinates; subtract this when transforming
+   * them from the exact lifted chassis root. */
+  chassisLiftY: number;
   /** Longest authored leg on the unit. Used by render-only contact
    *  hysteresis so chassis bob is judged relative to what the feet
    *  can plausibly absorb. */
@@ -447,6 +451,7 @@ export function buildLegs(
     legs,
     config: cfg,
     legStyle,
+    chassisLiftY,
     maxLegLength,
     visualGrounded: true,
     poseInitialized: false,
@@ -566,7 +571,8 @@ export function updateLegs(
       _snapSphereLocal,
     );
 
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       hipLocalX, hipLocalY, hipLocalZ,
       pose, _worldOut,
     );
@@ -586,7 +592,8 @@ export function updateLegs(
     _innerSphereCenterPoint.y = innerSphereWorldY;
     _innerSphereCenterPoint.z = innerSphereWorldZ;
 
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       _snapSphereLocal.centerX, FOOT_Y, _snapSphereLocal.centerZ,
       pose, _worldOut,
     );
@@ -599,7 +606,8 @@ export function updateLegs(
       mapHeight,
       entity.id,
     );
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       _snapSphereLocal.outwardX, FOOT_Y, _snapSphereLocal.outwardZ,
       pose, _worldOut,
     );
@@ -938,9 +946,9 @@ function resetLegsAcrossPoseDiscontinuity(
   mesh: LegMesh,
   pose: LocomotionRenderPose,
 ): void {
-  const dx = pose.baseX - mesh.lastBaseX;
-  const dy = pose.baseY - mesh.lastBaseY;
-  const dz = pose.baseZ - mesh.lastBaseZ;
+  const dx = pose.rootX - mesh.lastBaseX;
+  const dy = pose.rootY - mesh.lastBaseY;
+  const dz = pose.rootZ - mesh.lastBaseZ;
   const distanceSq = dx * dx + dy * dy + dz * dz;
   const maxDistance = Math.max(1, pose.maxContinuousDistance);
   const discontinuous = mesh.poseInitialized && (
@@ -954,9 +962,9 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.snapRayOriginInitialized = false;
     }
   }
-  mesh.lastBaseX = pose.baseX;
-  mesh.lastBaseY = pose.baseY;
-  mesh.lastBaseZ = pose.baseZ;
+  mesh.lastBaseX = pose.rootX;
+  mesh.lastBaseY = pose.rootY;
+  mesh.lastBaseZ = pose.rootZ;
   mesh.poseInitialized = true;
 }
 
@@ -1114,7 +1122,8 @@ function hasReachablePlantedFoot(
   for (const leg of mesh.legs) {
     if (!leg.initialized || leg.contactState !== 'planted') continue;
     const c = leg.config;
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       c.attachOffsetX, leg.hipY, c.attachOffsetY,
       pose, _worldOut,
     );
@@ -1145,7 +1154,8 @@ function hasReachableGroundAtRest(
       c.footSphereRadiusLegLengthRatio,
       _snapSphereLocal,
     );
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       c.attachOffsetX,
       leg.hipY,
       c.attachOffsetY,
@@ -1155,7 +1165,8 @@ function hasReachableGroundAtRest(
     const hipWorldX = _worldOut.x;
     const hipWorldY = _worldOut.y;
     const hipWorldZ = _worldOut.z;
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       _snapSphereLocal.centerX,
       FOOT_Y,
       _snapSphereLocal.centerZ,
@@ -1181,6 +1192,26 @@ function hasReachableGroundAtRest(
     }
   }
   return false;
+}
+
+/** Leg blueprints use terrain-footprint-local Y values (hipY includes the
+ * authored chassis lift). Convert those values to chassis-root-local space,
+ * then apply the exact batched root pose used by the visible body. */
+function transformLegPointToWorld(
+  mesh: LegMesh,
+  x: number,
+  footprintLocalY: number,
+  z: number,
+  pose: LocomotionRenderPose,
+  out: { x: number; y: number; z: number },
+): void {
+  transformChassisRootToWorld(
+    x,
+    footprintLocalY - mesh.chassisLiftY,
+    z,
+    pose,
+    out,
+  );
 }
 
 // Scratch output struct reused across the per-leg loop.
@@ -1277,7 +1308,8 @@ function updateUnsupportedLegPose(
     const unsupportedLocalX = touchdownLocalX + (waterLocalX - touchdownLocalX) * water01;
     const unsupportedLocalZ = touchdownLocalZ + (waterLocalZ - touchdownLocalZ) * water01;
 
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       hipLocalX, hipLocalY, hipLocalZ,
       pose, _worldOut,
     );
@@ -1285,7 +1317,8 @@ function updateUnsupportedLegPose(
     const hipWorldY = _worldOut.y;
     const hipWorldZ = _worldOut.z;
 
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       unsupportedLocalX, FOOT_Y, unsupportedLocalZ,
       pose, _worldOut,
     );
@@ -1329,7 +1362,8 @@ function updateUnsupportedLegPose(
     const footLocalY =
       airborneFootLocalY + (waterborneFootLocalY - airborneFootLocalY) * water01;
 
-    transformChassisToWorld(
+    transformLegPointToWorld(
+      mesh,
       unsupportedLocalX, footLocalY, unsupportedLocalZ,
       pose, _worldOut,
     );

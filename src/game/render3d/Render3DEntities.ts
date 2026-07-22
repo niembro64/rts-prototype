@@ -227,6 +227,9 @@ export class Render3DEntities {
     baseX: 0,
     baseY: 0,
     baseZ: 0,
+    rootX: 0,
+    rootY: 0,
+    rootZ: 0,
     quaternionX: 0,
     quaternionY: 0,
     quaternionZ: 0,
@@ -1022,6 +1025,9 @@ export class Render3DEntities {
           locomotionPose.baseX = tx;
           locomotionPose.baseY = groundZ;
           locomotionPose.baseZ = ty;
+          locomotionPose.rootX = this._smoothLiftedPos.x;
+          locomotionPose.rootY = this._smoothLiftedPos.y;
+          locomotionPose.rootZ = this._smoothLiftedPos.z;
           locomotionPose.quaternionX = poseOutput[poseBase + 8];
           locomotionPose.quaternionY = poseOutput[poseBase + 9];
           locomotionPose.quaternionZ = poseOutput[poseBase + 10];

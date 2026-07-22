@@ -2,6 +2,7 @@ import {
   rollingContact,
   rollingWheelAngularVelocity,
   sampleRollingContactPosition,
+  transformChassisRootToWorld,
 } from './LocomotionRigShared3D';
 
 function assertEqual(actual: number, expected: number, message: string): void {
@@ -35,6 +36,9 @@ export function runRollingLocomotionContractTest(): void {
     baseX: 10,
     baseY: 20,
     baseZ: 30,
+    rootX: 10,
+    rootY: 25,
+    rootZ: 30,
     quaternionX: 0,
     quaternionY: 0,
     quaternionZ: 0,
@@ -49,4 +53,27 @@ export function runRollingLocomotionContractTest(): void {
   assertEqual(contact.worldX, 12, 'static Low contact still tracks world X');
   assertEqual(contact.worldZ, 33, 'static Low contact still tracks world Z');
   assertEqual(contact.phase, 17, 'static Low contact does not integrate rolling phase');
+
+  const rootPoint = { x: 0, y: 0, z: 0 };
+  transformChassisRootToWorld(0, 0, 0, {
+    baseX: -100,
+    baseY: -200,
+    baseZ: -300,
+    rootX: 11,
+    rootY: 22,
+    rootZ: 33,
+    quaternionX: Math.SQRT1_2,
+    quaternionY: 0,
+    quaternionZ: 0,
+    quaternionW: Math.SQRT1_2,
+    velocityX: 0,
+    velocityY: 0,
+    velocityZ: 0,
+    yawRate: 0,
+    waterFraction: 0,
+    maxContinuousDistance: 100,
+  }, rootPoint);
+  assertEqual(rootPoint.x, 11, 'world-space attachments use the batched chassis root X');
+  assertEqual(rootPoint.y, 22, 'world-space attachments use the batched chassis root Y');
+  assertEqual(rootPoint.z, 33, 'world-space attachments use the batched chassis root Z');
 }
