@@ -931,7 +931,7 @@
           "radiusLegLengthRatio": 0.4
         },
         "choppingSphere": {
-          "radiusLegLengthRatio": 0.3
+          "radiusLegLengthRatio": 0.45
         },
         "snapRay": {
           "originBoundarySpanRatio": 0.55
