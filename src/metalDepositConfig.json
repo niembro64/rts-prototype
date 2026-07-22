@@ -166,10 +166,26 @@
       }
     },
     {
-      "comment": "WATER TRIANGLE",
+      "comment": "WATER TRIANGLE BACK",
       "radiusFraction": 1.12,
       "countPerPlayer": 1,
       "sliceOffset": 1.5,
+      "dTerrainLevels": null,
+      "flatPadCells": 40,
+      "terrainBlendRadius": 600,
+      "demoAutoExtractor": true,
+      "depositCluster": {
+        "type": "group-ring",
+        "count": 3,
+        "radius": 180,
+        "angleOffset": 1
+      }
+    },
+    {
+      "comment": "WATER TRIANGLE FRONT",
+      "radiusFraction": 0.86,
+      "countPerPlayer": 1,
+      "sliceOffset": 1.42,
       "dTerrainLevels": null,
       "flatPadCells": 40,
       "terrainBlendRadius": 600,
