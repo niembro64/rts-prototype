@@ -35,7 +35,7 @@ const DEFAULT_WING_TIP_HALF_CHORD_FRAC = 0.12;
 function buildWingPanelGeom(
   lateralSign: -1 | 1,
   sweepFrac: number,
-  tier: PrimitiveGeometryTier,
+  _tier: PrimitiveGeometryTier,
 ): THREE.BufferGeometry {
   const rootHalfChord = 0.5;
   const tipHalfChord = DEFAULT_WING_TIP_HALF_CHORD_FRAC;
@@ -48,17 +48,14 @@ function buildWingPanelGeom(
   shape.lineTo(-rootHalfChord, 0);
   shape.lineTo(rootHalfChord, 0);
 
-  const geom: THREE.BufferGeometry = tier === 'far'
-    ? new THREE.ShapeGeometry(shape)
-    : new THREE.ExtrudeGeometry(shape, {
-      depth: 1,
-      bevelEnabled: tier === 'close',
-      bevelSegments: tier === 'close' ? 1 : 0,
-      bevelSize: tier === 'close' ? 0.03 : 0,
-      bevelThickness: tier === 'close' ? 0.05 : 0,
-      steps: 1,
-    });
-  if (tier !== 'far') geom.translate(0, 0, -0.5);
+  // Even Low keeps the authored wing thickness. A planar ShapeGeometry made
+  // distant aircraft look wilted and has literally zero enclosed volume.
+  const geom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 1,
+    bevelEnabled: false,
+    steps: 1,
+  });
+  geom.translate(0, 0, -0.5);
   geom.rotateX(Math.PI / 2);
   return geom;
 }

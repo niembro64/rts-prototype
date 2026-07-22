@@ -130,15 +130,8 @@ export const invisibleMat = new THREE.MeshBasicMaterial({
 export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
 function createWindBladeGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  if (tier === 'far') {
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute([
-      -0.68, 0.06, 0, 0.68, 0.06, 0, 0.08, 1, 0,
-      -0.68, 0.06, 0, 0.08, 1, 0, -0.08, 1, 0,
-    ], 3));
-    geom.computeVertexNormals();
-    return geom;
-  }
+  // Medium and Low share the minimal closed wedge. The old Low blade was a
+  // two-triangle sheet with zero volume, which made the rotor visibly bony.
   const stations = tier === 'close' ? [
     { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
     { y: 0.48, halfW: 0.376, halfT: 0.509, sweep: 0.025 },

@@ -58,7 +58,9 @@ function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   let geometry = wheelGeomByTier.get(tier);
   if (!geometry) {
     geometry = tier === 'far'
-      ? new THREE.BoxGeometry(1, 1, 1)
+      // A square-prism tire is cheap, but its cross-section must retain the
+      // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
+      ? new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI))
       : createPrimitiveCylinderGeometry('locomotion', tier);
     wheelGeomByTier.set(tier, geometry);
   }

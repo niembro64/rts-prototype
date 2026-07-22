@@ -13,6 +13,7 @@ import {
 } from './BuildingMeshPrimitives3D';
 import {
   getSharedPrimitiveTetrahedronGeometry,
+  preserveGeometryVolume,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -78,6 +79,7 @@ function getSolarHingeCapGeometry(): THREE.BufferGeometry {
       : tier === 'mid'
         ? new THREE.OctahedronGeometry(1)
         : getSharedPrimitiveTetrahedronGeometry(1).clone();
+    preserveGeometryVolume(geometry, Math.PI * 4 / 3);
     solarHingeCapGeometryByTier.set(tier, geometry);
   }
   return geometry;
@@ -439,7 +441,7 @@ function makeTrianglePlate(
   panelSideHint?: THREE.Vector3,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(
-    thickness > 0 && getActiveBuildingGeometryTier() !== 'far'
+    thickness > 0
       ? solarTrianglePetalGeom
       : solarTrianglePanelGeom,
     material,

@@ -6,12 +6,16 @@ import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
 } from './EntityLod3D';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 const ENTITY_LOD_PROXY_CAP = 32768;
 const ENTITY_LOD_PROXY_OPACITY = 1;
 const ENTITY_LOD_PROXY_DEPTH_TEST = true;
-const ENTITY_LOD_PROXY_DEPTH_WRITE = true;
-const ENTITY_LOD_PROXY_RENDER_ORDER = 3;
+export const ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE = true;
+export const ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE = false;
+export const ENTITY_LOD_PROXY_FINAL_RENDER_ORDER = 3;
+export const ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER =
+  TRANSPARENT_RENDER_ORDER_3D.entityParts + 0.25;
 
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
@@ -182,7 +186,7 @@ function uploadDirty(
   span.max = -1;
 }
 
-function createProxyPointMaterial(): THREE.ShaderMaterial {
+function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       uViewportHeight: { value: 1 },
@@ -190,15 +194,18 @@ function createProxyPointMaterial(): THREE.ShaderMaterial {
     },
     vertexShader: POINT_VERTEX_SHADER,
     fragmentShader: POINT_FRAGMENT_SHADER,
-    // Always blended: cross-fade rows carry per-instance alpha < 1 while
-    // the icon fades in over the still-opaque model (BAR behavior).
-    transparent: true,
+    // A final glyph is an opaque replacement body. A transition glyph is a
+    // true overlay: it blends after entity parts and must not populate its
+    // fake spherical depth ahead of them.
+    transparent: transition,
     depthTest: ENTITY_LOD_PROXY_DEPTH_TEST,
-    depthWrite: ENTITY_LOD_PROXY_DEPTH_WRITE,
+    depthWrite: transition
+      ? ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE
+      : ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
   });
 }
 
-function createProxyPointBatch(): ProxyPointBatch {
+function createProxyPointBatch(transition: boolean): ProxyPointBatch {
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const colors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
@@ -222,10 +229,12 @@ function createProxyPointBatch(): ProxyPointBatch {
   geometry.setAttribute('aAlpha', alphaAttr);
   geometry.setDrawRange(0, 0);
 
-  const material = createProxyPointMaterial();
+  const material = createProxyPointMaterial(transition);
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
-  points.renderOrder = ENTITY_LOD_PROXY_RENDER_ORDER;
+  points.renderOrder = transition
+    ? ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER
+    : ENTITY_LOD_PROXY_FINAL_RENDER_ORDER;
   return {
     points,
     geometry,
@@ -341,15 +350,19 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
 }
 
 class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
-  private readonly unitBatch = createProxyPointBatch();
-  private readonly buildingBatch = createProxyPointBatch();
+  private readonly unitBatch = createProxyPointBatch(false);
+  private readonly unitTransitionBatch = createProxyPointBatch(true);
+  private readonly buildingBatch = createProxyPointBatch(false);
+  private readonly buildingTransitionBatch = createProxyPointBatch(true);
 
   constructor(
     private readonly world: THREE.Group,
     private readonly canvas?: HTMLCanvasElement,
   ) {
     this.world.add(this.unitBatch.points);
+    this.world.add(this.unitTransitionBatch.points);
     this.world.add(this.buildingBatch.points);
+    this.world.add(this.buildingTransitionBatch.points);
   }
 
   /**
@@ -371,7 +384,9 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
 
   beginFrame(): void {
     this.unitBatch.count = 0;
+    this.unitTransitionBatch.count = 0;
     this.buildingBatch.count = 0;
+    this.buildingTransitionBatch.count = 0;
   }
 
   pushUnit(entity: Entity): void {
@@ -396,10 +411,11 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
     ownerId: PlayerId | undefined,
     alpha: number = 1,
   ): void {
-    const slot = this.unitBatch.count;
+    const batch = alpha < 1 ? this.unitTransitionBatch : this.unitBatch;
+    const slot = batch.count;
     if (slot >= ENTITY_LOD_PROXY_CAP) return;
     writeSimPoint(
-      this.unitBatch,
+      batch,
       slot,
       simX,
       simY,
@@ -409,7 +425,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       ownerId,
       alpha,
     );
-    this.unitBatch.count = slot + 1;
+    batch.count = slot + 1;
   }
 
   pushBuilding(entity: Entity): void {
@@ -434,10 +450,11 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
     ownerId: PlayerId | undefined,
     alpha: number = 1,
   ): void {
-    const slot = this.buildingBatch.count;
+    const batch = alpha < 1 ? this.buildingTransitionBatch : this.buildingBatch;
+    const slot = batch.count;
     if (slot >= ENTITY_LOD_PROXY_CAP) return;
     writeSimPoint(
-      this.buildingBatch,
+      batch,
       slot,
       simX,
       simY,
@@ -447,22 +464,30 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       ownerId,
       alpha,
     );
-    this.buildingBatch.count = slot + 1;
+    batch.count = slot + 1;
   }
 
   flush(viewportHeight: number): void {
     const physicalHeight = this.physicalViewportHeight(viewportHeight);
     markBatchRange(this.unitBatch, physicalHeight);
+    markBatchRange(this.unitTransitionBatch, physicalHeight);
     markBatchRange(this.buildingBatch, physicalHeight);
+    markBatchRange(this.buildingTransitionBatch, physicalHeight);
   }
 
   destroy(): void {
     this.world.remove(this.unitBatch.points);
+    this.world.remove(this.unitTransitionBatch.points);
     this.world.remove(this.buildingBatch.points);
+    this.world.remove(this.buildingTransitionBatch.points);
     this.unitBatch.geometry.dispose();
+    this.unitTransitionBatch.geometry.dispose();
     this.buildingBatch.geometry.dispose();
+    this.buildingTransitionBatch.geometry.dispose();
     this.unitBatch.material.dispose();
+    this.unitTransitionBatch.material.dispose();
     this.buildingBatch.material.dispose();
+    this.buildingTransitionBatch.material.dispose();
   }
 }
 

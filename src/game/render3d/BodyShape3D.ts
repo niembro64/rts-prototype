@@ -152,23 +152,11 @@ function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFr
   };
 }
 
-function bodyExtrudeOptions(
-  depth: number,
-  tier: PrimitiveGeometryTier,
-  bevelEnabled = true,
-): THREE.ExtrudeGeometryOptions {
-  if (tier === 'far' || !bevelEnabled) {
-    return { depth, bevelEnabled: false, steps: 1 };
-  }
-  const close = tier === 'close';
-  return {
-    depth,
-    steps: 1,
-    bevelEnabled: true,
-    bevelSegments: close ? 2 : 1,
-    bevelSize: close ? 0.055 : 0.035,
-    bevelThickness: Math.min(depth * (close ? 0.11 : 0.07), close ? 0.055 : 0.035),
-  };
+function bodyExtrudeOptions(depth: number): THREE.ExtrudeGeometryOptions {
+  // Polygon, rectangle and rhombus bodies are authored as boxy prisms. Keep
+  // their hard planar faces at every rung: beveling only rounds a deliberately
+  // simple silhouette, adds triangles, and changes volume between LODs.
+  return { depth, bevelEnabled: false, steps: 1 };
 }
 
 function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomEntry {
@@ -178,7 +166,7 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
     const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
     const geom = new THREE.ExtrudeGeometry(
       shape,
-      bodyExtrudeOptions(h, tier, spec.bevelEnabled !== false),
+      bodyExtrudeOptions(h),
     );
     // Extrusion along +Z with shape in XY → rotate so the shape lands on
     // the XZ plane and extrude direction becomes +Y.
@@ -196,7 +184,7 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
   if (spec.kind === 'rect') {
     const h = spec.heightFrac;
     const shape = buildRectShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
+    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h));
     geom.rotateX(-Math.PI / 2);
     return {
       parts: [{
@@ -211,7 +199,7 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
   if (spec.kind === 'rhombus') {
     const h = spec.heightFrac;
     const shape = buildRhombusShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h, tier));
+    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h));
     geom.rotateX(-Math.PI / 2);
     return {
       parts: [{

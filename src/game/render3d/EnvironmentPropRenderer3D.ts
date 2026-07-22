@@ -382,9 +382,11 @@ export class EnvironmentPropRenderer3D {
 
     const trunkHeight = height * (asset.spec.palette === 'forestTree' ? 0.34 : 0.48);
     const trunkRadius = Math.max(radius * 0.09, height * 0.018);
-    const trunkGeometry = new THREE.PlaneGeometry(2, 2);
+    // Low tree trunks remain simple square prisms rather than zero-thickness
+    // billboards, preserving the authored trunk volume from every view.
+    const trunkGeometry = new THREE.BoxGeometry(2, 2, 2);
     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-    trunk.scale.set(trunkRadius, trunkHeight * 0.5, 1);
+    trunk.scale.set(trunkRadius, trunkHeight * 0.5, trunkRadius);
     trunk.position.y = trunkHeight * 0.5;
     group.add(trunk);
 

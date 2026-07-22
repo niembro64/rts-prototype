@@ -27,7 +27,6 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
-  createPrimitiveRingGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTorusGeometry,
   getSharedPrimitiveTetrahedronGeometry,
@@ -81,14 +80,9 @@ function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.Buff
   const key = `${tier}:${ratioKey}`;
   let geom = ringGeomByTubeRatio.get(key);
   if (!geom) {
-    geom = tier !== 'far'
-      ? createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey)
-      : createPrimitiveRingGeometry(
-        'locomotion',
-        tier,
-        Math.max(0.55, 1 - ratioKey * 1.65),
-        1,
-      );
+    // Low uses the same volume-bearing square-tube torus as the other rungs;
+    // the previous flat annulus collapsed fan thickness to zero.
+    geom = createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey);
     ringGeomByTubeRatio.set(key, geom);
   }
   return geom;

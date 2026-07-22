@@ -63,18 +63,13 @@ function flipperGeometry(
   shape.lineTo(ratio * 0.5, 1);
   shape.lineTo(ratio * -0.5, 1);
   shape.closePath();
-  geometry = tier === 'far'
-    ? new THREE.ShapeGeometry(shape)
-    : new THREE.ExtrudeGeometry(shape, {
-      depth: 1,
-      bevelEnabled: tier === 'close',
-      bevelSegments: tier === 'close' ? 1 : 0,
-      bevelSize: tier === 'close' ? 0.035 : 0,
-      bevelThickness: tier === 'close' ? 0.06 : 0,
-      steps: 1,
-    });
+  geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 1,
+    bevelEnabled: false,
+    steps: 1,
+  });
   // Shape Y becomes panel span Z; extrusion is centered into thickness Y.
-  if (tier !== 'far') geometry.translate(0, 0, -0.5);
+  geometry.translate(0, 0, -0.5);
   geometry.rotateX(Math.PI / 2);
   geometry.computeVertexNormals();
   flipperGeometries.set(key, geometry);

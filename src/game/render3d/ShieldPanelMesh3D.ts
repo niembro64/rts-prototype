@@ -18,19 +18,10 @@ import {
 
 const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
 const _supportDir = new THREE.Vector3();
-const lowPanelGeom = new THREE.PlaneGeometry(1, 1);
-const lowArmGeom = createDoubleSidedArmTriangleGeometry();
-
-function createDoubleSidedArmTriangleGeometry(): THREE.BufferGeometry {
-  const positions = new Float32Array([
-    -0.5, -0.5, 0, 0.5, 0, 0, -0.5, 0.5, 0,
-    -0.5, 0.5, 0, 0.5, 0, 0, -0.5, -0.5, 0,
-  ]);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.computeVertexNormals();
-  return geometry;
-}
+// Low keeps cheap hard-edged slabs. Plane substitutions collapsed both the
+// mirror and its support arm to zero volume, producing a skeletal silhouette.
+const lowPanelGeom = new THREE.BoxGeometry(1, 1, 1);
+const lowArmGeom = new THREE.BoxGeometry(1, 1, 1);
 
 export type ShieldPanelMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's

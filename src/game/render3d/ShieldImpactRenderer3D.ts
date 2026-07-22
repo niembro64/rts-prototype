@@ -13,7 +13,6 @@ import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types'
 import { writeHexToRgb01Array } from './colorUtils';
 import {
   createPrimitiveCircleGeometry,
-  createPrimitiveRingGeometry,
   createPrimitiveTorusGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -165,9 +164,7 @@ export class ShieldImpactRenderer3D {
     const makePools = (tier: PrimitiveGeometryTier): { ring: ImpactPool; core: ImpactPool } => ({
       ring: new ImpactPool(
         this.root,
-        tier === 'far'
-          ? createPrimitiveRingGeometry('environment', 'far', 1 - tubeRadius, 1 + tubeRadius)
-          : createPrimitiveTorusGeometry('shieldImpact', tier, 1, tubeRadius),
+        createPrimitiveTorusGeometry('shieldImpact', tier, 1, tubeRadius),
         ringCapacity,
         18,
         THREE.NormalBlending,

@@ -9,8 +9,10 @@ import {
   createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
   createPrimitiveTorusGeometry,
+  geometryEnclosedVolume,
   getSharedPrimitiveRingGeometry,
   getSharedPrimitiveSphereGeometry,
+  SQUARE_TORUS_CROSS_SECTION_SEGMENTS,
   type PrimitiveGeometryRole,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -115,6 +117,19 @@ function assertMaxTriangles(
   );
 }
 
+function assertVolume(
+  geometry: THREE.BufferGeometry,
+  label: string,
+  expected: number,
+): void {
+  const actual = geometryEnclosedVolume(geometry);
+  const relativeError = Math.abs(actual - expected) / expected;
+  assertContract(
+    relativeError < 1e-5,
+    `${label} preserves volume: expected ${expected}, got ${actual}`,
+  );
+}
+
 export function runPrimitiveGeometryQuality3DContractTest(): void {
   const tiers: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
   for (const [role, quality] of Object.entries(PRIMITIVE_GEOMETRY_QUALITY) as Array<[
@@ -128,16 +143,19 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
       assertParam(sphere, `${label}/sphere`, 'widthSegments', quality.sphere[tier].widthSegments);
       assertParam(sphere, `${label}/sphere`, 'heightSegments', quality.sphere[tier].heightSegments);
       assertMaxTriangles(sphere, `${label}/sphere`, triangleBudget?.sphere?.[tier]);
+      assertVolume(sphere, `${label}/sphere`, Math.PI * 4 / 3);
       sphere.dispose();
 
       const cylinder = createPrimitiveCylinderGeometry(role, tier);
       assertParam(cylinder, `${label}/cylinder`, 'radialSegments', quality.cylinder[tier].radialSegments);
       assertMaxTriangles(cylinder, `${label}/cylinder`, triangleBudget?.cylinder?.[tier]);
+      assertVolume(cylinder, `${label}/cylinder`, Math.PI);
       cylinder.dispose();
 
       const cone = createPrimitiveConeGeometry(role, tier);
       assertParam(cone, `${label}/cone`, 'radialSegments', quality.cone[tier].radialSegments);
       assertMaxTriangles(cone, `${label}/cone`, triangleBudget?.cone?.[tier]);
+      assertVolume(cone, `${label}/cone`, Math.PI / 3);
       cone.dispose();
 
       const circle = createPrimitiveCircleGeometry(role, tier);
@@ -151,9 +169,15 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
       ring.dispose();
 
       const torus = createPrimitiveTorusGeometry(role, tier);
-      assertParam(torus, `${label}/torus`, 'radialSegments', quality.torus[tier].tubeSegments);
+      assertParam(
+        torus,
+        `${label}/torus`,
+        'radialSegments',
+        SQUARE_TORUS_CROSS_SECTION_SEGMENTS,
+      );
       assertParam(torus, `${label}/torus`, 'tubularSegments', quality.torus[tier].radialSegments);
       assertMaxTriangles(torus, `${label}/torus`, triangleBudget?.torus?.[tier]);
+      assertVolume(torus, `${label}/torus`, Math.PI * 2 * Math.PI * 0.1 ** 2);
       torus.dispose();
     }
   }
@@ -175,8 +199,10 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
     triangleCount(lowLegSegment) === 8,
     'low leg segment is an eight-triangle equilateral triangular prism',
   );
+  assertVolume(lowLegSegment, 'low leg segment', Math.PI);
   lowLegSegment.dispose();
   const lowLegJoint = createPrimitiveTetrahedronGeometry();
   assertContract(triangleCount(lowLegJoint) === 4, 'low leg joint is a four-face tetrahedron');
+  assertVolume(lowLegJoint, 'low leg joint', Math.PI * 4 / 3);
   lowLegJoint.dispose();
 }

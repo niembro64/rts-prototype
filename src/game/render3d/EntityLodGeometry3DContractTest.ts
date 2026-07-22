@@ -57,6 +57,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
+  geometryEnclosedVolume,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { buildFlippers } from './FlipperRig3D';
@@ -162,7 +163,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitWidow: { close: 3600, mid: 1450, far: 560 },
   unitHippo: { close: 1500, mid: 720, far: 280 },
   unitSeaTurtle: { close: 1250, mid: 700, far: 320 },
-  unitOrca: { close: 1050, mid: 620, far: 280 },
+  unitOrca: { close: 1200, mid: 620, far: 280 },
   unitTarantula: { close: 2750, mid: 1100, far: 320 },
   unitLoris: { close: 1450, mid: 720, far: 280 },
   unitBee: { close: 1250, mid: 650, far: 240 },
@@ -221,6 +222,14 @@ function assertSame(label: string, a: unknown, b: unknown): void {
   const left = JSON.stringify(a);
   const right = JSON.stringify(b);
   assertContract(left === right, `${label} differs: ${left} !== ${right}`);
+}
+
+function assertRelativeNear(label: string, a: number, b: number): void {
+  const scale = Math.max(1, Math.abs(a), Math.abs(b));
+  assertContract(
+    Math.abs(a - b) <= scale * 1e-5,
+    `${label} differs: ${a} !== ${b}`,
+  );
 }
 
 function assertDescending(label: string, counts: readonly number[]): void {
@@ -338,6 +347,11 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     const counts = entries.map((entry) => entry.parts.reduce(
       (sum, part) => sum + triangleCount(part.geometry), 0,
     ));
+    const volumes = entries.map((entry) => entry.parts.reduce(
+      (sum, part) => sum + geometryEnclosedVolume(part.geometry)
+        * Math.abs(part.scaleX * part.scaleY * part.scaleZ),
+      0,
+    ));
     if (blueprint.bodyShape === null) {
       assertContract(
         counts.every((count) => count === 0),
@@ -346,6 +360,20 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     } else {
       assertContract(counts.every((count) => count > 0), `${unitId} body resolves H/M/L geometry`);
       assertDescending(`${unitId} body`, counts);
+      assertRelativeNear(`${unitId} body High/Medium volume`, volumes[0], volumes[1]);
+      assertRelativeNear(`${unitId} body Medium/Low volume`, volumes[1], volumes[2]);
+      if (!entries[0].isSmooth) {
+        for (const [tierIndex, entry] of entries.entries()) {
+          for (const part of entry.parts) {
+            if (part.geometry.type !== 'ExtrudeGeometry') continue;
+            const options = (part.geometry as THREE.ExtrudeGeometry).parameters?.options;
+            assertContract(
+              options?.bevelEnabled === false,
+              `${unitId}/${TIERS[tierIndex]} boxy body keeps hard unbeveled faces`,
+            );
+          }
+        }
+      }
     }
     if (unitId === 'unitMongoose') {
       assertContract(
@@ -503,7 +531,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               const ring = fan.group.children[0] as THREE.Mesh;
               const material = ring.material as THREE.Material;
               return ring.isMesh &&
-                ring.geometry.type === (tier === 'far' ? 'RingGeometry' : 'TorusGeometry') &&
+                ring.geometry.type === 'TorusGeometry' &&
                 material.side === THREE.DoubleSide;
             }),
             `${unitId}/${tier} hover fans retain a visible tiered duct ring`,
@@ -548,7 +576,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           const fanRing = rig.rearFan.group.children[0] as THREE.Mesh;
           assertContract(
             rig.pectoralHinges.length === 2 && fanRing.isMesh &&
-              fanRing.geometry.type === (tier === 'far' ? 'RingGeometry' : 'TorusGeometry'),
+              fanRing.geometry.type === 'TorusGeometry',
             `${unitId}/${tier} submarine keeps two front fins and a tiered rear hover-fan duct`,
           );
           return {

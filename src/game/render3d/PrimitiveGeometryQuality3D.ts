@@ -29,7 +29,6 @@ type RadialSegments = {
 };
 
 type TorusSegments = {
-  tubeSegments: number;
   radialSegments: number;
 };
 
@@ -67,9 +66,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 20 },
-      mid: { tubeSegments: 6, radialSegments: 14 },
-      far: { tubeSegments: 5, radialSegments: 10 },
+      close: { radialSegments: 20 },
+      mid: { radialSegments: 14 },
+      far: { radialSegments: 10 },
     },
   },
   unitDetail: {
@@ -94,9 +93,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 16 },
-      mid: { tubeSegments: 5, radialSegments: 12 },
-      far: { tubeSegments: 4, radialSegments: 8 },
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 8 },
     },
   },
   turret: {
@@ -121,9 +120,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 14 },
-      mid: { tubeSegments: 5, radialSegments: 10 },
-      far: { tubeSegments: 4, radialSegments: 8 },
+      close: { radialSegments: 14 },
+      mid: { radialSegments: 10 },
+      far: { radialSegments: 8 },
     },
   },
   projectile: {
@@ -148,9 +147,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 6 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 12 },
-      mid: { tubeSegments: 5, radialSegments: 8 },
-      far: { tubeSegments: 4, radialSegments: 6 },
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
     },
   },
   beam: {
@@ -175,9 +174,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 16 },
-      mid: { tubeSegments: 6, radialSegments: 12 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 8 },
     },
   },
   shield: {
@@ -202,9 +201,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 10 },
     },
     torus: {
-      close: { tubeSegments: 10, radialSegments: 24 },
-      mid: { tubeSegments: 8, radialSegments: 16 },
-      far: { tubeSegments: 6, radialSegments: 10 },
+      close: { radialSegments: 24 },
+      mid: { radialSegments: 16 },
+      far: { radialSegments: 10 },
     },
   },
   shieldImpact: {
@@ -229,9 +228,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 4 },
     },
     torus: {
-      close: { tubeSegments: 4, radialSegments: 16 },
-      mid: { tubeSegments: 2, radialSegments: 8 },
-      far: { tubeSegments: 2, radialSegments: 4 },
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 4 },
     },
   },
   building: {
@@ -256,9 +255,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 10 },
     },
     torus: {
-      close: { tubeSegments: 10, radialSegments: 28 },
-      mid: { tubeSegments: 5, radialSegments: 12 },
-      far: { tubeSegments: 3, radialSegments: 6 },
+      close: { radialSegments: 28 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 6 },
     },
   },
   locomotion: {
@@ -283,9 +282,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 16 },
-      mid: { tubeSegments: 5, radialSegments: 12 },
-      far: { tubeSegments: 4, radialSegments: 8 },
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 8 },
     },
   },
   effect: {
@@ -310,9 +309,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 20 },
-      mid: { tubeSegments: 6, radialSegments: 14 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 20 },
+      mid: { radialSegments: 14 },
+      far: { radialSegments: 8 },
     },
   },
   smoke: {
@@ -337,9 +336,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 20 },
-      mid: { tubeSegments: 6, radialSegments: 14 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 20 },
+      mid: { radialSegments: 14 },
+      far: { radialSegments: 8 },
     },
   },
   fog: {
@@ -364,9 +363,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 5, radialSegments: 8 },
-      mid: { tubeSegments: 5, radialSegments: 8 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 8 },
     },
   },
   waterSplash: {
@@ -391,9 +390,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 12 },
-      mid: { tubeSegments: 5, radialSegments: 10 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 10 },
+      far: { radialSegments: 8 },
     },
   },
   environment: {
@@ -418,9 +417,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 3 },
     },
     torus: {
-      close: { tubeSegments: 6, radialSegments: 12 },
-      mid: { tubeSegments: 4, radialSegments: 8 },
-      far: { tubeSegments: 3, radialSegments: 6 },
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
     },
   },
   hud: {
@@ -445,9 +444,9 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 10 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 20 },
-      mid: { tubeSegments: 6, radialSegments: 14 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 20 },
+      mid: { radialSegments: 14 },
+      far: { radialSegments: 8 },
     },
   },
   debug: {
@@ -472,14 +471,21 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 16 },
-      mid: { tubeSegments: 6, radialSegments: 12 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 8 },
     },
   },
 };
 
 const sharedGeometry = new Map<string, THREE.BufferGeometry>();
+
+/** Every torus in the renderer uses a four-sided tube. Four radial samples
+ * extrude a square around the major ring instead of spending triangles on a
+ * circular tube. The tube is expanded just enough to retain the authored
+ * circular-tube volume, so lower geometry cost does not make the part look
+ * starved. */
+export const SQUARE_TORUS_CROSS_SECTION_SEGMENTS = 4;
 
 function keyOf(parts: readonly unknown[]): string {
   return parts.join(':');
@@ -489,13 +495,64 @@ function quality(role: PrimitiveGeometryRole): PrimitiveRoleQuality {
   return PRIMITIVE_GEOMETRY_QUALITY[role];
 }
 
+/** Enclosed volume of a consistently wound triangle mesh. This deliberately
+ * reads the submitted triangles rather than a bounding box, making it useful
+ * for auditing low-poly substitutions against their analytic source shape. */
+export function geometryEnclosedVolume(geometry: THREE.BufferGeometry): number {
+  const position = geometry.getAttribute('position');
+  const index = geometry.getIndex();
+  const triangleCount = (index?.count ?? position.count) / 3;
+  let sixVolume = 0;
+  for (let triangle = 0; triangle < triangleCount; triangle++) {
+    const ia = index ? index.getX(triangle * 3) : triangle * 3;
+    const ib = index ? index.getX(triangle * 3 + 1) : triangle * 3 + 1;
+    const ic = index ? index.getX(triangle * 3 + 2) : triangle * 3 + 2;
+    const ax = position.getX(ia);
+    const ay = position.getY(ia);
+    const az = position.getZ(ia);
+    const bx = position.getX(ib);
+    const by = position.getY(ib);
+    const bz = position.getZ(ib);
+    const cx = position.getX(ic);
+    const cy = position.getY(ic);
+    const cz = position.getZ(ic);
+    sixVolume += ax * (by * cz - bz * cy)
+      + ay * (bz * cx - bx * cz)
+      + az * (bx * cy - by * cx);
+  }
+  return Math.abs(sixVolume) / 6;
+}
+
+/** Uniformly expand a closed low-poly solid to a target volume. Positions,
+ * normals and bounds are kept coherent; authored mesh transforms do not need
+ * tier-specific compensation. */
+export function preserveGeometryVolume(
+  geometry: THREE.BufferGeometry,
+  targetVolume: number,
+): void {
+  const actualVolume = geometryEnclosedVolume(geometry);
+  if (!(targetVolume > 0) || !(actualVolume > 1e-12)) return;
+  const scale = Math.cbrt(targetVolume / actualVolume);
+  geometry.scale(scale, scale, scale);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+}
+
+function regularPolygonAreaScale(segments: number): number {
+  const polygonArea = segments * Math.sin(Math.PI * 2 / segments) * 0.5;
+  return Math.sqrt(Math.PI / polygonArea);
+}
+
 export function createPrimitiveSphereGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',
   radius = 1,
 ): THREE.SphereGeometry {
   const q = quality(role).sphere[tier];
-  return new THREE.SphereGeometry(radius, q.widthSegments, q.heightSegments);
+  const geometry = new THREE.SphereGeometry(radius, q.widthSegments, q.heightSegments);
+  preserveGeometryVolume(geometry, Math.PI * 4 / 3 * radius ** 3);
+  return geometry;
 }
 
 export function createPrimitiveCylinderGeometry(
@@ -508,7 +565,7 @@ export function createPrimitiveCylinderGeometry(
   openEnded = false,
 ): THREE.CylinderGeometry {
   const q = quality(role).cylinder[tier];
-  return new THREE.CylinderGeometry(
+  const geometry = new THREE.CylinderGeometry(
     radiusTop,
     radiusBottom,
     height,
@@ -516,6 +573,12 @@ export function createPrimitiveCylinderGeometry(
     heightSegments,
     openEnded,
   );
+  const radialScale = regularPolygonAreaScale(q.radialSegments);
+  geometry.scale(radialScale, 1, radialScale);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 /** Lowest-cost leg segment: a capped triangular prism whose cross-section is
@@ -549,6 +612,10 @@ export function createExtrudedEquilateralTriangleGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(16 * 3), 2));
   geometry.computeVertexNormals();
+  const radialScale = regularPolygonAreaScale(3);
+  geometry.scale(radialScale, 1, radialScale);
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
   return geometry;
 }
 
@@ -557,7 +624,9 @@ export function createExtrudedEquilateralTriangleGeometry(
 export function createPrimitiveTetrahedronGeometry(
   radius = 1,
 ): THREE.TetrahedronGeometry {
-  return new THREE.TetrahedronGeometry(radius, 0);
+  const geometry = new THREE.TetrahedronGeometry(radius, 0);
+  preserveGeometryVolume(geometry, Math.PI * 4 / 3 * radius ** 3);
+  return geometry;
 }
 
 export function getSharedExtrudedEquilateralTriangleGeometry(
@@ -594,7 +663,15 @@ export function createPrimitiveConeGeometry(
   openEnded = false,
 ): THREE.ConeGeometry {
   const q = quality(role).cone[tier];
-  return new THREE.ConeGeometry(radius, height, q.radialSegments, heightSegments, openEnded);
+  const geometry = new THREE.ConeGeometry(
+    radius, height, q.radialSegments, heightSegments, openEnded,
+  );
+  const radialScale = regularPolygonAreaScale(q.radialSegments);
+  geometry.scale(radialScale, 1, radialScale);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 export function createPrimitiveCircleGeometry(
@@ -623,7 +700,40 @@ export function createPrimitiveTorusGeometry(
   tube = 0.1,
 ): THREE.TorusGeometry {
   const q = quality(role).torus[tier];
-  return new THREE.TorusGeometry(radius, tube, q.tubeSegments, q.radialSegments);
+  const geometry = new THREE.TorusGeometry(
+    radius,
+    tube,
+    SQUARE_TORUS_CROSS_SECTION_SEGMENTS,
+    q.radialSegments,
+  );
+  // Correct both the square tube's smaller inscribed area and the polygonal
+  // major path in one pass. Moving each vertex away from its major-ring
+  // center changes tube area without inflating the torus hole or ring radius.
+  const actualVolume = geometryEnclosedVolume(geometry);
+  const targetVolume = Math.PI * 2 * Math.PI * radius * tube * tube;
+  if (actualVolume > 1e-12 && targetVolume > 0) {
+    const tubeScale = Math.sqrt(targetVolume / actualVolume);
+    const position = geometry.getAttribute('position');
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      const z = position.getZ(i);
+      const angle = Math.atan2(y, x);
+      const centerX = Math.cos(angle) * radius;
+      const centerY = Math.sin(angle) * radius;
+      position.setXYZ(
+        i,
+        centerX + (x - centerX) * tubeScale,
+        centerY + (y - centerY) * tubeScale,
+        z * tubeScale,
+      );
+    }
+    position.needsUpdate = true;
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+  }
+  return geometry;
 }
 
 export function getSharedPrimitiveSphereGeometry(
