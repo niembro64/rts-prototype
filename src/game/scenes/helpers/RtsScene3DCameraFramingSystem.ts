@@ -55,9 +55,8 @@ export class RtsScene3DCameraFramingSystem {
   tickCameraSmoothing(deltaSec: number): void {
     const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
     this.threeApp.orbit.setTransitionSeconds(this.cameraTransitionSeconds());
-    // Push the follow destination into the orbit to-state BEFORE the EMA
-    // step, so following rides the same camera-smooth half-life as
-    // pan/zoom and mode switches transition smoothly (see followStep).
+    // Push follow into controller state before the transition tick. The orbit
+    // camera applies its configured scope (currently snap follow, smooth zoom).
     this.applyCameraFollow();
     this.threeApp.orbit.tick(deltaSec);
     if (defaults.autoRotate && defaults.autoRotateRate !== 0) {

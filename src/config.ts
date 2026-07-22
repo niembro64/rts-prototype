@@ -23,6 +23,7 @@ import type {
   CameraMovementConfig,
   CameraTerrainCollisionMode,
   CameraTransitionMode,
+  CameraTransitionScope,
   CameraZoomDistanceSamplingConfig,
 } from './types/camera';
 import {
@@ -736,10 +737,15 @@ export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegree
  * angle-from-vertical convention: pitch = PI - rx. */
 export const CAMERA_INITIAL_PITCH_RADIANS = cameraConfigJson.initialPitchRadians;
 
-/** BAR's velocity-based transition is canonical. Set `ema` to retain the
- * prototype's previous first-order destination smoothing. */
+/** Active rendered-camera transition. BAR's velocity spring remains an
+ * option; EMA is currently selected for discrete zoom smoothing. */
 export const CAMERA_TRANSITION_MODE =
   cameraConfigJson.transitionMode as CameraTransitionMode;
+
+/** `zoom-only` keeps discrete zoom smooth while continuous controls track
+ * input exactly. `all-movements` retains the previous shared transition. */
+export const CAMERA_TRANSITION_SCOPE =
+  cameraConfigJson.transitionScope as CameraTransitionScope;
 
 /** Orbit-camera EMA time constant for each configured smoothing mode. */
 export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as

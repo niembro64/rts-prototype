@@ -8,16 +8,11 @@
 //   - Touch 1 finger      → pan
 //   - Touch 2 fingers     → centroid pan + pinch zoom + twist rotate
 //
-// Architecture: every input that changes the camera (wheel, pan drag,
-// orbit drag) writes into a single TO-STATE — `(toDistance,
-// toTargetX, toTargetY, toTargetZ)` plus `yaw / pitch` for orbit —
-// that represents wherever the camera is heading. The rendered state
-// (`distance`, `target.x`, `target.y`, `target.z`) lerps toward the
-// to-state every frame via standard EMA: `alpha = 1 − exp(−dt / tau)`.
-// When tau == 0 (snap mode) inputs apply directly to the rendered state.
-// Both pan and zoom feed the same to-state, so they animate together
-// without fighting each other — a wheel zoom mid-pan-drag produces
-// one continuous eased motion to the combined destination.
+// Architecture: every input writes controller TO-STATE. The configured
+// transition can use BAR's velocity spring or the legacy EMA. Its scope can
+// cover all movements, or only discrete zoom; zoom-only carries the rendered
+// eye by every continuous pan/rotation delta immediately without throwing
+// away any zoom transition that is still settling.
 //
 // Cursor pinning is 3D-accurate when a `getCursorWorldPoint` callback
 // is supplied: the scene raycasts the terrain bed instead of a flat y=0
@@ -40,6 +35,7 @@ import type {
   CameraMovementScaleMode,
   CameraTerrainCollisionMode,
   CameraTransitionMode,
+  CameraTransitionScope,
   CameraWheelInputMode,
   CameraZoomDistanceAggregation,
   CameraZoomDistanceSamplingConfig,
@@ -159,6 +155,8 @@ type OrbitCameraOptions = {
   lostTerrainRecovery?: CameraLostTerrainRecoveryConfig;
   /** Render interpolation: Recoil's velocity spring or the prior EMA path. */
   transitionMode?: CameraTransitionMode;
+  /** Whether smoothing applies to every movement or only discrete zoom. */
+  transitionScope?: CameraTransitionScope;
   minPitch?: number;
   maxPitch?: number;
   /** Relative-mode per-wheel-tick zoom fraction. BAR's default wheel speed
@@ -397,6 +395,7 @@ export class OrbitCamera {
    * Recoil spring half-life in `bar-spring-dampened`, or 0 for snap. */
   public transitionSeconds = 0;
   private transitionMode: CameraTransitionMode = 'ema';
+  private transitionScope: CameraTransitionScope = 'all-movements';
   private barRenderInitialized = false;
   private readonly barPositionVelocity = new THREE.Vector3();
   private barYawVelocity = 0;
@@ -404,6 +403,12 @@ export class OrbitCamera {
   private barFovGoalDegrees = 45;
   private barFovVelocity = 0;
   private readonly barDamperStepScratch = { value: 0, velocity: 0 };
+  /** Controller goal before a continuous input mutation. Reused so panning
+   * can move the rendered eye immediately without discarding zoom lag. */
+  private readonly continuousGoalBefore = new THREE.Vector3();
+  private continuousTargetXBefore = 0;
+  private continuousTargetYBefore = 0;
+  private continuousTargetZBefore = 0;
 
   private minDistance = 1e-6;
   private maxDistance = Infinity;
@@ -582,6 +587,7 @@ export class OrbitCamera {
     }
     this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
     this.transitionMode = opts.transitionMode ?? this.transitionMode;
+    this.transitionScope = opts.transitionScope ?? this.transitionScope;
     this.barFovGoalDegrees = this.camera.fov;
     const recovery = opts.lostTerrainRecovery;
     if (recovery !== undefined) {
@@ -673,8 +679,9 @@ export class OrbitCamera {
           ),
         );
         if (this.usesBarSpringTransition()) {
+          this.beginContinuousMovement();
           this.toPitch = nextPitch;
-          this.applyDestinationIfSnap();
+          this.finishContinuousMovement();
         } else {
           this.pitch = nextPitch;
           this.toPitch = nextPitch;
@@ -770,6 +777,7 @@ export class OrbitCamera {
         const scaledDx = dx * inputGain;
         const scaledDy = dy * inputGain;
         if (this.usesBarSpringMovement()) {
+          if (this.usesBarSpringTransition()) this.beginContinuousMovement();
           const radiansPerPixel = this.orbitRadiansPerPixel();
           this.barRawYaw -= scaledDx * radiansPerPixel;
           const nextYaw = barCameraLockedYaw(this.barRawYaw);
@@ -779,7 +787,7 @@ export class OrbitCamera {
           );
           this.toYaw = nextYaw;
           this.toPitch = nextPitch;
-          if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+          if (this.usesBarSpringTransition()) this.finishContinuousMovement();
           else {
             this.yaw = nextYaw;
             this.pitch = nextPitch;
@@ -1017,8 +1025,57 @@ export class OrbitCamera {
     this.target.y = this.toTargetY;
     this.target.z = this.toTargetZ;
     // toYaw === yaw for every input except a follow driver, so this is a
-    // no-op for pan/zoom and an instant behind-snap when following.
+    // no-op for ordinary pan/zoom and an instant behind-snap when following.
     this.yaw = this.toYaw;
+    this.apply();
+  }
+
+  /** Capture the controller pose before a continuous input changes it. In
+   * zoom-only mode the matching finish call carries the rendered pose by the
+   * exact controller delta, preserving any outstanding zoom transition. */
+  private beginContinuousMovement(): void {
+    if (this.transitionScope !== 'zoom-only') return;
+    if (this.usesBarSpringTransition()) {
+      this.continuousGoalBefore.copy(this.prepareBarControllerGoal());
+      return;
+    }
+    this.continuousTargetXBefore = this.toTargetX;
+    this.continuousTargetYBefore = this.toTargetY;
+    this.continuousTargetZBefore = this.toTargetZ;
+  }
+
+  private finishContinuousMovement(): void {
+    if (this.transitionScope !== 'zoom-only') {
+      this.applyDestinationIfSnap();
+      return;
+    }
+
+    if (this.usesBarSpringTransition()) {
+      const goal = this.prepareBarControllerGoal();
+      if (!this.barRenderInitialized || this.transitionSeconds <= 0) {
+        this.snapBarRenderToController();
+        return;
+      }
+      // Translate by the controller's exact eye delta. The remaining offset
+      // and velocity belong only to the earlier discrete zoom and continue
+      // converging normally on subsequent ticks.
+      this.camera.position.add(goal).sub(this.continuousGoalBefore);
+      this.yaw = this.toYaw;
+      this.pitch = this.toPitch;
+      this.barYawVelocity = 0;
+      this.barPitchVelocity = 0;
+      this.resolveBarRenderedTerrainCollision(goal);
+      this.applyBarRenderedPose();
+      return;
+    }
+
+    // EMA fallback: carry the rendered target by the exact destination delta
+    // while leaving its outstanding zoom distance/anchor residual intact.
+    this.target.x += this.toTargetX - this.continuousTargetXBefore;
+    this.target.y += this.toTargetY - this.continuousTargetYBefore;
+    this.target.z += this.toTargetZ - this.continuousTargetZBefore;
+    this.yaw = this.toYaw;
+    this.pitch = this.toPitch;
     this.apply();
   }
 
@@ -1828,6 +1885,7 @@ export class OrbitCamera {
 
   private panByScreenDelta(dx: number, dy: number, mode: 'pan' | 'height-pan' = 'pan'): void {
     if (dx === 0 && dy === 0) return;
+    this.beginContinuousMovement();
     // Move-the-camera pan with bounded magnitude: world-per-pixel
     // is keyed to the camera-to-anchor distance captured at
     // drag-start (not the orbit target distance, not the current
@@ -1857,11 +1915,12 @@ export class OrbitCamera {
         this.toTargetY,
       );
     }
-    this.applyDestinationIfSnap();
+    this.finishContinuousMovement();
   }
 
   private panHeightByScreenDelta(dx: number, dy: number): void {
     if (dx === 0 && dy === 0) return;
+    this.beginContinuousMovement();
     const scale = this.panWorldScale('height-pan');
     const panYaw = this.controllerYaw();
     const rx = Math.cos(panYaw);
@@ -1884,7 +1943,7 @@ export class OrbitCamera {
         this.toTargetY,
       );
     }
-    this.applyDestinationIfSnap();
+    this.finishContinuousMovement();
   }
 
   private panByTouchScreenDelta(dx: number, dy: number): void {
@@ -1924,6 +1983,7 @@ export class OrbitCamera {
 
   private orbitByScreenDelta(dx: number, dy: number): void {
     if (dx === 0 && dy === 0) return;
+    if (this.usesBarSpringTransition()) this.beginContinuousMovement();
     const radiansPerPixel = this.orbitRadiansPerPixel();
     if (this.usesBarSpringMovement()) {
       this.barRawYaw -= dx * radiansPerPixel;
@@ -1943,16 +2003,17 @@ export class OrbitCamera {
       this.toYaw = this.yaw;
       this.toPitch = this.pitch;
     }
-    if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+    if (this.usesBarSpringTransition()) this.finishContinuousMovement();
     else this.apply();
   }
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
     if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
     if (this.usesBarSpringMovement()) {
+      if (this.usesBarSpringTransition()) this.beginContinuousMovement();
       this.barRawYaw += yawDelta;
       this.toYaw = barCameraLockedYaw(this.barRawYaw);
-      if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+      if (this.usesBarSpringTransition()) this.finishContinuousMovement();
       else {
         this.yaw = this.toYaw;
         this.apply();
@@ -1996,7 +2057,7 @@ export class OrbitCamera {
     );
 
     // Mirror the same rigid rotation into the smooth destination so
-    // pan/zoom easing continues from the rotated endpoint instead of
+    // zoom easing continues from the rotated endpoint instead of
     // pulling the view back toward the pre-twist heading.
     const toCamX = this.toTargetX + this.toDistance * oldDirX;
     const toCamY = this.toTargetY + this.toDistance * oldDirY;
@@ -2544,22 +2605,21 @@ export class OrbitCamera {
     this.apply();
   }
 
-  /** Per-frame follow driver. Points the smooth-destination target at
-   *  (x, y, z) so the rendered camera eases to keep that world point
-   *  centered; distance and pitch are deliberately left untouched, so
-   *  the camera keeps whatever standoff and tilt it currently has.
+  /** Per-frame follow driver. Points the controller target at (x, y, z).
+   *  In zoom-only transition scope this follows immediately while retaining
+   *  any outstanding zoom residual. Distance and pitch are left untouched,
+   *  so the camera keeps its current standoff and tilt.
    *
-   *  `behindYaw` is the eased yaw destination for "follow behind" — the
+   *  `behindYaw` is the yaw destination for "follow behind" — the
    *  caller computes the angle that parks the camera behind the unit.
    *  Pass `null` for plain follow, which pins `toYaw` to the current
    *  yaw so the yaw EMA stays inert and the player keeps manual orbit
    *  control.
    *
-   *  All four channels ride the SAME EMA as pan/zoom (see tick()), so a
-   *  follow target eases in at the active camera-smooth half-life and
-   *  switching follow mode transitions as smoothly as any other camera
-   *  move. In snap mode (tau 0) it applies immediately. */
+   *  With `all-movements`, follow retains the prior shared transition.
+   *  With `zoom-only`, position and yaw apply immediately. */
   followStep(x: number, y: number, z: number, behindYaw: number | null): void {
+    this.beginContinuousMovement();
     const elevationOffset = this.usesBarSpringMovement()
       && this.terrainCollisionMode === 'persistRaiseEye'
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
@@ -2577,15 +2637,15 @@ export class OrbitCamera {
       this.toYaw = behindYaw
         ?? (this.usesBarSpringTransition() ? this.toYaw : this.yaw);
     }
-    this.applyDestinationIfSnap();
+    this.finishContinuousMovement();
   }
 
-  /** Keyboard and UI camera nudges ride the same smooth destination
-   *  target as mouse pan, so repeated keydown events ease instead of
-   *  fighting the orbit camera's EMA state. */
+  /** Keyboard and UI camera nudges use the same continuous-movement policy
+   *  as mouse pan. */
   panByWorldDelta(dx: number, dz: number): void {
     if (!Number.isFinite(dx) || !Number.isFinite(dz)) return;
     if (dx === 0 && dz === 0) return;
+    this.beginContinuousMovement();
     const elevationOffset = this.usesBarSpringMovement()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
@@ -2601,7 +2661,7 @@ export class OrbitCamera {
         this.toTargetY,
       );
     }
-    this.applyDestinationIfSnap();
+    this.finishContinuousMovement();
   }
 
   /** Pin the eased-yaw destination to the current yaw. Outside
@@ -2626,10 +2686,13 @@ export class OrbitCamera {
           this.controllerYaw(),
           this.controllerPitch(),
         );
-    this.distance = d;
     this.toDistance = d;
-    if (this.usesBarSpringTransition()) this.barRenderInitialized = false;
-    this.apply();
+    if (this.usesBarSpringTransition()) {
+      // BAR exposes controller distance immediately; the active eye remains
+      // independent and receives the same zoom transition as wheel steps.
+      this.distance = d;
+    }
+    this.applyDestinationIfSnap();
   }
 
   /** Set the controller FOV. Recoil's spring transition treats FOV as a
@@ -2671,6 +2734,7 @@ export class OrbitCamera {
    * cardinal dead zones. */
   rotateYawBy(delta: number): void {
     if (!Number.isFinite(delta) || delta === 0) return;
+    if (this.usesBarSpringTransition()) this.beginContinuousMovement();
     if (this.usesBarSpringMovement()) {
       this.barRawYaw += delta;
       this.toYaw = barCameraLockedYaw(this.barRawYaw);
@@ -2679,7 +2743,7 @@ export class OrbitCamera {
       this.yaw += delta;
       this.toYaw = this.yaw;
     }
-    if (this.usesBarSpringTransition()) this.applyDestinationIfSnap();
+    if (this.usesBarSpringTransition()) this.finishContinuousMovement();
     else this.apply();
   }
 

@@ -30,6 +30,13 @@ export type CameraTransitionMode =
   | 'bar-spring-dampened'
   | 'ema';
 
+/** Select which controller changes receive the configured render transition. */
+export type CameraTransitionScope =
+  /** Preserve the previous behavior: pan, rotate, follow, and zoom all ease. */
+  | 'all-movements'
+  /** Ease discrete zoom changes; apply continuous camera controls immediately. */
+  | 'zoom-only';
+
 export type CameraInputMomentumConfig = {
   /** false = no velocity gain; the gesture always uses gain 1. */
   readonly enabled: boolean;

@@ -943,7 +943,7 @@ function resetEveryCustomHotkey(): void {
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
-        <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; eases through the CAMERA smoothing above, so switching modes transitions smoothly.">FOLLOW:</BarLabel>
+        <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; follow movement is immediate while discrete zoom keeps its configured smoothing.">FOLLOW:</BarLabel>
         <BarButtonGroup>
           <BarButton
             :active="model.cameraFollowMode === 'free'"
