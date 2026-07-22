@@ -53,6 +53,7 @@
   "movement": {
     "scaleMode": "bar-spring",
     "wheelInputMode": "bar-discrete-event",
+    "cardinalYawLockEnabled": false,
     "centerClickPan": {
       "absoluteWorldUnitsPerPixel": 5.0,
       "momentum": {

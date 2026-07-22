@@ -8750,7 +8750,7 @@ mod lock_on_inclusion_tests {
             Self {
                 state: CT_TURRET_STATE_IDLE,
                 target_id: -1,
-                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED,
                 dps: 10.0,
                 blueprint_code: TURRET_CODE_A,
                 relationship_mask: REL_ALL,
@@ -8813,6 +8813,7 @@ mod lock_on_inclusion_tests {
         combat_targeting_set_entity(
             slot,
             entity_id,
+            owner,
             owner,
             combat_targeting_player_bit(owner),
             x,
@@ -9166,13 +9167,18 @@ mod lock_on_inclusion_tests {
 
     fn stamp_turret(entity_slot: u32, turret_idx: u32, spec: TurretSpec) {
         let range = 120.0;
-        let (parent_id, parent_z) = {
+        let (parent_id, parent_z, task_target_id) = {
             let pool = combat_targeting_pool();
             let s = entity_slot as usize;
             if s < pool.entity_id.len() {
-                (pool.entity_id[s], pool.entity_pos_z[s])
+                let task_target_id = if (spec.flags & CT_TURRET_CFG_HOST_CONTROLLED) != 0 {
+                    pool.entity_priority_target_id[s]
+                } else {
+                    -1
+                };
+                (pool.entity_id[s], pool.entity_pos_z[s], task_target_id)
             } else {
-                (ENTITY_META_NO_ID, 0.0)
+                (ENTITY_META_NO_ID, 0.0, -1)
             }
         };
         let turret_entity_id = test_turret_entity_id(parent_id, turret_idx);
@@ -9224,6 +9230,8 @@ mod lock_on_inclusion_tests {
             spec.turret_mask,
             spec.shot_mask,
             spec.reciprocal_mode,
+            task_target_id,
+            0,
         );
         // set_turret no longer takes the slab-owned FSM tuple; tests
         // that need a non-fresh starting state write the slab directly,
@@ -9290,7 +9298,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_PASSIVE,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_PASSIVE,
                 ..TurretSpec::default()
             },
         );
@@ -9636,7 +9644,7 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
-    pub(crate) fn combat_halt_any_engaged_uses_priority_point_and_skips_visual_turrets() {
+    pub(crate) fn combat_halt_any_engaged_uses_priority_point_and_skips_non_attack_emitters() {
         let _guard = lock_tests();
         reset_pools();
         stamp_source(-1);
@@ -9669,12 +9677,12 @@ mod lock_on_inclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 201,
-                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_VISUAL_ONLY,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_NON_ATTACK_EMITTER,
                 ..TurretSpec::default()
             },
         );
         combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
-        assert_eq!(out[0], 0, "visual-only turrets must not halt movement");
+        assert_eq!(out[0], 0, "non-attack emitters must not halt movement");
     }
 
     #[test]
@@ -9717,7 +9725,7 @@ mod lock_on_inclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 202,
-                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED,
                 ..TurretSpec::default()
             },
         );
@@ -9740,7 +9748,7 @@ mod lock_on_inclusion_tests {
         combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
         assert_eq!(
             out[0], 1,
-            "host-directed turrets do not matter unless their mount is marked required"
+            "host-controlled turrets do not matter unless their mount is marked required"
         );
     }
 
@@ -9977,6 +9985,30 @@ mod lock_on_inclusion_tests {
             target_id, 204,
             "construction-style turret must gather friendly candidates"
         );
+
+        // Relationship is team-based, not raw owner equality. This mirrors
+        // allied-player behavior in the TypeScript world.
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            205,
+            PLAYER_2,
+            15.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        combat_targeting_pool().entity_team_id[1] = PLAYER_1;
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 205, "allied owners on one team must be friendly");
     }
 
     #[test]
@@ -9998,7 +10030,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
                 ..TurretSpec::default()
             },
         );
@@ -10039,7 +10071,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
                 ..TurretSpec::default()
             },
         );
@@ -10127,7 +10159,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED
+                flags: CT_TURRET_CFG_HOST_CONTROLLED
                     | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED
                     | CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
                 ..TurretSpec::default()
@@ -10170,7 +10202,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED
+                flags: CT_TURRET_CFG_HOST_CONTROLLED
                     | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
                 ..TurretSpec::default()
             },
@@ -10205,7 +10237,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED
+                flags: CT_TURRET_CFG_HOST_CONTROLLED
                     | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
                 ..TurretSpec::default()
             },
@@ -10254,7 +10286,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED
+                flags: CT_TURRET_CFG_HOST_CONTROLLED
                     | CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
                 ..TurretSpec::default()
             },
@@ -10287,7 +10319,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_SPHERE,
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_RANGE_SPHERE,
                 ..TurretSpec::default()
             },
         );
@@ -10893,7 +10925,7 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
-    pub(crate) fn priority_target_overwrites_host_directed_but_not_fully_autonomous() {
+    pub(crate) fn priority_target_overwrites_host_controlled_but_not_autonomous() {
         let _guard = lock_tests();
 
         reset_pools();
@@ -10941,15 +10973,73 @@ mod lock_on_inclusion_tests {
         let autonomous = read_turret_lock(0);
         assert_eq!(
             autonomous.0, 202,
-            "fully-autonomous turret must keep its independent lock"
+            "autonomous turret must keep its independent lock"
         );
         assert_ne!(autonomous.1, CT_TURRET_STATE_IDLE);
 
-        let host_directed = read_turret_lock(1);
+        let host_controlled = read_turret_lock(1);
         assert_eq!(
-            host_directed.0, 201,
-            "host-directed turret must inherit the host priority target"
+            host_controlled.0, 201,
+            "host-controlled turret must inherit the host priority target"
         );
-        assert_ne!(host_directed.1, CT_TURRET_STATE_IDLE);
+        assert_ne!(host_controlled.1, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    pub(crate) fn incompatible_priority_mount_acquires_its_own_fallback() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            2,
+            201,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                unit_mask: 1 << BODY_UNIT_CODE_A,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            1,
+            TurretSpec {
+                unit_mask: 1 << BODY_UNIT_CODE_B,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            30.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+
+        let (_, _, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_PRIORITY_TARGET);
+        assert_eq!(read_turret_lock(0).0, 201);
+        assert_eq!(
+            read_turret_lock(1).0,
+            202,
+            "a sibling that rejects the host task must auto-acquire independently",
+        );
     }
 }

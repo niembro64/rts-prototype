@@ -626,9 +626,14 @@ function resetEveryCustomHotkey(): void {
         >MATEXP</BarButton>
         <BarButton
           :active="model.legsRadiusToggle"
-          title="Show each leg's rest circle (chassis-local - the foot wanders inside this radius before snapping to the opposite edge)"
+          title="Show the exact moving rest sphere. A planted foot begins a step only after it exits this cyan boundary."
           @click="model.toggleLegsRadius"
         >LEG RAD</BarButton>
+        <BarButton
+          :active="model.legsReachToggle"
+          title="Show each leg's amber hip-centered mechanical reach sphere and hip-to-rest spoke. The sphere is the hard extension limit; the spoke shows the authored rest angle, which aims placement but is not a snap threshold."
+          @click="model.toggleLegsReach"
+        >LEG REACH</BarButton>
         <BarButton
           :active="model.triangleDebug"
           title="TRIS - debug-color every terrain mesh triangle so triangle reduction and flat-tile optimization are visually obvious"

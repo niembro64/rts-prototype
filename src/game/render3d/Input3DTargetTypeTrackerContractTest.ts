@@ -31,7 +31,6 @@ function host(id: number, x: number, y: number, priorityTargetId: number | null 
       turrets: [
         {
           config: {
-            visualOnly: false,
             passive: false,
             range: 100,
             shot: { type: 'projectile' },

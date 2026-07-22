@@ -12,7 +12,7 @@ import {
   type TurretBlueprintId,
 } from '../../../types/blueprintIds';
 import {
-  WEAPON_KINDS,
+  TURRET_EMITTER_KINDS,
 } from '../../../types/blueprints';
 import rawTurretBlueprints from './turrets.json';
 import { resolveBlueprintRefs } from './jsonRefs';
@@ -32,7 +32,6 @@ const TURRET_EXPLICIT_FIELDS = [
   'cooldown',
   'launchForce',
   'addTurretVelocityToEmissionLaunch',
-  'isManualFire',
   'passive',
   'requiresNonObstructedLineOfSight',
   'spread',
@@ -47,7 +46,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'kind',
 ] as const;
 
-const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
+const TURRET_EMITTER_KIND_SET: ReadonlySet<string> = new Set(TURRET_EMITTER_KINDS);
 
 type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnInclusionObject>;
 
@@ -184,9 +183,9 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
   if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
     throw new Error(`Invalid ${label}: missing display name`);
   }
-  if (!WEAPON_KIND_SET.has(blueprint.kind)) {
+  if (!TURRET_EMITTER_KIND_SET.has(blueprint.kind)) {
     throw new Error(
-      `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...WEAPON_KIND_SET].join(', ')}]`,
+      `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...TURRET_EMITTER_KIND_SET].join(', ')}]`,
     );
   }
   validateTurretCooldown(label, blueprint.cooldown);

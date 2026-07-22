@@ -22,7 +22,7 @@ import {
 } from '../input/queueModifiers';
 import { isAttackableEnemyTarget } from '../input/helpers/AttackTargetHelper';
 import { isReclaimableTarget } from '../sim/reclaim';
-import { getBuilderConstructionRate } from '../sim/builderBuildRoster';
+import { getBuilderConstructionRate } from '../sim/hostCapabilities';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 

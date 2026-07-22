@@ -157,7 +157,6 @@ function targetCommandEntity(
       turrets: [
         {
           config: {
-            visualOnly: false,
             passive,
             range: 160,
             shot: shotType === null ? null : { type: shotType },

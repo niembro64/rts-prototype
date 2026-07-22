@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { NO_ENTITY_ID } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
+import { isAttackEmitter } from './emitterKinds';
 
 export class WorldEntityMetadata {
   private readonly metaById = new Map<EntityId, EntityMeta>();
@@ -103,7 +104,7 @@ export class WorldEntityMetadata {
           storageSlot: i,
           generation: 0,
           alive: true,
-          targetable: !turret.config.visualOnly && bodyTargetable,
+          targetable: isAttackEmitter(turret) && bodyTargetable,
         });
       }
     }
@@ -124,7 +125,7 @@ export class WorldEntityMetadata {
     const canEverTarget =
       mountedTurret !== undefined &&
       this.isHostBodyLive(mountedTurret.host) &&
-      !mountedTurret.turret.config.visualOnly;
+      isAttackEmitter(mountedTurret.turret);
     const nextTargetable = targetable && canEverTarget;
     if (previous.targetable === nextTargetable) return;
     this.metaById.set(id, {

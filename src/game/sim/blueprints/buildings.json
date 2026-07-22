@@ -40,8 +40,13 @@
     "turrets": [
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
-        "mount": { "x": 0, "y": 0, "z": 0 },
-        "hostDirected": true
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "resourcePylonExtractionEnergy",
+        "controlMode": "autonomous"
       }
     ],
     "base": {
@@ -104,8 +109,13 @@
     "turrets": [
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
-        "mount": { "x": 0, "y": 0, "z": 0 },
-        "hostDirected": true
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "resourcePylonExtractionEnergy",
+        "controlMode": "autonomous"
       }
     ],
     "base": {
@@ -168,8 +178,13 @@
     "turrets": [
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
-        "mount": { "x": 0, "y": 0, "z": 0 },
-        "hostDirected": true
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "resourcePylonExtractionMetal",
+        "controlMode": "autonomous"
       }
     ],
     "base": {
@@ -232,8 +247,13 @@
     "turrets": [
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
-        "mount": { "x": 0, "y": 0, "z": 0 },
-        "hostDirected": true
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "resourcePylonExtractionMetal",
+        "controlMode": "autonomous"
       }
     ],
     "base": {

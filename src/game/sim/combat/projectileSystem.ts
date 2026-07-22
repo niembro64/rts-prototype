@@ -4,6 +4,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
+import { isAttackEmitterConfig } from '../emitterKinds';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { WindState } from '../wind';
@@ -764,7 +765,7 @@ export function fireTurrets(
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
-      if (config.visualOnly) continue;
+      if (!isAttackEmitterConfig(config)) continue;
       const shot = config.shot;
       if (!shot) continue;
       const shieldSubmunitions = isShieldSubmunitionTurret(weapon) ? config.submunitions : null;

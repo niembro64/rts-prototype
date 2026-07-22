@@ -4754,7 +4754,7 @@ export class ClientViewState {
     return this.cache.getHudEntities();
   }
 
-  /** Entities (unit/tower/building) with at least one non-visualOnly
+  /** Entities (unit/tower/building) with at least one attack
    *  turret. Feeds the turret HUD bar / name pass. */
   getArmedEntities(): Entity[] {
     this.rebuildCachesIfNeeded();

@@ -1,6 +1,7 @@
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from '../sim/types';
 import type { MoveCommand } from '../sim/commands';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
   buildAttackCommandAt,
@@ -36,7 +37,7 @@ import type { Input3DPicker } from './Input3DPicker';
 import {
   entityCanBuild,
   getBuilderConstructionRate,
-} from '../sim/builderBuildRoster';
+} from '../sim/hostCapabilities';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS } from '../sim/commandLimits';
@@ -1471,7 +1472,7 @@ export class Input3DModeClickController {
       let hasManualLaunchTurret = false;
       for (let j = 0; j < combat.turrets.length; j++) {
         const turret = combat.turrets[j];
-        if (turret.config.visualOnly || turret.config.passive || turret.config.shot === null) continue;
+        if (!isAttackEmitter(turret) || turret.config.passive || turret.config.shot === null) continue;
         hasManualLaunchTurret = true;
         break;
       }

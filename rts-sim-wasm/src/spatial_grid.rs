@@ -1900,7 +1900,7 @@ pub fn projectile_hitbox_sweep_batch(
                             let turret_entity_id = targeting.turret_entity_id[idx];
                             if turret_entity_id < 0
                                 || targeting.turret_world_pos_tick[idx] != current_tick
-                                || (targeting.turret_config_flags[idx] & CT_TURRET_CFG_VISUAL_ONLY)
+                                || (targeting.turret_config_flags[idx] & CT_TURRET_CFG_NON_ATTACK_EMITTER)
                                     != 0
                                 || entity_id_in_slice(row_excludes, turret_entity_id)
                             {

@@ -22,7 +22,7 @@ import {
 } from '../../input/buildMenuLayout';
 import { resolveFactoryProductionPresetReplay } from '../../input/factoryProductionPresets';
 import { getStructureFactoryAllowedUnitBlueprintIds } from '../factoryProductionRoster';
-import { getUnitBuilderAllowedBuildBlueprintIds } from '../builderBuildRoster';
+import { getUnitBuilderAllowedBuildBlueprintIds } from '../hostCapabilities';
 import { createTransportComponentForUnitBlueprint } from '../transports';
 import {
   buildingBlueprintHasActiveState,

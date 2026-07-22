@@ -1,7 +1,7 @@
 import type { WorldState } from './WorldState';
 import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
-import { getBuilderConstructionRate } from './builderBuildRoster';
+import { getBuilderConstructionRate } from './hostCapabilities';
 import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTransformCosSin } from '../math';

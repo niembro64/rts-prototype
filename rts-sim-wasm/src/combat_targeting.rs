@@ -47,14 +47,14 @@ pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u32 = 1 << 1;
 pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u32 = 1 << 2;
 pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u32 = 1 << 3;
 pub const CT_TURRET_CFG_PASSIVE: u32 = 1 << 4;
-pub const CT_TURRET_CFG_VISUAL_ONLY: u32 = 1 << 5;
+pub const CT_TURRET_CFG_NON_ATTACK_EMITTER: u32 = 1 << 5;
 pub const CT_TURRET_CFG_SHOT_IS_FORCE: u32 = 1 << 6;
 pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u32 = 1 << 7;
 /// When set, the turret inherits the host entity's priority target /
-/// priority point. When clear (fully-autonomous), priority FSM batches
+/// priority point. When clear (autonomous), priority FSM batches
 /// must skip this turret entirely so it keeps running its own
 /// independent acquisition.
-pub const CT_TURRET_CFG_HOST_DIRECTED: u32 = 1 << 8;
+pub const CT_TURRET_CFG_HOST_CONTROLLED: u32 = 1 << 8;
 pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u32 = 1 << 9;
 pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u32 = 1 << 10;
 /// Packed range-mode value for a cylinder capped at the water surface and
@@ -137,6 +137,7 @@ pub(crate) struct CombatTargetingPool {
     // Per-entity, indexed by spatial-grid slot.
     pub(crate) entity_id: Vec<i32>,
     pub(crate) entity_owner_player_id: Vec<u8>,
+    pub(crate) entity_team_id: Vec<u8>,
     pub(crate) entity_owner_bit: Vec<u32>,
     pub(crate) entity_view_mask: Vec<u32>,
     pub(crate) entity_pos_x: Vec<f64>,
@@ -186,7 +187,7 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_blueprint_code: Vec<u8>,
     // LOCK-ON-04 — Per-host lock-on exclusion masks compiled from
     // unit/tower blueprints. These gate host priority targets before
-    // host-directed turrets apply their own per-turret policy.
+    // host-controlled turrets apply their own per-turret policy.
     pub(crate) entity_lockon_relationship_mask: Vec<u8>,
     pub(crate) entity_lockon_entity_family_mask: Vec<u8>,
     pub(crate) entity_lockon_building_mask: Vec<u32>,
@@ -290,6 +291,10 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_pitch_velocity: Vec<f32>,
     pub(crate) turret_state: Vec<u8>,
     pub(crate) turret_target_id: Vec<i32>,
+    // Host-authored attack task for this mount. A failed task lock falls back
+    // through normal acquisition without affecting sibling mounts.
+    pub(crate) turret_task_target_id: Vec<i32>,
+    pub(crate) turret_task_point_active: Vec<u8>,
     // Prior committed target id stamped at the start of the current
     // targeting tick. Current-tick FSM writes mutate `turret_target_id`;
     // reciprocal lock-on reads this frozen column so world-order updates
@@ -323,7 +328,7 @@ pub(crate) struct CombatTargetingPool {
     // broadphase query enough to cover every turret-centered range.
     pub(crate) turret_mount_offset_2d: Vec<f64>,
     // Per-turret sustained DPS. Static per shot blueprint
-    // (cooldown + shot damage / dps). Zero for visualOnly /
+    // (cooldown + shot damage / dps). Zero for non-attack emitter /
     // force-shot / missing-shot turrets. Used by the Rust passive-
     // shield-panel target check to walk a target's turrets and score them.
     pub(crate) turret_dps: Vec<f32>,
@@ -387,6 +392,7 @@ impl CombatTargetingPool {
             wind_z: 0.0,
             entity_id: Vec::new(),
             entity_owner_player_id: Vec::new(),
+            entity_team_id: Vec::new(),
             entity_owner_bit: Vec::new(),
             entity_view_mask: Vec::new(),
             entity_pos_x: Vec::new(),
@@ -467,6 +473,8 @@ impl CombatTargetingPool {
             turret_pitch_velocity: Vec::new(),
             turret_state: Vec::new(),
             turret_target_id: Vec::new(),
+            turret_task_target_id: Vec::new(),
+            turret_task_point_active: Vec::new(),
             turret_committed_target_id: Vec::new(),
             turret_cooldown: Vec::new(),
             turret_burst_cooldown: Vec::new(),
@@ -515,6 +523,7 @@ impl CombatTargetingPool {
         if self.entity_id.len() < entity_needed {
             self.entity_id.resize(entity_needed, -1);
             self.entity_owner_player_id.resize(entity_needed, 0);
+            self.entity_team_id.resize(entity_needed, 0);
             self.entity_owner_bit.resize(entity_needed, 0);
             self.entity_view_mask.resize(entity_needed, 0);
             self.entity_pos_x.resize(entity_needed, 0.0);
@@ -604,6 +613,8 @@ impl CombatTargetingPool {
             self.turret_state
                 .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
+            self.turret_task_target_id.resize(turret_needed, -1);
+            self.turret_task_point_active.resize(turret_needed, 0);
             self.turret_committed_target_id.resize(turret_needed, -1);
             self.turret_cooldown.resize(turret_needed, 0.0);
             self.turret_burst_cooldown.resize(turret_needed, 0.0);
@@ -931,6 +942,7 @@ pub fn combat_targeting_set_entity(
     entity_slot: u32,
     entity_id: i32,
     owner_player_id: u8,
+    team_id: u8,
     view_mask: u32,
     pos_x: f64,
     pos_y: f64,
@@ -993,6 +1005,7 @@ pub fn combat_targeting_set_entity(
         pool.entity_slot_by_id.insert(entity_id, entity_slot);
     }
     pool.entity_owner_player_id[s] = owner_player_id;
+    pool.entity_team_id[s] = team_id;
     pool.entity_owner_bit[s] = combat_targeting_player_bit(owner_player_id);
     pool.entity_view_mask[s] = view_mask;
     pool.entity_pos_x[s] = pos_x;
@@ -1116,6 +1129,8 @@ pub fn combat_targeting_set_turret(
     lockon_turret_mask: u32,
     lockon_shot_mask: u32,
     lockon_reciprocal_mode: u8,
+    task_target_id: i32,
+    task_point_active: u8,
 ) {
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
@@ -1136,6 +1151,8 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch[global_idx] = pitch;
     pool.turret_angular_velocity[global_idx] = angular_velocity;
     pool.turret_pitch_velocity[global_idx] = pitch_velocity;
+    pool.turret_task_target_id[global_idx] = task_target_id;
+    pool.turret_task_point_active[global_idx] = task_point_active;
     if pool.entity_stamp_same_entity[entity_slot as usize] != 0 {
         // Same entity in this slot: state, target, cooldowns, and
         // losBlockedTicks survive untouched (clear_all never resets
@@ -2660,14 +2677,14 @@ pub(crate) fn combat_targeting_owner_relationship_allowed_by_mask(
     target_entity_slot: usize,
     allowed_relationships: u8,
 ) -> bool {
-    if source_entity_slot >= pool.entity_owner_player_id.len()
-        || target_entity_slot >= pool.entity_owner_player_id.len()
+    if source_entity_slot >= pool.entity_team_id.len()
+        || target_entity_slot >= pool.entity_team_id.len()
     {
         return false;
     }
-    let source_owner = pool.entity_owner_player_id[source_entity_slot];
-    let target_owner = pool.entity_owner_player_id[target_entity_slot];
-    let relationship = if source_owner == target_owner {
+    let source_team = pool.entity_team_id[source_entity_slot];
+    let target_team = pool.entity_team_id[target_entity_slot];
+    let relationship = if source_team == target_team {
         CT_TARGETING_CANDIDATE_REL_FRIENDLY
     } else {
         CT_TARGETING_CANDIDATE_REL_ENEMY
@@ -2814,7 +2831,7 @@ pub(crate) fn combat_targeting_committed_turret_targets_source(
         let flags = pool.turret_config_flags[idx];
         if (flags & CT_TURRET_CFG_PASSIVE) == 0
             || (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
-            || (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
+            || (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0
         {
             continue;
         }
@@ -3061,7 +3078,7 @@ fn combat_targeting_compute_sheltered_by_friendly_above(
     let source_y = pool.entity_pos_y[source_entity_slot];
     let source_z = pool.entity_pos_z[source_entity_slot];
     let source_radius = pool.entity_radius_collision[source_entity_slot];
-    let source_owner = pool.entity_owner_player_id[source_entity_slot];
+    let source_team = pool.entity_team_id[source_entity_slot];
     if !source_x.is_finite() || !source_y.is_finite() {
         return false;
     }
@@ -3089,10 +3106,7 @@ fn combat_targeting_compute_sheltered_by_friendly_above(
                 {
                     continue;
                 }
-                // "My team" is same-owner — the kernel's notion of friendly,
-                // and the spawn case (host + the fabricator that made it share
-                // a player).
-                if pool.entity_owner_player_id[slot] != source_owner {
+                if pool.entity_team_id[slot] != source_team {
                     continue;
                 }
                 if !combat_targeting_entity_alive(pool, slot) {
@@ -3255,7 +3269,7 @@ pub(crate) fn combat_targeting_shield_panel_target_score_for_slot(
     let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
     let exclude_flags =
-        CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_VISUAL_ONLY | CT_TURRET_CFG_IS_MANUAL_FIRE;
+        CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_NON_ATTACK_EMITTER | CT_TURRET_CFG_IS_MANUAL_FIRE;
     let mut best: f32 = 0.0;
     for ti in 0..count {
         let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
@@ -3305,7 +3319,7 @@ pub(crate) fn combat_targeting_turret_is_pickable_aim_target(
 ) -> bool {
     let flags = pool.turret_config_flags[idx];
     let exclude_flags =
-        CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_VISUAL_ONLY | CT_TURRET_CFG_IS_MANUAL_FIRE;
+        CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_NON_ATTACK_EMITTER | CT_TURRET_CFG_IS_MANUAL_FIRE;
     (flags & exclude_flags) == 0 && pool.turret_dps[idx] > 0.0
 }
 
@@ -3859,7 +3873,7 @@ pub(crate) fn combat_targeting_weapon_system_disabled(
     turret_shield_spheres_enabled: u8,
 ) -> bool {
     let flags = pool.turret_config_flags[idx];
-    (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
+    (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0
         || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && turret_shield_panels_enabled == 0)
         || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0
             && (flags & CT_TURRET_CFG_PASSIVE) == 0
@@ -3921,7 +3935,7 @@ pub(crate) const CT_ROTATION_WORK_EPSILON: f32 = 0.0001;
 /// AIM-08.5 — Activity mask refresh kernel. Walks every turret on
 /// `entity_slot`, reads slab FSM target/state + angular/pitch velocity
 /// + config flags, and writes the entity-level active/firing masks.
-/// `visualOnly` turrets are skipped exactly like the JS path.
+/// `non-attack emitter` turrets are skipped exactly like the JS path.
 #[inline]
 pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_inner(
     pool: &mut CombatTargetingPool,
@@ -3938,7 +3952,7 @@ pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_inner(
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
         let flags = pool.turret_config_flags[idx];
-        if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+        if (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
             continue;
         }
         let state = pool.turret_state[idx];
@@ -4044,7 +4058,7 @@ pub fn combat_targeting_halt_decision_batch(
             for turret_idx in 0..turret_count {
                 let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
                 let flags = pool.turret_config_flags[idx];
-                if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+                if (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
                     continue;
                 }
                 if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
@@ -4063,7 +4077,7 @@ pub fn combat_targeting_halt_decision_batch(
         for turret_idx in 0..turret_count {
             let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
             let flags = pool.turret_config_flags[idx];
-            if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+            if (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
                 continue;
             }
             if (flags & CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP) == 0 {
@@ -4102,7 +4116,7 @@ pub fn combat_targeting_clear_turret_fsm(entity_slot: u32, turret_idx: u32) {
 
 /// AIM-08.5 — Rust port of `resetDisabledWeapon`'s slab side. For every
 /// turret on `entity_slot` that the live world flags currently mark as
-/// disabled (visualOnly, passive without shield panels enabled, force without force
+/// disabled (non-attack emitter, passive without shield panels enabled, force without force
 /// fields), zero the slab state the writeback layer will copy back into
 /// the JS Turret (target/state/cooldowns/aim error/LOS bookkeeping).
 /// JS-only Turret fields outside the slab (angular/pitch velocity and
@@ -4225,6 +4239,13 @@ pub fn combat_targeting_prepare_auto_scan(
             continue;
         }
 
+        // A mount that accepted its host task keeps tracking that target. A
+        // sibling that rejected the same task remains idle and continues into
+        // normal acquisition below.
+        if combat_targeting_turret_has_satisfied_task(pool, idx) {
+            continue;
+        }
+
         let acquire = pool.turret_outermost_acquire[idx];
         if acquire > max_acquire_range {
             max_acquire_range = acquire;
@@ -4287,6 +4308,19 @@ pub(crate) fn combat_targeting_clear_choice_prep_outputs(
         seed_dist_sqs[i] = f64::INFINITY;
         seed_shield_panel_scores[i] = 0.0;
     }
+}
+
+#[inline]
+pub(crate) fn combat_targeting_turret_has_satisfied_task(
+    pool: &CombatTargetingPool,
+    idx: usize,
+) -> bool {
+    let task_target_id = pool.turret_task_target_id[idx];
+    let task_state_active = pool.turret_state[idx] != CT_TURRET_STATE_IDLE;
+    task_state_active && (
+        (task_target_id >= 0 && pool.turret_target_id[idx] == task_target_id)
+            || pool.turret_task_point_active[idx] != 0
+    )
 }
 
 #[inline]
@@ -4353,6 +4387,9 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
 
         let flags = pool.turret_config_flags[idx];
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if combat_targeting_turret_has_satisfied_task(pool, idx) {
             continue;
         }
         let target_id = pool.turret_target_id[idx];
@@ -4448,6 +4485,9 @@ pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
+        if combat_targeting_turret_has_satisfied_task(pool, idx) {
+            continue;
+        }
         if pool.turret_target_id[idx] >= 0 {
             continue;
         }
@@ -4488,6 +4528,23 @@ pub fn combat_targeting_clear_entity_locks(entity_slot: u32) {
         }
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+    }
+}
+
+fn combat_targeting_clear_stale_task_locks(entity_slot: u32) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let task_target_id = pool.turret_task_target_id[idx];
+        if task_target_id >= 0 && pool.turret_target_id[idx] != task_target_id {
+            combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        }
     }
 }
 
@@ -4892,37 +4949,22 @@ pub(crate) fn combat_targeting_collect_spatial_candidate_cell(
     source_x: f64,
     source_y: f64,
     _source_z: f64,
-    source_player: u8,
-    source_owner_bit: u32,
+    source_team: u8,
+    _source_owner_bit: u32,
     source_view_mask: u32,
     relationship_mask: u8,
     enabled_turret_mask: u32,
-    wants_friendly: bool,
-    wants_enemy: bool,
+    _wants_friendly: bool,
+    _wants_enemy: bool,
     batch_radius: f64,
     scratch: &mut CombatTargetingSpatialCandidateScratch,
 ) {
-    if source_owner_bit != 0 {
-        let bucket_owner_bits = cell.owner_bits;
-        if bucket_owner_bits != 0 {
-            if wants_enemy && !wants_friendly {
-                if (bucket_owner_bits & !source_owner_bit) == 0 {
-                    return;
-                }
-            } else if wants_friendly && !wants_enemy {
-                if (bucket_owner_bits & source_owner_bit) == 0 {
-                    return;
-                }
-            }
-        }
-    }
-
     for &slot_u32 in &cell.slots {
         let slot = slot_u32 as usize;
         if slot == source_slot {
             continue;
         }
-        let relationship = if pool.entity_owner_player_id[slot] == source_player {
+        let relationship = if pool.entity_team_id[slot] == source_team {
             CT_TARGETING_CANDIDATE_REL_FRIENDLY
         } else {
             CT_TARGETING_CANDIDATE_REL_ENEMY
@@ -5013,7 +5055,7 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
     let source_x = pool.entity_pos_x[source_slot];
     let source_y = pool.entity_pos_y[source_slot];
     let source_z = pool.entity_pos_z[source_slot];
-    let source_player = pool.entity_owner_player_id[source_slot];
+    let source_team = pool.entity_team_id[source_slot];
     let source_owner_bit = pool.entity_owner_bit[source_slot];
     let source_view_mask = pool.entity_view_mask[source_slot];
     let (relationship_mask, enabled_turret_mask) = combat_targeting_auto_query_masks(
@@ -5056,7 +5098,7 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
                 source_x,
                 source_y,
                 source_z,
-                source_player,
+                source_team,
                 source_owner_bit,
                 source_view_mask,
                 relationship_mask,
@@ -5083,7 +5125,7 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
                 source_x,
                 source_y,
                 source_z,
-                source_player,
+                source_team,
                 source_owner_bit,
                 source_view_mask,
                 relationship_mask,
@@ -5257,7 +5299,6 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
 ) {
-    let mut out_f64 = [0.0f64; 2];
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         entity_slot,
         source_entity_id,
@@ -5273,6 +5314,36 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
         &[],
         true,
     );
+    combat_targeting_auto_scan_from_slab(
+        entity_slot,
+        source_entity_id,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
+        terrain_step_len,
+        entity_line_width,
+        gravity,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        max_targetable_radius,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn combat_targeting_auto_scan_from_slab(
+    entity_slot: u32,
+    source_entity_id: i32,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    max_targetable_radius: f64,
+) {
+    let mut out_f64 = [0.0f64; 2];
     let needs_spatial_query = combat_targeting_prepare_auto_scan(
         entity_slot,
         turret_shield_panels_enabled,
@@ -5622,6 +5693,19 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 entity_line_width,
                 gravity,
             );
+            combat_targeting_auto_scan_from_slab(
+                entity_slot,
+                source_entity_id,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
+                terrain_step_len,
+                entity_line_width,
+                gravity,
+                &mut cached_fire_ranks[start..end],
+                &mut cached_fire_dist_sqs[start..end],
+                max_targetable_radius,
+            );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
             out_has_active_work[entity_i] =
                 combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
@@ -5666,12 +5750,32 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 &[],
                 true,
             );
+            // Priority is per mount. Accepted task locks are protected by the
+            // auto-choice prep; mounts that rejected this target independently
+            // acquire a compatible fallback in the same tick.
+            combat_targeting_auto_mode_tick_from_slab(
+                entity_slot,
+                source_entity_id,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
+                terrain_step_len,
+                entity_line_width,
+                gravity,
+                los_drop_grace_ticks,
+                &mut cached_fire_ranks[start..end],
+                &mut cached_fire_dist_sqs[start..end],
+                max_targetable_radius,
+            );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_TARGET;
             out_has_active_work[entity_i] =
                 combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
             continue;
         }
 
+        if priority_target_id >= 0 {
+            combat_targeting_clear_stale_task_locks(entity_slot);
+        }
         combat_targeting_auto_mode_tick_from_slab(
             entity_slot,
             source_entity_id,

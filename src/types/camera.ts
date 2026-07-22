@@ -11,8 +11,9 @@ export type CameraAnchor = {
 
 export type CameraMovementScaleMode =
   /** Recoil SpringController parity: distance-relative wheel law, controller-
-   * distance pan rate, focus-on-terrain tracking, cardinal yaw lock, and BAR's
-   * cursor-in / center-out zoom edge handling. */
+   * distance pan rate, focus-on-terrain tracking, and BAR's cursor-in /
+   * center-out zoom edge handling. Cardinal yaw locking is configured
+   * separately. */
   | 'bar-spring'
   | 'anchor-distance-relative'
   | 'absolute-world'
@@ -65,6 +66,8 @@ export type CameraOrbitMovementConfig = {
 export type CameraMovementConfig = {
   readonly scaleMode: CameraMovementScaleMode;
   readonly wheelInputMode: CameraWheelInputMode;
+  /** Apply BAR's cardinal-direction yaw dead zones in bar-spring mode. */
+  readonly cardinalYawLockEnabled: boolean;
   /** Middle-click drag pan. */
   readonly centerClickPan: CameraPanMovementConfig;
   /** Wheel zoom-in. */

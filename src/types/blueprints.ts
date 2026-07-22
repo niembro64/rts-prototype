@@ -3,9 +3,9 @@
 // and small runtime constants used by loaders/UI code.
 
 import type {
+  TurretEmitterKind,
   TurretLockOnEntityFamilyInclusion,
   TurretLockOnRelationshipInclusion,
-  WeaponKind,
 } from './blueprintSchema.generated';
 
 // Re-export for consumers
@@ -36,12 +36,16 @@ export type {
   LockOnRequiresTargetLockedOntoSelf,
   UnitLocomotionBlueprint,
   SensorCapabilityConfig,
+  SpawnTurretConfig,
+  ResourcePylonConfig,
   ShotBlueprint,
 
   TreadConfig,
   TurretAimStyle,
   TurretBlueprint,
   TurretCooldownConfig,
+  TurretEmitterKind,
+  TurretMountControlMode,
   
   TurretLockOnRelationshipInclusion,
   TurretMount,
@@ -71,11 +75,9 @@ export const TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS: readonly TurretLockOnRelati
 export const TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS: readonly TurretLockOnEntityFamilyInclusion[] =
   ['buildings', 'towers', 'units', 'turrets', 'shots'];
 
-/** Turret role categories used by host-directed mount validation. */
-export const WEAPON_KINDS: readonly WeaponKind[] = [
+/** Authoritative mounted-emitter categories. */
+export const TURRET_EMITTER_KINDS: readonly TurretEmitterKind[] = [
   'attack',
-  'construction',
-  'repair',
   'spawn',
   'resourcePylon',
 ];

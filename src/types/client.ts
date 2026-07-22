@@ -161,6 +161,9 @@ export type ClientBarConfig = {
    *  (snap / fast / mid / slow). */
   readonly unitGroundNormalEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
+  /** Draws each leg's hip-centered mechanical reach sphere and its
+   *  authored hip-to-rest direction. */
+  readonly legsReach: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
   readonly cameraFollow: LabeledOptionsConfig<CameraFollowMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;

@@ -10,6 +10,7 @@ import type { Entity, ProjectileShot, Turret } from '../sim/types';
 import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
 import { getProjectileAirFrictionPer60HzFrame } from '../sim/shotLocomotionMotion';
@@ -116,7 +117,7 @@ function projectileWeaponCanReachGroundPoint(
   mapWidth: number,
   mapHeight: number,
 ): boolean | null {
-  if (weapon.config.visualOnly || weapon.config.passive || weapon.config.verticalLauncher) return null;
+  if (!isAttackEmitter(weapon) || weapon.config.passive || weapon.config.verticalLauncher) return null;
   const shot = weapon.config.shot;
   if (!shot || !isProjectileShot(shot)) return null;
   const speed = getProjectileLaunchSpeed(shot);

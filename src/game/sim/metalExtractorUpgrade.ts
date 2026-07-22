@@ -1,6 +1,6 @@
 import type { Entity, PlayerId } from './types';
 import { isBuildInProgress } from './buildableHelpers';
-import { entityCanBuild } from './builderBuildRoster';
+import { entityCanBuild } from './hostCapabilities';
 
 export const METAL_EXTRACTOR_T1_BLUEPRINT_ID = 'buildingExtractor' as const;
 export const METAL_EXTRACTOR_T2_BLUEPRINT_ID = 'buildingExtractorT2' as const;

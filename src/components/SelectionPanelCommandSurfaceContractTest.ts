@@ -1,8 +1,8 @@
 import selectionPanelSource from './SelectionPanel.vue?raw';
 import { COLORS, WAYPOINT_COLOR_CSS } from '../colorsConfig';
 import { resolveCommandHotkey } from '../game/input/commandHotkeys';
-import { BAR_MAX_SELECTED_BUILDER_TYPES } from '../game/sim/builderBuildRoster';
-import builderBuildRosterSource from '../game/sim/builderBuildRoster.ts?raw';
+import { BAR_MAX_SELECTED_BUILDER_TYPES } from '../game/sim/hostCapabilities';
+import hostCapabilitiesSource from '../game/sim/hostCapabilities.ts?raw';
 import buildMenuLayoutSource from '../game/input/buildMenuLayout.ts?raw';
 import input3DManagerSource from '../game/render3d/Input3DManager.ts?raw';
 import uiUpdateManagerSource from '../game/scenes/helpers/UIUpdateManager.ts?raw';
@@ -444,8 +444,8 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
   );
   assertContract(
     BAR_MAX_SELECTED_BUILDER_TYPES === 5 &&
-      /export const BAR_MAX_SELECTED_BUILDER_TYPES = 5;/.test(builderBuildRosterSource) &&
-      /getSelectedBuilderTypeInfos\(selectedUnits\)\.slice\(0, BAR_MAX_SELECTED_BUILDER_TYPES\)/.test(builderBuildRosterSource),
+      /export const BAR_MAX_SELECTED_BUILDER_TYPES = 5;/.test(hostCapabilitiesSource) &&
+      /getSelectedBuilderTypeInfos\(selectedUnits\)\.slice\(0, BAR_MAX_SELECTED_BUILDER_TYPES\)/.test(hostCapabilitiesSource),
     'BAR builder selector must cap visible builder types to gui_gridmenu.lua maxBuilderRects=5',
   );
   assertContract(

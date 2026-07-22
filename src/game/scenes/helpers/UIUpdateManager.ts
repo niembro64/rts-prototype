@@ -1,6 +1,7 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import { COST_MULTIPLIER } from '../../../config';
+import { isAttackEmitter, isAttackEmitterConfig } from '../../sim/emitterKinds';
 import type {
   CombatFireState,
   Entity,
@@ -36,7 +37,7 @@ import {
 import {
   getActiveSelectedBuilderTypeInfo,
   getBarVisibleSelectedBuilderTypeInfos,
-} from '../../sim/builderBuildRoster';
+} from '../../sim/hostCapabilities';
 import { getFactoryAllowedUnitBlueprintIds } from '../../sim/factoryProductionRoster';
 import { isReclaimableTarget } from '../../sim/reclaim';
 import {
@@ -109,7 +110,7 @@ function maxWeaponRange(entity: Entity): number | null {
   let range = 0;
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    if (turret.config.visualOnly || turret.config.shot === null) continue;
+    if (!isAttackEmitter(turret) || turret.config.shot === null) continue;
     range = Math.max(range, turret.config.range);
   }
   return range > 0 ? range : null;
@@ -1298,7 +1299,7 @@ export function buildIdleBuilderGroups(
 export type UnitStatsWeaponInfo = {
   turretBlueprintId: string;
   name: string;
-  /** WeaponKind: attack | construction | repair | spawn | resourcePylon. */
+  /** Mounted emitter kind: attack | spawn | resourcePylon. */
   kind: string;
   /** Emission presentation kind: shot | beam | laser | shield | null. */
   emission: string | null;
@@ -1400,7 +1401,7 @@ function buildUnitStatsWeapons(entity: Entity): UnitStatsWeaponInfo[] {
   const byBlueprintId = new Map<string, UnitStatsWeaponInfo>();
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
-    if (config.visualOnly) continue;
+    if (!isAttackEmitterConfig(config)) continue;
     const existing = byBlueprintId.get(config.turretBlueprintId);
     if (existing !== undefined) {
       existing.count++;

@@ -2,7 +2,10 @@ import { NO_ENTITY_ID, type Entity, type PlayerId, type UnitAction } from './typ
 import { isBuildInProgress } from './buildableHelpers';
 import type { WorldState } from './WorldState';
 
-const GUARD_FOLLOW_PADDING = 80;
+/** Breathing room outside the two bodies' collision envelopes. Guard is an
+ * explicit follow order, so this must stay small: a large tactical-radius
+ * padding makes a visibly distant guard look idle while its target escapes. */
+const GUARD_FOLLOW_PADDING = 16;
 
 export function isAliveGuardTarget(target: Entity | undefined): target is Entity {
   if (!target) return false;

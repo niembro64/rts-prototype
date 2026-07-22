@@ -6,6 +6,7 @@ import { isRayType } from './types';
 import { isBuildInProgress } from './buildableHelpers';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import { entitySlotRegistry } from './EntitySlotRegistry';
+import { isAttackEmitterConfig } from './emitterKinds';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -58,7 +59,7 @@ export class EntityCacheManager {
   private cachedFlyingUnitSlots: number[] = [];
   private cachedFlyingUnitSlotsDirty = true;
   /** Every entity (unit OR building) with a CombatComponent that owns
-   *  at least one non-visualOnly turret. The combat pipeline iterates
+   *  at least one attack emitter. The combat pipeline iterates
    *  this list and never branches on entity type — armed buildings are
    *  first-class participants alongside armed units. */
   private cachedArmedEntities: Entity[] = [];
@@ -181,7 +182,7 @@ export class EntityCacheManager {
     const ownership = entity.ownership;
     const buildInProgress = isBuildInProgress(entity.buildable);
     // Combat capability is host-agnostic: any entity with a
-    // CombatComponent that owns a non-visualOnly turret enters the
+    // CombatComponent that owns an attack emitter enters the
     // armed list, regardless of whether it's a unit or a building.
     if (entity.combat) {
       const turrets = entity.combat.turrets;
@@ -190,7 +191,7 @@ export class EntityCacheManager {
       let hasCombatTurret = false;
       for (let i = 0; i < turrets.length; i++) {
         const config = turrets[i].config;
-        if (config.visualOnly) continue;
+        if (!isAttackEmitterConfig(config)) continue;
         hasCombatTurret = true;
         const shot = config.shot;
         if (shot === null) continue;

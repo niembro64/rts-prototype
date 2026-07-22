@@ -319,7 +319,9 @@ export type LockOnInclusionObject = {
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
 };
 
-export type WeaponKind = 'attack' | 'construction' | 'repair' | 'spawn' | 'resourcePylon';
+export type TurretEmitterKind = 'attack' | 'spawn' | 'resourcePylon';
+
+export type TurretMountControlMode = 'host' | 'autonomous' | 'manual';
 
 export type SpawnProducedKind = 'buildingsAndTowers' | 'units';
 
@@ -363,7 +365,7 @@ export type TurretAudioConfig = {
 export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
   name: string;
-  kind: WeaponKind;
+  kind: TurretEmitterKind;
   range: number;
   rangeVolume: TurretRangeVolume;
   cooldown: TurretCooldownConfig | null;
@@ -375,7 +377,6 @@ export type TurretBlueprint = {
   eventsSmooth: boolean;
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
-  isManualFire: boolean;
   passive: boolean;
   requiresNonObstructedLineOfSight: boolean;
   spread: TurretSpreadConfig | null;
@@ -417,10 +418,11 @@ export type UnitTurretMountZResolver = {
 };
 
 export type TurretMount = {
+  mountId: string;
   turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
   shieldPanels?: ShieldPanel[];
-  hostDirected: boolean;
+  controlMode: TurretMountControlMode;
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   visualVariant?: ConstructionEmitterSize;
@@ -431,10 +433,11 @@ export type TurretMount = {
 };
 
 export type BuildingTurretMount = {
+  mountId: string;
   turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
   shieldPanels?: ShieldPanel[];
-  hostDirected: boolean;
+  controlMode: TurretMountControlMode;
   visualVariant?: ConstructionEmitterSize;
 };
 

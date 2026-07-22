@@ -14,8 +14,9 @@ import { getBuildingConfig } from './buildConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
-import { getBuilderConstructionRate } from './builderBuildRoster';
+import { getBuilderConstructionRate } from './hostCapabilities';
 import { resolveGuardServiceTarget } from './guard';
+import { assignHostConstructionTask, clearHostConstructionTasks } from './emitterConstructionTasks';
 import {
   getRemainingResource,
   getTotalRemainingCost,
@@ -41,8 +42,34 @@ const _factoryAssistRateById = new Map<EntityId, number>();
 const _factoryByShellId = new Map<EntityId, EntityId>();
 const _autoAssistedBuilderIds = new Set<EntityId>();
 const _guardHealedTargetIds = new Set<EntityId>();
+const _activeConstructionHostIds = new Set<EntityId>();
 const _energyConsumerPool: EnergyConsumer[] = [];
 const _consumerIndexArrayPool: number[][] = [];
+
+function assignActiveConstructionTask(
+  world: WorldState,
+  host: Entity,
+  targetId: EntityId,
+  operation: 'construct' | 'repair',
+): void {
+  _activeConstructionHostIds.add(host.id);
+  assignHostConstructionTask(world, host, targetId, operation);
+}
+
+function clearInactiveConstructionTasks(
+  world: WorldState,
+  builders: readonly Entity[],
+  factories: readonly Entity[],
+): void {
+  for (let i = 0; i < builders.length; i++) {
+    const host = builders[i];
+    if (!_activeConstructionHostIds.has(host.id)) clearHostConstructionTasks(world, host);
+  }
+  for (let i = 0; i < factories.length; i++) {
+    const host = factories[i];
+    if (!_activeConstructionHostIds.has(host.id)) clearHostConstructionTasks(world, host);
+  }
+}
 
 function releaseEnergyConsumerRows(buffers: EnergyBuffers): void {
   const consumers = buffers.consumers;
@@ -447,6 +474,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   autoAssistedBuilderIds.clear();
   const guardHealedTargetIds = _guardHealedTargetIds;
   guardHealedTargetIds.clear();
+  _activeConstructionHostIds.clear();
 
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
@@ -517,6 +545,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           factory.currentShellId !== null &&
           isBuildTargetInRange(entity, svc.target)
         ) {
+          assignActiveConstructionTask(world, entity, factory.currentShellId, 'construct');
           factoryAssistRateById.set(
             svc.target.id,
             (factoryAssistRateById.get(svc.target.id) ?? 0) + builderRate,
@@ -549,6 +578,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
+    assignActiveConstructionTask(world, entity, targetId, 'construct');
     if (sweepAssist) sweepServicingBuilderIds.add(entity.id);
     buildTargets.add(targetId);
     const rate = builderRate;
@@ -577,6 +607,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         shell.ownership.playerId === ownership.playerId &&
         isBuildInProgress(shell.buildable)
       ) {
+        assignActiveConstructionTask(world, entity, shell.id, 'construct');
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
           // Building factory (fabricator): rate from its building config —
@@ -661,6 +692,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const commanderRateCap = getBuilderConstructionRate(commander) * dtSec;
 
     if (isBuildInProgress(target.buildable)) {
+      assignActiveConstructionTask(world, commander, target.id, 'construct');
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
@@ -688,6 +720,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!target || !isBuildTargetInRange(entity, target)) continue;
     const builderRateCap = getBuilderConstructionRate(entity) * dtSec;
     if (isBuildInProgress(target.buildable)) {
+      assignActiveConstructionTask(world, entity, target.id, 'construct');
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
@@ -704,6 +737,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         }
       }
     } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
+      assignActiveConstructionTask(world, entity, target.id, 'repair');
       const hpToHeal = target.unit.maxHp - target.unit.hp;
       const remaining = hpToHeal * HEAL_COST_PER_HP;
       if (remaining > 0) {
@@ -738,6 +772,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!isBuildTargetInRange(entity, target)) continue;
     const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
     if (remaining <= 0) continue;
+    assignActiveConstructionTask(world, entity, target.id, 'repair');
     guardHealedTargetIds.add(target.id);
     addEnergyConsumer(
       buffers,
@@ -773,6 +808,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (target === null || target.unit === null) continue;
       const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
       if (remaining <= 0) continue;
+      assignActiveConstructionTask(world, entity, target.id, 'repair');
       guardHealedTargetIds.add(target.id);
       if (sweepHeal) sweepServicingBuilderIds.add(entity.id);
       addEnergyConsumer(
@@ -787,6 +823,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       );
     }
   }
+
+  clearInactiveConstructionTasks(world, world.getBuilderUnits(), factoryEntities);
 
   // ── Per-player resource distribution ──
   // Each construction resource flows independently. A consumer with

@@ -1747,7 +1747,7 @@ function executeSetTowerTargetCommand(
 ): void {
   // Resolve the target once. Entity targets go through the normal target
   // validation; ground targets store a point directly on the combat host.
-  // The lock-on is honored by host-directed turrets whose exclusion policy
+  // The lock-on is honored by host-controlled turrets whose exclusion policy
   // accepts the candidate (see budget_design_philosophy.html
   // "Host-directed turrets carry the host lock-on...").
   const target = command.targetId === null

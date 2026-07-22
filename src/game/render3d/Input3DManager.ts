@@ -68,11 +68,12 @@ import {
   setSpaceQueueFrontEligibilityProvider,
 } from '../input/queueModifiers';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { isAttackEmitterConfig } from '../sim/emitterKinds';
 import {
   getActiveSelectedBuilder,
   getActiveSelectedBuilderAllowedBuildBlueprintIds,
   getBarVisibleSelectedBuilderTypeInfos,
-} from '../sim/builderBuildRoster';
+} from '../sim/hostCapabilities';
 import {
   getFactoryAllowedUnitBlueprintIds,
 } from '../sim/factoryProductionRoster';
@@ -2092,7 +2093,7 @@ export class Input3DManager {
       const turrets = entities[i].combat?.turrets ?? [];
       for (let j = 0; j < turrets.length; j++) {
         const config = turrets[j].config;
-        if (!config.visualOnly && !config.passive && config.shot !== null) return true;
+        if (isAttackEmitterConfig(config) && !config.passive && config.shot !== null) return true;
       }
     }
     return false;

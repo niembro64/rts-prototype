@@ -247,6 +247,7 @@ export type GameCanvasClientControlBarModel = {
   readonly allUnitRadiiActive: boolean;
   readonly unitRadiusToggles: Readonly<Record<UnitRadiusType, boolean>>;
   readonly legsRadiusToggle: boolean;
+  readonly legsReachToggle: boolean;
   readonly lodMode: LodMode;
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
@@ -295,6 +296,7 @@ export type GameCanvasClientControlBarModel = {
   toggleAllUnitRadii(): void;
   toggleUnitRadius(type: UnitRadiusType): void;
   toggleLegsRadius(): void;
+  toggleLegsReach(): void;
   changeLodMode(mode: LodMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   changeWaterBoundaryMode(mode: WaterBoundaryMode): void;

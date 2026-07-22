@@ -33,6 +33,11 @@ import type { WindState } from './wind';
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
+import {
+  assignEmitterSpawnTask,
+  completeEmitterSpawnTask,
+  findSpawnEmitter,
+} from './emitterTasks';
 import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHolds';
 import {
   createFactoryProductionHoldSpec,
@@ -65,6 +70,11 @@ const BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitAlbatros',
   'unitTransport',
 ]);
+
+type SpawnedFactoryProduct = {
+  entity: Entity;
+  requiresConstruction: boolean;
+};
 
 function producedUnitInheritsBarFactoryMoveState(factory: Entity, unit: Entity): boolean {
   if (factory.buildingBlueprintId !== 'towerFabricator') return false;
@@ -323,13 +333,7 @@ class FactoryProductionSystem {
           this.activateShell(world, factory, shell, buildingGrid, dtMs, forceAccumulator, wind);
           completedUnits.push(shell);
         }
-        factoryComp.currentShellId = null;
-        factoryComp.isProducing = false;
-        factoryComp.currentBuildProgress = 0;
-        if (!factoryComp.repeatProduction) {
-          factoryComp.selectedUnitBlueprintId = this.takeNextFiniteSelection(world, factory);
-        }
-        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        this.finishProductionWorkflow(world, factory);
       } else if (action === FACTORY_ACTION_CLEAR_INVALID_SELECTION) {
         factoryComp.selectedUnitBlueprintId = null;
         factoryComp.resumeRepeatUnitBlueprintId = null;
@@ -342,13 +346,19 @@ class FactoryProductionSystem {
       } else if (action === FACTORY_ACTION_SPAWN_SHELL) {
         const selectedUnitBlueprintId = factoryRowSelectedUnitBlueprintIds[row];
         if (selectedUnitBlueprintId === null) continue;
-        const shell = this.spawnUnitShell(world, factory, selectedUnitBlueprintId);
-        if (!shell) continue;
-        factoryComp.currentShellId = shell.id;
-        factoryComp.isProducing = true;
-        factoryComp.currentBuildProgress = 0;
-        spawnedUnits.push(shell);
-        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        const product = this.spawnUnitProduct(world, factory, selectedUnitBlueprintId);
+        if (product === null) continue;
+        spawnedUnits.push(product.entity);
+        if (product.requiresConstruction) {
+          factoryComp.currentShellId = product.entity.id;
+          factoryComp.isProducing = true;
+          factoryComp.currentBuildProgress = 0;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        } else {
+          this.activateShell(world, factory, product.entity, buildingGrid, dtMs, forceAccumulator, wind);
+          completedUnits.push(product.entity);
+          this.finishProductionWorkflow(world, factory);
+        }
       } else if (action !== FACTORY_ACTION_NONE) {
         throw new Error(`FactoryProductionSystem.update: unknown factory action ${action}`);
       }
@@ -361,12 +371,27 @@ class FactoryProductionSystem {
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
   // unit is fully constructed (renderer-ready), but its active build
   // state suppresses combat/orders until each resource bar tops up.
-  private spawnUnitShell(world: WorldState, factory: Entity, unitBlueprintId: string): Entity | null {
+  private spawnUnitProduct(
+    world: WorldState,
+    factory: Entity,
+    unitBlueprintId: string,
+  ): SpawnedFactoryProduct | null {
     if (!factory.ownership) return null;
+    const spawnEmitter = findSpawnEmitter(factory, 'unit');
+    if (spawnEmitter === null || spawnEmitter.config.controlMode !== 'host') return null;
+    const producesNanoframe = spawnEmitter.config.spawn?.producesNanoframe === true;
+    if (!assignEmitterSpawnTask(spawnEmitter, {
+      blueprintKind: 'unit',
+      blueprintId: unitBlueprintId,
+      completion: producesNanoframe ? 'nanoframe' : 'complete',
+      placement: { kind: 'hostHold' },
+    })) {
+      return null;
+    }
     const bp = getUnitBlueprint(unitBlueprintId);
     // Allocate the shell's sub-entity ids (locomotion + turrets) up
     // front, exactly like spawned commanders and pre-placed buildings.
-    // Turrets with id === NO_ENTITY_ID are treated as visual-only and
+    // Emitters with id === NO_ENTITY_ID are not materialized and
     // never fire; the construction shell still cannot attack until it
     // completes because isEntityActive() gates the BUILDABLE_COMPLETE
     // flag in combat targeting, but on completion the turrets already
@@ -377,20 +402,35 @@ class FactoryProductionSystem {
       factory.ownership.playerId,
       unitBlueprintId,
     );
-    unit.buildable = createBuildable({
-      energy: bp.cost.energy * COST_MULTIPLIER,
-      metal: bp.cost.metal * COST_MULTIPLIER,
-    });
+    if (producesNanoframe) {
+      unit.buildable = createBuildable({
+        energy: bp.cost.energy * COST_MULTIPLIER,
+        metal: bp.cost.metal * COST_MULTIPLIER,
+      });
+    }
     holdEntity(factory, unit, createFactoryProductionHoldSpec(factory, unitBlueprintId));
     applyEntityHoldPose(world, unit);
     updateFactoryProductionHoldLaunchPose(world, factory, unit);
-    initializeConstructionPieceHealth(unit, world);
+    if (producesNanoframe) initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
+    completeEmitterSpawnTask(spawnEmitter, unit.id);
     world.recordFactoryProducedUnit(factory.id, unit);
     // The factory's spawn turret brought this shell into existence — flash a
     // brief init beam from the factory to it.
     world.registerSpawnBeam(unit.id, factory.id);
-    return unit;
+    return { entity: unit, requiresConstruction: producesNanoframe };
+  }
+
+  private finishProductionWorkflow(world: WorldState, factory: Entity): void {
+    const factoryComp = factory.factory;
+    if (factoryComp === null) return;
+    factoryComp.currentShellId = null;
+    factoryComp.isProducing = false;
+    factoryComp.currentBuildProgress = 0;
+    if (!factoryComp.repeatProduction) {
+      factoryComp.selectedUnitBlueprintId = this.takeNextFiniteSelection(world, factory);
+    }
+    world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 
   private fillIdleQuotaSelection(world: WorldState, factory: Entity): boolean {

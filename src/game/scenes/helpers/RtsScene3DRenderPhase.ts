@@ -9,6 +9,7 @@ import {
   getSelectionHudMode,
 } from '@/clientBarConfig';
 import type { SelectionHudMode } from '@/clientBarConfig';
+import { isAttackEmitter } from '@/game/sim/emitterKinds';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -845,7 +846,7 @@ export class RtsScene3DRenderPhase {
     const entityRenderer = this.resources.entityRenderer;
     for (let i = 0; i < turrets.length; i++) {
       const turret = turrets[i];
-      if (turret.config.visualOnly) continue;
+      if (!isAttackEmitter(turret)) continue;
       if (turret.config.shot === null) continue;
       if (turret.config.shot.type === 'shield') continue;
       const mount = entityRenderer.getTurretMountWorldState(host.id, i);

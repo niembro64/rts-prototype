@@ -6,9 +6,13 @@ import type { Vec3 } from './vec2';
 import type {
   TurretAimStyle,
   TurretCooldownConfig,
+  TurretEmitterKind,
+  TurretMountControlMode,
   TurretRadiusConfig,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
+  SpawnTurretConfig,
+  ResourcePylonConfig,
   UnitSupportSurface,
   SensorCapabilityConfig,
 } from './blueprints';
@@ -339,10 +343,10 @@ export type CombatComponent = {
    *  uses each turret blueprint's authored low/high arc; player
    *  commands can force all ballistic turrets on the host low or high. */
   trajectoryMode: CombatTrajectoryMode;
-  /** Player attack-command target. `null` is the canonical "no
-   *  priority target" value; setting an EntityId forces every turret
-   *  on this entity toward it and fires as soon as it enters fire
-   *  range, ignoring the auto-acquisition picker. */
+  /** Host attack-command target. `null` is the canonical "no priority
+   *  target" value. The host-to-emitter adapter projects it only onto
+   *  compatible host-controlled attack mounts; other mounts keep their own
+   *  policy and incompatible mounts fall back independently. */
   priorityTargetId: EntityId | null;
   /** Player attack-ground target. Sim-only; action snapshots carry
    *  the visible queued order while targeting/firing reads this per
@@ -421,6 +425,9 @@ type Building = {
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
   turretBlueprintId: TurretBlueprintId;
+  /** Authoritative effect family. It survives blueprint compilation and
+   *  dispatches the emitter executor. */
+  kind: TurretEmitterKind;
   range: number;
   rangeVolume: TurretRangeVolume;
   cooldown: TurretCooldownConfig | null;
@@ -434,14 +441,12 @@ export type TurretConfig = {
   eventsSmooth: boolean;
   spread: { pelletCount: number; angle: number } | null;
   burst: { count: number; delay: number } | null;
-  isManualFire: boolean;
   passive: boolean;
   /** Actual terrain/entity line-of-sight gate for this turret. Cross
    *  shield sight obstruction is a separate battle setting. */
   requiresNonObstructedLineOfSight: boolean;
-  /** Null for visual-only construction emitters. Those turrets
-   *  mount renderer-owned construction hardware but do not represent a
-   *  simulated weapon or projectile. */
+  /** Null for non-projectile utility emitters. Effect dispatch is governed by
+   *  `kind`; callers must not infer behavior from this nullable field. */
   shot: EmissionConfig | null;
   /** Optional secondary projectile spray driven by this turret's own engagement. */
   submunitions: TurretSubmunitionEmitterConfig | null;
@@ -474,17 +479,16 @@ export type TurretConfig = {
    *  pose and rotation/pitch/velocity snapshots; beam/laser presentation
    *  travels through beam endpoint updates. */
   headOnly: boolean;
-  /** Visual-only turret hardpoints do not acquire targets or fire.
-   *  They exist so reusable turret art, such as construction emitters,
-   *  can mount through the same blueprint path as combat turrets. */
-  visualOnly: boolean;
-  /** Host-directed turret. See TurretBlueprint.hostDirected. */
-  hostDirected: boolean;
+  /** Per-mount task source. Host consumes compatible host intents,
+   *  autonomous runs a kind-specific policy, and manual waits for an ability. */
+  controlMode: TurretMountControlMode;
   /** Unit-mount authored fight/patrol stop gate. If true, this turret must
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
   visualVariant: ConstructionEmitterSize | null;
+  spawn: SpawnTurretConfig | null;
+  resourcePylon: ResourcePylonConfig | null;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
    *  walks each turret blueprint once at config build and packs the
    *  authored inclusion arrays into these bitmasks so the per-tick
@@ -548,6 +552,36 @@ export type ShotSource = {
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
+export type TurretEntityTaskOperation = 'attack' | 'construct' | 'repair';
+
+export type TurretEntityTask = {
+  kind: 'entity';
+  operation: TurretEntityTaskOperation;
+  targetId: EntityId;
+};
+
+export type TurretPointTask = {
+  kind: 'point';
+  operation: 'attackGround';
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type TurretSpawnTask = {
+  kind: 'spawn';
+  blueprintKind: 'structure' | 'unit';
+  blueprintId: string;
+  completion: 'nanoframe' | 'complete';
+  placement:
+    | { kind: 'point'; x: number; y: number; z: number; rotation: number }
+    | { kind: 'hostHold' };
+  /** Filled by the authoritative spawn executor after identity creation. */
+  producedEntityId: EntityId | null;
+};
+
+export type TurretTask = TurretEntityTask | TurretPointTask | TurretSpawnTask;
+
 // Runtime turret instance (per-weapon state on a unit).
 // Full 3D aiming: `rotation` is yaw (horizontal heading, around z),
 // `pitch` is elevation (vertical aim angle). Together they give a
@@ -559,10 +593,15 @@ export type TurretState = 'idle' | 'tracking' | 'engaged';
 export type Turret = {
   /** Runtime identity for this mounted turret instance. Blueprint id lives on config.turretBlueprintId. */
   id: EntityId;
+  /** Stable authored mount identity used by host capability routes. */
+  mountId: string;
   parentId: EntityId;
   rootHostId: EntityId;
   mountIndex: number;
   config: TurretConfig;
+  /** Current typed emitter assignment. `target` remains the compact entity-ID
+   *  mirror used by snapshots and aiming when the task addresses an entity. */
+  task: TurretTask | null;
   target: EntityId | null;
   ranges: TurretRanges;
   state: TurretState;
@@ -1129,6 +1168,15 @@ export type EntityMeta = {
   targetable: boolean;
 };
 
+/** Last hostile root host that dealt effective damage to this entity.
+ * Guard retaliation reads this short-lived fact; it is deliberately not a
+ * combat lock, command, or copy of the protected entity's current target. */
+export type RecentAggression = {
+  attackerRootHostId: EntityId;
+  attackerTurretId: EntityId | null;
+  hitTick: number;
+};
+
 export type EntityComponentSlots = {
   /** Stable native entity/spatial slot id, or -1 before registry binding. */
   entitySlotId: number;
@@ -1137,11 +1185,11 @@ export type EntityComponentSlots = {
   ownership: Ownership | null;
   unit: Unit | null;
   building: Building | null;
-  /** Combat capability — turrets + per-host bookkeeping. Present iff
-   *  the entity has at least one runtime turret (combat OR visualOnly).
-   *  The cache only adds entities to the armed list when at least one
-   *  of those turrets is non-visualOnly. */
+  /** Mounted emitter runtime plus per-host combat bookkeeping. Present iff
+   *  the entity has at least one runtime turret/emitter. */
   combat: CombatComponent | null;
+  /** Short-lived hostile-damage provenance used by guard retaliation. */
+  recentAggression: RecentAggression | null;
   projectile: Projectile | null;
   buildable: Buildable | null;
   builder: Builder | null;
@@ -1180,6 +1228,7 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     unit: null,
     building: null,
     combat: null,
+    recentAggression: null,
     projectile: null,
     buildable: null,
     builder: null,

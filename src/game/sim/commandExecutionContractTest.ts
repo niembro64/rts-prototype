@@ -738,7 +738,6 @@ export function runCommandExecutionContractTest(): void {
     turrets: [
       {
         config: {
-          visualOnly: false,
           passive: false,
           range: 240,
           shot: { type: 'rocket' },
@@ -817,7 +816,6 @@ export function runCommandExecutionContractTest(): void {
     turrets: [
       {
         config: {
-          visualOnly: false,
           passive: false,
           range: 180,
           shot: { type: 'plasma' },
@@ -1323,6 +1321,7 @@ export function runCommandExecutionContractTest(): void {
       alliedGuardSource.unit.actions[0].targetId === alliedGuardTarget.id,
     'BAR allied guard actions must remain valid during simulation guard-follow processing',
   );
+
   executeCommand(alliedGuardCtx, {
     type: 'attack',
     tick: 7,

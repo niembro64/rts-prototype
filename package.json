@@ -19,7 +19,7 @@
     "performance:bottleneck": "npm run build:wasm && node scripts/performanceBottleneckHarness.mjs",
     "performance:bottleneck:suite": "npm run build:wasm && node scripts/performanceBottleneckHarness.mjs --suite",
     "optimization:gate": "npm run deterministic:replay && node scripts/performanceBottleneckHarness.mjs --suite",
-    "host-directed:validation": "node scripts/hostDirectedValidationTest.mjs",
+    "mount-contract:validation": "node scripts/turretMountContractValidation.mjs",
     "terrain:stability": "node scripts/terrainStabilityHarness.mjs",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host",
     "tauri:dev": "npm run build:wasm:dev && npx tauri dev",

@@ -21,7 +21,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { getBuilderConstructionRate } from '../sim/builderBuildRoster';
+import { getBuilderConstructionRate } from '../sim/hostCapabilities';
 import {
   getFactoryBuildSpot,
   type FactoryBuildSpot,

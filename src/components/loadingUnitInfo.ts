@@ -8,8 +8,9 @@ import {
 } from '@/game/sim/blueprints';
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
-import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
+import { getUnitBuilderConstructionRate } from '@/game/sim/hostCapabilities';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
+import { isAttackEmitter, isAttackEmitterConfig, isManualEmitterConfig } from '@/game/sim/emitterKinds';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
@@ -64,7 +65,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
       const next = computeTurretFirepower(turret.config);
@@ -107,7 +108,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
 function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: boolean): LoadingUnitInfo {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
   const turrets = isTower ? createBuildingRuntimeTurrets(buildingBlueprintId) : [];
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
       const next = computeTurretFirepower(turret.config);
@@ -275,19 +276,19 @@ function buildCombatSummarySection(
   firepower: Firepower,
   longestRange: number,
 ): LoadingUnitInfoSection {
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
-  const visualOnly = turrets.length - damagingTurrets.length;
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
+  const utilityEmitters = turrets.length - damagingTurrets.length;
   return {
     id: 'combat-summary',
     title: 'Combat',
     items: [
       stat('Turrets', `${turrets.length} total / ${damagingTurrets.length} weapon${plural(damagingTurrets.length)}`),
-      stat('Visual systems', visualOnly > 0 ? fmt(visualOnly) : 'none'),
+      stat('Utility emitters', utilityEmitters > 0 ? fmt(utilityEmitters) : 'none'),
       stat('Alpha strike', firepower.alphaDamage > 0 ? fmt(firepower.alphaDamage, 1) : 'none'),
       stat('Sustained damage', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'none'),
       stat('Longest fire range', longestRange > 0 ? fmt(longestRange) : 'none'),
-      stat('Manual weapons', fmt(turrets.filter((turret) => turret.config.isManualFire).length)),
-      stat('Host-directed weapons', fmt(turrets.filter((turret) => turret.config.hostDirected).length)),
+      stat('Manual weapons', fmt(turrets.filter((turret) => isManualEmitterConfig(turret.config)).length)),
+      stat('Host-directed weapons', fmt(turrets.filter((turret) => turret.config.controlMode === 'host').length)),
     ],
   };
 }
@@ -328,7 +329,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
     stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'utility'),
     stat('Aim', config.aimStyle.angleType),
     stat('Line of sight', config.requiresNonObstructedLineOfSight ? 'required' : 'not required'),
-    stat('Targeting', config.hostDirected ? 'host-directed' : 'autonomous'),
+    stat('Targeting', config.controlMode),
     stat('Fight-move stop', config.requiredEngagedForFightStop ? 'required engaged' : 'not required'),
   ];
 
@@ -348,7 +349,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
 
   return node(
     `${index + 1}. ${config.turretBlueprintId}`,
-    config.visualOnly ? 'visual' : blueprint.emissionBlueprintId ?? 'utility',
+    !isAttackEmitterConfig(config) ? config.kind : blueprint.emissionBlueprintId ?? 'utility',
     undefined,
     children,
   );

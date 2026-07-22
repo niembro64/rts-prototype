@@ -388,7 +388,6 @@ function combatant(
       turrets: [
         {
           config: {
-            visualOnly: false,
             passive: false,
             range: 160,
             shot: { type: 'plasma' },

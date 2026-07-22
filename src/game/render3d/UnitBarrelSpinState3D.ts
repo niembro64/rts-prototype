@@ -1,13 +1,14 @@
 import type { Entity, EntityId } from '../sim/types';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
 import {
   CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN,
-  CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY,
+  CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER,
   CLIENT_RENDER_TURRET_STATE_ENGAGED,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
@@ -52,7 +53,7 @@ export class UnitBarrelSpinState3D {
 
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
-      if (turret.config.visualOnly) continue;
+      if (!isAttackEmitter(turret)) continue;
       const barrel = turret.config.barrel;
       if (
         !barrel ||
@@ -91,7 +92,7 @@ export class UnitBarrelSpinState3D {
     for (let turretIdx = 0; turretIdx < rows.count; turretIdx++) {
       const row = rows.start + turretIdx;
       const flags = views.flags[row];
-      if ((flags & CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY) !== 0) continue;
+      if ((flags & CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER) !== 0) continue;
       if ((flags & CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN) === 0) continue;
 
       let perEntity = this.spins.get(entityId);

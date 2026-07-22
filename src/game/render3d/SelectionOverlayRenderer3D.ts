@@ -9,6 +9,7 @@ import { COLORS } from '@/colorsConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
 import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../sim/unitGeometry';
@@ -381,7 +382,7 @@ export class SelectionOverlayRenderer3D {
       const turrets = entity.combat.turrets;
       for (let i = 0; i < turrets.length; i++) {
         const weapon = turrets[i];
-        if (weapon.config.visualOnly) continue;
+        if (!isAttackEmitter(weapon)) continue;
         const tm = m.turrets[i];
         if (!tm) continue;
         if (!isConstructionPieceMaterialized(entity, 'body')) {

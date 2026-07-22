@@ -1,4 +1,5 @@
 import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, UnitMoveState } from './types';
+import { isAttackEmitterConfig } from './emitterKinds';
 
 export type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 
@@ -117,7 +118,7 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
     const config = turrets[i].config;
     const shot = config.shot;
     if (
-      !config.visualOnly &&
+      isAttackEmitterConfig(config) &&
       !config.passive &&
       shot !== null &&
       shot !== undefined &&

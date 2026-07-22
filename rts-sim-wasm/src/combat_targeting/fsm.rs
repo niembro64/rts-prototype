@@ -294,7 +294,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
 /// The kernel handles disabled/manual-fire/passive turrets the same way
 /// the TS path does:
 ///   - manual fire → no FSM update
-///   - weapon system disabled (visualOnly / passive&&!shield-panels /
+///   - weapon system disabled (non-attack emitter / passive&&!shield-panels /
 ///     forceShot&&!fields) → no FSM update (the TS resetDisabledWeapon
 ///     pass has already cleared their state)
 ///   - passive → clear the lock (matches `targeting.clearTurretLock(...)`)
@@ -333,7 +333,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         // Fully-autonomous turrets ignore the host's priority point
         // entirely. They keep their existing FSM state and run their own
         // independent acquisition.
-        if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
+        if (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 {
             continue;
         }
         // System-disabled weapons have already been reset by the TS
@@ -698,7 +698,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
         // Fully-autonomous turrets ignore the host's priority target
         // entirely. They keep their existing FSM state and run their own
         // independent acquisition.
-        if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
+        if (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 {
             continue;
         }
         if combat_targeting_weapon_system_disabled(

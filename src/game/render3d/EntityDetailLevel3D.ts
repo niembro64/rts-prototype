@@ -110,13 +110,13 @@ const CLOSE_RUNG_MIN_LEVEL = Math.max(
   clamp01(finitePositiveOr(detailConfig.rungMinLevel?.close, 0.62)),
 );
 // BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph
-// starts fading in over the model at the close→mid rung boundary radius —
-// the moment geometry drops to the MID tier — ramping smoothly from alpha
-// 0 there to full opacity at the glyph radius, where the FAR model
-// hard-cuts.
+// starts fully transparent at the mid→far rung boundary radius — the moment
+// geometry drops to the LOW tier — then fades in over that still-opaque LOW
+// model. It reaches full opacity only at the glyph radius, exactly where the
+// LOW model hard-cuts.
 export const ICON_FADE_START_SCREEN_RADIUS_PX =
   GLYPH_SCREEN_RADIUS_PX +
-  CLOSE_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+  MID_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
 export const DETAIL_HYSTERESIS_LEVEL = clamp01(
   finitePositiveOr(detailConfig.hysteresisLevel, 0.05));
 export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
@@ -244,9 +244,9 @@ export function detailLevelForRadiusDistance(
 
 /**
  * BAR-style icon cross-fade alpha from the projected screen radius.
- * 0 while the model still shows CLOSE-tier geometry (no icon), then a
+ * 0 while the model still shows CLOSE- or MID-tier geometry (no icon), then a
  * smooth linear ramp from 0 up to 1 as the radius falls from the
- * close→mid rung boundary (MID-tier onset) to the glyph threshold,
+ * mid→far rung boundary (LOW-tier onset) to the glyph threshold,
  * where the FAR model hard-cuts. The MODEL is never faded: it stays
  * fully opaque under the icon and stops drawing entirely once the
  * latched rung reaches GLYPH (where the now-fully-opaque glyph has

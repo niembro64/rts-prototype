@@ -807,7 +807,7 @@ export class WorldState {
   }
 
   /** Every entity that carries a CombatComponent with at least one
-   *  non-visualOnly turret. Includes both armed units and armed
+   *  attack emitter. Includes both armed units and armed
    *  buildings (megaBeam towers etc.) — the combat pipeline iterates
    *  this list and never branches on entity type. */
   getArmedEntities(): Entity[] {

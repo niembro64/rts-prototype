@@ -75,7 +75,11 @@ import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { LocomotionRenderPose } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
-import { getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
+import {
+  getLegsRadiusToggle,
+  getLegsReachToggle,
+  getSmokeTrails,
+} from '@/clientBarConfig';
 import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import {
   ScopedRenderMeshRetention3D,
@@ -189,6 +193,7 @@ export class Render3DEntities {
   private dyingUnitScatter!: DyingUnitScatter3D;
   private readonly activeLocomotionUnitIds = new IndexedEntityIdSet();
   private legsRadiusToggle = getLegsRadiusToggle();
+  private legsReachToggle = getLegsReachToggle();
   private smokeTrailsEnabled = getSmokeTrails();
   private readonly scopedMeshRetention = new ScopedRenderMeshRetention3D();
   /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
@@ -476,6 +481,7 @@ export class Render3DEntities {
     refreshLocomotionSupportSurfaces(this.clientViewState.getLocomotionSupportSurfaceEntities());
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
+    this.syncLegsReachToggleQueue();
     this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
     this.lodProxyRenderer.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
@@ -1071,6 +1077,15 @@ export class Render3DEntities {
     const current = getLegsRadiusToggle();
     if (current === this.legsRadiusToggle) return;
     this.legsRadiusToggle = current;
+    for (const [id, mesh] of this.unitMeshes) {
+      if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
+    }
+  }
+
+  private syncLegsReachToggleQueue(): void {
+    const current = getLegsReachToggle();
+    if (current === this.legsReachToggle) return;
+    this.legsReachToggle = current;
     for (const [id, mesh] of this.unitMeshes) {
       if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
     }

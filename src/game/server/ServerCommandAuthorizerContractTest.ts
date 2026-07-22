@@ -98,7 +98,6 @@ export function runServerCommandAuthorizerContractTest(): void {
     turrets: [
       {
         config: {
-          visualOnly: false,
           passive: false,
           range: 160,
           shot: { type: 'plasma' },
@@ -117,7 +116,6 @@ export function runServerCommandAuthorizerContractTest(): void {
     turrets: [
       {
         config: {
-          visualOnly: false,
           passive: false,
           range: 240,
           shot: { type: 'rocket' },

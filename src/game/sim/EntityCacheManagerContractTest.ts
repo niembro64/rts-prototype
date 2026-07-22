@@ -62,7 +62,6 @@ function unitEntity(
       turrets: [
         {
           config: {
-            visualOnly: false,
             shot: options.shieldTurret === true
               ? { type: 'shield', barrier: {} }
               : { type: 'beam' },
@@ -101,7 +100,6 @@ function buildingEntity(
       turrets: [
         {
           config: {
-            visualOnly: false,
             shot: { type: 'beam' },
           },
         },

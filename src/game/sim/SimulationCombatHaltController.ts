@@ -38,10 +38,7 @@ export class SimulationCombatHaltController {
       const action = unit.actions[0];
       let mode = -1;
       let priorityPointPresent = false;
-      if (
-        (action.type === 'attack' && action.targetId !== undefined) ||
-        action.type === 'guard'
-      ) {
+      if (action.type === 'attack' && action.targetId !== undefined) {
         mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
       } else if (action.type === 'attackGround') {
         mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;

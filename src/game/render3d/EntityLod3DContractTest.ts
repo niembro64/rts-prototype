@@ -137,8 +137,9 @@ export function runEntityLod3DContractTest(): void {
     groundUnit.transform.y = -2000;
     bodyLod.beginFrame();
     assertContract(
-      bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID,
-      'AUTO Medium resolves to the exact manual MED rung',
+      bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID &&
+        bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
+      'AUTO Medium resolves to the exact manual MED rung with no icon covering it',
     );
     groundUnit.transform.y = -4000;
     bodyLod.beginFrame();

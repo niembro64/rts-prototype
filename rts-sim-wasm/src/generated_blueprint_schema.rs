@@ -499,12 +499,17 @@ pub struct LockOnInclusionObject {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum WeaponKind {
+pub enum TurretEmitterKind {
     Attack,
-    Construction,
-    Repair,
     Spawn,
     ResourcePylon,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretMountControlMode {
+    Host,
+    Autonomous,
+    Manual,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -568,7 +573,7 @@ pub struct TurretAudioConfig {
 pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub name: String,
-    pub kind: WeaponKind,
+    pub kind: TurretEmitterKind,
     pub range: f64,
     pub rangeVolume: TurretRangeVolume,
     pub cooldown: Option<TurretCooldownConfig>,
@@ -580,7 +585,6 @@ pub struct TurretBlueprint {
     pub eventsSmooth: bool,
     pub launchForce: f64,
     pub addTurretVelocityToEmissionLaunch: bool,
-    pub isManualFire: bool,
     pub passive: bool,
     pub requiresNonObstructedLineOfSight: bool,
     pub spread: Option<TurretSpreadConfig>,
@@ -625,10 +629,11 @@ pub struct UnitTurretMountZResolver {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TurretMount {
+    pub mountId: String,
     pub turretBlueprintId: String,
     pub mount: MountOffset,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
-    pub hostDirected: bool,
+    pub controlMode: TurretMountControlMode,
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
@@ -640,10 +645,11 @@ pub struct TurretMount {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuildingTurretMount {
+    pub mountId: String,
     pub turretBlueprintId: String,
     pub mount: MountOffset,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
-    pub hostDirected: bool,
+    pub controlMode: TurretMountControlMode,
     pub visualVariant: Option<String>,
 }
 

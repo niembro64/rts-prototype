@@ -7,6 +7,7 @@ import { isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
 import { isBuildBlockingActivation } from '../sim/buildableHelpers';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
@@ -140,7 +141,7 @@ export class ProjectileRangeEnvelope3D {
     const shot = weapon.config.shot;
     return !!shot
       && isProjectileShot(shot)
-      && !weapon.config.visualOnly
+      && isAttackEmitter(weapon)
       && !weapon.config.passive
       && !weapon.config.verticalLauncher;
   }

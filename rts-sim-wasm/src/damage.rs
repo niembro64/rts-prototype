@@ -1018,7 +1018,7 @@ pub(crate) fn damage_death_explosion_turret_overlaps(
     if gidx >= pool.turret_entity_id.len() || pool.turret_entity_id[gidx] < 0 {
         return false;
     }
-    if (pool.turret_config_flags[gidx] & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+    if (pool.turret_config_flags[gidx] & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
         return false;
     }
 

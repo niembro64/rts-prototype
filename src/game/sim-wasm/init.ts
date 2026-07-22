@@ -2262,10 +2262,10 @@ export const CT_TURRET_CFG_NEEDS_BALLISTIC = 1 << 1;
 export const CT_TURRET_CFG_VERTICAL_LAUNCHER = 1 << 2;
 export const CT_TURRET_CFG_IS_MANUAL_FIRE = 1 << 3;
 export const CT_TURRET_CFG_PASSIVE = 1 << 4;
-export const CT_TURRET_CFG_VISUAL_ONLY = 1 << 5;
+export const CT_TURRET_CFG_NON_ATTACK_EMITTER = 1 << 5;
 export const CT_TURRET_CFG_SHOT_IS_FORCE = 1 << 6;
 export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
-export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
+export const CT_TURRET_CFG_HOST_CONTROLLED = 1 << 8;
 export const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED = 1 << 9;
 export const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED = 1 << 10;
 /** Packed range-mode value: fixed water-surface ceiling with no depth floor.
@@ -2358,6 +2358,7 @@ export interface CombatTargetingApi {
     entitySlot: number,
     entityId: number,
     ownerPlayerId: number,
+    teamId: number,
     viewMask: number,
     posX: number,
     posY: number,
@@ -2481,6 +2482,8 @@ export interface CombatTargetingApi {
     lockonTurretMask: number,
     lockonShotMask: number,
     lockonReciprocalMode: number,
+    taskTargetId: number,
+    taskPointActive: number,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
    *  masks for `entitySlot`. Reads slab FSM target/state + angular/
@@ -4641,6 +4644,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBoxSelectionContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');
         runRightClickCommandsContractTest();
+        const { runGuardFollowContractTest } = await import('../sim/guardFollowContractTest');
+        runGuardFollowContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
         const { runSimulationUnitActionPlannerContractTest } = await import('../sim/SimulationUnitActionPlannerContractTest');

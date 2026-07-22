@@ -14,8 +14,14 @@ import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, isBuildInProgress } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
+import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
-import { entityCanBuild } from './builderBuildRoster';
+import { entityCanBuild, resolveStructureSpawnCapability } from './hostCapabilities';
+import {
+  assignEmitterSpawnTask,
+  completeEmitterSpawnTask,
+  findMountedEmitter,
+} from './emitterTasks';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   canBuilderUpgradeMetalExtractor,
@@ -74,6 +80,14 @@ export class ConstructionSystem {
   ): Entity | null {
     const builderEntity = world.getEntity(builderId);
     if (!options.skipBuilderAuthorization && !entityCanBuild(builderEntity, buildingBlueprintId)) return null;
+    const spawnCapability = options.skipBuilderAuthorization
+      ? null
+      : resolveStructureSpawnCapability(builderEntity, buildingBlueprintId);
+    const spawnEmitter = builderEntity !== undefined && spawnCapability !== null
+      ? findMountedEmitter(builderEntity, spawnCapability.mountId)
+      : null;
+    if (!options.skipBuilderAuthorization && spawnEmitter === null) return null;
+    const producesNanoframe = spawnCapability?.producesNanoframe ?? true;
     const config = getBuildingConfig(buildingBlueprintId);
     const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
     const placementFootprint = getRotatedGridFootprint(
@@ -100,6 +114,24 @@ export class ConstructionSystem {
 
     // Get world position for building center
     const worldPos = { x: diagnostics.x, y: diagnostics.y };
+    if (
+      spawnEmitter !== null &&
+      spawnCapability !== null &&
+      !assignEmitterSpawnTask(spawnEmitter, {
+        blueprintKind: 'structure',
+        blueprintId: buildingBlueprintId,
+        completion: producesNanoframe ? 'nanoframe' : 'complete',
+        placement: {
+          kind: 'point',
+          x: worldPos.x,
+          y: worldPos.y,
+          z: world.getGroundZ(worldPos.x, worldPos.y),
+          rotation,
+        },
+      })
+    ) {
+      return null;
+    }
 
     // Extractors can be placed ANYWHERE that satisfies the normal
     // building placement rules — there's no longer a "must overlap
@@ -138,11 +170,11 @@ export class ConstructionSystem {
     // Add buildable component — paid starts at zero on every axis;
     // resources flow in from the player's stockpile until each axis
     // reaches required.
-    entity.buildable = createBuildable(config.cost);
+    entity.buildable = producesNanoframe ? createBuildable(config.cost) : null;
 
     // Allocate turret sub-entity ids up front so the finished building's
     // weapons can lock on and fire. Turrets with id === NO_ENTITY_ID are
-    // treated as visual-only; combat is still suppressed while the shell
+    // not materialized; combat is still suppressed while the shell
     // is under construction via the isEntityActive() / BUILDABLE_COMPLETE
     // gate, but on completion the turrets already hold real ids — matching
     // pre-placed buildings (placeCompleteBuilding).
@@ -161,7 +193,11 @@ export class ConstructionSystem {
     if (entity.building) {
       entity.building.maxHp = config.hp;
     }
-    initializeConstructionPieceHealth(entity, world);
+    if (producesNanoframe) {
+      initializeConstructionPieceHealth(entity, world);
+    } else if (entity.building !== null) {
+      entity.building.hp = entity.building.maxHp;
+    }
 
     // Add factory component if it's a factory
     if (buildingBlueprintId === 'towerFabricator') {
@@ -224,6 +260,8 @@ export class ConstructionSystem {
 
     // Add to world
     world.addEntity(entity);
+    if (!producesNanoframe) applyCompletedBuildingEffects(world, entity);
+    if (spawnEmitter !== null) completeEmitterSpawnTask(spawnEmitter, entity.id);
 
     // The builder's spawn turret is what brought this nanoframe into
     // existence: flash a brief init beam from it to the new shell.
@@ -233,7 +271,12 @@ export class ConstructionSystem {
 
     // Assign builder (only for non-commanders - commanders use their own action queue)
     const builder = builderEntity;
-    if (builder !== undefined && builder.builder !== null && builder.commander === null) {
+    if (
+      producesNanoframe &&
+      builder !== undefined &&
+      builder.builder !== null &&
+      builder.commander === null
+    ) {
       builder.builder.currentBuildTarget = entity.id;
       world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
     }

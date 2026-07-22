@@ -1,7 +1,9 @@
-// TreadRig3D — tread slab + internal wheels + animated cleat strip,
-// for tracked locomotion units. The rig itself is a static slab of
-// boxes + cylindrical end caps; per-frame motion (wheel spin and
-// cleat scroll) is driven by per-side body motion.
+// TreadRig3D — a static tread belt shell + an animated cleat strip,
+// for tracked locomotion units. The interior is a single non-spinning
+// shell (a rounded slab of boxes + cylindrical end caps at High/Medium,
+// one envelope box at Low); the only per-frame motion is the cleat
+// scroll, driven by per-side body motion. There are no spinning road
+// wheels inside the belt.
 //
 // Each side (left/right ribbon) lives in its own sub-group and carries
 // the four canonical visual state channels:
@@ -15,9 +17,7 @@
 // touching ground. Position EMAs toward the floor-clamp target every
 // frame; belt velocity EMAs toward the per-side body-motion-derived
 // target every frame. Low uses static envelope boxes while retaining
-// the position clamp and contact samples. Internal wheels read their angular velocity
-// from the parent side's -beltVelocity / wheelR so the whole side
-// moves as one mechanism. See the "Locomotion Visuals Are Frontend"
+// the position clamp and contact samples. See the "Locomotion Visuals Are Frontend"
 // section of budget_design_philosophy.html.
 
 import * as THREE from 'three';
@@ -33,7 +33,6 @@ import {
   emaAlpha,
   rollingContact,
   rollingLocomotionBodyActive,
-  rollingWheelAngularVelocity,
   sampleRollingContactDistance,
   sampleRollingContactPosition,
   transformChassisToWorld,
@@ -44,13 +43,9 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
-import {
-  createPrimitiveCylinderGeometry,
-  type PrimitiveGeometryTier,
-} from './PrimitiveGeometryQuality3D';
+import { type PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
-const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
 const _treadClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
@@ -73,27 +68,42 @@ const TREAD_LIFT_SETTLED_EPSILON = 0.02;
 const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
-const treadEndGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
-const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 
-function getTreadEndGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geom = treadEndGeomByTier.get(tier);
+// One watertight stadium (rounded-rectangle) prism for the belt shell, cached
+// per (dimensions, tier). A single extruded solid — not a slab box with
+// cylinder end caps punched into it — so no interior triangles overlap or
+// intersect. Cached module-side like the shared box geometry above.
+const treadShellGeoms = new Map<string, THREE.ExtrudeGeometry>();
+
+function getTreadShellGeom(
+  straightLength: number,
+  treadRadius: number,
+  width: number,
+  tier: PrimitiveGeometryTier,
+): THREE.ExtrudeGeometry {
+  const arcSegs = tier === 'mid' ? 6 : 10;
+  const key = `${straightLength.toFixed(2)}:${treadRadius.toFixed(2)}:${width.toFixed(2)}:${tier}`;
+  let geom = treadShellGeoms.get(key);
   if (!geom) {
-    geom = createPrimitiveCylinderGeometry('locomotion', tier);
-    treadEndGeomByTier.set(tier, geom);
-  }
-  return geom;
-}
-function getWheelGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geom = wheelGeomByTier.get(tier);
-  if (!geom) {
-    geom = createPrimitiveCylinderGeometry('locomotion', tier);
-    wheelGeomByTier.set(tier, geom);
+    const hs = straightLength / 2;
+    const shape = new THREE.Shape();
+    shape.moveTo(-hs, -treadRadius);
+    shape.lineTo(hs, -treadRadius); // bottom straight
+    shape.absarc(hs, 0, treadRadius, -Math.PI / 2, Math.PI / 2, false); // front semicircle
+    shape.lineTo(-hs, treadRadius); // top straight
+    shape.absarc(-hs, 0, treadRadius, Math.PI / 2, Math.PI * 1.5, false); // back semicircle
+    geom = new THREE.ExtrudeGeometry(shape, {
+      depth: width,
+      bevelEnabled: false,
+      steps: 1,
+      curveSegments: arcSegs,
+    });
+    geom.translate(0, 0, -width / 2); // centre the extrusion across the belt width
+    treadShellGeoms.set(key, geom);
   }
   return geom;
 }
 const treadMats = new Map<number, THREE.MeshBasicMaterial>();
-const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
 
 /**
@@ -159,7 +169,6 @@ export type TreadMesh = {
   cleatLoopLength: number;
   treadStraightLength: number;
   treadRadius: number;
-  internalWheelRadius: number;
   /** Maximum chassis-local suspension travel. A support surface can
    *  lift the belt within this envelope, never detach the whole rig. */
   maxLift: number;
@@ -187,7 +196,6 @@ export function buildTreads(
   const offset = r * cfg.treadOffset;
   const treadRadius = Math.min(TREAD_HEIGHT / 2, Math.max(1, length / 2));
   const straightLength = Math.max(1, length - 2 * treadRadius);
-  const halfStraight = straightLength / 2;
 
   const sides: TreadSide[] = [];
   const wheels: THREE.Mesh[] = [];
@@ -196,7 +204,6 @@ export function buildTreads(
   let cleatSpacing = 0;
   const cleatLoopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
   const treadMat = getLocomotionMatByCache(treadMats, TREAD_COLOR, ownerId);
-  const wheelMat = getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId);
   const cleatMat = getLocomotionMatByCache(
     cleatMats,
     COLORS.units.locomotion.tread.cleat.colorHex,
@@ -219,21 +226,17 @@ export function buildTreads(
       freezeStaticLocalTransform(treadBox);
       sideGroup.add(treadBox);
     } else {
-      // High/medium retain the rounded three-piece belt outline.
-      const centerRun = new THREE.Mesh(treadBoxGeom, treadMat);
-      centerRun.scale.set(straightLength, TREAD_HEIGHT, width);
-      centerRun.position.set(0, TREAD_Y, 0);
-      freezeStaticLocalTransform(centerRun);
-      sideGroup.add(centerRun);
-
-      for (const end of [-1, 1] as const) {
-        const roundedEnd = new THREE.Mesh(getTreadEndGeom(geometryTier), treadMat);
-        roundedEnd.rotation.x = Math.PI / 2;
-        roundedEnd.scale.set(treadRadius, width, treadRadius);
-        roundedEnd.position.set(end * halfStraight, TREAD_Y, 0);
-        freezeStaticLocalTransform(roundedEnd);
-        sideGroup.add(roundedEnd);
-      }
+      // High/medium: one watertight stadium prism for the belt shell -- flat
+      // straights joined by semicircular ends, no overlapping interior
+      // triangles. The shape's X/Y are the belt length/height and the extrusion
+      // depth is the belt width, so it drops straight into the side group.
+      const shell = new THREE.Mesh(
+        getTreadShellGeom(straightLength, treadRadius, width, geometryTier),
+        treadMat,
+      );
+      shell.position.set(0, TREAD_Y, 0);
+      freezeStaticLocalTransform(shell);
+      sideGroup.add(shell);
     }
 
     sides.push({
@@ -253,32 +256,7 @@ export function buildTreads(
     rollingContact(0, offset),
   ];
 
-  const internalWheelRadius = Math.max(1, r * cfg.wheelRadius);
   if (animatedWheels && geometryTier !== 'far') {
-    // Internal wheels — mostly hidden inside the slab but ensure the
-    // chassis-speed → wheel-rotation rate stays consistent with what the
-    // visible cleats display. Their angular velocity is derived from
-    // their parent side's beltVelocity, so the whole side moves as
-    // one mechanism (cleats and wheels can't desync).
-    const wheelCount = geometryTier === 'mid'
-      ? Math.max(2, Math.round(cfg.treadLength))
-      : Math.max(2, Math.round(cfg.treadLength * 2));
-    const wheelR = internalWheelRadius;
-    for (let s = 0; s < 2; s++) {
-      const sideGroup = sides[s].group;
-      for (let i = 0; i < wheelCount; i++) {
-        const t = (i + 0.5) / wheelCount;
-        const x = -length / 2 + t * length;
-        const w = new THREE.Mesh(getWheelGeom(geometryTier), wheelMat);
-        w.rotation.x = Math.PI / 2;
-        w.scale.set(wheelR, width * 1.05, wheelR);
-        w.position.set(x, TREAD_Y, 0);
-        sideGroup.add(w);
-        wheels.push(w);
-        wheelSide.push(s);
-      }
-    }
-
     // Animated cleats cover the full belt loop: top run, rounded front
     // return, bottom ground-contact run, and rounded rear return. This
     // makes treads read correctly from side/front/back instead of
@@ -318,7 +296,6 @@ export function buildTreads(
     cleatLoopLength,
     treadStraightLength: straightLength,
     treadRadius,
-    internalWheelRadius,
     maxLift: Math.max(1, Math.min(r * 0.35, TREAD_HEIGHT)),
     printWidth,
     rotationAnimated: geometryTier !== 'far',
@@ -330,12 +307,12 @@ export function buildTreads(
 const _treadWorld = { x: 0, y: 0, z: 0 };
 const _treadUp = { x: 0, y: 1, z: 0 };
 
-/** Per-frame: integrate each side's four visual channels forward. The
- *  floor clamp drives the lift channel via EMA; the per-side signed
- *  distance drives the beltVelocity channel via EMA. beltPhase
- *  integrates from beltVelocity and feeds the cleat layout. Internal
- *  wheels integrate from the same per-side -beltVelocity / wheelR.
- *  Low skips belt and wheel rotation while retaining the floor clamp. */
+/** Per-frame: integrate each side's visual channels forward. The floor
+ *  clamp drives the lift channel via EMA; the per-side signed distance
+ *  drives the beltVelocity channel via EMA. beltPhase integrates from
+ *  beltVelocity and feeds the cleat layout. Low skips belt scroll while
+ *  retaining the floor clamp. The interior is a single static belt shell
+ *  (no spinning road wheels), so only the cleats move. */
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,
@@ -414,25 +391,6 @@ export function updateTreads(
     } else {
       if (contact !== undefined) sampleRollingContactPosition(pose, contact);
       sideEntry.beltVelocity = 0;
-    }
-  }
-
-  // Internal-wheel phase remains a logical state channel even when Low
-  // omits the hidden wheel meshes. A later Low→Medium/High rebuild can
-  // therefore restore the exact phase instead of visibly restarting it.
-  if (mesh.rotationAnimated) {
-    for (let i = 0; i < mesh.sides.length; i++) {
-      const side = mesh.sides[i];
-      side.wheelRotation += rollingWheelAngularVelocity(
-        side.beltVelocity,
-        mesh.internalWheelRadius,
-      ) * dtSec;
-    }
-    for (let i = 0; i < mesh.wheels.length; i++) {
-      const sideIdx = mesh.wheelSide[i];
-      const side = mesh.sides[sideIdx];
-      if (!side) continue;
-      mesh.wheels[i].rotation.y = side.wheelRotation;
     }
   }
 

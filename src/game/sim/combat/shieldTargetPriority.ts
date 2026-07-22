@@ -1,4 +1,5 @@
 import type { Entity, Turret } from '../types';
+import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -46,8 +47,8 @@ function scoreShieldPanelTargetTurretFromTarget(
   ourTurretId: number | undefined,
 ): number {
   if (turret.config.passive) return 0;
-  if (turret.config.visualOnly) return 0;
-  if (turret.config.isManualFire) return 0;
+  if (!isAttackEmitter(turret)) return 0;
+  if (isManualEmitterConfig(turret.config)) return 0;
   if (readCombatTargetingTurretFsmInto(target, turretIndex, _shieldPanelTargetFsm)) {
     if (!threatTargetsShieldPanel(_shieldPanelTargetFsm.targetId, ourUnitId, ourTurretId)) {
       return 0;
@@ -102,8 +103,8 @@ export function pickTargetAimTurret(
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
     if (turret.config.passive) continue;
-    if (turret.config.visualOnly) continue;
-    if (turret.config.isManualFire) continue;
+    if (!isAttackEmitter(turret)) continue;
+    if (isManualEmitterConfig(turret.config)) continue;
     const score = turretDps(turret);
     if (score <= 0) continue;
     if (best === null || score > best.score) {
@@ -112,4 +113,3 @@ export function pickTargetAimTurret(
   }
   return best;
 }
-

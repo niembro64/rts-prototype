@@ -37,6 +37,12 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
+import {
+  getEmitterAttackTaskTargetId,
+  hasEmitterAttackPointTask,
+  synchronizeHostCombatEmitterTasks,
+} from '../emitterCombatTasks';
+import { isAttackEmitter } from '../emitterKinds';
 import { getProjectileMediumFrictionPer60HzFrame } from '../shotLocomotionMotion';
 import {
   getPoweredShotReachabilityDistance,
@@ -65,10 +71,10 @@ import {
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
   CT_TURRET_CFG_IS_MANUAL_FIRE,
   CT_TURRET_CFG_PASSIVE,
-  CT_TURRET_CFG_VISUAL_ONLY,
+  CT_TURRET_CFG_NON_ATTACK_EMITTER,
   CT_TURRET_CFG_SHOT_IS_FORCE,
   CT_TURRET_CFG_HAS_TRACKING_RANGE,
-  CT_TURRET_CFG_HOST_DIRECTED,
+  CT_TURRET_CFG_HOST_CONTROLLED,
   CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
   CT_TURRET_CFG_RANGE_TOP_WATER_AND_BOTTOM_UNBOUNDED,
   CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
@@ -660,10 +666,10 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
     f |= CT_TURRET_CFG_NEEDS_BALLISTIC;
   }
   if (turret.config.verticalLauncher === true) f |= CT_TURRET_CFG_VERTICAL_LAUNCHER;
-  if (turret.config.isManualFire === true) f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
+  if (turret.config.controlMode === 'manual') f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
   if (turret.config.passive === true) f |= CT_TURRET_CFG_PASSIVE;
-  if (turret.id === NO_ENTITY_ID || turret.config.visualOnly === true) {
-    f |= CT_TURRET_CFG_VISUAL_ONLY;
+  if (turret.id === NO_ENTITY_ID || !isAttackEmitter(turret)) {
+    f |= CT_TURRET_CFG_NON_ATTACK_EMITTER;
   }
   if (shot !== null && shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
@@ -683,7 +689,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
     f |= CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
-  if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;
+  if (turret.config.controlMode === 'host') f |= CT_TURRET_CFG_HOST_CONTROLLED;
   if (turret.config.requiredEngagedForFightStop) {
     f |= CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP;
   }
@@ -731,6 +737,7 @@ function stampCombatTargetingEntityInto(
   entity: Entity,
 ): number {
   const combat = entity.combat;
+  synchronizeHostCombatEmitterTasks(entity);
   const slot = entitySlotRegistry.getEntitySlot(entity);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
@@ -741,6 +748,7 @@ function stampCombatTargetingEntityInto(
 
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
+  const teamId = ownership ? world.getTeamId(playerId) : 0;
   const viewMask = getEntityViewMask(world, playerId);
   _stampPos.x = entity.transform.x;
   _stampPos.y = entity.transform.y;
@@ -875,7 +883,7 @@ function stampCombatTargetingEntityInto(
   // and direct slab writers own its evolution) and seeds fresh-turret
   // constants on slot reuse, keyed off setEntity's same-entity check.
   targeting.setEntity(
-    slot, entity.id, playerId, viewMask,
+    slot, entity.id, playerId, teamId, viewMask,
     _stampPos.x, _stampPos.y, _stampPos.z,
     velX, velY, velZ,
     groundZ,
@@ -1008,6 +1016,8 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnTurretIncludeMask,
       t.config.lockOnShotIncludeMask,
       t.config.lockOnRequiresTargetLockedOntoSelfMode,
+      getEmitterAttackTaskTargetId(t),
+      hasEmitterAttackPointTask(t) ? 1 : 0,
     );
   }
   return slot;

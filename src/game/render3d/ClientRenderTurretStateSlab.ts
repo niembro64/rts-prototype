@@ -3,6 +3,7 @@ import { getChassisLiftY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { turretStateToCode } from '../../types/network';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import {
   SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
   SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER,
@@ -16,7 +17,7 @@ export const CLIENT_RENDER_TURRET_STATE_ENGAGED = turretStateToCode('engaged');
 export const CLIENT_RENDER_TURRET_FLAG_ACTIVE = 1;
 export const CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY = 1 << 1;
 export const CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER = 1 << 2;
-export const CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY = 1 << 3;
+export const CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER = 1 << 3;
 export const CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN = 1 << 4;
 export const CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD = 1 << 5;
 
@@ -95,7 +96,7 @@ function turretFlags(turret: Turret): number {
   if (turret.config.constructionEmitter !== null) {
     flags |= CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER;
   }
-  if (turret.config.visualOnly) flags |= CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY;
+  if (!isAttackEmitter(turret)) flags |= CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER;
   const barrel = turret.config.barrel;
   if (
     barrel !== undefined &&

@@ -44,7 +44,7 @@ import {
   commandAuthorityPlayerId,
   type CommandAuthority,
 } from './commandAuthority';
-import { entityCanBuild } from '../sim/builderBuildRoster';
+import { entityCanBuild } from '../sim/hostCapabilities';
 import { factoryCanProduceUnit } from '../sim/factoryProductionRoster';
 import {
   canBuilderUpgradeMetalExtractor,

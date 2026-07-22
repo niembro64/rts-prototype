@@ -186,8 +186,7 @@ function validateSensorCapabilityConfig(
   }
 }
 
-function validateUnitBuilderMounts(bp: UnitBlueprint): void {
-  let hasStructureSpawnRoster = false;
+function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
   let hasConstructionRate = false;
 
   for (const mount of bp.turrets) {
@@ -210,7 +209,6 @@ function validateUnitBuilderMounts(bp: UnitBlueprint): void {
           );
         }
       }
-      hasStructureSpawnRoster = true;
     }
     if (mount.constructionRate !== undefined) {
       if (turretBlueprint.resourcePylon?.role !== 'construction') {
@@ -233,14 +231,9 @@ function validateUnitBuilderMounts(bp: UnitBlueprint): void {
       `Invalid builder config for ${bp.unitBlueprintId}: buildRange must be positive`,
     );
   }
-  if (!hasStructureSpawnRoster) {
-    throw new Error(
-      `Invalid builder config for ${bp.unitBlueprintId}: builder units must author allowedBuildBlueprintIds on their building/tower spawn turret mount`,
-    );
-  }
   if (!hasConstructionRate) {
     throw new Error(
-      `Invalid builder config for ${bp.unitBlueprintId}: builder units must author constructionRate on a construction-pylon mount`,
+      `Invalid constructor config for ${bp.unitBlueprintId}: constructor units must author constructionRate on a construction-pylon mount`,
     );
   }
 }
@@ -266,7 +259,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       `Invalid sensor config for ${bp.unitBlueprintId}: fullVisionRadius must mirror sensors.fullSightRadius`,
     );
   }
-  validateUnitBuilderMounts(bp);
+  validateUnitWorkEmitterMounts(bp);
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(

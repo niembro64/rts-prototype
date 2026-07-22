@@ -34,8 +34,9 @@
           "y": 0,
           "z": 1.2
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "gunLight",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -143,8 +144,9 @@
           "y": 0,
           "z": 1.3
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "gunBurst",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -251,8 +253,9 @@
           "y": 0,
           "z": 4.5
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMini",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretShieldSphereSmall",
@@ -261,8 +264,9 @@
           "y": 0,
           "z": 4.5
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "shieldSphereSmall",
+        "controlMode": "autonomous"
       }
     ],
     "bodyShape": null,
@@ -385,8 +389,9 @@
           "y": 0,
           "z": 1.4
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "rocketSlow",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -493,8 +498,9 @@
           "y": 0,
           "z": 1.2
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "mortarSlow",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -603,8 +609,9 @@
           "y": 0,
           "z": 0.8
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMini",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -647,8 +654,8 @@
         "lerpDuration": 100,
         "leftSide": [
           {
-            "attachOffsetXFrac": 0.25,
-            "attachOffsetYFrac": -0.15,
+            "attachOffsetXFrac": 0.3,
+            "attachOffsetYFrac": -0.3,
             "upperLegLengthFrac": 0.5,
             "lowerLegLengthFrac": 0.55,
             "snapTriggerAngle": 1.445132620651,
@@ -657,8 +664,8 @@
             "extensionThreshold": 0.96
           },
           {
-            "attachOffsetXFrac": -0.25,
-            "attachOffsetYFrac": -0.15,
+            "attachOffsetXFrac": -0.3,
+            "attachOffsetYFrac": -0.3,
             "upperLegLengthFrac": 0.5,
             "lowerLegLengthFrac": 0.55,
             "snapTriggerAngle": 3.110176727054,
@@ -731,8 +738,9 @@
           "y": 0,
           "z": 1.5
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "cannon",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -839,8 +847,9 @@
           "y": 0,
           "z": 3.3
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "mortarFast",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1001,8 +1010,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 2.8
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMini1",
+        "controlMode": "autonomous"
       },
       {
         "turretBlueprintId": "turretBeamMini",
@@ -1015,8 +1025,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 2.8
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMini2",
+        "controlMode": "autonomous"
       },
       {
         "turretBlueprintId": "turretBeamMini",
@@ -1029,8 +1040,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 2.8
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMini3",
+        "controlMode": "autonomous"
       },
       {
         "turretBlueprintId": "turretBeamMini",
@@ -1043,8 +1055,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 2.8
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMini4",
+        "controlMode": "autonomous"
       },
       {
         "turretBlueprintId": "turretBeamMega",
@@ -1057,8 +1070,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 2.8
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMega",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretShieldSphere",
@@ -1071,8 +1085,9 @@
           "kind": "topMounted",
           "bodyTopZFrac": 1.6
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "shieldSphere",
+        "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
@@ -1211,8 +1226,9 @@
           "y": 0,
           "z": 1.8
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "gatling",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1318,8 +1334,9 @@
           "y": 0,
           "z": 1.35
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "gunBurst",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1467,8 +1484,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "torpedo",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1610,8 +1628,9 @@
           "y": 0,
           "z": 2.5
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beam",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1758,8 +1777,9 @@
             "angle": 0
           }
         ],
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "shieldPanel",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1863,8 +1883,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMini",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -1971,8 +1992,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "mortarDrop",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretGunLight",
@@ -1981,8 +2003,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "gunLight",
+        "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
@@ -2106,8 +2129,9 @@
         },
         "visualVariant": "small",
         "constructionRate": 35,
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionEnergy",
@@ -2118,8 +2142,9 @@
         },
         "visualVariant": "small",
         "constructionRate": 35,
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretSpawnBuildingsAndTowers",
@@ -2140,8 +2165,9 @@
           "towerBeamMega",
           "towerAntiAir"
         ],
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "spawnBuildingsAndTowers",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2264,8 +2290,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "rocketFast",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2387,8 +2414,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMega",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2517,8 +2545,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "albatrosSiegeCannon1",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
@@ -2527,8 +2556,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "albatrosSiegeCannon2",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
@@ -2537,8 +2567,9 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "albatrosSiegeCannon3",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2666,10 +2697,11 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
         "producedBlueprintId": "unitBee",
-        "productionHoldAnchor": "host"
+        "productionHoldAnchor": "host",
+        "mountId": "spawnUnits",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",
@@ -2679,9 +2711,10 @@
           "z": 0
         },
         "visualVariant": "small",
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
-        "constructionRate": 120
+        "constructionRate": 120,
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionEnergy",
@@ -2691,9 +2724,10 @@
           "z": 0
         },
         "visualVariant": "small",
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
-        "constructionRate": 120
+        "constructionRate": 120,
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2813,10 +2847,11 @@
           "y": 0,
           "z": 0
         },
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
         "producedBlueprintId": "unitTick",
-        "productionHoldAnchor": "host"
+        "productionHoldAnchor": "host",
+        "mountId": "spawnUnits",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",
@@ -2826,9 +2861,10 @@
           "z": 0
         },
         "visualVariant": "small",
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
-        "constructionRate": 30
+        "constructionRate": 30,
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionEnergy",
@@ -2838,9 +2874,10 @@
           "z": 0
         },
         "visualVariant": "small",
-        "hostDirected": true,
         "requiredEngagedForFightStop": false,
-        "constructionRate": 30
+        "constructionRate": 30,
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -3092,8 +3129,9 @@
           "y": -0.42,
           "z": 1
         },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": true
+        "requiredEngagedForFightStop": true,
+        "mountId": "beam",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretDisruptor",
@@ -3102,8 +3140,9 @@
           "y": 0.42,
           "z": 1
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "disruptor",
+        "controlMode": "manual"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",
@@ -3114,8 +3153,9 @@
         },
         "visualVariant": "small",
         "constructionRate": 50,
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionEnergy",
@@ -3126,8 +3166,9 @@
         },
         "visualVariant": "small",
         "constructionRate": 50,
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretSpawnBuildingsAndTowers",
@@ -3146,8 +3187,9 @@
           "towerCannon",
           "towerAntiAir"
         ],
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
+        "requiredEngagedForFightStop": false,
+        "mountId": "spawnBuildingsAndTowers",
+        "controlMode": "host"
       }
     ],
     "bodyShape": {

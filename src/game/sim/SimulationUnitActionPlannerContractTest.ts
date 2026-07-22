@@ -157,6 +157,16 @@ export function runSimulationUnitActionPlannerContractTest(): void {
       action('guard', { targetId: 7 }),
       UNIT_ACTION_FLAG_TARGET_PRESENT |
         UNIT_ACTION_FLAG_GUARD_FRIENDLY |
+        UNIT_ACTION_FLAG_MOVE_STATE_HOLD |
+        UNIT_ACTION_FLAG_COMBAT_STOP_ANY,
+    ) === UNIT_ACTION_PLAN_GUARD_FOLLOW,
+    'explicit guard follow must not be frozen by host move state or an independently engaged turret',
+  );
+  assertContract(
+    classify(
+      action('guard', { targetId: 7 }),
+      UNIT_ACTION_FLAG_TARGET_PRESENT |
+        UNIT_ACTION_FLAG_GUARD_FRIENDLY |
         UNIT_ACTION_FLAG_GUARD_SERVICE,
       serviceTarget,
     ) === UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,

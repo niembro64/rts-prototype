@@ -38,10 +38,6 @@ const HIGH_RISK_MATH_ALLOWLIST = new Map([
     count: 1,
     reason: 'module-load spring damping constant derived from canonical config before gameplay ticks',
   }],
-  ['src/game/server/UnitForceSystem.ts', {
-    count: 1,
-    reason: 'module-load hover orientation damping constant derived from canonical config before gameplay ticks',
-  }],
   ['src/game/sim/pathfindingTuning.ts', {
     count: 1,
     reason: 'module-load pathfinding stability threshold derived from canonical config before terrain/pathfinding startup',

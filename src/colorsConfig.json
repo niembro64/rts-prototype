@@ -365,6 +365,10 @@
         "debugRestSphere": {
           "colorHex": "#44ffcc",
           "opacity": 0.4
+        },
+        "debugReachSphere": {
+          "colorHex": "#ffb347",
+          "opacity": 0.46
         }
       },
       "flipper": {

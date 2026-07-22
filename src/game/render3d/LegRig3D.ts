@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { getLegsRadiusToggle } from '@/clientBarConfig';
+import { getLegsRadiusToggle, getLegsReachToggle } from '@/clientBarConfig';
 import type {
   LegConfig as BlueprintLegConfig,
   UnitBodyShape,
@@ -147,6 +147,17 @@ const restSphereMat = new THREE.LineBasicMaterial({
   opacity: COLORS.units.locomotion.leg.debugRestSphere.opacity,
   depthWrite: false,
 });
+const reachSphereMat = new THREE.LineBasicMaterial({
+  color: COLORS.units.locomotion.leg.debugReachSphere.colorHex,
+  transparent: true,
+  opacity: COLORS.units.locomotion.leg.debugReachSphere.opacity,
+  depthWrite: false,
+});
+const restDirectionGeom = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(1, 0, 0),
+]);
+const debugSpokeAxis = new THREE.Vector3(1, 0, 0);
 
 /** State for a single leg. The foot is planted at a real WORLD XYZ
  *  point on the terrain — it stays at that exact ground spot
@@ -211,6 +222,10 @@ export type LegInstance = {
   /** LEGS-radius debug viz: a wireframe SPHERE centered at this
    *  leg's authored rest position. Lazy-built; hidden when off. */
   restSphere?: THREE.LineSegments;
+  /** LEG-REACH debug viz: the exact hip-centered maximum extension
+   *  sphere plus a spoke to the authored rest point. */
+  reachSphere?: THREE.LineSegments;
+  restDirection?: THREE.Line;
 };
 
 export type LegMesh = {
@@ -491,6 +506,7 @@ export function updateLegs(
   // latches or movement-directed full-extension targets.
   const stepRadius = mesh.stepRadius;
   const showViz = getLegsRadiusToggle();
+  const showReachViz = getLegsReachToggle();
   const wasVisualGrounded = mesh.visualGrounded;
   const grounded = resolveVisualLegGrounded(
     mesh,
@@ -569,6 +585,42 @@ export function updateLegs(
       leg.restSphere.scale.setScalar(stepRadius);
     } else if (leg.restSphere) {
       leg.restSphere.visible = false;
+    }
+
+    // LEG-REACH viz: the sphere is the hard rendered extension clamp. The
+    // spoke exposes snapTargetAngle as the direction of the authored rest
+    // point; there is no angular threshold in the grounded step trigger.
+    if (showReachViz) {
+      if (!leg.reachSphere) {
+        leg.reachSphere = new THREE.LineSegments(restSphereGeom, reachSphereMat);
+        mesh.group.add(leg.reachSphere);
+      }
+      leg.reachSphere.visible = true;
+      leg.reachSphere.position.set(hipWorldX, hipWorldY, hipWorldZ);
+      leg.reachSphere.scale.setScalar(tl);
+
+      if (!leg.restDirection) {
+        leg.restDirection = new THREE.Line(restDirectionGeom, reachSphereMat);
+        mesh.group.add(leg.restDirection);
+      }
+      leg.restDirection.visible = true;
+      leg.restDirection.position.set(hipWorldX, hipWorldY, hipWorldZ);
+      _debugSpokeDirection.set(
+        restWorldX - hipWorldX,
+        restWorldY - hipWorldY,
+        restWorldZ - hipWorldZ,
+      );
+      const spokeLength = _debugSpokeDirection.length();
+      if (spokeLength > 1e-6) {
+        _debugSpokeDirection.multiplyScalar(1 / spokeLength);
+        leg.restDirection.quaternion.setFromUnitVectors(debugSpokeAxis, _debugSpokeDirection);
+        leg.restDirection.scale.set(spokeLength, 1, 1);
+      } else {
+        leg.restDirection.scale.set(0, 1, 1);
+      }
+    } else {
+      if (leg.reachSphere) leg.reachSphere.visible = false;
+      if (leg.restDirection) leg.restDirection.visible = false;
     }
 
     if (!leg.initialized) {
@@ -684,7 +736,7 @@ export function updateLegs(
       chassisUpX, chassisUpY, chassisUpZ,
     );
   }
-  return legsNeedFrame(mesh, pose, showViz);
+  return legsNeedFrame(mesh, pose, showViz || showReachViz);
 }
 
 function legsNeedFrame(mesh: LegMesh, pose: LocomotionRenderPose, showViz: boolean): boolean {
@@ -934,6 +986,7 @@ function hasReachableGroundAtRest(
 const _worldOut = { x: 0, y: 0, z: 0 };
 const _chassisUp = { x: 0, y: 1, z: 0 };
 const _localVelocity = { x: 0, y: 0, z: 0 };
+const _debugSpokeDirection = new THREE.Vector3();
 const _footSurface: LocomotionFootSurfaceSample = {
   groundY: 0,
   visualFootY: 0,
@@ -970,6 +1023,8 @@ function updateUnsupportedLegPose(
 
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
+    if (leg.reachSphere) leg.reachSphere.visible = false;
+    if (leg.restDirection) leg.restDirection.visible = false;
 
     const c = leg.config;
     const tl = totalLegLength(c);

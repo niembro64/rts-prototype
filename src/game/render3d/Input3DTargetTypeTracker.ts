@@ -4,6 +4,7 @@ import {
   entityCanBarAttackTarget,
   entityHasBarSetTargetCommand,
 } from '../sim/unitCommandCapabilities';
+import { isAttackEmitterConfig } from '../sim/emitterKinds';
 
 const BAR_TARGET_TYPE_POLL_TICKS = 15;
 const BAR_TARGET_TYPE_RANGE_MULTIPLIER = 1.5;
@@ -183,7 +184,7 @@ function maxTargetTypeRange(entity: Entity): number {
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
     if (
-      config.visualOnly ||
+      !isAttackEmitterConfig(config) ||
       config.passive ||
       config.shot === null ||
       config.shot === undefined ||

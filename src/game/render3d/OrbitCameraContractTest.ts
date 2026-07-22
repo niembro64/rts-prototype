@@ -1,5 +1,6 @@
 import {
   barCameraLockedYaw,
+  barCameraYaw,
   barCameraRelativeZoomFactor,
   barCameraZoomElevationOffset,
   barSpringDamperStep,
@@ -96,6 +97,15 @@ export function runOrbitCameraContractTest(): void {
     close(barCameraLockedYaw(halfPi * 1.1), halfPi)
       && close(barCameraLockedYaw(-halfPi * 1.1), -halfPi),
     'BAR cardinal lock must land exactly on positive and negative cardinals',
+  );
+  assertContract(
+    close(barCameraYaw(halfPi * 0.05, false), halfPi * 0.05)
+      && close(barCameraYaw(-halfPi * 1.1, false), -halfPi * 1.1),
+    'disabled cardinal lock must preserve uninterrupted raw yaw',
+  );
+  assertContract(
+    close(barCameraYaw(halfPi * 0.05, true), 0),
+    'enabled cardinal lock must retain BAR yaw behavior',
   );
 
   const firstLift = persistentTerrainRaise(90, 100, 5);

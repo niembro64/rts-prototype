@@ -2,6 +2,7 @@
 
 import type { Entity, ProjectileShot, Turret } from '../types';
 import { isProjectileShot } from '../types';
+import { isAttackEmitterConfig, isManualEmitterConfig } from '../emitterKinds';
 import { getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
@@ -72,8 +73,8 @@ export function hasManualFireShotWeapon(entity: Entity): boolean {
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
     if (
-      config.isManualFire === true &&
-      !config.visualOnly &&
+      isManualEmitterConfig(config) &&
+      isAttackEmitterConfig(config) &&
       !config.passive &&
       config.shot !== null
     ) {

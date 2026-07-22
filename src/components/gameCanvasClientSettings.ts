@@ -25,6 +25,7 @@ import {
   getBurnMarks,
   getLodMode,
   getLegsRadiusToggle,
+  getLegsReachToggle,
   getLocomotionMarks,
   getMasterVolume,
   getMetalMap,
@@ -63,6 +64,7 @@ import {
   setBurnMarks,
   setLodMode,
   setLegsRadiusToggle,
+  setLegsReachToggle,
   setLocomotionMarks,
   setMasterVolume,
   setMetalMap,
@@ -191,6 +193,7 @@ export function useGameCanvasClientSettings({
   const commandHotkeyPreset = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
   const commandHotkeyRevision = ref(0);
   const legsRadiusToggle = ref(getLegsRadiusToggle());
+  const legsReachToggle = ref(getLegsReachToggle());
   const lodMode = ref<LodMode>(getLodMode());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
@@ -247,6 +250,7 @@ export function useGameCanvasClientSettings({
     for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
     for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
     legsRadiusToggle.value = getLegsRadiusToggle();
+    legsReachToggle.value = getLegsReachToggle();
     lodMode.value = getLodMode();
     cameraSmoothMode.value = getCameraSmoothMode();
     cameraFollowMode.value = getCameraFollowMode();
@@ -316,6 +320,12 @@ export function useGameCanvasClientSettings({
     const newValue = !legsRadiusToggle.value;
     setLegsRadiusToggle(newValue);
     legsRadiusToggle.value = newValue;
+  }
+
+  function toggleLegsReach(): void {
+    const newValue = !legsReachToggle.value;
+    setLegsReachToggle(newValue);
+    legsReachToggle.value = newValue;
   }
 
   function changeLodMode(mode: LodMode): void {
@@ -633,6 +643,7 @@ export function useGameCanvasClientSettings({
     changeSelectionHudMode(cd.selectionHudMode.default);
     changeCommandHotkeyPreset(DEFAULT_COMMAND_HOTKEY_PRESET);
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
+    if (legsReachToggle.value !== cd.legsReach.default) toggleLegsReach();
     setCameraMode(cd.cameraSmooth.default);
     setCameraFollow(cd.cameraFollow.default);
     changeCameraFovDegrees(cd.cameraFov.default);
@@ -694,6 +705,7 @@ export function useGameCanvasClientSettings({
     projRangeToggles,
     unitRadiusToggles,
     legsRadiusToggle,
+    legsReachToggle,
     lodMode,
     cameraSmoothMode,
     cameraFollowMode,
@@ -715,6 +727,7 @@ export function useGameCanvasClientSettings({
     toggleProjRange,
     toggleUnitRadius,
     toggleLegsRadius,
+    toggleLegsReach,
     changeLodMode,
     setCameraMode,
     setCameraFollow,

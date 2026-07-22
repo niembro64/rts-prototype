@@ -15,7 +15,7 @@ const server = await createServer({
 });
 
 try {
-  await server.ssrLoadModule('/scripts/hostDirectedValidationTest.ts');
+  await server.ssrLoadModule('/scripts/turretMountContractValidation.ts');
 } finally {
   await server.close();
 }

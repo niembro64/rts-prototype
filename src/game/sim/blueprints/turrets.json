@@ -17,7 +17,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 2
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -82,7 +81,6 @@
         "decel": 30
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -142,7 +140,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 1.4
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -201,7 +198,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 0.75
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -260,7 +256,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 0.55
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -324,7 +319,6 @@
         "decel": 5
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -392,7 +386,6 @@
         "decel": 10
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -448,7 +441,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 1
     },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -497,7 +489,6 @@
     "barrel": {
       "type": "shieldPanelEmitter"
     },
-    "isManualFire": false,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -551,7 +542,6 @@
       "barrelLength": 1.2,
       "barrelThickness": 10
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -603,7 +593,6 @@
       "barrelLength": 1.5,
       "barrelThickness": 5.5
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -655,7 +644,6 @@
       "barrelLength": 1.1,
       "barrelThickness": 29
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -715,7 +703,6 @@
         "reversePhase": true
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -775,7 +762,6 @@
         "reversePhase": true
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -827,7 +813,6 @@
       "barrelLength": 0.8,
       "barrelThickness": 30
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -881,7 +866,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 2
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -941,7 +925,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 2.2
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -1008,7 +991,6 @@
         "decel": 8
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1067,7 +1049,6 @@
       "type": "singleCylinderBarrel",
       "barrelLength": 1.8
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -1131,7 +1112,6 @@
         "decel": 12
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -1195,7 +1175,6 @@
         "decel": 10
       }
     },
-    "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
@@ -1245,7 +1224,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1288,7 +1266,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1331,7 +1308,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1376,7 +1352,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1421,7 +1396,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
@@ -1458,7 +1432,6 @@
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
-    "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {

@@ -686,6 +686,7 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
 
   const config: TurretConfig = {
     turretBlueprintId: turretBlueprint.turretBlueprintId,
+    kind: turretBlueprint.kind,
     // Optional in the schema; default to radar-fire-eligible (false) so the
     // runtime field is always an explicit boolean (Explicit Absence).
     requiresFullSight: turretBlueprint.requiresFullSight === true,
@@ -704,7 +705,6 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     eventsSmooth: turretBlueprint.eventsSmooth,
     spread: null,
     burst: null,
-    isManualFire: turretBlueprint.isManualFire,
     passive: turretBlueprint.passive,
     shot,
     submunitions: turretBlueprint.submunitions ?? null,
@@ -720,11 +720,10 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // (the host body's own collision covers clearance). See turretHostIntegration.
     radius: { other: turretBlueprint.radius.other, hitbox: 0, collision: 0 },
     headOnly: turretBlueprint.headOnly,
-    visualOnly: shot === null,
-    // hostDirected is a per-MOUNT tag, not a per-blueprint constant. The
-    // shared TurretConfig defaults to false; the runtime turret factory
-    // (makeRuntimeTurret) overrides it from each mount's hostDirected flag.
-    hostDirected: false,
+    // Control mode is a per-mount contract. The shared blueprint-derived
+    // config uses autonomous as a harmless default; runtime materialization
+    // always overwrites it from the authored mount.
+    controlMode: 'autonomous',
     // Unit mounts opt into fight/patrol halt gating individually. Building
     // mounts never participate in unit movement halt checks.
     requiredEngagedForFightStop: false,
@@ -740,6 +739,8 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
         }
       : null,
     visualVariant: null,
+    spawn,
+    resourcePylon,
     lockOnRelationshipIncludeMask: lockOn.relationship,
     lockOnEntityFamilyIncludeMask: lockOn.entityFamily,
     lockOnBuildingIncludeMask: lockOn.building,
@@ -782,7 +783,6 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
   // Optional firing modifiers
   if (turretBlueprint.spread !== null) config.spread = { ...turretBlueprint.spread };
   if (turretBlueprint.burst !== null) config.burst = { ...turretBlueprint.burst };
-  config.isManualFire = turretBlueprint.isManualFire;
   config.passive = turretBlueprint.passive;
 
   return config;
@@ -845,31 +845,40 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   }
 }
 
-// Host-directed validation. "Host-directed turrets carry the host
-// lock-on" is a per-mount choice: zero, one, or many mounts may inherit
-// the host target. The loader only enforces that every mount states the
-// choice explicitly so blueprint behavior is auditable at import time.
-export function validateHostDirectedMounts(
+const TURRET_MOUNT_CONTROL_MODES = new Set(['host', 'autonomous', 'manual']);
+
+/** Validate the stable identity and task source of every mounted emitter. */
+export function validateTurretMountContracts(
   hostLabel: string,
   hostId: string,
-  mounts: ReadonlyArray<{ turretBlueprintId: string; hostDirected: unknown }>,
+  mounts: ReadonlyArray<{ mountId: unknown; turretBlueprintId: string; controlMode: unknown }>,
 ): void {
+  const mountIds = new Set<string>();
   for (let i = 0; i < mounts.length; i++) {
     const mount = mounts[i];
-    if (typeof mount.hostDirected !== 'boolean') {
+    if (typeof mount.mountId !== 'string' || mount.mountId.length === 0) {
       throw new Error(
-        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: mount must define a boolean hostDirected`,
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: mountId must be a non-empty string`,
+      );
+    }
+    if (mountIds.has(mount.mountId)) {
+      throw new Error(`Invalid ${hostLabel} ${hostId}: duplicate mountId "${mount.mountId}"`);
+    }
+    mountIds.add(mount.mountId);
+    if (typeof mount.controlMode !== 'string' || !TURRET_MOUNT_CONTROL_MODES.has(mount.controlMode)) {
+      throw new Error(
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: unknown controlMode "${String(mount.controlMode)}"`,
       );
     }
   }
 }
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
-  validateHostDirectedMounts('unit blueprint', bp.unitBlueprintId, bp.turrets);
+  validateTurretMountContracts('unit blueprint', bp.unitBlueprintId, bp.turrets);
 }
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   if (!bp.turrets || bp.turrets.length === 0) continue;
-  validateHostDirectedMounts('building blueprint', bp.buildingBlueprintId, bp.turrets);
+  validateTurretMountContracts('building blueprint', bp.buildingBlueprintId, bp.turrets);
 }
 
 // Cross-blueprint lock-on inclusion validation. Each level-1 named

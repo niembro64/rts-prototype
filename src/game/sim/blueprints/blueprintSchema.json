@@ -1328,13 +1328,18 @@
       },
       "additionalProperties": false
     },
-    "WeaponKind": {
+    "TurretEmitterKind": {
       "enum": [
         "attack",
-        "construction",
-        "repair",
         "spawn",
         "resourcePylon"
+      ]
+    },
+    "TurretMountControlMode": {
+      "enum": [
+        "host",
+        "autonomous",
+        "manual"
       ]
     },
     "SpawnProducedKind": {
@@ -1492,7 +1497,6 @@
         "eventsSmooth",
         "launchForce",
         "addTurretVelocityToEmissionLaunch",
-        "isManualFire",
         "passive",
         "requiresNonObstructedLineOfSight",
         "spread",
@@ -1523,7 +1527,7 @@
           "type": "string"
         },
         "kind": {
-          "$ref": "#/$defs/WeaponKind"
+          "$ref": "#/$defs/TurretEmitterKind"
         },
         "range": {
           "type": "number"
@@ -1563,9 +1567,6 @@
           "type": "number"
         },
         "addTurretVelocityToEmissionLaunch": {
-          "type": "boolean"
-        },
-        "isManualFire": {
           "type": "boolean"
         },
         "passive": {
@@ -1785,12 +1786,17 @@
     "TurretMount": {
       "type": "object",
       "required": [
+        "mountId",
         "turretBlueprintId",
         "mount",
-        "hostDirected",
+        "controlMode",
         "requiredEngagedForFightStop"
       ],
       "properties": {
+        "mountId": {
+          "type": "string",
+          "minLength": 1
+        },
         "turretBlueprintId": {
           "$ref": "#/$defs/TurretBlueprintId"
         },
@@ -1803,8 +1809,8 @@
             "$ref": "#/$defs/ShieldPanel"
           }
         },
-        "hostDirected": {
-          "type": "boolean"
+        "controlMode": {
+          "$ref": "#/$defs/TurretMountControlMode"
         },
         "requiredEngagedForFightStop": {
           "type": "boolean"
@@ -1839,11 +1845,16 @@
     "BuildingTurretMount": {
       "type": "object",
       "required": [
+        "mountId",
         "turretBlueprintId",
         "mount",
-        "hostDirected"
+        "controlMode"
       ],
       "properties": {
+        "mountId": {
+          "type": "string",
+          "minLength": 1
+        },
         "turretBlueprintId": {
           "$ref": "#/$defs/TurretBlueprintId"
         },
@@ -1856,8 +1867,8 @@
             "$ref": "#/$defs/ShieldPanel"
           }
         },
-        "hostDirected": {
-          "type": "boolean"
+        "controlMode": {
+          "$ref": "#/$defs/TurretMountControlMode"
         },
         "visualVariant": {
           "$ref": "#/$defs/ConstructionEmitterSize"

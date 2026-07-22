@@ -48,6 +48,8 @@ import {
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
+import { recordEffectiveHostileDamage } from '../aggression';
+import { isAttackEmitter } from '../emitterKinds';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1833,7 +1835,7 @@ export class DamageSystem {
         }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
-          if (turret.id === NO_ENTITY_ID || turret.config.visualOnly) continue;
+          if (turret.id === NO_ENTITY_ID || !isAttackEmitter(turret)) continue;
           const row = segmentRowCount;
           segmentRowCount = appendSegmentDamageSlabRow(
             segmentRowCount,
@@ -2216,7 +2218,7 @@ export class DamageSystem {
         }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
-          if (turret.id === NO_ENTITY_ID || turret.config.visualOnly) continue;
+          if (turret.id === NO_ENTITY_ID || !isAttackEmitter(turret)) continue;
           ensureAreaTurretDamageCapacity(areaTurretRowCount + 1);
           const turretRow = areaTurretRowCount++;
           _areaTurretDamageSlots[turretRow] = _areaDamageSlots[row];
@@ -2737,6 +2739,12 @@ export class DamageSystem {
 
       const killed = (flags & DAMAGE_APPLY_FLAG_KILLED) !== 0;
       const targetKind = _damageBatchTargetKind[i];
+      if (
+        _damageBatchOutEffectiveDamage[i] > 0 &&
+        (targetKind === DAMAGE_TARGET_KIND_UNIT || targetKind === DAMAGE_TARGET_KIND_BUILDING)
+      ) {
+        recordEffectiveHostileDamage(this.world, entity, sourceEntityId);
+      }
       if (targetKind === DAMAGE_TARGET_KIND_UNIT && entity.unit !== null) {
         entity.unit.hp = _damageBatchOutHp[i];
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);

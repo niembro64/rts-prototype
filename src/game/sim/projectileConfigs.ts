@@ -21,7 +21,7 @@ export function createProjectileConfigFromTurret(
 ): ProjectileConfig {
   const shot = turretConfig.shot;
   if (!shot || shot.type === 'shield') {
-    // Force-field emitters and visual-only construction emitters never
+    // Force-field and construction utility emitters never
     // spawn projectile entities through this path. The firing pipeline
     // keeps them out at runtime; the type guard here mirrors that
     // contract for the type system.

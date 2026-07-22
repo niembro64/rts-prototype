@@ -43,6 +43,7 @@ import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
+import { getRecentHostileAttacker } from './aggression';
 import { updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { entitySlotRegistry } from './EntitySlotRegistry';
@@ -100,7 +101,6 @@ import {
   UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD,
   UNIT_ACTION_PLAN_GUARD_ADVANCE,
   UNIT_ACTION_PLAN_GUARD_FOLLOW,
-  UNIT_ACTION_PLAN_GUARD_HOLD,
   UNIT_ACTION_PLAN_GUARD_SERVICE_HOLD,
   UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,
   UNIT_ACTION_PLAN_IDLE_LOITER,
@@ -1268,30 +1268,16 @@ export class Simulation {
         if (isFriendlyGuard) {
           flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
-          // Active defend (BAR): a guarding unit helps fight whatever its
-          // guarded ally is currently engaging — prioritize that enemy so the
-          // guard's turrets and combat-halt engage it; cleared when the ally
-          // isn't fighting (turrets fall back to opportunistic acquisition).
+          // Active defend (BAR): retaliate against the hostile root host that
+          // recently damaged the protected ally. Do not copy the ally's own
+          // attack order: guarding and focus-firing are distinct intents.
           if (entity.combat !== null && !entity.combat.manualLaunchActive) {
-            let defendId: EntityId | null = null;
-            const allyTargetId = guardTarget.combat !== null ? guardTarget.combat.priorityTargetId : null;
-            if (allyTargetId !== null) {
-              const allyTarget = this.world.getEntity(allyTargetId);
-              if (
-                allyTarget !== undefined &&
-                allyTarget.ownership !== null &&
-                allyTarget.ownership.playerId !== guardOwnerId &&
-                ((allyTarget.unit !== null && allyTarget.unit.hp > 0) ||
-                  (allyTarget.building !== null && allyTarget.building.hp > 0))
-              ) {
-                defendId = allyTargetId;
-              }
-            }
-            entity.combat.priorityTargetId = defendId;
-          }
-
-          if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
-            flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
+            entity.combat.priorityTargetId = getRecentHostileAttacker(
+              this.world,
+              guardTarget,
+              guardOwnerId,
+              this.world.getTick(),
+            )?.id ?? null;
           }
 
           // BAR: a guarding builder continuously services its target — assist
@@ -1365,7 +1351,6 @@ export class Simulation {
         case UNIT_ACTION_PLAN_BUILD_HOLD:
         case UNIT_ACTION_PLAN_ATTACK_HOLD:
         case UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD:
-        case UNIT_ACTION_PLAN_GUARD_HOLD:
         case UNIT_ACTION_PLAN_GUARD_SERVICE_HOLD:
         case UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD:
           unit.stuckTicks = 0;

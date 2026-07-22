@@ -39,6 +39,7 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import { getSimWasm } from '../../sim-wasm/init';
+import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -171,7 +172,7 @@ function isInstantLockBeamWeapon(weapon: Turret): boolean {
 
 function weaponUsesRotationAim(weapon: Turret): boolean {
   const config = weapon.config;
-  if (config.visualOnly || config.verticalLauncher || config.isManualFire) return false;
+  if (!isAttackEmitter(weapon) || config.verticalLauncher || isManualEmitterConfig(config)) return false;
   const shot = config.shot;
   if (
     shot !== null &&
@@ -228,7 +229,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
       const weapon = turrets[weaponIndex];
-      if (weapon.config.visualOnly) continue;
+      if (!isAttackEmitter(weapon)) continue;
       // Vertical launchers skip normal yaw/pitch aim math. The turret
       // barrel itself is pinned straight up; projectile launch reads
       // this same barrel pose and applies the authored launch force.

@@ -22,8 +22,9 @@ import { getTurretCooldownDuration } from './turretCooldown';
 
 function makeRuntimeTurret(
   turretBlueprintId: string,
+  mountId: string,
   mount: { x: number; y: number; z: number },
-  hostDirected: boolean,
+  controlMode: 'host' | 'autonomous' | 'manual',
   requiredEngagedForFightStop: boolean,
   identity: {
     id: EntityId;
@@ -34,15 +35,17 @@ function makeRuntimeTurret(
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretBlueprintId);
-  if (visualVariant !== undefined) {
-    turretConfig.visualVariant = visualVariant;
-  }
   const ranges = computeTurretRanges(turretConfig);
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
   // Mount-authored flags live on the per-instance config, not the shared
   // turret blueprint config.
-  const config = { ...turretConfig, hostDirected, requiredEngagedForFightStop };
+  const config = {
+    ...turretConfig,
+    controlMode,
+    requiredEngagedForFightStop,
+    visualVariant: visualVariant ?? turretConfig.visualVariant,
+  };
   const mountOffset2d = DMath.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
@@ -51,10 +54,12 @@ function makeRuntimeTurret(
   // over — `idlePitch` only governs the spawn pose.
   return {
     id: identity.id,
+    mountId,
     parentId: identity.parentId,
     rootHostId: identity.rootHostId,
     mountIndex: identity.mountIndex,
     config,
+    task: null,
     target: null,
     ranges,
     state: 'idle',
@@ -139,8 +144,9 @@ export function createUnitRuntimeTurrets(
       : anonymousTurretBlueprintIdentity(i);
     turrets.push(makeRuntimeTurret(
       mount.turretBlueprintId,
+      mount.mountId,
       localMount,
-      mount.hostDirected,
+      mount.controlMode,
       mount.requiredEngagedForFightStop,
       identity,
       mount.visualVariant,
@@ -170,8 +176,9 @@ export function createBuildingRuntimeTurrets(
       : anonymousTurretBlueprintIdentity(i);
     turrets.push(makeRuntimeTurret(
       m.turretBlueprintId,
+      m.mountId,
       { x: m.mount.x, y: m.mount.y, z: m.mount.z },
-      m.hostDirected,
+      m.controlMode,
       false,
       identity,
       m.visualVariant,

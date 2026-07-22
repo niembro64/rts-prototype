@@ -67,7 +67,8 @@
           "z": 274
         },
         "visualVariant": "large",
-        "hostDirected": true
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionEnergy",
@@ -77,7 +78,8 @@
           "z": 274
         },
         "visualVariant": "large",
-        "hostDirected": true
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
       },
       {
         "turretBlueprintId": "turretSpawnUnits",
@@ -86,7 +88,8 @@
           "y": 0,
           "z": 274
         },
-        "hostDirected": true
+        "mountId": "spawnUnits",
+        "controlMode": "host"
       }
     ],
     "base": {
@@ -155,7 +158,8 @@
           "y": 0,
           "z": 114
         },
-        "hostDirected": true
+        "mountId": "beamLong",
+        "controlMode": "host"
       }
     ],
     "base": {
@@ -224,7 +228,8 @@
           "y": 0,
           "z": 60
         },
-        "hostDirected": true
+        "mountId": "cannonLong",
+        "controlMode": "host"
       }
     ],
     "base": {
@@ -293,7 +298,8 @@
           "y": 0,
           "z": 66
         },
-        "hostDirected": true
+        "mountId": "antiAir",
+        "controlMode": "host"
       }
     ],
     "base": {

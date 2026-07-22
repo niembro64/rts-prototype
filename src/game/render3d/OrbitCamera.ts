@@ -78,6 +78,7 @@ const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = 
 const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
   scaleMode: 'anchor-distance-relative',
   wheelInputMode: 'dom-continuous-delta',
+  cardinalYawLockEnabled: false,
   centerClickPan: {
     absoluteWorldUnitsPerPixel: 2,
     momentum: {
@@ -311,6 +312,13 @@ export function barCameraLockedYaw(rawYaw: number): number {
   return sign * (whole + eased) * quarterTurn;
 }
 
+/** Resolve BAR-mode yaw while keeping its cardinal dead zones independently
+ * configurable from the rest of the SpringController movement contract. */
+export function barCameraYaw(rawYaw: number, cardinalLockEnabled: boolean): number {
+  if (!Number.isFinite(rawYaw)) return 0;
+  return cardinalLockEnabled ? barCameraLockedYaw(rawYaw) : rawYaw;
+}
+
 /** Permanent terrain response requested for Budget Annihilation. Returning
  * only the missing vertical clearance makes the resolved pose canonical: the
  * caller adds it to rendered and destination focus state exactly once. */
@@ -367,7 +375,7 @@ export class OrbitCamera {
   public distance = 1500;
   /** Yaw (rotation around world-Y), radians. */
   public yaw = 0;
-  /** Unfiltered BAR yaw retained across cardinal-lock dead zones. */
+  /** Unfiltered BAR yaw retained for optional cardinal-lock dead zones. */
   private barRawYaw = 0;
   /** Pitch (tilt from vertical), radians. 0 = straight down, PI/2 = horizontal. */
   public pitch = Math.PI * 0.25;
@@ -780,7 +788,7 @@ export class OrbitCamera {
           if (this.usesBarSpringTransition()) this.beginContinuousMovement();
           const radiansPerPixel = this.orbitRadiansPerPixel();
           this.barRawYaw -= scaledDx * radiansPerPixel;
-          const nextYaw = barCameraLockedYaw(this.barRawYaw);
+          const nextYaw = this.resolveBarYaw(this.barRawYaw);
           const nextPitch = Math.min(
             this.maxPitch,
             Math.max(this.minPitch, this.controllerPitch() + scaledDy * radiansPerPixel),
@@ -1115,6 +1123,10 @@ export class OrbitCamera {
 
   private usesBarSpringMovement(): boolean {
     return this.movementScaleMode === 'bar-spring';
+  }
+
+  private resolveBarYaw(rawYaw: number): number {
+    return barCameraYaw(rawYaw, this.movementConfig.cardinalYawLockEnabled);
   }
 
   private usesBarSpringTransition(): boolean {
@@ -1987,7 +1999,7 @@ export class OrbitCamera {
     const radiansPerPixel = this.orbitRadiansPerPixel();
     if (this.usesBarSpringMovement()) {
       this.barRawYaw -= dx * radiansPerPixel;
-      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      this.toYaw = this.resolveBarYaw(this.barRawYaw);
       this.toPitch = Math.min(
         this.maxPitch,
         Math.max(this.minPitch, this.controllerPitch() + dy * radiansPerPixel),
@@ -2012,7 +2024,7 @@ export class OrbitCamera {
     if (this.usesBarSpringMovement()) {
       if (this.usesBarSpringTransition()) this.beginContinuousMovement();
       this.barRawYaw += yawDelta;
-      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      this.toYaw = this.resolveBarYaw(this.barRawYaw);
       if (this.usesBarSpringTransition()) this.finishContinuousMovement();
       else {
         this.yaw = this.toYaw;
@@ -2632,7 +2644,7 @@ export class OrbitCamera {
       : y;
     if (behindYaw !== null && this.usesBarSpringMovement()) {
       this.barRawYaw = behindYaw;
-      this.toYaw = barCameraLockedYaw(behindYaw);
+      this.toYaw = this.resolveBarYaw(behindYaw);
     } else {
       this.toYaw = behindYaw
         ?? (this.usesBarSpringTransition() ? this.toYaw : this.yaw);
@@ -2722,7 +2734,7 @@ export class OrbitCamera {
 
   setOrbitAngles(yaw: number, pitch: number): void {
     this.barRawYaw = yaw;
-    this.toYaw = this.usesBarSpringMovement() ? barCameraLockedYaw(yaw) : yaw;
+    this.toYaw = this.usesBarSpringMovement() ? this.resolveBarYaw(yaw) : yaw;
     this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));
     this.yaw = this.toYaw;
     this.pitch = this.toPitch;
@@ -2730,14 +2742,14 @@ export class OrbitCamera {
     this.apply();
   }
 
-  /** Relative azimuth input, retaining BAR's unfiltered yaw through its
-   * cardinal dead zones. */
+  /** Relative azimuth input, retaining unfiltered yaw when BAR's optional
+   * cardinal dead zones are enabled. */
   rotateYawBy(delta: number): void {
     if (!Number.isFinite(delta) || delta === 0) return;
     if (this.usesBarSpringTransition()) this.beginContinuousMovement();
     if (this.usesBarSpringMovement()) {
       this.barRawYaw += delta;
-      this.toYaw = barCameraLockedYaw(this.barRawYaw);
+      this.toYaw = this.resolveBarYaw(this.barRawYaw);
       if (!this.usesBarSpringTransition()) this.yaw = this.toYaw;
     } else {
       this.yaw += delta;
@@ -2801,7 +2813,7 @@ export class OrbitCamera {
     this.toDistance = this.distance;
     this.barRawYaw = state.yaw;
     this.toYaw = this.usesBarSpringMovement()
-      ? barCameraLockedYaw(state.yaw)
+      ? this.resolveBarYaw(state.yaw)
       : state.yaw;
     this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));
     this.yaw = this.toYaw;

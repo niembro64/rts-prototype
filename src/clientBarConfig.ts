@@ -84,6 +84,7 @@ type ClientDefaults = {
   readonly radarBoundary: boolean;
   readonly unitGroundNormalEma: DriftMode;
   readonly legsRadius: boolean;
+  readonly legsReach: boolean;
   readonly cameraSmooth: CameraSmoothMode;
   readonly cameraFollow: CameraFollowMode;
   readonly cameraFov: CameraFovDegrees;
@@ -155,6 +156,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
     unitGroundNormalEma: pickDefault(clientBarConfig.unitGroundNormalEma, mode) as DriftMode,
     legsRadius: pickDefault(clientBarConfig.legsRadius, mode),
+    legsReach: pickDefault(clientBarConfig.legsReach, mode),
     cameraSmooth: pickDefault(clientBarConfig.cameraSmooth, mode) as CameraSmoothMode,
     cameraFollow: pickDefault(clientBarConfig.cameraFollow, mode) as CameraFollowMode,
     // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
@@ -236,6 +238,7 @@ export const CLIENT_CONFIG = {
     options: clientBarConfig.unitGroundNormalEma.options as OptionList<DriftMode>,
   },
   legsRadius: { default: DEMO_CLIENT_DEFAULTS.legsRadius },
+  legsReach: { default: DEMO_CLIENT_DEFAULTS.legsReach },
   cameraSmooth: {
     default: DEMO_CLIENT_DEFAULTS.cameraSmooth,
     options: clientBarConfig.cameraSmooth.options as OptionList<CameraSmoothMode>,
@@ -313,6 +316,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
       default: defaults.unitGroundNormalEma,
     },
     legsRadius: { default: defaults.legsRadius },
+    legsReach: { default: defaults.legsReach },
     cameraSmooth: { ...CLIENT_CONFIG.cameraSmooth, default: defaults.cameraSmooth },
     cameraFollow: { ...CLIENT_CONFIG.cameraFollow, default: defaults.cameraFollow },
     cameraFov: { ...CLIENT_CONFIG.cameraFov, default: defaults.cameraFov },
@@ -372,6 +376,7 @@ type ClientStorageKeyName =
   | 'projRangeToggles'
   | 'unitRadiusToggles'
   | 'legsRadius'
+  | 'legsReach'
   | 'cameraSmooth'
   | 'cameraFollow'
   | 'cameraFov'
@@ -413,6 +418,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'projRangeToggles',
   'unitRadiusToggles',
   'legsRadius',
+  'legsReach',
   'cameraSmooth',
   'cameraFollow',
   'cameraFov',
@@ -473,6 +479,7 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
   shotArmingRadius: _cd.unitRadiusToggles.default,
 };
 let currentLegsRadius: boolean = _cd.legsRadius.default;
+let currentLegsReach: boolean = _cd.legsReach.default;
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFollowMode: CameraFollowMode = _cd.cameraFollow.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
@@ -548,6 +555,7 @@ function applyClientDefaults(mode: ClientMode): void {
   for (const prt of PROJ_RANGE_TYPES) currentProjRangeToggles[prt] = cd.projRangeToggles.default;
   for (const urt of UNIT_RADIUS_TYPES) currentUnitRadiusToggles[urt] = cd.unitRadiusToggles.default;
   currentLegsRadius = cd.legsRadius.default;
+  currentLegsReach = cd.legsReach.default;
   currentCameraSmoothMode = cd.cameraSmooth.default;
   currentCameraFollowMode = cd.cameraFollow.default;
   currentCameraFovDegrees = cd.cameraFov.default;
@@ -698,6 +706,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedLegsRadius = readPersisted(keys.legsRadius);
   if (storedLegsRadius !== null) {
     currentLegsRadius = storedLegsRadius === 'true';
+  }
+  const storedLegsReach = readPersisted(keys.legsReach);
+  if (storedLegsReach !== null) {
+    currentLegsReach = storedLegsReach === 'true';
   }
   const storedCameraSmooth = readPersisted(keys.cameraSmooth);
   if (
@@ -884,6 +896,15 @@ export function getLegsRadiusToggle(): boolean {
 export function setLegsRadiusToggle(show: boolean): void {
   currentLegsRadius = show;
   persist(activeStorageKeys().legsRadius, String(show));
+}
+
+export function getLegsReachToggle(): boolean {
+  return currentLegsReach;
+}
+
+export function setLegsReachToggle(show: boolean): void {
+  currentLegsReach = show;
+  persist(activeStorageKeys().legsReach, String(show));
 }
 
 // Entity LOD policy. Standalone + global (not per-mode) because it is a
