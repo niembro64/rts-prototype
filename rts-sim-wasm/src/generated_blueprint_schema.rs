@@ -673,15 +673,41 @@ pub struct TreadConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LegAttachmentPoint {
+    pub xUnitRadiusRatio: f64,
+    pub yUnitRadiusRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegSegment {
+    pub lengthUnitRadiusRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegSegments {
+    pub upper: LegSegment,
+    pub lower: LegSegment,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegFootSphere {
+    pub originExtensionRatio: f64,
+    pub radiusLegLengthRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LegLayoutEntry {
-    pub attachOffsetXFrac: f64,
-    pub attachOffsetYFrac: f64,
-    pub upperLegLengthFrac: f64,
-    pub lowerLegLengthFrac: f64,
-    pub snapTriggerAngle: f64,
-    pub snapTargetAngle: f64,
-    pub snapDistanceMultiplier: f64,
-    pub extensionThreshold: f64,
+    pub attachmentPoint: LegAttachmentPoint,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegChoppingSphere {
+    pub radiusAverageFootSphereOriginDistanceRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegSnapRay {
+    pub originBoundarySpanRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -691,6 +717,10 @@ pub struct LegConfig {
     pub hipRadius: f64,
     pub kneeRadius: f64,
     pub lerpDuration: f64,
+    pub segments: LegSegments,
+    pub footSphere: LegFootSphere,
+    pub choppingSphere: LegChoppingSphere,
+    pub snapRay: LegSnapRay,
     pub leftSide: Vec<LegLayoutEntry>,
 }
 

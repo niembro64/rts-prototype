@@ -7,6 +7,10 @@ import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
 import { getChassisLiftY, getSegmentMidYAt } from '@/game/math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '@/game/math/LegLayout';
+import {
+  resolveLegSnapSphereLocal,
+  type LegSnapSphereLocal,
+} from '@/game/render3d/LegGait3D';
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { buildBuildingShape } from '@/game/render3d/BuildingShape3D';
@@ -790,6 +794,13 @@ function buildPreviewLegs(
   const lowerRadius = Math.max(locomotion.config.lowerThickness, 1) * 0.6;
   const hipJointRadius = Math.max(1, locomotion.config.hipRadius);
   const group = new THREE.Group();
+  const snapSphere: LegSnapSphereLocal = {
+    centerX: 0,
+    centerZ: 0,
+    outwardX: 0,
+    outwardZ: 0,
+    radius: 0,
+  };
   yawGroup.add(group);
 
   for (const leg of all) {
@@ -806,12 +817,19 @@ function buildPreviewLegs(
     }
     const upperLen = leg.upperLegLength;
     const lowerLen = leg.lowerLegLength;
-    const restDistance = (upperLen + lowerLen) * leg.snapDistanceMultiplier;
+    resolveLegSnapSphereLocal(
+      leg.attachOffsetX,
+      leg.attachOffsetY,
+      upperLen + lowerLen,
+      leg.footSphereOriginExtensionRatio,
+      leg.footSphereRadiusLegLengthRatio,
+      snapSphere,
+    );
     const hip = new THREE.Vector3(leg.attachOffsetX, hipY, leg.attachOffsetY);
     const foot = new THREE.Vector3(
-      hip.x + Math.cos(leg.snapTargetAngle) * restDistance,
+      snapSphere.centerX,
       lowerRadius + 0.35,
-      hip.z + Math.sin(leg.snapTargetAngle) * restDistance,
+      snapSphere.centerZ,
     );
     const knee = kneeFromIK(
       hip.x, hip.y, hip.z,

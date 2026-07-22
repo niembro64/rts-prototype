@@ -366,6 +366,14 @@
           "colorHex": "#44ffcc",
           "opacity": 0.4
         },
+        "debugInnerExclusionSphere": {
+          "colorHex": "#ff4f87",
+          "opacity": 0.5
+        },
+        "debugSnapRayOriginPoint": {
+          "colorHex": "#fff36b",
+          "opacity": 0.9
+        },
         "debugReachSphere": {
           "colorHex": "#ffb347",
           "opacity": 0.46

@@ -1,27 +1,13 @@
 // Render types consumed by the 3D renderer.
 
-/** Arachnid leg geometry — used by 3D locomotion to drive procedural
- *  step animations. Named differently from the blueprint LegConfig to
- *  avoid a naming collision with the per-unit blueprint version.
- *
- *  Foot motion model (rest-circle):
- *    The leg's "rest center" is the chassis-local point at angle
- *    `snapTargetAngle` and distance `snapDistanceMultiplier × leg
- *    length` from the hip. The foot drifts inside a circle around
- *    that rest center; once it leaves the circle it snaps to a
- *    point inside the opposite side. The circle's RADIUS is a
- *    unit-level property (every leg on the unit shares one value
- *    derived from the longest leg) — see Locomotion3D's
- *    STEP_CIRCLE_RADIUS_FRAC and SNAP_TARGET_INSET constants. */
+/** Resolved arachnid leg geometry used by the 3D locomotion renderer. The
+ *  attachment point and two segment lengths derive the complete snap sphere. */
 export type ArachnidLegConfig = {
   attachOffsetX: number;
   attachOffsetY: number;
   upperLegLength: number;
   lowerLegLength: number;
-  snapTriggerAngle: number;
-  snapTargetAngle: number;
-  snapDistanceMultiplier: number;
-  extensionThreshold: number;
+  footSphereOriginExtensionRatio: number;
+  footSphereRadiusLegLengthRatio: number;
   lerpDuration?: number;
 };
-

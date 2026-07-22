@@ -458,15 +458,35 @@ export type TreadConfig = {
   rotationSpeed: number;
 };
 
+export type LegAttachmentPoint = {
+  xUnitRadiusRatio: number;
+  yUnitRadiusRatio: number;
+};
+
+export type LegSegment = {
+  lengthUnitRadiusRatio: number;
+};
+
+export type LegSegments = {
+  upper: LegSegment;
+  lower: LegSegment;
+};
+
+export type LegFootSphere = {
+  originExtensionRatio: number;
+  radiusLegLengthRatio: number;
+};
+
 export type LegLayoutEntry = {
-  attachOffsetXFrac: number;
-  attachOffsetYFrac: number;
-  upperLegLengthFrac: number;
-  lowerLegLengthFrac: number;
-  snapTriggerAngle: number;
-  snapTargetAngle: number;
-  snapDistanceMultiplier: number;
-  extensionThreshold: number;
+  attachmentPoint: LegAttachmentPoint;
+};
+
+export type LegChoppingSphere = {
+  radiusAverageFootSphereOriginDistanceRatio: number;
+};
+
+export type LegSnapRay = {
+  originBoundarySpanRatio: number;
 };
 
 export type LegConfig = {
@@ -475,6 +495,10 @@ export type LegConfig = {
   hipRadius: number;
   kneeRadius: number;
   lerpDuration: number;
+  segments: LegSegments;
+  footSphere: LegFootSphere;
+  choppingSphere: LegChoppingSphere;
+  snapRay: LegSnapRay;
   leftSide: LegLayoutEntry[];
 };
 

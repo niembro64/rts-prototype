@@ -1936,41 +1936,97 @@
       },
       "additionalProperties": false
     },
+    "LegAttachmentPoint": {
+      "type": "object",
+      "required": [
+        "xUnitRadiusRatio",
+        "yUnitRadiusRatio"
+      ],
+      "properties": {
+        "xUnitRadiusRatio": {
+          "type": "number"
+        },
+        "yUnitRadiusRatio": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegSegment": {
+      "type": "object",
+      "required": [
+        "lengthUnitRadiusRatio"
+      ],
+      "properties": {
+        "lengthUnitRadiusRatio": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegSegments": {
+      "type": "object",
+      "required": [
+        "upper",
+        "lower"
+      ],
+      "properties": {
+        "upper": {
+          "$ref": "#/$defs/LegSegment"
+        },
+        "lower": {
+          "$ref": "#/$defs/LegSegment"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegFootSphere": {
+      "type": "object",
+      "required": [
+        "originExtensionRatio",
+        "radiusLegLengthRatio"
+      ],
+      "properties": {
+        "originExtensionRatio": {
+          "type": "number"
+        },
+        "radiusLegLengthRatio": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
     "LegLayoutEntry": {
       "type": "object",
       "required": [
-        "attachOffsetXFrac",
-        "attachOffsetYFrac",
-        "upperLegLengthFrac",
-        "lowerLegLengthFrac",
-        "snapTriggerAngle",
-        "snapTargetAngle",
-        "snapDistanceMultiplier",
-        "extensionThreshold"
+        "attachmentPoint"
       ],
       "properties": {
-        "attachOffsetXFrac": {
+        "attachmentPoint": {
+          "$ref": "#/$defs/LegAttachmentPoint"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegChoppingSphere": {
+      "type": "object",
+      "required": [
+        "radiusAverageFootSphereOriginDistanceRatio"
+      ],
+      "properties": {
+        "radiusAverageFootSphereOriginDistanceRatio": {
           "type": "number"
-        },
-        "attachOffsetYFrac": {
-          "type": "number"
-        },
-        "upperLegLengthFrac": {
-          "type": "number"
-        },
-        "lowerLegLengthFrac": {
-          "type": "number"
-        },
-        "snapTriggerAngle": {
-          "type": "number"
-        },
-        "snapTargetAngle": {
-          "type": "number"
-        },
-        "snapDistanceMultiplier": {
-          "type": "number"
-        },
-        "extensionThreshold": {
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegSnapRay": {
+      "type": "object",
+      "required": [
+        "originBoundarySpanRatio"
+      ],
+      "properties": {
+        "originBoundarySpanRatio": {
           "type": "number"
         }
       },
@@ -1984,6 +2040,10 @@
         "hipRadius",
         "kneeRadius",
         "lerpDuration",
+        "segments",
+        "footSphere",
+        "choppingSphere",
+        "snapRay",
         "leftSide"
       ],
       "properties": {
@@ -2001,6 +2061,18 @@
         },
         "lerpDuration": {
           "type": "number"
+        },
+        "segments": {
+          "$ref": "#/$defs/LegSegments"
+        },
+        "footSphere": {
+          "$ref": "#/$defs/LegFootSphere"
+        },
+        "choppingSphere": {
+          "$ref": "#/$defs/LegChoppingSphere"
+        },
+        "snapRay": {
+          "$ref": "#/$defs/LegSnapRay"
         },
         "leftSide": {
           "type": "array",

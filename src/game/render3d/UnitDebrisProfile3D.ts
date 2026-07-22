@@ -25,6 +25,10 @@ import {
   getSegmentMidYAt,
 } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
+import {
+  resolveLegSnapSphereLocal,
+  type LegSnapSphereLocal,
+} from './LegGait3D';
 import { turretBodyRadiusFromRadius } from '../math';
 import {
   getTurretBlueprint,
@@ -192,6 +196,13 @@ export function getDebrisUnitProfile(
     const { all } = resolveMirroredLegConfigs(loc.config, r);
     const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
     const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
+    const snapSphere: LegSnapSphereLocal = {
+      centerX: 0,
+      centerZ: 0,
+      outwardX: 0,
+      outwardZ: 0,
+      radius: 0,
+    };
     for (const lc of all) {
       const hipX = lc.attachOffsetX;
       const hipZ = lc.attachOffsetY;
@@ -206,11 +217,16 @@ export function getDebrisUnitProfile(
         }
         hipY = chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
       }
-      const restDist =
-        (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
-      const footA = lc.snapTargetAngle;
-      const footX = hipX + Math.cos(footA) * restDist;
-      const footZ = hipZ + Math.sin(footA) * restDist;
+      resolveLegSnapSphereLocal(
+        hipX,
+        hipZ,
+        lc.upperLegLength + lc.lowerLegLength,
+        lc.footSphereOriginExtensionRatio,
+        lc.footSphereRadiusLegLengthRatio,
+        snapSphere,
+      );
+      const footX = snapSphere.centerX;
+      const footZ = snapSphere.centerZ;
       // Approximate knee at the midpoint of hip↔foot, lifted up — matches
       // the visible "knee bends upward" pose from Locomotion3D.
       const kneeX = (hipX + footX) / 2;

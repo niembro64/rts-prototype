@@ -610,6 +610,18 @@ function runLegLocomotionStateContract(): void {
   );
   assertContract(high !== undefined && low !== undefined, 'walking unit resolves High/Low leg rigs');
   try {
+    const averageFootSphereOriginDistance = high.legs.reduce((sum, leg) => {
+      const config = leg.config;
+      return sum + Math.hypot(config.attachOffsetX, config.attachOffsetY)
+        + (config.upperLegLength + config.lowerLegLength)
+          * config.footSphereOriginExtensionRatio;
+    }, 0) / high.legs.length;
+    assertSame(
+      'walking unit chopping sphere uses the authored ratio of average foot-sphere origin distance',
+      high.innerExclusionRadius,
+      averageFootSphereOriginDistance
+        * locomotion.config.choppingSphere.radiusAverageFootSphereOriginDistanceRatio,
+    );
     seedLocomotionState(high);
     const snapshot = captureLocomotionState(high);
     applyLocomotionState(low, snapshot);

@@ -268,7 +268,57 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   if (bp.unitLocomotion.type === 'legs') {
-    const legs = bp.unitLocomotion.config.leftSide;
+    const config = bp.unitLocomotion.config;
+    const choppingRatio = config.choppingSphere.radiusAverageFootSphereOriginDistanceRatio;
+    if (!Number.isFinite(choppingRatio) || choppingRatio <= 0) {
+      throw new Error(
+        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusAverageFootSphereOriginDistanceRatio must be finite and positive`,
+      );
+    }
+    const globalValues = [
+      ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
+      ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
+      ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
+      ['footSphere.radiusLegLengthRatio', config.footSphere.radiusLegLengthRatio],
+      ['snapRay.originBoundarySpanRatio', config.snapRay.originBoundarySpanRatio],
+    ] as const;
+    for (const [name, value] of globalValues) {
+      if (!Number.isFinite(value)) {
+        throw new Error(
+          `Invalid leg layout for ${bp.unitBlueprintId}: ${name} must be finite`,
+        );
+      }
+    }
+    if (
+      config.segments.upper.lengthUnitRadiusRatio <= 0
+      || config.segments.lower.lengthUnitRadiusRatio <= 0
+    ) {
+      throw new Error(
+        `Invalid leg layout for ${bp.unitBlueprintId}: leg lengths must be positive`,
+      );
+    }
+    if (
+      config.footSphere.originExtensionRatio < 0
+      || config.footSphere.originExtensionRatio > 1
+    ) {
+      throw new Error(
+        `Invalid leg layout for ${bp.unitBlueprintId}: footSphere.originExtensionRatio must be between 0 and 1`,
+      );
+    }
+    if (config.footSphere.radiusLegLengthRatio <= 0) {
+      throw new Error(
+        `Invalid leg layout for ${bp.unitBlueprintId}: footSphere.radiusLegLengthRatio must be positive`,
+      );
+    }
+    if (
+      config.snapRay.originBoundarySpanRatio < 0
+      || config.snapRay.originBoundarySpanRatio > 1
+    ) {
+      throw new Error(
+        `Invalid leg layout for ${bp.unitBlueprintId}: snapRay.originBoundarySpanRatio must be between 0 and 1`,
+      );
+    }
+    const legs = config.leftSide;
     if (!Array.isArray(legs) || legs.length === 0) {
       throw new Error(
         `Invalid leg layout for ${bp.unitBlueprintId}: leftSide must define at least one leg`,
@@ -277,14 +327,8 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     for (let i = 0; i < legs.length; i++) {
       const leg = legs[i];
       const values = [
-        ['attachOffsetXFrac', leg.attachOffsetXFrac],
-        ['attachOffsetYFrac', leg.attachOffsetYFrac],
-        ['upperLegLengthFrac', leg.upperLegLengthFrac],
-        ['lowerLegLengthFrac', leg.lowerLegLengthFrac],
-        ['snapTriggerAngle', leg.snapTriggerAngle],
-        ['snapTargetAngle', leg.snapTargetAngle],
-        ['snapDistanceMultiplier', leg.snapDistanceMultiplier],
-        ['extensionThreshold', leg.extensionThreshold],
+        ['attachmentPoint.xUnitRadiusRatio', leg.attachmentPoint.xUnitRadiusRatio],
+        ['attachmentPoint.yUnitRadiusRatio', leg.attachmentPoint.yUnitRadiusRatio],
       ] as const;
       for (const [name, value] of values) {
         if (!Number.isFinite(value)) {
@@ -293,14 +337,14 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
           );
         }
       }
-      if (leg.upperLegLengthFrac <= 0 || leg.lowerLegLengthFrac <= 0) {
+      if (
+        Math.hypot(
+          leg.attachmentPoint.xUnitRadiusRatio,
+          leg.attachmentPoint.yUnitRadiusRatio,
+        ) <= 1e-6
+      ) {
         throw new Error(
-          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: leg lengths must be positive`,
-        );
-      }
-      if (leg.snapDistanceMultiplier <= 0 || leg.extensionThreshold <= 0) {
-        throw new Error(
-          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: snapDistanceMultiplier and extensionThreshold must be positive`,
+          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: attachment must be offset from the unit center`,
         );
       }
     }

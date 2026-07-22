@@ -626,12 +626,12 @@ function resetEveryCustomHotkey(): void {
         >MATEXP</BarButton>
         <BarButton
           :active="model.legsRadiusToggle"
-          title="Show the exact moving rest sphere. A planted foot begins a step only after it exits this cyan boundary."
+          title="Show the authored chopped snap envelope: cyan foot spheres, the pink terrain-rooted chopping sphere, yellow snap-ray origin dots, and rays that stop at the first boundary hit."
           @click="model.toggleLegsRadius"
         >LEG RAD</BarButton>
         <BarButton
           :active="model.legsReachToggle"
-          title="Show each leg's amber hip-centered mechanical reach sphere and hip-to-rest spoke. The sphere is the hard extension limit; the spoke shows the authored rest angle, which aims placement but is not a snap threshold."
+          title="Show each leg's amber hip-centered mechanical reach sphere and the center-through-attachment ray to full extension."
           @click="model.toggleLegsReach"
         >LEG REACH</BarButton>
         <BarButton

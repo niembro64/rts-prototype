@@ -1504,12 +1504,30 @@
       </p>
       <p>
         Each leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
-        contact state. A planted foot starts a lifted swing when it leaves its moving rest region
-        <em>or</em> approaches physical extension; the reach clamp is only an emergency safeguard
-        for an already-unplanted foot, never a way to drag a nominally planted endpoint with the
-        chassis. Unsupported air legs tuck on ascent and extend for descent/touchdown. Unsupported
+        contact state. Its only grounded step envelope is a sphere derived from authored attachment
+        and segment geometry: cast a ray from chassis center through the attachment, keep the
+        maximum-extension point along that ray, place the sphere center on terrain at the authored
+        <code>originExtensionRatio</code> between attachment and maximum extension, and size its
+        radius from <code>radiusLegLengthRatio</code> times total segment length. One shared exclusion
+        sphere is centered on terrain beneath the locomotion root and sized from
+        <code>radiusAverageFootSphereOriginDistanceRatio</code> times the average distance from that
+        locomotion origin to all foot-sphere origins; subtract it from every foot sphere so no planted foot may enter the
+        chassis-side volume. A planted foot leaves this chopped envelope when it exits its foot
+        sphere or enters the shared exclusion sphere. The snap-ray origin lies along the shared
+        outward axis at <code>originBoundarySpanRatio</code> between the chopping-sphere surface and
+        the foot-sphere&rsquo;s outer surface. Its step target comes from a horizontal ray cast from that
+        point in the unit&rsquo;s current velocity direction, stopping at the
+        first intersection with either boundary and resampling terrain height there. With no planar
+        velocity, the derived outward ray is the deterministic fallback. The reach clamp remains an emergency
+        safeguard for rendered geometry, never a second step trigger or a way to drag a nominally
+        planted endpoint with the chassis. Unsupported air legs tuck on ascent and extend for descent/touchdown. Unsupported
         water legs instead blend toward a damped, velocity-trailing pose, while legs close enough
         to the bed retain the ordinary planted gait on underwater ground.
+      </p>
+      <p>
+        Authored <code>leftSide</code> entries contain only an <code>attachmentPoint</code>. The shared
+        <code>segments</code>, <code>footSphere</code>, <code>choppingSphere</code>, and
+        <code>snapRay</code> objects live beside the array and govern every mirrored leg on the unit.
       </p>
 
       <h3>Floor clamping and attachment reach are joint invariants</h3>

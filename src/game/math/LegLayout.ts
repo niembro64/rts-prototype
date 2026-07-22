@@ -16,14 +16,12 @@ function resolveLeftSideLegConfigs(
   for (let i = 0; i < config.leftSide.length; i++) {
     const leg = config.leftSide[i];
     legs[i] = {
-      attachOffsetX: leg.attachOffsetXFrac * radius,
-      attachOffsetY: leg.attachOffsetYFrac * radius,
-      upperLegLength: leg.upperLegLengthFrac * radius,
-      lowerLegLength: leg.lowerLegLengthFrac * radius,
-      snapTriggerAngle: leg.snapTriggerAngle,
-      snapTargetAngle: leg.snapTargetAngle,
-      snapDistanceMultiplier: leg.snapDistanceMultiplier,
-      extensionThreshold: leg.extensionThreshold,
+      attachOffsetX: leg.attachmentPoint.xUnitRadiusRatio * radius,
+      attachOffsetY: leg.attachmentPoint.yUnitRadiusRatio * radius,
+      upperLegLength: config.segments.upper.lengthUnitRadiusRatio * radius,
+      lowerLegLength: config.segments.lower.lengthUnitRadiusRatio * radius,
+      footSphereOriginExtensionRatio: config.footSphere.originExtensionRatio,
+      footSphereRadiusLegLengthRatio: config.footSphere.radiusLegLengthRatio,
       lerpDuration: config.lerpDuration,
     };
   }
@@ -41,7 +39,6 @@ export function resolveMirroredLegConfigs(
     right[i] = {
       ...leg,
       attachOffsetY: -leg.attachOffsetY,
-      snapTargetAngle: -leg.snapTargetAngle,
     };
   }
   const all = new Array<ArachnidLegConfig>(left.length + right.length);
