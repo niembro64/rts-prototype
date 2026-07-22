@@ -910,16 +910,18 @@ export function setLegsReachToggle(show: boolean): void {
 // Entity LOD policy. Standalone + global (not per-mode) because it is a
 // renderer inspection/perf policy rather than a battle/profile setting.
 // Keep the legacy storage key so existing AUTO/HIGH/LOW preferences survive
-// the four-mode control upgrade.
+// the five-mode control upgrade.
 const LOD_MODE_STORAGE_KEY = 'client-force-lod-proxy';
 export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
   { value: 'auto', label: 'AUTO' },
   { value: 'high', label: 'HIGH' },
   { value: 'medium', label: 'MED' },
   { value: 'low', label: 'LOW' },
+  { value: 'off', label: 'OFF' },
 ];
 
 function parseStoredLodMode(raw: string | null): LodMode {
+  if (raw === 'off') return 'off';
   if (raw === 'low' || raw === 'true') return 'low';
   if (raw === 'medium') return 'medium';
   if (raw === 'high') return 'high';

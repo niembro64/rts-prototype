@@ -201,6 +201,7 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
+  if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(entityCameraDistanceSq3D(camera, entity)),
@@ -219,6 +220,7 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
   if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
+  if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
   return detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(simPositionViewDistanceSq3D(
@@ -336,6 +338,7 @@ export class EntityLodState3D {
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
     if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
+    if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
     return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
@@ -370,6 +373,7 @@ export class EntityLodState3D {
     if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
     if (lodMode === 'medium') return DETAIL_RUNG_MID;
     if (lodMode === 'low') return DETAIL_RUNG_FAR;
+    if (lodMode === 'off') return DETAIL_RUNG_GLYPH;
 
     const entityId = entity.id;
     if (canIndexClientEntityId(entityId)) {
@@ -426,6 +430,12 @@ export class EntityLodState3D {
       this.deleteChannelEntity(channel, entity.id);
       return false;
     }
+    if (lodMode === 'off') {
+      const proxyIds = this.proxyIdsForChannel(channel);
+      this.lastSeenForChannel(channel).set(entity.id, this.frame);
+      proxyIds.add(entity.id);
+      return true;
+    }
     if (!entityLodEnabled()) {
       // Proxying is off, but the detail ladder's latched-rung state must
       // survive — wiping the whole entity here would erase the hysteresis
@@ -472,6 +482,12 @@ export class EntityLodState3D {
       this.deleteChannelEntity(channel, entity.id);
       return false;
     }
+    if (lodMode === 'off') {
+      const proxyIds = this.proxyIdsForChannel(channel);
+      this.lastSeenForChannel(channel).set(entity.id, this.frame);
+      proxyIds.add(entity.id);
+      return true;
+    }
     if (!entityLodEnabled()) {
       // Proxying is off, but the detail ladder's latched-rung state must
       // survive — wiping the whole entity here would erase the hysteresis
@@ -499,6 +515,7 @@ export class EntityLodState3D {
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
     if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
+    if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
     return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),

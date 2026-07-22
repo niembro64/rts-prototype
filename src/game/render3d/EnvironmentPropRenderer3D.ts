@@ -4,6 +4,7 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import { COLORS } from '@/colorsConfig';
+import { getLodMode } from '@/clientBarConfig';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 import { getTreeLeafTexture } from './TreeLeafTexture';
 import { getTreeTrunkTexture } from './TreeTrunkTexture';
@@ -22,7 +23,13 @@ import {
   type EnvironmentPlacement,
 } from './environmentPropPlacement';
 import {
-  detailLevelForViewPosition,
+  DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_FAR,
+  DETAIL_RUNG_GLYPH,
+  DETAIL_RUNG_MID,
+  type DetailRung,
+  detailLevelForRung,
+  detailRungForViewPosition,
   geometryTierForDetail,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
@@ -37,6 +44,7 @@ type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
   root: THREE.Group;
   lods: Record<PrimitiveGeometryTier, THREE.Group>;
+  detailRung: DetailRung;
 };
 
 type LoadedEnvironmentAsset = {
@@ -73,6 +81,12 @@ export function environmentLodFlatMaterialSpec(
         color: FOREST_SPRUCE2_LEAF_COLOR,
         map: null,
       };
+}
+
+/** Vegetation has no strategic glyph: it stops drawing at the shared
+ * OFF/GLYPH rung used by entities. */
+export function environmentPropVisibleAtDetailRung(rung: DetailRung): boolean {
+  return rung !== DETAIL_RUNG_GLYPH;
 }
 
 /** Builds one flat triangle in the authored direction of each High grass leaf.
@@ -159,9 +173,10 @@ export class EnvironmentPropRenderer3D {
   update(view?: RenderViewState3D): void {
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
+    const lodMode = getLodMode();
     const viewKey = view
-      ? `${view.cameraX}|${view.cameraY}|${view.cameraZ}|${view.fovYRad}|${view.viewportHeightPx}`
-      : 'close';
+      ? `${lodMode}|${view.cameraX}|${view.cameraY}|${view.cameraZ}|${view.fovYRad}|${view.viewportHeightPx}`
+      : `${lodMode}|close`;
     if (scopeVersion === this.lastScopeVersion && viewKey === this.lastViewKey) return;
     this.lastScopeVersion = scopeVersion;
     this.lastViewKey = viewKey;
@@ -180,16 +195,26 @@ export class EnvironmentPropRenderer3D {
         node.root.visible = false;
         continue;
       }
-      node.root.visible = true;
-      const tier = view
-        ? geometryTierForDetail(detailLevelForViewPosition(
+      const rung = view
+        ? detailRungForViewPosition(
             view,
             p.x,
             p.z,
             p.y + p.height * 0.5,
             Math.max(p.radius, p.height * 0.5),
-          ))
-        : 'close';
+            node.detailRung,
+          )
+        : lodMode === 'off'
+          ? DETAIL_RUNG_GLYPH
+          : lodMode === 'low'
+            ? DETAIL_RUNG_FAR
+            : lodMode === 'medium'
+              ? DETAIL_RUNG_MID
+              : DETAIL_RUNG_CLOSE;
+      node.detailRung = rung;
+      node.root.visible = environmentPropVisibleAtDetailRung(rung);
+      if (!node.root.visible) continue;
+      const tier = geometryTierForDetail(detailLevelForRung(rung));
       node.lods.close.visible = tier === 'close';
       node.lods.mid.visible = tier === 'mid';
       node.lods.far.visible = tier === 'far';
@@ -548,7 +573,12 @@ export class EnvironmentPropRenderer3D {
       root.userData.environmentProp = true;
       root.userData.assetId = placement.assetId;
       this.root.add(root);
-      this.nodes.push({ placement, root, lods });
+      this.nodes.push({
+        placement,
+        root,
+        lods,
+        detailRung: DETAIL_RUNG_CLOSE,
+      });
     }
   }
 }

@@ -25,8 +25,8 @@ export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
  *  the configured value in 5-degree steps at runtime. */
 export type CameraFovDegrees = number;
 /** Renderer visual LOD policy. AUTO uses projected screen coverage to select
- *  the exact same HIGH, MEDIUM, or LOW authored rung as the manual modes. */
-export type LodMode = 'auto' | 'high' | 'medium' | 'low';
+ *  the same HIGH, MEDIUM, LOW, or OFF presentation as the manual modes. */
+export type LodMode = 'auto' | 'high' | 'medium' | 'low' | 'off';
 /** Presentation-only treatment of the map/water boundary.
  *    infinity             — extend water and perimeter terrain to a fake horizon.
  *    floating-square      — cut off the real map and render water as an

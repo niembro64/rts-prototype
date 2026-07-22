@@ -13,11 +13,11 @@
 //   MID   (2)  medium-poly geometry, full authored unit silhouette and rig
 //   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
 //
-// AUTO and the manual controls therefore resolve to the exact same three
-// visual states. Features snap to rung boundaries on purpose: one hysteresis
-// covers every transition and a whole zoom sweep costs at most three mesh
-// transitions per entity. Thresholds live in lod.json `detail`; this module
-// is pure (no THREE) and interprets that config.
+// AUTO and the manual controls therefore resolve to the same authored rungs,
+// including OFF/GLYPH. Features snap to rung boundaries on purpose: one
+// hysteresis covers every transition and a whole zoom sweep costs at most
+// three mesh transitions per entity. Thresholds live in lod.json `detail`;
+// this module is pure (no THREE) and interprets that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
@@ -270,15 +270,39 @@ export function detailLevelForViewPosition(
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
 ): number {
+  return detailLevelForRung(detailRungForViewPosition(
+    view,
+    simX,
+    simY,
+    simZ,
+    radiusWorld,
+  ));
+}
+
+/** Shared projected-size rung selection for non-entity world objects.
+ * Supplying the previous rung gives static props the same AUTO hysteresis as
+ * entities; manual modes always resolve directly to their named rung. */
+export function detailRungForViewPosition(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
+  currentRung?: DetailRung,
+): DetailRung {
   const lodMode = getLodMode();
-  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-  return detailLevelForRung(detailRungForLevel(detailLevelForRadiusDistance(
+  if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
+  if (lodMode === 'medium') return DETAIL_RUNG_MID;
+  if (lodMode === 'low') return DETAIL_RUNG_FAR;
+  if (lodMode === 'off') return DETAIL_RUNG_GLYPH;
+  const level = detailLevelForRadiusDistance(
     radiusWorld,
     Math.hypot(view.cameraX - simX, view.cameraY - simZ, view.cameraZ - simY),
     view.fovYRad,
-  )));
+  );
+  return currentRung === undefined
+    ? detailRungForLevel(level)
+    : detailRungWithHysteresis(currentRung, level);
 }
 
 // ── Rung ladder ─────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
+  DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
   detailLevelForRung,
 } from './EntityDetailLevel3D';
@@ -85,6 +86,7 @@ import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import {
   buildEnvironmentGrassLodGeometry,
   environmentLodFlatMaterialSpec,
+  environmentPropVisibleAtDetailRung,
 } from './EnvironmentPropRenderer3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
@@ -1221,6 +1223,11 @@ function runReferenceGeometryCountContracts(): void {
 }
 
 function runEnvironmentLodMaterialContracts(): void {
+  assertContract(
+    !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
+      environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
+    'trees and grass disappear at OFF/GLYPH but remain visible at LOW',
+  );
   const wood = environmentLodFlatMaterialSpec('wood');
   const foliage = environmentLodFlatMaterialSpec('foliage');
   assertContract(

@@ -13,6 +13,7 @@ import {
   detailLevelForViewPosition,
   detailLevelForScreenRadius,
   detailRungForLevel,
+  detailRungForViewPosition,
   detailRungMinLevel,
   detailRungWithHysteresis,
   detailScreenRadiusPx,
@@ -121,6 +122,21 @@ export function runEntityDetailLevel3DContractTest(): void {
     assertContract(
       detailLevelForViewPosition(view, 0, -10, 0) === detailLevelForRung(DETAIL_RUNG_FAR),
       'LOW freezes bare-position effects at the far rung',
+    );
+    setLodMode('off');
+    assertContract(
+      detailLevelForViewPosition(view, 0, -10, 0) === DETAIL_LEVEL_GLYPH &&
+        detailRungForViewPosition(view, 0, -10, 0) === DETAIL_RUNG_GLYPH,
+      'OFF freezes world visuals at the glyph/removal end state',
+    );
+    setLodMode('auto');
+    assertContract(
+      detailRungForViewPosition(view, 0, -10000, 0, 1) === DETAIL_RUNG_GLYPH,
+      'AUTO removes a small world prop at long projected distance',
+    );
+    assertContract(
+      detailRungForViewPosition(view, 0, -10000, 0, 1000) === DETAIL_RUNG_CLOSE,
+      'AUTO retains more detail for a larger prop at the same distance',
     );
   } finally {
     setLodMode(previousLodMode);

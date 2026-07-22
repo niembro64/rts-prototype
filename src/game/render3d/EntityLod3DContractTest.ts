@@ -17,6 +17,7 @@ import type { RenderViewState3D } from './RenderFrameState3D';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
+  DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
 } from './EntityDetailLevel3D';
 
@@ -85,6 +86,13 @@ export function runEntityLod3DContractTest(): void {
       !bodyLod.entityUsesLodProxyForView(viewAt(camera), body) &&
         bodyLod.entityDetailRungForView(viewAt(camera), body) === DETAIL_RUNG_CLOSE,
       'HIGH mode selects the same High rung for a non-host entity',
+    );
+    setLodMode('off');
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityUsesLodProxyForView(viewAt(camera), body) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), body) === DETAIL_RUNG_GLYPH,
+      'OFF mode hides entity models behind their final strategic glyphs',
     );
     setLodMode('auto');
     body.transform.x = 0;
@@ -159,6 +167,14 @@ export function runEntityLod3DContractTest(): void {
     assertContract(
       entityLodProxyGlyph3D(groundUnit) === ENTITY_LOD_PROXY_GLYPH_CIRCLE,
       'ground combat units use the default circular proxy glyph',
+    );
+    setLodMode('off');
+    groundUnit.transform.y = -10;
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+        bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_GLYPH,
+      'OFF mode uses the circle glyph even for a nearby ground unit',
     );
 
     const airUnit = entityAt(302, 0, 0, 0);

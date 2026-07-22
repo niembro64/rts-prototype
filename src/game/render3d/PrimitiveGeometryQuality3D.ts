@@ -486,6 +486,7 @@ const sharedGeometry = new Map<string, THREE.BufferGeometry>();
  * circular-tube volume, so lower geometry cost does not make the part look
  * starved. */
 export const SQUARE_TORUS_CROSS_SECTION_SEGMENTS = 4;
+const SQUARE_TORUS_CROSS_SECTION_ROTATION_RAD = Math.PI / 4;
 
 function keyOf(parts: readonly unknown[]): string {
   return parts.join(':');
@@ -706,6 +707,28 @@ export function createPrimitiveTorusGeometry(
     SQUARE_TORUS_CROSS_SECTION_SEGMENTS,
     q.radialSegments,
   );
+  const position = geometry.getAttribute('position');
+  const rotationCos = Math.cos(SQUARE_TORUS_CROSS_SECTION_ROTATION_RAD);
+  const rotationSin = Math.sin(SQUARE_TORUS_CROSS_SECTION_ROTATION_RAD);
+  // TorusGeometry starts a four-point tube at 0°, so its connected vertices
+  // form a diamond. Rotate each point in its local radial/Z cross-section by
+  // 45° to put the square's faces (rather than its corners) on the cardinal
+  // axes. This changes only tube orientation, not the major ring placement.
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const angle = Math.atan2(y, x);
+    const radialOffset = Math.hypot(x, y) - radius;
+    const rotatedRadialOffset = radialOffset * rotationCos - z * rotationSin;
+    const rotatedZ = radialOffset * rotationSin + z * rotationCos;
+    position.setXYZ(
+      i,
+      Math.cos(angle) * (radius + rotatedRadialOffset),
+      Math.sin(angle) * (radius + rotatedRadialOffset),
+      rotatedZ,
+    );
+  }
   // Correct both the square tube's smaller inscribed area and the polygonal
   // major path in one pass. Moving each vertex away from its major-ring
   // center changes tube area without inflating the torus hole or ring radius.
@@ -713,7 +736,6 @@ export function createPrimitiveTorusGeometry(
   const targetVolume = Math.PI * 2 * Math.PI * radius * tube * tube;
   if (actualVolume > 1e-12 && targetVolume > 0) {
     const tubeScale = Math.sqrt(targetVolume / actualVolume);
-    const position = geometry.getAttribute('position');
     for (let i = 0; i < position.count; i++) {
       const x = position.getX(i);
       const y = position.getY(i);
@@ -728,11 +750,11 @@ export function createPrimitiveTorusGeometry(
         z * tubeScale,
       );
     }
-    position.needsUpdate = true;
-    geometry.computeVertexNormals();
-    geometry.computeBoundingBox();
-    geometry.computeBoundingSphere();
   }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
   return geometry;
 }
 

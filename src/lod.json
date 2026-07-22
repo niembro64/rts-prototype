@@ -3,7 +3,7 @@
     "enabled": true
   },
   "detail": {
-    "comment": "AUTO measures projected screen coverage only to choose one of the same three authored detail rungs used by the manual controls: close/HIGH, mid/MED, or far/LOW. The continuous L value is an internal threshold metric, never a fourth visual tier. One hysteresis (hysteresisLevel, in L units) covers every AUTO transition, and a whole zoom sweep costs at most three mesh transitions per entity. rebuildBudgetPerFrame caps how many meshes may rebuild per frame during camera sweeps; entities over budget keep their previous rung until a later frame. The only extra presentation state is the BAR-style strategic glyph: it fades in on top of the still-opaque LOW model, then replaces that model after the glyph threshold.",
+    "comment": "AUTO measures projected screen coverage to choose the same presentations used by the manual controls: close/HIGH, mid/MED, far/LOW, or glyph/removal/OFF. The first three are authored geometry rungs; OFF is the end state, showing strategic entity glyphs while removing vegetation and effect geometry. One hysteresis (hysteresisLevel, in L units) covers every AUTO transition. rebuildBudgetPerFrame caps how many entity meshes may rebuild per frame during camera sweeps; entities over budget keep their previous rung until a later frame. Entity glyphs fade in on top of the still-opaque LOW model, then replace that model after the glyph threshold.",
     "enabled": true,
     "referenceViewportHeightPx": 1080,
     "screenRadiusPx": {

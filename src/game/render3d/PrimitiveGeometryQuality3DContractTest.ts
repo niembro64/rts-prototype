@@ -178,6 +178,17 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
       assertParam(torus, `${label}/torus`, 'tubularSegments', quality.torus[tier].radialSegments);
       assertMaxTriangles(torus, `${label}/torus`, triangleBudget?.torus?.[tier]);
       assertVolume(torus, `${label}/torus`, Math.PI * 2 * Math.PI * 0.1 ** 2);
+      const torusPosition = torus.getAttribute('position');
+      for (let vertex = 0; vertex < torusPosition.count; vertex++) {
+        const radialOffset = Math.hypot(
+          torusPosition.getX(vertex),
+          torusPosition.getY(vertex),
+        ) - 1;
+        assertContract(
+          Math.abs(Math.abs(radialOffset) - Math.abs(torusPosition.getZ(vertex))) < 1e-5,
+          `${label}/torus has an axis-aligned square tube rather than a diamond tube`,
+        );
+      }
       torus.dispose();
     }
   }

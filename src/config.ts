@@ -294,14 +294,12 @@ export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds bac
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
-// Shared entity detail ladder switch. Every visual follows the same
-// screen-coverage-selected HIGH/MED/LOW rungs; there is no separate
-// distance-only emission LOD channel.
+// Shared detail ladder switch. Every visual follows the same screen-coverage-
+// selected HIGH/MED/LOW/OFF rungs; there is no separate distance-only LOD.
 export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
 
-// Screen-coverage-selected three-rung detail ladder (thresholds, animation
-// shedding, and per-rung effect scales). Tuning lives in lod.json `detail`;
-// EntityDetailLevel3D interprets it.
+// Screen-coverage-selected detail ladder: three authored geometry rungs plus
+// the OFF glyph/removal end state. EntityDetailLevel3D interprets lod.json.
 export const ENTITY_DETAIL_CONFIG = lodConfigJson.detail;
 
 // Render-only water surface tuning. `color` is the tint of the flat
