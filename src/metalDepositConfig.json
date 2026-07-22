@@ -164,6 +164,54 @@
         "radius": 180,
         "angleOffset": 1
       }
+    },
+    {
+      "comment": "WATER TRIANGLE",
+      "radiusFraction": 1.12,
+      "countPerPlayer": 1,
+      "sliceOffset": 1.5,
+      "dTerrainLevels": null,
+      "flatPadCells": 40,
+      "terrainBlendRadius": 600,
+      "depositCluster": {
+        "type": "group-ring",
+        "count": 3,
+        "radius": 180,
+        "angleOffset": 1
+      }
+    },
+    {
+      "comment": "RIGHT ARC — one smoothed terrain group per player; spots are ring coordinates, placed exactly where the four former standalone RIGHT ARC rings were",
+      "radiusFraction": 0.83,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.68,
+      "dTerrainLevels": null,
+      "flatPadCells": 40,
+      "terrainBlendRadius": 600,
+      "depositCluster": {
+        "type": "group-manual",
+        "spots": [
+          { "radiusFraction": 0.85, "sliceOffset": -0.2 },
+          { "radiusFraction": 0.95, "sliceOffset": -0.2 },
+          { "radiusFraction": 1.05, "sliceOffset": -0.2 },
+          { "radiusFraction": 1.15, "sliceOffset": -0.2 }
+        ]
+      }
+    },
+    {
+      "comment": "WATER TRIANGLE",
+      "radiusFraction": 1.12,
+      "countPerPlayer": 1,
+      "sliceOffset": -0.7,
+      "dTerrainLevels": null,
+      "flatPadCells": 40,
+      "terrainBlendRadius": 600,
+      "depositCluster": {
+        "type": "group-ring",
+        "count": 1,
+        "radius": 180,
+        "angleOffset": 1
+      }
     }
   ]
 }
