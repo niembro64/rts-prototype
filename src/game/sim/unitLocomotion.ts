@@ -14,7 +14,6 @@ import {
   type UnitLocomotionPresetConfig,
 } from './unitLocomotionPresetConfig';
 import {
-  assertUnitLocomotionClosedUnitFraction,
   assertUnitLocomotionNonNegativeFinite,
 } from './unitLocomotionValidation';
 
@@ -23,9 +22,8 @@ const UNIT_LOCOMOTION_TYPES = [
 ] as const satisfies readonly UnitLocomotionType[];
 
 export type UnitLocomotionTraversalCapabilities = Readonly<{
-  allowOnGround: boolean;
-  allowInWater: boolean;
-  allowInAir: boolean;
+  waypoint: UnitLocomotion['navigation']['waypoint'];
+  move: UnitLocomotion['navigation']['move'];
 }>;
 
 /** Route permissions are authored with the physics preset, never inferred
@@ -34,6 +32,10 @@ export function getUnitLocomotionTraversalCapabilities(
   locomotion: Pick<UnitLocomotion, 'navigation'>,
 ): UnitLocomotionTraversalCapabilities {
   return locomotion.navigation;
+}
+
+function canPropel(force: number): boolean {
+  return Number.isFinite(force) && force > 0;
 }
 
 type AuthoredAirFluidPhysics = UnitLocomotionBlueprint['physics']['air'];
@@ -186,18 +188,21 @@ export function createUnitLocomotion(
     motionControl: { ...preset.motionControl },
     surfaceFollowing: { ...preset.surfaceFollowing },
     navigation: {
-      allowOnGround: preset.navigation.allowOnGround,
-      allowInAir: preset.navigation.allowedFluidMedia.includes('air'),
-      allowInWater: preset.navigation.allowedFluidMedia.includes('water'),
+      waypoint: {
+        allowOnGround: preset.navigation.allowOnGround,
+        allowInAir: preset.navigation.allowedFluidMedia.includes('air'),
+        allowInWater: preset.navigation.allowedFluidMedia.includes('water'),
+      },
+      move: {
+        allowOnGround: canPropel(physics.ground.maxPropulsiveForce),
+        allowInAir: canPropel(physics.air.maxPropulsiveForce),
+        allowInWater: canPropel(physics.water.maxPropulsiveForce),
+      },
     },
   };
-  assertUnitLocomotionClosedUnitFraction(
-    `${physicsPresetId}.environmentalHazards.fatalSubmergedFraction`,
-    environmentalHazards.fatalSubmergedFraction,
-  );
   assertUnitLocomotionNonNegativeFinite(
-    `${physicsPresetId}.environmentalHazards.fatalExposureSeconds`,
-    environmentalHazards.fatalExposureSeconds,
+    `${physicsPresetId}.environmentalHazards.waterDamagePerSecond`,
+    environmentalHazards.waterDamagePerSecond,
   );
   return runtime;
 }
@@ -241,6 +246,9 @@ export function cloneUnitLocomotion(
     actuator: { ...locomotion.actuator },
     motionControl: { ...locomotion.motionControl },
     surfaceFollowing: { ...locomotion.surfaceFollowing },
-    navigation: { ...locomotion.navigation },
+    navigation: {
+      waypoint: { ...locomotion.navigation.waypoint },
+      move: { ...locomotion.navigation.move },
+    },
   };
 }

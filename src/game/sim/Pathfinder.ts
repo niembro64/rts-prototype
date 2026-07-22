@@ -93,9 +93,12 @@ function findPath(
     goalY,
     traversal.minStandstillNormalZ,
     traversal.minClimbNormalZ,
-    traversal.allowOnGround,
-    traversal.allowInWater,
-    traversal.allowInAir,
+    traversal.waypoint.allowOnGround,
+    traversal.waypoint.allowInWater,
+    traversal.waypoint.allowInAir,
+    traversal.move.allowOnGround,
+    traversal.move.allowInWater,
+    traversal.move.allowInAir,
     unitRadius,
     traversal.flatDriveAccel,
     traversal.safeDriveAccel,
@@ -219,10 +222,11 @@ function validatePathStaysInWater(
  *  surface to support the unit from rest. `minClimbNormalZ` adds the stricter
  *  force-coupling gate to powered uphill edges.
  *
- *  `terrainFilter` carries explicit navigation-domain flags. Air can bypass
- *  terrain blockers; wet cells require water navigation even if the body
- *  could physically touch the bed; dry cells require ground navigation and
- *  use the unit's dry-ground climb profile. */
+ *  `terrainFilter` carries separate waypoint and move domains. The waypoint
+ *  domain validates intentional destinations and prevents entry into
+ *  recovery-only media; the move domain describes physical traversal from
+ *  wherever forces placed the body. Dry cells still use the unit's
+ *  dry-ground climb profile. */
 export function expandPathPlan(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -246,9 +250,22 @@ export function expandPathPlan(
   const path = result.points;
   if (VALIDATE_PATHS) {
     const traversal = resolvePathfinderTraversalInput(terrainFilter);
-    if (!traversal.allowInWater && !traversal.allowInAir) {
+    const startIsWet = isWaterAt(startX, startY, mapWidth, mapHeight);
+    const startIsWaypointValid = startIsWet
+      ? traversal.waypoint.allowInWater || traversal.waypoint.allowInAir
+      : traversal.waypoint.allowOnGround || traversal.waypoint.allowInAir;
+    if (
+      startIsWaypointValid &&
+      !traversal.waypoint.allowInWater &&
+      !traversal.waypoint.allowInAir
+    ) {
       validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
-    } else if (traversal.allowInWater && !traversal.allowOnGround && !traversal.allowInAir) {
+    } else if (
+      startIsWaypointValid &&
+      traversal.waypoint.allowInWater &&
+      !traversal.waypoint.allowOnGround &&
+      !traversal.waypoint.allowInAir
+    ) {
       validatePathStaysInWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
     }
   }
@@ -304,9 +321,12 @@ function validatePathScratch(
     _pathValidationScratch.subarray(0, length),
     traversal.minStandstillNormalZ,
     traversal.minClimbNormalZ,
-    traversal.allowOnGround,
-    traversal.allowInWater,
-    traversal.allowInAir,
+    traversal.waypoint.allowOnGround,
+    traversal.waypoint.allowInWater,
+    traversal.waypoint.allowInAir,
+    traversal.move.allowOnGround,
+    traversal.move.allowInWater,
+    traversal.move.allowInAir,
     unitRadius,
     symmetricSlope,
   ) === 1;

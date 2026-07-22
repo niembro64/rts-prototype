@@ -12,6 +12,7 @@ import type {
   EntityHudType,
   LodMode,
   MasterVolumePercent,
+  PathingDebugMode,
   PathingDebugUnitId,
   ProjRangeType,
   RangeType,
@@ -232,6 +233,7 @@ export type GameCanvasClientControlBarModel = {
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
   readonly pathingDebugUnit: PathingDebugUnitId;
+  readonly pathingDebugMode: PathingDebugMode;
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
   readonly masterVolume: MasterVolumePercent;
@@ -282,6 +284,7 @@ export type GameCanvasClientControlBarModel = {
   toggleMetalMap(): void;
   toggleElevationMap(): void;
   togglePathingMap(): void;
+  changePathingDebugMode(mode: PathingDebugMode): void;
   changePathingDebugUnit(unitBlueprintId: PathingDebugUnitId): void;
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;

@@ -22,7 +22,7 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
-import type { LodMode, PathingDebugUnitId } from '../types/client';
+import type { LodMode, PathingDebugMode, PathingDebugUnitId } from '../types/client';
 import {
   budgetBarStyle,
   fmt4,
@@ -64,12 +64,28 @@ const PATHING_DEBUG_UNIT_OPTIONS: readonly {
   readonly label: string;
   readonly title: string;
 }[] = [
-  { value: 'none', label: 'NONE', title: 'Clear unit pathability overlay' },
   ...unitRosterDisplay.map((unit) => ({
     value: unit.unitBlueprintId,
     label: unit.shortName,
-    title: `Show valid pathfinding cells for ${unit.label}`,
+    title: `Use ${unit.label} for the selected pathability overlay mode`,
   })),
+];
+const PATHING_DEBUG_MODE_OPTIONS: readonly {
+  readonly value: PathingDebugMode;
+  readonly label: string;
+  readonly title: string;
+}[] = [
+  { value: 'none', label: 'NONE', title: 'Hide the selected unit pathability overlay' },
+  {
+    value: 'waypoint',
+    label: 'WAYPOINT',
+    title: 'Show cells where the selected unit may intentionally receive an order (cyan)',
+  },
+  {
+    value: 'move',
+    label: 'MOVE',
+    title: 'Show every cell the selected unit can physically traverse, including recovery-only cells (amber)',
+  },
 ];
 
 function fmtCount4(value: number): string {
@@ -682,6 +698,15 @@ function resetEveryCustomHotkey(): void {
         >WATER</BarButton>
         <BarDivider />
         <BarLabel>PATH:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in PATHING_DEBUG_MODE_OPTIONS"
+            :key="opt.value"
+            :active="model.pathingDebugMode === opt.value"
+            :title="opt.title"
+            @click="model.changePathingDebugMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
         <BarButtonGroup>
           <BarButton
             v-for="opt in PATHING_DEBUG_UNIT_OPTIONS"

@@ -14,6 +14,7 @@ import type {
   EntityHudType,
   LodMode,
   MasterVolumePercent,
+  PathingDebugMode,
   PathingDebugUnitId,
   SelectionHudMode,
   SoundCategory,
@@ -80,6 +81,7 @@ type ClientDefaults = {
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
   readonly pathingDebugUnit: PathingDebugUnitId;
+  readonly pathingDebugMode: PathingDebugMode;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly unitGroundNormalEma: DriftMode;
@@ -152,6 +154,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     pathingMap: pickDefault(clientBarConfig.pathingMap, mode),
     pathingDebugUnit:
       pickDefault(clientBarConfig.pathingDebugUnit, mode) as PathingDebugUnitId,
+    pathingDebugMode:
+      pickDefault(clientBarConfig.pathingDebugMode, mode) as PathingDebugMode,
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
     unitGroundNormalEma: pickDefault(clientBarConfig.unitGroundNormalEma, mode) as DriftMode,
@@ -229,6 +233,7 @@ export const CLIENT_CONFIG = {
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
   pathingMap: { default: DEMO_CLIENT_DEFAULTS.pathingMap },
   pathingDebugUnit: { default: DEMO_CLIENT_DEFAULTS.pathingDebugUnit },
+  pathingDebugMode: { default: DEMO_CLIENT_DEFAULTS.pathingDebugMode },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
   /** Client-side unit ground normal EMA layered ON TOP of the host's
@@ -309,6 +314,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     elevationMap: { default: defaults.elevationMap },
     pathingMap: { default: defaults.pathingMap },
     pathingDebugUnit: { default: defaults.pathingDebugUnit },
+    pathingDebugMode: { default: defaults.pathingDebugMode },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
     unitGroundNormalEma: {
@@ -368,6 +374,7 @@ type ClientStorageKeyName =
   | 'elevationMap'
   | 'pathingMap'
   | 'pathingDebugUnit'
+  | 'pathingDebugMode'
   | 'sightBoundary'
   | 'radarBoundary'
   | 'unitGroundNormalEmaMode'
@@ -410,6 +417,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'elevationMap',
   'pathingMap',
   'pathingDebugUnit',
+  'pathingDebugMode',
   'sightBoundary',
   'radarBoundary',
   'unitGroundNormalEmaMode',
@@ -503,6 +511,7 @@ let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
 let currentPathingMap: boolean = _cd.pathingMap.default;
 let currentPathingDebugUnit: PathingDebugUnitId = _cd.pathingDebugUnit.default;
+let currentPathingDebugMode: PathingDebugMode = _cd.pathingDebugMode.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
 let currentClientUnitGroundNormalEmaMode: DriftMode = _cd.unitGroundNormalEma.default;
@@ -521,7 +530,11 @@ function isSelectionHudMode(value: unknown): value is SelectionHudMode {
 }
 
 function isPathingDebugUnitId(value: unknown): value is PathingDebugUnitId {
-  return value === 'none' || (typeof value === 'string' && isBuildableUnitBlueprintId(value));
+  return typeof value === 'string' && isBuildableUnitBlueprintId(value);
+}
+
+function isPathingDebugMode(value: unknown): value is PathingDebugMode {
+  return value === 'none' || value === 'waypoint' || value === 'move';
 }
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
@@ -579,6 +592,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentElevationMap = cd.elevationMap.default;
   currentPathingMap = cd.pathingMap.default;
   currentPathingDebugUnit = cd.pathingDebugUnit.default;
+  currentPathingDebugMode = cd.pathingDebugMode.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
   currentClientUnitGroundNormalEmaMode = cd.unitGroundNormalEma.default;
@@ -694,6 +708,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedPathingDebugUnit = readPersisted(keys.pathingDebugUnit);
   if (isPathingDebugUnitId(storedPathingDebugUnit)) {
     currentPathingDebugUnit = storedPathingDebugUnit;
+  }
+  const storedPathingDebugMode = readPersisted(keys.pathingDebugMode);
+  if (isPathingDebugMode(storedPathingDebugMode)) {
+    currentPathingDebugMode = storedPathingDebugMode;
   }
   const storedSightBoundary = readPersisted(keys.sightBoundary);
   if (storedSightBoundary !== null) {
@@ -1174,8 +1192,19 @@ export function getPathingDebugUnit(): PathingDebugUnitId {
 }
 
 export function setPathingDebugUnit(unitBlueprintId: PathingDebugUnitId): void {
-  currentPathingDebugUnit = isPathingDebugUnitId(unitBlueprintId) ? unitBlueprintId : 'none';
+  currentPathingDebugUnit = isPathingDebugUnitId(unitBlueprintId)
+    ? unitBlueprintId
+    : _cd.pathingDebugUnit.default;
   persist(activeStorageKeys().pathingDebugUnit, currentPathingDebugUnit);
+}
+
+export function getPathingDebugMode(): PathingDebugMode {
+  return currentPathingDebugMode;
+}
+
+export function setPathingDebugMode(mode: PathingDebugMode): void {
+  currentPathingDebugMode = isPathingDebugMode(mode) ? mode : 'none';
+  persist(activeStorageKeys().pathingDebugMode, currentPathingDebugMode);
 }
 
 export function getSightBoundary(): boolean {

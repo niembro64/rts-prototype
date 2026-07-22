@@ -719,7 +719,10 @@ function createActiveFactoryNear(core: ServerSimulationCore, builder: Entity): E
     builder.ownership?.playerId ?? (1 as PlayerId),
     builder.id,
     0,
-    { skipBuilderAuthorization: true },
+    {
+      skipBuilderAuthorization: true,
+      ignoreTerrainForPlacement: false,
+    },
   );
   if (factory === null || factory.building === null) {
     throw new Error('[deterministic replay] failed to create factory fixture');

@@ -36,7 +36,6 @@ export {  getPlayerBaseAngle } from './playerLayout';
 type InitialBaseMode = 'demo' | 'real';
 
 const INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS = 8;
-const METAL_EXTRACTOR_PLACEMENT_SEARCH_RADIUS_CELLS = 3;
 
 type GridOffset = {
   dx: number;
@@ -69,9 +68,12 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // cells while remaining inside their team's dedicated production sector.
 const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(24);
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
-const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
-  METAL_EXTRACTOR_PLACEMENT_SEARCH_RADIUS_CELLS,
-);
+// Authored demo extractors belong on their deposit's own snapped footprint.
+// Do not fan outward like generic base placement: a nearby extractor with
+// partial coverage is not the authored deposit/extractor pair.
+const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS: readonly GridOffset[] = [
+  { dx: 0, dy: 0 },
+];
 
 type InitialFactoryWaypointConfig = {
   fightType: WaypointType;
@@ -248,6 +250,7 @@ function placeCompleteBuilding(
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
+  ignoreTerrainForPlacement = false,
 ): Entity | null {
   const config = getBuildingConfig(buildingBlueprintId);
   const grid = construction.getGrid();
@@ -273,7 +276,10 @@ function placeCompleteBuilding(
       playerId,
       0,
       0,
-      { skipBuilderAuthorization: true },
+      {
+        skipBuilderAuthorization: true,
+        ignoreTerrainForPlacement,
+      },
     );
     if (entity === null) continue;
     completeInitialBuilding(world, entity, config, factoryWaypoint);
@@ -824,6 +830,12 @@ export function spawnMetalExtractorsOnDeposits(
       factoryWaypoint,
       METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS,
       (entity) => (entity.metalExtractionRate ?? 0) > 0,
+      null,
+      // Demo auto-extractors are authored starting infrastructure. Outer
+      // deposits may sit on the seabed, so ordinary dry-land construction
+      // terrain rules must not prevent the prebuilt extractor from existing.
+      // Bounds, occupied cells, and positive metal coverage remain enforced.
+      true,
     );
     if (!extractor) continue;
 

@@ -22,6 +22,7 @@ import {
   getMaterialExplosions,
   getPathingMap,
   getPathingDebugUnit,
+  getPathingDebugMode,
   getBurnMarks,
   getLodMode,
   getLegsRadiusToggle,
@@ -61,6 +62,7 @@ import {
   setMaterialExplosions,
   setPathingMap,
   setPathingDebugUnit,
+  setPathingDebugMode,
   setBurnMarks,
   setLodMode,
   setLegsRadiusToggle,
@@ -112,6 +114,7 @@ import type {
   SoundCategory,
   UnitRadiusType,
   WaypointDetail,
+  PathingDebugMode,
   PathingDebugUnitId,
 } from '../types/client';
 import type { RenderMode } from '../types/graphics';
@@ -146,6 +149,7 @@ export function useGameCanvasClientSettings({
   const elevationMap = ref<boolean>(getElevationMap());
   const pathingMap = ref<boolean>(getPathingMap());
   const pathingDebugUnit = ref<PathingDebugUnitId>(getPathingDebugUnit());
+  const pathingDebugMode = ref<PathingDebugMode>(getPathingDebugMode());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
   const clientUnitGroundNormalEmaMode = ref<DriftMode>(getClientUnitGroundNormalEmaMode());
@@ -233,6 +237,7 @@ export function useGameCanvasClientSettings({
     elevationMap.value = getElevationMap();
     pathingMap.value = getPathingMap();
     pathingDebugUnit.value = getPathingDebugUnit();
+    pathingDebugMode.value = getPathingDebugMode();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
     clientUnitGroundNormalEmaMode.value = getClientUnitGroundNormalEmaMode();
@@ -494,6 +499,11 @@ export function useGameCanvasClientSettings({
     pathingDebugUnit.value = getPathingDebugUnit();
   }
 
+  function changePathingDebugMode(mode: PathingDebugMode): void {
+    setPathingDebugMode(mode);
+    pathingDebugMode.value = getPathingDebugMode();
+  }
+
   function toggleSightBoundary(): void {
     const newValue = !sightBoundary.value;
     setSightBoundary(newValue);
@@ -607,6 +617,7 @@ export function useGameCanvasClientSettings({
     setPathingMap(cd.pathingMap.default);
     pathingMap.value = cd.pathingMap.default;
     changePathingDebugUnit(cd.pathingDebugUnit.default);
+    changePathingDebugMode(cd.pathingDebugMode.default);
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
@@ -689,6 +700,7 @@ export function useGameCanvasClientSettings({
     elevationMap,
     pathingMap,
     pathingDebugUnit,
+    pathingDebugMode,
     sightBoundary,
     radarBoundary,
     clientUnitGroundNormalEmaMode,
@@ -753,6 +765,7 @@ export function useGameCanvasClientSettings({
     toggleMetalMap,
     toggleElevationMap,
     togglePathingMap,
+    changePathingDebugMode,
     changePathingDebugUnit,
     toggleSightBoundary,
     toggleRadarBoundary,

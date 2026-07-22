@@ -87,6 +87,11 @@ pub(crate) struct PathfinderState {
     // stricter climb gate apply downhill (SYMMETRIC mode) instead of uphill only.
     cur_required_clearance: i32,
     cur_symmetric_slope: bool,
+    /// Intentional destination/entry domain for the current query. Physical
+    /// passability uses the traversal passed to the kernels; this second
+    /// domain only prevents a body that is already in its intended medium
+    /// from voluntarily entering a recovery-only medium.
+    cur_waypoint_traversal: PathfinderTraversal,
 
     // Cache key — invalidated on terrain/grid-dimension change.
     terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
@@ -196,6 +201,13 @@ impl PathfinderState {
             bfs_queue: Vec::new(),
             cur_required_clearance: 0,
             cur_symmetric_slope: false,
+            cur_waypoint_traversal: PathfinderTraversal {
+                min_standstill_normal_z: 0.0,
+                min_climb_normal_z: 0.0,
+                allow_ground: true,
+                allow_water: false,
+                allow_air: false,
+            },
             terrain_only_key: u64::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
@@ -891,6 +903,14 @@ pub(crate) fn pathfinder_can_step_between(
     to_idx: usize,
     traversal: PathfinderTraversal,
 ) -> bool {
+    // Directed recovery rule: an externally displaced body may move through
+    // physically traversable recovery-only cells and enter its waypoint
+    // domain, but once inside that intended domain it may not route back out.
+    if pathfinder_is_cell_passable(state, from_idx, state.cur_waypoint_traversal)
+        && !pathfinder_is_cell_passable(state, to_idx, state.cur_waypoint_traversal)
+    {
+        return false;
+    }
     if !pathfinder_is_cell_passable(state, to_idx, traversal) {
         return false;
     }
@@ -1415,9 +1435,8 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// `min_standstill_normal_z` is the per-unit dry-ground surface on which the
 /// unit can stop and hold; `min_climb_normal_z` adds uphill force-coupling.
 /// Zero disables the corresponding filter. The
-/// allow_* flags are mapped only from the unit's explicit ground/water/air
-/// pathing class: air bypasses terrain, wet cells require explicit water
-/// navigation, and dry cells require ground navigation. A pure-water route
+/// waypoint_allow_* flags define intentional destinations and entries, while
+/// move_allow_* flags define physical traversal. A pure-water route
 /// additionally requires fully submerged cells and shore clearance. Physical
 /// lakebed contact does not by itself authorize an intentional water route.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
@@ -1434,9 +1453,12 @@ pub fn pathfinder_find_path(
     goal_y: f64,
     min_standstill_normal_z: f32,
     min_climb_normal_z: f32,
-    allow_ground: bool,
-    allow_water: bool,
-    allow_air: bool,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
     unit_radius: f64,
     flat_drive_accel: f64,
     safe_drive_accel: f64,
@@ -1449,14 +1471,21 @@ pub fn pathfinder_find_path(
     let traversal = PathfinderTraversal {
         min_standstill_normal_z,
         min_climb_normal_z,
-        allow_ground,
-        allow_water,
-        allow_air,
+        allow_ground: move_allow_ground,
+        allow_water: move_allow_water,
+        allow_air: move_allow_air,
     };
-    // Per-query traversal params. The current cell must already be legal for
-    // this route class; a displaced unit is intentionally stranded instead of
-    // being snapped or rescued into a nearby domain. Goals and every planned
-    // segment must fit at least the hard physical footprint.
+    let waypoint_traversal = PathfinderTraversal {
+        min_standstill_normal_z,
+        min_climb_normal_z,
+        allow_ground: waypoint_allow_ground,
+        allow_water: waypoint_allow_water,
+        allow_air: waypoint_allow_air,
+    };
+    state.cur_waypoint_traversal = waypoint_traversal;
+    // Per-query traversal params. The current cell must be physically
+    // move-valid, even when it is outside the intentional waypoint domain.
+    // Goals must be waypoint-valid and every segment must fit the body.
     // Air traversal flies over footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
     let hard_clearance = if traversal.allow_air {
@@ -1487,8 +1516,9 @@ pub fn pathfinder_find_path(
     let ggy = ((goal_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let start_idx = (sgy * grid_w + sgx) as usize;
 
-    // A blocked start is terminal for this query. In particular, land units
-    // in water and water units on land may not use the planner to escape.
+    // A physically blocked start is terminal. A waypoint-invalid but
+    // move-valid start is a recovery start and may route into its intended
+    // domain.
     let start_cell_gx = sgx;
     let start_cell_gy = sgy;
     if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal)
@@ -1506,11 +1536,13 @@ pub fn pathfinder_find_path(
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
-    if traversal.allow_air || traversal.allow_water {
-        if !pathfinder_position_is_in_navigation_domain(state, goal_x, goal_y, traversal)
-            || !pathfinder_is_cell_passable(state, ggy_idx, traversal)
+    let start_is_waypoint_valid =
+        pathfinder_is_cell_passable(state, start_idx, waypoint_traversal);
+    if waypoint_traversal.allow_air || waypoint_traversal.allow_water || !start_is_waypoint_valid {
+        if !pathfinder_position_is_in_navigation_domain(state, goal_x, goal_y, waypoint_traversal)
+            || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
         {
-            match pathfinder_find_nearest_open(state, ggx, ggy, traversal) {
+            match pathfinder_find_nearest_open(state, ggx, ggy, waypoint_traversal) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1527,9 +1559,9 @@ pub fn pathfinder_find_path(
         // Snap goal to start's component for terrain-bound locomotion.
         let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
         if state.cc_labels[ggy_idx] != start_label
-            || !pathfinder_is_cell_passable(state, ggy_idx, traversal)
+            || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
         {
-            match pathfinder_find_nearest_in_component(state, ggx, ggy, start_label, traversal) {
+            match pathfinder_find_nearest_in_component(state, ggx, ggy, start_label, waypoint_traversal) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1717,9 +1749,12 @@ pub fn pathfinder_validate_path(
     points: &[f64],
     min_standstill_normal_z: f32,
     min_climb_normal_z: f32,
-    allow_ground: bool,
-    allow_water: bool,
-    allow_air: bool,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
     unit_radius: f64,
     symmetric_slope: bool,
 ) -> u32 {
@@ -1733,16 +1768,34 @@ pub fn pathfinder_validate_path(
     let traversal = PathfinderTraversal {
         min_standstill_normal_z,
         min_climb_normal_z,
-        allow_ground,
-        allow_water,
-        allow_air,
+        allow_ground: move_allow_ground,
+        allow_water: move_allow_water,
+        allow_air: move_allow_air,
     };
+    let waypoint_traversal = PathfinderTraversal {
+        min_standstill_normal_z,
+        min_climb_normal_z,
+        allow_ground: waypoint_allow_ground,
+        allow_water: waypoint_allow_water,
+        allow_air: waypoint_allow_air,
+    };
+    state.cur_waypoint_traversal = waypoint_traversal;
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
         pathfinder_hard_clearance_cells_for_radius(unit_radius)
     };
+    let last_x = points[points.len() - 2];
+    let last_y = points[points.len() - 1];
+    if !pathfinder_position_is_in_navigation_domain(state, last_x, last_y, waypoint_traversal) {
+        return 0;
+    }
+    let last_gx = (last_x / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
+    let last_gy = (last_y / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
+    if !pathfinder_is_grid_cell_passable(state, last_gx, last_gy, waypoint_traversal) {
+        return 0;
+    }
     let mut i = 0usize;
     while i + 3 < points.len() {
         let x0 = points[i];

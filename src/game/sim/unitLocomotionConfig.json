@@ -18,7 +18,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
+          "maxPropulsiveForce": 0.4,
           "linearDampingRate": 8,
           "angularDampingRate": 4,
           "surfaceLiftResponse": {
@@ -57,7 +57,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
+          "maxPropulsiveForce": 0.4,
           "linearDampingRate": 3.25,
           "angularDampingRate": 4,
           "surfaceLiftResponse": {
@@ -219,7 +219,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
+          "maxPropulsiveForce": 0.4,
           "linearDampingRate": 8,
           "angularDampingRate": 4,
           "surfaceLiftResponse": {
@@ -383,7 +383,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 0,
+          "maxPropulsiveForce": 0.4,
           "linearDampingRate": 8,
           "angularDampingRate": 4,
           "surfaceLiftResponse": {

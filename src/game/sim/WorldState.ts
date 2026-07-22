@@ -1093,13 +1093,12 @@ export class WorldState {
     rotation = 0,
   ): Entity {
     const id = this.generateEntityId();
-    // Transform.z is the building's vertical CENTER. Base sits on the
-    // local terrain (cube top) under the building's footprint, so
-    // center = groundZ + depth/2. The physics cuboid collider is
-    // created with the same `baseZ` so the static AABB lines up.
-    // Buildings placed in the ripple disc rise with the terrain;
-    // anywhere else groundZ is 0 and behavior is unchanged.
-    const baseZ = this.getGroundZ(x, y);
+    // Transform.z is the building's vertical CENTER. A newly created
+    // building is normal/non-hovering, so its base sits on the solid terrain
+    // bed even underwater. Blueprint application may mark it hovering; the
+    // construction path then replaces this baseline with the visible
+    // terrain/water surface plus the hovering building's placement policy.
+    const baseZ = this.getTerrainBedZ(x, y);
     const entity: Entity = {
       ...createEmptyEntityComponentSlots(),
       id,

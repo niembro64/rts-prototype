@@ -97,7 +97,6 @@ const UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE = 1 << 14;
 const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE = 1 << 15;
 const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE = 1 << 17;
 const UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED = 1 << 16;
-const UF_PROFILE_FLAG_WATER_FATAL = 1 << 20;
 
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
 const UF_OUT_ROTATION_DIRTY = 1 << 2;
@@ -153,7 +152,7 @@ function ensureForceBatchCapacity(count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 15;
+const UF_PROFILE_STRIDE = 14;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -175,7 +174,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
       const { ground, air, water } = loco.physics;
       signature += [
         codeCount,
-        loco.navigation.allowOnGround ? ground.maxPropulsiveForce : 0,
+        loco.navigation.move.allowOnGround ? ground.maxPropulsiveForce : 0,
         ground.staticFrictionCoefficient,
         ground.tangentialDampingRate,
         // Navigation permissions select legal route cells. They must not erase
@@ -191,11 +190,9 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.lift.surfaceFollowingProportionalForceFromWater,
         water.resistance.linearDampingRate,
         water.resistance.angularDampingRate,
-        loco.environmentalHazards.fatalSubmergedFraction,
-        loco.environmentalHazards.fatalExposureSeconds,
+        loco.environmentalHazards.waterDamagePerSecond,
         loco.actuator.propulsionAxis,
         loco.motionControl.cruiseWhenUncommanded ? 1 : 0,
-        loco.environmentalHazards.waterFatal ? 1 : 0,
       ].join(':') + '|';
     }
     codeCount++;
@@ -242,7 +239,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     const loco = getUnitLocomotion(unitBlueprintId);
     const { ground, air, water } = loco.physics;
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = loco.navigation.allowOnGround ? ground.maxPropulsiveForce : 0;
+    values[base + 0] = loco.navigation.move.allowOnGround ? ground.maxPropulsiveForce : 0;
     values[base + 1] = ground.staticFrictionCoefficient;
     values[base + 2] = ground.tangentialDampingRate;
     // Air and water drives are physics, not pathfinding permissions. The
@@ -257,12 +254,10 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 10] = water.lift.surfaceFollowingProportionalForceFromWater;
     values[base + 11] = water.resistance.linearDampingRate;
     values[base + 12] = water.resistance.angularDampingRate;
-    values[base + 13] = loco.environmentalHazards.fatalSubmergedFraction;
-    values[base + 14] = loco.environmentalHazards.fatalExposureSeconds;
+    values[base + 13] = loco.environmentalHazards.waterDamagePerSecond;
     flags[code] =
       (loco.actuator.propulsionAxis === 'bodyForward' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
-      (loco.motionControl.cruiseWhenUncommanded ? UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED : 0) |
-      (loco.environmentalHazards.waterFatal ? UF_PROFILE_FLAG_WATER_FATAL : 0);
+      (loco.motionControl.cruiseWhenUncommanded ? UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED : 0);
   }
   _unitForceProfileTableUploaded = true;
   _unitForceProfileSignature = profileSignature?.signature ?? '';
@@ -320,17 +315,21 @@ export class UnitForceSystem {
     }
     const sim = getSimWasm()!;
     ensureUnitForceProfileTable(sim);
-    const fatalWaterCount = sim.unitFatalWaterStepPool(dtSec);
-    if (fatalWaterCount > 0) {
-      const fatalEntitySlots = new Uint32Array(
+    const waterDamagedCount = sim.unitWaterDamageStepPool(dtSec);
+    const entityViews = entitySlotRegistry.getViews();
+    if (waterDamagedCount > 0) {
+      const damagedEntitySlots = new Uint32Array(
         sim.memory.buffer,
-        sim.unitFatalWaterEntitySlotsPtr(),
-        fatalWaterCount,
+        sim.unitWaterDamagedEntitySlotsPtr(),
+        waterDamagedCount,
       );
-      for (let i = 0; i < fatalWaterCount; i++) {
-        const entity = entitySlotRegistry.resolveSlot(fatalEntitySlots[i]);
+      for (let i = 0; i < waterDamagedCount; i++) {
+        const entitySlot = damagedEntitySlots[i];
+        const entity = entitySlotRegistry.resolveSlot(entitySlot);
         if (entity === undefined || entity.unit === null) continue;
-        entity.unit.hp = 0;
+        if (entityViews !== null && entitySlot < entityViews.capacity) {
+          entity.unit.hp = entityViews.hp[entitySlot];
+        }
         this.world.markSnapshotDirtyStateSynced(entity, ENTITY_CHANGED_HP);
       }
     }
@@ -340,7 +339,6 @@ export class UnitForceSystem {
     sim.pool.refreshViews();
     const bodyViews = sim.pool;
     const profileFlagsView = getUnitForceProfileFlagsView(sim);
-    const entityViews = entitySlotRegistry.getViews();
 
     const forceAccumulator = this.simulation.getForceAccumulator();
     const hasExternalForces = forceAccumulator.activeEntityCount() > 0;

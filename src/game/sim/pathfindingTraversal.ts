@@ -17,9 +17,8 @@ export type PathTerrainFilter = Readonly<{
 export type PathfinderTraversalInput = Readonly<{
   minStandstillNormalZ: number;
   minClimbNormalZ: number;
-  allowOnGround: boolean;
-  allowInWater: boolean;
-  allowInAir: boolean;
+  waypoint: UnitLocomotion['navigation']['waypoint'];
+  move: UnitLocomotion['navigation']['move'];
   flatDriveAccel: number;
   safeDriveAccel: number;
   staticFrictionCoefficient: number;
@@ -38,20 +37,21 @@ function finiteNormalOrZero(value: number | null | undefined): number {
 export function resolvePathfinderTraversalInput(
   filter: PathTerrainFilter | null,
 ): PathfinderTraversalInput {
-  const navigation = filter?.navigation ??
-    { allowOnGround: true, allowInWater: false, allowInAir: false };
-  const normal = navigation.allowInAir ? null : filter?.minStandstillNormalZ;
+  const navigation = filter?.navigation ?? {
+    waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
+    move: { allowOnGround: true, allowInWater: false, allowInAir: false },
+  };
+  const normal = navigation.move.allowInAir ? null : filter?.minStandstillNormalZ;
   const minStandstillNormalZ = finiteNormalOrZero(normal);
-  const minClimbNormalZ = navigation.allowInAir
+  const minClimbNormalZ = navigation.move.allowInAir
     ? 0
     : finiteNormalOrZero(filter?.minClimbNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
   return {
     minStandstillNormalZ,
     minClimbNormalZ,
-    allowOnGround: navigation.allowOnGround,
-    allowInWater: navigation.allowInWater,
-    allowInAir: navigation.allowInAir,
+    waypoint: { ...navigation.waypoint },
+    move: { ...navigation.move },
     flatDriveAccel:
       flatDriveAccel !== null &&
       flatDriveAccel !== undefined &&
@@ -75,7 +75,10 @@ export function pathTerrainFilterForLocomotion(
   if (locomotion === undefined || mass === undefined) return null;
   const mobility = computeLocomotionClimbProfile(locomotion, mass);
   return {
-    navigation: { ...locomotion.navigation },
+    navigation: {
+      waypoint: { ...locomotion.navigation.waypoint },
+      move: { ...locomotion.navigation.move },
+    },
     minStandstillNormalZ: mobility.minStandstillNormalZ,
     minClimbNormalZ: mobility.minClimbNormalZ,
     cost: {
@@ -90,9 +93,12 @@ export function pathTerrainFilterForLocomotion(
 export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): string {
   if (filter === null) return 'default';
   return [
-    `ground:${filter.navigation.allowOnGround}`,
-    `water:${filter.navigation.allowInWater}`,
-    `air:${filter.navigation.allowInAir}`,
+    `waypoint-ground:${filter.navigation.waypoint.allowOnGround}`,
+    `waypoint-water:${filter.navigation.waypoint.allowInWater}`,
+    `waypoint-air:${filter.navigation.waypoint.allowInAir}`,
+    `move-ground:${filter.navigation.move.allowOnGround}`,
+    `move-water:${filter.navigation.move.allowInWater}`,
+    `move-air:${filter.navigation.move.allowInAir}`,
     `standstill:${filter.minStandstillNormalZ ?? 'null'}`,
     `climb:${filter.minClimbNormalZ ?? 'null'}`,
     `accel:${filter.cost.flatDriveAccel ?? 'null'}`,

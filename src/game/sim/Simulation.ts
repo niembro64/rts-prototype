@@ -566,13 +566,13 @@ export class Simulation {
       plan.buildingId === action.buildingId;
   }
 
-  /** A physics displacement never grants a pathing exception. Cached paths
-   * are invalidated at the new location and the next planner query returns a
-   * stay-put result if the unit's locomotion cannot occupy that surface. */
+  /** Cached routes remain usable from any physically move-valid surface.
+   * Waypoint validity is intentionally irrelevant here: a physics displacement
+   * may put a unit in a recovery-only medium from which it must path back. */
   private isUnitAtValidPathingStart(entity: Entity): boolean {
     const unit = entity.unit;
     if (unit === null) return false;
-    const capabilities = getUnitLocomotionTraversalCapabilities(unit.locomotion);
+    const capabilities = getUnitLocomotionTraversalCapabilities(unit.locomotion).move;
     const overWater = isWaterAt(
       entity.transform.x,
       entity.transform.y,

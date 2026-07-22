@@ -142,7 +142,8 @@ export function runUnitLocomotionContractTest(): void {
       clone.physics.ground.maxPropulsiveForce === runtime.physics.ground.maxPropulsiveForce &&
         clone.physics.air.maxPropulsiveForce === runtime.physics.air.maxPropulsiveForce &&
         clone.physics.water.maxPropulsiveForce === runtime.physics.water.maxPropulsiveForce &&
-        clone.navigation.allowOnGround === runtime.navigation.allowOnGround,
+        clone.navigation.waypoint.allowOnGround === runtime.navigation.waypoint.allowOnGround &&
+        clone.navigation.move.allowInWater === runtime.navigation.move.allowInWater,
       `${blueprint.unitBlueprintId} locomotion cloning preserves per-medium propulsion and navigation`,
     );
     assertContract(
@@ -157,7 +158,8 @@ export function runUnitLocomotionContractTest(): void {
       `${blueprint.unitBlueprintId} owns explicit inverse and proportional surface-following forces`,
     );
     assertContract(
-      getUnitLocomotionTraversalCapabilities(runtime).allowInAir === runtime.navigation.allowInAir,
+      getUnitLocomotionTraversalCapabilities(runtime).waypoint.allowInAir ===
+        runtime.navigation.waypoint.allowInAir,
       `${blueprint.unitBlueprintId} route permissions come from navigation, not visual type`,
     );
     assertContract(
@@ -179,34 +181,44 @@ export function runUnitLocomotionContractTest(): void {
     assertContract(expected !== undefined, `${unitBlueprintId} has a locomotion-domain policy`);
     assertContract(
       runtime.type === expected.type &&
-        runtime.navigation.allowOnGround === expected.allowOnGround &&
-        runtime.navigation.allowInAir === expected.allowInAir &&
-        runtime.navigation.allowInWater === expected.allowInWater &&
-        runtime.environmentalHazards.waterFatal === expected.waterFatal,
+        runtime.navigation.waypoint.allowOnGround === expected.allowOnGround &&
+        runtime.navigation.waypoint.allowInAir === expected.allowInAir &&
+        runtime.navigation.waypoint.allowInWater === expected.allowInWater &&
+        (runtime.environmentalHazards.waterDamagePerSecond > 0) === expected.waterFatal,
       `${unitBlueprintId} matches its intended ground, air, and water locomotion`,
+    );
+    assertContract(
+      runtime.navigation.move.allowInWater && runtime.physics.water.maxPropulsiveForce > 0,
+      `${unitBlueprintId} has positive emergency water propulsion and move-valid water cells`,
+    );
+    const blueprint = getUnitBlueprint(unitBlueprintId);
+    assertContract(
+      runtime.environmentalHazards.waterDamagePerSecond ===
+        (expected.waterFatal ? blueprint.hp / 2 : 0),
+      `${unitBlueprintId} authors universal numeric water damage; intended water units use zero`,
     );
   }
 
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
     commander.physicsPresetId === 'amphibiousLegs' &&
-      commander.navigation.allowOnGround &&
-      commander.navigation.allowInWater &&
-      !commander.navigation.allowInAir &&
-      !commander.environmentalHazards.waterFatal &&
+      commander.navigation.waypoint.allowOnGround &&
+      commander.navigation.waypoint.allowInWater &&
+      !commander.navigation.waypoint.allowInAir &&
+      commander.environmentalHazards.waterDamagePerSecond === 0 &&
       commander.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
     'Commander uses its leg rig to walk the seabed without a water-surface controller',
   );
 
   const eagle = getUnitLocomotion('unitEagle');
   assertContract(
-    eagle.navigation.allowInAir && eagle.physics.air.maxPropulsiveForce > 0,
+    eagle.navigation.waypoint.allowInAir && eagle.physics.air.maxPropulsiveForce > 0,
     'Eagle has explicit air navigation and air propulsion',
   );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(
-      !orca.navigation.allowOnGround &&
-      orca.navigation.allowInWater &&
+      !orca.navigation.waypoint.allowOnGround &&
+      orca.navigation.waypoint.allowInWater &&
       orca.physics.ground.maxPropulsiveForce === 0 &&
       orca.physics.water.maxPropulsiveForce > 0 &&
       !orca.motionControl.maintainFullThrustAtWaypoints &&

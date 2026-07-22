@@ -8,6 +8,7 @@ import {
   type PathTerrainFilter,
   type PathfinderTraversalInput,
 } from './pathfindingTraversal';
+import type { UnitNavigationDomain } from '@/types/unitLocomotionTypes';
 import {
   PATHFINDING_STABILITY_MIN_NORMAL_Z,
   PATHFINDING_WATER_BUFFER_CELLS,
@@ -21,7 +22,8 @@ export type PathfindingDebugGrid = {
   readonly groundClearance: Uint16Array;
   readonly mediumClearance: Uint16Array;
   readonly waterClearance: Uint16Array;
-  readonly passable: Uint8Array;
+  readonly waypointPassable: Uint8Array;
+  readonly movePassable: Uint8Array;
 };
 
 export type PathfindingDebugTraversal = Readonly<{
@@ -59,7 +61,8 @@ export function createPathfindingDebugGrid(cellCount: number): PathfindingDebugG
     groundClearance: new Uint16Array(count),
     mediumClearance: new Uint16Array(count),
     waterClearance: new Uint16Array(count),
-    passable: new Uint8Array(count),
+    waypointPassable: new Uint8Array(count),
+    movePassable: new Uint8Array(count),
   };
 }
 
@@ -67,7 +70,7 @@ export function ensurePathfindingDebugGrid(
   grid: PathfindingDebugGrid,
   cellCount: number,
 ): PathfindingDebugGrid {
-  return grid.passable.length >= safeCellCount(cellCount)
+  return grid.movePassable.length >= safeCellCount(cellCount)
     ? grid
     : createPathfindingDebugGrid(cellCount);
 }
@@ -96,7 +99,7 @@ export function createPathfindingDebugTraversal(
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   return {
     traversal,
-    requiredNormalZ: traversal.allowInAir
+    requiredNormalZ: traversal.move.allowInAir
       ? 0
       : Math.max(PATHFINDING_STABILITY_MIN_NORMAL_Z, traversal.minStandstillNormalZ),
     hardClearanceCells: pathfinderHardClearanceCellsForRadius(unitRadius, cellSize),
@@ -196,12 +199,13 @@ export function rebuildPathfindingDebugGrid(
   rebuildClearanceDistance(grid.waterClearance, cellsX, cellsY);
 }
 
-function isWaterOnlyTraversal(traversal: PathfinderTraversalInput): boolean {
-  return !traversal.allowInAir && traversal.allowInWater && !traversal.allowOnGround;
+function isWaterOnlyTraversal(domain: UnitNavigationDomain): boolean {
+  return !domain.allowInAir && domain.allowInWater && !domain.allowOnGround;
 }
 
-/** Fill `grid.passable` with the same per-cell domain rules shown by PATH. */
-export function rebuildPathfindingDebugPassability(
+function rebuildDomainPassability(
+  output: Uint8Array,
+  domain: UnitNavigationDomain,
   input: PathfindingDebugPassabilityInput,
 ): void {
   const {
@@ -213,13 +217,13 @@ export function rebuildPathfindingDebugPassability(
     cellsX,
     cellsY,
   } = input;
-  const { traversal, requiredNormalZ, hardClearanceCells } = debugTraversal;
-  const waterOnly = isWaterOnlyTraversal(traversal);
+  const { requiredNormalZ, hardClearanceCells } = debugTraversal;
+  const waterOnly = isWaterOnlyTraversal(domain);
   const requiredWaterClearance = pathfinderRequiredWaterClearanceCells(hardClearanceCells);
   const cellCount = cellsX * cellsY;
 
   for (let index = 0; index < cellCount; index++) {
-    let passable = traversal.allowInAir;
+    let passable = domain.allowInAir;
     if (!passable) {
       if (grid.edgeBlocked[index] !== 0) {
         passable = false;
@@ -229,24 +233,32 @@ export function rebuildPathfindingDebugPassability(
         const wet = terrainWater[index] !== 0;
         const terrainBlocked = grid.waterBlocked[index] !== 0;
         const passableByMedium = wet
-          ? traversal.allowInWater
+          ? domain.allowInWater
           : terrainBlocked
-            ? traversal.allowInWater && traversal.allowOnGround
-            : traversal.allowOnGround;
+            ? domain.allowInWater && domain.allowOnGround
+            : domain.allowOnGround;
         const clearance = waterOnly
           ? grid.waterClearance[index]
-          : wet || traversal.allowInWater
+          : wet || domain.allowInWater
             ? grid.mediumClearance[index]
             : grid.groundClearance[index];
         const requiredClearance = waterOnly
           ? requiredWaterClearance
           : hardClearanceCells;
-        const terrainPassable = wet && traversal.allowInWater
+        const terrainPassable = wet && domain.allowInWater
           ? true
           : terrainNormalZ[index] >= requiredNormalZ;
         passable = passableByMedium && clearance >= requiredClearance && terrainPassable;
       }
     }
-    grid.passable[index] = passable ? 1 : 0;
+    output[index] = passable ? 1 : 0;
   }
+}
+
+/** Fill both visible validity masks from their independent domains. */
+export function rebuildPathfindingDebugPassability(
+  input: PathfindingDebugPassabilityInput,
+): void {
+  rebuildDomainPassability(input.grid.waypointPassable, input.traversal.traversal.waypoint, input);
+  rebuildDomainPassability(input.grid.movePassable, input.traversal.traversal.move, input);
 }

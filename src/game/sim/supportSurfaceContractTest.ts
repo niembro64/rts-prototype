@@ -937,11 +937,13 @@ function assertFactoryGuardDefaultContract(): void {
   );
   const factory = construction.startBuilding(world, 'towerFabricator', 8, 8, TEST_PLAYER_ID, 0, 0, {
     skipBuilderAuthorization: true,
+    ignoreTerrainForPlacement: false,
   });
   assertContract(factory !== null, 'factory guard default fixture must place a fabricator');
   assertContract(factory.factory !== null, 'fabricator must initialize a factory component');
   const blockedUnderFabricator = construction.startBuilding(world, 'buildingSolar', 8, 8, TEST_PLAYER_ID, 0, 0, {
     skipBuilderAuthorization: true,
+    ignoreTerrainForPlacement: false,
   });
   assertContract(
     blockedUnderFabricator === null,
@@ -983,7 +985,10 @@ function assertFabricatorTerrainIndependentPlacementContract(): void {
     TEST_PLAYER_ID,
     0,
     0,
-    { skipBuilderAuthorization: true },
+    {
+      skipBuilderAuthorization: true,
+      ignoreTerrainForPlacement: false,
+    },
   );
   assertContract(factory !== null, 'fabricator placement must ignore terrain buildability and flatness');
   const config = getBuildingConfig('towerFabricator');

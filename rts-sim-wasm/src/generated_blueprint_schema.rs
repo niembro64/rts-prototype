@@ -789,9 +789,7 @@ pub struct UnitUnitLocomotionBlueprintPhysics {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitLocomotionEnvironmentalHazardPolicy {
-    pub waterFatal: bool,
-    pub fatalSubmergedFraction: f64,
-    pub fatalExposureSeconds: f64,
+    pub waterDamagePerSecond: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

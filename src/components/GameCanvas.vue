@@ -1119,6 +1119,7 @@ const {
   elevationMap,
   pathingMap,
   pathingDebugUnit,
+  pathingDebugMode,
   clientUnitGroundNormalEmaMode,
   dragPanEnabled,
   waypointDetail,
@@ -1181,6 +1182,7 @@ const {
   toggleMetalMap,
   toggleElevationMap,
   togglePathingMap,
+  changePathingDebugMode,
   changePathingDebugUnit,
   toggleSightBoundary,
   changeClientUnitGroundNormalEmaMode,
@@ -2019,6 +2021,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   elevationMap: elevationMap.value,
   pathingMap: pathingMap.value,
   pathingDebugUnit: pathingDebugUnit.value,
+  pathingDebugMode: pathingDebugMode.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   masterVolume: masterVolume.value,
@@ -2069,6 +2072,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleMetalMap,
   toggleElevationMap,
   togglePathingMap,
+  changePathingDebugMode,
   changePathingDebugUnit,
   changeRenderMode,
   changeAudioScope,
@@ -2218,6 +2222,7 @@ watchEffect(() => {
   m.elevationMap = elevationMap.value;
   m.pathingMap = pathingMap.value;
   m.pathingDebugUnit = pathingDebugUnit.value;
+  m.pathingDebugMode = pathingDebugMode.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.masterVolume = masterVolume.value;

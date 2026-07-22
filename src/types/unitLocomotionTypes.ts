@@ -69,6 +69,12 @@ export type UnitLocomotionType =
 
 export type SurfaceProbeSetId = 'single' | 'few' | 'many';
 
+export type UnitNavigationDomain = Readonly<{
+  allowOnGround: boolean;
+  allowInAir: boolean;
+  allowInWater: boolean;
+}>;
+
 export type UnitLocomotion = {
   /** Authored mechanism used by presentation; physics is expanded below. */
   type: UnitLocomotionType;
@@ -79,9 +85,9 @@ export type UnitLocomotion = {
   physics: UnitLocomotionPhysics;
   /** Environmental failure policy, independent from propulsion and lift. */
   environmentalHazards: {
-    waterFatal: boolean;
-    fatalSubmergedFraction: number;
-    fatalExposureSeconds: number;
+    /** Hit points lost per second while the authoritative body origin is
+     * strictly below the water plane. Zero makes the unit water-safe. */
+    waterDamagePerSecond: number;
   };
   actuator: {
     /** Axis through which the locomotion actuator can apply horizontal force. */
@@ -98,12 +104,12 @@ export type UnitLocomotion = {
     /** Named sampling layout used for air and water support forces. */
     altitudeProbeSetId: SurfaceProbeSetId;
   };
-  /** Explicit gameplay route permissions. Physics still determines whether
-   *  the body can actually produce useful force in an allowed domain. */
+  /** Intent and physical traversal are deliberately separate. Waypoint
+   *  permissions decide where orders may terminate; move permissions are
+   *  derived from actual positive propulsion in each medium. */
   navigation: {
-    allowOnGround: boolean;
-    allowInAir: boolean;
-    allowInWater: boolean;
+    waypoint: UnitNavigationDomain;
+    move: UnitNavigationDomain;
   };
 };
 

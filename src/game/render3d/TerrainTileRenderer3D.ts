@@ -14,6 +14,7 @@ import {
   getMetalMap,
   getPathingMap,
   getPathingDebugUnit,
+  getPathingDebugMode,
   getTriangleDebug,
   getWallTriangleDebug,
   getWaterBoundaryMode,
@@ -27,6 +28,7 @@ import {
   getTerrainTextureSmoothing,
 } from '@/battleBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
+import type { PathingDebugMode } from '@/types/client';
 import {
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
@@ -123,6 +125,14 @@ const BUILD_GRID_COLOR_BLOCKED = readRgbaTuple(
 const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   COLORS.world.terrain.buildGrid.metalRgba,
   'colorsConfig.world.terrain.buildGrid.metalRgba',
+);
+const BUILD_GRID_COLOR_WAYPOINT_VALID = readRgbaTuple(
+  COLORS.world.terrain.buildGrid.waypointValidRgba,
+  'colorsConfig.world.terrain.buildGrid.waypointValidRgba',
+);
+const BUILD_GRID_COLOR_MOVE_VALID = readRgbaTuple(
+  COLORS.world.terrain.buildGrid.moveValidRgba,
+  'colorsConfig.world.terrain.buildGrid.moveValidRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
 const TERRAIN_TRIANGLE_TOUCH_EPSILON = 1.0e-9;
@@ -1295,8 +1305,11 @@ export class TerrainTileRenderer3D {
     metalMapEnabled: boolean,
     waterPathingMapEnabled: boolean,
     pathingDebugUnitId: string,
+    pathingDebugMode: PathingDebugMode,
   ): void {
-    const pathingUnitRequested = pathingDebugUnitId !== 'none';
+    const waypointValidEnabled = pathingDebugMode === 'waypoint';
+    const moveValidEnabled = pathingDebugMode === 'move';
+    const pathingUnitRequested = pathingDebugMode !== 'none';
     if (!buildGridEnabled && !metalMapEnabled && !waterPathingMapEnabled && !pathingUnitRequested) {
       this.buildGridEnabledUniform.value = 0;
       return;
@@ -1313,7 +1326,8 @@ export class TerrainTileRenderer3D {
       selectedUnitBlueprint !== undefined && selectedUnitLocomotion !== null
         ? pathTerrainFilterForLocomotion(selectedUnitLocomotion, selectedUnitBlueprint.mass)
         : null;
-    const selectedUnitPathingEnabled = selectedUnitTerrainFilter !== null;
+    const selectedUnitPathingEnabled = selectedUnitTerrainFilter !== null &&
+      (waypointValidEnabled || moveValidEnabled);
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
@@ -1323,7 +1337,7 @@ export class TerrainTileRenderer3D {
       : pathOverlayEnabled
         ? `path:${waterPathingMapEnabled ? 1 : 0}:${
             selectedUnitPathingEnabled ? pathingDebugUnitId : 'none'
-          }`
+          }:${waypointValidEnabled ? 1 : 0}:${moveValidEnabled ? 1 : 0}`
         : metalMapEnabled
           ? 'metal'
           : 'off';
@@ -1344,7 +1358,10 @@ export class TerrainTileRenderer3D {
         )
       : null;
     const selectedUnitNeedsTerrainMask = selectedUnitDebugTraversal !== null &&
-      !selectedUnitDebugTraversal.traversal.allowInAir;
+      (
+        (waypointValidEnabled && !selectedUnitDebugTraversal.traversal.waypoint.allowInAir) ||
+        (moveValidEnabled && !selectedUnitDebugTraversal.traversal.move.allowInAir)
+      );
 
     const entityVersion = overlayMode === 'build'
       ? this.clientViewState.getEntitySetVersion()
@@ -1414,11 +1431,17 @@ export class TerrainTileRenderer3D {
             );
             continue;
           }
+          const waypointValid = waypointValidEnabled &&
+            this.pathingDebugGrid.waypointPassable[cellIndex] !== 0;
+          const moveValid = moveValidEnabled &&
+            this.pathingDebugGrid.movePassable[cellIndex] !== 0;
           this.writeBuildGridPixel(
             offset,
-            this.pathingDebugGrid.passable[cellIndex] !== 0
-              ? BUILD_GRID_COLOR_OK
-              : BUILD_GRID_COLOR_BLOCKED,
+            waypointValid
+              ? BUILD_GRID_COLOR_WAYPOINT_VALID
+              : moveValid
+                ? BUILD_GRID_COLOR_MOVE_VALID
+                : BUILD_GRID_COLOR_BLOCKED,
           );
           continue;
         }
@@ -2249,6 +2272,7 @@ export class TerrainTileRenderer3D {
       getMetalMap(),
       getPathingMap(),
       getPathingDebugUnit(),
+      getPathingDebugMode(),
     );
   }
 

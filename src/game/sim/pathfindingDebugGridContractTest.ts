@@ -58,9 +58,8 @@ export function runPathfindingDebugGridContractTest(): void {
     traversal: {
       minStandstillNormalZ: 0,
       minClimbNormalZ: 0,
-      allowOnGround: false,
-      allowInWater: true,
-      allowInAir: false,
+      waypoint: { allowOnGround: false, allowInWater: true, allowInAir: false },
+      move: { allowOnGround: false, allowInWater: true, allowInAir: false },
       flatDriveAccel: 0,
       safeDriveAccel: 0,
       staticFrictionCoefficient: 0,
@@ -78,15 +77,15 @@ export function runPathfindingDebugGridContractTest(): void {
     cellsY,
   });
   assertContract(
-    grid.passable[indexOf(cellsX, shoreX, shoreY)] === 0,
+    grid.waypointPassable[indexOf(cellsX, shoreX, shoreY)] === 0,
     'a cell that only touches water is blocked for Orca',
   );
   assertContract(
-    grid.passable[indexOf(cellsX, shoreX + 4, shoreY)] === 0,
+    grid.waypointPassable[indexOf(cellsX, shoreX + 4, shoreY)] === 0,
     'Orca body clearance cannot replace the shore buffer',
   );
   assertContract(
-    grid.passable[indexOf(cellsX, shoreX + 5, shoreY)] === 1,
+    grid.waypointPassable[indexOf(cellsX, shoreX + 5, shoreY)] === 1,
     'the first cell beyond shore and body clearance is navigable for Orca',
   );
 
@@ -94,9 +93,8 @@ export function runPathfindingDebugGridContractTest(): void {
     traversal: {
       minStandstillNormalZ: 0,
       minClimbNormalZ: 0,
-      allowOnGround: true,
-      allowInWater: false,
-      allowInAir: false,
+      waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
+      move: { allowOnGround: true, allowInWater: true, allowInAir: false },
       flatDriveAccel: 0,
       safeDriveAccel: 0,
       staticFrictionCoefficient: 0,
@@ -124,11 +122,15 @@ export function runPathfindingDebugGridContractTest(): void {
     cellsY,
   });
   assertContract(
-    grid.passable[indexOf(cellsX, shoreX + 2, shoreY)] === 0,
+    grid.waypointPassable[indexOf(cellsX, shoreX + 2, shoreY)] === 0,
     'land remains blocked inside the shared two-cell water buffer',
   );
   assertContract(
-    grid.passable[indexOf(cellsX, shoreX + 3, shoreY)] === 1,
+    grid.waypointPassable[indexOf(cellsX, shoreX + 3, shoreY)] === 1,
     'land is released immediately beyond the shared water buffer',
+  );
+  assertContract(
+    grid.movePassable[indexOf(cellsX, shoreX, shoreY)] === 1,
+    'the same land unit visibly exposes wet cells as physically move-valid',
   );
 }

@@ -33,7 +33,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 59;
 
 /** Direct, SI-style values: force is converted to the simulator's mass scale
  * only at F = ma. There are no hidden force multipliers or coupling factors. */
-pub const UF_PROFILE_STRIDE: usize = 15;
+pub const UF_PROFILE_STRIDE: usize = 14;
 pub(crate) const UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT: usize = 1;
 pub(crate) const UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE: usize = 2;
@@ -47,8 +47,7 @@ pub(crate) const UF_PROFILE_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND: u
 pub(crate) const UF_PROFILE_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER: usize = 10;
 pub(crate) const UF_PROFILE_WATER_LINEAR_DAMPING_RATE: usize = 11;
 pub(crate) const UF_PROFILE_WATER_ANGULAR_DAMPING_RATE: usize = 12;
-pub(crate) const UF_PROFILE_FATAL_WATER_FRACTION: usize = 13;
-pub(crate) const UF_PROFILE_FATAL_WATER_SECONDS: usize = 14;
+pub(crate) const UF_PROFILE_WATER_DAMAGE_PER_SECOND: usize = 13;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -61,8 +60,7 @@ pub(crate) struct UnitForceRuntimeTable {
     pub(crate) air_fraction: Vec<f64>,
     pub(crate) water_fraction: Vec<f64>,
     pub(crate) ground_contact: Vec<u8>,
-    pub(crate) water_exposure_seconds: Vec<f64>,
-    pub(crate) fatal_water_entity_slots: Vec<u32>,
+    pub(crate) water_damaged_entity_slots: Vec<u32>,
 }
 
 pub(crate) struct UnitForceProfileTableHolder(
@@ -103,8 +101,7 @@ pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
                 air_fraction: Vec::new(),
                 water_fraction: Vec::new(),
                 ground_contact: Vec::new(),
-                water_exposure_seconds: Vec::new(),
-                fatal_water_entity_slots: Vec::new(),
+                water_damaged_entity_slots: Vec::new(),
             });
         }
         cell.as_mut().unwrap()
@@ -127,14 +124,12 @@ fn unit_force_runtime_slot(
         runtime.air_fraction.resize(needed, 1.0);
         runtime.water_fraction.resize(needed, 0.0);
         runtime.ground_contact.resize(needed, 0);
-        runtime.water_exposure_seconds.resize(needed, 0.0);
     }
     if runtime.entity_id[slot] != es.entity_id[slot] {
         runtime.entity_id[slot] = es.entity_id[slot];
         runtime.air_fraction[slot] = 1.0;
         runtime.water_fraction[slot] = 0.0;
         runtime.ground_contact[slot] = 0;
-        runtime.water_exposure_seconds[slot] = 0.0;
     }
     Some(slot)
 }
@@ -170,20 +165,19 @@ pub fn unit_force_runtime_clear() {
     runtime.air_fraction.fill(1.0);
     runtime.water_fraction.fill(0.0);
     runtime.ground_contact.fill(0);
-    runtime.water_exposure_seconds.fill(0.0);
-    runtime.fatal_water_entity_slots.clear();
+    runtime.water_damaged_entity_slots.clear();
 }
 
-/// Advance fatal-water exposure for every live unit body, including sleeping
-/// and otherwise inactive bodies. Returns a count into the Rust-owned entity
-/// slot scratch exposed by `unit_fatal_water_entity_slots_ptr`.
+/// Apply authored water damage to every live unit body, including sleeping
+/// and otherwise inactive bodies. The sole hazard sample is the authoritative
+/// body origin: any origin strictly below the water plane is submerged.
 #[wasm_bindgen]
-pub fn unit_fatal_water_step_pool(dt_sec: f64) -> u32 {
+pub fn unit_water_damage_step_pool(dt_sec: f64) -> u32 {
     let p = pool();
     let es = entity_state();
     let profile = unit_force_profile_table();
     let runtime = unit_force_runtime_table();
-    runtime.fatal_water_entity_slots.clear();
+    runtime.water_damaged_entity_slots.clear();
 
     for entity_slot in 0..es.entity_id.len() {
         if es.entity_id[entity_slot] < 0
@@ -215,27 +209,23 @@ pub fn unit_fatal_water_step_pool(dt_sec: f64) -> u32 {
         let water_fraction = unit_force_water_fraction(p.pos_z[body_slot], p.radius[body_slot]);
         runtime.water_fraction[runtime_slot] = water_fraction;
         runtime.air_fraction[runtime_slot] = 1.0 - water_fraction;
-        let (exposure_seconds, fatal_now) = unit_force_update_water_exposure(
-            runtime.water_exposure_seconds[runtime_slot],
-            profile.flags[code] & UF_PROFILE_FLAG_WATER_FATAL != 0,
-            water_fraction,
-            profile.values[pbase + UF_PROFILE_FATAL_WATER_FRACTION],
-            profile.values[pbase + UF_PROFILE_FATAL_WATER_SECONDS],
+        let damage = unit_water_damage_for_step(
+            p.pos_z[body_slot],
+            profile.values[pbase + UF_PROFILE_WATER_DAMAGE_PER_SECOND],
             dt_sec,
         );
-        runtime.water_exposure_seconds[runtime_slot] = exposure_seconds;
-        if fatal_now {
-            es.hp[entity_slot] = 0.0;
+        if damage > 0.0 {
+            es.hp[entity_slot] = (es.hp[entity_slot] - damage).max(0.0);
             es.dirty_mask[entity_slot] |= ENTITY_CHANGED_HP;
-            runtime.fatal_water_entity_slots.push(entity_slot as u32);
+            runtime.water_damaged_entity_slots.push(entity_slot as u32);
         }
     }
-    runtime.fatal_water_entity_slots.len() as u32
+    runtime.water_damaged_entity_slots.len() as u32
 }
 
 #[wasm_bindgen]
-pub fn unit_fatal_water_entity_slots_ptr() -> *const u32 {
-    unit_force_runtime_table().fatal_water_entity_slots.as_ptr()
+pub fn unit_water_damaged_entity_slots_ptr() -> *const u32 {
+    unit_force_runtime_table().water_damaged_entity_slots.as_ptr()
 }
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
@@ -298,7 +288,6 @@ pub(crate) const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 = UF_FLAG_PROPULSION_BODY_FORWARD;
 
 pub(crate) const UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED: u32 = 1 << 16;
-pub(crate) const UF_PROFILE_FLAG_WATER_FATAL: u32 = 1 << 20;
 
 pub(crate) const UF_OUT_MOVEMENT_ACCEL: u32 = 1 << 0;
 pub(crate) const UF_OUT_CLEAR_COMBAT: u32 = 1 << 1;
@@ -440,19 +429,11 @@ pub fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
 }
 
 #[inline]
-fn unit_force_update_water_exposure(
-    current_seconds: f64,
-    water_fatal: bool,
-    water_fraction: f64,
-    fatal_fraction: f64,
-    fatal_seconds: f64,
-    dt_sec: f64,
-) -> (f64, bool) {
-    if !water_fatal || water_fraction < fatal_fraction.clamp(0.0, 1.0) {
-        return (0.0, false);
+fn unit_water_damage_for_step(origin_z: f64, damage_per_second: f64, dt_sec: f64) -> f64 {
+    if !origin_z.is_finite() || origin_z >= TERRAIN_WATER_LEVEL {
+        return 0.0;
     }
-    let next_seconds = current_seconds.max(0.0) + dt_sec.max(0.0);
-    (next_seconds, next_seconds >= fatal_seconds.max(0.0))
+    damage_per_second.max(0.0) * dt_sec.max(0.0)
 }
 
 #[inline]
@@ -1619,20 +1600,18 @@ mod tests {
     }
 
     #[test]
-    fn fatal_water_exposure_has_grace_and_resets_below_threshold() {
-        let (first, fatal_first) =
-            unit_force_update_water_exposure(0.0, true, 0.75, 0.65, 2.0, 1.25);
-        assert_near(first, 1.25);
-        assert!(!fatal_first);
-
-        let (reset, fatal_reset) =
-            unit_force_update_water_exposure(first, true, 0.5, 0.65, 2.0, 0.5);
-        assert_near(reset, 0.0);
-        assert!(!fatal_reset);
-
-        let (fatal_elapsed, fatal_now) =
-            unit_force_update_water_exposure(1.25, true, 0.75, 0.65, 2.0, 0.75);
-        assert_near(fatal_elapsed, 2.0);
-        assert!(fatal_now);
+    fn water_damage_samples_only_the_body_origin() {
+        assert_near(
+            unit_water_damage_for_step(TERRAIN_WATER_LEVEL - 0.001, 55.0, 0.5),
+            27.5,
+        );
+        assert_near(
+            unit_water_damage_for_step(TERRAIN_WATER_LEVEL, 55.0, 0.5),
+            0.0,
+        );
+        assert_near(
+            unit_water_damage_for_step(TERRAIN_WATER_LEVEL - 100.0, 0.0, 10.0),
+            0.0,
+        );
     }
 }

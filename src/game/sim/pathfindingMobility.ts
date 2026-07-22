@@ -39,7 +39,7 @@ export function computeLocomotionClimbProfile(
   mass: number,
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
-  const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation;
+  const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation.move;
   const groundMaxPropulsiveForce = allowOnGround
     ? groundPhysics.maxPropulsiveForce
     : 0;

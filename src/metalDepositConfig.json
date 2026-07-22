@@ -173,6 +173,7 @@
       "dTerrainLevels": null,
       "flatPadCells": 40,
       "terrainBlendRadius": 600,
+      "demoAutoExtractor": true,
       "depositCluster": {
         "type": "group-ring",
         "count": 3,
@@ -186,14 +187,15 @@
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
       "dTerrainLevels": null,
-      "flatPadCells": 40,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
+      "demoAutoExtractor": true,
       "depositCluster": {
         "type": "group-manual",
         "spots": [
-          { "radiusFraction": 0.85, "sliceOffset": -0.2 },
-          { "radiusFraction": 0.95, "sliceOffset": -0.2 },
-          { "radiusFraction": 1.05, "sliceOffset": -0.2 },
+          { "radiusFraction": 0.9, "sliceOffset": -0.2 },
+          { "radiusFraction": 1.0, "sliceOffset": -0.25 },
+          { "radiusFraction": 1.1, "sliceOffset": -0.25 },
           { "radiusFraction": 1.15, "sliceOffset": -0.2 }
         ]
       }
@@ -206,6 +208,7 @@
       "dTerrainLevels": null,
       "flatPadCells": 40,
       "terrainBlendRadius": 600,
+      "demoAutoExtractor": true,
       "depositCluster": {
         "type": "group-ring",
         "count": 1,

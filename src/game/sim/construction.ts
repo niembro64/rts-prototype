@@ -30,12 +30,21 @@ import {
   METAL_EXTRACTOR_T2_BLUEPRINT_ID,
 } from './metalExtractorUpgrade';
 import {
+  getBuildingPlacementBaseZ,
   buildingIgnoresTerrainForPlacement,
   getHighestBuildFootprintGroundZ,
 } from './buildingPlacementPolicy';
 
 type StartBuildingOptions = {
-  skipBuilderAuthorization?: boolean;
+  skipBuilderAuthorization: boolean;
+  /** Bootstrap-only escape hatch for authored prebuilt infrastructure on
+   *  otherwise unbuildable terrain. Bounds and occupancy still apply. */
+  ignoreTerrainForPlacement: boolean;
+};
+
+const DEFAULT_START_BUILDING_OPTIONS: StartBuildingOptions = {
+  skipBuilderAuthorization: false,
+  ignoreTerrainForPlacement: false,
 };
 
 // Construction system - authoritative building placement and footprint grid.
@@ -76,7 +85,7 @@ export class ConstructionSystem {
     playerId: PlayerId,
     builderId: EntityId,
     rotation = 0,
-    options: StartBuildingOptions = {},
+    options: StartBuildingOptions = DEFAULT_START_BUILDING_OPTIONS,
   ): Entity | null {
     const builderEntity = world.getEntity(builderId);
     if (!options.skipBuilderAuthorization && !entityCanBuild(builderEntity, buildingBlueprintId)) return null;
@@ -106,7 +115,10 @@ export class ConstructionSystem {
       (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
       rotation,
-      { includeMetalDiagnostics: false },
+      {
+        includeMetalDiagnostics: false,
+        ignoreTerrain: options.ignoreTerrainForPlacement,
+      },
     );
     if (!diagnostics.canPlace) {
       return null;
@@ -114,6 +126,13 @@ export class ConstructionSystem {
 
     // Get world position for building center
     const worldPos = { x: diagnostics.x, y: diagnostics.y };
+    const baseZ = getBuildingPlacementBaseZ(
+      config.hovering,
+      worldPos.x,
+      worldPos.y,
+      (x, y) => world.getGroundZ(x, y),
+      (x, y) => world.getTerrainBedZ(x, y),
+    );
     if (
       spawnEmitter !== null &&
       spawnCapability !== null &&
@@ -125,7 +144,7 @@ export class ConstructionSystem {
           kind: 'point',
           x: worldPos.x,
           y: worldPos.y,
-          z: world.getGroundZ(worldPos.x, worldPos.y),
+          z: baseZ,
           rotation,
         },
       })
@@ -156,6 +175,7 @@ export class ConstructionSystem {
       playerId,
       rotation,
     );
+    entity.transform.z = baseZ + physicalSize.depth / 2;
     if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
       const baselineZ = getHighestBuildFootprintGroundZ(
         gridX,
@@ -324,7 +344,7 @@ export class ConstructionSystem {
       (gx, gy) => this.isCellOccupiedByOtherEntity(gx, gy, target.id),
       this.terrainBuildabilityGrid,
       rotation,
-      { includeMetalDiagnostics: false },
+      { includeMetalDiagnostics: false, ignoreTerrain: false },
     );
     if (!diagnostics.canPlace) return null;
 
@@ -339,7 +359,10 @@ export class ConstructionSystem {
       playerId,
       builderId,
       rotation,
-      { skipBuilderAuthorization: true },
+      {
+        skipBuilderAuthorization: true,
+        ignoreTerrainForPlacement: false,
+      },
     );
   }
 
@@ -400,6 +423,14 @@ export class ConstructionSystem {
       config.gridDepth * BUILD_GRID_CELL_SIZE,
       playerId
     );
+    const baseZ = getBuildingPlacementBaseZ(
+      config.hovering,
+      centerX,
+      centerY,
+      (x, y) => world.getGroundZ(x, y),
+      (x, y) => world.getTerrainBedZ(x, y),
+    );
+    entity.transform.z = baseZ + entity.building!.depth / 2;
     if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
       const footprint = getRotatedGridFootprint(
         config.placementGridWidth,

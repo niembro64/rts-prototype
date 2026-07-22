@@ -80,8 +80,8 @@ import __wbg_init, {
   unit_force_water_surface_depth_world,
   unit_force_water_fraction,
   unit_force_runtime_clear,
-  unit_fatal_water_step_pool,
-  unit_fatal_water_entity_slots_ptr,
+  unit_water_damage_step_pool,
+  unit_water_damaged_entity_slots_ptr,
   render_unit_pose_compute,
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
@@ -1021,11 +1021,10 @@ export interface SimWasm {
   unitForceProfileValuesPtr: () => number;
   unitForceProfileFlagsPtr: () => number;
   unitForceRuntimeClear: () => void;
-  /** Advances water-fatal exposure for every live unit body, including
-   *  sleeping bodies, and returns the count in the Rust-owned entity-slot
-   *  scratch. */
-  unitFatalWaterStepPool: (dtSec: number) => number;
-  unitFatalWaterEntitySlotsPtr: () => number;
+  /** Applies origin-submerged water damage for every live unit body,
+   *  including sleeping bodies, and returns the damaged entity-slot count. */
+  unitWaterDamageStepPool: (dtSec: number) => number;
+  unitWaterDamagedEntitySlotsPtr: () => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
    *  unit/projectile sphere tests, building AABB tests, slice filtering,
@@ -3600,16 +3599,20 @@ export interface PathfinderApi {
   rebuildTerrainMaskAndCc: (terrainVersion: number) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
-   *  waypoint COUNT (not the f64 element count). Effective route-domain
-   *  flags are derived from locomotion-preset policy plus physical authority. */
+   *  waypoint COUNT (not the f64 element count). Waypoint-domain flags own
+   *  intentional destinations/entries; move-domain flags own physical
+   *  traversal and recovery from external displacement. */
   findPath: (
     startX: number, startY: number,
     goalX: number, goalY: number,
     minNormalZ: number,
     minClimbNormalZ: number,
-    allowOnGround: boolean,
-    allowInWater: boolean,
-    allowInAir: boolean,
+    waypointAllowOnGround: boolean,
+    waypointAllowInWater: boolean,
+    waypointAllowInAir: boolean,
+    moveAllowOnGround: boolean,
+    moveAllowInWater: boolean,
+    moveAllowInAir: boolean,
     /** Unit collision radius in world units. Blockers are kept this far from
      *  the route (clearance field) so a body is not squeezed through gaps it
      *  cannot fit. 0 = point-size (no clearance gate). */
@@ -3635,9 +3638,12 @@ export interface PathfinderApi {
     points: Float64Array,
     minNormalZ: number,
     minClimbNormalZ: number,
-    allowOnGround: boolean,
-    allowInWater: boolean,
-    allowInAir: boolean,
+    waypointAllowOnGround: boolean,
+    waypointAllowInWater: boolean,
+    waypointAllowInAir: boolean,
+    moveAllowOnGround: boolean,
+    moveAllowInWater: boolean,
+    moveAllowInAir: boolean,
     unitRadius: number,
     symmetricSlope: boolean,
   ) => number;
@@ -4081,8 +4087,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
         unitForceRuntimeClear: unit_force_runtime_clear,
-        unitFatalWaterStepPool: unit_fatal_water_step_pool,
-        unitFatalWaterEntitySlotsPtr: unit_fatal_water_entity_slots_ptr,
+        unitWaterDamageStepPool: unit_water_damage_step_pool,
+        unitWaterDamagedEntitySlotsPtr: unit_water_damaged_entity_slots_ptr,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
@@ -4630,6 +4636,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRosterCommandSurfaceContractTest();
         const { runUnitLocomotionContractTest } = await import('../sim/blueprints/unitLocomotionContractTest');
         runUnitLocomotionContractTest();
+        const { runWaterLocomotionSeparationContractTest } = await import('../sim/blueprints/waterLocomotionSeparationContractTest');
+        runWaterLocomotionSeparationContractTest();
         const { runPathfindingMobilityContractTest } = await import('../sim/pathfindingMobilityContractTest');
         runPathfindingMobilityContractTest();
         const { runPathfindingDebugGridContractTest } = await import('../sim/pathfindingDebugGridContractTest');
@@ -4700,6 +4708,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runResourceMovementConformanceContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
+        const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
+        runDemoMetalExtractorSpawnContractTest();
       }
       return handle;
     })();

@@ -2303,20 +2303,10 @@
     "UnitLocomotionEnvironmentalHazardPolicy": {
       "type": "object",
       "required": [
-        "waterFatal",
-        "fatalSubmergedFraction",
-        "fatalExposureSeconds"
+        "waterDamagePerSecond"
       ],
       "properties": {
-        "waterFatal": {
-          "type": "boolean"
-        },
-        "fatalSubmergedFraction": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "fatalExposureSeconds": {
+        "waterDamagePerSecond": {
           "type": "number",
           "minimum": 0
         }

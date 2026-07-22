@@ -44,7 +44,8 @@ export type WaterBoundaryMode =
  *  endpoints; future command points remain markers until their legs are
  *  actually planned. */
 export type WaypointDetail = 'simple' | 'detailed';
-export type PathingDebugUnitId = 'none' | string;
+export type PathingDebugMode = 'none' | 'waypoint' | 'move';
+export type PathingDebugUnitId = string;
 /** Entity-HUD entity classes. Each maps to a renderer category that
  *  can independently show / hide its name tag, health bar, and
  *  construction-progress bars. */
@@ -148,6 +149,9 @@ export type ClientBarConfig = {
   readonly elevationMap: BooleanSetting;
   readonly pathingMap: BooleanSetting;
   readonly pathingDebugUnit: DefaultSetting<PathingDebugUnitId>;
+  /** Exclusive selected-unit pathability overlay. WAYPOINT shows cells where
+   * orders may terminate; MOVE shows every physically traversable cell. */
+  readonly pathingDebugMode: DefaultSetting<PathingDebugMode>;
   /** Draws the local player's current sight/sensor boundary on the
    *  terrain. This is a presentation/debug overlay only; authoritative
    *  fog filtering still lives on the host. */

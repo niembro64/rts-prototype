@@ -559,9 +559,7 @@ export type UnitUnitLocomotionBlueprintPhysics = {
 };
 
 export type UnitLocomotionEnvironmentalHazardPolicy = {
-  waterFatal: boolean;
-  fatalSubmergedFraction: number;
-  fatalExposureSeconds: number;
+  waterDamagePerSecond: number;
 };
 
 export type HoverConfig = {

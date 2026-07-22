@@ -82,9 +82,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 55
       }
     },
     "base": {
@@ -191,9 +189,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 85
       }
     },
     "base": {
@@ -333,9 +329,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 240
       }
     },
     "base": {
@@ -442,9 +436,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 260
       }
     },
     "base": {
@@ -553,9 +545,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 200
       }
     },
     "base": {
@@ -688,9 +678,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 49.125
       }
     },
     "base": {
@@ -797,9 +785,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 750
       }
     },
     "base": {
@@ -958,9 +944,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 2400
       }
     },
     "base": {
@@ -1184,9 +1168,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 2100
       }
     },
     "base": {
@@ -1292,9 +1274,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -1442,9 +1422,7 @@
         "cycleDistanceFrac": 1.4
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -1586,9 +1564,7 @@
         "cycleDistanceFrac": 1.9
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -1734,9 +1710,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 105
       }
     },
     "base": {
@@ -1848,9 +1822,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 210
       }
     },
     "base": {
@@ -1956,9 +1928,7 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -2091,9 +2061,7 @@
         "tailFanOffsetX": -4.7
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -2255,9 +2223,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -2378,9 +2344,7 @@
         "jetCount": 2
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 180
       }
     },
     "base": {
@@ -2509,9 +2473,7 @@
         "jetCount": 1
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -2661,9 +2623,7 @@
         "jetCount": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 3800
       }
     },
     "base": {
@@ -2812,9 +2772,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -2976,9 +2934,7 @@
         "jetCount": 1
       },
       "environmentalHazards": {
-        "waterFatal": true,
-        "fatalSubmergedFraction": 0.65,
-        "fatalExposureSeconds": 2
+        "waterDamagePerSecond": 4700
       }
     },
     "base": {
@@ -3094,9 +3050,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {
@@ -3311,9 +3265,7 @@
         ]
       },
       "environmentalHazards": {
-        "waterFatal": false,
-        "fatalSubmergedFraction": 1,
-        "fatalExposureSeconds": 0
+        "waterDamagePerSecond": 0
       }
     },
     "base": {

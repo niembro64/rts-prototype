@@ -878,6 +878,18 @@
         the current leg stale, the current pathfinding points are discarded and recomputed. The
         durable waypoint list remains intact.
       </p>
+      <p>
+        Waypoint validity and physical movement validity are different cell masks. A
+        <code>waypoint-valid</code> cell is a legal intentional order destination for that unit's
+        authored locomotion policy. A <code>move-valid</code> cell is one the unit's actual force
+        profile and footprint can traverse. A thrown land unit can therefore begin in a wet cell
+        that is move-valid but waypoint-invalid, propel itself toward land while taking its
+        independent water damage, and re-enter its waypoint domain. Once in the waypoint domain,
+        directed edge policy prevents ordinary routing from choosing recovery-only water as a
+        shortcut. The CLIENT pathing overlay always retains exactly one selected unit and uses
+        one exclusive <code>NONE</code>/<code>WAYPOINT</code>/<code>MOVE</code> display mode, so
+        the selected domain is visually unambiguous without losing the unit choice when hidden.
+      </p>
       <ul class="rule-list">
         <li>Do not store pathfinder-expanded intermediate points in the same array as authored command waypoints.</li>
         <li>Do not serialize pathfinding points as gameplay intent; serialize waypoints and let the local server simulation regenerate movement plans.</li>
@@ -928,10 +940,12 @@
         Frontend</strong>), not as separate physics code paths. Two units with the same
         force-profile numbers move identically regardless of which rig draws them, exactly
         as two shapes with the same material look identically (<strong>Materials Are
-        Independent Of Shape</strong>). A zero is a real, meaningful preset value: it is how
-        a pure ground locomotion declares it cannot push on air or water, and how an aircraft
-        locomotion declares it cannot push on the ground. Units sharing a preset receive the
-        same maximum propulsive force; their different masses create different accelerations.
+        Independent Of Shape</strong>). A zero remains a real, meaningful preset value, but
+        every unit deliberately owns at least a small positive water drive so an externally
+        displaced body can attempt to recover. Intended aquatic locomotion has useful water
+        authority; ordinary locomotion has only emergency authority. Units sharing a preset
+        receive the same maximum propulsive force; their different masses create different
+        accelerations.
       </p>
       <p>
         The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
@@ -951,9 +965,11 @@
       </p>
       <p>
         Locomotion is grouped by physical responsibility. Ground, air, and water each own an
-        explicit <code>maxPropulsiveForce</code>. Navigation permissions select legal route
-        cells; they do not disable an authored air or water force while the body physically
-        occupies that medium.
+        explicit <code>maxPropulsiveForce</code>. Navigation has two cell domains:
+        <code>waypoint-valid</code> cells are intentional destinations and entries, while
+        <code>move-valid</code> cells are derived from actual physical propulsion and allow
+        recovery after displacement. Neither domain disables an authored air or water force
+        while the body physically occupies that medium.
         Ground also owns <code>staticFrictionCoefficient</code> and <code>tangentialDampingRate</code>.
         Air and water each own <code>linearDampingRate</code> and <code>angularDampingRate</code>. There
         are no hidden force multipliers, reference-mass scales, global thrust scales,
@@ -968,9 +984,13 @@
       <p>
         Medium is sampled rather than typed. Ground applies on a supporting contact; air and water
         use complementary displaced-volume fractions. Their forces are occupancy weighted and add.
-        Navigation is an explicit preset policy (<code>allowOnGround</code>,
-        <code>allowedFluidMedia</code>), independent of the visual locomotion mechanism. Survival
-        policy is separate again.
+        Waypoint navigation is an explicit preset policy (<code>allowOnGround</code>,
+        <code>allowedFluidMedia</code>), independent of the visual locomotion mechanism. Move
+        validity is capability-derived. A route may leave recovery-only cells and enter the
+        waypoint domain, but may not voluntarily leave the waypoint domain for recovery-only
+        cells. Survival policy is separate again: every unit authors numeric
+        <code>waterDamagePerSecond</code>, with zero for water-safe units, and damage samples only
+        whether the authoritative body origin is strictly below the water plane.
       </p>
       <p>
         Surface following is a source-explicit powered support force, not a height clamp. Air
@@ -3240,7 +3260,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, <code>navigation</code>, and separate environmental hazards. The actuator has one maximum propulsive-force budget; navigation determines the media where it is available. Ground has static friction and tangential damping; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. The loader validates this authored hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
+        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, two-domain <code>navigation</code>, and separate environmental hazards. Every unit has positive emergency water propulsion. Waypoint-valid cells own intentional destinations and entries; move-valid cells are derived from positive physical propulsion, and directed recovery edges allow a displaced body to return without authorizing water shortcuts. Ground has static friction and tangential damping; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. Water damage is a universal numeric rate sampled only at the body origin; water-safe units author zero. The loader validates this hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

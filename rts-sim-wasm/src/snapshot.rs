@@ -7112,8 +7112,8 @@ mod sim_kernel_tests {
         // change this flat-terrain route.
         pathfinder_rebuild_terrain_mask_and_cc(10_001);
         let count = pathfinder_find_path(
-            210.0, 210.0, 320.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
-            0.0, false,
+            210.0, 210.0, 320.0, 210.0, 0.0, 0.0, true, false, false, true, false,
+            false, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7133,8 +7133,8 @@ mod sim_kernel_tests {
         // toward the goal; an invalid start now remains stranded.
         pathfinder_rebuild_terrain_mask_and_cc(10_002);
         let count = pathfinder_find_path(
-            30.0, 210.0, 80.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
-            0.0, false,
+            30.0, 210.0, 80.0, 210.0, 0.0, 0.0, true, false, false, true, false,
+            false, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7158,6 +7158,9 @@ mod sim_kernel_tests {
             210.0,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
             true,
             false,
             false,
@@ -7280,7 +7283,7 @@ mod sim_kernel_tests {
         pathfinder_rebuild_terrain_mask_and_cc(10_031);
 
         let ground_only_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, true, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
         let ground_only_waypoints = unsafe {
@@ -7302,6 +7305,9 @@ mod sim_kernel_tests {
                 true,
                 false,
                 false,
+                true,
+                true,
+                false,
                 0.0,
                 false,
             ),
@@ -7318,6 +7324,9 @@ mod sim_kernel_tests {
                 true,
                 false,
                 false,
+                true,
+                true,
+                false,
                 0.0,
                 false,
             ),
@@ -7333,6 +7342,9 @@ mod sim_kernel_tests {
                 true,
                 false,
                 false,
+                true,
+                true,
+                false,
                 0.0,
                 false,
             ),
@@ -7347,6 +7359,9 @@ mod sim_kernel_tests {
                 true,
                 false,
                 false,
+                true,
+                true,
+                false,
                 0.0,
                 false,
             ),
@@ -7354,22 +7369,23 @@ mod sim_kernel_tests {
             "translating that formation segment into the water buffer must be rejected",
         );
 
-        let stranded_land_count = pathfinder_find_path(
-            150.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+        let recovered_land_count = pathfinder_find_path(
+            150.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, true, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
-        assert_eq!(stranded_land_count, 1);
-        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
-        let stranded_land_waypoints = unsafe {
+        assert!(recovered_land_count >= 1);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
+        let recovered_land_waypoints = unsafe {
             std::slice::from_raw_parts(
                 pathfinder_waypoints_ptr(),
-                (stranded_land_count as usize) * 2,
+                (recovered_land_count as usize) * 2,
             )
         };
-        assert_eq!(stranded_land_waypoints, &[150.0, 90.0]);
+        let recovered_last = (recovered_land_count as usize - 1) * 2;
+        assert!((recovered_land_waypoints[recovered_last] - 250.0).abs() < 1.0e-9);
 
         let stranded_water_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, false, true, false, 0.0, 0.0, 0.0,
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
         assert_eq!(stranded_water_count, 1);
@@ -7387,7 +7403,7 @@ mod sim_kernel_tests {
         // water-only unit must remain stranded rather than being routed along
         // a beach-adjacent sliver of water.
         let shore_goal_count = pathfinder_find_path(
-            170.0, 90.0, 190.0, 90.0, 0.0, 0.0, false, true, false, 0.0, 0.0, 0.0,
+            170.0, 90.0, 190.0, 90.0, 0.0, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
         assert_eq!(shore_goal_count, 1);
@@ -7404,6 +7420,9 @@ mod sim_kernel_tests {
                 false,
                 true,
                 false,
+                false,
+                true,
+                false,
                 0.0,
                 false,
             ),
@@ -7412,7 +7431,7 @@ mod sim_kernel_tests {
         );
 
         let amphibious_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, true, false, 0.0, 0.0, 0.0,
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, true, false, true, true, false, 0.0, 0.0, 0.0,
             0.0, false,
         );
         assert_eq!(amphibious_count, 1);
@@ -7562,8 +7581,8 @@ mod sim_kernel_tests {
         pathfinder_rebuild_terrain_mask_and_cc(10_004);
 
         let count = pathfinder_find_path(
-            90.0, 50.0, 110.0, 50.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
-            0.0, false,
+            90.0, 50.0, 110.0, 50.0, 0.0, 0.0, true, false, false, true, false,
+            false, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7587,6 +7606,9 @@ mod sim_kernel_tests {
             50.0,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
             true,
             false,
             false,
@@ -7716,6 +7738,9 @@ mod sim_kernel_tests {
             50.0,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
             PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
             true,
             false,
             false,

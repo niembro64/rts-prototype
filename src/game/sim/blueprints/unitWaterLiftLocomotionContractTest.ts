@@ -43,7 +43,7 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
     seaTurtle.physics.ground.maxPropulsiveForce >= seaTurtle.physics.water.maxPropulsiveForce * 2 &&
       seaTurtle.physics.ground.staticFrictionCoefficient >= 2 &&
       seaTurtle.physics.air.maxPropulsiveForce === 0 &&
-      !seaTurtle.navigation.allowInAir &&
+      !seaTurtle.navigation.waypoint.allowInAir &&
       seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
       seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
       seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater === 0,

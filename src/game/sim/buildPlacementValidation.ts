@@ -56,7 +56,13 @@ export type BuildPlacementDiagnostics = {
 type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
 
 type BuildPlacementDiagnosticsOptions = {
-  includeMetalDiagnostics?: boolean;
+  includeMetalDiagnostics: boolean;
+  ignoreTerrain: boolean;
+};
+
+const DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS: BuildPlacementDiagnosticsOptions = {
+  includeMetalDiagnostics: true,
+  ignoreTerrain: false,
 };
 
 function cellKey(gx: number, gy: number): string {
@@ -106,9 +112,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   isCellOccupied: BuildPlacementOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null,
   rotation = 0,
-  options: BuildPlacementDiagnosticsOptions = {},
+  options: BuildPlacementDiagnosticsOptions = DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS,
 ): BuildPlacementDiagnostics {
-  const includeMetalDiagnostics = options.includeMetalDiagnostics !== false;
+  const includeMetalDiagnostics = options.includeMetalDiagnostics;
   const config = getBuildingConfig(candidateType);
   // Validate and reserve the full placement footprint. It shares its
   // center with the physical rect (parity is loader-enforced), so the
@@ -117,6 +123,16 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const center = getBuildingCenterFromGrid(gridX, gridY, footprint.gridWidth, footprint.gridHeight);
   const halfWidth = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
   const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const extractorCoverage = isMetalExtractorBlueprintId(candidateType)
+    ? getMetalDepositFootprintCoverage(
+      metalDeposits,
+      center.x,
+      center.y,
+      halfWidth,
+      halfHeight,
+      BUILD_GRID_CELL_SIZE,
+    )
+    : null;
   const mapCellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
   const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
@@ -124,7 +140,10 @@ function getBuildingPlacementDiagnosticsAtGrid(
   let failureReason: BuildPlacementFailureReason | null = null;
   let metalCoveredCells = 0;
   const terrainLevelCounts = new Map<number, number>();
-  const ignoreTerrain = buildingIgnoresTerrainForPlacement(candidateType);
+  const ignoreTerrain =
+    options.ignoreTerrain ||
+    buildingIgnoresTerrainForPlacement(candidateType) ||
+    (extractorCoverage !== null && extractorCoverage.coveredCells > 0);
 
   // Walk the whole-footprint perimeter once. Per-cell loop below also
   // walks each cell's perimeter ONCE and reads BOTH the buildable
@@ -270,17 +289,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }
   }
   if (includeMetalDiagnostics && isMetalExtractorBlueprintId(candidateType)) {
-    const coverage = getMetalDepositFootprintCoverage(
-      metalDeposits,
-      center.x,
-      center.y,
-      halfWidth,
-      halfHeight,
-      BUILD_GRID_CELL_SIZE,
-    );
-    metalFraction = coverage.fraction;
-    metalCoveredCells = coverage.coveredCells;
-    metalTotalCells = coverage.totalCells;
+    metalFraction = extractorCoverage!.fraction;
+    metalCoveredCells = extractorCoverage!.coveredCells;
+    metalTotalCells = extractorCoverage!.totalCells;
   }
 
   return {
@@ -308,7 +319,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
   isCellOccupied: BuildPlacementOccupiedLookup = emptyOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
   rotation = 0,
-  options: BuildPlacementDiagnosticsOptions = {},
+  options: BuildPlacementDiagnosticsOptions = DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS,
 ): BuildPlacementDiagnostics {
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -335,7 +346,7 @@ export function getBuildingPlacementDiagnostics(
   occupiedCells: ReadonlySet<string> = getOccupiedBuildingCells(buildings),
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
   rotation = 0,
-  options: BuildPlacementDiagnosticsOptions = {},
+  options: BuildPlacementDiagnosticsOptions = DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
   const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);

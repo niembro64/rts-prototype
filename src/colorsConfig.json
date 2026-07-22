@@ -79,7 +79,9 @@
       "buildGrid": {
         "okRgba": "#006600a0",
         "blockedRgba": "#770000aa",
-        "metalRgba": "#003a99b9"
+        "metalRgba": "#003a99b9",
+        "waypointValidRgba": "#00bfe6b8",
+        "moveValidRgba": "#e69a00b8"
       },
       "bumpOverlay": {
         "baseColorRgb01": "#060b0d"

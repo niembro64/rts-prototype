@@ -8,6 +8,19 @@ export function buildingIgnoresTerrainForPlacement(
   return buildingBlueprintId === 'towerFabricator';
 }
 
+/** Normal buildings sit on the solid terrain bed, including underwater.
+ *  Hovering buildings instead use the visible terrain/water surface and apply
+ *  their authored hover clearance from there. */
+export function getBuildingPlacementBaseZ(
+  hovering: boolean,
+  x: number,
+  y: number,
+  getSurfaceZ: (x: number, y: number) => number,
+  getTerrainBedZ: (x: number, y: number) => number,
+): number {
+  return hovering ? getSurfaceZ(x, y) : getTerrainBedZ(x, y);
+}
+
 /**
  * Find the highest terrain sample beneath a build footprint. Sampling every
  * grid vertex plus every cell center keeps the suspended baseline above both
