@@ -663,8 +663,8 @@
           "lower": { "lengthUnitRadiusRatio": 0.55 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.3,
-          "radiusLegLengthRatio": 0.7
+          "originExtensionRatio": 0.45,
+          "radiusLegLengthRatio": 0.55
         },
         "choppingSphere": {
           "radiusLegLengthRatio": 0.3
@@ -927,8 +927,8 @@
           "lower": { "lengthUnitRadiusRatio": 1.0556 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.3,
-          "radiusLegLengthRatio": 0.7
+          "originExtensionRatio": 0.6,
+          "radiusLegLengthRatio": 0.4
         },
         "choppingSphere": {
           "radiusLegLengthRatio": 0.3
@@ -1159,11 +1159,11 @@
           "lower": { "lengthUnitRadiusRatio": 1.254 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.3,
-          "radiusLegLengthRatio": 0.7
+          "originExtensionRatio": 0.45,
+          "radiusLegLengthRatio": 0.55
         },
         "choppingSphere": {
-          "radiusLegLengthRatio": 0.3
+          "radiusLegLengthRatio": 0.4
         },
         "snapRay": {
           "originBoundarySpanRatio": 0.55
@@ -1709,8 +1709,8 @@
           "lower": { "lengthUnitRadiusRatio": 1.254 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.4,
-          "radiusLegLengthRatio": 0.6
+          "originExtensionRatio": 0.45,
+          "radiusLegLengthRatio": 0.55
         },
         "choppingSphere": {
           "radiusLegLengthRatio": 0.3
@@ -3286,8 +3286,8 @@
           "lower": { "lengthUnitRadiusRatio": 1.32 }
         },
         "footSphere": {
-          "originExtensionRatio": 0.3,
-          "radiusLegLengthRatio": 0.7
+          "originExtensionRatio": 0.45,
+          "radiusLegLengthRatio": 0.55
         },
         "choppingSphere": {
           "radiusLegLengthRatio": 0.3
