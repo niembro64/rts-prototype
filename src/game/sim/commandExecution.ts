@@ -615,6 +615,7 @@ export function resolvePathableFormationTarget(
     pathTerrainFilterForLocomotion(
       unitComponent.locomotion,
       unitComponent.mass,
+      unitComponent.supportPointOffsetZ,
     ),
     unitComponent.radius.collision,
     world.slopePathMode === 'symmetric',

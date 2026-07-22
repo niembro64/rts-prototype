@@ -60,6 +60,10 @@ pub(crate) struct UnitForceRuntimeTable {
     pub(crate) air_fraction: Vec<f64>,
     pub(crate) water_fraction: Vec<f64>,
     pub(crate) ground_contact: Vec<u8>,
+    /// Previous force-kernel tick's actual Coulomb-clamped ground authority.
+    /// Arrival steering consumes this instead of reconstructing `mu*m*g` on
+    /// a fictitious level surface.
+    pub(crate) available_ground_force: Vec<f64>,
     pub(crate) water_damaged_entity_slots: Vec<u32>,
 }
 
@@ -101,6 +105,7 @@ pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
                 air_fraction: Vec::new(),
                 water_fraction: Vec::new(),
                 ground_contact: Vec::new(),
+                available_ground_force: Vec::new(),
                 water_damaged_entity_slots: Vec::new(),
             });
         }
@@ -124,12 +129,14 @@ fn unit_force_runtime_slot(
         runtime.air_fraction.resize(needed, 1.0);
         runtime.water_fraction.resize(needed, 0.0);
         runtime.ground_contact.resize(needed, 0);
+        runtime.available_ground_force.resize(needed, 0.0);
     }
     if runtime.entity_id[slot] != es.entity_id[slot] {
         runtime.entity_id[slot] = es.entity_id[slot];
         runtime.air_fraction[slot] = 1.0;
         runtime.water_fraction[slot] = 0.0;
         runtime.ground_contact[slot] = 0;
+        runtime.available_ground_force[slot] = 0.0;
     }
     Some(slot)
 }
@@ -165,6 +172,7 @@ pub fn unit_force_runtime_clear() {
     runtime.air_fraction.fill(1.0);
     runtime.water_fraction.fill(0.0);
     runtime.ground_contact.fill(0);
+    runtime.available_ground_force.fill(0.0);
     runtime.water_damaged_entity_slots.clear();
 }
 
@@ -492,6 +500,38 @@ fn unit_force_planar_drive_direction_for_contact(
     } else {
         (dir_x, dir_y, 0.0)
     }
+}
+
+/// Static contact load from the component of weight and all already-known
+/// non-contact forces normal to the support. This is the Coulomb `N` used by
+/// both physical traction and the pathfinder's force envelope: on a slope the
+/// weight contribution is `m g cos(theta)`, upward lift unloads the contact,
+/// and a force into the surface increases it.
+#[inline]
+pub(crate) fn unit_force_contact_normal_load(
+    gravity_force: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
+    non_contact_force_x: f64,
+    non_contact_force_y: f64,
+    non_contact_force_z: f64,
+) -> f64 {
+    if !gravity_force.is_finite()
+        || !normal_x.is_finite()
+        || !normal_y.is_finite()
+        || !normal_z.is_finite()
+        || !non_contact_force_x.is_finite()
+        || !non_contact_force_y.is_finite()
+        || !non_contact_force_z.is_finite()
+    {
+        return 0.0;
+    }
+    let weight_into_surface = gravity_force.max(0.0) * normal_z.max(0.0);
+    let force_out_of_surface = non_contact_force_x * normal_x
+        + non_contact_force_y * normal_y
+        + non_contact_force_z * normal_z;
+    (weight_into_surface - force_out_of_surface).max(0.0)
 }
 
 /// Convert a world-space movement request into a signed throttle for a
@@ -1038,6 +1078,7 @@ pub fn unit_force_step_batch(
         let ground_contact = flag & UF_FLAG_ON_GROUND != 0 || computed_ground_contact;
         if let Some(runtime_slot) = runtime_slot {
             runtime.ground_contact[runtime_slot] = if ground_contact { 1 } else { 0 };
+            runtime.available_ground_force[runtime_slot] = 0.0;
         }
         let air_medium_active = air_fraction > 0.0
             && (rows[base + UF_ROW_AIR_MAX_PROPULSIVE_FORCE] > 0.0
@@ -1225,16 +1266,43 @@ pub fn unit_force_step_batch(
             }
         }
 
+        let external_fx = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FX] / 3600.0
+        } else {
+            0.0
+        };
+        let external_fy = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FY] / 3600.0
+        } else {
+            0.0
+        };
+        let external_fz = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FZ] / 3600.0
+        } else {
+            0.0
+        };
+
         if ground_contact {
             // Contact drive is constrained by Coulomb grip and the effective
             // normal load. Any already-applied upward medium support unloads
             // the contact patch by its actual force; no passive gravity
             // counter is hidden in the traction calculation.
             let gravity_force = body_mass * GRAVITY / 1_000_000.0;
-            let normal_load = (gravity_force - thrust_force_z.max(0.0)).max(0.0);
+            let normal_load = unit_force_contact_normal_load(
+                gravity_force,
+                rows[base + UF_ROW_NORMAL_X],
+                rows[base + UF_ROW_NORMAL_Y],
+                rows[base + UF_ROW_NORMAL_Z],
+                thrust_force_x + external_fx,
+                thrust_force_y + external_fy,
+                thrust_force_z + external_fz,
+            );
             let contact_force_limit = normal_load
                 * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             let available_ground_force = ground_max_propulsive_force.min(contact_force_limit);
+            if let Some(runtime_slot) = runtime_slot {
+                runtime.available_ground_force[runtime_slot] = available_ground_force;
+            }
             if has_drive_dir {
                 let thrust_mag = available_ground_force * drive_thrust_scale;
                 let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
@@ -1256,7 +1324,11 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_NORMAL_X],
                     rows[base + UF_ROW_NORMAL_Y],
                     rows[base + UF_ROW_NORMAL_Z],
-                    available_ground_force,
+                    // Passive static friction is a contact property, not a
+                    // motor rating. A weak drivetrain may be unable to climb
+                    // a slope that the uncommanded body can nevertheless
+                    // hold on without sliding.
+                    contact_force_limit,
                     dt_sec,
                 );
                 thrust_force_x += fx;
@@ -1364,21 +1436,6 @@ pub fn unit_force_step_batch(
             }
         }
 
-        let external_fx = if has_external {
-            rows[base + UF_ROW_EXTERNAL_FX] / 3600.0
-        } else {
-            0.0
-        };
-        let external_fy = if has_external {
-            rows[base + UF_ROW_EXTERNAL_FY] / 3600.0
-        } else {
-            0.0
-        };
-        let external_fz = if has_external {
-            rows[base + UF_ROW_EXTERNAL_FZ] / 3600.0
-        } else {
-            0.0
-        };
         let total_force_x = thrust_force_x + external_fx;
         let total_force_y = thrust_force_y + external_fy;
         let total_force_z = thrust_force_z + external_fz;
@@ -1503,6 +1560,28 @@ mod tests {
         // accidentally marking an unbounded gap as locomotion contact.
         assert!(is_in_locomotion_contact(-UNIT_GROUND_CONTACT_EPSILON, 0.0));
         assert!(!is_in_locomotion_contact(-0.01, f64::NAN));
+    }
+
+    #[test]
+    fn contact_normal_load_tracks_slope_lift_and_inward_force() {
+        assert_near(
+            unit_force_contact_normal_load(10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+            10.0,
+        );
+        let nx = 3.0_f64.sqrt() * 0.5;
+        let nz = 0.5;
+        assert_near(
+            unit_force_contact_normal_load(10.0, nx, 0.0, nz, 0.0, 0.0, 0.0),
+            5.0,
+        );
+        assert_near(
+            unit_force_contact_normal_load(10.0, nx, 0.0, nz, 2.0 * nx, 0.0, 2.0 * nz),
+            3.0,
+        );
+        assert_near(
+            unit_force_contact_normal_load(10.0, nx, 0.0, nz, -2.0 * nx, 0.0, -2.0 * nz),
+            7.0,
+        );
     }
 
     #[test]

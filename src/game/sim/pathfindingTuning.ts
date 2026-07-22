@@ -3,7 +3,6 @@ import rawPathfindingTuningConfig from './pathfindingTuningConfig.json';
 type PathfindingTuningConfig = {
   waterBufferCells: number;
   forceSafetyRatio: number;
-  stabilityMaxSlopeDeg: number;
   arrivalRadius: number;
   allowDiagonalNeighbors: boolean;
   softClearanceCells: number;
@@ -34,16 +33,6 @@ function readForceSafetyRatio(): number {
   if (value <= 0 || value > 1) {
     throw new Error(
       `Invalid pathfinding tuning forceSafetyRatio: expected ratio in (0, 1], got ${value}`,
-    );
-  }
-  return value;
-}
-
-function readStabilityMaxSlopeDeg(): number {
-  const value = requireFinite('stabilityMaxSlopeDeg', config.stabilityMaxSlopeDeg);
-  if (value <= 0 || value >= 90) {
-    throw new Error(
-      `Invalid pathfinding tuning stabilityMaxSlopeDeg: expected degrees in (0, 90), got ${value}`,
     );
   }
   return value;
@@ -100,7 +89,3 @@ export const PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS = readAllowDiagonalNeighbors()
 export const PATHFINDING_SOFT_CLEARANCE_CELLS = readSoftClearanceCells();
 export const PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL = readSoftClearancePenaltyPerCell();
 export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
-export const PATHFINDING_STABILITY_MAX_SLOPE_DEG = readStabilityMaxSlopeDeg();
-export const PATHFINDING_STABILITY_MIN_NORMAL_Z = Math.cos(
-  PATHFINDING_STABILITY_MAX_SLOPE_DEG * Math.PI / 180,
-);

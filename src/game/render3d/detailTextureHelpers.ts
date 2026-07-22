@@ -14,6 +14,78 @@ export function cssRgb(hex: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+function decodeSrgbByte(value: number): number {
+  const channel = value / 255;
+  return channel <= 0.04045
+    ? channel / 12.92
+    : Math.pow((channel + 0.055) / 1.055, 2.4);
+}
+
+const SRGB_BYTE_TO_LINEAR = new Float64Array(256);
+for (let i = 0; i < SRGB_BYTE_TO_LINEAR.length; i++) {
+  SRGB_BYTE_TO_LINEAR[i] = decodeSrgbByte(i);
+}
+
+function linearToSrgbByte(value: number): number {
+  const channel = Math.max(0, Math.min(1, value));
+  const srgb = channel <= 0.0031308
+    ? channel * 12.92
+    : 1.055 * Math.pow(channel, 1 / 2.4) - 0.055;
+  return Math.round(srgb * 255);
+}
+
+/**
+ * Color-grades an opaque procedural texture so its average albedo matches a
+ * flat reference color while retaining the texture's authored variation.
+ *
+ * The mean and correction are calculated in linear light because Three.js
+ * decodes sRGB color textures before filtering and multiplying them into a
+ * material. Matching the byte average instead would still make the textured
+ * HIGH prop visibly drift from its flat MED/LOW counterpart.
+ */
+export function matchCanvasLinearMeanToColor(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  targetHex: number,
+): void {
+  const image = ctx.getImageData(0, 0, width, height);
+  const pixels = image.data;
+  const sums = [0, 0, 0];
+  const pixelCount = pixels.length / 4;
+  for (let i = 0; i < pixels.length; i += 4) {
+    sums[0] += SRGB_BYTE_TO_LINEAR[pixels[i]];
+    sums[1] += SRGB_BYTE_TO_LINEAR[pixels[i + 1]];
+    sums[2] += SRGB_BYTE_TO_LINEAR[pixels[i + 2]];
+  }
+
+  const target = [
+    SRGB_BYTE_TO_LINEAR[(targetHex >> 16) & 0xff],
+    SRGB_BYTE_TO_LINEAR[(targetHex >> 8) & 0xff],
+    SRGB_BYTE_TO_LINEAR[targetHex & 0xff],
+  ];
+  const scale = target.map((channel, index) => {
+    const mean = sums[index] / pixelCount;
+    return mean > 0 ? channel / mean : 1;
+  });
+  const channelRemap = scale.map((channelScale) => {
+    const remap = new Uint8ClampedArray(256);
+    for (let value = 0; value < remap.length; value++) {
+      remap[value] = linearToSrgbByte(
+        SRGB_BYTE_TO_LINEAR[value] * channelScale,
+      );
+    }
+    return remap;
+  });
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i] = channelRemap[0][pixels[i]];
+    pixels[i + 1] = channelRemap[1][pixels[i + 1]];
+    pixels[i + 2] = channelRemap[2][pixels[i + 2]];
+  }
+  ctx.putImageData(image, 0, 0);
+}
+
 // DETERMINISM-CRITICAL: this xorshift-style PRNG must stay byte-identical to
 // the inlined copies the four texture generators used, or every generated
 // texture (and the dev-comparison PNGs) would change. Do not "improve" it.

@@ -23,9 +23,9 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     terrain locomotion surface.
 //   • Air-capable queries ignore terrain blocking so water and slope do
 //     not force them onto land-only routes; they still stay inside the map.
-//   • Connected-component pre-flight for symmetric blockers only. Every dry
-//     route surface must support a physics-derived standstill; directional
-//     traversal then adds the force-coupling constraint only to uphill edges.
+//   • Connected-component pre-flight for symmetric blockers only. Every cell
+//     must fit the query's dry/wet force envelope; directional traversal then
+//     applies the inter-cell climb coupling only to uphill edges.
 //   • Euclidean-sorted snap offsets — no compass bias.
 //   • Stay-put bail: when there's no possible path, return a
 //     single waypoint at the unit's current position so the queue
@@ -91,8 +91,9 @@ function findPath(
     startY,
     goalX,
     goalY,
-    traversal.minStandstillNormalZ,
-    traversal.minClimbNormalZ,
+    traversal.minGroundNormalZ,
+    traversal.waterSurfaceSupported,
+    traversal.supportPointOffsetZ,
     traversal.waypoint.allowOnGround,
     traversal.waypoint.allowInWater,
     traversal.waypoint.allowInAir,
@@ -102,6 +103,8 @@ function findPath(
     unitRadius,
     traversal.flatDriveAccel,
     traversal.safeDriveAccel,
+    traversal.flatWaterContactAccel,
+    traversal.safeWaterDriveAccel,
     traversal.staticFrictionCoefficient,
     symmetricSlope,
   );
@@ -218,9 +221,9 @@ function validatePathStaysInWater(
  *  preserving "the cursor was there, the dot is there" precision.
  *  Otherwise z falls back to a terrain sample at the waypoint's xy.
  *
- *  `terrainFilter.minStandstillNormalZ` requires every traversed ground
- *  surface to support the unit from rest. `minClimbNormalZ` adds the stricter
- *  force-coupling gate to powered uphill edges.
+ *  Dry contact uses its force/mass/grip normal threshold. Bed-supported wet
+ *  cells derive MOVE and WAYPOINT thresholds from that same budget plus the
+ *  body's conservative per-cell displaced-water fraction.
  *
  *  `terrainFilter` carries separate waypoint and move domains. The waypoint
  *  domain validates intentional destinations and prevents entry into
@@ -319,8 +322,9 @@ function validatePathScratch(
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   return sim.pathfinder.validatePath(
     _pathValidationScratch.subarray(0, length),
-    traversal.minStandstillNormalZ,
-    traversal.minClimbNormalZ,
+    traversal.minGroundNormalZ,
+    traversal.waterSurfaceSupported,
+    traversal.supportPointOffsetZ,
     traversal.waypoint.allowOnGround,
     traversal.waypoint.allowInWater,
     traversal.waypoint.allowInAir,
@@ -328,6 +332,9 @@ function validatePathScratch(
     traversal.move.allowInWater,
     traversal.move.allowInAir,
     unitRadius,
+    traversal.safeDriveAccel,
+    traversal.safeWaterDriveAccel,
+    traversal.staticFrictionCoefficient,
     symmetricSlope,
   ) === 1;
 }

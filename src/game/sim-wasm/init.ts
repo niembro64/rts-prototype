@@ -3576,18 +3576,19 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
  *  WASM call. The mask is rebuilt from terrain only; construction
  *  reservations deliberately remain outside locomotion pathfinding. */
 export interface PathfinderApi {
-  /** Compute and cache-source the standstill and uphill ground envelopes.
-   *  The output includes direct-force, traction, stability, and acceleration
-   *  terms consumed by pathfinding's directional edge evaluator. */
+  /** Compute the mass/force-derived dry, wet-MOVE, and wet-WAYPOINT contact
+   *  envelopes plus acceleration terms used by the route evaluator. */
   computeLocomotionClimbProfile: (
     groundMaxPropulsiveForce: number,
+    waterMaxPropulsiveForce: number,
     staticFrictionCoefficient: number,
     physicsMass: number,
     gravity: number,
     forceSafetyRatio: number,
-    stabilityMaxSlopeDeg: number,
     allowOnGround: boolean,
+    allowInWater: boolean,
     allowInAir: boolean,
+    waterSurfaceSupported: boolean,
     out: Float64Array,
   ) => number;
   /** Allocate the per-cell SoA arrays for the given map dimensions.
@@ -3605,8 +3606,9 @@ export interface PathfinderApi {
   findPath: (
     startX: number, startY: number,
     goalX: number, goalY: number,
-    minNormalZ: number,
-    minClimbNormalZ: number,
+    minGroundNormalZ: number,
+    waterSurfaceSupported: boolean,
+    supportPointOffsetZ: number,
     waypointAllowOnGround: boolean,
     waypointAllowInWater: boolean,
     waypointAllowInAir: boolean,
@@ -3622,11 +3624,14 @@ export interface PathfinderApi {
     flatDriveAccel: number,
     /** Safety-reduced drive acceleration used for hard feasibility. */
     safeDriveAccel: number,
+    /** Flat wet-contact acceleration after ground grip and water propulsion. */
+    flatWaterContactAccel: number,
+    /** Safety-reduced independent water-propulsion acceleration. */
+    safeWaterDriveAccel: number,
     /** Coulomb surface-grip coefficient used for cross-slope force budget. */
     staticFrictionCoefficient: number,
-    /** Every route surface must first support a standstill. When true
-     *  (SYMMETRIC mode), the stricter climb gate also applies downhill; when
-     *  false (DIRECTIONAL), downhill uses only the standstill envelope. */
+    /** When true (SYMMETRIC), apply the inter-cell climb gate both ways;
+     *  otherwise preserve controlled descent between locally valid cells. */
     symmetricSlope: boolean,
   ) => number;
   /** Resolution code for the most recent findPath call:
@@ -3636,8 +3641,9 @@ export interface PathfinderApi {
    *  the same medium, hard-clearance, slope, and LOS rules as planning. */
   validatePath: (
     points: Float64Array,
-    minNormalZ: number,
-    minClimbNormalZ: number,
+    minGroundNormalZ: number,
+    waterSurfaceSupported: boolean,
+    supportPointOffsetZ: number,
     waypointAllowOnGround: boolean,
     waypointAllowInWater: boolean,
     waypointAllowInAir: boolean,
@@ -3645,6 +3651,9 @@ export interface PathfinderApi {
     moveAllowInWater: boolean,
     moveAllowInAir: boolean,
     unitRadius: number,
+    safeDriveAccel: number,
+    safeWaterDriveAccel: number,
+    staticFrictionCoefficient: number,
     symmetricSlope: boolean,
   ) => number;
   /** Raw pointer to the waypoint scratch buffer. Build a fresh

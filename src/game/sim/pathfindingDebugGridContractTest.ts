@@ -1,5 +1,6 @@
 import { getUnitBlueprint } from './blueprints';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { WATER_LEVEL } from './terrain/terrainConfig';
 import {
   createPathfindingDebugGrid,
   pathfinderHardClearanceCellsForRadius,
@@ -31,6 +32,7 @@ export function runPathfindingDebugGridContractTest(): void {
   const terrainWater = new Uint8Array(cellCount).fill(1);
   const terrainSubmerged = new Uint8Array(cellCount).fill(1);
   const terrainNormalZ = new Float32Array(cellCount).fill(1);
+  const terrainMaxHeight = new Float32Array(cellCount).fill(-100);
   // This represents a sloping beach cell: it touches water, but is not a
   // wholly submerged volume that an Orca can occupy.
   terrainSubmerged[indexOf(cellsX, shoreX, shoreY)] = 0;
@@ -56,15 +58,19 @@ export function runPathfindingDebugGridContractTest(): void {
 
   const waterOnly: PathfindingDebugTraversal = {
     traversal: {
-      minStandstillNormalZ: 0,
-      minClimbNormalZ: 0,
+      minGroundNormalZ: 0,
+      waterSurfaceSupported: true,
+      supportPointOffsetZ: 0,
       waypoint: { allowOnGround: false, allowInWater: true, allowInAir: false },
       move: { allowOnGround: false, allowInWater: true, allowInAir: false },
       flatDriveAccel: 0,
       safeDriveAccel: 0,
+      flatWaterContactAccel: 0,
+      safeWaterDriveAccel: 0,
       staticFrictionCoefficient: 0,
     },
-    requiredNormalZ: 0,
+    requiredGroundNormalZ: 0,
+    bodyRadius: orca.radius.collision,
     hardClearanceCells: orcaHardClearance,
   };
   rebuildPathfindingDebugPassability({
@@ -72,6 +78,7 @@ export function runPathfindingDebugGridContractTest(): void {
     terrainWater,
     terrainSubmerged,
     terrainNormalZ,
+    terrainMaxHeight,
     traversal: waterOnly,
     cellsX,
     cellsY,
@@ -91,15 +98,19 @@ export function runPathfindingDebugGridContractTest(): void {
 
   const landPoint: PathfindingDebugTraversal = {
     traversal: {
-      minStandstillNormalZ: 0,
-      minClimbNormalZ: 0,
+      minGroundNormalZ: 0,
+      waterSurfaceSupported: false,
+      supportPointOffsetZ: 0,
       waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
       move: { allowOnGround: true, allowInWater: true, allowInAir: false },
       flatDriveAccel: 0,
       safeDriveAccel: 0,
+      flatWaterContactAccel: 0,
+      safeWaterDriveAccel: 0,
       staticFrictionCoefficient: 0,
     },
-    requiredNormalZ: 0,
+    requiredGroundNormalZ: 0,
+    bodyRadius: 0.5,
     hardClearanceCells: 0,
   };
   // The opposite side uses the same two-cell shore buffer: neither a land
@@ -117,6 +128,7 @@ export function runPathfindingDebugGridContractTest(): void {
     terrainWater,
     terrainSubmerged,
     terrainNormalZ,
+    terrainMaxHeight,
     traversal: landPoint,
     cellsX,
     cellsY,
@@ -132,5 +144,54 @@ export function runPathfindingDebugGridContractTest(): void {
   assertContract(
     grid.movePassable[indexOf(cellsX, shoreX, shoreY)] === 1,
     'the same land unit visibly exposes wet cells as physically move-valid',
+  );
+
+  const wetSlopeSplit: PathfindingDebugTraversal = {
+    traversal: {
+      minGroundNormalZ: 0.8,
+      waterSurfaceSupported: false,
+      supportPointOffsetZ: 0,
+      waypoint: { allowOnGround: true, allowInWater: true, allowInAir: false },
+      move: { allowOnGround: true, allowInWater: true, allowInAir: false },
+      flatDriveAccel: 0,
+      safeDriveAccel: 100,
+      flatWaterContactAccel: 0,
+      safeWaterDriveAccel: 300,
+      staticFrictionCoefficient: 1,
+    },
+    requiredGroundNormalZ: 0.8,
+    bodyRadius: 20,
+    hardClearanceCells: 0,
+  };
+  terrainNormalZ[indexOf(cellsX, shoreX, shoreY)] = 0.6;
+  rebuildPathfindingDebugPassability({
+    grid,
+    terrainWater,
+    terrainSubmerged,
+    terrainNormalZ,
+    terrainMaxHeight,
+    traversal: wetSlopeSplit,
+    cellsX,
+    cellsY,
+  });
+  assertContract(
+    grid.waypointPassable[indexOf(cellsX, shoreX, shoreY)] === 0 &&
+      grid.movePassable[indexOf(cellsX, shoreX, shoreY)] === 1,
+    'wet MOVE exposes a powered recovery slope that WAYPOINT rejects as an unstable destination',
+  );
+  terrainMaxHeight[indexOf(cellsX, shoreX, shoreY)] = WATER_LEVEL + 25;
+  rebuildPathfindingDebugPassability({
+    grid,
+    terrainWater,
+    terrainSubmerged,
+    terrainNormalZ,
+    terrainMaxHeight,
+    traversal: wetSlopeSplit,
+    cellsX,
+    cellsY,
+  });
+  assertContract(
+    grid.movePassable[indexOf(cellsX, shoreX, shoreY)] === 0,
+    'a nominally wet but body-dry shoreline cell cannot borrow full-water propulsion',
   );
 }

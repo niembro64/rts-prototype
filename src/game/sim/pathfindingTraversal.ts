@@ -4,23 +4,29 @@ import { computeLocomotionClimbProfile } from './pathfindingMobility';
 export type PathCostProfile = Readonly<{
   flatDriveAccel: number | null;
   safeDriveAccel: number;
+  flatWaterContactAccel: number | null;
+  safeWaterDriveAccel: number;
   staticFrictionCoefficient: number;
 }>;
 
 export type PathTerrainFilter = Readonly<{
   navigation: UnitLocomotion['navigation'];
-  minStandstillNormalZ: number | null;
-  minClimbNormalZ: number | null;
+  minGroundNormalZ: number | null;
+  waterSurfaceSupported: boolean;
+  supportPointOffsetZ: number;
   cost: PathCostProfile;
 }>;
 
 export type PathfinderTraversalInput = Readonly<{
-  minStandstillNormalZ: number;
-  minClimbNormalZ: number;
+  minGroundNormalZ: number;
+  waterSurfaceSupported: boolean;
+  supportPointOffsetZ: number;
   waypoint: UnitLocomotion['navigation']['waypoint'];
   move: UnitLocomotion['navigation']['move'];
   flatDriveAccel: number;
   safeDriveAccel: number;
+  flatWaterContactAccel: number;
+  safeWaterDriveAccel: number;
   staticFrictionCoefficient: number;
 }>;
 
@@ -41,15 +47,15 @@ export function resolvePathfinderTraversalInput(
     waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
     move: { allowOnGround: true, allowInWater: false, allowInAir: false },
   };
-  const normal = navigation.move.allowInAir ? null : filter?.minStandstillNormalZ;
-  const minStandstillNormalZ = finiteNormalOrZero(normal);
-  const minClimbNormalZ = navigation.move.allowInAir
+  const minGroundNormalZ = navigation.move.allowInAir
     ? 0
-    : finiteNormalOrZero(filter?.minClimbNormalZ);
+    : finiteNormalOrZero(filter?.minGroundNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
+  const flatWaterContactAccel = filter?.cost.flatWaterContactAccel;
   return {
-    minStandstillNormalZ,
-    minClimbNormalZ,
+    minGroundNormalZ,
+    waterSurfaceSupported: filter?.waterSurfaceSupported === true,
+    supportPointOffsetZ: finitePositiveOrZero(filter?.supportPointOffsetZ),
     waypoint: { ...navigation.waypoint },
     move: { ...navigation.move },
     flatDriveAccel:
@@ -60,6 +66,14 @@ export function resolvePathfinderTraversalInput(
         ? flatDriveAccel
         : 0,
     safeDriveAccel: finitePositiveOrZero(filter?.cost.safeDriveAccel),
+    flatWaterContactAccel:
+      flatWaterContactAccel !== null &&
+      flatWaterContactAccel !== undefined &&
+      Number.isFinite(flatWaterContactAccel) &&
+      flatWaterContactAccel > 0
+        ? flatWaterContactAccel
+        : 0,
+    safeWaterDriveAccel: finitePositiveOrZero(filter?.cost.safeWaterDriveAccel),
     staticFrictionCoefficient: finitePositiveOrZero(filter?.cost.staticFrictionCoefficient),
   };
 }
@@ -71,6 +85,7 @@ function finitePositiveOrZero(value: number | undefined): number {
 export function pathTerrainFilterForLocomotion(
   locomotion: UnitLocomotion | undefined,
   mass: number | undefined,
+  supportPointOffsetZ: number | undefined,
 ): PathTerrainFilter | null {
   if (locomotion === undefined || mass === undefined) return null;
   const mobility = computeLocomotionClimbProfile(locomotion, mass);
@@ -79,11 +94,14 @@ export function pathTerrainFilterForLocomotion(
       waypoint: { ...locomotion.navigation.waypoint },
       move: { ...locomotion.navigation.move },
     },
-    minStandstillNormalZ: mobility.minStandstillNormalZ,
-    minClimbNormalZ: mobility.minClimbNormalZ,
+    minGroundNormalZ: mobility.minGroundNormalZ,
+    waterSurfaceSupported: mobility.waterSurfaceSupported,
+    supportPointOffsetZ: finitePositiveOrZero(supportPointOffsetZ),
     cost: {
       flatDriveAccel: mobility.flatDriveAccel,
       safeDriveAccel: mobility.safeDriveAccel,
+      flatWaterContactAccel: mobility.flatWaterContactAccel,
+      safeWaterDriveAccel: mobility.safeWaterDriveAccel,
       staticFrictionCoefficient: mobility.staticFrictionCoefficient,
     },
   };
@@ -99,10 +117,13 @@ export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): str
     `move-ground:${filter.navigation.move.allowOnGround}`,
     `move-water:${filter.navigation.move.allowInWater}`,
     `move-air:${filter.navigation.move.allowInAir}`,
-    `standstill:${filter.minStandstillNormalZ ?? 'null'}`,
-    `climb:${filter.minClimbNormalZ ?? 'null'}`,
+    `groundNormal:${filter.minGroundNormalZ ?? 'null'}`,
+    `waterSurfaceSupported:${filter.waterSurfaceSupported}`,
+    `supportPointOffsetZ:${filter.supportPointOffsetZ}`,
     `accel:${filter.cost.flatDriveAccel ?? 'null'}`,
     `safe:${filter.cost.safeDriveAccel}`,
+    `waterAccel:${filter.cost.flatWaterContactAccel ?? 'null'}`,
+    `waterSafe:${filter.cost.safeWaterDriveAccel}`,
     `staticFriction:${filter.cost.staticFrictionCoefficient}`,
   ].join(':');
 }

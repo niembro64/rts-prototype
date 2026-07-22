@@ -3711,6 +3711,7 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     sample: TerrainTriangleSample,
     has_water: &mut bool,
     min_normal_z: &mut f32,
+    max_height: &mut f64,
 ) {
     let (_, _, _, _, _, ah, _, _, bh, _, _, ch) = sample;
     if ah < TERRAIN_WATER_LEVEL || bh < TERRAIN_WATER_LEVEL || ch < TERRAIN_WATER_LEVEL {
@@ -3721,6 +3722,7 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     if normal_z < *min_normal_z {
         *min_normal_z = normal_z;
     }
+    *max_height = max_height.max(ah.max(bh).max(ch));
 }
 
 pub(crate) fn terrain_accumulate_touching_triangle_safety(
@@ -3730,6 +3732,7 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
     max_y: f64,
     has_water: &mut bool,
     min_normal_z: &mut f32,
+    max_height: &mut f64,
 ) {
     let t = terrain_grid();
     if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
@@ -3770,7 +3773,12 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
                 if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
                     continue;
                 }
-                terrain_accumulate_touching_triangle_safety_sample(sample, has_water, min_normal_z);
+                terrain_accumulate_touching_triangle_safety_sample(
+                    sample,
+                    has_water,
+                    min_normal_z,
+                    max_height,
+                );
             }
         }
     }

@@ -318,6 +318,7 @@ type PathingCellTerrainSample = {
   fullySubmerged: boolean;
   minNormalZ: number;
   centerHeight: number;
+  maxHeight: number;
 };
 
 const PATHING_CELL_SAMPLE_INSET_WU = 0.001;
@@ -364,6 +365,7 @@ function samplePathingCellTerrain(
   let hasWater = centerHeight < WATER_LEVEL;
   let fullySubmerged = hasWater;
   let minNormalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(centerSample).nz));
+  let maxHeight = centerHeight;
   for (let i = 0; i < PATHING_CELL_EDGE_SAMPLE_POINTS.length; i++) {
     const point = PATHING_CELL_EDGE_SAMPLE_POINTS[i];
     const x = pathingCellSampleCoordinate(x0, x1, midX, point[0], inset);
@@ -372,10 +374,11 @@ function samplePathingCellTerrain(
     const height = terrainMeshHeightFromSample(sample);
     if (height < WATER_LEVEL) hasWater = true;
     else fullySubmerged = false;
+    maxHeight = Math.max(maxHeight, height);
     const normalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(sample).nz));
     if (normalZ < minNormalZ) minNormalZ = normalZ;
   }
-  return { hasWater, fullySubmerged, minNormalZ, centerHeight };
+  return { hasWater, fullySubmerged, minNormalZ, centerHeight, maxHeight };
 }
 
 function terrainTriangleTouchesRect(
@@ -597,6 +600,7 @@ export class TerrainTileRenderer3D {
   private buildGridWaterRawMask = new Uint8Array(1);
   private buildGridWaterSubmergedMask = new Uint8Array(1);
   private pathingTerrainMinNormalZ = new Float32Array(1);
+  private pathingTerrainMaxHeight = new Float32Array(1);
   private pathingDebugGrid: PathfindingDebugGrid = createPathfindingDebugGrid(1);
   private pathingTerrainMaskKeyValid = false;
   private pathingTerrainMaskKeyCellsX = 0;
@@ -967,6 +971,9 @@ export class TerrainTileRenderer3D {
     if (this.pathingTerrainMinNormalZ.length < safeCount) {
       this.pathingTerrainMinNormalZ = new Float32Array(safeCount);
     }
+    if (this.pathingTerrainMaxHeight.length < safeCount) {
+      this.pathingTerrainMaxHeight = new Float32Array(safeCount);
+    }
     this.pathingDebugGrid = ensurePathfindingDebugGrid(this.pathingDebugGrid, safeCount);
   }
 
@@ -1148,6 +1155,7 @@ export class TerrainTileRenderer3D {
     this.buildGridWaterRawMask.fill(0, 0, cellCount);
     this.buildGridWaterSubmergedMask.fill(0, 0, cellCount);
     this.pathingTerrainMinNormalZ.fill(1, 0, cellCount);
+    this.pathingTerrainMaxHeight.fill(WATER_LEVEL + 1, 0, cellCount);
 
     const terrainMap = getAuthoritativeTerrainTileMap();
     if (
@@ -1172,6 +1180,7 @@ export class TerrainTileRenderer3D {
           this.buildGridWaterRawMask[cellIndex] = terrain.hasWater ? 1 : 0;
           this.buildGridWaterSubmergedMask[cellIndex] = terrain.fullySubmerged ? 1 : 0;
           this.pathingTerrainMinNormalZ[cellIndex] = terrain.minNormalZ;
+          this.pathingTerrainMaxHeight[cellIndex] = terrain.maxHeight;
         }
       }
       this.storePathingTerrainMaskCacheKey(cellsX, cellsY, buildCellSize, terrainVersion);
@@ -1213,6 +1222,7 @@ export class TerrainTileRenderer3D {
         let fullySubmerged = true;
         let foundStrictTriangle = false;
         let minNormalZ = 1;
+        let maxHeight = Number.NEGATIVE_INFINITY;
         for (let terrainGy = minTerrainCellY; terrainGy <= maxTerrainCellY; terrainGy++) {
           for (let terrainGx = minTerrainCellX; terrainGx <= maxTerrainCellX; terrainGx++) {
             const terrainCellIndex = terrainGy * terrainMap.cellsX + terrainGx;
@@ -1254,6 +1264,7 @@ export class TerrainTileRenderer3D {
               const ah = terrainMap.meshVertexHeights[ia] ?? 0;
               const bh = terrainMap.meshVertexHeights[ib] ?? 0;
               const ch = terrainMap.meshVertexHeights[ic] ?? 0;
+              maxHeight = Math.max(maxHeight, ah, bh, ch);
               if (ah < WATER_LEVEL || bh < WATER_LEVEL || ch < WATER_LEVEL) {
                 hasWater = true;
               }
@@ -1287,6 +1298,9 @@ export class TerrainTileRenderer3D {
         this.buildGridWaterSubmergedMask[cellIndex] =
           fullySubmerged && foundStrictTriangle ? 1 : 0;
         this.pathingTerrainMinNormalZ[cellIndex] = minNormalZ;
+        this.pathingTerrainMaxHeight[cellIndex] = Number.isFinite(maxHeight)
+          ? maxHeight
+          : WATER_LEVEL + 1;
       }
     }
 
@@ -1324,7 +1338,11 @@ export class TerrainTileRenderer3D {
       : null;
     const selectedUnitTerrainFilter =
       selectedUnitBlueprint !== undefined && selectedUnitLocomotion !== null
-        ? pathTerrainFilterForLocomotion(selectedUnitLocomotion, selectedUnitBlueprint.mass)
+        ? pathTerrainFilterForLocomotion(
+            selectedUnitLocomotion,
+            selectedUnitBlueprint.mass,
+            selectedUnitBlueprint.supportPointOffsetZ,
+          )
         : null;
     const selectedUnitPathingEnabled = selectedUnitTerrainFilter !== null &&
       (waypointValidEnabled || moveValidEnabled);
@@ -1401,6 +1419,7 @@ export class TerrainTileRenderer3D {
         terrainWater: this.buildGridWaterRawMask,
         terrainSubmerged: this.buildGridWaterSubmergedMask,
         terrainNormalZ: this.pathingTerrainMinNormalZ,
+        terrainMaxHeight: this.pathingTerrainMaxHeight,
         traversal: selectedUnitDebugTraversal,
         cellsX,
         cellsY,

@@ -35,8 +35,6 @@ import {
 import type { RenderViewState3D } from './RenderFrameState3D';
 import type { FogOfWarShade3D } from './FogOfWarShade3D';
 import {
-  getSharedPrimitiveTetrahedronGeometry,
-  createPrimitiveConeGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -106,6 +104,44 @@ export function buildEnvironmentGrassLodGeometry(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** Four-face LOW tree crown with an explicitly horizontal triangular base and
+ * one centered apex. Width/depth/height are supplied from that tree's authored
+ * foliage bounds, rather than reusing one generic tetrahedron scale. */
+export function createEnvironmentLowTreeCrownGeometry(
+  width: number,
+  height: number,
+  depth: number,
+): THREE.BufferGeometry {
+  const safeWidth = Math.max(0.001, width);
+  const safeHeight = Math.max(0.001, height);
+  const safeDepth = Math.max(0.001, depth);
+  const halfWidth = safeWidth * 0.5;
+  const frontZ = safeDepth * 0.5;
+  const backZ = -safeDepth * 0.5;
+  // An equilateral-style triangle's centroid is one third of the way from its
+  // back edge to its front point. Keep the apex directly above that centroid,
+  // while the footprint's bounding box remains centered on the canopy.
+  const centerZ = -safeDepth / 6;
+  const baseFront = [0, 0, frontZ] as const;
+  const baseLeft = [-halfWidth, 0, backZ] as const;
+  const baseRight = [halfWidth, 0, backZ] as const;
+  const apex = [0, safeHeight, centerZ] as const;
+  const positions = [
+    // Horizontal base, wound downward.
+    ...baseFront, ...baseLeft, ...baseRight,
+    // Three upward-pointing sides, wound outward.
+    ...baseFront, ...baseRight, ...apex,
+    ...baseRight, ...baseLeft, ...apex,
+    ...baseLeft, ...baseFront, ...apex,
+  ];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
   return geometry;
 }
 
@@ -395,63 +431,84 @@ export class EnvironmentPropRenderer3D {
     this.fogOfWarShade.patchMaterial(trunkMaterial);
     this.fogOfWarShade.patchMaterial(leafMaterial);
 
+    // Medium and Low deliberately share one sturdy trunk silhouette. The
+    // simplified authored High trunk became too spindly at Medium distance.
+    this.addLowStyleTreeTrunk(group, asset, trunkMaterial);
+
     if (tier === 'mid') {
-      this.addMediumTreeGeometry(
+      this.addMediumTreeFoliage(
         group,
         asset.templates.close,
-        trunkMaterial,
         leafMaterial,
       );
       return group;
     }
 
+    this.addLowTreeCrown(
+      group,
+      asset.templates.close,
+      leafMaterial,
+      radius,
+      height,
+    );
+    return group;
+  }
+
+  private addLowStyleTreeTrunk(
+    group: THREE.Group,
+    asset: LoadedEnvironmentAsset,
+    trunkMaterial: THREE.Material,
+  ): void {
+    const height = asset.unitHeight;
+    const radius = height
+      * (asset.spec.defaultRadius / Math.max(1, asset.spec.defaultHeight));
     const trunkHeight = height * (asset.spec.palette === 'forestTree' ? 0.34 : 0.48);
     const trunkRadius = Math.max(radius * 0.09, height * 0.018);
-    // Low tree trunks remain simple square prisms rather than zero-thickness
-    // billboards, preserving the authored trunk volume from every view.
+    // A square prism preserves visible trunk volume from every view while
+    // remaining suitably cheap for both reduced-detail tiers.
     const trunkGeometry = new THREE.BoxGeometry(2, 2, 2);
     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
     trunk.scale.set(trunkRadius, trunkHeight * 0.5, trunkRadius);
     trunk.position.y = trunkHeight * 0.5;
     group.add(trunk);
-
-    if (asset.spec.palette === 'forestTree') {
-      const crownBottom = height * 0.18;
-      const crownHeight = height * 0.82;
-      const geometry = createPrimitiveConeGeometry(
-        'environment',
-        'far',
-        radius * 0.79,
-        crownHeight,
-      );
-      const crown = new THREE.Mesh(geometry, leafMaterial);
-      crown.position.y = crownBottom + crownHeight * 0.5;
-      group.add(crown);
-    } else {
-      const crown = new THREE.Mesh(getSharedPrimitiveTetrahedronGeometry(1).clone(), leafMaterial);
-      crown.scale.set(radius, height * 0.34, radius);
-      crown.position.y = height * 0.7;
-      group.add(crown);
-    }
-    return group;
   }
 
-  private addMediumTreeGeometry(
+  private addMediumTreeFoliage(
     group: THREE.Group,
     highTemplate: THREE.Object3D,
-    trunkMaterial: THREE.Material,
     leafMaterial: THREE.Material,
   ): void {
-    const positionsByRole = collectEnvironmentTreeTrianglePositions(highTemplate);
-    for (const role of ['wood', 'foliage'] as const) {
-      const positions = positionsByRole[role];
-      if (positions.length === 0) continue;
-      const geometry = simplifyEnvironmentTreeGeometry(positions);
-      group.add(new THREE.Mesh(
-        geometry,
-        role === 'wood' ? trunkMaterial : leafMaterial,
-      ));
+    const positions = collectEnvironmentTreeTrianglePositions(highTemplate).foliage;
+    if (positions.length === 0) return;
+    const geometry = simplifyEnvironmentTreeGeometry(positions);
+    group.add(new THREE.Mesh(geometry, leafMaterial));
+  }
+
+  private addLowTreeCrown(
+    group: THREE.Group,
+    highTemplate: THREE.Object3D,
+    leafMaterial: THREE.Material,
+    fallbackRadius: number,
+    fallbackTreeHeight: number,
+  ): void {
+    const foliagePositions = collectEnvironmentTreeTrianglePositions(highTemplate).foliage;
+    const bounds = boundsForTrianglePositions(foliagePositions);
+    if (bounds.isEmpty()) {
+      bounds.min.set(-fallbackRadius, fallbackTreeHeight * 0.36, -fallbackRadius);
+      bounds.max.set(fallbackRadius, fallbackTreeHeight, fallbackRadius);
     }
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const geometry = createEnvironmentLowTreeCrownGeometry(
+      size.x,
+      size.y,
+      size.z,
+    );
+    const crown = new THREE.Mesh(geometry, leafMaterial);
+    // Geometry starts at y=0, so place its triangular base at the authored
+    // foliage floor and center its footprint on that tree's actual canopy.
+    crown.position.set(center.x, bounds.min.y, center.z);
+    group.add(crown);
   }
 
   private materialForAsset(
@@ -525,9 +582,9 @@ export class EnvironmentPropRenderer3D {
   ): THREE.MeshLambertMaterial {
     let material = this.materialCache.get(key);
     if (!material) {
-      // When a texture map is supplied, the canvas was pre-filled with the
-      // exact same hex color, so the map carries the prop's overall hue and
-      // the material's color stays white to avoid double-multiplying.
+      // Tree texture canvases are color-graded to the canonical flat LOD
+      // colors, so the map carries the prop's overall hue and the material's
+      // color stays white to avoid double-multiplying.
       material = new THREE.MeshLambertMaterial({
         color: map ? COLORS.units.turret.barrel.colorHex : color,
         map: map ?? null,
@@ -737,6 +794,16 @@ function collectEnvironmentTreeTrianglePositions(
     }
   });
   return positionsByRole;
+}
+
+function boundsForTrianglePositions(positions: readonly number[]): THREE.Box3 {
+  const bounds = new THREE.Box3();
+  const vertex = new THREE.Vector3();
+  for (let i = 0; i < positions.length; i += 3) {
+    vertex.set(positions[i], positions[i + 1], positions[i + 2]);
+    bounds.expandByPoint(vertex);
+  }
+  return bounds;
 }
 
 function environmentTreeRoleForMaterial(

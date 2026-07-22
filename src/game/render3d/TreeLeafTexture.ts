@@ -22,6 +22,7 @@ import {
   drawCommonShape,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
+  matchCanvasLinearMeanToColor,
   randIn,
 } from './detailTextureHelpers';
 
@@ -92,6 +93,16 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     ctx.fillRect(0, 0, TREE_LEAF_TEXTURE_PIXELS, TREE_LEAF_TEXTURE_PIXELS);
     ctx.globalAlpha = 1;
   }
+
+  // MED/LOW use the canonical flat foliage color. Keep HIGH's leaf pattern,
+  // but grade its average albedo back to that same green so changing LOD never
+  // creates a foliage brightness/color jump.
+  matchCanvasLinearMeanToColor(
+    ctx,
+    TREE_LEAF_TEXTURE_PIXELS,
+    TREE_LEAF_TEXTURE_PIXELS,
+    FOREST_SPRUCE2_LEAF_COLOR,
+  );
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;

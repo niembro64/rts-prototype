@@ -1747,6 +1747,7 @@ export class Simulation {
       : pathTerrainFilterForLocomotion(
           entity.unit.locomotion,
           entity.unit.mass,
+          entity.unit.supportPointOffsetZ,
         );
   }
 

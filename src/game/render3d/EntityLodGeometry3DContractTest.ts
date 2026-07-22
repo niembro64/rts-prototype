@@ -85,6 +85,7 @@ import {
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import {
   buildEnvironmentGrassLodGeometry,
+  createEnvironmentLowTreeCrownGeometry,
   environmentLodFlatMaterialSpec,
   environmentPropVisibleAtDetailRung,
 } from './EnvironmentPropRenderer3D';
@@ -1242,6 +1243,35 @@ function runEnvironmentLodMaterialContracts(): void {
     wood.key !== foliage.key,
     'Medium/Low wood and foliage cache as separate flat materials',
   );
+
+  const lowTreeCrown = createEnvironmentLowTreeCrownGeometry(12, 18, 9);
+  const lowTreeCrownPositions = lowTreeCrown.getAttribute('position');
+  const lowTreeCrownUniqueBase = new Set<string>();
+  const lowTreeCrownUniqueApex = new Set<string>();
+  for (let i = 0; i < lowTreeCrownPositions.count; i++) {
+    const key = [
+      lowTreeCrownPositions.getX(i),
+      lowTreeCrownPositions.getY(i),
+      lowTreeCrownPositions.getZ(i),
+    ].join(',');
+    if (lowTreeCrownPositions.getY(i) === 0) lowTreeCrownUniqueBase.add(key);
+    if (lowTreeCrownPositions.getY(i) === 18) lowTreeCrownUniqueApex.add(key);
+  }
+  const lowTreeCrownBounds = lowTreeCrown.boundingBox;
+  assertContract(
+    triangleCount(lowTreeCrown) === 4 &&
+      lowTreeCrownUniqueBase.size === 3 &&
+      lowTreeCrownUniqueApex.size === 1,
+    'Low tree crown has one triangular base and one upward apex',
+  );
+  assertContract(
+    lowTreeCrownBounds !== null &&
+      Math.abs((lowTreeCrownBounds.max.x - lowTreeCrownBounds.min.x) - 12) < 1e-6 &&
+      Math.abs((lowTreeCrownBounds.max.y - lowTreeCrownBounds.min.y) - 18) < 1e-6 &&
+      Math.abs((lowTreeCrownBounds.max.z - lowTreeCrownBounds.min.z) - 9) < 1e-6,
+    'Low tree crown preserves its tree-specific foliage width, height, and depth',
+  );
+  lowTreeCrown.dispose();
 
   const highGrass = new THREE.Group();
   const authoredDirections = [

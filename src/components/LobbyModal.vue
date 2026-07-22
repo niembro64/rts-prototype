@@ -1133,7 +1133,10 @@ const terrainSectionVars = computed(() =>
   position: fixed;
   top: 0;
   right: 0;
-  bottom: 0;
+  /* The bottom controls claim their naturally wrapped height first.
+   * This fixed sidebar then occupies only the vertical space left above
+   * them, matching the flex-sized game area beside it. */
+  bottom: var(--bottom-controls-height, 0px);
   /* Above the top/bottom control bars (z-index 3001) so the sidebar is
    * truly top-level — nothing in the gameplay chrome renders in front
    * of it. Stays below the full-screen loading overlay (3600). */

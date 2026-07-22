@@ -28,6 +28,7 @@ import {
   drawCommonShape,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
+  matchCanvasLinearMeanToColor,
   randIn,
 } from './detailTextureHelpers';
 
@@ -104,6 +105,16 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     ctx.fillRect(0, 0, TREE_TRUNK_TEXTURE_PIXELS, TREE_TRUNK_TEXTURE_PIXELS);
     ctx.globalAlpha = 1;
   }
+
+  // MED/LOW use the canonical flat wood color. Keep HIGH's bark grain, but
+  // grade its average albedo back to that same brown so the trunk stays
+  // visually cohesive as its geometry and texture detail step down.
+  matchCanvasLinearMeanToColor(
+    ctx,
+    TREE_TRUNK_TEXTURE_PIXELS,
+    TREE_TRUNK_TEXTURE_PIXELS,
+    FOREST_SPRUCE2_WOOD_COLOR,
+  );
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;

@@ -245,21 +245,6 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
             water_buffer_cells
         );
     }
-    let stability_max_slope_deg =
-        read_number_field(&raw, "stabilityMaxSlopeDeg").unwrap_or_else(|| {
-            panic!(
-                "missing numeric stabilityMaxSlopeDeg in {}",
-                config_path.display()
-            )
-        });
-    if stability_max_slope_deg <= 0.0 || stability_max_slope_deg >= 90.0 {
-        panic!(
-            "invalid stabilityMaxSlopeDeg in {}: expected degrees in (0, 90), got {}",
-            config_path.display(),
-            stability_max_slope_deg
-        );
-    }
-    let stability_min_normal_z = stability_max_slope_deg.to_radians().cos() as f32;
     let allow_diagonal_neighbors =
         read_bool_field(&raw, "allowDiagonalNeighbors").unwrap_or_else(|| {
             panic!(
@@ -315,10 +300,6 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
     generated.push_str(&format!(
         "const PATHFINDING_WATER_BUFFER_CELLS: i32 = {};\n",
         water_buffer_cells as i32
-    ));
-    generated.push_str(&format!(
-        "#[allow(dead_code)]\nconst PATHFINDING_STABILITY_MIN_NORMAL_Z: f32 = {:?};\n",
-        stability_min_normal_z
     ));
     generated.push_str(&format!(
         "const PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS: bool = {};\n",

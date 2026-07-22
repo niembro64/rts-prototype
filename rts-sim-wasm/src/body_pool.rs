@@ -406,12 +406,10 @@ fn unit_effective_max_propulsive_force(
         0.0
     };
     if ground_contact {
-        let normal_load = body_mass * GRAVITY / 1_000_000.0;
-        let contact_limit = normal_load
-            * profile.values[pbase + UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
-        max_propulsive_force += profile.values[pbase + UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE]
-            .max(0.0)
-            .min(contact_limit);
+        // Reuse the force kernel's actual slope- and lift-dependent Coulomb
+        // authority. This keeps arrival braking honest on inclined terrain
+        // and under partial fluid support.
+        max_propulsive_force += runtime.available_ground_force[entity_slot].max(0.0);
     }
     Some((max_propulsive_force, body_mass))
 }

@@ -1,24 +1,27 @@
 import { GRAVITY, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import type { UnitLocomotion } from './types';
-import {
-  PATHFINDING_FORCE_SAFETY_RATIO,
-  PATHFINDING_STABILITY_MAX_SLOPE_DEG,
-} from './pathfindingTuning';
+import { PATHFINDING_FORCE_SAFETY_RATIO } from './pathfindingTuning';
+import { SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD } from './surfaceProbeSets';
 
 export type LocomotionClimbProfile = {
   readonly maxSlopeDeg: number | null;
-  /** Minimum terrain-normal Z that can hold the unit at rest using its safe
-   * direct-force and static-friction budgets. */
-  readonly minStandstillNormalZ: number | null;
-  /** Identical to the standstill envelope: there is no separate coupling
-   * cutoff for uphill propulsion. */
-  readonly minClimbNormalZ: number | null;
+  /** Minimum dry-terrain normal supported by safe propulsion and Coulomb grip. */
+  readonly minGroundNormalZ: number | null;
+  /** Full-immersion commanded wet movement may use both contact drive and water propulsion.
+   * Fluid-supported bodies use null because lakebed slope is irrelevant. */
+  readonly maxWaterMoveSlopeDeg: number | null;
+  readonly minWaterMoveNormalZ: number | null;
+  /** Full-immersion wet waypoint envelope after commanded water thrust ends. */
+  readonly maxWaterWaypointSlopeDeg: number | null;
+  readonly minWaterWaypointNormalZ: number | null;
   readonly safeDriveAccel: number;
+  readonly safeWaterDriveAccel: number;
   readonly driveLimitedSlopeDeg: number | null;
   readonly tractionLimitedSlopeDeg: number | null;
-  readonly stabilityLimitedSlopeDeg: number | null;
   readonly flatDriveAccel: number | null;
+  readonly flatWaterContactAccel: number | null;
+  readonly waterSurfaceSupported: boolean;
   readonly allowOnGround: boolean;
   readonly allowInWater: boolean;
   readonly allowInAir: boolean;
@@ -26,7 +29,7 @@ export type LocomotionClimbProfile = {
   readonly cacheKey: string;
 };
 
-const CLIMB_PROFILE_OUTPUT_LENGTH = 9;
+const CLIMB_PROFILE_OUTPUT_LENGTH = 12;
 const climbProfileOut = new Float64Array(CLIMB_PROFILE_OUTPUT_LENGTH);
 const climbProfileCache = new Map<string, LocomotionClimbProfile>();
 
@@ -39,6 +42,7 @@ export function computeLocomotionClimbProfile(
   mass: number,
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
+  const waterPhysics = locomotion.physics.water;
   const { allowOnGround, allowInWater, allowInAir } = locomotion.navigation.move;
   const groundMaxPropulsiveForce = allowOnGround
     ? groundPhysics.maxPropulsiveForce
@@ -47,16 +51,28 @@ export function computeLocomotionClimbProfile(
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
   const physicsMass = mass * UNIT_MASS_MULTIPLIER;
+  const weightForce = physicsMass * GRAVITY / 1_000_000;
+  const waterLift = waterPhysics.lift;
+  const maximumInverseWaterLift =
+    waterLift.surfaceFollowingInverseForceFromGround /
+    SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD;
+  const waterSurfaceSupported = allowInWater && (
+    maximumInverseWaterLift >= weightForce ||
+    waterLift.surfaceFollowingProportionalForceFromWater > 0
+  );
   const cacheKey = [
     groundMaxPropulsiveForce,
+    waterPhysics.maxPropulsiveForce,
     groundPhysics.staticFrictionCoefficient,
     physicsMass,
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
-    PATHFINDING_STABILITY_MAX_SLOPE_DEG,
     allowOnGround,
     allowInWater,
     allowInAir,
+    maximumInverseWaterLift,
+    waterLift.surfaceFollowingProportionalForceFromWater,
+    waterSurfaceSupported,
   ].join(':');
   const cached = climbProfileCache.get(cacheKey);
   if (cached !== undefined) return cached;
@@ -67,13 +83,15 @@ export function computeLocomotionClimbProfile(
   }
   const computed = sim.pathfinder.computeLocomotionClimbProfile(
     groundMaxPropulsiveForce,
+    waterPhysics.maxPropulsiveForce,
     groundPhysics.staticFrictionCoefficient,
     physicsMass,
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
-    PATHFINDING_STABILITY_MAX_SLOPE_DEG,
     allowOnGround,
+    allowInWater,
     allowInAir,
+    waterSurfaceSupported,
     climbProfileOut,
   );
   if (computed !== 1) {
@@ -82,26 +100,31 @@ export function computeLocomotionClimbProfile(
 
   const profile: LocomotionClimbProfile = Object.freeze({
     maxSlopeDeg: finiteOrNull(climbProfileOut[0]),
-    minStandstillNormalZ: finiteOrNull(climbProfileOut[1]),
-    minClimbNormalZ: finiteOrNull(climbProfileOut[7]),
+    minGroundNormalZ: finiteOrNull(climbProfileOut[1]),
     safeDriveAccel: climbProfileOut[2],
     driveLimitedSlopeDeg: finiteOrNull(climbProfileOut[3]),
     tractionLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
-    stabilityLimitedSlopeDeg: finiteOrNull(climbProfileOut[5]),
-    flatDriveAccel: finiteOrNull(climbProfileOut[6]),
+    flatDriveAccel: finiteOrNull(climbProfileOut[5]),
+    maxWaterMoveSlopeDeg: finiteOrNull(climbProfileOut[6]),
+    minWaterMoveNormalZ: finiteOrNull(climbProfileOut[7]),
+    safeWaterDriveAccel: climbProfileOut[8],
+    flatWaterContactAccel: finiteOrNull(climbProfileOut[9]),
+    maxWaterWaypointSlopeDeg: finiteOrNull(climbProfileOut[10]),
+    minWaterWaypointNormalZ: finiteOrNull(climbProfileOut[11]),
+    waterSurfaceSupported,
     allowOnGround,
     allowInWater,
     allowInAir,
-    staticFrictionCoefficient: climbProfileOut[8],
+    staticFrictionCoefficient: groundPhysics.staticFrictionCoefficient,
     cacheKey,
   });
   climbProfileCache.set(cacheKey, profile);
   return profile;
 }
 
-export function minStandstillNormalZForLocomotion(
+export function minGroundMoveNormalZForLocomotion(
   locomotion: UnitLocomotion,
   mass: number,
 ): number | null {
-  return computeLocomotionClimbProfile(locomotion, mass).minStandstillNormalZ;
+  return computeLocomotionClimbProfile(locomotion, mass).minGroundNormalZ;
 }

@@ -157,6 +157,7 @@ const gameWrapperStyle = computed(() => ({
   '--hud-minimap-max': `${HUD_MINIMAP_MAX_PX}px`,
   '--hud-minimap-gap': `${HUD_MINIMAP_STACK_GAP_PX}px`,
   '--hud-minimap-follow-top': `${HUD_MINIMAP_FOLLOW_TOP_PX}px`,
+  '--bottom-controls-height': `${playableBottomInsetPx.value}px`,
 }));
 
 function setLoadingProgress(progress: number, phase?: string): void {
@@ -2753,13 +2754,11 @@ watchEffect(() => {
   flex-direction: column;
 }
 
-/* When the startup menu sidebar is open it is the topmost layer on the
- * right; reserve its strip so nothing game-related runs underneath it.
- * The game area (which holds both the 3D battle and its loading screen
- * in the same element) is inset alongside the top/bottom bars, so the
- * game and its loading overlay always live to the left of the sidebar.
- * The renderer's ResizeObserver picks up the narrower container and
- * resizes the canvas to match. */
+/* The bottom bars own the full-width row at the bottom of the shell.
+ * Above that row, the startup menu sidebar owns a strip on the right and
+ * the game receives the remaining width. The renderer's ResizeObserver
+ * picks up the narrower/shorter game container and resizes the canvas to
+ * match. */
 .game-wrapper.menu-sidebar-open {
   --menu-sidebar-w: min(380px, calc(100vw - 40px));
 }
@@ -2771,11 +2770,6 @@ watchEffect(() => {
 .game-wrapper.menu-sidebar-open .top-controls-shell {
   width: auto;
   right: var(--menu-sidebar-w);
-}
-
-.game-wrapper.menu-sidebar-open .bottom-controls-shell:not(.collapsed) {
-  box-sizing: border-box;
-  padding-right: var(--menu-sidebar-w);
 }
 
 .game-area {
@@ -3225,7 +3219,7 @@ watchEffect(() => {
 /* Bottom control bars */
 .bottom-controls-shell {
   position: relative;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   z-index: 3001;
   display: flex;
   align-items: stretch;

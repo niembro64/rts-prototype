@@ -9,10 +9,9 @@ import {
   type PathfinderTraversalInput,
 } from './pathfindingTraversal';
 import type { UnitNavigationDomain } from '@/types/unitLocomotionTypes';
-import {
-  PATHFINDING_STABILITY_MIN_NORMAL_Z,
-  PATHFINDING_WATER_BUFFER_CELLS,
-} from './pathfindingTuning';
+import { PATHFINDING_WATER_BUFFER_CELLS } from './pathfindingTuning';
+import { GRAVITY } from '@/config';
+import { WATER_LEVEL } from './terrain/terrainConfig';
 
 const CLEARANCE_UNREACHABLE = 0xffff;
 
@@ -28,7 +27,8 @@ export type PathfindingDebugGrid = {
 
 export type PathfindingDebugTraversal = Readonly<{
   traversal: PathfinderTraversalInput;
-  requiredNormalZ: number;
+  requiredGroundNormalZ: number;
+  bodyRadius: number;
   hardClearanceCells: number;
 }>;
 
@@ -44,6 +44,7 @@ export type PathfindingDebugPassabilityInput = Readonly<{
   terrainWater: Uint8Array;
   terrainSubmerged: Uint8Array;
   terrainNormalZ: Float32Array;
+  terrainMaxHeight: Float32Array;
   traversal: PathfindingDebugTraversal;
   cellsX: number;
   cellsY: number;
@@ -99,9 +100,8 @@ export function createPathfindingDebugTraversal(
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   return {
     traversal,
-    requiredNormalZ: traversal.move.allowInAir
-      ? 0
-      : Math.max(PATHFINDING_STABILITY_MIN_NORMAL_Z, traversal.minStandstillNormalZ),
+    requiredGroundNormalZ: traversal.minGroundNormalZ,
+    bodyRadius: Number.isFinite(unitRadius) && unitRadius > 0 ? unitRadius : 0.5,
     hardClearanceCells: pathfinderHardClearanceCellsForRadius(unitRadius, cellSize),
   };
 }
@@ -203,9 +203,85 @@ function isWaterOnlyTraversal(domain: UnitNavigationDomain): boolean {
   return !domain.allowInAir && domain.allowInWater && !domain.allowOnGround;
 }
 
+function sphericalWaterFraction(originZ: number, radius: number): number {
+  if (!Number.isFinite(originZ)) return 0;
+  const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 0.5;
+  const submergedHeight = Math.max(
+    0,
+    Math.min(2 * safeRadius, WATER_LEVEL - (originZ - safeRadius)),
+  );
+  if (submergedHeight <= 0) return 0;
+  if (submergedHeight >= 2 * safeRadius) return 1;
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      submergedHeight * submergedHeight * (3 * safeRadius - submergedHeight) /
+        (4 * safeRadius * safeRadius * safeRadius),
+    ),
+  );
+}
+
+/** Mirrors the monotone Coulomb + fluid force solve in Rust. */
+function maxContactSlopeNormalZ(
+  safeGroundAccel: number,
+  safeWaterAccel: number,
+  staticFrictionCoefficient: number,
+): number {
+  const ground = Math.max(0, safeGroundAccel);
+  const water = Math.max(0, safeWaterAccel);
+  const mu = Math.max(0, staticFrictionCoefficient);
+  const halfPi = Math.PI * 0.5;
+  const margin = (theta: number): number =>
+    Math.min(ground, mu * GRAVITY * Math.max(0, Math.cos(theta))) + water -
+    GRAVITY * Math.sin(theta);
+  if (margin(halfPi) >= -1e-12) return 0;
+  let low = 0;
+  let high = halfPi;
+  for (let i = 0; i < 64; i++) {
+    const mid = (low + high) * 0.5;
+    if (margin(mid) >= 0) low = mid;
+    else high = mid;
+  }
+  return Math.cos(low);
+}
+
+function requiredWaterNormalZForCell(
+  debugTraversal: PathfindingDebugTraversal,
+  domain: UnitNavigationDomain,
+  terrainMaxHeight: number,
+  requireWaypointHold: boolean,
+): number {
+  const traversal = debugTraversal.traversal;
+  if (domain.allowInAir || traversal.waterSurfaceSupported || !domain.allowOnGround) return 0;
+  if (
+    traversal.minGroundNormalZ <= 0 &&
+    traversal.safeDriveAccel <= 0 &&
+    traversal.safeWaterDriveAccel <= 0 &&
+    traversal.staticFrictionCoefficient <= 0
+  ) return 0;
+  const waterFraction = sphericalWaterFraction(
+    terrainMaxHeight + traversal.supportPointOffsetZ,
+    debugTraversal.bodyRadius,
+  );
+  let required = maxContactSlopeNormalZ(
+    traversal.safeDriveAccel,
+    traversal.safeWaterDriveAccel * waterFraction,
+    traversal.staticFrictionCoefficient,
+  );
+  if (requireWaypointHold) {
+    required = Math.max(
+      required,
+      Math.cos(Math.atan(Math.max(0, traversal.staticFrictionCoefficient))),
+    );
+  }
+  return Math.max(0, Math.min(1, required));
+}
+
 function rebuildDomainPassability(
   output: Uint8Array,
   domain: UnitNavigationDomain,
+  requireWaypointHold: boolean,
   input: PathfindingDebugPassabilityInput,
 ): void {
   const {
@@ -213,11 +289,12 @@ function rebuildDomainPassability(
     terrainWater,
     terrainSubmerged,
     terrainNormalZ,
+    terrainMaxHeight,
     traversal: debugTraversal,
     cellsX,
     cellsY,
   } = input;
-  const { requiredNormalZ, hardClearanceCells } = debugTraversal;
+  const { requiredGroundNormalZ, hardClearanceCells } = debugTraversal;
   const waterOnly = isWaterOnlyTraversal(domain);
   const requiredWaterClearance = pathfinderRequiredWaterClearanceCells(hardClearanceCells);
   const cellCount = cellsX * cellsY;
@@ -245,9 +322,15 @@ function rebuildDomainPassability(
         const requiredClearance = waterOnly
           ? requiredWaterClearance
           : hardClearanceCells;
-        const terrainPassable = wet && domain.allowInWater
-          ? true
-          : terrainNormalZ[index] >= requiredNormalZ;
+        const requiredNormalZ = wet && domain.allowInWater
+          ? requiredWaterNormalZForCell(
+              debugTraversal,
+              domain,
+              terrainMaxHeight[index],
+              requireWaypointHold,
+            )
+          : requiredGroundNormalZ;
+        const terrainPassable = terrainNormalZ[index] >= requiredNormalZ;
         passable = passableByMedium && clearance >= requiredClearance && terrainPassable;
       }
     }
@@ -259,6 +342,16 @@ function rebuildDomainPassability(
 export function rebuildPathfindingDebugPassability(
   input: PathfindingDebugPassabilityInput,
 ): void {
-  rebuildDomainPassability(input.grid.waypointPassable, input.traversal.traversal.waypoint, input);
-  rebuildDomainPassability(input.grid.movePassable, input.traversal.traversal.move, input);
+  rebuildDomainPassability(
+    input.grid.waypointPassable,
+    input.traversal.traversal.waypoint,
+    true,
+    input,
+  );
+  rebuildDomainPassability(
+    input.grid.movePassable,
+    input.traversal.traversal.move,
+    false,
+    input,
+  );
 }

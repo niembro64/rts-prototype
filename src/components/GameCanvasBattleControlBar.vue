@@ -397,10 +397,10 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
         >FOG OF WAR</BarButton>
         <BarDivider />
-        <BarLabel title="All routes require standstill control. This chooses whether the stricter powered-climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
+        <BarLabel title="All cells must fit the unit's medium-specific force envelope. This chooses whether the inter-cell climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
         <BarButton
           :active="model.currentSlopePathMode === 'symmetric'"
-          title="Ground pathfinding climb policy. UPHILL ONLY uses the standstill envelope downhill. BOTH DIRECTIONS applies the stricter powered-climb envelope uphill and downhill."
+          title="Terrain-edge climb policy. UPHILL ONLY preserves controlled descent between valid cells. BOTH DIRECTIONS requires the same climb authority uphill and downhill."
           @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
         >{{ model.currentSlopePathMode === 'symmetric' ? 'BOTH DIRECTIONS' : 'UPHILL ONLY' }}</BarButton>
         <BarDivider />
