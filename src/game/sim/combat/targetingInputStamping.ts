@@ -106,8 +106,9 @@ import {
 } from '../blueprints';
 import {
   getEntityFullVisionRadius,
-  getEntityCloakDetectionRadius,
+  getEntityCloakDetectionTargetRadii,
   getEntityRadarRadius,
+  getEntitySonarRadius,
   getEntityVisibilityPadding,
   isEntityCloaked,
 } from '../sensorCoverage';
@@ -847,19 +848,27 @@ function stampCombatTargetingEntityInto(
   }
   const hostLockOn = getHostLockOnMasks(entity);
 
-  // Sight + radar radii and entity-size padding stamped per-entity so
-  // the Rust observability helper can walk the slab itself. Padding is
-  // the target's footprint, so a unit counts as observed when its edge
-  // (not just its center) falls inside a vision/radar circle.
-  const fullVisionRadius = getEntityFullVisionRadius(entity);
+  // Sight/contact radii are stamped per entity so the Rust observation
+  // helper can walk the slab itself. Detection padding is always zero:
+  // visibility and medium membership use the target center.
+  const fullVisionAboveWaterRadius = getEntityFullVisionRadius(entity, 'aboveWater');
+  const fullVisionUnderwaterRadius = getEntityFullVisionRadius(entity, 'underwater');
   const radarRadius = getEntityRadarRadius(entity);
-  const detectorRadius = getEntityCloakDetectionRadius(entity);
+  const sonarRadius = getEntitySonarRadius(entity);
+  const detectorRadii = getEntityCloakDetectionTargetRadii(entity);
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
     hp > 0 &&
     (entityFlags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) !== 0 &&
-    (fullVisionRadius > 0 || radarRadius > 0 || detectorRadius > 0)
+    (
+      fullVisionAboveWaterRadius > 0 ||
+      fullVisionUnderwaterRadius > 0 ||
+      radarRadius > 0 ||
+      sonarRadius > 0 ||
+      detectorRadii.aboveWater > 0 ||
+      detectorRadii.underwater > 0
+    )
   ) {
     queueCombatTargetingSensorSourceSlot(slot);
   }
@@ -898,7 +907,10 @@ function stampCombatTargetingEntityInto(
     hostLockOn.building, hostLockOn.tower,
     hostLockOn.unit, hostLockOn.turret,
     hostLockOn.shot,
-    fullVisionRadius, radarRadius, detectorRadius, visibilityPadding,
+    fullVisionAboveWaterRadius, fullVisionUnderwaterRadius,
+    radarRadius, sonarRadius,
+    detectorRadii.aboveWater, detectorRadii.underwater,
+    visibilityPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
     priorityPointX, priorityPointY, priorityPointZ,

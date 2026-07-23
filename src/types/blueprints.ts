@@ -36,6 +36,8 @@ export type {
   LockOnRequiresTargetLockedOntoSelf,
   UnitLocomotionBlueprint,
   SensorCapabilityConfig,
+  SensorMediumRadiusMatrix,
+  SensorMediumTargetRadii,
   SpawnTurretConfig,
   ResourcePylonConfig,
   ShotBlueprint,

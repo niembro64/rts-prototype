@@ -70,6 +70,10 @@ import {
   type EntitySnapshotWireSource,
 } from '../stateSerializerEntities';
 import { unitBlueprintBarDefaultMoveState } from '../../sim/unitCommandCapabilities';
+import {
+  cloneSensorCapabilityConfig,
+  createSameMediumSensorCapabilityConfig,
+} from '../../sim/sensorConfig';
 
 function unitMoveStateFromWireCode(code: number): 'maneuver' | 'holdPosition' | 'roam' {
   return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
@@ -437,19 +441,9 @@ function createUnitFromNetwork(
     unitBlueprint.supportPointOffsetZ !== undefined
     ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
-  const fullVisionRadius = unitBlueprint !== undefined &&
-    unitBlueprint.fullVisionRadius !== undefined
-    ? unitBlueprint.fullVisionRadius
-    : 1200;
   const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
     ? unitBlueprint.sensors
-    : {
-      fullSightRadius: fullVisionRadius,
-      radarRadius: 0,
-      detectorRadius: 0,
-      trackingRadius: 0,
-      scanRadius: 0,
-    };
+    : createSameMediumSensorCapabilityConfig(1200);
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -467,8 +461,7 @@ function createUnitFromNetwork(
         blueprintSupportPointOffsetZ,
       ),
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
-      fullVisionRadius,
-      sensors: { ...sensors },
+      sensors: cloneSensorCapabilityConfig(sensors),
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,
@@ -635,19 +628,9 @@ function createUnitFromTypedFullWireRow(
     unitBlueprint.supportPointOffsetZ !== undefined
     ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
-  const fullVisionRadius = unitBlueprint !== undefined &&
-    unitBlueprint.fullVisionRadius !== undefined
-    ? unitBlueprint.fullVisionRadius
-    : 1200;
   const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
     ? unitBlueprint.sensors
-    : {
-      fullSightRadius: fullVisionRadius,
-      radarRadius: 0,
-      detectorRadius: 0,
-      trackingRadius: 0,
-      scanRadius: 0,
-    };
+    : createSameMediumSensorCapabilityConfig(1200);
   const rotation = deqRot(values[base + 4]);
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
@@ -668,8 +651,7 @@ function createUnitFromTypedFullWireRow(
       radius,
       supportPointOffsetZ: blueprintSupportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
-      fullVisionRadius,
-      sensors: { ...sensors },
+      sensors: cloneSensorCapabilityConfig(sensors),
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: blueprintMass,
       actions: [],
@@ -875,7 +857,7 @@ function createBuildingFromNetwork(
       targetRadius: config.radius.hitbox,
       // The wire field `solar` carries the shared BuildingActiveState
       // open flag for every producer building (solar / wind / extractor
-      // / radar / resourceConverter); map it back into the generic
+      // / radar / sonar / resourceConverter); map it back into the generic
       // `activeState` slot. Solar starts closed by default; the others
       // start in the host's authoritative initial pose, which the wire
       // ships as soon as the first snapshot for this entity arrives.
@@ -883,6 +865,7 @@ function createBuildingFromNetwork(
         || buildingBlueprintId === 'buildingWind'
         || isMetalExtractorBlueprintId(buildingBlueprintId)
         || buildingBlueprintId === 'buildingRadar'
+        || buildingBlueprintId === 'buildingSonar'
         || buildingBlueprintId === 'buildingResourceConverter')
         ? {
             open: buildingSolar !== null ? buildingSolar.open : buildingBlueprintId !== 'buildingSolar',
@@ -1002,6 +985,7 @@ function createBuildingFromTypedFullWireRow(
     buildingBlueprintId === 'buildingWind' ||
     isMetalExtractorBlueprintId(buildingBlueprintId) ||
     buildingBlueprintId === 'buildingRadar' ||
+    buildingBlueprintId === 'buildingSonar' ||
     buildingBlueprintId === 'buildingResourceConverter';
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),

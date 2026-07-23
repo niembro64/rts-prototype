@@ -220,12 +220,8 @@ export type Unit = {
   /** Authored unit support proxy. Unit collision remains sphere-based;
    *  this separate proxy decides whether anything can stand on the unit. */
   supportSurface: UnitSupportSurface;
-  /** Authored full-sight sensor radius for this unit. Separate from
-   *  weapon, tracking, radar, and builder action range. */
-  fullVisionRadius: number;
-  /** Authored sensor envelopes for sight/radar/detector/tracking/scan.
-   *  `fullVisionRadius` remains a compatibility mirror of
-   *  sensors.fullSightRadius. */
+  /** Authored source-medium × target-medium envelopes for full sight and
+   *  contact sight, plus detector/tracking/scan capabilities. */
   sensors: SensorCapabilityConfig;
   mass: number;
   hp: number;

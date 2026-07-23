@@ -2,6 +2,7 @@ import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './typ
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
+import { cloneSensorCapabilityConfig } from './sensorConfig';
 import {
   BUILDING_BLUEPRINT_IDS as PURE_BUILDING_BLUEPRINT_IDS,
   TOWER_BLUEPRINT_IDS,
@@ -35,7 +36,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     hoveringType: bp.hoveringType,
     hovering: bp.hoveringType !== null,
     hud: bp.hud,
-    sensors: { ...bp.sensors },
+    sensors: cloneSensorCapabilityConfig(bp.sensors),
     radius: { ...bp.base.radius },
   };
 }

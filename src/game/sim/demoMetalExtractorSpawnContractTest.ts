@@ -4,11 +4,13 @@ import { DEMO_CONFIG } from '../../demoConfig';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { getBuildingPlacementDiagnostics } from './buildPlacementValidation';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
 import { spawnMetalExtractorsOnDeposits } from './spawn';
 import type { PlayerId } from './types';
 import { WorldState } from './WorldState';
+import { WATER_LEVEL } from './Terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
@@ -65,6 +67,97 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
     }
   }
   assertContract(underwaterDeposit !== null, 'authored demo layout must include an underwater deposit');
+
+  let aboveWaterSensorPoint: { x: number; y: number } | null = null;
+  let underwaterSensorPoint: { x: number; y: number } | null = null;
+  for (
+    let y = BUILD_GRID_CELL_SIZE * 4;
+    y < mapHeight - BUILD_GRID_CELL_SIZE * 4 &&
+    (aboveWaterSensorPoint === null || underwaterSensorPoint === null);
+    y += BUILD_GRID_CELL_SIZE
+  ) {
+    for (
+      let x = BUILD_GRID_CELL_SIZE * 4;
+      x < mapWidth - BUILD_GRID_CELL_SIZE * 4 &&
+      (aboveWaterSensorPoint === null || underwaterSensorPoint === null);
+      x += BUILD_GRID_CELL_SIZE
+    ) {
+      const snappedX =
+        Math.round(x / BUILD_GRID_CELL_SIZE) * BUILD_GRID_CELL_SIZE;
+      const snappedY =
+        Math.round(y / BUILD_GRID_CELL_SIZE) * BUILD_GRID_CELL_SIZE;
+      const bedZ = world.getTerrainBedZ(snappedX, snappedY);
+      if (bedZ <= WATER_LEVEL) {
+        underwaterSensorPoint ??= { x: snappedX, y: snappedY };
+      } else {
+        aboveWaterSensorPoint ??= { x: snappedX, y: snappedY };
+      }
+    }
+  }
+  assertContract(
+    aboveWaterSensorPoint !== null && underwaterSensorPoint !== null,
+    'demo terrain must expose both sensor source media',
+  );
+  const sensorPlacementOptions = {
+    includeMetalDiagnostics: false,
+    ignoreTerrain: true,
+  };
+  const radarAbove = getBuildingPlacementDiagnostics(
+    'buildingRadar',
+    aboveWaterSensorPoint.x,
+    aboveWaterSensorPoint.y,
+    mapWidth,
+    mapHeight,
+    [],
+    [],
+    new Set(),
+    null,
+    0,
+    sensorPlacementOptions,
+  );
+  const sonarAbove = getBuildingPlacementDiagnostics(
+    'buildingSonar',
+    aboveWaterSensorPoint.x,
+    aboveWaterSensorPoint.y,
+    mapWidth,
+    mapHeight,
+    [],
+    [],
+    new Set(),
+    null,
+    0,
+    sensorPlacementOptions,
+  );
+  const radarUnderwater = getBuildingPlacementDiagnostics(
+    'buildingRadar',
+    underwaterSensorPoint.x,
+    underwaterSensorPoint.y,
+    mapWidth,
+    mapHeight,
+    [],
+    [],
+    new Set(),
+    null,
+    0,
+    sensorPlacementOptions,
+  );
+  const sonarUnderwater = getBuildingPlacementDiagnostics(
+    'buildingSonar',
+    underwaterSensorPoint.x,
+    underwaterSensorPoint.y,
+    mapWidth,
+    mapHeight,
+    [],
+    [],
+    new Set(),
+    null,
+    0,
+    sensorPlacementOptions,
+  );
+  assertContract(radarAbove.canPlace, 'radar placement must accept an above-water source center');
+  assertContract(!sonarAbove.canPlace, 'sonar placement must reject an above-water source center');
+  assertContract(!radarUnderwater.canPlace, 'radar placement must reject an underwater source center');
+  assertContract(sonarUnderwater.canPlace, 'sonar placement must accept an underwater source center');
 
   const extractorConfig = getBuildingConfig('buildingExtractor');
   const manualConstruction = new ConstructionSystem(

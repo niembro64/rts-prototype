@@ -1,4 +1,4 @@
-import type { MoveCommand } from '../sim/commands';
+import type { GuardCommand, MoveCommand, RepairCommand } from '../sim/commands';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import { LAND_CELL_SIZE } from '../../config';
@@ -23,20 +23,10 @@ import {
 import { isAttackableEnemyTarget } from '../input/helpers/AttackTargetHelper';
 import { isReclaimableTarget } from '../sim/reclaim';
 import { getBuilderConstructionRate } from '../sim/hostCapabilities';
+import { entityHasBarAttackCommand } from '../sim/unitCommandCapabilities';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
-/** A unit can attack iff it mounts a real weapon turret (a pure
- *  construction emitter does not count) — used to pick attack vs reclaim on
- *  an enemy, BAR's leader rule. */
-function unitCanAttack(unit: Entity): boolean {
-  const turrets = unit.combat?.turrets;
-  if (turrets === undefined) return false;
-  for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].config.constructionEmitter === null) return true;
-  }
-  return false;
-}
 import { getTerrainBedHeight, isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
 import {
@@ -64,7 +54,6 @@ type Input3DRightDragControllerConfig = {
   isFormationAssumeMode: () => boolean;
   isFormationMoveMode: () => boolean;
   exitFormationModes: () => void;
-  getSelectedCommander: () => Entity | null;
   getMapSampleBounds: () => { width: number; height: number };
   applyCursor: (kind: CommandCursorKind) => void;
   refreshCursor: () => void;
@@ -121,7 +110,7 @@ export class Input3DRightDragController {
       ? source.getEntity(entityHitId)
       : null;
     const preserveFormationMove = selectedUnits.length > 0 && this.shouldUseFormationOffsets(e);
-    const selectionHasAttacker = selectedUnits.some(unitCanAttack);
+    const selectionHasAttacker = selectedUnits.some(entityHasBarAttackCommand);
 
     // Enemy under the cursor: an attack-capable selection attacks it; a pure
     // builder selection reclaims it instead (BAR default-command leader rule).
@@ -244,17 +233,17 @@ export class Input3DRightDragController {
     if (!world) return;
 
     if (!preserveFormationMove) {
-      const repairCmd = buildRepairOrGuardCommandAt(
+      const repairCmds = this.buildRepairOrGuardCommandsAt(
         source,
         world.x, world.y,
-        this.config.getSelectedCommander(),
         selectedUnits,
         tick,
         queueMode.queue,
         queueMode.queueFront,
         queueMode.queueInsertIndex,
       );
-      if (repairCmd) {
+      if (repairCmds.length > 0) {
+        const repairCmd = repairCmds[0];
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
           '[click] %s: clicked at (%d, %d, %d) -> target #%d',
@@ -263,7 +252,9 @@ export class Input3DRightDragController {
           repairCmd.targetId,
         );
         this.config.applyCursor(repairCmd.type === 'guard' ? 'guard' : 'repair');
-        this.config.commandQueue.enqueue(repairCmd);
+        for (let i = 0; i < repairCmds.length; i++) {
+          this.config.commandQueue.enqueue(repairCmds[i]);
+        }
         return;
       }
     }
@@ -347,14 +338,14 @@ export class Input3DRightDragController {
       const finalPoint = points[points.length - 1];
       const preserveFormation = this.shouldUseFormationOffsets(e);
       if (!preserveFormation) {
-        const repairCmd = buildRepairOrGuardCommandAt(
+        const repairCmds = this.buildRepairOrGuardCommandsAt(
           source,
           finalPoint.x, finalPoint.y,
-          this.config.getSelectedCommander(),
           selectedUnits,
           tick, queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex,
         );
-        if (repairCmd) {
+        if (repairCmds.length > 0) {
+          const repairCmd = repairCmds[0];
           debugLog(
             GAME_DIAGNOSTICS.commandPlans,
             '[click] %s-on-release: released at (%d, %d, %d) -> target #%d',
@@ -363,7 +354,9 @@ export class Input3DRightDragController {
             finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
             repairCmd.targetId,
           );
-          this.config.commandQueue.enqueue(repairCmd);
+          for (let i = 0; i < repairCmds.length; i++) {
+            this.config.commandQueue.enqueue(repairCmds[i]);
+          }
           this.resetLineDrag();
           this.config.refreshCursor();
           return;
@@ -412,7 +405,7 @@ export class Input3DRightDragController {
 
   /** Issue the standard right-click command for a world point that did
    *  not come from a viewport ray — the minimap right-click path. Runs
-   *  the same dispatch order as a viewport right-click (commander
+   *  the same dispatch order as a viewport right-click (selected-builder
    *  repair → attack-if-enemy-at-point → group move for units; rally
    *  for selected factories) through the shared builders, so minimap
    *  and viewport commands cannot drift. */
@@ -424,18 +417,19 @@ export class Input3DRightDragController {
     const z = getTerrainBedHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
 
     if (selectedUnits.length > 0) {
-      const repairCmd = buildRepairOrGuardCommandAt(
+      const repairCmds = this.buildRepairOrGuardCommandsAt(
         source,
         x, y,
-        this.config.getSelectedCommander(),
         selectedUnits,
         tick,
         queueMode.queue,
         queueMode.queueFront,
         queueMode.queueInsertIndex,
       );
-      if (repairCmd) {
-        this.config.commandQueue.enqueue(repairCmd);
+      if (repairCmds.length > 0) {
+        for (let i = 0; i < repairCmds.length; i++) {
+          this.config.commandQueue.enqueue(repairCmds[i]);
+        }
         return;
       }
       const attackCmd = buildAttackCommandAt(
@@ -487,6 +481,62 @@ export class Input3DRightDragController {
       targetBallisticReach: this.targetBallisticReach,
       mode: this.config.getWaypointMode(),
     };
+  }
+
+  /**
+   * Recoil applies a default Repair order to every selected capable builder.
+   * BAR's damaged-constructor widget rewrites that click to one Guard command
+   * for the whole selection, so only plain Repair fans out here.
+   */
+  private buildRepairOrGuardCommandsAt(
+    source: RightDragEntitySource,
+    x: number,
+    y: number,
+    selectedUnits: readonly Entity[],
+    tick: number,
+    queue: boolean,
+    queueFront: boolean,
+    queueInsertIndex?: number,
+  ): Array<RepairCommand | GuardCommand> {
+    const builders: Entity[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (unit.unit !== null && unit.builder !== null && getBuilderConstructionRate(unit) > 0) {
+        builders.push(unit);
+      }
+    }
+    if (builders.length === 0) return [];
+
+    const first = buildRepairOrGuardCommandAt(
+      source,
+      x,
+      y,
+      builders[0],
+      selectedUnits,
+      tick,
+      queue,
+      queueFront,
+      queueInsertIndex,
+    );
+    if (first === null) return [];
+    if (first.type === 'guard') return [first];
+
+    const commands: Array<RepairCommand | GuardCommand> = [first];
+    for (let i = 1; i < builders.length; i++) {
+      const command = buildRepairOrGuardCommandAt(
+        source,
+        x,
+        y,
+        builders[i],
+        selectedUnits,
+        tick,
+        queue,
+        queueFront,
+        queueInsertIndex,
+      );
+      if (command?.type === 'repair') commands.push(command);
+    }
+    return commands;
   }
 
   private source(): RightDragEntitySource {

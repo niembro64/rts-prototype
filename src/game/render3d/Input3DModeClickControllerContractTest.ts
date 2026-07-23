@@ -35,6 +35,19 @@ type BuildCommitHarness = {
     buildingBlueprintId: BuildingBlueprintId,
     planner: () => ReadonlyArray<{ gridX: number; gridY: number }>,
   ): void;
+  commitAreaDrag(
+    drag: {
+      kind: 'repairArea' | 'reclaimArea';
+      button: 0;
+      start: { x: number; y: number; z: number };
+      current: { x: number; y: number; z: number };
+      startClientX: number;
+      startClientY: number;
+      queue: boolean;
+      queueFront: boolean;
+    },
+    releaseEvent: MouseEvent,
+  ): void;
 };
 
 function makeCommanderBuilder(id = 101, unitBlueprintId = 'unitCommander'): Entity {
@@ -57,6 +70,18 @@ function makeUnit(id: number, playerId: number): Entity {
     transform: createTransform(0, 0, 0, 0),
     ownership: { playerId },
     unit: { unitBlueprintId: 'unitJackal', hp: 100, maxHp: 100 } as Entity['unit'],
+    combat: {
+      turrets: [
+        {
+          config: {
+            kind: 'attack',
+            passive: false,
+            range: 160,
+            shot: { type: 'plasma' },
+          },
+        },
+      ],
+    } as Entity['combat'],
   };
 }
 
@@ -267,6 +292,41 @@ export function runInput3DModeClickControllerContractTest(): void {
     'split-modifier build commit must append peer assist guards after own chunks',
   );
 
+  multiCommands.length = 0;
+  const builderAreaDrag = {
+    kind: 'repairArea' as const,
+    button: 0 as const,
+    start: { x: 48, y: 64, z: 3 },
+    current: { x: 88, y: 64, z: 3 },
+    startClientX: 0,
+    startClientY: 0,
+    queue: true,
+    queueFront: false,
+  };
+  multiController.commitAreaDrag(builderAreaDrag, mouseEvent({ shiftKey: true }));
+  assertContract(
+    multiCommands.length === 2 &&
+      multiCommands[0].type === 'repairArea' &&
+      multiCommands[0].commanderId === leader.id &&
+      multiCommands[1].type === 'repairArea' &&
+      multiCommands[1].commanderId === helper.id,
+    'BAR Repair area must fan out to every selected builder with the active builder first',
+  );
+
+  multiCommands.length = 0;
+  multiController.commitAreaDrag(
+    { ...builderAreaDrag, kind: 'reclaimArea' },
+    mouseEvent({ shiftKey: true }),
+  );
+  assertContract(
+    multiCommands.length === 2 &&
+      multiCommands[0].type === 'reclaimArea' &&
+      multiCommands[0].commanderId === leader.id &&
+      multiCommands[1].type === 'reclaimArea' &&
+      multiCommands[1].commanderId === helper.id,
+    'BAR Reclaim area must fan out to every selected builder with the active builder first',
+  );
+
   const mixedMode = new CommanderModeController();
   const commander = makeCommanderBuilder(501, 'unitCommander');
   const drone = makeCommanderBuilder(502, 'unitConstructionDrone');
@@ -439,6 +499,7 @@ export function runInput3DModeClickControllerContractTest(): void {
   const ally = makeUnit(202, 1);
   const attackCommands: Command[] = [];
   let exitAttackModeCount = 0;
+  let attackHitId: number | null = ally.id;
   const attackController = new Input3DModeClickController({
     getEntitySource: () => ({
       getUnits: () => [attacker, ally],
@@ -448,7 +509,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     }),
     commandQueue: { enqueue: (command) => attackCommands.push(command) },
     picker: {
-      raycastEntity: () => ally.id,
+      raycastEntity: () => attackHitId,
       raycastGround: () => ({ x: 72, y: 96, z: 4 }),
     } as never,
     mode: new CommanderModeController(),
@@ -510,6 +571,16 @@ export function runInput3DModeClickControllerContractTest(): void {
     'BAR attack-no-ally behavior should redirect allied attack clicks to an attack-ground order',
   );
   assertContract(exitAttackModeCount === 1, 'unqueued allied attack-ground redirect must exit attack mode');
+  attackHitId = null;
+  attackController.handleMouseDown(mouseEvent({ button: 0, clientX: 12, clientY: 34 }));
+  assertContract(
+    attackCommands.length === 2 &&
+      attackCommands[1].type === 'attackGround' &&
+      attackCommands[1].targetX === 72 &&
+      attackCommands[1].targetY === 96 &&
+      attackCommands[1].targetZ === 4,
+    'BAR Attack on empty ground must issue Attack Point rather than degrading to Fight',
+  );
 
   const resurrector = makeCommanderBuilder(303);
   const resurrectCommands: Command[] = [];

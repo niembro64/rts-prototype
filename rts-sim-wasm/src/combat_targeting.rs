@@ -195,32 +195,32 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_lockon_unit_mask: Vec<u32>,
     pub(crate) entity_lockon_turret_mask: Vec<u32>,
     pub(crate) entity_lockon_shot_mask: Vec<u32>,
-    // Per-entity full-sight and radar-level source radii. Full sight
-    // also counts as radar-level coverage because sight is the
+    // Per-entity full-sight and contact-sensor source radii. Full sight
+    // also counts as contact-level coverage because sight is the
     // stronger information tier. Stamped from shared sensor coverage
     // helpers; zero means the entity provides no source for that tier.
-    pub(crate) entity_full_vision_radius: Vec<f32>,
+    pub(crate) entity_full_vision_above_water_radius: Vec<f32>,
+    pub(crate) entity_full_vision_underwater_radius: Vec<f32>,
     pub(crate) entity_radar_radius: Vec<f32>,
-    pub(crate) entity_detector_radius: Vec<f32>,
+    pub(crate) entity_sonar_radius: Vec<f32>,
+    pub(crate) entity_detector_above_water_radius: Vec<f32>,
+    pub(crate) entity_detector_underwater_radius: Vec<f32>,
     // Per-target player masks rebuilt once after entity stamping.
-    // A bit is set when that player's radar-level aggregate covers
-    // this target. Radar-level aggregate is sight OR radar.
+    // A bit is set when that player's contact-level aggregate covers
+    // this target. The aggregate is full sight OR air-only radar OR
+    // water-only sonar.
     pub(crate) entity_sensor_coverage_mask: Vec<u32>,
-    // Coverage by FULL-SIGHT sources only (excludes radar-only sensors). A
+    // Coverage by FULL-SIGHT sources only (excludes radar/sonar-only sensors). A
     // subset of entity_sensor_coverage_mask. Turrets that require full sight
     // (direct beams / precision line weapons) gate enemy lock-on on this mask
-    // so radar-only contacts are eligible only for radar-fire weapons.
+    // so contact-only targets are eligible only for radar-fire weapons.
     pub(crate) entity_full_sight_coverage_mask: Vec<u32>,
     pub(crate) entity_detector_coverage_mask: Vec<u32>,
     pub(crate) observation_cells: HashMap<u64, CombatTargetingObservationCell>,
     pub(crate) observation_cell_keys: Vec<u64>,
     pub(crate) observation_max_detection_padding: f64,
-    // Per-entity visibility padding the observability walk adds when
-    // this entity is the *target*, so a target counts as observed when
-    // its edge (not just its center) falls inside a vision/radar
-    // circle. Matches the JS `getEntityVisibilityPadding` value (max
-    // body/shot/collision radius for units; max half-extent for
-    // buildings).
+    // Retained in the slab ABI as zero. Visibility is center-only, so
+    // target footprint never extends a sight/radar/sonar envelope.
     pub(crate) entity_detection_padding: Vec<f32>,
     // Per-entity targeting inputs that were JS scratch arrays before
     // AIM-08.5's slab-only scheduler. Stamped from CombatComponent
@@ -426,9 +426,12 @@ impl CombatTargetingPool {
             entity_lockon_unit_mask: Vec::new(),
             entity_lockon_turret_mask: Vec::new(),
             entity_lockon_shot_mask: Vec::new(),
-            entity_full_vision_radius: Vec::new(),
+            entity_full_vision_above_water_radius: Vec::new(),
+            entity_full_vision_underwater_radius: Vec::new(),
             entity_radar_radius: Vec::new(),
-            entity_detector_radius: Vec::new(),
+            entity_sonar_radius: Vec::new(),
+            entity_detector_above_water_radius: Vec::new(),
+            entity_detector_underwater_radius: Vec::new(),
             entity_sensor_coverage_mask: Vec::new(),
             entity_full_sight_coverage_mask: Vec::new(),
             entity_detector_coverage_mask: Vec::new(),
@@ -561,9 +564,16 @@ impl CombatTargetingPool {
             self.entity_lockon_unit_mask.resize(entity_needed, 0);
             self.entity_lockon_turret_mask.resize(entity_needed, 0);
             self.entity_lockon_shot_mask.resize(entity_needed, 0);
-            self.entity_full_vision_radius.resize(entity_needed, 0.0);
+            self.entity_full_vision_above_water_radius
+                .resize(entity_needed, 0.0);
+            self.entity_full_vision_underwater_radius
+                .resize(entity_needed, 0.0);
             self.entity_radar_radius.resize(entity_needed, 0.0);
-            self.entity_detector_radius.resize(entity_needed, 0.0);
+            self.entity_sonar_radius.resize(entity_needed, 0.0);
+            self.entity_detector_above_water_radius
+                .resize(entity_needed, 0.0);
+            self.entity_detector_underwater_radius
+                .resize(entity_needed, 0.0);
             self.entity_sensor_coverage_mask.resize(entity_needed, 0);
             self.entity_full_sight_coverage_mask
                 .resize(entity_needed, 0);
@@ -974,9 +984,12 @@ pub fn combat_targeting_set_entity(
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
     lockon_shot_mask: u32,
-    full_vision_radius: f32,
+    full_vision_above_water_radius: f32,
+    full_vision_underwater_radius: f32,
     radar_radius: f32,
-    detector_radius: f32,
+    sonar_radius: f32,
+    detector_above_water_radius: f32,
+    detector_underwater_radius: f32,
     detection_padding: f32,
     priority_target_id: i32,
     priority_point_present: u8,
@@ -1038,9 +1051,12 @@ pub fn combat_targeting_set_entity(
     pool.entity_lockon_unit_mask[s] = lockon_unit_mask;
     pool.entity_lockon_turret_mask[s] = lockon_turret_mask;
     pool.entity_lockon_shot_mask[s] = lockon_shot_mask;
-    pool.entity_full_vision_radius[s] = full_vision_radius;
+    pool.entity_full_vision_above_water_radius[s] = full_vision_above_water_radius;
+    pool.entity_full_vision_underwater_radius[s] = full_vision_underwater_radius;
     pool.entity_radar_radius[s] = radar_radius;
-    pool.entity_detector_radius[s] = detector_radius;
+    pool.entity_sonar_radius[s] = sonar_radius;
+    pool.entity_detector_above_water_radius[s] = detector_above_water_radius;
+    pool.entity_detector_underwater_radius[s] = detector_underwater_radius;
     pool.entity_detection_padding[s] = detection_padding;
     pool.entity_priority_target_id[s] = priority_target_id;
     pool.entity_priority_point_present[s] = priority_point_present;
@@ -1469,6 +1485,7 @@ pub fn combat_targeting_collect_observation_visibility(
     let capacity = pool
         .entity_id
         .len()
+        .min(pool.entity_stamp_epoch.len())
         .min(pool.entity_flags.len())
         .min(pool.entity_sensor_coverage_mask.len())
         .min(pool.entity_full_sight_coverage_mask.len())
@@ -1484,6 +1501,14 @@ pub fn combat_targeting_collect_observation_visibility(
 
     let mut collect_slot = |slot: usize| {
         if slot >= capacity {
+            return;
+        }
+
+        // clear_all() advances the stamp epoch instead of rewriting every
+        // identity row. Observation queries between clear and the next stamp
+        // must not mistake an old entity id in a reused slot for current
+        // world state.
+        if pool.entity_stamp_epoch[slot] != pool.stamp_epoch {
             return;
         }
 
@@ -2290,12 +2315,13 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
-    entity_detection_padding: &[f32],
+    entity_pos_z: &[f64],
     coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
     radius: f64,
     owner_bit: u32,
+    target_medium: u8,
 ) {
     let target_owner_bit = entity_owner_bit[target_slot];
     if target_owner_bit == owner_bit {
@@ -2304,8 +2330,13 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     if (coverage_mask[target_slot] & owner_bit) != 0 {
         return;
     }
-    let padding = entity_detection_padding[target_slot] as f64;
-    let r = radius + padding;
+    let target_is_water = entity_pos_z[target_slot] <= TERRAIN_WATER_LEVEL;
+    if (target_medium == CT_OBSERVATION_TARGET_WATER && !target_is_water)
+        || (target_medium == CT_OBSERVATION_TARGET_AIR && target_is_water)
+    {
+        return;
+    }
+    let r = radius;
     if r <= 0.0 || !r.is_finite() {
         return;
     }
@@ -2323,12 +2354,13 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
-    entity_detection_padding: &[f32],
+    entity_pos_z: &[f64],
     coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
     radius: f64,
     owner_bit: u32,
+    target_medium: u8,
 ) {
     if cell.owner_bits != 0 && (cell.owner_bits & !owner_bit) == 0 {
         return;
@@ -2339,12 +2371,13 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             entity_owner_bit,
             entity_pos_x,
             entity_pos_y,
-            entity_detection_padding,
+            entity_pos_z,
             coverage_mask,
             source_x,
             source_y,
             radius,
             owner_bit,
+            target_medium,
         );
     }
 }
@@ -2353,6 +2386,9 @@ pub(crate) fn combat_targeting_mark_observation_cell(
 pub(crate) const CT_OBSERVATION_MASK_SENSOR: u8 = 0;
 pub(crate) const CT_OBSERVATION_MASK_DETECTOR: u8 = 1;
 pub(crate) const CT_OBSERVATION_MASK_FULL_SIGHT: u8 = 2;
+pub(crate) const CT_OBSERVATION_TARGET_ANY: u8 = 0;
+pub(crate) const CT_OBSERVATION_TARGET_AIR: u8 = 1;
+pub(crate) const CT_OBSERVATION_TARGET_WATER: u8 = 2;
 
 pub(crate) fn combat_targeting_mark_observation_circle(
     pool: &mut CombatTargetingPool,
@@ -2361,6 +2397,7 @@ pub(crate) fn combat_targeting_mark_observation_circle(
     radius: f64,
     owner_bit: u32,
     mask_kind: u8,
+    target_medium: u8,
 ) {
     if owner_bit == 0 || !source_x.is_finite() || !source_y.is_finite() || !radius.is_finite() {
         return;
@@ -2380,7 +2417,7 @@ pub(crate) fn combat_targeting_mark_observation_circle(
     let entity_owner_bit = &pool.entity_owner_bit;
     let entity_pos_x = &pool.entity_pos_x;
     let entity_pos_y = &pool.entity_pos_y;
-    let entity_detection_padding = &pool.entity_detection_padding;
+    let entity_pos_z = &pool.entity_pos_z;
     let observation_cells = &pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
     let coverage_mask = match mask_kind {
@@ -2408,12 +2445,13 @@ pub(crate) fn combat_targeting_mark_observation_circle(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
-                entity_detection_padding,
+                entity_pos_z,
                 coverage_mask,
                 source_x,
                 source_y,
                 radius,
                 owner_bit,
+                target_medium,
             );
         }
         return;
@@ -2430,12 +2468,13 @@ pub(crate) fn combat_targeting_mark_observation_circle(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
-                entity_detection_padding,
+                entity_pos_z,
                 coverage_mask,
                 source_x,
                 source_y,
                 radius,
                 owner_bit,
+                target_medium,
             );
         }
     }
@@ -2456,50 +2495,109 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
     let source_x = pool.entity_pos_x[source_slot];
     let source_y = pool.entity_pos_y[source_slot];
 
-    let full_radius = pool.entity_full_vision_radius[source_slot] as f64;
+    let full_above_water_radius =
+        pool.entity_full_vision_above_water_radius[source_slot] as f64;
+    let full_underwater_radius =
+        pool.entity_full_vision_underwater_radius[source_slot] as f64;
     let radar_radius = pool.entity_radar_radius[source_slot] as f64;
-    let detector_radius = pool.entity_detector_radius[source_slot] as f64;
-    let sensor_radius = if full_radius > radar_radius {
-        full_radius
-    } else {
-        radar_radius
-    };
-    if sensor_radius > 0.0 {
+    let sonar_radius = pool.entity_sonar_radius[source_slot] as f64;
+    let detector_above_water_radius =
+        pool.entity_detector_above_water_radius[source_slot] as f64;
+    let detector_underwater_radius =
+        pool.entity_detector_underwater_radius[source_slot] as f64;
+    if full_above_water_radius > 0.0 {
         combat_targeting_mark_observation_circle(
             pool,
             source_x,
             source_y,
-            sensor_radius,
+            full_above_water_radius,
             owner_bit,
             CT_OBSERVATION_MASK_SENSOR,
+            CT_OBSERVATION_TARGET_AIR,
         );
     }
-    // Full-sight sources additionally seed the full-sight-only mask (radar
-    // sources do not). Full sight already supplies radar-level location via
-    // the merged sensor mask above, so this is a strict subset.
-    if full_radius > 0.0 {
+    if full_underwater_radius > 0.0 {
         combat_targeting_mark_observation_circle(
             pool,
             source_x,
             source_y,
-            full_radius,
+            full_underwater_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_SENSOR,
+            CT_OBSERVATION_TARGET_WATER,
+        );
+    }
+    if radar_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            radar_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_SENSOR,
+            CT_OBSERVATION_TARGET_AIR,
+        );
+    }
+    if sonar_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            sonar_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_SENSOR,
+            CT_OBSERVATION_TARGET_WATER,
+        );
+    }
+    // Full-sight sources additionally seed the full-sight-only mask. Contact
+    // radar/sonar sources never do.
+    if full_above_water_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            full_above_water_radius,
             owner_bit,
             CT_OBSERVATION_MASK_FULL_SIGHT,
+            CT_OBSERVATION_TARGET_AIR,
         );
     }
-    if detector_radius > 0.0 {
+    if full_underwater_radius > 0.0 {
         combat_targeting_mark_observation_circle(
             pool,
             source_x,
             source_y,
-            detector_radius,
+            full_underwater_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_FULL_SIGHT,
+            CT_OBSERVATION_TARGET_WATER,
+        );
+    }
+    if detector_above_water_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            detector_above_water_radius,
             owner_bit,
             CT_OBSERVATION_MASK_DETECTOR,
+            CT_OBSERVATION_TARGET_AIR,
+        );
+    }
+    if detector_underwater_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            detector_underwater_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_DETECTOR,
+            CT_OBSERVATION_TARGET_WATER,
         );
     }
 }
 
-/// Rebuilds per-target radar-level coverage masks from stamped sensor
+/// Rebuilds per-target contact-level coverage masks from stamped sensor
 /// sources using the spatial grid. This is the hot-path
 /// targeting equivalent of the snapshot visibility aggregate: do the
 /// source-radius work once per tick, then every turret candidate can
@@ -2537,9 +2635,9 @@ pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u3
 }
 
 /// Adds a temporary full-sight source such as a scan pulse after the
-/// entity-source masks have been rebuilt. Full sight is radar-level
+/// entity-source masks have been rebuilt. Full sight is contact-level
 /// coverage for targeting, so this marks the same aggregate mask used
-/// by radar and normal sight sources.
+/// by radar, sonar, and normal sight sources.
 #[wasm_bindgen]
 pub fn combat_targeting_add_sensor_observation_circle(
     owner_player_id: u8,
@@ -2550,7 +2648,7 @@ pub fn combat_targeting_add_sensor_observation_circle(
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
     // A scan pulse is a full-sight source: it reveals identity in its area, so
-    // it seeds the merged sensor mask (radar-level), the full-sight-only mask,
+    // it seeds the merged sensor mask (contact-level), the full-sight-only mask,
     // and the detector mask.
     combat_targeting_mark_observation_circle(
         pool,
@@ -2559,6 +2657,7 @@ pub fn combat_targeting_add_sensor_observation_circle(
         radius,
         owner_bit,
         CT_OBSERVATION_MASK_SENSOR,
+        CT_OBSERVATION_TARGET_ANY,
     );
     combat_targeting_mark_observation_circle(
         pool,
@@ -2567,6 +2666,7 @@ pub fn combat_targeting_add_sensor_observation_circle(
         radius,
         owner_bit,
         CT_OBSERVATION_MASK_FULL_SIGHT,
+        CT_OBSERVATION_TARGET_ANY,
     );
     combat_targeting_mark_observation_circle(
         pool,
@@ -2575,6 +2675,7 @@ pub fn combat_targeting_add_sensor_observation_circle(
         radius,
         owner_bit,
         CT_OBSERVATION_MASK_DETECTOR,
+        CT_OBSERVATION_TARGET_ANY,
     );
 }
 
@@ -2589,7 +2690,7 @@ pub(crate) fn combat_targeting_view_mask_covers_entity(
     (pool.entity_sensor_coverage_mask[target_slot] & view_mask) != 0
 }
 
-/// Targeting observability for one recipient/team view. Radar-level
+/// Targeting observability for one recipient/team view. Contact-level
 /// coverage includes full sight.
 pub(crate) fn combat_targeting_view_mask_observes_entity(
     pool: &CombatTargetingPool,
@@ -10170,14 +10271,18 @@ mod tests {
             *pool = CombatTargetingPool::empty();
             pool.ensure_entity_capacity(3);
             pool.entity_id[0] = 10;
+            pool.entity_stamp_epoch[0] = pool.stamp_epoch;
             pool.entity_flags[0] = CT_ENTITY_FLAG_ALIVE;
             pool.entity_id[1] = 11;
+            pool.entity_stamp_epoch[1] = pool.stamp_epoch;
             pool.entity_flags[1] = CT_ENTITY_FLAG_ALIVE;
             pool.entity_full_sight_coverage_mask[1] = 1;
             pool.entity_id[2] = 12;
+            pool.entity_stamp_epoch[2] = pool.stamp_epoch;
             pool.entity_flags[2] = CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_CLOAKED;
             pool.entity_detector_coverage_mask[2] = 1;
             pool.entity_id[3] = 13;
+            pool.entity_stamp_epoch[3] = pool.stamp_epoch;
             pool.entity_flags[3] = CT_ENTITY_FLAG_ALIVE;
             pool.entity_sensor_coverage_mask[3] = 1;
         }
@@ -10206,6 +10311,78 @@ mod tests {
         assert_eq!(&radar[..3], &[10, 11, 12]);
         assert_eq!(&radar_slots[..3], &[0, 1, 2]);
         assert_eq!(los[0], 1);
+
+        combat_targeting_clear();
+        counts.fill(u32::MAX);
+        let handled_after_clear = combat_targeting_collect_observation_visibility(
+            1,
+            &[],
+            &mut visible,
+            &mut visible_slots,
+            &mut radar,
+            &mut radar_slots,
+            &mut los,
+            &mut counts,
+        );
+        assert_eq!(handled_after_clear, 0);
+        assert_eq!(counts, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn contact_sensors_filter_target_centers_by_medium_without_hitbox_padding() {
+        let _guard = match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let pool = combat_targeting_pool();
+        *pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(3);
+
+        let online = CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+        pool.entity_id[0] = 100;
+        pool.entity_flags[0] = online;
+        pool.entity_owner_bit[0] = combat_targeting_player_bit(1);
+        pool.entity_pos_x[0] = 0.0;
+        pool.entity_pos_y[0] = 0.0;
+
+        for slot in 1..=3 {
+            pool.entity_id[slot] = 100 + slot as i32;
+            pool.entity_flags[slot] = online;
+            pool.entity_owner_bit[slot] = combat_targeting_player_bit(2);
+            pool.entity_pos_y[slot] = 0.0;
+        }
+        pool.entity_pos_x[1] = 50.0;
+        pool.entity_pos_z[1] = TERRAIN_WATER_LEVEL + 0.001;
+        pool.entity_pos_x[2] = 50.0;
+        pool.entity_pos_z[2] = TERRAIN_WATER_LEVEL;
+        pool.entity_pos_x[3] = 100.001;
+        pool.entity_pos_z[3] = TERRAIN_WATER_LEVEL + 0.001;
+        pool.entity_detection_padding[3] = 1000.0;
+
+        pool.entity_radar_radius[0] = 100.0;
+        combat_targeting_rebuild_observation_masks();
+        assert_ne!(pool.entity_sensor_coverage_mask[1] & 1, 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[2] & 1, 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[3] & 1, 0);
+
+        pool.entity_radar_radius[0] = 0.0;
+        pool.entity_sonar_radius[0] = 100.0;
+        combat_targeting_rebuild_observation_masks();
+        assert_eq!(pool.entity_sensor_coverage_mask[1] & 1, 0);
+        assert_ne!(pool.entity_sensor_coverage_mask[2] & 1, 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[3] & 1, 0);
+
+        pool.entity_sonar_radius[0] = 0.0;
+        pool.entity_full_vision_above_water_radius[0] = 100.0;
+        combat_targeting_rebuild_observation_masks();
+        assert_ne!(pool.entity_full_sight_coverage_mask[1] & 1, 0);
+        assert_eq!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
+
+        pool.entity_full_vision_above_water_radius[0] = 0.0;
+        pool.entity_full_vision_underwater_radius[0] = 100.0;
+        combat_targeting_rebuild_observation_masks();
+        assert_eq!(pool.entity_full_sight_coverage_mask[1] & 1, 0);
+        assert_ne!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
     }
 
     #[test]

@@ -146,6 +146,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingExtractor: { close: 800, mid: 450, far: 260 },
   buildingExtractorT2: { close: 1000, mid: 550, far: 340 },
   buildingRadar: { close: 1500, mid: 700, far: 350 },
+  buildingSonar: { close: 1500, mid: 700, far: 350 },
   buildingResourceConverter: { close: 1500, mid: 750, far: 420 },
   towerFabricator: { close: 1700, mid: 850, far: 420 },
   towerBeamMega: { close: 900, mid: 500, far: 260 },
@@ -932,7 +933,7 @@ function seedPylonVisualState(
 
 /** A geometry-tier rebuild must be a presentation swap, never an animation reset. */
 function runVisualStateTransferContracts(material: THREE.Material): void {
-  for (const structureId of ['buildingWind', 'buildingRadar'] as const) {
+  for (const structureId of ['buildingWind', 'buildingRadar', 'buildingSonar'] as const) {
     const blueprint = getBuildingBlueprint(structureId);
     const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -1324,7 +1325,7 @@ function runEnvironmentLodMaterialContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 24, 'visual roster covers all 24 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 6, 'visual roster covers all 6 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 7, 'visual roster covers all 7 buildings');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.towers.length === 4, 'visual roster covers all 4 towers');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {

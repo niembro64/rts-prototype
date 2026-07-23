@@ -15,6 +15,7 @@
         "buildingWind",
         "buildingExtractor",
         "buildingRadar",
+        "buildingSonar",
         "buildingResourceConverter",
         "buildingExtractorT2"
       ],

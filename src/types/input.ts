@@ -31,6 +31,7 @@ export type SelectionEntitySource = {
 export type RepairEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
 // Entity source for attack target queries

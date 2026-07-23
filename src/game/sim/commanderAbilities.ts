@@ -172,14 +172,15 @@ class CommanderAbilitiesSystem {
       // colored sprays driven by buildable.paid deltas in
       // updateBuilderConstructionEmitter), so the sim only ships heal
       // sprays — there is no renderer counterpart for those.
-      if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
-        // Healing a damaged unit - energy/progress handled by shared system
+      const currentTargetHp = currentTarget.unit ?? currentTarget.building;
+      if (currentTargetHp && currentTargetHp.hp < currentTargetHp.maxHp) {
+        // Healing a damaged entity - energy/progress handled by shared system
         // Check if fully healed
-        if (currentTarget.unit.hp >= currentTarget.unit.maxHp) {
+        if (currentTargetHp.hp >= currentTargetHp.maxHp) {
           this.pushCompletedBuilding(commander.id, currentTarget.id);
         }
 
-        const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
+        const intensity = currentTargetHp.hp < currentTargetHp.maxHp ? 1 : 0;
         const repairEnergyRatePerSecond =
           this.repairEnergyRates.get(repairRatePairKey(commander.id, currentTarget.id)) ?? 0;
         const spray = this.acquireSprayTarget();
@@ -192,7 +193,9 @@ class CommanderAbilitiesSystem {
         spray.target.pos.x = currentTarget.transform.x;
         spray.target.pos.y = currentTarget.transform.y;
         spray.target.z = currentTarget.transform.z;
-        spray.target.radius = currentTarget.unit.radius.hitbox;
+        spray.target.radius = currentTarget.unit !== null
+          ? currentTarget.unit.radius.hitbox
+          : currentTarget.building?.targetRadius ?? 20;
         spray.type = 'heal';
         spray.intensity = Math.max(0.1, intensity);
         spray.channel = 0;
@@ -360,7 +363,9 @@ class CommanderAbilitiesSystem {
 
     if (currentAction.type === 'capture') {
       const playerId = commander.ownership?.playerId;
-      return playerId !== undefined && isCapturableTarget(target, playerId) && isBuildTargetInRange(commander, target)
+      return playerId !== undefined &&
+        isCapturableTarget(target, playerId, (a, b) => world.arePlayersAllied(a, b)) &&
+        isBuildTargetInRange(commander, target)
         ? target
         : null;
     }
@@ -371,11 +376,22 @@ class CommanderAbilitiesSystem {
         : null;
     }
 
-    // Check if target is valid (incomplete building or damaged unit)
-    const isValidBuilding = isBuildInProgress(target.buildable);
-    const isValidUnit = target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp;
+    if (currentAction.type === 'repair') {
+      const playerId = commander.ownership?.playerId;
+      const targetPlayerId = target.ownership?.playerId;
+      if (
+        playerId === undefined ||
+        targetPlayerId === undefined ||
+        !world.arePlayersAllied(playerId, targetPlayerId)
+      ) return null;
+    }
 
-    if (!isValidBuilding && !isValidUnit) {
+    // Check if target is valid (incomplete building or damaged entity).
+    const isValidBuilding = isBuildInProgress(target.buildable);
+    const hpState = target.unit ?? target.building;
+    const isValidRepair = hpState !== null && hpState.hp > 0 && hpState.hp < hpState.maxHp;
+
+    if (!isValidBuilding && !isValidRepair) {
       return null;
     }
 
@@ -454,7 +470,10 @@ class CommanderAbilitiesSystem {
     sourceY: number,
     sourceZ: number,
   ): boolean {
-    if (!commander.builder || !isCapturableTarget(target, playerId)) return false;
+    if (
+      !commander.builder ||
+      !isCapturableTarget(target, playerId, (a, b) => world.arePlayersAllied(a, b))
+    ) return false;
     const hpState = target.unit ?? target.building;
     if (hpState === null || hpState.hp <= 0 || hpState.maxHp <= 0) return false;
 

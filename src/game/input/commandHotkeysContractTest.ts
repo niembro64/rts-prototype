@@ -72,7 +72,7 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
   if (!isBarLegacyPreset && commandId === 'select.previousNotInControlGroups') return true;
   if (!isBarLegacyPreset && commandId === 'select.previousNonBuildersNotInControlGroups') return true;
   if (!isBarLegacyPreset && commandId === 'select.groundWeaponUnits') return true;
-  if (!isBarGridPreset && commandId === 'combat.restore') return true;
+  if (commandId === 'combat.restore') return true;
   if (commandId === 'command.builderPriority') return true;
   if (commandId === 'command.carrierSpawn') return true;
   if (commandId === 'factory.airIdleState') return true;
@@ -183,7 +183,7 @@ export function runCommandHotkeysContractTest(): void {
           : commandId === 'command.areaMex'
             ? 'Area Mex is exposed as a BAR order command; prototype/custom do not add a shortcut and BAR-grid keeps Z for build-grid slot 1'
           : commandId === 'combat.restore'
-            ? 'BAR grid binds Restore on M; prototype/custom and BAR legacy leave M for their existing move semantics'
+            ? 'Restore is unavailable while the authoritative terrain is immutable, matching Recoil map-damage capability gating'
           : commandId === 'command.builderPriority'
             ? 'BAR exposes builder priority as a visible state command without a default keyboard shortcut'
           : commandId === 'command.carrierSpawn'
@@ -1315,13 +1315,10 @@ export function runCommandHotkeysContractTest(): void {
     'BAR presets must resolve Any+K to wantcloak/command.cloak while displaying the plain K label like the hotkey files',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === 'combat.restore',
-    'bar-grid M must resolve BAR restore like grid_keys.txt',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid-60pct') === 'combat.restore' &&
-      commandHotkeyLabel('combat.restore', 'bar-grid') === 'M',
-    'BAR grid presets must expose Restore on M like grid_keys.txt and grid_keys_60pct.txt',
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === null &&
+      resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid-60pct') === null &&
+      commandHotkeyLabel('combat.restore', 'bar-grid') === '',
+    'immutable terrain must not expose Recoil Restore as a dead BAR-grid hotkey',
   );
   assertContract(
     commandHotkeyLabel('waypoint.move', 'bar-grid') === '',

@@ -2389,9 +2389,12 @@ export interface CombatTargetingApi {
     lockOnUnitIncludeMask: number,
     lockOnTurretIncludeMask: number,
     lockOnShotIncludeMask: number,
-    fullVisionRadius: number,
+    fullVisionAboveWaterRadius: number,
+    fullVisionUnderwaterRadius: number,
     radarRadius: number,
-    detectorRadius: number,
+    sonarRadius: number,
+    detectorAboveWaterRadius: number,
+    detectorUnderwaterRadius: number,
     detectionPadding: number,
     priorityTargetId: number,
     priorityPointPresent: number,
@@ -2402,7 +2405,7 @@ export interface CombatTargetingApi {
     turretCount: number,
   ) => void;
   unsetEntity: (entitySlot: number) => void;
-  /** Rebuilds targeting observability masks from stamped sight/radar
+  /** Rebuilds targeting observability masks from stamped sight/radar/sonar
    *  sources. Must run after all entities are stamped and before any
    *  targeting scheduler tick. */
   rebuildObservationMasks: () => void;

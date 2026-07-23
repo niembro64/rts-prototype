@@ -36,6 +36,7 @@
   },
   "waterFabricators": {
     "radiusFraction": 0.96,
+    "sonarRadiusFraction": 1,
     "arcSectorFraction": 0.9,
     "unitBlueprintIds": [
       "unitSeaTurtle",
@@ -54,5 +55,6 @@
   "towerCannonCount": 1,
   "towerAntiAirCount": 1,
   "buildingRadarCount": 1,
+  "buildingSonarCount": 1,
   "buildingResourceConverterCount": 1
 }

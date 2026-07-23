@@ -14,8 +14,16 @@ import {
   getMetalDepositGridCells,
   getMetalDepositFootprintCoverage,
 } from './metalDeposits';
-import { evaluateBuildabilityFootprint, getTerrainBuildabilityGridCell } from './Terrain';
-import { buildingIgnoresTerrainForPlacement } from './buildingPlacementPolicy';
+import {
+  evaluateBuildabilityFootprint,
+  getTerrainBedHeight,
+  getTerrainBuildabilityGridCell,
+  WATER_LEVEL,
+} from './Terrain';
+import {
+  buildingIgnoresTerrainForPlacement,
+  getBuildingRequiredSensorSourceMedium,
+} from './buildingPlacementPolicy';
 
 export type BuildPlacementCellReason =
   | 'ok'
@@ -123,6 +131,15 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const center = getBuildingCenterFromGrid(gridX, gridY, footprint.gridWidth, footprint.gridHeight);
   const halfWidth = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
   const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const requiredSensorSourceMedium =
+    getBuildingRequiredSensorSourceMedium(candidateType);
+  const centerSensorSourceMedium =
+    getTerrainBedHeight(center.x, center.y, mapWidth, mapHeight) <= WATER_LEVEL
+      ? 'underwater'
+      : 'aboveWater';
+  const sensorSourceMediumMismatch =
+    requiredSensorSourceMedium !== null &&
+    centerSensorSourceMedium !== requiredSensorSourceMedium;
   const extractorCoverage = isMetalExtractorBlueprintId(candidateType)
     ? getMetalDepositFootprintCoverage(
       metalDeposits,
@@ -183,6 +200,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
         blocking = true;
       } else if (isCellOccupied(gx, gy)) {
         reason = 'occupied';
+        blocking = true;
+      } else if (sensorSourceMediumMismatch) {
+        reason = 'terrain';
         blocking = true;
       } else if (!ignoreTerrain) {
         const cellEval = useAuthoritativeBuildability

@@ -244,6 +244,7 @@ let consumerPaidMetal = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerRequiredEnergy = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerRequiredMetal = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerInitialHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerMaxHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerBuildProgress = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerEnergyRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
@@ -255,6 +256,7 @@ const CONSTRUCTION_CONSUMER_HEAL_CODE = 2;
 const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE = 1;
 const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE = 2;
 const HEAL_COST_PER_HP = 0.5;
+const _healEnergyRemainingByTarget = new Map<EntityId, number>();
 
 export function trimEnergyDistributionBuffers(
   maxRetained = DEFAULT_CONSUMER_DEBIT_CAPACITY,
@@ -271,6 +273,7 @@ export function trimEnergyDistributionBuffers(
   consumerRequiredEnergy = new Float64Array(maxRetained);
   consumerRequiredMetal = new Float64Array(maxRetained);
   consumerHp = new Float64Array(maxRetained);
+  consumerInitialHp = new Float64Array(maxRetained);
   consumerMaxHp = new Float64Array(maxRetained);
   consumerBuildProgress = new Float64Array(maxRetained);
   consumerEnergyRateFraction = new Float64Array(maxRetained);
@@ -294,6 +297,7 @@ function ensureConsumerDebitCapacity(count: number): void {
   consumerRequiredEnergy = new Float64Array(nextCapacity);
   consumerRequiredMetal = new Float64Array(nextCapacity);
   consumerHp = new Float64Array(nextCapacity);
+  consumerInitialHp = new Float64Array(nextCapacity);
   consumerMaxHp = new Float64Array(nextCapacity);
   consumerBuildProgress = new Float64Array(nextCapacity);
   consumerEnergyRateFraction = new Float64Array(nextCapacity);
@@ -717,7 +721,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const action = entity.unit.actions[0];
     if (action === undefined || action.type !== 'repair' || action.targetId === undefined) continue;
     const target = world.getEntity(action.targetId);
-    if (!target || !isBuildTargetInRange(entity, target)) continue;
+    if (
+      !target ||
+      target.ownership === null ||
+      !world.arePlayersAllied(entity.ownership.playerId, target.ownership.playerId) ||
+      !isBuildTargetInRange(entity, target)
+    ) continue;
     const builderRateCap = getBuilderConstructionRate(entity) * dtSec;
     if (isBuildInProgress(target.buildable)) {
       assignActiveConstructionTask(world, entity, target.id, 'construct');
@@ -736,9 +745,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           );
         }
       }
-    } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
+    } else {
+      const hpState = target.unit ?? target.building;
+      if (hpState === null || hpState.hp <= 0 || hpState.hp >= hpState.maxHp) continue;
       assignActiveConstructionTask(world, entity, target.id, 'repair');
-      const hpToHeal = target.unit.maxHp - target.unit.hp;
+      const hpToHeal = hpState.maxHp - hpState.hp;
       const remaining = hpToHeal * HEAL_COST_PER_HP;
       if (remaining > 0) {
         addEnergyConsumer(
@@ -767,10 +778,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const svc = resolveGuardServiceTarget(world, entity);
     if (svc === null || svc.kind !== 'heal') continue; // build/factory assist handled above
     const target = svc.target;
-    if (target.unit === null) continue;
+    const hpState = target.unit ?? target.building;
+    if (hpState === null) continue;
     if (guardHealedTargetIds.has(target.id)) continue;
     if (!isBuildTargetInRange(entity, target)) continue;
-    const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
+    const remaining = (hpState.maxHp - hpState.hp) * HEAL_COST_PER_HP;
     if (remaining <= 0) continue;
     assignActiveConstructionTask(world, entity, target.id, 'repair');
     guardHealedTargetIds.add(target.id);
@@ -853,6 +865,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const totalEnergyConsumers = buildCount + healCount;
 
     ensureConsumerDebitCapacity(indices.length);
+    _healEnergyRemainingByTarget.clear();
     for (let i = 0; i < indices.length; i++) {
       const c = consumers[indices[i]];
       consumerCaps[i] = c.maxResourcePerTick;
@@ -864,19 +877,27 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         consumerRequiredEnergy[i] = buildable === null ? 0 : buildable.required.energy;
         consumerRequiredMetal[i] = buildable === null ? 0 : buildable.required.metal;
         consumerHp[i] = 0;
+        consumerInitialHp[i] = 0;
         consumerMaxHp[i] = 0;
         consumerEnergyRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'energy');
         consumerMetalRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'metal');
       } else {
-        const unit = c.entity.unit;
-        consumerTypeCodes[i] = unit === null ? 0 : CONSTRUCTION_CONSUMER_HEAL_CODE;
+        const hpState = c.entity.unit ?? c.entity.building;
+        consumerTypeCodes[i] = hpState === null ? 0 : CONSTRUCTION_CONSUMER_HEAL_CODE;
         consumerPaidEnergy[i] = 0;
         consumerPaidMetal[i] = 0;
         consumerRequiredEnergy[i] = 0;
         consumerRequiredMetal[i] = 0;
-        consumerHp[i] = unit === null ? 0 : unit.hp;
-        consumerMaxHp[i] = unit === null ? 0 : unit.maxHp;
-        consumerEnergyRemaining[i] = c.remainingCost;
+        consumerHp[i] = hpState === null ? 0 : hpState.hp;
+        consumerInitialHp[i] = consumerHp[i];
+        consumerMaxHp[i] = hpState === null ? 0 : hpState.maxHp;
+        const targetRemaining = _healEnergyRemainingByTarget.get(c.entity.id) ??
+          Math.max(0, consumerMaxHp[i] - consumerHp[i]) * HEAL_COST_PER_HP;
+        consumerEnergyRemaining[i] = targetRemaining;
+        _healEnergyRemainingByTarget.set(
+          c.entity.id,
+          Math.max(0, targetRemaining - consumerCaps[i]),
+        );
         consumerMetalRemaining[i] = 0;
       }
     }
@@ -937,9 +958,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         // Healing — energy only.
         const energyToSpend = consumerEnergySpent[i];
         recordResourceSpendForConsumer(world, buffers, c, 'energy', energyToSpend, dtSec);
-        const unit = c.entity.unit!;
+        const hpState = c.entity.unit ?? c.entity.building;
+        if (hpState === null) continue;
         if ((consumerChangedMask[i] & CONSTRUCTION_CONSUMER_CHANGED_HP_CODE) !== 0) {
-          unit.hp = consumerHp[i];
+          const hpGain = Math.max(0, consumerHp[i] - consumerInitialHp[i]);
+          hpState.hp = Math.min(hpState.maxHp, hpState.hp + hpGain);
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_HP);
         }
       }

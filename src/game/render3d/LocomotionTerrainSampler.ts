@@ -3,9 +3,11 @@ import type { Entity, EntityId } from '../sim/types';
 import {
   getSurfaceHeight,
   getSurfaceNormal,
+  getTerrainBedHeight,
   getTerrainVersion,
   isWaterAt,
 } from '../sim/Terrain';
+import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
 import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
 import {
   createWorldSupportSurface,
@@ -27,6 +29,8 @@ export type LocomotionFootSurfaceSample = {
   groundY: number;
   visualFootY: number;
 };
+
+export type LocomotionTerrainMode = 'visibleSurface' | 'terrainBed';
 
 /** Per-part floor-clamp result. The visual rig hands in the part's
  *  natural world Y (what it would render at if support weren't a
@@ -142,9 +146,24 @@ export function getLocomotionSurfaceHeight(
   mapWidth: number,
   mapHeight: number,
   ignoreEntityId?: EntityId | null,
+  terrainMode: LocomotionTerrainMode = 'visibleSurface',
 ): number {
-  const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  const terrainY = terrainMode === 'terrainBed'
+    ? getTerrainBedHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE)
+    : getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
   return getVisualSupportY(x, z, terrainY, ignoreEntityId ?? null) ?? terrainY;
+}
+
+/**
+ * Leg rigs receive the host footprint's authoritative physical support height.
+ * A support below the water plane means the walker is standing on submerged
+ * terrain/support, so its feet must sample the bed rather than the visible
+ * water surface. Other locomotion rigs retain the visible-surface default.
+ */
+export function locomotionTerrainModeForSupportHeight(
+  supportHeight: number,
+): LocomotionTerrainMode {
+  return supportHeight < WATER_LEVEL ? 'terrainBed' : 'visibleSurface';
 }
 
 function sampleLocomotionGroundContact(
@@ -192,8 +211,16 @@ export function sampleLocomotionFootSurface(
   clearance: number,
   ignoreEntityId?: EntityId | null,
   out?: LocomotionFootSurfaceSample,
+  terrainMode: LocomotionTerrainMode = 'visibleSurface',
 ): LocomotionFootSurfaceSample {
-  const groundY = getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight, ignoreEntityId);
+  const groundY = getLocomotionSurfaceHeight(
+    x,
+    z,
+    mapWidth,
+    mapHeight,
+    ignoreEntityId,
+    terrainMode,
+  );
   const result = out ?? {
     groundY: 0,
     visualFootY: 0,

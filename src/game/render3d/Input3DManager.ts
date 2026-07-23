@@ -416,7 +416,6 @@ export class Input3DManager {
       isFormationAssumeMode: () => this.formationAssumeMode,
       isFormationMoveMode: () => this.formationMoveMode,
       exitFormationModes: () => this.exitFormationModes(),
-      getSelectedCommander: () => this.getSelectedCommander(),
       getMapSampleBounds: () => this.modeClicks.getMapSampleBounds(),
       applyCursor: (kind) => this.applyCursor(kind),
       refreshCursor: () => this.refreshCursor(),

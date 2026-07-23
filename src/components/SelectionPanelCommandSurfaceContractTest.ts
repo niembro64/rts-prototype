@@ -752,9 +752,9 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'the Area Attack order button must be gated by the BAR-equivalent Area Attack capability',
   );
   assertContract(
-    /'combat\.restore': 'Restore an area of the map to its original height',/.test(selectionPanelSource) &&
-      /v-if="selection\.hasBuilder && isBarHotkeyPreset"[\s\S]{0,260}:class="\{ active: selection\.isRestoreAreaMode \}"[\s\S]{0,260}:title="actionTitle\('Restore', 'combat\.restore'\)"[\s\S]{0,220}@click="actions\.toggleRestoreArea\(\)"/.test(selectionPanelSource),
-    'BAR Restore order surface must be visible for builder selections and use interface.json restore tooltip text',
+    !/title="actionTitle\('Restore', 'combat\.restore'\)"/.test(selectionPanelSource) &&
+      !/@click="actions\.toggleRestoreArea\(\)"/.test(selectionPanelSource),
+    'immutable terrain must not expose Recoil Restore as a dead command-card action',
   );
   assertContract(
     /const showFormationCommands = computed\(\(\) => !isBarHotkeyPreset\.value\);/.test(selectionPanelSource),

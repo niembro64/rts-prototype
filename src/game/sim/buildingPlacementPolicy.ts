@@ -1,11 +1,22 @@
 import type { BuildingBlueprintId } from './types';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import type { SensorMedium } from './sensorConfig';
 
 /** Fabricators are suspended unit builders; terrain shape never rejects them. */
 export function buildingIgnoresTerrainForPlacement(
   buildingBlueprintId: BuildingBlueprintId,
 ): boolean {
   return buildingBlueprintId === 'towerFabricator';
+}
+
+/** Dedicated contact sensors must be placed in the source medium authored by
+ * their sensor matrix; otherwise the building would be completed but inert. */
+export function getBuildingRequiredSensorSourceMedium(
+  buildingBlueprintId: BuildingBlueprintId,
+): SensorMedium | null {
+  if (buildingBlueprintId === 'buildingRadar') return 'aboveWater';
+  if (buildingBlueprintId === 'buildingSonar') return 'underwater';
+  return null;
 }
 
 /** Normal buildings sit on the solid terrain bed, including underwater.

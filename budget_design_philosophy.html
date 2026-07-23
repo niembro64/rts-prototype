@@ -381,14 +381,14 @@
       <p>
         The <strong>DEMO BATTLE</strong> and <strong>REAL BATTLE</strong> bars own whether
         fog of war is functionally active. That battle-level <code>FOG OF WAR</code> control governs
-        authoritative player vision, radar coverage, recipient-specific snapshot filtering, and
+        authoritative player vision, radar/sonar coverage, recipient-specific snapshot filtering, and
         whether enemy units outside vision exist in the client view at all.
       </p>
       <p>
         The <strong>PLAYER CLIENT</strong> bar owns only fog presentation. Its
         <code>DEBUG:</code> controls may show or hide the sight boundary, the live dark shade over
         currently unseen terrain and environment props. The client
-        may independently tune radar-only and fully unseen darkness, color loss, and world-space
+        may independently tune contact-only and fully unseen darkness, color loss, and world-space
         boundary softness without changing sensor truth. The complete fog presentation profile
         &mdash; authored defaults, tint, coverage resolution, softness, and user-facing option
         values &mdash; belongs in <code>fogConfig.json</code>.
@@ -403,7 +403,7 @@
         battle-level fog is off.
       </p>
 
-      <h3>Sight, radar, and contacts are separate information tiers</h3>
+      <h3>Sight, radar, sonar, and contacts are separate information tiers</h3>
       <p>
         The visibility model needs three named areas, because each answers a different gameplay
         question. <strong>Area of unit sight</strong> is the footprint of one full-vision source:
@@ -414,14 +414,15 @@
         private <em>strategic</em> detail allowed by ownership rules (commanded intent only, never
         motion or render state &mdash; see <strong>Visible units render and update identically</strong>
         below), normal terrain/force-material sight checks, visual
-        events, and the main snapshot entity row. <strong>Area of total player radar coverage</strong>
-        is the radar-level aggregate: all total player sight areas plus radar-only sensor areas.
-        Full sight is a stronger information tier, so it necessarily also supplies radar-level
-        location. Radar-only coverage grants positional contact only, not full identity, health,
-        orders, animation state, or full snapshot presence.
+        events, and the main snapshot entity row. <strong>Area of total player contact
+        coverage</strong> is the contact-level aggregate: all total player sight areas plus
+        air-radar and water-sonar sensor areas. Full sight is a stronger information tier, so it
+        necessarily also supplies contact-level location. Contact-only coverage grants positional
+        information only, not full identity, health, orders, animation state, or full snapshot
+        presence.
       </p>
       <p>
-        A radar-only enemy should be represented to the player as a contact, not as the real entity.
+        A contact-only enemy should be represented to the player as a contact, not as the real entity.
         The small sphere/blip idea is the right shape: a generic radar contact at a quantized or
         otherwise coarse position, with no unit blueprint, no exact body dimensions, and no private
         state. The authoritative sim may internally associate that contact with a real entity so
@@ -430,26 +431,52 @@
         information; it should not silently keep streaming a full unit under another visual.
       </p>
       <p>
+        Every sight source and target belongs to exactly one physical sensor medium, determined only
+        by its authoritative center: a center at or below the water level is
+        <strong>underwater</strong>, while a center above the water level is
+        <strong>above water</strong>. Target radius, hitbox extent, visual height, wake, and any
+        portion crossing the surface do not affect that classification or extend sensor reach.
+        Both full sight and contact sight are authored as a two-by-two matrix from source medium to
+        target medium: above-to-above, above-to-underwater, underwater-to-above, and
+        underwater-to-underwater. Only the row matching the source center is active on a tick.
+        Ordinary entities usually author the two same-medium entries; amphibious entities therefore
+        keep useful local sight when they cross the surface without seeing through it. Specialized
+        observers may deliberately author either cross-medium entry, and an entity that can operate
+        in both media and see both from either may author all four. A temporary scan pulse is an
+        explicit universal override: it contributes full sight to both target media without having
+        an entity center or an active source row.
+      </p>
+      <p>
+        Radar is the ordinary above-water-to-above-water contact lane. Sonar is the ordinary
+        underwater-to-underwater contact lane. The dedicated Radar and Sonar buildings each author
+        only their corresponding source-target entry, and construction rejects placing either in
+        the other source medium rather than allowing a completed but inert sensor. Full sight
+        remains the stronger identity-bearing tier and is not replaced by either contact sensor.
+      </p>
+      <p>
         Long-range weapons should consume player/team intelligence, not pretend their own barrel can
         see forever. A target can be fired on when the weapon&rsquo;s range, line-of-fire policy, ballistic
         solver, and required intelligence tier all pass. Full sight gives exact aim and normal target
-        selection. Radar-only contact can support weapons explicitly authored for blind or remote
+        selection. Contact-only radar or sonar information can support weapons explicitly authored for blind or remote
         fire, such as artillery, missiles, or other indirect systems, but direct beams and precision
         line weapons should usually require full sight and unobstructed line of sight. The ballistic
         solver answers &ldquo;can this shot physically reach that point?&rdquo; It does not by itself answer
         &ldquo;does this player have enough information to choose that point?&rdquo;
       </p>
       <p>
-        This intentionally pushes scouting and radar into army composition. A long-range turret with
+        This intentionally pushes scouting and contact sensors into army composition. A long-range turret with
         short local sight should be powerful only when supported by forward units, scan pulses, radar
         coverage, or allied sight. Current prototype behavior that derives full vision from every
         turret&rsquo;s weapon range is a convenience shortcut, not the long-term rule; fire envelope and
         sight envelope must be authored separately.
       </p>
       <ul class="rule-list">
-        <li>Full sight may reveal and identify, and always counts as radar-level location; radar-only coverage may locate; detector coverage may uncloak but does not locate by itself.</li>
-        <li>Radar-only contacts are eligible inputs to weapons that explicitly allow radar fire. They are not full entities in the recipient&rsquo;s main snapshot.</li>
-        <li>Weapon range, tracking range, unit sight, radar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
+        <li>Full sight may reveal and identify, and always counts as contact-level location; radar/sonar-only coverage may locate; detector coverage may uncloak but does not locate by itself.</li>
+        <li>Every entity visibility and contact-radius test uses both source and target centers with zero silhouette or hitbox padding. The water surface is classified consistently: <code>center.z &lt;= waterLevel</code> is underwater; <code>center.z &gt; waterLevel</code> is above water.</li>
+        <li>Every full-sight and contact-sight radius is selected from the active source row and target column. Same-medium sight is the default; cross-medium sight is an explicit blueprint capability.</li>
+        <li>Radar contributes contacts only from above-water sources to above-water targets; sonar contributes contacts only from underwater sources to underwater targets. Their map-space coverage may overlap, but their source-target lanes never do.</li>
+        <li>Radar- and sonar-only contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). They are not full entities in the recipient&rsquo;s main snapshot.</li>
+        <li>Weapon range, tracking range, unit sight, radar range, sonar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
         <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
       </ul>
 
@@ -478,8 +505,8 @@
         a bug; a strategic-intent field leaked across ownership is also a bug.
       </p>
       <p>
-        This changes nothing about fog of war. Sight and radar tiers still decide <em>whether</em> a
-        unit appears &mdash; as a full entity, a radar contact, or not at all &mdash; and a unit lost to
+        This changes nothing about fog of war. Sight and contact tiers still decide <em>whether</em> a
+        unit appears &mdash; as a full entity, a radar/sonar contact, or not at all &mdash; and a unit lost to
         fog still vanishes from the snapshot entirely. This rule governs only how a unit is treated
         <em>once it has earned full visibility</em>: at that point its physical state is
         owner-agnostic.
@@ -487,7 +514,7 @@
 
       <h3>Visibility computation must stay aggregate and indexed</h3>
       <p>
-        Sight and radar cannot be implemented as &ldquo;each unit checks every other unit&rdquo; work. The
+        Sight, radar, and sonar cannot be implemented as &ldquo;each unit checks every other unit&rdquo; work. The
         local server simulation should build player/team coverage from sensor sources, cache it at a
         deliberate cadence, and let targeting and snapshot serialization query that aggregate. The
         current direction is already right: spatial hashes, recipient/team visibility objects,
@@ -495,8 +522,8 @@
         work should extend that shape.
       </p>
       <p>
-        The scalable model is a small set of source pools and contact masks per player or team:
-        full-sight sources, radar sources, detector sources, and temporary scan sources. Coarse cells
+        The scalable model is a small set of medium-lane source pools and contact masks per player or team:
+        full-sight sources, contact sources, detector sources, and temporary scan sources. Coarse cells
         answer &ldquo;could this point be covered?&rdquo; cheaply; precise distance and line-of-sight checks run
         only on candidates that survived the broadphase. Targeting should query enemy candidates from
         the existing spatial index by outer weapon envelope, stamp or derive each candidate&rsquo;s
@@ -507,7 +534,7 @@
       <ul class="rule-list">
         <li>Rebuild or incrementally refresh coverage when sources move, finish construction, die, cloak/uncloak, or change teams; do not run full source-vs-target scans every frame.</li>
         <li>Use coarse bitsets or cell buckets for radar/full-sight membership, then exact radius and terrain/force-material LOS only when a candidate needs it.</li>
-        <li>Keep radar cheaper than sight: radar coverage should be mostly geometric unless a deliberate radar-jamming or radar-occlusion feature is introduced.</li>
+        <li>Keep contact sensors cheaper than sight: radar and sonar coverage should be mostly geometric unless deliberate jamming or occlusion features are introduced.</li>
         <li>Run expensive acquisition only for turrets that need work. Existing target hysteresis, drop grace, probe scheduling, and broadphase candidate buffers are the right pattern.</li>
       </ul>
 
@@ -1267,18 +1294,21 @@
 
       <h3>Fog, radar, and entity shadows are one coverage field</h3>
       <p>
-        Full sight, radar, and entity grounding shadows are map-space coverage regions, not three
-        unrelated overlay renderers. The client rasterizes every visible region into one
-        viewport-local GPU texture in one instanced, per-channel maximum-blended draw:
-        red carries full sight, green carries radar-level coverage, and blue carries entity-shadow
-        coverage. Terrain samples that field once and takes the darker applicable shade; environment
-        props consume the fog/radar channels but do not receive the ground-only entity-shadow channel.
+        Above-water full sight, underwater full sight, above-water contacts, underwater contacts,
+        and entity grounding shadows are map-space coverage regions, not unrelated overlay
+        renderers. The client rasterizes every visible region into one viewport-local GPU render
+        target in one instanced, per-channel maximum-blended draw using two color attachments.
+        Attachment zero carries above-water full sight in red, above-water contacts in green,
+        underwater full sight in blue, and underwater contacts in alpha. Attachment one carries
+        entity shadows in red. Terrain selects the full/contact pair matching each fragment&rsquo;s
+        medium and takes the darker applicable shade; environment props consume the fog/contact
+        attachment but do not receive the ground-only entity-shadow attachment.
         Authoritative visibility and recipient filtering remain unchanged.
       </p>
       <ul class="rule-list">
-        <li>Radar-only terrain and entity shadows share the authored lighter darkness; fully unseen terrain uses the authored darker darkness.</li>
+        <li>Radar/sonar-only terrain and entity shadows share the authored lighter darkness; fully unseen terrain uses the authored darker darkness and is completely grayscale.</li>
         <li>Overlapping regions combine by per-channel maximum, so neither fog sources nor entity shadows accumulate into unintended black patches.</li>
-        <li>Full-sight, radar, and entity-shadow boundaries use the same historical softest fog-of-war falloff: one smoothstep spanning 192 world units inside and 192 world units outside the authored boundary (384 world units total). The R, G, and B coverage channels are generated by that one region shader, so fog, radar, and entity shadows cannot select different sharpness paths. Softness is world-authored and does not change with zoom; the viewport-scaled supersampled coverage target preserves sampling quality at every camera distance. A unit shadow uses twice the unit's hitbox radius before the shared sun-axis stretch; every live renderable unit, tower, and building contributes one, including construction shells. Building shadows follow the same two-times rule using their footprint extents. The shared directional light comes from due south at 45 degrees elevation. Unit altitude translates the shadow northward, opposite that light, but never changes shadow size, softness, or strength.</li>
+        <li>Full-sight, radar, sonar, and entity-shadow boundaries use the same historical softest fog-of-war falloff: one smoothstep spanning 192 world units inside and 192 world units outside the authored boundary (384 world units total). Both maximum-blended attachments are generated by that one region shader and draw, so fog, radar, sonar, and entity shadows cannot select different sharpness paths. Softness is world-authored and does not change with zoom; the viewport-scaled supersampled coverage target preserves sampling quality at every camera distance. A unit shadow uses twice the unit's hitbox radius before the shared sun-axis stretch; every live renderable unit, tower, and building contributes one, including construction shells. Building shadows follow the same two-times rule using their footprint extents. The shared directional light comes from due south at 45 degrees elevation. Unit altitude translates the shadow northward, opposite that light, but never changes shadow size, softness, or strength.</li>
         <li>The coverage target follows the visible camera footprint and supersamples the renderer's physical viewport up to the authored GPU texture cap. This keeps zoomed-in boundary detail at every camera distance without allocating a high-resolution full-map texture.</li>
         <li>There is no standalone scene-level contact-shadow mesh and no CPU-stamped fog bitmap once the shared GPU coverage path is active.</li>
       </ul>
@@ -1785,15 +1815,50 @@
         physical presentation must all have a coherent contract first.
       </p>
       <p>
-        This means transports, capture, resurrection, cloak/detection, manual
-        launch, and unit-specific special-fire commands stay absent until their
-        authoritative mechanics exist. Metal-extractor upgrades follow the same
-        rule: a T1-to-T2 or area-upgrade command requires an authored upgraded
-        extractor blueprint, resource/economy behavior, construction lifecycle,
-        replacement rules, and render profile before the command is exposed.
-        The prototype should prefer no button over a button that appears to
-        promise unsupported BAR behavior.
+        Transports, capture, resurrection, cloak/detection, manual launch, and
+        unit-specific special-fire commands therefore appear only on entities
+        whose authoritative mechanics and BAR-equivalent capability exist.
+        Metal-extractor upgrades follow the same rule: a T1-to-T2 or area-upgrade
+        command requires an authored upgraded extractor blueprint,
+        resource/economy behavior, construction lifecycle, replacement rules,
+        and render profile before the command is exposed. The prototype should
+        prefer no button over a button that appears to promise unsupported BAR
+        behavior.
       </p>
+
+      <h3>The BAR command inventory is capability-gated</h3>
+      <p>
+        The parity inventory is the set of player-facing command descriptions
+        supplied by BAR and its Recoil engine, not every internal command ID.
+        Internal group/base commands and order-menu-hidden wait variants do not
+        become buttons merely because the engine declares a numeric constant.
+        The inventory is grouped by the capability that makes each order real:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Movement and queues:</strong> Move, Patrol, Fight, Stop, Wait, Guard, Repeat, Move State, and queue insertion/removal. Durable player waypoints remain separate from private pathfinder expansion.</li>
+        <li><strong>Combat:</strong> Attack Unit, Attack Point (the map form of Recoil&rsquo;s unit-or-map Attack), capability-authored Area Attack, Fire State, Trajectory, Set Target / Set Target No Ground / Cancel Target, D-Gun or other manual fire, and weapon stockpile/manual launch when an authored weapon actually provides it.</li>
+        <li><strong>Builders:</strong> negative build commands, Repair, Reclaim, Capture, Resurrect, Area Mex, Builder Priority, and Morph/Upgrade. Area-capable commands may fan out into deterministic nearest-first entity orders while preserving queue modifiers.</li>
+        <li><strong>Factories:</strong> unit production, finite queue editing, Repeat, Wait, Stop Production, rally Move/Fight/Patrol, Factory Guard, Move State, aircraft idle/land-at state, production quota, and Builder Priority where the factory supports it.</li>
+        <li><strong>Transports and host state:</strong> player-facing Load and Unload Unit/Area, ON/OFF, Cloak, and Self Destruct, each visible only when the selected host owns the corresponding system. Recoil&rsquo;s internal/order-menu-hidden Load Onto descriptor is not a second button promise.</li>
+        <li><strong>Conditional custom commands:</strong> carrier spawning, sell, blueprint placement, area ground attack, stockpile, resurrection, and similar BAR gadget commands are roster/capability commands rather than universal promises. They appear when a local analogue and its authoritative behavior exist, and stay absent otherwise.</li>
+      </ul>
+      <p>
+        Restore illustrates the rule. Recoil adds <code>CMD_RESTORE</code> only
+        when the builder can restore <em>and</em> map damage is enabled. Budget
+        Annihilation terrain is currently immutable, so Restore has no command
+        card button or hotkey; showing the BAR grid&rsquo;s <code>M</code> binding
+        would be dead UI, not parity. If deterministic terrain deformation is
+        introduced, Restore must land with server authorization, queued builder
+        work, terrain mutation, path/build-grid invalidation, snapshots, and
+        presentation before that surface is enabled.
+      </p>
+      <ul class="rule-list">
+        <li><strong>Attack Unit</strong> stores the target entity ID as host intent, refreshes the movement destination from that entity&rsquo;s live center before path planning, and keeps the order until the target dies or the queue changes.</li>
+        <li><strong>Attack Point</strong> stores a world-space priority point and never silently degrades into Fight. Units whose BAR weapon cannot attack ground are filtered out at input, server authorization, and execution.</li>
+        <li><strong>Area Attack</strong> is exposed only for BAR-equivalent <code>canareaattack</code> units; per ordered unit it queues every compatible enemy in deterministic nearest-first order and becomes Fight when that unit has no compatible target in the area.</li>
+        <li><strong>Guard</strong> follows the ally&rsquo;s live center. Armed guards retaliate against the recent hostile attacker; builders additionally assist construction/production or repair damage without copying the guarded ally&rsquo;s own attack target.</li>
+        <li><strong>Builder work</strong> applies Repair and Reclaim to every selected capable constructor, including area and minimap forms. Repair power stacks, may service allied units/buildings/towers, and restores completed static HP as well as finishing nanoframes; Capture may target enemies only and never an ally.</li>
+      </ul>
     </section>
 
     <section>
@@ -2131,10 +2196,12 @@
 
       <h3>Sensors are capabilities, not free turret range</h3>
       <p>
-        Sight, radar, and cloak detection should be authored as sensor capability sources, not as
-        automatic properties of every combat turret. A sensor may be mounted on a unit, building, or
-        a turret-like hardpoint when it needs a visible dish, mast, sweep, or directional rig, but
-        that does not mean every turret config should inherit sight and radar fields. The common
+        Full sight and contact sight are authored as explicit source-medium by target-medium radius
+        matrices; cloak detection remains a separate capability and cannot activate a target lane
+        the source lacks for full sight. These sensors are capabilities, not automatic properties of
+        every combat turret. A sensor may be mounted on a unit, building, or a turret-like hardpoint
+        when it needs a visible dish, mast, sweep, or directional rig, but that does not mean every
+        turret config should inherit sight and contact fields. The common
         combat turret contract should stay focused: mount pose, yaw/pitch dynamics, lock-on policy,
         acquire/release/fire envelopes, cooldown, line-of-sight gate, ballistic/fire feasibility,
         mount control mode, and the typed attack or utility effect it emits.
@@ -2148,8 +2215,9 @@
       </p>
       <p>
         This keeps the composition clean. A radar station can be a <code>building</code> with a
-        radar sensor and a decorative rotating rig &mdash; no turrets, no lock-on, so it is not
-        a tower. A scout can be a unit with a strong full-sight sensor and weak weapons. An
+        radar sensor and a decorative rotating rig; the Sonar building is its underwater-medium
+        counterpart. Neither has turrets or lock-on, so neither is a tower. A scout can be a unit
+        with a strong full-sight sensor and weak weapons. An
         artillery platform can be a unit with a long fire envelope, short local sight, and
         permission to fire on radar contacts. A command unit can carry both full sight and
         detector coverage without pretending its gun barrels are what make it observant.
@@ -2198,10 +2266,18 @@
       </p>
       <p>
         Host attack tasks are evaluated independently per mount. A compatible mount retains the
-        priority target or point. A sibling that rejects it acquires its own compatible target in
-        the same tick. An autonomous sibling is never overwritten. Thus one commander or tower can
-        attack, construct, and spawn concurrently through separate lanes without sharing mutable
-        turret state or requiring the host to choose one universal lock.
+        priority target or point. Every armed unit and tower has exactly one
+        <code>host</code>-controlled combat mount: this is the BAR-style bridge that makes the body
+        obey Attack Unit and Attack Ground orders. Any additional combat mounts are
+        <code>autonomous</code> or <code>manual</code>; an autonomous sibling is never overwritten
+        and may acquire a different compatible target in the same tick. The host-overridden mount
+        keeps the compatible host target ID while range, line-of-sight, ballistics, or a force field
+        prevents firing; it remains in a non-firing tracking state instead of silently reverting to
+        autonomous acquisition. Non-combat construction,
+        resource, and spawn mounts may still be host-controlled by their own typed workflow and do
+        not count toward the one-combat-mount rule. Thus one commander or tower can attack,
+        construct, and spawn concurrently through separate lanes without sharing mutable turret
+        state or requiring the host to choose one universal lock.
       </p>
       <p>
         Fight-move and patrol halt behavior remains separate. Unit attack-emitter mounts can set
@@ -2522,7 +2598,7 @@
         simulation actually treats them differently. A tower carries <code>combat</code> state
         (turrets, lock-on, inclusion masks, acquisition probes), and the targeting kernel must
         be able to enumerate tower candidates without conflating them with pure infrastructure.
-        Buildings (solar, wind, extractor, radar, converter) are deliberately on the other side
+        Buildings (solar, wind, extractor, radar, sonar, converter) are deliberately on the other side
         of that line: no turrets, no lock-on, no participation in the combat acquisition loop.
         Erasing that boundary &mdash; for example, by giving the fabricator a
         &ldquo;construction turret&rdquo; while still calling it a <code>building</code> &mdash;
@@ -2614,7 +2690,7 @@
         toggle is <strong>Fire at Will / Hold Fire</strong>, applied to its mounted turrets
         through the same fire-control state units already expose.</li>
         <li>Towers do not host static infrastructure behavior. A tower does not produce
-        energy, store metal, or run radar coverage from its own definition. If a designed
+        energy, store metal, or run radar/sonar coverage from its own definition. If a designed
         piece needs both turret-acting behavior <em>and</em> infrastructure behavior, the
         right answer is two pieces (a tower + a building) co-located on a footprint, not a
         smuggled hybrid.</li>
@@ -3313,7 +3389,7 @@
         <li>Give every mount a stable <code>mountId</code> and a required <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or <code>manual</code>. The choice lives on the unit or tower mount, not the reusable turret blueprint. Host attack tasks are evaluated per mount: compatible mounts retain the task lock, incompatible mounts acquire an autonomous fallback, and autonomous/manual siblings are never overwritten. Fight-move and patrol halt logic remains the separate mount flag <code>requiredEngagedForFightStop</code> and applies only to attack emitters.</li>
         <li>Keep spawning and constructing separate. Spawn creates the permanent product ID and may produce a nanoframe or a complete entity. Construct and repair transfer resources/work into an existing ID. Build and factory production are host-owned workflows that compose the two; spawn-only and construct-only hosts remain valid capabilities.</li>
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, trajectory toggle (arc-weapon units), cloak toggle (cloak-capable units), build (builders), manual launch (weapon-capable units), transport load/unload (transports), commander specials including capture (commanders), and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Each category is gated only by a real type-defining capability backed by an authoritative system, exactly like the build menu is gated by &ldquo;is a builder&rdquo;; a bespoke button on an arbitrary blueprint subset with no sanctioned category behind it is not allowed.</li>
-        <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
+        <li>Keep sight, radar, sonar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies contact-level location, radar/sonar-only coverage locates targets only through its authored source-target medium lane, detectors uncloak within an active full-sight lane, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and towers alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>

@@ -245,6 +245,7 @@ function runBarBuildCategoryDispatcherContract(): void {
       'buildingSolar',
       'towerCannon',
       'buildingRadar',
+      'buildingSonar',
       'towerFabricator',
     ],
     exitSpecialModes: () => {},
@@ -1311,8 +1312,9 @@ export function runInput3DKeyboardControllerContractTest(): void {
   );
   assertContract(
     barLegacyBuildKeyForStructureBlueprintId('towerCannon') === 'C' &&
-      barLegacyBuildKeyForStructureBlueprintId('buildingRadar') === 'C',
-    'BAR legacy defense and radar builds must display/use C',
+      barLegacyBuildKeyForStructureBlueprintId('buildingRadar') === 'C' &&
+      barLegacyBuildKeyForStructureBlueprintId('buildingSonar') === 'C',
+    'BAR legacy defense and contact-sensor builds must display/use C',
   );
   assertContract(
     barLegacyBuildKeyForStructureBlueprintId('towerFabricator') === 'V',

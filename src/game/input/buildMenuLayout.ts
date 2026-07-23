@@ -351,6 +351,7 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'towerFabricator':
       return 'V';
     case 'buildingRadar':
+    case 'buildingSonar':
     case 'towerCannon':
     case 'towerBeamMega':
     case 'towerAntiAir':
@@ -430,6 +431,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 102200;
     case 'buildingRadar':
       return 103100;
+    case 'buildingSonar':
+      return 103110;
     case 'towerCannon':
       return 106100;
     case 'towerBeamMega':
@@ -495,6 +498,7 @@ const BAR_HOME_BUILD_ORDER = [
   ],
   [
     'buildingRadar',
+    'buildingSonar',
   ],
   [
     'towerFabricator',
@@ -562,9 +566,11 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 4;
     case 'buildingExtractorT2':
       return 6;
-    // BAR utility page: radar in the bottom-left slot.
+    // BAR utility page: radar and sonar occupy the first two slots.
     case 'buildingRadar':
       return 0;
+    case 'buildingSonar':
+      return 1;
     // Local towerFabricator is the ARM air-plant analogue (armap), so
     // keep the armlab/armvp production slots empty and place it in the
     // bottom-row third cell like BAR's unitGrids["armcom"]["armap"].

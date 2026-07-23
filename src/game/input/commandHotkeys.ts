@@ -853,7 +853,10 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
     'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
-    'combat.restore': [code('M', 'KeyM', { shift: 'any' })],
+    // Recoil only exposes Restore when the unit can restore and map damage is
+    // enabled. Budget Annihilation terrain is immutable, so exposing M here
+    // would create a dead command instead of BAR-compatible capability gating.
+    'combat.restore': [],
     'combat.ping': [],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Alt+S', 'KeyS', { alt: true, shift: 'any' })],

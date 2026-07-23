@@ -1,6 +1,5 @@
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from '../sim/types';
-import type { MoveCommand } from '../sim/commands';
 import { isAttackEmitter } from '../sim/emitterKinds';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
@@ -490,19 +489,22 @@ export class Input3DModeClickController {
     // entity was captured at the drag anchor.
     const targetFilter = this.resolveAreaDragTargetFilter(drag, releaseEvent);
     if (drag.kind === 'repairArea') {
-      const cmd = buildRepairAreaCommand(
-        this.config.getSelectedCommander(),
-        drag.start.x,
-        drag.start.y,
-        radius,
-        this.config.getTick(),
-        drag.queue,
-        drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
-        targetFilter,
-      );
-      if (cmd) this.config.commandQueue.enqueue(cmd);
+      const builders = this.getSelectedBuilders();
+      for (let i = 0; i < builders.length; i++) {
+        const cmd = buildRepairAreaCommand(
+          builders[i],
+          drag.start.x,
+          drag.start.y,
+          radius,
+          this.config.getTick(),
+          drag.queue,
+          drag.start.z,
+          drag.queueFront,
+          drag.queueInsertIndex,
+          targetFilter,
+        );
+        if (cmd) this.config.commandQueue.enqueue(cmd);
+      }
       this.config.applyCursor('repair');
       if (!drag.queue) this.config.exitRepairAreaMode();
       return;
@@ -600,19 +602,22 @@ export class Input3DModeClickController {
       if (!drag.queue) this.config.exitMexUpgradeMode();
       return;
     }
-    const cmd = buildReclaimAreaCommand(
-      this.config.getSelectedCommander(),
-      drag.start.x,
-      drag.start.y,
-      radius,
-      this.config.getTick(),
-      drag.queue,
-      drag.start.z,
-      drag.queueFront,
-      drag.queueInsertIndex,
-      targetFilter,
-    );
-    if (cmd) this.config.commandQueue.enqueue(cmd);
+    const builders = this.getSelectedBuilders();
+    for (let i = 0; i < builders.length; i++) {
+      const cmd = buildReclaimAreaCommand(
+        builders[i],
+        drag.start.x,
+        drag.start.y,
+        radius,
+        this.config.getTick(),
+        drag.queue,
+        drag.start.z,
+        drag.queueFront,
+        drag.queueInsertIndex,
+        targetFilter,
+      );
+      if (cmd) this.config.commandQueue.enqueue(cmd);
+    }
     this.config.applyCursor('reclaim');
     if (!drag.queue) this.config.exitReclaimMode();
   }
@@ -1274,8 +1279,8 @@ export class Input3DModeClickController {
 
   private handleRepairAreaClick(e: MouseEvent): void {
     const exitMode = () => this.config.exitRepairAreaMode();
-    const builder = this.config.getSelectedBuilder();
-    if (!builder) {
+    const builders = this.getSelectedBuilders();
+    if (builders.length === 0) {
       exitMode();
       return;
     }
@@ -1286,16 +1291,23 @@ export class Input3DModeClickController {
       : null;
     const queueMode = this.resolveClickQueueMode(e);
 
-    const targetRepairCmd = buildRepairCommandForTarget(
-      entityHit,
-      builder,
-      tick,
-      queueMode.queue,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (targetRepairCmd) {
-      this.config.commandQueue.enqueue(targetRepairCmd);
+    let issuedTargetRepair = false;
+    for (let i = 0; i < builders.length; i++) {
+      const targetRepairCmd = buildRepairCommandForTarget(
+        entityHit,
+        builders[i],
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+        this.config.getEntitySource().arePlayersAllied,
+      );
+      if (targetRepairCmd) {
+        this.config.commandQueue.enqueue(targetRepairCmd);
+        issuedTargetRepair = true;
+      }
+    }
+    if (issuedTargetRepair) {
       this.config.applyCursor('repair');
       if (!queueMode.queue) exitMode();
       return;
@@ -1303,19 +1315,20 @@ export class Input3DModeClickController {
 
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const cmd = buildRepairAreaCommand(
-      builder,
-      world.x,
-      world.y,
-      REPAIR_AREA_RADIUS,
-      tick,
-      queueMode.queue,
-      world.z,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (!cmd) return;
-    this.config.commandQueue.enqueue(cmd);
+    for (let i = 0; i < builders.length; i++) {
+      const cmd = buildRepairAreaCommand(
+        builders[i],
+        world.x,
+        world.y,
+        REPAIR_AREA_RADIUS,
+        tick,
+        queueMode.queue,
+        world.z,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (cmd) this.config.commandQueue.enqueue(cmd);
+    }
     this.config.applyCursor('repair');
     if (!queueMode.queue) exitMode();
   }
@@ -1422,7 +1435,10 @@ export class Input3DModeClickController {
       queueMode.queueFront,
       queueMode.queueInsertIndex,
     );
-    const cmd = attackCmd ?? buildFightMoveCommand(
+    // Recoil CMD_ATTACK is ICON_UNIT_OR_MAP: an empty-ground click is an
+    // Attack Point order, not Fight. buildAttackGroundCommand capability-
+    // filters unarmed scouts and air-only fighters from mixed selections.
+    const cmd = attackCmd ?? buildAttackGroundCommand(
       selectedUnits,
       world.x,
       world.y,
@@ -1579,8 +1595,8 @@ export class Input3DModeClickController {
   }
 
   private handleReclaimClick(e: MouseEvent): void {
-    const builder = this.config.getSelectedBuilder();
-    if (!builder) {
+    const builders = this.getSelectedBuilders();
+    if (builders.length === 0) {
       this.config.exitReclaimMode();
       return;
     }
@@ -1591,16 +1607,22 @@ export class Input3DModeClickController {
       : null;
     const queueMode = this.resolveClickQueueMode(e);
 
-    const meshReclaimCmd = buildReclaimCommandForTarget(
-      entityHit,
-      builder,
-      tick,
-      queueMode.queue,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (meshReclaimCmd) {
-      this.config.commandQueue.enqueue(meshReclaimCmd);
+    let issuedTargetReclaim = false;
+    for (let i = 0; i < builders.length; i++) {
+      const meshReclaimCmd = buildReclaimCommandForTarget(
+        entityHit,
+        builders[i],
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (meshReclaimCmd) {
+        this.config.commandQueue.enqueue(meshReclaimCmd);
+        issuedTargetReclaim = true;
+      }
+    }
+    if (issuedTargetReclaim) {
       this.config.applyCursor('reclaim');
       if (!queueMode.queue) this.config.exitReclaimMode();
       return;
@@ -1608,21 +1630,52 @@ export class Input3DModeClickController {
 
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const reclaimCmd = buildReclaimAreaCommand(
-      builder,
-      world.x,
-      world.y,
-      RECLAIM_AREA_RADIUS,
-      tick,
-      queueMode.queue,
-      world.z,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (!reclaimCmd) return;
-    this.config.commandQueue.enqueue(reclaimCmd);
+    for (let i = 0; i < builders.length; i++) {
+      const reclaimCmd = buildReclaimAreaCommand(
+        builders[i],
+        world.x,
+        world.y,
+        RECLAIM_AREA_RADIUS,
+        tick,
+        queueMode.queue,
+        world.z,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (reclaimCmd) this.config.commandQueue.enqueue(reclaimCmd);
+    }
     this.config.applyCursor('reclaim');
     if (!queueMode.queue) this.config.exitReclaimMode();
+  }
+
+  /**
+   * BAR applies builder orders to every selected constructor that owns the
+   * capability. Keep the active builder first for stable UI intent, then the
+   * remaining selected builders in selection order.
+   */
+  private getSelectedBuilders(): Entity[] {
+    const activeBuilder = this.config.getSelectedBuilder();
+    const builders: Entity[] = [];
+    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (
+        unit.unit === null ||
+        unit.builder === null ||
+        getBuilderConstructionRate(unit) <= 0 ||
+        unit.id === activeBuilder?.id
+      ) continue;
+      builders.push(unit);
+    }
+    if (
+      activeBuilder !== null &&
+      activeBuilder.unit !== null &&
+      activeBuilder.builder !== null &&
+      getBuilderConstructionRate(activeBuilder) > 0
+    ) {
+      builders.unshift(activeBuilder);
+    }
+    return builders;
   }
 
   private handleCaptureClick(e: MouseEvent): void {
@@ -1645,6 +1698,7 @@ export class Input3DModeClickController {
       queueMode.queue,
       queueMode.queueFront,
       queueMode.queueInsertIndex,
+      this.config.getEntitySource().arePlayersAllied,
     );
     if (!captureCmd) {
       this.config.applyCursor('blocked');
@@ -1853,32 +1907,6 @@ function isAlliedTargetForPlayer(
     : targetPlayerId === playerId;
 }
 
-function buildFightMoveCommand(
-  selectedUnits: readonly Entity[],
-  targetX: number,
-  targetY: number,
-  tick: number,
-  queue: boolean,
-  targetZ?: number,
-  queueFront = false,
-  queueInsertIndex?: number,
-): MoveCommand | null {
-  if (selectedUnits.length === 0) return null;
-  const entityIds = new Array<EntityId>(selectedUnits.length);
-  for (let i = 0; i < selectedUnits.length; i++) entityIds[i] = selectedUnits[i].id;
-  return {
-    type: 'move',
-    tick,
-    entityIds,
-    targetX,
-    targetY,
-    targetZ,
-    waypointType: 'fight',
-    queue,
-    queueFront,
-    queueInsertIndex,
-  };
-}
 
 /** BAR placement-drag modes (engine GuiHandler, mirrored by
  *  gui_pregame_build.lua determineBuildMode): Alt+drag = GRID (fill the

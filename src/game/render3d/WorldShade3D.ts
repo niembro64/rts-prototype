@@ -3,8 +3,10 @@ import { FOG_CONFIG } from '@/fogConfig';
 import {
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
+  canEntityProvideSonarVision,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
+  getEntitySonarRadius,
 } from '../sim/sensorCoverage';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
@@ -12,6 +14,7 @@ import type { FootprintBounds } from '../ViewportFootprint';
 import { ENTITY_SHADOW_RENDER_CONFIG } from '../../config';
 import { SUN_DIRECTION_SIM } from './SunLighting';
 import type { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
+import { WATER_LEVEL } from '../sim/Terrain';
 
 export type WorldShadeSettings3D = {
   enabled: boolean;
@@ -24,11 +27,10 @@ export type WorldShadeSettings3D = {
 type WorldShadeShader = THREE.WebGLProgramParametersWithUniforms;
 
 const SHADE_COLOR = new THREE.Color(FOG_CONFIG.presentation.shade.colorHex);
-const FULL_SIGHT_AND_RADAR_R = 1;
-const FULL_SIGHT_AND_RADAR_G = 1;
-const RADAR_ONLY_R = 0;
-const RADAR_ONLY_G = 1;
-const ENTITY_SHADOW_B = 1;
+const FULL_SIGHT_ABOVE_WATER_R = 1;
+const CONTACT_SIGHT_ABOVE_WATER_G = 1;
+const FULL_SIGHT_UNDERWATER_B = 1;
+const CONTACT_SIGHT_UNDERWATER_A = 1;
 const EDGE_SOFTNESS_WORLD =
   FOG_CONFIG.presentation.coverage.edgeSoftnessWorld;
 
@@ -50,9 +52,11 @@ function clamp01(value: number): number {
 
 export const WORLD_SHADE_FRAGMENT_PARS = `
 uniform sampler2D uWorldShadeMap;
+uniform sampler2D uWorldShadowMap;
 uniform vec2 uWorldShadeBoundsMin;
 uniform vec2 uWorldShadeBoundsSize;
 uniform vec2 uWorldShadeWorldSize;
+uniform float uWorldShadeWaterLevel;
 uniform float uFogOfWarShadeEnabled;
 uniform vec3 uWorldShadeColor;
 uniform float uFogOfWarUnseenDarkness;
@@ -83,13 +87,22 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     vec2(1.0)
   );
   vec4 worldCoverage = texture2D(uWorldShadeMap, worldShadeUv);
-  float fullSightCoverage = smoothstep(0.02, 0.98, worldCoverage.r);
-  float radarCoverage = max(
-    fullSightCoverage,
-    smoothstep(0.02, 0.98, worldCoverage.g)
+  float targetIsUnderwater = ${worldPosition}.y <= uWorldShadeWaterLevel
+    ? 1.0
+    : 0.0;
+  float fullSightCoverage = mix(
+    smoothstep(0.02, 0.98, worldCoverage.r),
+    smoothstep(0.02, 0.98, worldCoverage.b),
+    targetIsUnderwater
   );
-  float radarOnlyCoverage = max(0.0, radarCoverage - fullSightCoverage);
-  float unseenCoverage = 1.0 - radarCoverage;
+  float contactSensorCoverage = mix(
+    smoothstep(0.02, 0.98, worldCoverage.g),
+    smoothstep(0.02, 0.98, worldCoverage.a),
+    targetIsUnderwater
+  );
+  float contactCoverage = max(fullSightCoverage, contactSensorCoverage);
+  float radarOnlyCoverage = max(0.0, contactCoverage - fullSightCoverage);
+  float unseenCoverage = 1.0 - contactCoverage;
   float fogDarkness = uFogOfWarShadeEnabled * (
     radarOnlyCoverage * uFogOfWarRadarDarkness +
     unseenCoverage * uFogOfWarUnseenDarkness
@@ -98,7 +111,7 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     radarOnlyCoverage * uFogOfWarRadarDesaturation +
     unseenCoverage * uFogOfWarUnseenDesaturation
   );
-  float entityShadowDarkness = ${receiveEntityShadows ? 'uEntityShadowEnabled * smoothstep(0.02, 0.98, worldCoverage.b) * uFogOfWarRadarDarkness' : '0.0'};
+  float entityShadowDarkness = ${receiveEntityShadows ? 'uEntityShadowEnabled * smoothstep(0.02, 0.98, texture2D(uWorldShadowMap, worldShadeUv).r) * uFogOfWarRadarDarkness' : '0.0'};
   float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
   diffuseColor.rgb = mix(
     diffuseColor.rgb,
@@ -120,16 +133,19 @@ type RegionBuffers = {
   axisY: Float32Array;
   innerRatios: Float32Array;
   channels: Float32Array;
+  shadows: Float32Array;
   centerAttribute: THREE.InstancedBufferAttribute;
   axisXAttribute: THREE.InstancedBufferAttribute;
   axisYAttribute: THREE.InstancedBufferAttribute;
   innerRatioAttribute: THREE.InstancedBufferAttribute;
   channelsAttribute: THREE.InstancedBufferAttribute;
+  shadowsAttribute: THREE.InstancedBufferAttribute;
 };
 
-/** One viewport-local GPU coverage field for full sight (R), radar (G), and
- * entity shadows (B). Every region is rasterized in one instanced MAX-blended
- * draw; terrain and environment materials consume the resulting texture. */
+/** One viewport-local GPU coverage draw. The first MRT attachment stores
+ * above-water full/contact and underwater full/contact coverage in RGBA; the
+ * second stores entity shadows. Every region is rasterized in one instanced
+ * MAX-blended draw. */
 export class WorldShade3D {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly mapWidth: number;
@@ -153,6 +169,7 @@ export class WorldShade3D {
   private coverageTextureWidth = 1;
   private coverageTextureHeight = 1;
   private readonly worldSizeUniform: { value: THREE.Vector2 };
+  private readonly waterLevelUniform = { value: WATER_LEVEL };
   private readonly fogEnabledUniform = { value: 0 };
   private readonly shadeColorUniform = { value: SHADE_COLOR };
   private readonly unseenDarknessUniform = { value: 0 };
@@ -177,6 +194,7 @@ export class WorldShade3D {
     this.worldSizeUniform = { value: new THREE.Vector2(mapWidth, mapHeight) };
 
     this.renderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      count: 2,
       format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
       minFilter: THREE.LinearFilter,
@@ -184,9 +202,14 @@ export class WorldShade3D {
       depthBuffer: false,
       stencilBuffer: false,
     });
-    this.renderTarget.texture.name = 'WorldShadeCoverage';
-    this.renderTarget.texture.colorSpace = THREE.NoColorSpace;
-    this.renderTarget.texture.generateMipmaps = false;
+    const coverageTexture = this.renderTarget.textures[0];
+    const shadowTexture = this.renderTarget.textures[1];
+    coverageTexture.name = 'WorldShadeMediumCoverage';
+    shadowTexture.name = 'WorldShadeEntityShadows';
+    for (const texture of this.renderTarget.textures) {
+      texture.colorSpace = THREE.NoColorSpace;
+      texture.generateMipmaps = false;
+    }
 
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute(
@@ -213,12 +236,14 @@ attribute vec2 regionCenter;
 attribute vec2 regionAxisX;
 attribute vec2 regionAxisY;
 attribute vec2 regionInnerRatio;
-attribute vec3 regionChannels;
+attribute vec4 regionChannels;
+attribute float regionShadow;
 uniform vec2 uCoverageBoundsMin;
 uniform vec2 uCoverageBoundsSize;
 varying vec2 vRegionPoint;
 varying vec2 vRegionInnerRatio;
-varying vec3 vRegionChannels;
+varying vec4 vRegionChannels;
+varying float vRegionShadow;
 void main() {
   vec2 regionPoint = position.xy;
   vec2 worldPoint = regionCenter +
@@ -229,12 +254,16 @@ void main() {
   vRegionPoint = regionPoint;
   vRegionInnerRatio = regionInnerRatio;
   vRegionChannels = regionChannels;
+  vRegionShadow = regionShadow;
 }
 `,
       fragmentShader: `
+layout(location = 0) out highp vec4 coverageOutput;
+layout(location = 1) out highp vec4 shadowOutput;
 varying vec2 vRegionPoint;
 varying vec2 vRegionInnerRatio;
-varying vec3 vRegionChannels;
+varying vec4 vRegionChannels;
+varying float vRegionShadow;
 void main() {
   float radius = length(vRegionPoint);
   vec2 direction = radius > 0.000001
@@ -257,9 +286,11 @@ void main() {
   // The paired ratios extend that same penumbra to elliptical unit shadows.
   float coverage = 1.0 - smoothstep(0.0, 1.0, edgeProgress);
   if (coverage <= 0.001) discard;
-  gl_FragColor = vec4(vRegionChannels * coverage, 0.0);
+  coverageOutput = vRegionChannels * coverage;
+  shadowOutput = vec4(vRegionShadow * coverage, 0.0, 0.0, 0.0);
 }
 `,
+      glslVersion: THREE.GLSL3,
       transparent: true,
       blending: THREE.CustomBlending,
       blendEquation: THREE.MaxEquation,
@@ -301,10 +332,12 @@ void main() {
   }
 
   assignUniforms(shader: WorldShadeShader): void {
-    shader.uniforms.uWorldShadeMap = { value: this.renderTarget.texture };
+    shader.uniforms.uWorldShadeMap = { value: this.renderTarget.textures[0] };
+    shader.uniforms.uWorldShadowMap = { value: this.renderTarget.textures[1] };
     shader.uniforms.uWorldShadeBoundsMin = this.coverageBoundsMinUniform;
     shader.uniforms.uWorldShadeBoundsSize = this.coverageBoundsSizeUniform;
     shader.uniforms.uWorldShadeWorldSize = this.worldSizeUniform;
+    shader.uniforms.uWorldShadeWaterLevel = this.waterLevelUniform;
     shader.uniforms.uFogOfWarShadeEnabled = this.fogEnabledUniform;
     shader.uniforms.uWorldShadeColor = this.shadeColorUniform;
     shader.uniforms.uFogOfWarUnseenDarkness = this.unseenDarknessUniform;
@@ -348,7 +381,7 @@ void main() {
         );
     };
     material.customProgramCacheKey = () =>
-      `${previousCacheKey()}|world-shade-v1`;
+      `${previousCacheKey()}|world-shade-v3`;
     material.needsUpdate = true;
   }
 
@@ -364,7 +397,8 @@ void main() {
     const axisX = new Float32Array(this.maxRegions * 2);
     const axisY = new Float32Array(this.maxRegions * 2);
     const innerRatios = new Float32Array(this.maxRegions * 2);
-    const channels = new Float32Array(this.maxRegions * 3);
+    const channels = new Float32Array(this.maxRegions * 4);
+    const shadows = new Float32Array(this.maxRegions);
     const centerAttribute = new THREE.InstancedBufferAttribute(centers, 2)
       .setUsage(THREE.DynamicDrawUsage);
     const axisXAttribute = new THREE.InstancedBufferAttribute(axisX, 2)
@@ -373,24 +407,29 @@ void main() {
       .setUsage(THREE.DynamicDrawUsage);
     const innerRatioAttribute = new THREE.InstancedBufferAttribute(innerRatios, 2)
       .setUsage(THREE.DynamicDrawUsage);
-    const channelsAttribute = new THREE.InstancedBufferAttribute(channels, 3)
+    const channelsAttribute = new THREE.InstancedBufferAttribute(channels, 4)
+      .setUsage(THREE.DynamicDrawUsage);
+    const shadowsAttribute = new THREE.InstancedBufferAttribute(shadows, 1)
       .setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('regionCenter', centerAttribute);
     geometry.setAttribute('regionAxisX', axisXAttribute);
     geometry.setAttribute('regionAxisY', axisYAttribute);
     geometry.setAttribute('regionInnerRatio', innerRatioAttribute);
     geometry.setAttribute('regionChannels', channelsAttribute);
+    geometry.setAttribute('regionShadow', shadowsAttribute);
     return {
       centers,
       axisX,
       axisY,
       innerRatios,
       channels,
+      shadows,
       centerAttribute,
       axisXAttribute,
       axisYAttribute,
       innerRatioAttribute,
       channelsAttribute,
+      shadowsAttribute,
     };
   }
 
@@ -484,8 +523,10 @@ void main() {
         pulse.x,
         pulse.y,
         pulse.radius,
-        FULL_SIGHT_AND_RADAR_R,
-        FULL_SIGHT_AND_RADAR_G,
+        FULL_SIGHT_ABOVE_WATER_R,
+        0,
+        FULL_SIGHT_UNDERWATER_B,
+        0,
         0,
       );
     }
@@ -497,22 +538,54 @@ void main() {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       if (canEntityProvideFullVision(entity)) {
-        this.pushCircleRegion(
-          entity.transform.x,
-          entity.transform.y,
-          getEntityFullVisionRadius(entity),
-          FULL_SIGHT_AND_RADAR_R,
-          FULL_SIGHT_AND_RADAR_G,
-          0,
-        );
+        const aboveWaterRadius = getEntityFullVisionRadius(entity, 'aboveWater');
+        if (aboveWaterRadius > 0) {
+          this.pushCircleRegion(
+            entity.transform.x,
+            entity.transform.y,
+            aboveWaterRadius,
+            FULL_SIGHT_ABOVE_WATER_R,
+            0,
+            0,
+            0,
+            0,
+          );
+        }
+        const underwaterRadius = getEntityFullVisionRadius(entity, 'underwater');
+        if (underwaterRadius > 0) {
+          this.pushCircleRegion(
+            entity.transform.x,
+            entity.transform.y,
+            underwaterRadius,
+            0,
+            0,
+            FULL_SIGHT_UNDERWATER_B,
+            0,
+            0,
+          );
+        }
       }
       if (canEntityProvideRadarVision(entity)) {
         this.pushCircleRegion(
           entity.transform.x,
           entity.transform.y,
           getEntityRadarRadius(entity),
-          RADAR_ONLY_R,
-          RADAR_ONLY_G,
+          0,
+          CONTACT_SIGHT_ABOVE_WATER_G,
+          0,
+          0,
+          0,
+        );
+      }
+      if (canEntityProvideSonarVision(entity)) {
+        this.pushCircleRegion(
+          entity.transform.x,
+          entity.transform.y,
+          getEntitySonarRadius(entity),
+          0,
+          0,
+          0,
+          CONTACT_SIGHT_UNDERWATER_A,
           0,
         );
       }
@@ -543,7 +616,9 @@ void main() {
         Math.max(0, sunRadius - EDGE_SOFTNESS_WORLD) / outerSunRadius,
         0,
         0,
-        ENTITY_SHADOW_B,
+        0,
+        0,
+        1,
       );
     }
   }
@@ -555,6 +630,8 @@ void main() {
     r: number,
     g: number,
     b: number,
+    a: number,
+    shadow: number,
   ): void {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
       return;
@@ -575,6 +652,8 @@ void main() {
       r,
       g,
       b,
+      a,
+      shadow,
     );
   }
 
@@ -590,11 +669,13 @@ void main() {
     r: number,
     g: number,
     b: number,
+    a: number,
+    shadow: number,
   ): void {
     const cursor = this.regionCount;
     if (cursor >= this.maxRegions) return;
     const vecOffset = cursor * 2;
-    const channelOffset = cursor * 3;
+    const channelOffset = cursor * 4;
     this.regions.centers[vecOffset] = centerX;
     this.regions.centers[vecOffset + 1] = centerY;
     this.regions.axisX[vecOffset] = axisXx;
@@ -606,6 +687,8 @@ void main() {
     this.regions.channels[channelOffset] = r;
     this.regions.channels[channelOffset + 1] = g;
     this.regions.channels[channelOffset + 2] = b;
+    this.regions.channels[channelOffset + 3] = a;
+    this.regions.shadows[cursor] = shadow;
     this.regionCount = cursor + 1;
   }
 
@@ -620,7 +703,8 @@ void main() {
     this.uploadAttribute(this.regions.axisXAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.axisYAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.innerRatioAttribute, this.regionCount * 2);
-    this.uploadAttribute(this.regions.channelsAttribute, this.regionCount * 3);
+    this.uploadAttribute(this.regions.channelsAttribute, this.regionCount * 4);
+    this.uploadAttribute(this.regions.shadowsAttribute, this.regionCount);
   }
 
   private uploadAttribute(attribute: THREE.InstancedBufferAttribute, count: number): void {

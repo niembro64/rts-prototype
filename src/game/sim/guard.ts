@@ -34,7 +34,7 @@ export function isFriendlyGuardTarget(
  *                 constructing. Build power sums with all other assisters.
  *   - `factory` — a guarded FACTORY currently producing a unit: assist its
  *                 production (speed up the shell it is building).
- *   - `heal`    — a damaged, completed guarded unit to repair.
+ *   - `heal`    — a damaged, completed guarded unit/building/tower to repair.
  *  Returns null when there is nothing to service (guard just follows/defends). */
 export type GuardServiceKind = 'build' | 'factory' | 'heal';
 export type GuardService = { target: Entity; kind: GuardServiceKind };
@@ -77,11 +77,12 @@ function resolveUnitBuilderJob(world: WorldState, target: Entity): GuardService 
     return { target, kind: 'factory' };
   }
 
-  // (d) The unit is damaged and complete -> repair (heal) it.
+  // (d) The guarded host is damaged and complete -> repair (heal) it.
+  const hpState = target.unit ?? target.building;
   if (
-    target.unit !== null &&
-    target.unit.hp > 0 &&
-    target.unit.hp < target.unit.maxHp &&
+    hpState !== null &&
+    hpState.hp > 0 &&
+    hpState.hp < hpState.maxHp &&
     !isBuildInProgress(target.buildable)
   ) {
     return { target, kind: 'heal' };

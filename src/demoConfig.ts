@@ -21,6 +21,15 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
         REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.join(' and '),
     );
   }
+  if (
+    !Number.isFinite(config.sonarRadiusFraction) ||
+    config.sonarRadiusFraction <= config.radiusFraction
+  ) {
+    throw new Error(
+      'demoConfig.waterFabricators.sonarRadiusFraction must be finite and ' +
+        'greater than waterFabricators.radiusFraction',
+    );
+  }
   return config;
 }
 
@@ -59,6 +68,9 @@ export const DEMO_CONFIG = {
   /** Number of radar towers per player on the sensor ring. */
   buildingRadarCount: demoConfig.buildingRadarCount,
 
+  /** Number of sonar buildings per player just outside the water Fabricators. */
+  buildingSonarCount: demoConfig.buildingSonarCount,
+
   /** Number of resource converters per player on the converter arc. */
   buildingResourceConverterCount: demoConfig.buildingResourceConverterCount,
 
@@ -87,9 +99,10 @@ export const DEMO_CONFIG = {
   baseRings: demoConfig.baseRings,
 
   /**
-   * Demo-only outer-water Fabricators. These are ordinary Fabricators using
-   * the universal unit roster and drop pipeline; this section controls only
-   * their initial placement and repeat-build seed.
+   * Demo-only outer-water installation. These are ordinary Fabricators using
+   * the universal unit roster and drop pipeline; this section controls their
+   * initial placement, repeat-build seed, and the Sonar ring immediately
+   * outside them.
    */
   waterFabricators: validatedWaterFabricatorConfig(),
 

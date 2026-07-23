@@ -28,6 +28,7 @@ import {
   unitBlueprintBarDefaultFireState,
   unitBlueprintBarDefaultMoveState,
 } from './unitCommandCapabilities';
+import { cloneSensorCapabilityConfig } from './sensorConfig';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -53,7 +54,6 @@ type CreateUnitBaseArgs = {
   radius: UnitRadius;
   supportPointOffsetZ: number;
   supportSurface: UnitSupportSurface;
-  fullVisionRadius: number;
   sensors: SensorCapabilityConfig;
   locomotion: UnitLocomotion;
   mass: number;
@@ -70,7 +70,6 @@ function createUnitBaseEntity({
   radius,
   supportPointOffsetZ,
   supportSurface,
-  fullVisionRadius,
   sensors,
   locomotion,
   mass,
@@ -92,8 +91,7 @@ function createUnitBaseEntity({
       radius: { ...radius },
       supportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(supportSurface),
-      fullVisionRadius,
-      sensors: { ...sensors },
+      sensors: cloneSensorCapabilityConfig(sensors),
       mass,
       hp,
       maxHp: hp,
@@ -151,8 +149,7 @@ export function createUnitFromBlueprintEntity(
     radius: bp.radius,
     supportPointOffsetZ: bp.supportPointOffsetZ,
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
-    fullVisionRadius: bp.fullVisionRadius,
-    sensors: { ...bp.sensors },
+    sensors: cloneSensorCapabilityConfig(bp.sensors),
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
     hp: bp.hp * UNIT_HP_MULTIPLIER,

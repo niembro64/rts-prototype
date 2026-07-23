@@ -13,6 +13,8 @@ import { WorldState } from '../sim/WorldState';
 import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
 import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
+import { WATER_LEVEL } from '../sim/Terrain';
+import { getSimWasm } from '../sim-wasm/init';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -66,6 +68,7 @@ function createOpenedStructure(
 
 export function runSnapshotVisibilityContractTest(): void {
   spatialGrid.clear();
+  getSimWasm()?.combatTargeting.clear();
 
   const world = new WorldState(6101, 4096, 4096);
   world.playerCount = 2;
@@ -73,12 +76,30 @@ export function runSnapshotVisibilityContractTest(): void {
 
   const observer = createUnit(world, 512, 512, 1 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'observer must have a unit component');
-    entity.unit.sensors.fullSightRadius = 1200;
-    entity.unit.sensors.radarRadius = 3000;
+    entity.transform.z = WATER_LEVEL + 100;
+    entity.unit.sensors.fullSight.aboveWater.aboveWater = 1200;
+    entity.unit.sensors.fullSight.aboveWater.underwater = 0;
+    entity.unit.sensors.contactSight.aboveWater.aboveWater = 3000;
+    entity.unit.sensors.contactSight.aboveWater.underwater = 0;
     entity.unit.sensors.detectorRadius = 600;
   });
   const fullSightEnemy = createUnit(world, 700, 512, 2 as PlayerId);
-  const radarOnlyEnemy = createUnit(world, 2500, 512, 2 as PlayerId);
+  fullSightEnemy.transform.z = WATER_LEVEL + 100;
+  const fullSightRejectedWaterEnemy = createUnit(world, 700, 650, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL;
+  });
+  const centerOutsideFullSightEnemy = createUnit(world, 1722, 512, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const radarOnlyEnemy = createUnit(world, 2500, 512, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const radarRejectedWaterEnemy = createUnit(world, 2500, 700, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL - 100;
+  });
+  const centerOutsideRadarEnemy = createUnit(world, 3522, 512, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
   const detectedCloakedEnemy = createUnit(world, 900, 512, 2 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'detected cloaked target must have a unit component');
     entity.unit.cloaked = true;
@@ -87,8 +108,6 @@ export function runSnapshotVisibilityContractTest(): void {
     assertContract(entity.unit !== null, 'hidden cloaked target must have a unit component');
     entity.unit.cloaked = true;
   });
-  const structureObserver = createOpenedStructure(world, 512, 2800, 1 as PlayerId, 'buildingRadar');
-  const structureSightEnemy = createUnit(world, 512, 3600, 2 as PlayerId);
   const outOfRangeEnemy = createUnit(world, 3800, 3800, 2 as PlayerId);
 
   const legacyVisibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
@@ -133,10 +152,16 @@ export function runSnapshotVisibilityContractTest(): void {
   );
 
   assertContract(legacyVisible.includes(observer.id), 'owned observer must be fully visible');
-  assertContract(legacyVisible.includes(structureObserver.id), 'owned structure observer must be fully visible');
   assertContract(legacyVisible.includes(fullSightEnemy.id), 'enemy inside full sight must be visible');
+  assertContract(
+    !legacyVisible.includes(fullSightRejectedWaterEnemy.id),
+    'above-water same-medium sight must reject an underwater center',
+  );
+  assertContract(
+    !legacyVisible.includes(centerOutsideFullSightEnemy.id),
+    'target hitbox must not extend full sight beyond the target center',
+  );
   assertContract(legacyVisible.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be visible');
-  assertContract(legacyVisible.includes(structureSightEnemy.id), 'enemy inside structure full sight must be visible');
   assertContract(!legacyVisible.includes(radarOnlyEnemy.id), 'radar-only enemy must not be fully visible');
   assertContract(!legacyVisible.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be visible');
   assertContract(!legacyVisible.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be visible');
@@ -154,14 +179,265 @@ export function runSnapshotVisibilityContractTest(): void {
   );
 
   assertContract(legacyRadar.includes(observer.id), 'owned observer must be on radar list');
-  assertContract(legacyRadar.includes(structureObserver.id), 'owned structure observer must be on radar list');
   assertContract(legacyRadar.includes(fullSightEnemy.id), 'full-sight enemy must be on radar list');
+  assertContract(
+    !legacyRadar.includes(fullSightRejectedWaterEnemy.id),
+    'an underwater center outside every active underwater lane must stay hidden',
+  );
+  assertContract(
+    legacyRadar.includes(centerOutsideFullSightEnemy.id),
+    'center outside full sight but inside above-water contact sight must remain a contact',
+  );
   assertContract(legacyRadar.includes(radarOnlyEnemy.id), 'radar-covered enemy must be on radar list');
   assertContract(legacyRadar.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be on radar list');
-  assertContract(legacyRadar.includes(structureSightEnemy.id), 'structure-sighted enemy must be on radar list');
+  assertContract(!legacyRadar.includes(radarRejectedWaterEnemy.id), 'radar must reject an underwater target center');
+  assertContract(
+    !legacyRadar.includes(centerOutsideRadarEnemy.id),
+    'target hitbox must not extend radar coverage beyond the target center',
+  );
   assertContract(!legacyRadar.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be on radar list');
   assertContract(!legacyRadar.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be on radar list');
 
+  spatialGrid.clear();
+  getSimWasm()?.combatTargeting.clear();
+  const mediumWorld = new WorldState(6103, 12000, 12000);
+  mediumWorld.playerCount = 2;
+  mediumWorld.fogOfWarEnabled = true;
+  const radarBuilding = createOpenedStructure(
+    mediumWorld,
+    1000,
+    1000,
+    1 as PlayerId,
+    'buildingRadar',
+  );
+  radarBuilding.transform.z = WATER_LEVEL + 100;
+  const sonarBuilding = createOpenedStructure(
+    mediumWorld,
+    1000,
+    7000,
+    1 as PlayerId,
+    'buildingSonar',
+  );
+  sonarBuilding.transform.z = WATER_LEVEL - 100;
+  const radarAirTarget = createUnit(mediumWorld, 4000, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const radarWaterTarget = createUnit(mediumWorld, 4000, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL - 100;
+  });
+  const radarOutsideCenterTarget = createUnit(mediumWorld, 5210, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const sonarWaterTarget = createUnit(mediumWorld, 4000, 7000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL - 100;
+  });
+  const sonarAirTarget = createUnit(mediumWorld, 4000, 7000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const sonarOutsideCenterTarget = createUnit(mediumWorld, 5210, 7000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL - 100;
+  });
+  const underwaterRadarBuilding = createOpenedStructure(
+    mediumWorld,
+    7000,
+    1000,
+    1 as PlayerId,
+    'buildingRadar',
+  );
+  underwaterRadarBuilding.transform.z = WATER_LEVEL;
+  const underwaterRadarRejectedTarget = createUnit(
+    mediumWorld,
+    7300,
+    1000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL + 100;
+    },
+  );
+  const aboveWaterSonarBuilding = createOpenedStructure(
+    mediumWorld,
+    7000,
+    7000,
+    1 as PlayerId,
+    'buildingSonar',
+  );
+  aboveWaterSonarBuilding.transform.z = WATER_LEVEL + 100;
+  const aboveWaterSonarRejectedTarget = createUnit(
+    mediumWorld,
+    7300,
+    7000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
+  const legacyMediumVisibility = SnapshotVisibility.forRecipient(mediumWorld, 1 as PlayerId);
+  const legacyMediumContacts = sorted(legacyMediumVisibility.getRadarEntityIds());
+  assertContract(legacyMediumContacts.includes(radarBuilding.id), 'owned radar building must remain visible');
+  assertContract(legacyMediumContacts.includes(sonarBuilding.id), 'owned sonar building must remain visible');
+  assertContract(legacyMediumContacts.includes(radarAirTarget.id), 'radar must locate air-medium centers');
+  assertContract(!legacyMediumContacts.includes(radarWaterTarget.id), 'radar must reject water-medium centers');
+  assertContract(legacyMediumContacts.includes(sonarWaterTarget.id), 'sonar must locate water-medium centers');
+  assertContract(!legacyMediumContacts.includes(sonarAirTarget.id), 'sonar must reject air-medium centers');
+  assertContract(
+    !legacyMediumContacts.includes(underwaterRadarRejectedTarget.id),
+    'an underwater radar source must not activate its above-water source row',
+  );
+  assertContract(
+    !legacyMediumContacts.includes(aboveWaterSonarRejectedTarget.id),
+    'an above-water sonar source must not activate its underwater source row',
+  );
+  assertContract(
+    !legacyMediumContacts.includes(radarOutsideCenterTarget.id),
+    'radar must not use target hitbox padding outside its radius',
+  );
+  assertContract(
+    !legacyMediumContacts.includes(sonarOutsideCenterTarget.id),
+    'sonar must not use target hitbox padding outside its radius',
+  );
+  stampCombatTargetingPool(mediumWorld);
+  const nativeMediumVisibility = SnapshotVisibility.forRecipient(mediumWorld, 1 as PlayerId);
+  assertSameIds(
+    nativeMediumVisibility.getRadarEntityIds(),
+    legacyMediumContacts,
+    'native radar/sonar medium contacts must match the legacy source walk',
+  );
+
+  spatialGrid.clear();
+  getSimWasm()?.combatTargeting.clear();
+  const matrixWorld = new WorldState(6104, 12000, 12000);
+  matrixWorld.playerCount = 2;
+  matrixWorld.fogOfWarEnabled = true;
+  const aboveSameMediumObserver = createUnit(
+    matrixWorld,
+    1000,
+    1000,
+    1 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL + 1;
+    },
+  );
+  const aboveSameMediumTarget = createUnit(
+    matrixWorld,
+    1010,
+    1000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL + 1;
+    },
+  );
+  const aboveObserverRejectedUnderwaterTarget = createUnit(
+    matrixWorld,
+    1010,
+    1010,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
+  const underwaterSameMediumObserver = createUnit(
+    matrixWorld,
+    1000,
+    5000,
+    1 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
+  const underwaterSameMediumTarget = createUnit(
+    matrixWorld,
+    1010,
+    5000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
+  const underwaterObserverRejectedAboveTarget = createUnit(
+    matrixWorld,
+    1010,
+    5010,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL + 1;
+    },
+  );
+  const aboveCrossMediumObserver = createUnit(
+    matrixWorld,
+    7000,
+    1000,
+    1 as PlayerId,
+    (entity) => {
+      assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
+      entity.transform.z = WATER_LEVEL + 1;
+      entity.unit.sensors.fullSight.aboveWater.underwater = 900;
+    },
+  );
+  const aboveCrossMediumWaterTarget = createUnit(
+    matrixWorld,
+    7010,
+    1000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
+  const underwaterCrossMediumObserver = createUnit(
+    matrixWorld,
+    7000,
+    5000,
+    1 as PlayerId,
+    (entity) => {
+      assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
+      entity.transform.z = WATER_LEVEL;
+      entity.unit.sensors.fullSight.underwater.aboveWater = 900;
+    },
+  );
+  const underwaterCrossMediumAboveTarget = createUnit(
+    matrixWorld,
+    7010,
+    5000,
+    2 as PlayerId,
+    (entity) => {
+      entity.transform.z = WATER_LEVEL + 1;
+    },
+  );
+  const legacyMatrixVisibility = SnapshotVisibility.forRecipient(matrixWorld, 1 as PlayerId);
+  const legacyMatrixVisible = sorted(legacyMatrixVisibility.getVisibleEntityIds());
+  assertContract(
+    legacyMatrixVisible.includes(aboveSameMediumObserver.id) &&
+      legacyMatrixVisible.includes(underwaterSameMediumObserver.id) &&
+      legacyMatrixVisible.includes(aboveCrossMediumObserver.id) &&
+      legacyMatrixVisible.includes(underwaterCrossMediumObserver.id),
+    'every owned matrix observer must remain visible',
+  );
+  assertContract(
+    legacyMatrixVisible.includes(aboveSameMediumTarget.id) &&
+      !legacyMatrixVisible.includes(aboveObserverRejectedUnderwaterTarget.id),
+    'above-water source row must allow A→A and reject A→W by default',
+  );
+  assertContract(
+    legacyMatrixVisible.includes(underwaterSameMediumTarget.id) &&
+      !legacyMatrixVisible.includes(underwaterObserverRejectedAboveTarget.id),
+    'underwater source row must allow W→W and reject W→A by default',
+  );
+  assertContract(
+    legacyMatrixVisible.includes(aboveCrossMediumWaterTarget.id),
+    'an authored A→W lane must reveal an underwater center',
+  );
+  assertContract(
+    legacyMatrixVisible.includes(underwaterCrossMediumAboveTarget.id),
+    'an authored W→A lane must reveal an above-water center',
+  );
+  stampCombatTargetingPool(matrixWorld);
+  const nativeMatrixVisibility = SnapshotVisibility.forRecipient(matrixWorld, 1 as PlayerId);
+  assertSameIds(
+    nativeMatrixVisibility.getVisibleEntityIds(),
+    legacyMatrixVisible,
+    'native four-way full-sight matrix must match the legacy source walk',
+  );
+  spatialGrid.clear();
+  getSimWasm()?.combatTargeting.clear();
   const pulseWorld = new WorldState(6102, 4096, 4096);
   pulseWorld.playerCount = 2;
   pulseWorld.fogOfWarEnabled = true;
@@ -195,4 +471,6 @@ export function runSnapshotVisibilityContractTest(): void {
     serializeScanPulses(pulseWorld, SnapshotVisibility.forRecipient(pulseWorld, 2 as PlayerId)) === undefined,
     'filtered scan pulses must stay team-owned',
   );
+  getSimWasm()?.combatTargeting.clear();
+  spatialGrid.clear();
 }

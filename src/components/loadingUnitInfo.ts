@@ -195,6 +195,7 @@ function summarizeBuildingRole(
   if (blueprint.metalProduction) return 'metal extractor';
   if (blueprint.energyProduction) return 'energy generator';
   if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
+  if (blueprint.buildingBlueprintId === 'buildingSonar') return 'sonar';
   return isTower ? 'static host' : 'structure';
 }
 
@@ -205,6 +206,7 @@ function describeBuildingOutput(blueprint: BuildingBlueprint, firepower: Firepow
   if (blueprint.constructionRate) return `${fmt(blueprint.constructionRate)} build/s`;
   if (blueprint.conversionRate) return `${fmt(blueprint.conversionRate)} conv/s`;
   if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
+  if (blueprint.buildingBlueprintId === 'buildingSonar') return 'sonar';
   return 'passive';
 }
 

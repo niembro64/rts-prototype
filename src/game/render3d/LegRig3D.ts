@@ -35,8 +35,10 @@ import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { locomotionPieceColorHex } from './colorUtils';
 import {
   getLocomotionSurfaceHeight,
+  locomotionTerrainModeForSupportHeight,
   sampleLocomotionFootSurface,
   type LocomotionFootSurfaceSample,
+  type LocomotionTerrainMode,
 } from './LocomotionTerrainSampler';
 import {
   type LocomotionBase,
@@ -509,6 +511,7 @@ export function updateLegs(
   legRenderer: LegInstancedRenderer,
 ): boolean {
   resetLegsAcrossPoseDiscontinuity(mesh, pose);
+  const terrainMode = locomotionTerrainModeForSupportHeight(pose.baseY);
 
   // World-planted feet. Each per-leg sphere derives its ground origin and
   // radius from authored ratios. Each leg has its own terrain-rooted chopping
@@ -522,6 +525,7 @@ export function updateLegs(
     pose,
     mapWidth,
     mapHeight,
+    terrainMode,
   );
   mesh.visualGrounded = grounded;
   const touchingDown = !wasVisualGrounded && grounded;
@@ -549,6 +553,7 @@ export function updateLegs(
       chassisUpZ,
       vLocalForward,
       vLocalLateral,
+      terrainMode,
     );
   }
 
@@ -587,6 +592,7 @@ export function updateLegs(
       mapWidth,
       mapHeight,
       entity.id,
+      terrainMode,
     );
     _innerSphereCenterPoint.x = innerSphereWorldX;
     _innerSphereCenterPoint.y = innerSphereWorldY;
@@ -605,6 +611,7 @@ export function updateLegs(
       mapWidth,
       mapHeight,
       entity.id,
+      terrainMode,
     );
     transformLegPointToWorld(
       mesh,
@@ -619,6 +626,7 @@ export function updateLegs(
       mapWidth,
       mapHeight,
       entity.id,
+      terrainMode,
     );
     const sphereRadius = _snapSphereLocal.radius;
     _snapSphereCenterPoint.x = sphereWorldX;
@@ -641,6 +649,7 @@ export function updateLegs(
       mapWidth,
       mapHeight,
       entity.id,
+      terrainMode,
     );
     _snapRayVelocity.x = 0;
     _snapRayVelocity.z = 0;
@@ -698,6 +707,7 @@ export function updateLegs(
         mapWidth,
         mapHeight,
         entity.id,
+        terrainMode,
       );
       if (!leg.snapBoundaryRay) {
         leg.snapBoundaryRay = new THREE.Line(restDirectionGeom, restSphereMat);
@@ -800,6 +810,7 @@ export function updateLegs(
         entity.id,
         mapWidth,
         mapHeight,
+        terrainMode,
       );
     }
 
@@ -826,6 +837,7 @@ export function updateLegs(
         entity.id,
         mapWidth,
         mapHeight,
+        terrainMode,
       );
       startedTouchdownStep = true;
     }
@@ -876,6 +888,7 @@ export function updateLegs(
         entity.id,
         mapWidth,
         mapHeight,
+        terrainMode,
       );
     }
 
@@ -910,6 +923,7 @@ export function updateLegs(
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
+      terrainMode,
     );
     const visualFootY = Math.max(footY, footSurface.visualFootY);
 
@@ -1031,6 +1045,7 @@ function beginLegStepToChoppedSphereBoundary(
   entityId: number,
   mapWidth: number,
   mapHeight: number,
+  terrainMode: LocomotionTerrainMode,
 ): void {
   _snapSphereCenterPoint.x = sphereX;
   _snapSphereCenterPoint.y = sphereY;
@@ -1063,6 +1078,7 @@ function beginLegStepToChoppedSphereBoundary(
     mapWidth,
     mapHeight,
     entityId,
+    terrainMode,
   );
   beginGroundedLegSlideTo(leg, targetX, targetY, targetZ);
 }
@@ -1092,6 +1108,7 @@ function resolveVisualLegGrounded(
   pose: LocomotionRenderPose,
   mapWidth: number,
   mapHeight: number,
+  terrainMode: LocomotionTerrainMode,
 ): boolean {
   const groundY = getLocomotionSurfaceHeight(
     pose.baseX,
@@ -1099,6 +1116,7 @@ function resolveVisualLegGrounded(
     mapWidth,
     mapHeight,
     entity.id,
+    terrainMode,
   );
   const bodyBaseY = pose.baseY;
   const clearance = bodyBaseY - groundY;
@@ -1112,7 +1130,7 @@ function resolveVisualLegGrounded(
   // not only from a small chassis-center clearance band. Probe the terrain
   // beneath each snap sphere's inward surface and begin touchdown as soon as one
   // leg can physically reach its support surface.
-  return hasReachableGroundAtRest(mesh, entity, pose, mapWidth, mapHeight);
+  return hasReachableGroundAtRest(mesh, entity, pose, mapWidth, mapHeight, terrainMode);
 }
 
 function hasReachablePlantedFoot(
@@ -1142,6 +1160,7 @@ function hasReachableGroundAtRest(
   pose: LocomotionRenderPose,
   mapWidth: number,
   mapHeight: number,
+  terrainMode: LocomotionTerrainMode,
 ): boolean {
   for (const leg of mesh.legs) {
     const c = leg.config;
@@ -1179,6 +1198,7 @@ function hasReachableGroundAtRest(
       mapWidth,
       mapHeight,
       entity.id,
+      terrainMode,
     );
     const dx = _worldOut.x - hipWorldX;
     const dy = groundY - hipWorldY;
@@ -1250,6 +1270,7 @@ function updateUnsupportedLegPose(
   chassisUpZ: number,
   vLocalForward: number,
   vLocalLateral: number,
+  terrainMode: LocomotionTerrainMode,
 ): boolean {
   const bodyBaseY = pose.baseY;
   const bodyGroundY = getLocomotionSurfaceHeight(
@@ -1258,6 +1279,7 @@ function updateUnsupportedLegPose(
     mapWidth,
     mapHeight,
     entity.id,
+    terrainMode,
   );
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
   const descentSpeed = Math.max(0, -pose.velocityY);
@@ -1332,6 +1354,7 @@ function updateUnsupportedLegPose(
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
+      terrainMode,
     );
     const horizontalReach = Math.hypot(
       unsupportedLocalX - hipLocalX,
@@ -1378,6 +1401,7 @@ function updateUnsupportedLegPose(
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
+      terrainMode,
     );
     const targetFootY = Math.max(_worldOut.y, targetFootSurface.visualFootY);
 
@@ -1418,6 +1442,7 @@ function updateUnsupportedLegPose(
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
+      terrainMode,
     );
     if (leg.worldY < footSurface.groundY) leg.worldY = footSurface.groundY;
     const footY = Math.max(leg.worldY, footSurface.visualFootY);
@@ -1521,6 +1546,7 @@ function initializeLegOnSnapSphere(
   entityId: number,
   mapWidth: number,
   mapHeight: number,
+  terrainMode: LocomotionTerrainMode,
 ): void {
   const side = leg.phaseShift01 === 0 ? 1 : -1;
   _snapSphereCenterPoint.x = sphereX;
@@ -1554,6 +1580,7 @@ function initializeLegOnSnapSphere(
     mapWidth,
     mapHeight,
     entityId,
+    terrainMode,
   );
   leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;

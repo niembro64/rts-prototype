@@ -7,12 +7,21 @@ import {
   resolveLegSnapRayPointVelocity,
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
+import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[leg rig contract] ${message}`);
 }
 
 export function runLegRig3DContractTest(): void {
+  assertContract(
+    locomotionTerrainModeForSupportHeight(-0.01) === 'terrainBed',
+    'a submerged physical support makes leg feet sample the terrain bed',
+  );
+  assertContract(
+    locomotionTerrainModeForSupportHeight(0) === 'visibleSurface',
+    'support on the water plane retains visible-surface locomotion sampling',
+  );
   const pointVelocity = { x: 0, z: 0 };
   resolveLegSnapRayPointVelocity(13, 24, 10, 20, 500, pointVelocity);
   assertContract(pointVelocity.x === 6 && pointVelocity.z === 8,

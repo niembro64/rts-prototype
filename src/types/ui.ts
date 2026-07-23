@@ -106,7 +106,7 @@ export type SelectionInfo = {
   carrierSpawnEnabled: boolean;
   /** True iff the selection contains at least one building whose
    *  BuildingBlueprintId uses the prototype active-state mechanic
-   *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button
+   *  (solar/wind/extractor/radar/sonar/resourceConverter). Gates the ON/OFF button
    *  for prototype presets. */
   hasBuildingActiveControl: boolean;
   /** True when every active-state building in the selection is currently

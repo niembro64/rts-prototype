@@ -134,7 +134,8 @@ export class SimulationActionQueueMaintenance {
 
     if (action.type === 'capture') {
       const playerId = entity.ownership?.playerId;
-      return playerId === undefined || !isCapturableTarget(target, playerId);
+      return playerId === undefined ||
+        !isCapturableTarget(target, playerId, (a, b) => this.world.arePlayersAllied(a, b));
     }
 
     if (action.type === 'resurrect') {
@@ -145,7 +146,17 @@ export class SimulationActionQueueMaintenance {
       return !canLoadTransport(entity, target);
     }
 
-    return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);
+    if (action.type === 'repair') {
+      const sourcePlayerId = entity.ownership?.playerId;
+      const targetPlayerId = target.ownership?.playerId;
+      if (
+        sourcePlayerId === undefined ||
+        targetPlayerId === undefined ||
+        !this.world.arePlayersAllied(sourcePlayerId, targetPlayerId)
+      ) return true;
+    }
+
+    return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairTarget(target);
   }
 
   private isAliveAttackTarget(target: Entity): boolean {
@@ -161,7 +172,8 @@ export class SimulationActionQueueMaintenance {
         (target.unit && target.unit.hp > 0)));
   }
 
-  private isDamagedRepairUnit(target: Entity): boolean {
-    return !!(target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp);
+  private isDamagedRepairTarget(target: Entity): boolean {
+    const hpState = target.unit ?? target.building;
+    return hpState !== null && hpState.hp > 0 && hpState.hp < hpState.maxHp;
   }
 }

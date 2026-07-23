@@ -83,7 +83,6 @@ const REQUIRED_BAR_ORDER_COMMAND_IDS = [
   'command.carrierSpawn',
   'command.morph',
   'factory.airIdleState',
-  'combat.restore',
 ] as const satisfies readonly CommandHotkeyId[];
 
 const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, number>([
@@ -93,6 +92,7 @@ const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, n
   ['buildingResourceConverter', 4],
   ['buildingExtractorT2', 6],
   ['buildingRadar', 0],
+  ['buildingSonar', 1],
   ['towerFabricator', 2],
   ['towerCannon', 0],
   ['towerBeamMega', 1],
@@ -117,6 +117,7 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingSolar',
   'towerFabricator',
   'buildingRadar',
+  'buildingSonar',
   'towerCannon',
   'towerBeamMega',
   'towerAntiAir',
@@ -894,6 +895,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingExtractor',
     'buildingExtractorT2',
     'buildingRadar',
+    'buildingSonar',
     'buildingResourceConverter',
   ]);
   const barOnOffStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarOnOffCommand);

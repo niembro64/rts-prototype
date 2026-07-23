@@ -8901,7 +8901,13 @@ mod lock_on_inclusion_tests {
             lockon_turret_mask,
             lockon_shot_mask,
             0.0,
+            0.0,
             200.0,
+            // These lock-on tests exercise range/inclusion policy rather than
+            // contact medium policy, so their generic source carries both
+            // above-water and underwater contact-target lanes.
+            200.0,
+            0.0,
             0.0,
             0.0,
             priority_target_id,
@@ -11037,6 +11043,43 @@ mod lock_on_inclusion_tests {
             "host-controlled turret must inherit the host priority target"
         );
         assert_ne!(host_controlled.1, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    pub(crate) fn host_controlled_turret_keeps_priority_target_while_fire_path_is_blocked() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(201);
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        combat_targeting_apply_priority_target_fsm_batch(
+            SOURCE_SLOT,
+            201,
+            &[1],
+            &[1],
+            &[0],
+            &[1],
+            &[1],
+        );
+
+        let host_controlled = read_turret_lock(0);
+        assert_eq!(
+            host_controlled.0, 201,
+            "host-overridden turret lock id must mirror the host order through LOS obstruction",
+        );
+        assert_eq!(
+            host_controlled.1, CT_TURRET_STATE_TRACKING,
+            "blocked host target must be tracked without firing",
+        );
     }
 
     #[test]

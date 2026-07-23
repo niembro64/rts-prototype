@@ -873,12 +873,57 @@ export function validateTurretMountContracts(
   }
 }
 
+function isPlayerAttackTurretBlueprint(turretBlueprintId: string): boolean {
+  const turret = TURRET_BLUEPRINTS[turretBlueprintId as TurretBlueprintId];
+  return turret !== undefined &&
+    turret.kind === 'attack' &&
+    turret.passive !== true &&
+    (turret.emissionKind === 'shot' || turret.emissionKind === 'ray');
+}
+
+/**
+ * Every armed unit/tower has one BAR-style bridge from host combat intent to
+ * a weapon. Additional weapons remain autonomous or manual so a host attack
+ * order never collapses a multi-turret assembly into one shared lock.
+ */
+export function validateSingleHostAttackMountContract(
+  hostLabel: string,
+  hostId: string,
+  mounts: ReadonlyArray<{
+    mountId: unknown;
+    turretBlueprintId: string;
+    controlMode: unknown;
+  }>,
+): void {
+  let weaponCount = 0;
+  let hostWeaponCount = 0;
+  for (let i = 0; i < mounts.length; i++) {
+    const mount = mounts[i];
+    if (!isPlayerAttackTurretBlueprint(mount.turretBlueprintId)) continue;
+    weaponCount++;
+    if (mount.controlMode === 'host') hostWeaponCount++;
+  }
+  if (weaponCount > 0 && hostWeaponCount !== 1) {
+    throw new Error(
+      `Invalid ${hostLabel} ${hostId}: armed hosts require exactly one host-controlled attack mount; found ${hostWeaponCount} among ${weaponCount} weapons`,
+    );
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateTurretMountContracts('unit blueprint', bp.unitBlueprintId, bp.turrets);
+  validateSingleHostAttackMountContract('unit blueprint', bp.unitBlueprintId, bp.turrets);
 }
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   if (!bp.turrets || bp.turrets.length === 0) continue;
   validateTurretMountContracts('building blueprint', bp.buildingBlueprintId, bp.turrets);
+  if (isTowerBuildingBlueprintId(bp.buildingBlueprintId)) {
+    validateSingleHostAttackMountContract(
+      'tower blueprint',
+      bp.buildingBlueprintId,
+      bp.turrets,
+    );
+  }
 }
 
 // Cross-blueprint lock-on inclusion validation. Each level-1 named

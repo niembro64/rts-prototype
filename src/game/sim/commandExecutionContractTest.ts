@@ -1134,6 +1134,61 @@ export function runCommandExecutionContractTest(): void {
     (scout.unit?.actions.length ?? 0) === 0,
     'BAR armpeep/unitBee scout analogue must not enqueue direct Attack commands',
   );
+  executeCommand(bomberTargetCtx, {
+    type: 'attackGround',
+    tick: 10,
+    entityIds: [fighter.id, scout.id, bomber.id],
+    targetX: 220,
+    targetY: 160,
+    targetZ: bomberTargetWorld.getGroundZ(220, 160),
+    queue: false,
+  });
+  assertContract(
+    fighter.unit?.actions[0]?.type === 'attack' &&
+      (scout.unit?.actions.length ?? 0) === 0 &&
+      firstActionType(bomber) === 'attackGround',
+    'Attack Point execution must affect ground-capable weapon units without replacing air-only or unarmed unit orders',
+  );
+
+  const liveAttackWorld = new WorldState(23, 512, 512);
+  const liveAttackQueue = new CommandQueue();
+  const liveAttackSim = new Simulation(liveAttackWorld, liveAttackQueue);
+  const liveAttacker = liveAttackWorld.createUnitFromBlueprint(40, 260, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const liveAttackTarget = liveAttackWorld.createUnitFromBlueprint(180, 260, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  liveAttackWorld.addEntity(liveAttacker);
+  liveAttackWorld.addEntity(liveAttackTarget);
+  executeCommand({
+    world: liveAttackWorld,
+    constructionSystem: new ConstructionSystem(liveAttackWorld.mapWidth, liveAttackWorld.mapHeight),
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'attack',
+    tick: 10,
+    entityIds: [liveAttacker.id],
+    targetId: liveAttackTarget.id,
+    queue: false,
+  });
+  liveAttackTarget.transform.x = 220;
+  liveAttackTarget.transform.y = 300;
+  liveAttackSim.update(16);
+  const liveAttackAction = liveAttacker.unit?.actions[0];
+  assertContract(
+    liveAttackAction?.type === 'attack' &&
+      liveAttackAction.targetId === liveAttackTarget.id &&
+      liveAttackAction.x === liveAttackTarget.transform.x &&
+      liveAttackAction.y === liveAttackTarget.transform.y,
+    'Attack Unit must refresh its movement intent to the target live center before path planning',
+  );
+  assertContract(
+    liveAttacker.combat?.priorityTargetId === liveAttackTarget.id,
+    'Attack Unit must stamp the host lock-on id to the ordered target during the same simulation tick',
+  );
 
   const guardRemoveWorld = new WorldState(1, 512, 512);
   const guardRemoveConstruction = new ConstructionSystem(guardRemoveWorld.mapWidth, guardRemoveWorld.mapHeight);
@@ -1532,12 +1587,16 @@ export function runCommandExecutionContractTest(): void {
   const outside = damageUnit(queueWorld.createUnitFromBlueprint(170, 100, 1, 'unitJackal', {
     allocateSubEntityIds: false,
   }));
+  const damagedBuilding = queueWorld.createBuilding(149, 100, 8, 8, 100, 1);
+  damagedBuilding.building!.hp = 50;
+  damagedBuilding.buildingBlueprintId = 'buildingSolar';
   queueWorld.addEntity(commander);
   queueWorld.addEntity(far);
   queueWorld.addEntity(healthyInside);
   queueWorld.addEntity(mid);
   queueWorld.addEntity(outside);
   queueWorld.addEntity(near);
+  queueWorld.addEntity(damagedBuilding);
 
   executeCommand(queueCtx, {
     type: 'repairArea',
@@ -1551,8 +1610,8 @@ export function runCommandExecutionContractTest(): void {
   assertContract(commander.unit !== null, 'commander must have a unit component');
   assertActionTargetIds(
     commander.unit.actions,
-    [near.id, mid.id, far.id],
-    'repair-area command should enqueue all damaged targets by distance',
+    [near.id, mid.id, far.id, damagedBuilding.id],
+    'repair-area command should enqueue damaged units and completed structures by distance',
   );
 
   setUnitActions(commander.unit, [
@@ -1570,12 +1629,12 @@ export function runCommandExecutionContractTest(): void {
     queueFront: true,
   });
   assertActionTargetIds(
-    commander.unit.actions.slice(1, 4),
-    [near.id, mid.id, far.id],
+    commander.unit.actions.slice(1, 5),
+    [near.id, mid.id, far.id, damagedBuilding.id],
     'front-queued repair area should preserve nearest-to-farthest order',
   );
   assertContract(
-    commander.unit.actions[4].type === 'wait',
+    commander.unit.actions[5].type === 'wait',
     'front-queued repair area should preserve existing queued orders behind inserted targets',
   );
 
@@ -1594,12 +1653,12 @@ export function runCommandExecutionContractTest(): void {
     queueInsertIndex: 1,
   });
   assertActionTargetIds(
-    commander.unit.actions.slice(1, 4),
-    [near.id, mid.id, far.id],
+    commander.unit.actions.slice(1, 5),
+    [near.id, mid.id, far.id, damagedBuilding.id],
     'inserted repair area should preserve nearest-to-farthest order at the requested index',
   );
   assertContract(
-    commander.unit.actions[4].type === 'wait',
+    commander.unit.actions[5].type === 'wait',
     'inserted repair area should preserve existing orders after the requested index',
   );
 
@@ -1657,8 +1716,10 @@ export function runCommandExecutionContractTest(): void {
     filterCategory: 'building',
   });
   assertContract(
-    commander.unit.actions.length === 0,
-    'building-category-filtered repair area should exclude every unit target',
+    commander.unit.actions.length === 1 &&
+      commander.unit.actions[0].type === 'repair' &&
+      commander.unit.actions[0].targetId === damagedBuilding.id,
+    'building-category-filtered repair area should keep a damaged completed structure and exclude units',
   );
   queueWorld.removeEntity(damagedEagle.id);
 
@@ -1674,9 +1735,10 @@ export function runCommandExecutionContractTest(): void {
     targetId: capturable.id,
     queue: false,
   });
+  const captureAction: UnitAction | undefined = commander.unit.actions[0];
   assertContract(
-    commander.unit.actions[0]?.type === 'capture' &&
-      commander.unit.actions[0]?.targetId === capturable.id,
+    captureAction?.type === 'capture' &&
+      captureAction.targetId === capturable.id,
     'capture command should enqueue a target capture action on the commander',
   );
 
@@ -1696,7 +1758,7 @@ export function runCommandExecutionContractTest(): void {
     queue: false,
   });
   assertContract(
-    commander.unit.actions.length === 0,
+    firstActionType(commander) === undefined,
     'resurrect command should not enqueue without a resurrectable wreck target',
   );
   queueWorld.removeEntity(wreckSource.id);
@@ -1719,7 +1781,7 @@ export function runCommandExecutionContractTest(): void {
     queue: false,
   });
   assertContract(
-    commander.unit.actions.length === 0,
+    firstActionType(commander) === undefined,
     'resurrect-area command should not enqueue when no resurrectable wrecks exist',
   );
 
@@ -1894,6 +1956,49 @@ export function runCommandExecutionContractTest(): void {
     areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
     [nearFoe.id, midFoe.id, farFoe.id],
     'area attack should enqueue every circled enemy nearest to farthest',
+  );
+  const nearestAirFoe = captureWorld.createUnitFromBlueprint(92, 200, 2, 'unitTransport', {
+    allocateSubEntityIds: false,
+  });
+  captureWorld.addEntity(nearestAirFoe);
+  setUnitActions(areaAttacker.unit, [
+    { type: 'move', x: 20, y: 20 },
+  ]);
+  executeCommand(captureCtx, {
+    type: 'attackArea',
+    tick: 8,
+    entityIds: [areaAttacker.id],
+    targetX: 100,
+    targetY: 200,
+    radius: 60,
+    queue: false,
+  });
+  assertActionTargetIds(
+    areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
+    [nearFoe.id, midFoe.id, farFoe.id],
+    'area attack must filter incompatible air targets before queue-replacement ordering',
+  );
+  assertContract(
+    areaAttacker.unit.actions[0]?.type === 'attack',
+    'an incompatible nearest area target must not turn the first valid target into a queued append',
+  );
+
+  nearFoe.unit!.hp = 0;
+  midFoe.unit!.hp = 0;
+  farFoe.unit!.hp = 0;
+  executeCommand(captureCtx, {
+    type: 'attackArea',
+    tick: 9,
+    entityIds: [areaAttacker.id],
+    targetX: nearestAirFoe.transform.x,
+    targetY: nearestAirFoe.transform.y,
+    radius: 20,
+    queue: false,
+  });
+  assertContract(
+    areaAttacker.unit.actions.length > 0 &&
+      areaAttacker.unit.actions[areaAttacker.unit.actions.length - 1].type === 'fight',
+    'area attack with enemies but no compatible target must fall back to Fight for that attacker',
   );
 
   // Self-destruct arms a BAR-style countdown: toggling or Stop cancels

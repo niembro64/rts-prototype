@@ -236,6 +236,57 @@ export function runResourceMovementConformanceContractTest(): void {
   assertContract(repairMovement.sourceEntityId === commander.id, 'repair spend must preserve the commander host pylon');
   assertContract(repairMovement.targetEntityId === damaged.id, 'repair spend must preserve the repair target endpoint');
 
+  const damagedStructure = createCompletedOpenBuilding(
+    repairWorld,
+    playerId,
+    'buildingSolar',
+    278,
+    260,
+  );
+  damagedStructure.building!.maxHp = 10_000;
+  damagedStructure.building!.hp = 1;
+  const structureHpBeforeRepair = damagedStructure.building!.hp;
+  const repairHelper = repairWorld.createUnitFromBlueprint(258, 260, playerId, 'unitConstructionDrone', {
+    allocateSubEntityIds: false,
+  });
+  assertContract(repairHelper.unit !== null, 'multi-builder repair helper must have a unit component');
+  repairWorld.addEntity(damagedStructure);
+  repairWorld.addEntity(repairHelper);
+  setUnitActions(commander.unit, [{
+    type: 'repair',
+    x: damagedStructure.transform.x,
+    y: damagedStructure.transform.y,
+    z: damagedStructure.transform.z,
+    targetId: damagedStructure.id,
+  }]);
+  setUnitActions(repairHelper.unit, [{
+    type: 'repair',
+    x: damagedStructure.transform.x,
+    y: damagedStructure.transform.y,
+    z: damagedStructure.transform.z,
+    targetId: damagedStructure.id,
+  }]);
+  resourceMovementSystem.beginTick(repairWorld);
+  distributeEnergy(repairWorld, 1000, createEnergyBuffers());
+  const structureRepairMovements = repairWorld.resourceMovements.filter(
+    (movement) => movement.reason === 'repair' && movement.targetEntityId === damagedStructure.id,
+  );
+  const structureRepairEnergy = structureRepairMovements.reduce(
+    (sum, movement) => sum + movement.amount,
+    0,
+  );
+  assertContract(
+    structureRepairMovements.length === 2 &&
+      structureRepairMovements.some((movement) => movement.sourceEntityId === commander.id) &&
+      structureRepairMovements.some((movement) => movement.sourceEntityId === repairHelper.id),
+    'every explicitly ordered builder must contribute repair energy to a damaged structure',
+  );
+  assertNear(
+    damagedStructure.building!.hp - structureHpBeforeRepair,
+    structureRepairEnergy / 0.5,
+    'stacked repair HP must equal the sum of builder energy without duplicated or wasted spend',
+  );
+
   economyManager.reset();
   economyManager.setEconomyState(playerId, {
     ...createEconomyState(),

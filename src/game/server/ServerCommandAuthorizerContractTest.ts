@@ -1,6 +1,7 @@
 import type {
   AttackAreaCommand,
   AttackCommand,
+  AttackGroundCommand,
   CaptureCommand,
   EditFactoryQueueCommand,
   FireDGunCommand,
@@ -401,6 +402,27 @@ export function runServerCommandAuthorizerContractTest(): void {
   assertContract(
     rejectedAreaAttack === null,
     'attackArea must reject selections without BAR-equivalent area-attack units',
+  );
+
+  const attackGroundCommand: AttackGroundCommand = {
+    type: 'attackGround',
+    tick: 1,
+    entityIds: [jackal.id, eagle.id, bee.id, enemyCommander.id],
+    targetX: 200,
+    targetY: 200,
+    targetZ: 0,
+    queue: false,
+  };
+  const authorizedAttackGround = authorizeGameServerGameplayCommand(
+    world,
+    attackGroundCommand,
+    { mode: 'player', playerId: 1 },
+  );
+  assertContract(
+    authorizedAttackGround?.type === 'attackGround' &&
+      authorizedAttackGround.entityIds.length === 1 &&
+      authorizedAttackGround.entityIds[0] === jackal.id,
+    'Attack Point must authorize only owned ground-capable BAR weapon units',
   );
 
   const attackCommand: AttackCommand = {
@@ -978,6 +1000,65 @@ export function runServerCommandAuthorizerContractTest(): void {
     authorizedAlliedGuard?.type === 'guard' &&
       authorizedAlliedGuard.targetId === alliedGuardTarget.id,
     'BAR no-enemy-guard must authorize guard commands targeting allied units',
+  );
+  alliedGuardTarget.unit!.hp = alliedGuardTarget.unit!.maxHp - 1;
+  const authorizedAlliedRepair = authorizeGameServerGameplayCommand(alliedGuardWorld, {
+    type: 'repair',
+    tick: 1,
+    commanderId: alliedGuardSource.id,
+    targetId: alliedGuardTarget.id,
+    queue: false,
+  }, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    authorizedAlliedRepair?.type === 'repair' &&
+      authorizedAlliedRepair.targetId === alliedGuardTarget.id,
+    'BAR Repair must authorize an owned builder working on an allied unit',
+  );
+  const rejectedNonBuilderRepair = authorizeGameServerGameplayCommand(alliedGuardWorld, {
+    type: 'repair',
+    tick: 1,
+    commanderId: alliedGuardTarget.id,
+    targetId: alliedGuardSource.id,
+    queue: false,
+  }, {
+    mode: 'player',
+    playerId: 2,
+  });
+  assertContract(
+    rejectedNonBuilderRepair === null,
+    'Repair must reject an owned unit that has no builder capability',
+  );
+  const rejectedAlliedCapture = authorizeGameServerGameplayCommand(alliedGuardWorld, {
+    type: 'capture',
+    tick: 1,
+    commanderId: alliedGuardSource.id,
+    targetId: alliedGuardTarget.id,
+    queue: false,
+  }, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    rejectedAlliedCapture === null,
+    'BAR Capture must reject allied targets rather than treating every other player as hostile',
+  );
+  const authorizedNonAlliedCapture = authorizeGameServerGameplayCommand(alliedGuardWorld, {
+    type: 'capture',
+    tick: 1,
+    commanderId: alliedGuardSource.id,
+    targetId: nonAlliedGuardTarget.id,
+    queue: false,
+  }, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    authorizedNonAlliedCapture?.type === 'capture' &&
+      authorizedNonAlliedCapture.targetId === nonAlliedGuardTarget.id,
+    'BAR Capture must continue to authorize a genuinely hostile target',
   );
   const rejectedAlliedAttack = authorizeGameServerGameplayCommand(alliedGuardWorld, {
     type: 'attack',

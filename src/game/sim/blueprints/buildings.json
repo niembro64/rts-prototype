@@ -31,8 +31,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -100,8 +118,26 @@
       "barsOffsetAboveTop": -10
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -169,8 +205,26 @@
       "barsOffsetAboveTop": 38
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -238,8 +292,26 @@
       "barsOffsetAboveTop": 42
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -307,9 +379,27 @@
       "barsOffsetAboveTop": 16
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 4200,
-      "detectorRadius": 1600,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 4200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
+      "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
     },
@@ -365,8 +455,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -388,6 +496,82 @@
         "other": 42.426,
         "hitbox": 42.426,
         "collision": 42.426
+      }
+    }
+  },
+  "buildingSonar": {
+    "buildingBlueprintId": "buildingSonar",
+    "name": "Sonar",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 7,
+    "hp": 450,
+    "cost": {
+      "energy": 450,
+      "metal": 350
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingRadar",
+    "visualHeight": 150,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 140,
+      "width": 40,
+      "height": 40
+    },
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 16
+    },
+    "sensors": {
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 4200
+        }
+      },
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "turrets": [],
+    "base": {
+      "cost": {
+        "energy": 450,
+        "metal": 350
+      },
+      "mass": 500,
+      "health": 450,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 25000,
+        "damage": 180
+      },
+      "radius": {
+        "other": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
       }
     }
   }

@@ -52,8 +52,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -144,8 +162,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -214,8 +250,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -284,8 +338,26 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0

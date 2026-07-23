@@ -49,6 +49,10 @@ import {
   assertValidShotArmingRadius,
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
+import {
+  getMaximumSensorMatrixRadius,
+  validateSensorCapabilityConfig,
+} from '../sensorConfig';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -330,34 +334,49 @@ function validateFabricatorTorusTargetRadius(
   }
 }
 
-function validateSensorCapabilityConfig(
-  context: string,
-  sensors: SensorCapabilityConfig,
-): void {
-  if (!sensors || typeof sensors !== 'object') {
-    throw new Error(`Invalid ${context}: sensors must be an object`);
-  }
-  const fields = [
-    'fullSightRadius',
-    'radarRadius',
-    'detectorRadius',
-    'trackingRadius',
-    'scanRadius',
-  ] as const;
-  for (const field of fields) {
-    const value = sensors[field];
-    if (!Number.isFinite(value) || value < 0) {
-      throw new Error(`Invalid ${context}: sensors.${field} must be a finite non-negative number`);
-    }
-  }
-}
-
 function buildingBlueprintHasUnitSpawnTurret(blueprint: BuildingBlueprint): boolean {
   for (const mount of blueprint.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (turretBlueprint?.spawn?.producedKind === 'units') return true;
   }
   return false;
+}
+
+function validateDedicatedContactSensor(
+  id: string,
+  blueprint: BuildingBlueprint,
+): void {
+  if (id !== 'buildingRadar' && id !== 'buildingSonar') return;
+  if (getMaximumSensorMatrixRadius(blueprint.sensors.fullSight) !== 0) {
+    throw new Error(
+      `Invalid building blueprint ${id}: dedicated contact sensors must not grant full sight`,
+    );
+  }
+  const contact = blueprint.sensors.contactSight;
+  const expectedRadius = id === 'buildingRadar'
+    ? contact.aboveWater.aboveWater
+    : contact.underwater.underwater;
+  if (!Number.isFinite(expectedRadius) || expectedRadius <= 0) {
+    throw new Error(
+      `Invalid building blueprint ${id}: its same-medium contact radius must be positive`,
+    );
+  }
+  const unexpectedRadii = id === 'buildingRadar'
+    ? [
+        contact.aboveWater.underwater,
+        contact.underwater.aboveWater,
+        contact.underwater.underwater,
+      ]
+    : [
+        contact.aboveWater.aboveWater,
+        contact.aboveWater.underwater,
+        contact.underwater.aboveWater,
+      ];
+  if (unexpectedRadii.some((radius) => radius !== 0)) {
+    throw new Error(
+      `Invalid building blueprint ${id}: dedicated radar/sonar contact coverage must stay in its authored source-target lane`,
+    );
+  }
 }
 
 function validateFactoryUnitRoster(
@@ -471,6 +490,7 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   validateBuildingSupportSurface(id, blueprint.supportSurface);
   validateBuildingHoveringType(id, blueprint);
   validateSensorCapabilityConfig(`building blueprint ${id}`, blueprint.sensors);
+  validateDedicatedContactSensor(id, blueprint);
   if (
     !blueprint.hud ||
     !Number.isFinite(blueprint.hud.barsOffsetAboveTop)

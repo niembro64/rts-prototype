@@ -24,7 +24,10 @@ import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import type { MetalDeposit } from '@/metalDepositConfig';
-import { getBuildingAuthoredRadarRadius } from '../sim/sensorCoverage';
+import {
+  getBuildingAuthoredContactSightRadius,
+  getSensorMediumAtZ,
+} from '../sim/sensorCoverage';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
@@ -104,7 +107,7 @@ export class BuildGhost3D {
   private footprint: THREE.Mesh;
   /** Builder build-range circle — unified screen-space ground ring. */
   private readonly buildRing: GroundRing3D;
-  /** Radar footprint preview shown while placing radar towers. */
+  /** Contact-sensor footprint preview shown while placing radar/sonar. */
   private readonly radarRing: GroundRing3D;
   /** Warning line from builder to ghost, shown only when out of range. */
   private readonly rangeLineBatch: GroundLineBatch3D;
@@ -240,11 +243,23 @@ export class BuildGhost3D {
     const isExtractor = isMetalExtractorBlueprintId(buildingBlueprintId);
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics, isExtractor);
 
-    const radarRadius = getBuildingAuthoredRadarRadius(buildingBlueprintId);
-    if (radarRadius > 0) {
+    const sourceMedium = getSensorMediumAtZ(targetGroundY);
+    const contactRadius = Math.max(
+      getBuildingAuthoredContactSightRadius(
+        buildingBlueprintId,
+        sourceMedium,
+        'aboveWater',
+      ),
+      getBuildingAuthoredContactSightRadius(
+        buildingBlueprintId,
+        sourceMedium,
+        'underwater',
+      ),
+    );
+    if (contactRadius > 0) {
       const c = hexToRgb01(COLORS.effects.buildGhost.radarRangeRing.colorHex);
       this.radarRing.set(
-        snapped.x, 0, snapped.y, radarRadius,
+        snapped.x, 0, snapped.y, contactRadius,
         c.r, c.g, c.b, COLORS.effects.buildGhost.radarRangeRing.opacity,
         this.getGroundHeight,
       );

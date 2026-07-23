@@ -9,9 +9,9 @@
     },
     "shade": {
       "colorHex": "#06090b",
-      "unseenDarknessPercent": 60,
-      "radarDarknessPercent": 40,
-      "unseenColorLossPercent": 50,
+      "unseenDarknessPercent": 70,
+      "radarDarknessPercent": 35,
+      "unseenColorLossPercent": 100,
       "radarColorLossPercent": 25
     }
   }

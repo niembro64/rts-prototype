@@ -427,9 +427,6 @@ pub(crate) fn combat_targeting_apply_priority_target_fsm_idx(
     if target_id < 0
         || target_valid == 0
         || shield_panel_valid == 0
-        || los_clear == 0
-        || ballistic_clear == 0
-        || shield_clear == 0
         || !combat_targeting_range_volume_allows_target_domain(
             combat_targeting_turret_range_volume(pool, idx),
             target,
@@ -441,15 +438,24 @@ pub(crate) fn combat_targeting_apply_priority_target_fsm_idx(
     }
 
     let old_state = pool.turret_state[idx];
-    let next_state = if combat_targeting_fire_max_cylinder_contains(pool, idx, false, target) {
+    let fire_path_clear = los_clear != 0 && ballistic_clear != 0 && shield_clear != 0;
+    let next_state = if fire_path_clear
+        && combat_targeting_fire_max_cylinder_contains(pool, idx, false, target)
+    {
         CT_TURRET_STATE_ENGAGED
-    } else if combat_targeting_fire_max_cylinder_contains(pool, idx, true, target) {
+    } else if fire_path_clear
+        && combat_targeting_fire_max_cylinder_contains(pool, idx, true, target)
+    {
         if old_state == CT_TURRET_STATE_ENGAGED {
             CT_TURRET_STATE_ENGAGED
         } else {
             CT_TURRET_STATE_TRACKING
         }
     } else {
+        // A host-overridden weapon keeps the host's commanded target id even
+        // while LOS, ballistics, a force field, or distance prevents firing.
+        // Tracking is the non-firing state; clearing the id here would make an
+        // Attack Unit order indistinguishable from autonomous acquisition.
         CT_TURRET_STATE_TRACKING
     };
     combat_targeting_set_target_state(pool, idx, target_id, next_state);

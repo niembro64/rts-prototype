@@ -31,6 +31,7 @@ import type { AreaCommandTargetFilter } from '../../sim/areaCommandFilters';
 import { isBuildInProgress } from '../../sim/buildableHelpers';
 import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
 import { getEntityTargetPoint } from '../../sim/buildingAnchors';
+import { getBuilderConstructionRate } from '../../sim/hostCapabilities';
 
 /** True when `target` is a completed friendly mobile constructor.
  *  BAR "Guard damaged constructors" (cmd_guard_damaged_constructors.lua)
@@ -45,6 +46,23 @@ function isCompletedFriendlyConstructorTarget(target: Entity): boolean {
 }
 
 const BAR_MULTI_TRANSPORT_TARGET_LOAD_RADIUS = 150;
+
+type CommandCapableBuilder = Entity & {
+  ownership: NonNullable<Entity['ownership']>;
+  unit: NonNullable<Entity['unit']>;
+  builder: NonNullable<Entity['builder']>;
+};
+
+function isCommandCapableBuilder(
+  entity: Entity | null | undefined,
+): entity is CommandCapableBuilder {
+  return entity !== null &&
+    entity !== undefined &&
+    entity.ownership !== null &&
+    entity.unit !== null &&
+    entity.builder !== null &&
+    getBuilderConstructionRate(entity) > 0;
+}
 
 /** Build the default right-click assist command for a ground point: a
  *  RepairCommand when the commander (if any) is right-clicking on a
@@ -64,7 +82,7 @@ export function buildRepairOrGuardCommandAt(
   queueFront = false,
   queueInsertIndex?: number,
 ): RepairCommand | GuardCommand | null {
-  if (!commander?.ownership) return null;
+  if (!isCommandCapableBuilder(commander)) return null;
   const playerId = commander.ownership.playerId;
   const target = findRepairTargetAt(source, worldX, worldY, playerId);
   if (!target) return null;
@@ -101,9 +119,10 @@ export function buildRepairCommandForTarget(
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean,
 ): RepairCommand | null {
-  if (!commander?.ownership) return null;
-  if (!isRepairableFriendlyTarget(target, commander.ownership.playerId)) return null;
+  if (!isCommandCapableBuilder(commander)) return null;
+  if (!isRepairableFriendlyTarget(target, commander.ownership.playerId, arePlayersAllied)) return null;
   // BAR NoDuplicateOrders: drop a shift-appended repair the builder
   // already has queued (including the build assist on the same target).
   if (
@@ -133,7 +152,7 @@ export function buildRepairAreaCommand(
   queueInsertIndex?: number,
   targetFilter?: AreaCommandTargetFilter,
 ): RepairAreaCommand | null {
-  if (!commander?.ownership) return null;
+  if (!isCommandCapableBuilder(commander)) return null;
   return {
     type: 'repairArea',
     tick,
@@ -158,7 +177,7 @@ export function buildReclaimCommandForTarget(
   queueFront = false,
   queueInsertIndex?: number,
 ): ReclaimCommand | null {
-  if (!commander?.ownership) return null;
+  if (!isCommandCapableBuilder(commander)) return null;
   if (commander.id === target?.id || !isReclaimableTarget(target)) return null;
   return {
     type: 'reclaim',
@@ -184,7 +203,7 @@ export function buildReclaimAreaCommand(
   queueInsertIndex?: number,
   targetFilter?: AreaCommandTargetFilter,
 ): ReclaimAreaCommand | null {
-  if (!commander?.ownership) return null;
+  if (!isCommandCapableBuilder(commander)) return null;
   return {
     type: 'reclaimArea',
     tick,
@@ -208,10 +227,14 @@ export function buildCaptureCommandForTarget(
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean,
 ): CaptureCommand | null {
   const playerId = commander?.ownership?.playerId;
   if (commander === null || commander === undefined || playerId === undefined) return null;
-  if (commander.id === target?.id || !isCapturableTarget(target, playerId)) return null;
+  if (
+    commander.id === target?.id ||
+    !isCapturableTarget(target, playerId, arePlayersAllied)
+  ) return null;
   return {
     type: 'capture',
     tick,

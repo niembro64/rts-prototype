@@ -302,7 +302,7 @@ export type SetFireEnabledCommand = BaseCommand & {
 
 /** Producer-building ON/OFF toggle. ON = producing + normal damage;
  *  OFF = not producing + 10x damage resistance. Targets buildings whose
- *  BuildingBlueprintId uses the active-state mechanic (solar/wind/extractor/radar/resourceConverter);
+ *  BuildingBlueprintId uses the active-state mechanic (solar/wind/extractor/radar/sonar/resourceConverter);
  *  other entity ids in the list are silently skipped. */
 export type SetBuildingActiveCommand = BaseCommand & {
   type: 'setBuildingActive';

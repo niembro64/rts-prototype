@@ -153,21 +153,53 @@
         "rustType": "i32"
       }
     },
+    "SensorMediumTargetRadii": {
+      "type": "object",
+      "required": [
+        "aboveWater",
+        "underwater"
+      ],
+      "properties": {
+        "aboveWater": {
+          "type": "number"
+        },
+        "underwater": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SensorMediumRadiusMatrix": {
+      "type": "object",
+      "required": [
+        "aboveWater",
+        "underwater"
+      ],
+      "properties": {
+        "aboveWater": {
+          "$ref": "#/$defs/SensorMediumTargetRadii"
+        },
+        "underwater": {
+          "$ref": "#/$defs/SensorMediumTargetRadii"
+        }
+      },
+      "additionalProperties": false
+    },
     "SensorCapabilityConfig": {
       "type": "object",
       "required": [
-        "fullSightRadius",
-        "radarRadius",
+        "fullSight",
+        "contactSight",
         "detectorRadius",
         "trackingRadius",
         "scanRadius"
       ],
       "properties": {
-        "fullSightRadius": {
-          "type": "number"
+        "fullSight": {
+          "$ref": "#/$defs/SensorMediumRadiusMatrix"
         },
-        "radarRadius": {
-          "type": "number"
+        "contactSight": {
+          "$ref": "#/$defs/SensorMediumRadiusMatrix"
         },
         "detectorRadius": {
           "type": "number"
@@ -3128,7 +3160,6 @@
         "radius",
         "supportPointOffsetZ",
         "supportSurface",
-        "fullVisionRadius",
         "sensors",
         "mass",
         "cost",
@@ -3171,9 +3202,6 @@
         },
         "supportSurface": {
           "$ref": "#/$defs/UnitSupportSurface"
-        },
-        "fullVisionRadius": {
-          "type": "number"
         },
         "sensors": {
           "$ref": "#/$defs/SensorCapabilityConfig"

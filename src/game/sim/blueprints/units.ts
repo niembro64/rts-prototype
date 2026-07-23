@@ -30,6 +30,10 @@ import {
   assertValidShotArmingRadius,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
+import {
+  getMaximumSensorMatrixRadius,
+  validateSensorCapabilityConfig,
+} from '../sensorConfig';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 
@@ -162,30 +166,6 @@ function validateUnitSupportSurface(
   }
 }
 
-function validateSensorCapabilityConfig(
-  unitBlueprintId: string,
-  sensors: UnitBlueprint['sensors'],
-): void {
-  if (!sensors || typeof sensors !== 'object') {
-    throw new Error(`Invalid sensor config for ${unitBlueprintId}: sensors must be an object`);
-  }
-  const fields = [
-    'fullSightRadius',
-    'radarRadius',
-    'detectorRadius',
-    'trackingRadius',
-    'scanRadius',
-  ] as const;
-  for (const field of fields) {
-    const value = sensors[field];
-    if (!Number.isFinite(value) || value < 0) {
-      throw new Error(
-        `Invalid sensor config for ${unitBlueprintId}: sensors.${field} must be a finite non-negative number`,
-      );
-    }
-  }
-}
-
 function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
   let hasConstructionRate = false;
 
@@ -240,7 +220,7 @@ function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
-  validateSensorCapabilityConfig(bp.unitBlueprintId, bp.sensors);
+  validateSensorCapabilityConfig(`sensor config for ${bp.unitBlueprintId}`, bp.sensors);
   assertValidShotArmingRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
 
   if (!Number.isFinite(bp.supportPointOffsetZ) || bp.supportPointOffsetZ < 0) {
@@ -249,14 +229,9 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
-  if (!Number.isFinite(bp.fullVisionRadius) || bp.fullVisionRadius <= 0) {
+  if (getMaximumSensorMatrixRadius(bp.sensors.fullSight) <= 0) {
     throw new Error(
-      `Invalid fullVisionRadius for ${bp.unitBlueprintId}: fullVisionRadius must be a finite positive number`,
-    );
-  }
-  if (bp.fullVisionRadius !== bp.sensors.fullSightRadius) {
-    throw new Error(
-      `Invalid sensor config for ${bp.unitBlueprintId}: fullVisionRadius must mirror sensors.fullSightRadius`,
+      `Invalid sensor config for ${bp.unitBlueprintId}: fullSight must contain a positive radius`,
     );
   }
   validateUnitWorkEmitterMounts(bp);

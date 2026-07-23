@@ -23,7 +23,10 @@ import {
   createWorldSupportSurface,
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
-import { getEntityRadarRadius } from '../sim/sensorCoverage';
+import {
+  getEntityRadarRadius,
+  getEntitySonarRadius,
+} from '../sim/sensorCoverage';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isReclaimableTarget } from '../sim/reclaim';
 import type { TurretMesh } from './TurretMesh3D';
@@ -236,7 +239,10 @@ export class SelectionOverlayRenderer3D {
       m.rangeRingsVisible === true ||
       this.showReclaimTargets ||
       this.showAnyRange ||
-      (selected && getEntityRadarRadius(entity) > 0)
+      (selected && Math.max(
+        getEntityRadarRadius(entity),
+        getEntitySonarRadius(entity),
+      ) > 0)
     );
   }
 
@@ -359,7 +365,10 @@ export class SelectionOverlayRenderer3D {
     const showEngageMinAcquire = this.showEngageMinAcquire;
     const showEngageMinRelease = this.showEngageMinRelease;
     const showBuild = this.showBuild;
-    const radarRadius = getEntityRadarRadius(entity);
+    const radarRadius = Math.max(
+      getEntityRadarRadius(entity),
+      getEntitySonarRadius(entity),
+    );
     const showRadar = radarRadius > 0 && entity.selectable?.selected === true;
     const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
     const showAnyTurretRange =

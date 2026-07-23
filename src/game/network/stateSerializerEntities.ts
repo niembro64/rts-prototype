@@ -139,6 +139,7 @@ const BUILDING_ACTIVE_STATE_BLUEPRINT_CODES = new Set<number>([
   buildingBlueprintIdToCode('buildingExtractor'),
   buildingBlueprintIdToCode('buildingExtractorT2'),
   buildingBlueprintIdToCode('buildingRadar'),
+  buildingBlueprintIdToCode('buildingSonar'),
   buildingBlueprintIdToCode('buildingResourceConverter'),
 ]);
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
@@ -1796,8 +1797,8 @@ export function serializeEntitySnapshot(
         if (entity.building.activeState) {
           // Wire field name is `solar` for legacy reasons; semantically
           // carries the shared BuildingActiveState open flag for every
-          // producer building (solar / wind / extractor / radar /
-          // resourceConverter).
+          // producer/utility building (solar / wind / extractor / radar /
+          // sonar / resourceConverter).
           const s = poolEntry.solarSub;
           s.open = entity.building.activeState.open;
           b.solar = s;

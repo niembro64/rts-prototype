@@ -13,10 +13,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -121,10 +138,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -228,10 +262,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -300,8 +351,12 @@
         "kneeRadius": 0.8,
         "lerpDuration": 200,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 4.5 },
-          "lower": { "lengthUnitRadiusRatio": 5.4 }
+          "upper": {
+            "lengthUnitRadiusRatio": 4.5
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 5.4
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.5,
@@ -368,10 +423,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -475,10 +547,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -584,10 +673,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -649,8 +755,12 @@
         "kneeRadius": 1.5,
         "lerpDuration": 100,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 0.5 },
-          "lower": { "lengthUnitRadiusRatio": 0.55 }
+          "upper": {
+            "lengthUnitRadiusRatio": 0.5
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 0.55
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.45,
@@ -717,10 +827,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -824,10 +951,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -909,8 +1053,12 @@
         "kneeRadius": 7.5,
         "lerpDuration": 320,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 0.91 },
-          "lower": { "lengthUnitRadiusRatio": 1.0556 }
+          "upper": {
+            "lengthUnitRadiusRatio": 0.91
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 1.0556
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.6,
@@ -983,10 +1131,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1139,8 +1304,12 @@
         "kneeRadius": 6,
         "lerpDuration": 300,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 1.045 },
-          "lower": { "lengthUnitRadiusRatio": 1.254 }
+          "upper": {
+            "lengthUnitRadiusRatio": 1.045
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 1.254
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.45,
@@ -1207,10 +1376,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1313,10 +1499,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1461,10 +1664,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1350,
     "sensors": {
-      "fullSightRadius": 1350,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1350,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1350
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1603,10 +1823,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1681,8 +1918,12 @@
         "kneeRadius": 6,
         "lerpDuration": 200,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 1.045 },
-          "lower": { "lengthUnitRadiusRatio": 1.254 }
+          "upper": {
+            "lengthUnitRadiusRatio": 1.045
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 1.254
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.45,
@@ -1749,10 +1990,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1860,10 +2118,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -1967,10 +2242,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2100,10 +2392,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2153,6 +2462,7 @@
           "buildingExtractor",
           "buildingExtractorT2",
           "buildingRadar",
+          "buildingSonar",
           "buildingResourceConverter",
           "towerFabricator",
           "towerCannon",
@@ -2261,10 +2571,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2383,10 +2710,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2512,10 +2856,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1700,
     "sensors": {
-      "fullSightRadius": 1700,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1700,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1700
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2546,7 +2907,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "albatrosSiegeCannon2",
-        "controlMode": "host"
+        "controlMode": "autonomous"
       },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
@@ -2557,7 +2918,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "albatrosSiegeCannon3",
-        "controlMode": "host"
+        "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
@@ -2662,10 +3023,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1700,
     "sensors": {
-      "fullSightRadius": 1700,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1700,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1700
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2810,10 +3188,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1700,
     "sensors": {
-      "fullSightRadius": 1700,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1700,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1700
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -2972,10 +3367,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1200,
     "sensors": {
-      "fullSightRadius": 1200,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1200,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1200
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -3088,10 +3500,27 @@
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1600,
     "sensors": {
-      "fullSightRadius": 1600,
-      "radarRadius": 0,
+      "fullSight": {
+        "aboveWater": {
+          "aboveWater": 1600,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 1600
+        }
+      },
+      "contactSight": {
+        "aboveWater": {
+          "aboveWater": 0,
+          "underwater": 0
+        },
+        "underwater": {
+          "aboveWater": 0,
+          "underwater": 0
+        }
+      },
       "detectorRadius": 600,
       "trackingRadius": 0,
       "scanRadius": 0
@@ -3162,6 +3591,7 @@
           "buildingWind",
           "buildingExtractor",
           "buildingRadar",
+          "buildingSonar",
           "buildingResourceConverter",
           "towerFabricator",
           "towerCannon",
@@ -3236,8 +3666,12 @@
         "kneeRadius": 7,
         "lerpDuration": 300,
         "segments": {
-          "upper": { "lengthUnitRadiusRatio": 1.1 },
-          "lower": { "lengthUnitRadiusRatio": 1.32 }
+          "upper": {
+            "lengthUnitRadiusRatio": 1.1
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 1.32
+          }
         },
         "footSphere": {
           "originExtensionRatio": 0.45,

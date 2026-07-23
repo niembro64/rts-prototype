@@ -1241,6 +1241,18 @@ export class Simulation {
           if (entity.combat && !entity.combat.manualLaunchActive) {
             entity.combat.priorityTargetId = currentAction.targetId;
           }
+          // Attack Unit is a live entity intent, not a move to the point where
+          // the target happened to be when the order was issued. Refresh the
+          // durable approach point before path planning so movement and the
+          // host-overridden turret consume the same target on this tick.
+          const attackTarget = this.world.getEntity(currentAction.targetId);
+          if (attackTarget !== undefined) {
+            this.tryRefreshAttackApproach(
+              entity,
+              currentAction,
+              getEntityTargetPoint(attackTarget),
+            );
+          }
           // Stop if any turret is engaged.
           if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
             flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;

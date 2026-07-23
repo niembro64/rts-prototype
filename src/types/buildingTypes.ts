@@ -33,7 +33,7 @@ export type BuildingSupportSurface =
 
 // Tower-class buildingTypes. A "tower" is the immobile peer of a unit —
 // it mounts turrets and carries a host-level lock-on target. Distinct
-// from pure-infrastructure buildings (solar/wind/extractor/radar/
+// from pure-infrastructure buildings (solar/wind/extractor/radar/sonar/
 // resourceConverter) which mount no turrets and carry no host target.
 // See budget_design_philosophy.html "Towers Are Static Hosts That Lock On And
 // Fire" and "Anything that locks onto an entity ID is a tower".

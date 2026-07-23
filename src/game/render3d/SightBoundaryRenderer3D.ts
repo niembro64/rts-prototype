@@ -4,8 +4,10 @@ import type { ClientViewState } from '../network/ClientViewState';
 import {
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
+  canEntityProvideSonarVision,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
+  getEntitySonarRadius,
 } from '../sim/sensorCoverage';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -45,8 +47,8 @@ function clampUnit(value: number): number {
  * Draws sensor coverage union boundaries.
  *
  * - sight: total player full sight, including active scan pulses.
- * - radar: total radar-level knowledge, which includes all sight sources
- *   plus radar-only sources because full sight is a stronger intel tier.
+ * - radar: total contact-level knowledge, including sight and every active
+ *   above-water or underwater contact lane.
  */
 export class SightBoundaryRenderer3D {
   private readonly parent: THREE.Group;
@@ -146,7 +148,10 @@ export class SightBoundaryRenderer3D {
       this.pushSource(
         entity.transform.x,
         entity.transform.y,
-        getEntityFullVisionRadius(entity),
+        Math.max(
+          getEntityFullVisionRadius(entity, 'aboveWater'),
+          getEntityFullVisionRadius(entity, 'underwater'),
+        ),
         renderScope,
       );
     }
@@ -155,13 +160,22 @@ export class SightBoundaryRenderer3D {
   private collectRadarFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideRadarVision(entity)) continue;
-      this.pushSource(
-        entity.transform.x,
-        entity.transform.y,
-        getEntityRadarRadius(entity),
-        renderScope,
-      );
+      if (canEntityProvideRadarVision(entity)) {
+        this.pushSource(
+          entity.transform.x,
+          entity.transform.y,
+          getEntityRadarRadius(entity),
+          renderScope,
+        );
+      }
+      if (canEntityProvideSonarVision(entity)) {
+        this.pushSource(
+          entity.transform.x,
+          entity.transform.y,
+          getEntitySonarRadius(entity),
+          renderScope,
+        );
+      }
     }
   }
 

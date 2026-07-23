@@ -293,7 +293,10 @@ export class EntityCacheManager {
         } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {
           addEntityToList(this.cachedConverterBuildings, entity, sortedInsert);
           addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
-        } else if (entity.buildingBlueprintId === 'buildingRadar') {
+        } else if (
+          entity.buildingBlueprintId === 'buildingRadar' ||
+          entity.buildingBlueprintId === 'buildingSonar'
+        ) {
           addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
         }
         if (entity.factory) {

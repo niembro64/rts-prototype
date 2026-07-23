@@ -65,6 +65,7 @@ import {
   entityHasBarSetTargetCommand,
   entityHasBarStopCommand,
   entityCanIssueResurrectCommand,
+  entityCanBarAttackGround,
   entityCanBarAttackTarget,
   entityHasCloakCommand,
 } from '../sim/unitCommandCapabilities';
@@ -169,7 +170,7 @@ export function authorizeGameServerGameplayCommand(
       return authorizeAttackCommand(world, command, playerId);
 
     case 'attackGround':
-      return authorizeUnitListCommand(world, command, playerId);
+      return authorizeAttackGroundCommand(world, command, playerId);
 
     case 'attackArea':
       return authorizeAttackAreaCommand(world, command, playerId);
@@ -210,17 +211,17 @@ export function authorizeGameServerGameplayCommand(
       return authorizeFireDGunCommand(world, command, playerId);
 
     case 'repair':
-      if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
-      return isOwnedEntity(world, command.targetId, playerId) ? command : null;
+      if (!isOwnedBuilderUnit(world, command.commanderId, playerId)) return null;
+      return isAlliedEntity(world, command.targetId, playerId) ? command : null;
 
     case 'repairArea':
-      return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+      return isOwnedBuilderUnit(world, command.commanderId, playerId) ? command : null;
 
     case 'reclaim':
-      return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+      return isOwnedBuilderUnit(world, command.commanderId, playerId) ? command : null;
 
     case 'reclaimArea':
-      return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+      return isOwnedBuilderUnit(world, command.commanderId, playerId) ? command : null;
 
     case 'capture':
       return authorizeCaptureCommand(world, command, playerId);
@@ -308,7 +309,11 @@ function authorizeCaptureCommand(
     !entityHasBarCaptureCommand(commander)
   ) return null;
   const target = world.getEntity(command.targetId);
-  if (target === undefined || target.ownership === null || target.ownership.playerId === playerId) return null;
+  if (
+    target === undefined ||
+    target.ownership === null ||
+    world.arePlayersAllied(target.ownership.playerId, playerId)
+  ) return null;
   return command;
 }
 
@@ -526,6 +531,29 @@ function authorizeAttackCommand(
     if (!entityHasBarAttackCommand(entity)) continue;
     if (!entityCanBarAttackTarget(entity, target)) continue;
     entityIds.push(id);
+  }
+  if (entityIds.length === 0) return null;
+  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
+function authorizeAttackGroundCommand(
+  world: WorldState,
+  command: AttackGroundCommand,
+  playerId: PlayerId,
+): AttackGroundCommand | null {
+  const sourceIds = command.entityIds;
+  if (sourceIds.length === 0) return null;
+
+  const entityIds: EntityId[] = [];
+  for (let i = 0; i < sourceIds.length; i++) {
+    const entity = world.getEntity(sourceIds[i]);
+    if (
+      entity !== undefined &&
+      entity.ownership?.playerId === playerId &&
+      entityCanBarAttackGround(entity)
+    ) {
+      entityIds.push(entity.id);
+    }
   }
   if (entityIds.length === 0) return null;
   return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
@@ -819,6 +847,15 @@ function isOwnedUnit(world: WorldState, entityId: EntityId, playerId: PlayerId):
     entity.ownership !== null &&
     entity.ownership.playerId === playerId
   );
+}
+
+function isOwnedBuilderUnit(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {
+  const entity = world.getEntity(entityId);
+  return entity !== undefined &&
+    entity.type === 'unit' &&
+    entity.unit !== null &&
+    entity.builder !== null &&
+    entity.ownership?.playerId === playerId;
 }
 
 function isOwnedFactory(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {

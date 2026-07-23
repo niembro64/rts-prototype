@@ -3,6 +3,7 @@ import type { Entity, UnitAction } from '../../sim/types';
 import { LinePathAccumulator } from './LinePathAccumulator';
 import {
   buildAttackCommandForTarget,
+  buildAttackGroundCommand,
   buildFormationPreservingMoveTargets,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
@@ -293,11 +294,26 @@ export function runRightClickCommandsContractTest(): void {
       fighterFlyingFactoryAttack.entityIds[0] === fighterAttacker.id,
     'BAR armfig/unitEagle fighter analogue must treat local flying factory aircraft as air targets',
   );
+  const mixedAttackPoint = buildAttackGroundCommand(
+    [fighterAttacker, scoutAttacker, dragonflyAttacker],
+    180,
+    120,
+    4,
+    false,
+    6,
+  );
+  assertContract(
+    mixedAttackPoint !== null &&
+      mixedAttackPoint.entityIds.length === 1 &&
+      mixedAttackPoint.entityIds[0] === dragonflyAttacker.id,
+    'BAR Attack Point must retain ground-capable weapons and strip air-only fighters and unarmed scouts',
+  );
 
   const damagedAlly = combatant(40, 1, 50, 60, 0);
   const repairer = combatant(41, 1, 100, 0, 0, [
     { type: 'repair', x: 60, y: 0, targetId: damagedAlly.id },
   ]);
+  repairer.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   assertContract(
     buildRepairCommandForTarget(damagedAlly, repairer, 4, true) === null,
     'shift-appending an already-queued repair must be dropped',
@@ -306,6 +322,25 @@ export function runRightClickCommandsContractTest(): void {
   assertContract(
     freshRepair !== null && freshRepair.targetId === damagedAlly.id,
     'an unqueued repair must not be duplicate-blocked',
+  );
+  const damagedTeamAlly = combatant(44, 2, 50, 70, 0);
+  const alliedRepair = buildRepairCommandForTarget(
+    damagedTeamAlly,
+    repairer,
+    4,
+    false,
+    false,
+    undefined,
+    (a, b) => (a === 1 && b === 2) || (a === 2 && b === 1),
+  );
+  assertContract(
+    alliedRepair?.targetId === damagedTeamAlly.id,
+    'BAR Repair must accept a damaged target owned by an allied player',
+  );
+  const nonBuilderRepairer = combatant(45, 1, 100, 0, 0);
+  assertContract(
+    buildRepairCommandForTarget(damagedAlly, nonBuilderRepairer, 4, false) === null,
+    'Repair command construction must reject selected units without builder capability',
   );
   const buildingShell: Entity = {
     ...createEmptyEntityComponentSlots(),
@@ -323,6 +358,7 @@ export function runRightClickCommandsContractTest(): void {
   const assistingBuilder = combatant(43, 1, 100, 0, 0, [
     { type: 'build', x: 100, y: 100, buildingId: buildingShell.id },
   ]);
+  assistingBuilder.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   assertContract(
     buildRepairCommandForTarget(buildingShell, assistingBuilder, 4, true) === null,
     'shift-appending a repair that duplicates a queued build assist must be dropped',
@@ -388,6 +424,7 @@ function combatant(
       turrets: [
         {
           config: {
+            kind: 'attack',
             passive: false,
             range: 160,
             shot: { type: 'plasma' },

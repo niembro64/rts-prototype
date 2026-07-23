@@ -54,9 +54,21 @@ pub type EntityId = i32;
 pub type PlayerId = i32;
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct SensorMediumTargetRadii {
+    pub aboveWater: f64,
+    pub underwater: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SensorMediumRadiusMatrix {
+    pub aboveWater: SensorMediumTargetRadii,
+    pub underwater: SensorMediumTargetRadii,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct SensorCapabilityConfig {
-    pub fullSightRadius: f64,
-    pub radarRadius: f64,
+    pub fullSight: SensorMediumRadiusMatrix,
+    pub contactSight: SensorMediumRadiusMatrix,
     pub detectorRadius: f64,
     pub trackingRadius: f64,
     pub scanRadius: f64,
@@ -1079,7 +1091,6 @@ pub struct UnitBlueprint {
     pub hp: f64,
     pub radius: UnitRadiusConfig,
     pub supportSurface: UnitSupportSurface,
-    pub fullVisionRadius: f64,
     pub sensors: SensorCapabilityConfig,
     pub mass: f64,
     pub cost: BlueprintJsonValue,

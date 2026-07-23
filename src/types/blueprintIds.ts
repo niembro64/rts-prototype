@@ -13,7 +13,7 @@ export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
   'buildingSolar', 'buildingWind', 'buildingExtractor', 'buildingRadar', 'buildingResourceConverter',
-  'buildingExtractorT2',
+  'buildingExtractorT2', 'buildingSonar',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
@@ -27,7 +27,7 @@ export type TowerBlueprintId = typeof TOWER_BLUEPRINT_IDS[number];
 // historical buildingBlueprintCode field.
 export const STRUCTURE_BLUEPRINT_IDS = [
   'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
-  'towerAntiAir', 'buildingExtractorT2',
+  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar',
 ] as const;
 export type StructureBlueprintId = typeof STRUCTURE_BLUEPRINT_IDS[number];
 

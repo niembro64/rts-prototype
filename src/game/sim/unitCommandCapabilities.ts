@@ -135,6 +135,15 @@ export function entityHasBarAttackCommand(entity: Entity): boolean {
   return entity.unit !== null && entityHasBarSetTargetCommand(entity);
 }
 
+/** Recoil's Attack command is unit-or-map, but weapons authored with
+ *  canattackground=false must not receive the map-point form. */
+export function entityCanBarAttackGround(entity: Entity): boolean {
+  const unitBlueprintId = entity.unit?.unitBlueprintId;
+  return unitBlueprintId !== undefined &&
+    entityHasBarAttackCommand(entity) &&
+    !unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId);
+}
+
 export function entityMatchesBarLegacyGroundWeaponSelection(entity: Entity): boolean {
   return entityHasBarAttackCommand(entity) && !entityIsBarAirTarget(entity);
 }

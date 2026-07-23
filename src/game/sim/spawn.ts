@@ -24,6 +24,7 @@ import {
   makeMapOvalMetrics,
   mapOvalAngleAt,
   mapOvalPointAt,
+  sampleMapOvalAt,
   type MapOvalMetrics,
 } from './mapOval';
 import { angleDeltaAbs } from '../math';
@@ -381,6 +382,8 @@ function placeArcRow(
   sectorAngle: number,
   playerId: PlayerId,
   factoryWaypoint: InitialFactoryWaypointConfig,
+  searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
+  acceptCandidate: ((x: number, y: number) => boolean) | null = null,
 ): Entity[] {
   if (count <= 0) return [];
   const entities: Entity[] = [];
@@ -397,6 +400,9 @@ function placeArcRow(
       point.y,
       playerId,
       factoryWaypoint,
+      searchOffsets,
+      null,
+      acceptCandidate,
     );
     if (e) entities.push(e);
   }
@@ -522,6 +528,22 @@ function isFabricatorFootprintOverWater(
   return isWaterAt(x, y, world.mapWidth, world.mapHeight);
 }
 
+function isRectFootprintOverWater(
+  world: WorldState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const halfWidth = width * 0.5;
+  const halfHeight = height * 0.5;
+  return isWaterAt(x, y, world.mapWidth, world.mapHeight) &&
+    isWaterAt(x - halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
+    isWaterAt(x + halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
+    isWaterAt(x - halfWidth, y + halfHeight, world.mapWidth, world.mapHeight) &&
+    isWaterAt(x + halfWidth, y + halfHeight, world.mapWidth, world.mapHeight);
+}
+
 function configureOuterWaterFactoryWaypoints(
   world: WorldState,
   entity: Entity,
@@ -627,6 +649,10 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingRadar.radiusFraction,
   );
+  const authoredSonarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.sonarRadiusFraction,
+  );
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerBeamMega.radiusFraction,
@@ -705,10 +731,11 @@ export function spawnInitialBases(
     // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster. Gated by the towerFabricator
     // tower toggle — disabling it removes the demo's whole factory ring.
+    let waterFactories: Entity[] = [];
     if (isTowerEnabled('towerFabricator')) {
       // Offshore factories are inserted first so the deterministic factory
       // update order is stable across every one-per-unit production line.
-      const waterFactories = placeFactoryArcRowForUnitBlueprintIds(
+      waterFactories = placeFactoryArcRowForUnitBlueprintIds(
         world,
         construction,
         waterFactoryUnitBlueprintIds,
@@ -751,6 +778,42 @@ export function spawnInitialBases(
         playerId,
       );
       entities.push(...waterFactories, ...landFactories);
+    }
+
+    // One Sonar sits immediately outside the three offshore Fabricator rings.
+    // Use their actual post-grid-snap radius, then add both collision radii
+    // plus one grid cell so the installation remains visually separated.
+    if (isBuildingEnabled('buildingSonar')) {
+      let outermostWaterFactoryRadius = waterFactoryRadius;
+      for (let j = 0; j < waterFactories.length; j++) {
+        const factory = waterFactories[j];
+        outermostWaterFactoryRadius = Math.max(
+          outermostWaterFactoryRadius,
+          sampleMapOvalAt(
+            oval,
+            factory.transform.x,
+            factory.transform.y,
+          ).distance,
+        );
+      }
+      const sonarConfig = getBuildingConfig('buildingSonar');
+      const sonarRadius = Math.max(
+        authoredSonarRadius,
+        outermostWaterFactoryRadius +
+          fabricatorConfig.radius.collision +
+          sonarConfig.radius.collision +
+          BUILD_GRID_CELL_SIZE,
+      );
+      const sonarWidth = sonarConfig.gridWidth * BUILD_GRID_CELL_SIZE;
+      const sonarHeight = sonarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
+      entities.push(...placeArcRow(
+        world, construction, 'buildingSonar', DEMO_CONFIG.buildingSonarCount,
+        oval, sonarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
+        (x, y) =>
+          sampleMapOvalAt(oval, x, y).distance >= sonarRadius &&
+          isRectFootprintOverWater(world, x, y, sonarWidth, sonarHeight),
+      ));
     }
 
     // megaBeam tower arc — covers the approach to the base from the

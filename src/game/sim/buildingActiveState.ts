@@ -41,8 +41,8 @@ export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
 /** Which building blueprints use the active-state fortify mechanic.
  *  Producer buildings (solar/wind/extractor) gate resource income on
- *  state.open; radar gates sensor coverage on state.open; converter
- *  gates the energy↔metal swap on state.open. All five fortify
+ *  state.open; radar/sonar gate sensor coverage on state.open; converter
+ *  gates the energy↔metal swap on state.open. Every active-state structure fortifies
  *  identically while OFF (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
 export function buildingBlueprintHasActiveState(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
@@ -51,6 +51,7 @@ export function buildingBlueprintHasActiveState(
     || buildingBlueprintId === 'buildingWind'
     || isMetalExtractorBlueprintId(buildingBlueprintId)
     || buildingBlueprintId === 'buildingRadar'
+    || buildingBlueprintId === 'buildingSonar'
     || buildingBlueprintId === 'buildingResourceConverter';
 }
 

@@ -319,7 +319,7 @@ const barOrderCommandCellCount = computed(() => {
     )
   ) {
     if (props.selection.hasDGun) count += 1;
-    if (props.selection.hasBuilder) count += isBarHotkeyPreset.value ? 3 : 2; // repair, restore, reclaim
+    if (props.selection.hasBuilder) count += 2; // repair, reclaim
     if (showAreaMexButton.value) count += 1;
     if (showCaptureButton.value) count += 1; // capture
     if (showResurrectButton.value) count += 1;
@@ -581,6 +581,7 @@ const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprin
   buildingSolar: 'energy',
   buildingWind: 'energy',
   buildingRadar: 'util',
+  buildingSonar: 'util',
   towerFabricator: 'builder',
   towerAntiAir: 'aa',
   towerBeamMega: 'weapon',
@@ -636,6 +637,7 @@ const COMPACT_BUILDING_LABELS: Record<string, string> = {
   Wind: 'Wnd',
   Extractor: 'Ext',
   Radar: 'Rad',
+  Sonar: 'Son',
   Converter: 'Conv',
   'Anti-Air Tower': 'AA',
 };
@@ -660,7 +662,6 @@ const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> 
   'command.dgun': 'Fire the powerful commander Disintegrator-gun',
   'combat.manualLaunch': 'Launch a missile at a target',
   'combat.repair': 'Repair a damaged unit',
-  'combat.restore': 'Restore an area of the map to its original height',
   'combat.reclaim': 'Suck metal/energy from wrecks or features (trees/stones)',
   'combat.capture': 'Convert units that belong to the enemy (or ally)',
   'combat.resurrect': 'Revive wrecks to become units again (click-drag for area)',
@@ -2593,18 +2594,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Repair</span>
           <span class="btn-key">{{ hotkey('combat.repair') }}</span>
-        </button>
-        <button
-          v-if="selection.hasBuilder && isBarHotkeyPreset"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isRestoreAreaMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.restore }"
-          :title="actionTitle('Restore', 'combat.restore')"
-          @click="actions.toggleRestoreArea()"
-        >
-          <span class="btn-label">Restore</span>
-          <span class="btn-key">{{ hotkey('combat.restore') }}</span>
         </button>
         <button
           v-if="selection.hasBuilder"

@@ -5,12 +5,16 @@ import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
-  getEntityCloakDetectionRadius,
+  getEntityCloakDetectionTargetRadii,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
+  getEntitySensorMedium,
+  getEntitySonarRadius,
   getEntityVisibilityPadding,
+  getSensorMediumAtZ,
   isEntityCloaked,
 } from '../sim/sensorCoverage';
+import type { SensorMedium } from '../sim/sensorConfig';
 import {
   ENTITY_STATE_KIND_BUILDING,
   ENTITY_STATE_KIND_TOWER,
@@ -54,17 +58,13 @@ const EARSHOT_PAD = 600;
  *  a small bump. */
 const VISION_SOURCE_EYE_HEIGHT = 30;
 
-/** Target-side z offset above transform.z when running the LOS check.
- *  Slightly less than VISION_SOURCE_EYE_HEIGHT — the source is
- *  actively looking (turret head, sensor mast), the target is just a
- *  body to be observed. */
-const VISION_TARGET_BODY_HEIGHT = 15;
-
 type VisionSource = {
   x: number;
   y: number;
   z: number;
   radius: number;
+  /** Null is reserved for deliberately medium-agnostic scan pulses. */
+  targetMedium: SensorMedium | null;
 };
 type VisionSourceCells = Array<number[] | undefined>;
 
@@ -146,11 +146,12 @@ function appendScanPulseWireRow(
 
 /** Per-recipient visibility filter.
  *
- *  Two parallel source pools (FOW-03):
+ *  Three parallel information pools (FOW-03):
    *    - fullSources: entities explicitly authored with full-sight
    *      sensors. Grant FULL info (entity present in the main snapshot
    *      with all fields).
-   *    - radarSources: entities explicitly authored with radar sensors.
+   *    - radarSources / sonarSources: entities explicitly authored with
+   *      air-contact radar or water-contact sonar sensors.
    *      Grant ONLY positional intel — the entity appears on the
    *      minimap as a blip but is omitted from the main snapshot, so
    *      the player learns where without learning what / HP / orders.
@@ -164,6 +165,8 @@ export class SnapshotVisibility {
   private readonly earshotSourceCells: VisionSourceCells = [];
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells: VisionSourceCells = [];
+  private readonly sonarSources: VisionSource[] = [];
+  private readonly sonarSourceCells: VisionSourceCells = [];
   private readonly detectorSources: VisionSource[] = [];
   private readonly detectorSourceCells: VisionSourceCells = [];
   private readonly visibleEntityIds: EntityId[] = [];
@@ -343,7 +346,12 @@ export class SnapshotVisibility {
     }
     const padding = getEntityVisibilityPadding(entity);
     const result = isEntityCloaked(entity)
-      ? this.isEntityDetected(entity.transform.x, entity.transform.y, padding)
+      ? this.isEntityDetected(
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.z,
+          padding,
+        )
       : this.isEntityVisibleWithLos(
           entity.transform.x,
           entity.transform.y,
@@ -370,9 +378,16 @@ export class SnapshotVisibility {
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) return false;
     const sourceIndexes = this.fullSourceCells[this.cellKey(cx, cy)];
     if (!sourceIndexes) return false;
-    const targetZ = z + VISION_TARGET_BODY_HEIGHT;
+    const targetZ = z;
+    const targetMedium = getSensorMediumAtZ(z);
     for (let i = 0; i < sourceIndexes.length; i++) {
       const source = this.fullSources[sourceIndexes[i]];
+      if (
+        source.targetMedium !== null &&
+        source.targetMedium !== targetMedium
+      ) {
+        continue;
+      }
       const dx = x - source.x;
       const dy = y - source.y;
       const r = source.radius + padding;
@@ -388,14 +403,25 @@ export class SnapshotVisibility {
     return false;
   }
 
-  private isEntityDetected(x: number, y: number, padding: number): boolean {
+  private isEntityDetected(
+    x: number,
+    y: number,
+    z: number,
+    padding: number,
+  ): boolean {
     this.ensureAuxiliaryObservationSources();
-    return this.isPointVisibleIn(this.detectorSources, this.detectorSourceCells, x, y, padding);
+    return this.isPointVisibleIn(
+      this.detectorSources,
+      this.detectorSourceCells,
+      x,
+      y,
+      padding,
+      getSensorMediumAtZ(z),
+    );
   }
 
-  /** Minimap-tier check: full vision OR radar coverage. Used by the
-   *  minimap serializer so radar buildings reveal enemy positions
-   *  without leaking the rest of the snapshot. */
+  /** Contact-tier check: full sight, air-only radar, or water-only sonar.
+   * Used by the minimap serializer without leaking full entity identity. */
   isEntityOnRadar(entity: Entity): boolean {
     if (!this.isFiltered) return true;
     const ownership = entity.ownership;
@@ -403,15 +429,44 @@ export class SnapshotVisibility {
     if (this.entityIdBuffersComplete) {
       return this.radarEntityIdSet.has(entity.id);
     }
-    const padding = getEntityVisibilityPadding(entity);
+    const padding = 0;
+    const medium = getEntitySensorMedium(entity);
     if (isEntityCloaked(entity)) {
-      return this.isEntityDetected(entity.transform.x, entity.transform.y, padding);
+      return this.isEntityDetected(
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+        padding,
+      );
     }
-    if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
+    if (this.isPointVisibleIn(
+      this.fullSources,
+      this.fullSourceCells,
+      entity.transform.x,
+      entity.transform.y,
+      padding,
+      medium,
+    )) {
       return true;
     }
     this.ensureAuxiliaryObservationSources();
-    return this.isPointVisibleIn(this.radarSources, this.radarSourceCells, entity.transform.x, entity.transform.y, padding);
+    return medium === 'underwater'
+      ? this.isPointVisibleIn(
+          this.sonarSources,
+          this.sonarSourceCells,
+          entity.transform.x,
+          entity.transform.y,
+          padding,
+          medium,
+        )
+      : this.isPointVisibleIn(
+          this.radarSources,
+          this.radarSourceCells,
+          entity.transform.x,
+          entity.transform.y,
+          padding,
+          medium,
+        );
   }
 
   /** Full-visibility entity ids for the main snapshot serializer.
@@ -483,6 +538,7 @@ export class SnapshotVisibility {
       this.ensureAuxiliaryObservationSources();
       this.addSourceEntityCandidates(this.fullSources, true);
       this.addSourceEntityCandidates(this.radarSources, false);
+      this.addSourceEntityCandidates(this.sonarSources, false);
       this.addSourceEntityCandidates(this.detectorSources, true);
     } finally {
       this.entityIdBuffersComplete = true;
@@ -560,7 +616,7 @@ export class SnapshotVisibility {
       ) {
         continue;
       }
-      const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
+      const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot);
       this.entityVisibilityMemo.set(id, visible);
       if (visible) {
         this.appendVisibleEntityIdById(id, slot);
@@ -572,20 +628,12 @@ export class SnapshotVisibility {
   private isEntityStateSlotVisibleWithLos(
     views: EntityStateViews,
     slot: number,
-    kind: number,
   ): boolean {
-    const padding = kind === ENTITY_STATE_KIND_UNIT
-      ? Math.max(
-          views.radiusOther[slot],
-          views.radiusHitbox[slot],
-          views.radiusCollision[slot],
-        )
-      : views.radiusOther[slot];
     return this.isEntityVisibleWithLos(
       views.posX[slot],
       views.posY[slot],
       views.posZ[slot],
-      padding,
+      0,
     );
   }
 
@@ -792,8 +840,9 @@ export class SnapshotVisibility {
       // height — units on flat ground can still see over a small
       // bump, units behind a tall ridge can't.
       const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
-      const fullSightRadius = getEntityFullVisionRadius(entity);
-      if (fullSightRadius > 0) {
+      for (const targetMedium of ['aboveWater', 'underwater'] as const) {
+        const fullSightRadius = getEntityFullVisionRadius(entity, targetMedium);
+        if (fullSightRadius <= 0) continue;
         this.addSource(
           this.fullSources,
           this.fullSourceCells,
@@ -801,6 +850,7 @@ export class SnapshotVisibility {
           y,
           eyeZ,
           fullSightRadius,
+          targetMedium,
         );
       }
     }
@@ -831,6 +881,7 @@ export class SnapshotVisibility {
         pulse.y,
         pulse.z + VISION_SOURCE_EYE_HEIGHT,
         pulse.radius,
+        null,
       );
     }
   }
@@ -851,10 +902,25 @@ export class SnapshotVisibility {
           y,
           eyeZ,
           radarRadius,
+          'aboveWater',
         );
       }
-      const detectorRadius = getEntityCloakDetectionRadius(entity);
-      if (detectorRadius > 0) {
+      const sonarRadius = getEntitySonarRadius(entity);
+      if (sonarRadius > 0) {
+        this.addSource(
+          this.sonarSources,
+          this.sonarSourceCells,
+          x,
+          y,
+          eyeZ,
+          sonarRadius,
+          'underwater',
+        );
+      }
+      const detectorRadii = getEntityCloakDetectionTargetRadii(entity);
+      for (const targetMedium of ['aboveWater', 'underwater'] as const) {
+        const detectorRadius = detectorRadii[targetMedium];
+        if (detectorRadius <= 0) continue;
         this.addSource(
           this.detectorSources,
           this.detectorSourceCells,
@@ -862,6 +928,7 @@ export class SnapshotVisibility {
           y,
           eyeZ,
           detectorRadius,
+          targetMedium,
         );
       }
     }
@@ -899,6 +966,7 @@ export class SnapshotVisibility {
         pulse.y,
         pulse.z + VISION_SOURCE_EYE_HEIGHT,
         pulse.radius,
+        null,
       );
       appendScanPulseWireRow(this.cachedScanPulseWireSource, pulse);
     }
@@ -969,10 +1037,11 @@ export class SnapshotVisibility {
     y: number,
     z: number,
     radius: number,
+    targetMedium: SensorMedium | null,
   ): number {
     if (radius <= 0) return -1;
     const index = sources.length;
-    sources.push({ x, y, z, radius });
+    sources.push({ x, y, z, radius, targetMedium });
     this.addSourceCells(cells, index, x, y, radius);
     return index;
   }
@@ -1009,6 +1078,7 @@ export class SnapshotVisibility {
     x: number,
     y: number,
     padding: number,
+    targetMedium: SensorMedium | null = null,
   ): boolean {
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
@@ -1017,6 +1087,13 @@ export class SnapshotVisibility {
     if (!sourceIndexes) return false;
     for (let i = 0; i < sourceIndexes.length; i++) {
       const source = sources[sourceIndexes[i]];
+      if (
+        targetMedium !== null &&
+        source.targetMedium !== null &&
+        source.targetMedium !== targetMedium
+      ) {
+        continue;
+      }
       const dx = x - source.x;
       const dy = y - source.y;
       const r = source.radius + padding;

@@ -122,6 +122,7 @@ import {
   entityHasBarAreaAttackCommand,
   entityHasBarAttackCommand,
   entityHasBarCaptureCommand,
+  entityCanBarAttackGround,
   entityCanBarAttackTarget,
   entityHasBarFireControlCommand,
   entityHasBarMoveStateCommand,
@@ -2096,16 +2097,21 @@ function clampReclaimAreaRadius(radius: number): number {
   return Math.max(1, Math.min(radius, RECLAIM_AREA_MAX_RADIUS));
 }
 
-function isRepairableByCommander(commander: Entity, target: Entity | undefined): target is Entity {
+function isRepairableByCommander(
+  world: WorldState,
+  commander: Entity,
+  target: Entity | undefined,
+): target is Entity {
   if (commander.ownership === null || target === undefined || target.ownership === null) return false;
-  if (target.ownership.playerId !== commander.ownership.playerId) return false;
+  if (!world.arePlayersAllied(target.ownership.playerId, commander.ownership.playerId)) return false;
 
   const isIncompleteBuilding = isBuildInProgress(target.buildable);
-  const isDamagedUnit = !!target.unit &&
-    target.unit.hp < target.unit.maxHp &&
-    target.unit.hp > 0;
+  const hpState = target.unit ?? target.building;
+  const isDamagedEntity = hpState !== null &&
+    hpState.hp < hpState.maxHp &&
+    hpState.hp > 0;
 
-  return isIncompleteBuilding || isDamagedUnit;
+  return isIncompleteBuilding || isDamagedEntity;
 }
 
 function entityAreaDistanceSq(target: Entity, x: number, y: number): number {
@@ -2170,7 +2176,7 @@ function findRepairAreaTargets(
   const buildings = ctx.world.getBuildings();
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
-    if (!isRepairableByCommander(commander, target)) continue;
+    if (!isRepairableByCommander(ctx.world, commander, target)) continue;
     if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
@@ -2180,7 +2186,7 @@ function findRepairAreaTargets(
   const units = ctx.world.getUnits();
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
-    if (!isRepairableByCommander(commander, target)) continue;
+    if (!isRepairableByCommander(ctx.world, commander, target)) continue;
     if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
@@ -2389,7 +2395,7 @@ function enqueueRepairAction(
     commander.unit === null ||
     commander.builder === null
   ) return;
-  if (!isRepairableByCommander(commander, target)) return;
+  if (!isRepairableByCommander(ctx.world, commander, target)) return;
 
   // The action's z is the target's actual altitude (already correct on
   // the entity transform), not a terrain re-sample at (x, y). For a
@@ -2480,7 +2486,13 @@ function enqueueCaptureAction(
     commander.ownership === null ||
     !entityHasBarCaptureCommand(commander)
   ) return;
-  if (!isCapturableTarget(target, commander.ownership.playerId)) return;
+  if (
+    !isCapturableTarget(
+      target,
+      commander.ownership.playerId,
+      (a, b) => ctx.world.arePlayersAllied(a, b),
+    )
+  ) return;
 
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
@@ -2595,8 +2607,29 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
   const queueInsertIndex = commandQueueInsertIndex(command);
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
+    const compatibleTargets: Entity[] = [];
+    for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+      if (entityCanBarAttackTarget(entity, targets[targetIndex])) {
+        compatibleTargets.push(targets[targetIndex]);
+      }
+    }
+    if (compatibleTargets.length === 0) {
+      executeMoveCommand(ctx, {
+        type: 'move',
+        tick: command.tick,
+        entityIds: [entity.id],
+        targetX: command.targetX,
+        targetY: command.targetY,
+        targetZ: command.targetZ,
+        waypointType: 'fight',
+        queue: command.queue,
+        queueFront: command.queueFront,
+        queueInsertIndex: command.queueInsertIndex,
+      });
+      continue;
+    }
     enqueueAreaTargetActionsInOrder(
-      targets,
+      compatibleTargets,
       command.queue,
       queueFront,
       queueInsertIndex,
@@ -2751,7 +2784,13 @@ function enqueueAttackGroundAction(
   queueFront: boolean,
   queueInsertIndex?: number,
 ): void {
-  if (!entity || entity.type !== 'unit' || !entity.unit || !entity.combat) return;
+  if (
+    !entity ||
+    entity.type !== 'unit' ||
+    !entity.unit ||
+    !entity.combat ||
+    !entityCanBarAttackGround(entity)
+  ) return;
   const action: UnitAction = {
     type: 'attackGround',
     x: targetX,

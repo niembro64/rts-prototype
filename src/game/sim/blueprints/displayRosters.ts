@@ -121,6 +121,7 @@ function buildStructureRosterDisplay(
 export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildMenuCategory {
   switch (buildingBlueprintId) {
     case 'buildingRadar':
+    case 'buildingSonar':
       return 'Intel';
     case 'towerFabricator':
       return 'Production';

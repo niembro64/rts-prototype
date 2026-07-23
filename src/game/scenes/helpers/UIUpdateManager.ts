@@ -22,6 +22,10 @@ import {
   getUnitLocomotion,
 } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
+import {
+  getBuildingAuthoredRadarRadius,
+  getBuildingAuthoredSonarRadius,
+} from '../../sim/sensorCoverage';
 import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
 import { isBallisticArcWeapon, isCommander } from '../../sim/combat/combatUtils';
@@ -522,7 +526,10 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (entity.factory !== null) {
         details.push({ label: 'Move State', value: unitMoveStateLabel(entity.factory.moveState) });
       }
-      if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
+      const radarRadius = getBuildingAuthoredRadarRadius(entity.buildingBlueprintId);
+      const sonarRadius = getBuildingAuthoredSonarRadius(entity.buildingBlueprintId);
+      if (radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(radarRadius) });
+      if (sonarRadius > 0) details.push({ label: 'Sonar', value: fmtStat(sonarRadius) });
       if (entity.factory !== null) {
         details.push({
           label: 'Factory',
