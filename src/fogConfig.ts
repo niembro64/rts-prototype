@@ -3,8 +3,11 @@ import rawFogConfig from './fogConfig.json';
 type FogPresentationConfig = {
   enabledByDefault: boolean;
   coverage: {
-    textureSize: number;
+    supersample: number;
+    maxTextureDimension: number;
     maxRegions: number;
+    distanceFieldFeatherPixels: number;
+    edgeSoftnessPixels: number;
   };
   shade: {
     colorHex: string;
@@ -12,7 +15,6 @@ type FogPresentationConfig = {
     radarDarknessPercent: number;
     unseenColorLossPercent: number;
     radarColorLossPercent: number;
-    edgeSoftnessWorld: number;
   };
 };
 
@@ -24,20 +26,31 @@ const FOG_CONFIG_RAW = rawFogConfig as FogConfig;
 const presentation = FOG_CONFIG_RAW.presentation;
 
 assertBoolean(presentation.enabledByDefault, 'fogConfig.presentation.enabledByDefault');
+assertPositive(
+  presentation.coverage.supersample,
+  'fogConfig.presentation.coverage.supersample',
+);
 assertPositiveInteger(
-  presentation.coverage.textureSize,
-  'fogConfig.presentation.coverage.textureSize',
+  presentation.coverage.maxTextureDimension,
+  'fogConfig.presentation.coverage.maxTextureDimension',
 );
 assertPositiveInteger(
   presentation.coverage.maxRegions,
   'fogConfig.presentation.coverage.maxRegions',
+);
+assertPositive(
+  presentation.coverage.distanceFieldFeatherPixels,
+  'fogConfig.presentation.coverage.distanceFieldFeatherPixels',
+);
+assertPositive(
+  presentation.coverage.edgeSoftnessPixels,
+  'fogConfig.presentation.coverage.edgeSoftnessPixels',
 );
 assertCssHex(presentation.shade.colorHex, 'fogConfig.presentation.shade.colorHex');
 assertPercent(presentation.shade.unseenDarknessPercent, 'fogConfig.presentation.shade.unseenDarknessPercent');
 assertPercent(presentation.shade.radarDarknessPercent, 'fogConfig.presentation.shade.radarDarknessPercent');
 assertPercent(presentation.shade.unseenColorLossPercent, 'fogConfig.presentation.shade.unseenColorLossPercent');
 assertPercent(presentation.shade.radarColorLossPercent, 'fogConfig.presentation.shade.radarColorLossPercent');
-assertNonNegative(presentation.shade.edgeSoftnessWorld, 'fogConfig.presentation.shade.edgeSoftnessWorld');
 export const FOG_CONFIG = FOG_CONFIG_RAW;
 
 function assertBoolean(value: unknown, fieldName: string): asserts value is boolean {
@@ -54,12 +67,6 @@ function assertPositiveInteger(value: unknown, fieldName: string): asserts value
   assertPositive(value, fieldName);
   if (!Number.isInteger(value)) {
     throw new Error(`${fieldName} must be a positive integer`);
-  }
-}
-
-function assertNonNegative(value: unknown, fieldName: string): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${fieldName} must be a non-negative finite number`);
   }
 }
 

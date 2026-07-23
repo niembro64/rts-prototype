@@ -74,7 +74,6 @@
   "entityShadow": {
     "enabled": true,
     "maxInstances": 16000,
-    "edgeSoftnessRatio": 0.58,
     "unitHitboxRadiusMultiplier": 2,
     "unitSunStretch": 1.35,
     "buildingRadiusMultiplier": 2,

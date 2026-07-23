@@ -2,16 +2,18 @@
   "presentation": {
     "enabledByDefault": true,
     "coverage": {
-      "textureSize": 1024,
-      "maxRegions": 65536
+      "supersample": 2,
+      "maxTextureDimension": 4096,
+      "maxRegions": 65536,
+      "distanceFieldFeatherPixels": 32,
+      "edgeSoftnessPixels": 8
     },
     "shade": {
       "colorHex": "#06090b",
       "unseenDarknessPercent": 60,
       "radarDarknessPercent": 40,
       "unseenColorLossPercent": 50,
-      "radarColorLossPercent": 25,
-      "edgeSoftnessWorld": 192
+      "radarColorLossPercent": 25
     }
   }
 }

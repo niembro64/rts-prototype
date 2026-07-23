@@ -45,7 +45,6 @@ export type FogShadePresentationSettings = {
   radarDarkness: number;
   unseenDesaturation: number;
   radarDesaturation: number;
-  edgeSoftnessWorld: number;
 };
 
 // ── Authored data lives in clientBarConfig.json ──
@@ -1113,7 +1112,6 @@ export function getFogShadePresentationSettings(): FogShadePresentationSettings 
     radarDarkness: FOG_PRESENTATION.shade.radarDarknessPercent / 100,
     unseenDesaturation: FOG_PRESENTATION.shade.unseenColorLossPercent / 100,
     radarDesaturation: FOG_PRESENTATION.shade.radarColorLossPercent / 100,
-    edgeSoftnessWorld: FOG_PRESENTATION.shade.edgeSoftnessWorld,
   };
 }
 

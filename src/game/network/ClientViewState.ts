@@ -4552,7 +4552,6 @@ export class ClientViewState {
           views.x[slot],
           views.y[slot],
           views.z[slot],
-          views.hp[slot],
           views.radiusHitbox[slot],
           Math.max(1, views.supportPointOffsetZ[slot] || views.radiusOther[slot]),
           mapWidth,
@@ -4580,7 +4579,6 @@ export class ClientViewState {
         out.entityShadows.pushBuildingState(
           views.x[slot],
           views.y[slot],
-          views.hp[slot],
           views.entityShadowWidth[slot],
           views.entityShadowDepth[slot],
           renderScope,

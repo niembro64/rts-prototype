@@ -37,13 +37,12 @@ export class EntityShadowRenderPacket3D {
     scope: ViewportFootprint,
   ): void {
     const unit = entity.unit;
-    if (unit === null || unit.hp <= 0) return;
+    if (unit === null) return;
     this.pushUnitState(
       entity.id,
       entity.transform.x,
       entity.transform.y,
       entity.transform.z,
-      unit.hp,
       unit.radius.hitbox,
       unit.supportPointOffsetZ ?? unit.radius.other,
       mapWidth,
@@ -57,14 +56,12 @@ export class EntityShadowRenderPacket3D {
     x: number,
     y: number,
     z: number,
-    hp: number,
     radiusHitbox: number,
     restHeight: number,
     mapWidth: number,
     mapHeight: number,
     scope: ViewportFootprint,
   ): void {
-    if (hp <= 0) return;
     const crossRadius = Math.max(
       1,
       radiusHitbox * ENTITY_SHADOW_RENDER_CONFIG.unitHitboxRadiusMultiplier,
@@ -87,11 +84,10 @@ export class EntityShadowRenderPacket3D {
 
   pushBuilding(entity: Entity, scope: ViewportFootprint): void {
     const building = entity.building;
-    if (building === null || building.hp <= 0) return;
+    if (building === null) return;
     this.pushBuildingState(
       entity.transform.x,
       entity.transform.y,
-      building.hp,
       building.width,
       building.height,
       scope,
@@ -101,12 +97,10 @@ export class EntityShadowRenderPacket3D {
   pushBuildingState(
     x: number,
     y: number,
-    hp: number,
     width: number,
     footprintDepth: number,
     scope: ViewportFootprint,
   ): void {
-    if (hp <= 0) return;
     const crossRadius = Math.max(
       ENTITY_SHADOW_RENDER_CONFIG.minBuildingRadius,
       width * 0.5 * ENTITY_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
