@@ -29,6 +29,8 @@ const FULL_SIGHT_AND_RADAR_G = 1;
 const RADAR_ONLY_R = 0;
 const RADAR_ONLY_G = 1;
 const ENTITY_SHADOW_B = 1;
+const EDGE_SOFTNESS_WORLD =
+  FOG_CONFIG.presentation.coverage.edgeSoftnessWorld;
 
 const sunHorizontalLength = Math.max(
   1.0e-6,
@@ -58,21 +60,6 @@ uniform float uFogOfWarRadarDarkness;
 uniform float uFogOfWarUnseenDesaturation;
 uniform float uFogOfWarRadarDesaturation;
 uniform float uEntityShadowEnabled;
-uniform float uWorldShadeEdgeSoftnessPixels;
-
-float worldShadeScreenCoverage(float coverage) {
-  float coveragePerPixel = max(
-    length(vec2(dFdx(coverage), dFdy(coverage))),
-    0.000001
-  );
-  float signedDistancePixels = (coverage - 0.5) / coveragePerPixel;
-  float halfEdgePixels = max(0.5, uWorldShadeEdgeSoftnessPixels * 0.5);
-  return smoothstep(
-    -halfEdgePixels,
-    halfEdgePixels,
-    signedDistancePixels
-  );
-}
 `;
 
 /** Applies full-sight, radar, unseen, and optional entity-shadow coverage from
@@ -96,10 +83,10 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     vec2(1.0)
   );
   vec4 worldCoverage = texture2D(uWorldShadeMap, worldShadeUv);
-  float fullSightCoverage = worldShadeScreenCoverage(worldCoverage.r);
+  float fullSightCoverage = smoothstep(0.02, 0.98, worldCoverage.r);
   float radarCoverage = max(
     fullSightCoverage,
-    worldShadeScreenCoverage(worldCoverage.g)
+    smoothstep(0.02, 0.98, worldCoverage.g)
   );
   float radarOnlyCoverage = max(0.0, radarCoverage - fullSightCoverage);
   float unseenCoverage = 1.0 - radarCoverage;
@@ -111,7 +98,7 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     radarOnlyCoverage * uFogOfWarRadarDesaturation +
     unseenCoverage * uFogOfWarUnseenDesaturation
   );
-  float entityShadowDarkness = ${receiveEntityShadows ? 'uEntityShadowEnabled * worldShadeScreenCoverage(worldCoverage.b) * uFogOfWarRadarDarkness' : '0.0'};
+  float entityShadowDarkness = ${receiveEntityShadows ? 'uEntityShadowEnabled * smoothstep(0.02, 0.98, worldCoverage.b) * uFogOfWarRadarDarkness' : '0.0'};
   float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
   diffuseColor.rgb = mix(
     diffuseColor.rgb,
@@ -131,10 +118,12 @@ type RegionBuffers = {
   centers: Float32Array;
   axisX: Float32Array;
   axisY: Float32Array;
+  innerRatios: Float32Array;
   channels: Float32Array;
   centerAttribute: THREE.InstancedBufferAttribute;
   axisXAttribute: THREE.InstancedBufferAttribute;
   axisYAttribute: THREE.InstancedBufferAttribute;
+  innerRatioAttribute: THREE.InstancedBufferAttribute;
   channelsAttribute: THREE.InstancedBufferAttribute;
 };
 
@@ -160,7 +149,6 @@ export class WorldShade3D {
   private coverageMaxY = 1;
   private readonly coverageBoundsMinUniform = { value: new THREE.Vector2() };
   private readonly coverageBoundsSizeUniform = { value: new THREE.Vector2(1, 1) };
-  private readonly distanceFieldFeatherTexelsUniform = { value: 1 };
   private readonly drawingBufferSize = new THREE.Vector2();
   private coverageTextureWidth = 1;
   private coverageTextureHeight = 1;
@@ -171,9 +159,6 @@ export class WorldShade3D {
   private readonly radarDarknessUniform = { value: 0 };
   private readonly unseenDesaturationUniform = { value: 0 };
   private readonly radarDesaturationUniform = { value: 0 };
-  private readonly edgeSoftnessPixelsUniform = {
-    value: FOG_CONFIG.presentation.coverage.edgeSoftnessPixels,
-  };
   private readonly entityShadowEnabledUniform = {
     value: ENTITY_SHADOW_RENDER_CONFIG.enabled ? 1 : 0,
   };
@@ -207,10 +192,10 @@ export class WorldShade3D {
     geometry.setAttribute(
       'position',
       new THREE.Float32BufferAttribute([
-        -1.5, -1.5, 0,
-        1.5, -1.5, 0,
-        1.5, 1.5, 0,
-        -1.5, 1.5, 0,
+        -1, -1, 0,
+        1, -1, 0,
+        1, 1, 0,
+        -1, 1, 0,
       ], 3),
     );
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
@@ -222,16 +207,17 @@ export class WorldShade3D {
       uniforms: {
         uCoverageBoundsMin: this.coverageBoundsMinUniform,
         uCoverageBoundsSize: this.coverageBoundsSizeUniform,
-        uDistanceFieldFeatherTexels: this.distanceFieldFeatherTexelsUniform,
       },
       vertexShader: `
 attribute vec2 regionCenter;
 attribute vec2 regionAxisX;
 attribute vec2 regionAxisY;
+attribute vec2 regionInnerRatio;
 attribute vec3 regionChannels;
 uniform vec2 uCoverageBoundsMin;
 uniform vec2 uCoverageBoundsSize;
 varying vec2 vRegionPoint;
+varying vec2 vRegionInnerRatio;
 varying vec3 vRegionChannels;
 void main() {
   vec2 regionPoint = position.xy;
@@ -241,33 +227,35 @@ void main() {
   vec2 coverageUv = (worldPoint - uCoverageBoundsMin) / uCoverageBoundsSize;
   gl_Position = vec4(coverageUv * 2.0 - 1.0, 0.0, 1.0);
   vRegionPoint = regionPoint;
+  vRegionInnerRatio = regionInnerRatio;
   vRegionChannels = regionChannels;
 }
 `,
       fragmentShader: `
 varying vec2 vRegionPoint;
+varying vec2 vRegionInnerRatio;
 varying vec3 vRegionChannels;
-uniform float uDistanceFieldFeatherTexels;
 void main() {
   float radius = length(vRegionPoint);
-  float radiusPerTexel = max(
-    length(vec2(dFdx(radius), dFdy(radius))),
-    0.000001
-  );
-  float halfFeather = clamp(
-    radiusPerTexel * uDistanceFieldFeatherTexels * 0.5,
-    0.000001,
-    0.5
-  );
-  // The intermediate mask is a linear, signed-distance-like ramp centered
-  // exactly on the authored radius. Its midpoint therefore never moves when
-  // zoom changes the world-to-texture scale. The final material shader owns
-  // the visible smoothstep and measures it in true screen pixels.
-  float coverage = clamp(
-    (1.0 + halfFeather - radius) / (2.0 * halfFeather),
+  vec2 direction = radius > 0.000001
+    ? vRegionPoint / radius
+    : vec2(1.0, 0.0);
+  vec2 safeInnerRatio = max(vRegionInnerRatio, vec2(0.000001));
+  float innerBoundary = all(lessThanEqual(
+    vRegionInnerRatio,
+    vec2(0.000001)
+  ))
+    ? 0.0
+    : 1.0 / length(direction / safeInnerRatio);
+  float edgeProgress = clamp(
+    (radius - innerBoundary) / max(0.000001, 1.0 - innerBoundary),
     0.0,
     1.0
   );
+  // Every channel uses the historical softest FOW curve. For circles this is
+  // exactly the old smoothstep across the configured world-space half-width.
+  // The paired ratios extend that same penumbra to elliptical unit shadows.
+  float coverage = 1.0 - smoothstep(0.0, 1.0, edgeProgress);
   if (coverage <= 0.001) discard;
   gl_FragColor = vec4(vRegionChannels * coverage, 0.0);
 }
@@ -324,7 +312,6 @@ void main() {
     shader.uniforms.uFogOfWarUnseenDesaturation = this.unseenDesaturationUniform;
     shader.uniforms.uFogOfWarRadarDesaturation = this.radarDesaturationUniform;
     shader.uniforms.uEntityShadowEnabled = this.entityShadowEnabledUniform;
-    shader.uniforms.uWorldShadeEdgeSoftnessPixels = this.edgeSoftnessPixelsUniform;
   }
 
   /** Environment props consume fog/radar from the shared field, but entity
@@ -376,6 +363,7 @@ void main() {
     const centers = new Float32Array(this.maxRegions * 2);
     const axisX = new Float32Array(this.maxRegions * 2);
     const axisY = new Float32Array(this.maxRegions * 2);
+    const innerRatios = new Float32Array(this.maxRegions * 2);
     const channels = new Float32Array(this.maxRegions * 3);
     const centerAttribute = new THREE.InstancedBufferAttribute(centers, 2)
       .setUsage(THREE.DynamicDrawUsage);
@@ -383,20 +371,25 @@ void main() {
       .setUsage(THREE.DynamicDrawUsage);
     const axisYAttribute = new THREE.InstancedBufferAttribute(axisY, 2)
       .setUsage(THREE.DynamicDrawUsage);
+    const innerRatioAttribute = new THREE.InstancedBufferAttribute(innerRatios, 2)
+      .setUsage(THREE.DynamicDrawUsage);
     const channelsAttribute = new THREE.InstancedBufferAttribute(channels, 3)
       .setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('regionCenter', centerAttribute);
     geometry.setAttribute('regionAxisX', axisXAttribute);
     geometry.setAttribute('regionAxisY', axisYAttribute);
+    geometry.setAttribute('regionInnerRatio', innerRatioAttribute);
     geometry.setAttribute('regionChannels', channelsAttribute);
     return {
       centers,
       axisX,
       axisY,
+      innerRatios,
       channels,
       centerAttribute,
       axisXAttribute,
       axisYAttribute,
+      innerRatioAttribute,
       channelsAttribute,
     };
   }
@@ -437,10 +430,10 @@ void main() {
     );
   }
 
-  /** Keep the shared coverage field at high display-space detail regardless
-   * of camera zoom. The target tracks the renderer's physical drawing buffer,
-   * supersamples it when the GPU limit permits, and converts the one authored
-   * distance-field seed width into target texels for the region shader. */
+  /** Keep the shared coverage field at high display-space sampling detail.
+   * The target tracks the renderer's physical drawing buffer and supersamples
+   * it when the GPU limit permits. Boundary width is authored separately in
+   * world space, so resizing this texture cannot change edge softness. */
   private syncCoverageTargetSize(): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const drawingWidth = Math.max(1, Math.round(this.drawingBufferSize.x));
@@ -468,8 +461,6 @@ void main() {
       this.coverageTextureHeight = targetHeight;
       this.renderTarget.setSize(targetWidth, targetHeight);
     }
-    this.distanceFieldFeatherTexelsUniform.value =
-      FOG_CONFIG.presentation.coverage.distanceFieldFeatherPixels * effectiveScale;
   }
 
   private collectFogRegions(
@@ -532,20 +523,24 @@ void main() {
     for (let i = 0; i < packet.count; i++) {
       const crossRadius = packet.crossRadius[i];
       const sunRadius = packet.sunRadius[i];
+      const outerCrossRadius = crossRadius + EDGE_SOFTNESS_WORLD;
+      const outerSunRadius = sunRadius + EDGE_SOFTNESS_WORLD;
       if (!this.regionIntersects(
         packet.x[i],
         packet.y[i],
-        Math.max(crossRadius, sunRadius) * 1.5,
+        Math.max(outerCrossRadius, outerSunRadius),
       )) {
         continue;
       }
       this.pushRegion(
         packet.x[i],
         packet.y[i],
-        CROSS_SUN_AXIS_X * crossRadius,
-        CROSS_SUN_AXIS_Y * crossRadius,
-        SUN_AXIS_X * sunRadius,
-        SUN_AXIS_Y * sunRadius,
+        CROSS_SUN_AXIS_X * outerCrossRadius,
+        CROSS_SUN_AXIS_Y * outerCrossRadius,
+        SUN_AXIS_X * outerSunRadius,
+        SUN_AXIS_Y * outerSunRadius,
+        Math.max(0, crossRadius - EDGE_SOFTNESS_WORLD) / outerCrossRadius,
+        Math.max(0, sunRadius - EDGE_SOFTNESS_WORLD) / outerSunRadius,
         0,
         0,
         ENTITY_SHADOW_B,
@@ -564,14 +559,19 @@ void main() {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
       return;
     }
-    if (!this.regionIntersects(x, y, radius * 1.5)) return;
+    const outerRadius = radius + EDGE_SOFTNESS_WORLD;
+    if (!this.regionIntersects(x, y, outerRadius)) return;
+    const innerRatio =
+      Math.max(0, radius - EDGE_SOFTNESS_WORLD) / outerRadius;
     this.pushRegion(
       x,
       y,
-      radius,
+      outerRadius,
       0,
       0,
-      radius,
+      outerRadius,
+      innerRatio,
+      innerRatio,
       r,
       g,
       b,
@@ -585,6 +585,8 @@ void main() {
     axisXy: number,
     axisYx: number,
     axisYy: number,
+    innerRatioX: number,
+    innerRatioY: number,
     r: number,
     g: number,
     b: number,
@@ -599,6 +601,8 @@ void main() {
     this.regions.axisX[vecOffset + 1] = axisXy;
     this.regions.axisY[vecOffset] = axisYx;
     this.regions.axisY[vecOffset + 1] = axisYy;
+    this.regions.innerRatios[vecOffset] = innerRatioX;
+    this.regions.innerRatios[vecOffset + 1] = innerRatioY;
     this.regions.channels[channelOffset] = r;
     this.regions.channels[channelOffset + 1] = g;
     this.regions.channels[channelOffset + 2] = b;
@@ -615,6 +619,7 @@ void main() {
     this.uploadAttribute(this.regions.centerAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.axisXAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.axisYAttribute, this.regionCount * 2);
+    this.uploadAttribute(this.regions.innerRatioAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.channelsAttribute, this.regionCount * 3);
   }
 

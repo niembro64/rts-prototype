@@ -529,9 +529,10 @@ export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 
 // Entity shadows share WorldShade3D's GPU coverage field with full-sight and
 // radar regions. Unit footprints use two times radiusHitbox, then retain the
-// shared sun-axis stretch. All three coverage channels use one texture-space
-// edge-softness rule. Altitude translates the footprint opposite the shared
-// directional light without changing size, softness, or strength.
+// shared sun-axis stretch. All three coverage channels use the same historical
+// 192-world-unit half-width and smoothstep curve. Altitude translates the
+// footprint opposite the shared directional light without changing size,
+// softness, or strength.
 export const ENTITY_SHADOW_RENDER_CONFIG = worldRenderConfigJson.entityShadow;
 
 // Per-kind styling (screen-pixel width, ground lift, render order) for the

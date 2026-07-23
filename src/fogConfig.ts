@@ -6,8 +6,7 @@ type FogPresentationConfig = {
     supersample: number;
     maxTextureDimension: number;
     maxRegions: number;
-    distanceFieldFeatherPixels: number;
-    edgeSoftnessPixels: number;
+    edgeSoftnessWorld: number;
   };
   shade: {
     colorHex: string;
@@ -38,13 +37,9 @@ assertPositiveInteger(
   presentation.coverage.maxRegions,
   'fogConfig.presentation.coverage.maxRegions',
 );
-assertPositive(
-  presentation.coverage.distanceFieldFeatherPixels,
-  'fogConfig.presentation.coverage.distanceFieldFeatherPixels',
-);
-assertPositive(
-  presentation.coverage.edgeSoftnessPixels,
-  'fogConfig.presentation.coverage.edgeSoftnessPixels',
+assertNonNegative(
+  presentation.coverage.edgeSoftnessWorld,
+  'fogConfig.presentation.coverage.edgeSoftnessWorld',
 );
 assertCssHex(presentation.shade.colorHex, 'fogConfig.presentation.shade.colorHex');
 assertPercent(presentation.shade.unseenDarknessPercent, 'fogConfig.presentation.shade.unseenDarknessPercent');
@@ -67,6 +62,12 @@ function assertPositiveInteger(value: unknown, fieldName: string): asserts value
   assertPositive(value, fieldName);
   if (!Number.isInteger(value)) {
     throw new Error(`${fieldName} must be a positive integer`);
+  }
+}
+
+function assertNonNegative(value: unknown, fieldName: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative finite number`);
   }
 }
 

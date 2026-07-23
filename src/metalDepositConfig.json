@@ -198,6 +198,22 @@
       }
     },
     {
+      "comment": "WATER LEFT CORNER INNER",
+      "radiusFraction": 0.70,
+      "countPerPlayer": 1,
+      "sliceOffset": 1.3,
+      "dTerrainLevels": null,
+      "flatPadCells": 40,
+      "terrainBlendRadius": 600,
+      "demoAutoExtractor": true,
+      "depositCluster": {
+        "type": "group-ring",
+        "count": 1,
+        "radius": 180,
+        "angleOffset": 1
+      }
+    },
+    {
       "comment": "RIGHT ARC WATER",
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
