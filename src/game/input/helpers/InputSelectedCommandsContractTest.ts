@@ -39,7 +39,7 @@ function unitEntity(
       wantCloak,
     },
     combat: null,
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function ballisticCombatEntity(
@@ -68,7 +68,7 @@ function ballisticCombatEntity(
       fireState,
       trajectoryMode,
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function ballisticTowerEntity(
@@ -78,7 +78,7 @@ function ballisticTowerEntity(
 ): Entity {
   return {
     id,
-    type: 'tower',
+    type: 'building',
     unit: null,
     buildingBlueprintId,
     combat: {
@@ -95,7 +95,7 @@ function ballisticTowerEntity(
       fireState: 'fireAtWill',
       trajectoryMode,
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function activeBuildingEntity(
@@ -114,7 +114,7 @@ function activeBuildingEntity(
         reopenDelayMs: 0,
       },
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function builderEntity(id: number, lowPriority: boolean, unitBlueprintId = 'unitCommander'): Entity {
@@ -127,24 +127,24 @@ function builderEntity(id: number, lowPriority: boolean, unitBlueprintId = 'unit
     builder: {
       lowPriority,
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function factoryEntity(id: number, lowPriority: boolean): Entity {
   return {
     id,
-    type: 'tower',
+    type: 'building',
     buildingBlueprintId: 'towerFabricator',
     factory: {
       lowPriority,
       moveState: 'holdPosition',
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function targetCommandEntity(
   id: number,
-  type: 'unit' | 'tower' = 'unit',
+  type: 'unit' | 'building' = 'unit',
   shotType: 'plasma' | 'shield' | null = 'plasma',
   passive = false,
 ): Entity {
@@ -152,19 +152,20 @@ function targetCommandEntity(
     id,
     type,
     unit: type === 'unit' ? { unitBlueprintId: 'unitJackal' } : null,
-    buildingBlueprintId: type === 'tower' ? 'towerCannon' : null,
+    buildingBlueprintId: type === 'building' ? 'towerCannon' : null,
     combat: {
       turrets: [
         {
           config: {
+            kind: 'attack',
             passive,
-            range: 160,
+            turretRange: { range: 160 },
             shot: shotType === null ? null : { type: shotType },
           },
         },
       ],
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function carrierFactoryUnitEntity(id: number, carrierSpawnEnabled: boolean): Entity {
@@ -177,15 +178,15 @@ function carrierFactoryUnitEntity(id: number, carrierSpawnEnabled: boolean): Ent
     factory: {
       carrierSpawnEnabled,
     },
-  } as Entity;
+  } as unknown as Entity;
 }
 
-function factoryTowerEntity(id: number): Entity {
+function factoryBuildingEntity(id: number): Entity {
   return {
     id,
-    type: 'tower',
+    type: 'building',
     factory: {},
-  } as Entity;
+  } as unknown as Entity;
 }
 
 function lastCommand(commands: readonly Command[]): Command {
@@ -219,8 +220,8 @@ export function runInputSelectedCommandsContractTest(): void {
 
   selectedUnits = [];
   selectedBuildings = [
-    factoryTowerEntity(15),
-    { id: 16, type: 'tower', factory: null } as Entity,
+    factoryBuildingEntity(15),
+    { id: 16, type: 'building', factory: null } as Entity,
   ];
   selectedCommands.wait(false);
   const factoryWaitCommand = lastCommand(commands);
@@ -233,7 +234,7 @@ export function runInputSelectedCommandsContractTest(): void {
 
   selectedUnits = [unitEntity(17, false, 'maneuver')];
   selectedBuildings = [
-    targetCommandEntity(18, 'tower'),
+    targetCommandEntity(18, 'building'),
     { id: 19, type: 'building', combat: null } as Entity,
     { id: 20, type: 'building', buildingBlueprintId: 'buildingExtractorT2', combat: null } as Entity,
   ];
@@ -245,7 +246,7 @@ export function runInputSelectedCommandsContractTest(): void {
       stopCommand.entityIds[0] === 17 &&
       stopCommand.entityIds[1] === 18 &&
       stopCommand.entityIds[2] === 20,
-    'BAR Stop must enqueue selected combat towers and armamex/T2 mex pure buildings as well as units while leaving removestop pure buildings out',
+    'BAR Stop must enqueue selected armed buildings and armamex/T2 mex buildings as well as units while leaving removestop buildings out',
   );
 
   selectedUnits = [unitEntity(10, false, 'maneuver')];
@@ -450,8 +451,8 @@ export function runInputSelectedCommandsContractTest(): void {
     targetCommandEntity(37, 'unit', 'plasma', true),
   ];
   selectedBuildings = [
-    targetCommandEntity(38, 'tower', 'plasma'),
-    targetCommandEntity(39, 'tower', 'shield'),
+    targetCommandEntity(38, 'building', 'plasma'),
+    targetCommandEntity(39, 'building', 'shield'),
   ];
   selectedCommands.setTowerTarget(99);
   const targetCommand = lastCommand(commands);

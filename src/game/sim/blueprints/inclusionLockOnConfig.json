@@ -1,11 +1,21 @@
 {
   "ALL TARGET OPTIONS": {
-    "relationships": ["friendly", "enemy"],
-    "families": ["buildings", "towers", "units", "turrets", "shots"],
+    "relationships": [
+      "friendly",
+      "enemy"
+    ],
+    "families": [
+      "buildings",
+      "units",
+      "turrets",
+      "shots"
+    ],
     "familyPolicies": {
       "all": "all",
       "onlySome": {
-        "only": ["blueprintId"]
+        "only": [
+          "blueprintId"
+        ]
       },
       "disabled": "omit the family"
     },
@@ -17,9 +27,7 @@
         "buildingRadar",
         "buildingSonar",
         "buildingResourceConverter",
-        "buildingExtractorT2"
-      ],
-      "towers": [
+        "buildingExtractorT2",
         "towerFabricator",
         "towerBeamMega",
         "towerCannon",
@@ -78,7 +86,42 @@
         "turretResourcePylonConstructionMetal",
         "turretResourcePylonConstructionEnergy",
         "turretResourcePylonExtractionMetal",
-        "turretResourcePylonExtractionEnergy"
+        "turretResourcePylonExtractionEnergy",
+        "turretSensorUnitJackal",
+        "turretSensorUnitLynx",
+        "turretSensorUnitDaddy",
+        "turretSensorUnitBadger",
+        "turretSensorUnitMongoose",
+        "turretSensorUnitTick",
+        "turretSensorUnitMammoth",
+        "turretSensorUnitFormik",
+        "turretSensorUnitWidow",
+        "turretSensorUnitHippo",
+        "turretSensorUnitSeaTurtle",
+        "turretSensorUnitOrca",
+        "turretSensorUnitTarantula",
+        "turretSensorUnitLoris",
+        "turretSensorUnitBee",
+        "turretSensorUnitDragonfly",
+        "turretSensorUnitConstructionDrone",
+        "turretSensorUnitEagle",
+        "turretSensorUnitDuck",
+        "turretSensorUnitAlbatros",
+        "turretSensorUnitQueenBee",
+        "turretSensorUnitQueenTick",
+        "turretSensorUnitTransport",
+        "turretSensorUnitCommander",
+        "turretSensorBuildingSolar",
+        "turretSensorBuildingWind",
+        "turretSensorBuildingExtractor",
+        "turretSensorBuildingExtractorT2",
+        "turretSensorBuildingRadar",
+        "turretSensorBuildingResourceConverter",
+        "turretSensorBuildingSonar",
+        "turretSensorBuildingFabricator",
+        "turretSensorBuildingBeamMega",
+        "turretSensorBuildingCannon",
+        "turretSensorBuildingAntiAir"
       ],
       "shots": [
         "shotPlasmaLight",
@@ -110,7 +153,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -119,7 +161,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -128,7 +169,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -137,7 +177,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -146,7 +185,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -155,7 +193,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -164,7 +201,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -173,7 +209,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -182,7 +217,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -191,7 +225,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -200,7 +233,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -209,7 +241,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -218,7 +249,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -246,7 +276,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -255,7 +284,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -264,12 +292,10 @@
       "targets": {
         "friendly": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         },
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -296,7 +322,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -305,7 +330,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -323,12 +347,10 @@
       "targets": {
         "friendly": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         },
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -339,7 +361,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -348,7 +369,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -357,7 +377,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -366,7 +385,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -375,7 +393,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -384,7 +401,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -393,7 +409,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -402,7 +417,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -432,10 +446,13 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all",
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -444,10 +461,13 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all",
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -456,10 +476,13 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all",
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -467,16 +490,16 @@
     "turretShieldSphere": {
       "targets": {
         "enemy": {
-          "towers": "all",
-          "units": "all"
+          "units": "all",
+          "buildings": "all"
         }
       }
     },
     "turretShieldSphereSmall": {
       "targets": {
         "enemy": {
-          "towers": "all",
-          "units": "all"
+          "units": "all",
+          "buildings": "all"
         }
       }
     },
@@ -484,10 +507,13 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all",
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -496,7 +522,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -505,7 +530,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -514,7 +538,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -535,7 +558,11 @@
             ]
           },
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -544,7 +571,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -553,10 +579,13 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all",
           "shots": {
-            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
+            "only": [
+              "shotRocketLight",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -578,19 +607,143 @@
     },
     "turretResourcePylonExtractionEnergy": {
       "targets": "none"
+    },
+    "turretSensorUnitJackal": {
+      "targets": "none"
+    },
+    "turretSensorUnitLynx": {
+      "targets": "none"
+    },
+    "turretSensorUnitDaddy": {
+      "targets": "none"
+    },
+    "turretSensorUnitBadger": {
+      "targets": "none"
+    },
+    "turretSensorUnitMongoose": {
+      "targets": "none"
+    },
+    "turretSensorUnitTick": {
+      "targets": "none"
+    },
+    "turretSensorUnitMammoth": {
+      "targets": "none"
+    },
+    "turretSensorUnitFormik": {
+      "targets": "none"
+    },
+    "turretSensorUnitWidow": {
+      "targets": "none"
+    },
+    "turretSensorUnitHippo": {
+      "targets": "none"
+    },
+    "turretSensorUnitSeaTurtle": {
+      "targets": "none"
+    },
+    "turretSensorUnitOrca": {
+      "targets": "none"
+    },
+    "turretSensorUnitTarantula": {
+      "targets": "none"
+    },
+    "turretSensorUnitLoris": {
+      "targets": "none"
+    },
+    "turretSensorUnitBee": {
+      "targets": "none"
+    },
+    "turretSensorUnitDragonfly": {
+      "targets": "none"
+    },
+    "turretSensorUnitConstructionDrone": {
+      "targets": "none"
+    },
+    "turretSensorUnitEagle": {
+      "targets": "none"
+    },
+    "turretSensorUnitDuck": {
+      "targets": "none"
+    },
+    "turretSensorUnitAlbatros": {
+      "targets": "none"
+    },
+    "turretSensorUnitQueenBee": {
+      "targets": "none"
+    },
+    "turretSensorUnitQueenTick": {
+      "targets": "none"
+    },
+    "turretSensorUnitTransport": {
+      "targets": "none"
+    },
+    "turretSensorUnitCommander": {
+      "targets": "none"
+    },
+    "turretSensorBuildingSolar": {
+      "targets": "none"
+    },
+    "turretSensorBuildingWind": {
+      "targets": "none"
+    },
+    "turretSensorBuildingExtractor": {
+      "targets": "none"
+    },
+    "turretSensorBuildingExtractorT2": {
+      "targets": "none"
+    },
+    "turretSensorBuildingRadar": {
+      "targets": "none"
+    },
+    "turretSensorBuildingResourceConverter": {
+      "targets": "none"
+    },
+    "turretSensorBuildingSonar": {
+      "targets": "none"
+    },
+    "turretSensorBuildingFabricator": {
+      "targets": "none"
+    },
+    "turretSensorBuildingBeamMega": {
+      "targets": "none"
+    },
+    "turretSensorBuildingCannon": {
+      "targets": "none"
+    },
+    "turretSensorBuildingAntiAir": {
+      "targets": "none"
     }
   },
-  "towers": {
+  "buildings": {
+    "buildingSolar": {
+      "targets": "none"
+    },
+    "buildingWind": {
+      "targets": "none"
+    },
+    "buildingExtractor": {
+      "targets": "none"
+    },
+    "buildingExtractorT2": {
+      "targets": "none"
+    },
+    "buildingRadar": {
+      "targets": "none"
+    },
+    "buildingResourceConverter": {
+      "targets": "none"
+    },
+    "buildingSonar": {
+      "targets": "none"
+    },
     "towerFabricator": {
       "targets": {
         "friendly": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         },
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -599,7 +752,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }
@@ -608,7 +760,6 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all",
           "units": "all"
         }
       }

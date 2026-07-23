@@ -27,7 +27,7 @@ function getBuildingVisualTopAboveGround(entity: Entity): number {
   switch (blueprint.anchorProfile) {
     case 'constantVisualTop':
       return blueprint.visualHeight;
-    case 'factoryTower':
+    case 'fabricator':
       return factoryVisualTopAboveGround(width, depth);
     case 'collisionDepth':
       return building === null ? blueprint.visualHeight : building.depth;

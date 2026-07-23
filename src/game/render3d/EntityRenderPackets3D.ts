@@ -34,8 +34,8 @@ import type {
   ClientRenderTurretStateViews,
 } from './ClientRenderTurretStateSlab';
 import {
-  getPassiveTurretIndex,
-  NO_PASSIVE_TURRET_INDEX,
+  getShieldPanelTurretIndex,
+  NO_SHIELD_PANEL_TURRET_INDEX,
 } from './turretRenderHelpers3D';
 
 const ENTITY_RENDER_PACKET_INITIAL_CAP = 4096;
@@ -191,7 +191,7 @@ export class UnitRenderPacket3D {
   bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   supportPointOffsetZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  passiveTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  shieldPanelTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
   removedCount = 0;
@@ -255,7 +255,7 @@ export class UnitRenderPacket3D {
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
     this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
     this.turretCount[cursor] = turretRows.length;
-    this.passiveTurretIndex[cursor] = getPassiveTurretIndex(turretRows);
+    this.shieldPanelTurretIndex[cursor] = getShieldPanelTurretIndex(turretRows);
     let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
     const locomotionType = unit.locomotion.type;
     if (locomotionType === 'hover' || locomotionType === 'flying' || locomotionType === 'dive') {
@@ -302,7 +302,7 @@ export class UnitRenderPacket3D {
       this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
       this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
       this.turretCount[cursor] = 0;
-      this.passiveTurretIndex[cursor] = NO_PASSIVE_TURRET_INDEX;
+      this.shieldPanelTurretIndex[cursor] = NO_SHIELD_PANEL_TURRET_INDEX;
       this.flags[cursor] = flags;
       this.count = cursor + 1;
       return;
@@ -347,7 +347,7 @@ export class UnitRenderPacket3D {
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
     this.supportPointOffsetZ[cursor] = state.supportPointOffsetZ[slot];
     this.turretCount[cursor] = state.turretCount[slot];
-    this.passiveTurretIndex[cursor] = state.passiveTurretIndex[slot];
+    this.shieldPanelTurretIndex[cursor] = state.shieldPanelTurretIndex[slot];
     this.flags[cursor] = flags;
     this.count = cursor + 1;
   }
@@ -449,7 +449,7 @@ export class UnitRenderPacket3D {
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
     this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
-    this.passiveTurretIndex = growInt16(this.passiveTurretIndex, nextCapacity);
+    this.shieldPanelTurretIndex = growInt16(this.shieldPanelTurretIndex, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
     this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);
     this.turretStarts = growUint32(this.turretStarts, nextCapacity);

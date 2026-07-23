@@ -6,7 +6,7 @@ import { DamageSystem } from './damage';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { beamIndex } from './BeamIndex';
-import type { EntityId, PlayerId } from './types';
+import type { Entity, EntityId, PlayerId, Turret } from './types';
 import { isProjectileShot, NO_ENTITY_ID } from './types';
 import {
   finalizePendingProjectileLaunchVelocities,
@@ -53,9 +53,40 @@ function assertNear(actual: number, expected: number, message: string): void {
   }
 }
 
+function getFirstAttackTurret(entity: Entity): { turret: Turret; turretIndex: number } {
+  const turrets = entity.combat?.turrets;
+  if (turrets === undefined) {
+    throw new Error('[turret host integration] entity must have a combat assembly');
+  }
+  const turretIndex = turrets.findIndex((candidate) => candidate.config.kind === 'attack');
+  if (turretIndex < 0) {
+    throw new Error('[turret host integration] entity must mount an attack turret');
+  }
+  return { turret: turrets[turretIndex], turretIndex };
+}
+
+let nextTestWorldEntityIdFloor = 64;
+
+function createIsolatedTestWorld(
+  seed: number,
+  width: number,
+  height: number,
+): WorldState {
+  const world = new WorldState(seed, width, height);
+  // The native targeting slab deliberately preserves per-entity FSM and
+  // cooldown state across tick clears. Independent test worlds therefore
+  // need distinct entity-id ranges so they are not mistaken for successive
+  // ticks of the same entity.
+  while (world.getNextEntityId() < nextTestWorldEntityIdFloor) {
+    world.generateEntityId();
+  }
+  nextTestWorldEntityIdFloor += 64;
+  return world;
+}
+
 function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLaunch: boolean): void {
   resetTurretHostIntegrationState();
-  const launchWorld = new WorldState(
+  const launchWorld = createIsolatedTestWorld(
     addTurretVelocityToEmissionLaunch ? 4321 : 4322,
     1024,
     1024,
@@ -81,7 +112,7 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     throw new Error('[turret host integration] badger must be an armed unit');
   }
 
-  const badgerTurret = badger.combat.turrets[0];
+  const { turret: badgerTurret } = getFirstAttackTurret(badger);
   const previousInheritanceFlag = badgerTurret.config.addTurretVelocityToEmissionLaunch;
   badgerTurret.config.addTurretVelocityToEmissionLaunch = addTurretVelocityToEmissionLaunch;
   try {
@@ -160,9 +191,9 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
   }
 }
 
-function assertSlowRocketRetargetsAfterLosingTarget(): void {
+function assertSlowRocketDropsLockAfterLosingTarget(): void {
   resetTurretHostIntegrationState();
-  const world = new WorldState(5321, 1024, 1024);
+  const world = createIsolatedTestWorld(5321, 1024, 1024);
   world.playerCount = 2;
   const badger = world.createUnitFromBlueprint(
     120,
@@ -192,8 +223,11 @@ function assertSlowRocketRetargetsAfterLosingTarget(): void {
   }
   lostTarget.unit.hp = 0;
 
-  const turret = badger.combat.turrets[0];
-  const projectileConfig = createProjectileConfigFromTurret(turret.config, 0);
+  const { turret } = getFirstAttackTurret(badger);
+  const projectileConfig = createProjectileConfigFromTurret(
+    turret.config,
+    turret.mountIndex,
+  );
   const rocket = world.createProjectile(
     250,
     120,
@@ -213,15 +247,15 @@ function assertSlowRocketRetargetsAfterLosingTarget(): void {
 
   updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
   assertContract(
-    rocket.projectile.homingTargetId === replacementTarget.id,
-    'homing rocket must acquire a replacement live target after its lock dies',
+    rocket.projectile.homingTargetId === NO_ENTITY_ID,
+    'homing rocket must drop its dead inherited lock instead of acquiring a replacement target',
   );
   resetTurretHostIntegrationState();
 }
 
 function assertBeamSpawnAimsAtTargetOrigin(): void {
   resetTurretHostIntegrationState();
-  const world = new WorldState(5322, 1024, 1024);
+  const world = createIsolatedTestWorld(5322, 1024, 1024);
   world.playerCount = 2;
   const daddy = world.createUnitFromBlueprint(
     120,
@@ -250,7 +284,7 @@ function assertBeamSpawnAimsAtTargetOrigin(): void {
   const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
   updateTurretRotation(world, dtMs, activeCombatUnits);
 
-  const beamTurret = daddy.combat.turrets[0];
+  const { turret: beamTurret } = getFirstAttackTurret(daddy);
   beamTurret.rotation = 0;
   beamTurret.pitch = 0;
   beamTurret.aimErrorYaw = 0;
@@ -267,9 +301,58 @@ function assertBeamSpawnAimsAtTargetOrigin(): void {
   resetTurretHostIntegrationState();
 }
 
+function assertLorisReflectorRemainsAutonomousFromHostTask(): void {
+  resetTurretHostIntegrationState();
+  const world = createIsolatedTestWorld(7321, 1024, 1024);
+  world.playerCount = 2;
+  world.turretShieldPanelsEnabled = true;
+  const loris = world.createUnitFromBlueprint(
+    500,
+    500,
+    1 as PlayerId,
+    'unitLoris',
+  );
+  const unrelatedEnemy = world.createUnitFromBlueprint(
+    600,
+    500,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  world.addEntity(loris);
+  world.addEntity(unrelatedEnemy);
+  spatialGrid.updateUnit(loris);
+  spatialGrid.updateUnit(unrelatedEnemy);
+
+  if (loris.combat === null) {
+    throw new Error('[turret host integration] Loris test units must have combat assemblies');
+  }
+  const panelIndex = loris.combat.turrets.findIndex((turret) => {
+    const shot = turret.config.shot;
+    return shot?.type === 'shield' && shot.barrier === undefined;
+  });
+  assertContract(panelIndex >= 0, 'Loris must mount a shield-panel turret');
+  const panel = loris.combat.turrets[panelIndex];
+  assertContract(
+    panel.config.controlMode === 'autonomous',
+    'Loris shield panel must own its incoming-threat target independently of the host',
+  );
+
+  // Give the Loris a host attack intent and run the sole host-to-emitter task
+  // projection. The reflector must remain taskless so its reciprocal target
+  // policy stays free to choose the actual incoming threat.
+  loris.combat.priorityTargetId = unrelatedEnemy.id;
+  stampCombatTargetingPool(world);
+
+  assertContract(
+    panel.task === null,
+    'host attack intent must not overwrite the Loris reflector task',
+  );
+  resetTurretHostIntegrationState();
+}
+
 function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
-  const world = new WorldState(manualTarget ? 6321 : 6322, 1024, 1024);
+  const world = createIsolatedTestWorld(manualTarget ? 6321 : 6322, 1024, 1024);
   world.playerCount = 2;
   const source = world.createUnitFromBlueprint(160, 160, 1 as PlayerId, 'unitOrca');
   const target = world.createUnitFromBlueprint(360, 160, 2 as PlayerId, 'unitOrca');
@@ -283,7 +366,7 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
     throw new Error('[turret host integration] Orca source must be armed');
   }
 
-  const turret = source.combat.turrets[0];
+  const { turret, turretIndex } = getFirstAttackTurret(source);
   // This contract isolates target eligibility from terrain generation. The
   // production turret still requires LOS; that behavior is covered by the
   // shared targeting contracts.
@@ -297,7 +380,7 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   updateTargetingAndFiringState(world, 50);
   const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
   assertContract(
-    readCombatTargetingTurretFsmInto(source, 0, targetingState),
+    readCombatTargetingTurretFsmInto(source, turretIndex, targetingState),
     'Orca torpedo turret must have authoritative targeting state',
   );
   assertContract(
@@ -313,7 +396,7 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
 
 function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
-  const world = new WorldState(manualTarget ? 6323 : 6324, 1024, 1024);
+  const world = createIsolatedTestWorld(manualTarget ? 6323 : 6324, 1024, 1024);
   world.playerCount = 2;
   const source = world.createUnitFromBlueprint(160, 160, 1 as PlayerId, 'unitOrca');
   const target = world.createUnitFromBlueprint(360, 160, 2 as PlayerId, 'unitOrca');
@@ -327,9 +410,9 @@ function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
     throw new Error('[turret host integration] Orca source must be armed');
   }
 
-  const turret = source.combat.turrets[0];
+  const { turret, turretIndex } = getFirstAttackTurret(source);
   assertContract(
-    turret.config.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
+    turret.config.turretRange.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
     'Orca torpedo turret must use the authored water-ceiling range volume',
   );
   turret.config.requiresNonObstructedLineOfSight = false;
@@ -342,7 +425,7 @@ function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
   updateTargetingAndFiringState(world, 50);
   const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
   assertContract(
-    readCombatTargetingTurretFsmInto(source, 0, targetingState),
+    readCombatTargetingTurretFsmInto(source, turretIndex, targetingState),
     'Orca torpedo turret must have authoritative targeting state',
   );
   assertContract(
@@ -357,7 +440,7 @@ function assertSeaTurtleTargetMediumEligibility(
   fullySubmerged: boolean,
 ): void {
   resetTurretHostIntegrationState();
-  const world = new WorldState(
+  const world = createIsolatedTestWorld(
     manualTarget ? (fullySubmerged ? 6325 : 6326) : (fullySubmerged ? 6327 : 6328),
     1024,
     1024,
@@ -377,7 +460,16 @@ function assertSeaTurtleTargetMediumEligibility(
     throw new Error('[turret host integration] Sea Turtle source must be armed');
   }
 
-  const turret = source.combat.turrets[0];
+  const sensorTurret = source.combat.turrets.find(
+    (candidate) => candidate.config.kind === 'sensor',
+  );
+  assertContract(sensorTurret !== undefined, 'Sea Turtle must mount a sensor turret');
+  // This contract isolates the weapon's physical-volume medium gate. Give
+  // its dedicated sensor an explicit A→W lane so center-based visibility
+  // does not independently hide the underwater-center target.
+  sensorTurret.config.turretRange.sensors.fullSight.aboveWater.underwater = 900;
+
+  const { turret, turretIndex } = getFirstAttackTurret(source);
   turret.config.requiresNonObstructedLineOfSight = false;
   if (manualTarget) {
     source.combat.priorityTargetId = target.id;
@@ -388,7 +480,7 @@ function assertSeaTurtleTargetMediumEligibility(
   updateTargetingAndFiringState(world, 50);
   const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
   assertContract(
-    readCombatTargetingTurretFsmInto(source, 0, targetingState),
+    readCombatTargetingTurretFsmInto(source, turretIndex, targetingState),
     'Sea Turtle plasma turret must have authoritative targeting state',
   );
   if (fullySubmerged) {
@@ -422,7 +514,7 @@ export function runWaterWeaponMediumTargetingContractTest(): void {
 export function runTurretHostIntegrationContractTest(): void {
   resetTurretHostIntegrationState();
   try {
-    const world = new WorldState(1234, 512, 512);
+    const world = createIsolatedTestWorld(1234, 512, 512);
     world.playerCount = 2;
     const host = world.createUnitFromBlueprint(
       0,
@@ -445,7 +537,7 @@ export function runTurretHostIntegrationContractTest(): void {
       'host runtime turret count must match the authored blueprint assembly',
     );
 
-    const turret = combat.turrets[0];
+    const { turret } = getFirstAttackTurret(host);
     assertContract(turret.id !== NO_ENTITY_ID, 'mounted turret must have an addressable id');
     const turretFields = turret as unknown as Record<string, unknown>;
     for (const field of ['hp', 'maxHp', 'cost', 'mass', 'deathExplosion', 'buildable', 'body', 'ownership', 'actions']) {
@@ -522,12 +614,13 @@ export function runTurretHostIntegrationContractTest(): void {
     assertContract(world.resolveMountedTurret(turret.id) === undefined, 'dead host body must not leave a hostless live turret');
     assertContract(host.combat?.turrets === authoredTurrets, 'host death must keep turrets as part of the host assembly until removal');
 
-    assertSlowRocketLaunchVelocityInheritance(true);
-    assertSlowRocketLaunchVelocityInheritance(false);
-    assertSlowRocketRetargetsAfterLosingTarget();
-    assertBeamSpawnAimsAtTargetOrigin();
     runOrcaTargetingContractTest();
     runWaterWeaponMediumTargetingContractTest();
+    assertSlowRocketLaunchVelocityInheritance(true);
+    assertSlowRocketLaunchVelocityInheritance(false);
+    assertSlowRocketDropsLockAfterLosingTarget();
+    assertBeamSpawnAimsAtTargetOrigin();
+    assertLorisReflectorRemainsAutonomousFromHostTask();
   } finally {
     resetTurretHostIntegrationState();
   }

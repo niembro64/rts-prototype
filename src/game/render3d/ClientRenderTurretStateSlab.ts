@@ -259,7 +259,7 @@ export class ClientRenderTurretStateSlab {
       assertNear(`mountY ${i}`, this.views.mountY[row], turret.mount.y);
       assertNear(`mountZ ${i}`, this.views.mountZ[row], turret.mount.z);
       assertNear(`headRadius ${i}`, this.views.headRadius[row], getTurretHeadRadius(turret.config));
-      assertNear(`range ${i}`, this.views.range[row], turret.config.range);
+      assertNear(`range ${i}`, this.views.range[row], turret.config.turretRange.range);
       assertNear(`shieldRange ${i}`, this.views.shieldRange[row], turret.shield?.range ?? 0);
       assertNear(`mountLiftY ${i}`, this.views.mountLiftY[row], mountLiftY);
       if (this.views.stateCode[row] !== turretStateToCode(turret.state)) {
@@ -298,7 +298,7 @@ export class ClientRenderTurretStateSlab {
     views.mountY[row] = turret.mount.y;
     views.mountZ[row] = turret.mount.z;
     views.headRadius[row] = getTurretHeadRadius(turret.config);
-    views.range[row] = turret.config.range;
+    views.range[row] = turret.config.turretRange.range;
     views.shieldRange[row] = turret.shield?.range ?? 0;
     views.barrierOuterRange[row] = barrier?.outerRange ?? 0;
     views.barrierOriginOffsetZ[row] = barrier?.originOffsetZ ?? 0;

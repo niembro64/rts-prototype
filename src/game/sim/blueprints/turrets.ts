@@ -23,12 +23,13 @@ import {
   assertTurretLockOnInclusionConfigIds,
   getTurretLockOnInclusions,
 } from './lockOnConfig';
+import { validateSensorCapabilityConfig } from '../sensorConfig';
 
 const TURRET_EXPLICIT_FIELDS = [
   'name',
   'emissionKind',
   'emissionBlueprintId',
-  'rangeVolume',
+  'turretRange',
   'cooldown',
   'launchForce',
   'addTurretVelocityToEmissionLaunch',
@@ -189,6 +190,7 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     );
   }
   validateTurretCooldown(label, blueprint.cooldown);
+  validateSensorCapabilityConfig(`${label}.turretRange.sensors`, blueprint.turretRange.sensors);
   validateTurretSubmunitions(`${label}.submunitions`, blueprint.submunitions);
   if (typeof blueprint.addTurretVelocityToEmissionLaunch !== 'boolean') {
     throw new Error(`Invalid ${label}.addTurretVelocityToEmissionLaunch: expected boolean`);

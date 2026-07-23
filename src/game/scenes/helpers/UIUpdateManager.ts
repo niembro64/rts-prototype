@@ -115,7 +115,7 @@ function maxWeaponRange(entity: Entity): number | null {
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
     if (!isAttackEmitter(turret) || turret.config.shot === null) continue;
-    range = Math.max(range, turret.config.range);
+    range = Math.max(range, turret.config.turretRange.range);
   }
   return range > 0 ? range : null;
 }
@@ -258,7 +258,6 @@ function buildingActiveStateLabel(entity: Entity): string | null {
 function addMultiSelectionStateDetails(
   details: SelectionInfo['details'],
   selectedUnits: readonly Entity[],
-  selectedTowers: readonly Entity[],
   selectedBuildings: readonly Entity[],
 ): void {
   let fireControlCount = 0;
@@ -278,7 +277,7 @@ function addMultiSelectionStateDetails(
     if (fireState === 'defend') defendCount++;
     if (fireState === 'fireAtAll') fireAtAllCount++;
   }
-  for (const entity of selectedTowers) {
+  for (const entity of selectedBuildings) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
     const fireState = entity.combat?.fireState ??
@@ -313,7 +312,7 @@ function addMultiSelectionStateDetails(
     if (entity.combat?.trajectoryMode === 'high') highTrajectoryCount++;
     if (entity.combat?.trajectoryMode === 'low') lowTrajectoryCount++;
   }
-  for (const entity of selectedTowers) {
+  for (const entity of selectedBuildings) {
     if (!isTrajectoryControllable(entity)) continue;
     trajectoryControlCount++;
     if (entity.combat?.trajectoryMode === 'high') highTrajectoryCount++;
@@ -418,18 +417,14 @@ function addMultiSelectionStateDetails(
 
 function buildSelectionDetails(
   selectedUnits: readonly Entity[],
-  selectedTowers: readonly Entity[],
   selectedBuildings: readonly Entity[],
 ): SelectionInfo['details'] {
-  const totalSelected =
-    selectedUnits.length + selectedTowers.length + selectedBuildings.length;
+  const totalSelected = selectedUnits.length + selectedBuildings.length;
   if (totalSelected === 0) return [];
   if (totalSelected === 1) {
     const entity = selectedUnits.length > 0
       ? selectedUnits[0]
-      : selectedTowers.length > 0
-        ? selectedTowers[0]
-        : selectedBuildings[0];
+      : selectedBuildings[0];
     return buildSingleSelectionDetails(entity);
   }
 
@@ -437,12 +432,6 @@ function buildSelectionDetails(
   let maxHp = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     const pair = hpPair(selectedUnits[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
-  for (let i = 0; i < selectedTowers.length; i++) {
-    const pair = hpPair(selectedTowers[i]);
     if (pair === null) continue;
     hp += pair.hp;
     maxHp += pair.maxHp;
@@ -455,13 +444,13 @@ function buildSelectionDetails(
   }
   const details: SelectionInfo['details'] = [
     { label: 'Selected', value: `${totalSelected}` },
-    { label: 'Types', value: `${selectedUnits.length}U ${selectedTowers.length}T ${selectedBuildings.length}B` },
+    { label: 'Types', value: `${selectedUnits.length}U ${selectedBuildings.length}B` },
   ];
   if (maxHp > 0) {
     details.push({ label: 'HP', value: `${fmtStat(hp)}/${fmtStat(maxHp)}` });
     details.push({ label: 'HP Avg', value: `${Math.round((hp / maxHp) * 100)}%` });
   }
-  addMultiSelectionStateDetails(details, selectedUnits, selectedTowers, selectedBuildings);
+  addMultiSelectionStateDetails(details, selectedUnits, selectedBuildings);
   addMultiSelectionQueueDetails(details, selectedUnits);
   return details;
 }
@@ -552,14 +541,13 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
 
 function selectedEntityTypeLabel(kind: NonNullable<SelectionInfo['selectedEntityInfo']>['kind']): string {
   if (kind === 'selection') return 'Selection';
-  if (kind === 'tower') return 'Tower';
   if (kind === 'building') return 'Building';
   return 'Unit';
 }
 
 function buildEntitySelectionInfo(
   entity: Entity,
-  kind: 'unit' | 'tower' | 'building',
+  kind: 'unit' | 'building',
 ): SelectionInfo['selectedEntityInfo'] {
   if (entity.unit !== null) {
     let label = entity.unit.unitBlueprintId;
@@ -616,14 +604,12 @@ function buildEntitySelectionInfo(
 
 function buildSelectionEntityInfo(
   selectedUnits: Entity[],
-  selectedTowers: Entity[],
   selectedBuildings: Entity[],
 ): SelectionInfo['selectedEntityInfo'] {
-  const totalSelected = selectedUnits.length + selectedTowers.length + selectedBuildings.length;
+  const totalSelected = selectedUnits.length + selectedBuildings.length;
   if (totalSelected === 0) return null;
   if (totalSelected === 1) {
     if (selectedUnits[0] !== undefined) return buildEntitySelectionInfo(selectedUnits[0], 'unit');
-    if (selectedTowers[0] !== undefined) return buildEntitySelectionInfo(selectedTowers[0], 'tower');
     if (selectedBuildings[0] !== undefined) return buildEntitySelectionInfo(selectedBuildings[0], 'building');
   }
 
@@ -631,12 +617,6 @@ function buildSelectionEntityInfo(
   let maxHp = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     const pair = hpPair(selectedUnits[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
-  for (let i = 0; i < selectedTowers.length; i++) {
-    const pair = hpPair(selectedTowers[i]);
     if (pair === null) continue;
     hp += pair.hp;
     maxHp += pair.maxHp;
@@ -650,7 +630,6 @@ function buildSelectionEntityInfo(
 
   const typeLabels: string[] = [];
   if (selectedUnits.length > 0) typeLabels.push(`${selectedUnits.length} unit${selectedUnits.length === 1 ? '' : 's'}`);
-  if (selectedTowers.length > 0) typeLabels.push(`${selectedTowers.length} tower${selectedTowers.length === 1 ? '' : 's'}`);
   if (selectedBuildings.length > 0) typeLabels.push(`${selectedBuildings.length} building${selectedBuildings.length === 1 ? '' : 's'}`);
 
   return {
@@ -741,19 +720,8 @@ export function buildSelectionInfo(
   inputState: InputState | undefined
 ): SelectionInfo {
   const selectedUnits = entitySource.getSelectedUnits();
-  // getSelectedBuildings returns selected entities whose type is
-  // 'building' OR 'tower' (both are cached together). Split them here
-  // so the panel can render the uniform per-type action set required
-  // by budget_design_philosophy.html "Selection Menus Are Uniform Per Entity
-  // Type".
-  const selectedStatic = entitySource.getSelectedBuildings();
-  const selectedTowers: typeof selectedStatic = [];
-  const selectedBuildings: typeof selectedStatic = [];
-  for (let i = 0; i < selectedStatic.length; i++) {
-    const e = selectedStatic[i];
-    if (e.type === 'tower') selectedTowers.push(e);
-    else if (e.type === 'building') selectedBuildings.push(e);
-  }
+  const selectedBuildings = entitySource.getSelectedBuildings();
+  const selectedStatic = selectedBuildings;
 
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
@@ -901,36 +869,34 @@ export function buildSelectionInfo(
       }
     }
   }
-  // Towers carry the same combat/fire-control contract as units.
-  // Count their host-fire state into the same flags so the panel
-  // can toggle hold-fire on a tower selection the same way it does
-  // for a unit selection.
-  for (let i = 0; i < selectedTowers.length; i++) {
-    const selectedTower = selectedTowers[i];
-    if (selectedTower.factory !== null) {
+  // Armed and factory buildings carry the same mounted capability contracts
+  // as units; the host kind itself does not determine the command surface.
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const selectedBuilding = selectedBuildings[i];
+    if (selectedBuilding.factory !== null) {
       waitableEntityCount++;
-      if (selectedTower.factory.paused === true) waitingCount++;
+      if (selectedBuilding.factory.paused === true) waitingCount++;
     }
-    if (entityHasBarMoveStateCommand(selectedTower) && selectedTower.factory !== null) {
+    if (entityHasBarMoveStateCommand(selectedBuilding) && selectedBuilding.factory !== null) {
       moveStateControlCount++;
-      if (selectedTower.factory.moveState === 'holdPosition') holdPositionCount++;
-      if (selectedTower.factory.moveState === 'roam') roamCount++;
-      if (selectedTower.factory.moveState === 'maneuver') maneuverCount++;
+      if (selectedBuilding.factory.moveState === 'holdPosition') holdPositionCount++;
+      if (selectedBuilding.factory.moveState === 'roam') roamCount++;
+      if (selectedBuilding.factory.moveState === 'maneuver') maneuverCount++;
     }
-    if (entityHasBarBuilderPriorityCommand(selectedTower)) {
+    if (entityHasBarBuilderPriorityCommand(selectedBuilding)) {
       builderPriorityControlCount++;
       if (
-        (selectedTower.builder === null || selectedTower.builder.lowPriority === true) &&
-        (selectedTower.factory === null || selectedTower.factory.lowPriority === true)
+        (selectedBuilding.builder === null || selectedBuilding.builder.lowPriority === true) &&
+        (selectedBuilding.factory === null || selectedBuilding.factory.lowPriority === true)
       ) {
         builderLowPriorityCount++;
       }
     }
-    const combat = selectedTower.combat;
-    if (combat && isFireControllable(selectedTower)) {
+    const combat = selectedBuilding.combat;
+    if (combat && isFireControllable(selectedBuilding)) {
       fireControlCount++;
-      if (entityHasBarSetTargetCommand(selectedTower)) targetControlCount++;
-      if (entityHasBarManualLaunchCommand(selectedTower)) manualLaunchControlCount++;
+      if (entityHasBarSetTargetCommand(selectedBuilding)) targetControlCount++;
+      if (entityHasBarManualLaunchCommand(selectedBuilding)) manualLaunchControlCount++;
       const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
@@ -938,29 +904,27 @@ export function buildSelectionInfo(
       if (fireState === 'defend') defendCount++;
       if (fireState === 'fireAtAll') fireAtAllCount++;
       if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) hasPriorityTarget = true;
-      if (isTrajectoryControllable(selectedTower)) {
+      if (isTrajectoryControllable(selectedBuilding)) {
         trajectoryControlCount++;
         if (combat.trajectoryMode === 'high') highTrajectoryCount++;
         if (combat.trajectoryMode === 'low') lowTrajectoryCount++;
       }
-      if (entityHasBarTrajectoryCommand(selectedTower) && isTrajectoryControllable(selectedTower)) {
-        const barTrajectoryMode = entityEffectiveBarTrajectoryMode(selectedTower);
+      if (entityHasBarTrajectoryCommand(selectedBuilding) && isTrajectoryControllable(selectedBuilding)) {
+        const barTrajectoryMode = entityEffectiveBarTrajectoryMode(selectedBuilding);
         barTrajectoryControlCount++;
-        if (entityBarTrajectoryCommandKind(selectedTower) === 'smartAutoLowHigh') barSmartTrajectoryControlCount++;
+        if (entityBarTrajectoryCommandKind(selectedBuilding) === 'smartAutoLowHigh') barSmartTrajectoryControlCount++;
         if (barTrajectoryMode === 'high') barHighTrajectoryCount++;
         if (barTrajectoryMode === 'low') barLowTrajectoryCount++;
       }
     }
   }
 
-  // The fabricator-class tower hosts production queues (it owns the
-  // factory component); shooting towers do not. The factory affordance
-  // therefore lives on the tower selection, not the building one.
-  let factory: typeof selectedTowers[number] | undefined;
-  for (let i = 0; i < selectedTowers.length; i++) {
-    const tower = selectedTowers[i];
-    if (tower.factory === null) continue;
-    factory = tower;
+  // Factory affordances come from the building's factory component.
+  let factory: typeof selectedBuildings[number] | undefined;
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const building = selectedBuildings[i];
+    if (building.factory === null) continue;
+    factory = building;
     break;
   }
 
@@ -987,13 +951,12 @@ export function buildSelectionInfo(
     }
   }
 
-  // Self-destruct is available whenever any selected entity (unit,
-  // tower, or building) is alive. The command itself only applies to
+  // Self-destruct is available whenever any selected unit or building is
+  // alive. The command itself only applies to
   // entities with a unit/building hp slot, which is exactly the same
   // set the panel can list.
   const hasSelfDestructable =
     selectedUnits.length > 0
-    || selectedTowers.length > 0
     || selectedBuildings.length > 0;
   let hasReclaimableSelection = false;
   for (let i = 0; i < selectedUnits.length; i++) {
@@ -1073,7 +1036,6 @@ export function buildSelectionInfo(
 
   return {
     unitCount: selectedUnits.length,
-    towerCount: selectedTowers.length,
     buildingCount: selectedBuildings.length,
     hasCommander: commander !== undefined,
     hasBuilder: activeBuilderType !== null,
@@ -1091,8 +1053,7 @@ export function buildSelectionInfo(
     hasMoveStateControl: moveStateControlCount > 0,
     hasFireControl:
       fireControlCount > 0
-      && fireControlCount === selectedUnits.length + selectedTowers.length
-      && selectedBuildings.length === 0,
+      && fireControlCount === selectedUnits.length + selectedBuildings.length,
     fireEnabled: fireControlCount > 0 && holdFireCount === 0,
     fireState: fireControlCount === 0
       ? 'fireAtWill'
@@ -1122,7 +1083,7 @@ export function buildSelectionInfo(
         ? 'low'
         : 'auto',
     barTrajectoryStateCount: barSmartTrajectoryControlCount > 0 ? 3 : 2,
-    hasCloakControl: cloakControlCount > 0 && selectedTowers.length === 0 && selectedBuildings.length === 0,
+    hasCloakControl: cloakControlCount > 0 && selectedBuildings.length === 0,
     wantsCloak: cloakControlCount > 0 && wantCloakCount === cloakControlCount,
     isCloaked: cloakControlCount > 0 && cloakedCount === cloakControlCount,
     hasBuilderPriorityControl: builderPriorityControlCount > 0,
@@ -1157,7 +1118,7 @@ export function buildSelectionInfo(
     hasQueuedOrders,
     queueInsertIndex: inputState?.queueInsertIndex ?? null,
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),
-    selectedEntityInfo: buildSelectionEntityInfo(selectedUnits, selectedTowers, selectedBuildings),
+    selectedEntityInfo: buildSelectionEntityInfo(selectedUnits, selectedBuildings),
     hasFactory: factory !== undefined,
     factoryAllowedUnitBlueprintIds: getFactoryAllowedUnitBlueprintIds(factory),
     factoryId: factory?.id,
@@ -1203,7 +1164,7 @@ export function buildSelectionInfo(
     hasFactoryGuardControl,
     factoryGuardTargetId,
     controlGroups: inputState?.controlGroups ?? [],
-    details: buildSelectionDetails(selectedUnits, selectedTowers, selectedBuildings),
+    details: buildSelectionDetails(selectedUnits, selectedBuildings),
   };
 }
 
@@ -1331,7 +1292,7 @@ export type UnitStatsFactoryInfo = {
 export type UnitStatsOverlayInfo = {
   entityId: EntityId;
   source: 'hover' | 'selection';
-  kind: 'unit' | 'tower' | 'building';
+  kind: 'unit' | 'building';
   name: string;
   blueprintId: string;
   hp: number;
@@ -1395,7 +1356,7 @@ function buildUnitStatsWeaponInfo(config: TurretConfig): UnitStatsWeaponInfo {
     kind,
     emission,
     count: 1,
-    range: config.range,
+    range: config.turretRange.range,
     cooldownMs,
     volleyDamage,
     dps,
@@ -1496,7 +1457,7 @@ export function buildUnitStatsOverlayInfo(
     return {
       entityId: entity.id,
       source,
-      kind: entity.type === 'tower' ? 'tower' : 'building',
+      kind: 'building',
       name,
       blueprintId: entity.buildingBlueprintId,
       hp: hp?.hp ?? 0,
@@ -1567,7 +1528,7 @@ export function buildMinimapData(
         entityCount,
         e.transform.x,
         e.transform.y,
-        e.type === 'unit' ? 'unit' : e.type === 'tower' ? 'tower' : 'building',
+        e.type === 'unit' ? 'unit' : 'building',
         minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
         e.selectable?.selected,
         undefined,

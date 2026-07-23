@@ -18,7 +18,6 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   getSimWasm,
   SNAPSHOT_ENTITY_TYPE_BUILDING,
-  SNAPSHOT_ENTITY_TYPE_TOWER,
   SNAPSHOT_ENTITY_TYPE_UNIT,
   type SimWasm,
 } from '../sim-wasm/init';
@@ -185,8 +184,6 @@ function minimapTypeToSnapshotTag(type: NetworkServerSnapshotMinimapEntity['type
   switch (type) {
     case 'unit':
       return SNAPSHOT_ENTITY_TYPE_UNIT;
-    case 'tower':
-      return SNAPSHOT_ENTITY_TYPE_TOWER;
     case 'building':
       return SNAPSHOT_ENTITY_TYPE_BUILDING;
   }
@@ -803,10 +800,9 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     );
     return true;
   }
-  if (entity.type === 'building' || entity.type === 'tower') {
-    // Towers and buildings share the same static wire row. The
-    // TOWER vs BUILDING peer discriminator is reconstructed on the
-    // receive side via isTowerBuildingBlueprintId().
+  if (entity.type === 'building') {
+    // Every static host uses the building wire row. Historical blueprint ids
+    // beginning with "tower" remain opaque ids inside that one family.
     if (entity.unit !== null) return false;
     if (entity.building !== null) {
       if (entity.building.factory?.route !== null && entity.building.factory?.route !== undefined) {

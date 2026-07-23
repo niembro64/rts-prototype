@@ -1537,7 +1537,7 @@ export class Input3DManager {
     this.enqueueSelection(entityIds, false);
   }
 
-  selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
+  selectOnlyEntityType(entityType: 'unit' | 'building'): void {
     const entityIds: EntityId[] = [];
     if (entityType === 'unit') {
       const selectedUnits = this.entitySource.getSelectedUnits();
@@ -1547,8 +1547,7 @@ export class Input3DManager {
     } else {
       const selectedStatic = this.entitySource.getSelectedBuildings();
       for (let i = 0; i < selectedStatic.length; i++) {
-        const entity = selectedStatic[i];
-        if (entity.type === entityType) entityIds.push(entity.id);
+        entityIds.push(selectedStatic[i].id);
       }
     }
     if (entityIds.length === 0) return;

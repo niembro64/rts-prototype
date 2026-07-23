@@ -72,8 +72,9 @@ export class WorldProjectileFactory {
     if (entity.projectile) {
       entity.projectile.maxHits = Infinity;
       const speed = DMath.hypot(velocityX, velocityY);
-      if (speed > 1e-6 && Number.isFinite(config.range) && config.range > 0) {
-        entity.projectile.maxLifespan = (config.range / speed) * 1000;
+      const turretRange = config.turretRange.range;
+      if (speed > 1e-6 && Number.isFinite(turretRange) && turretRange > 0) {
+        entity.projectile.maxLifespan = (turretRange / speed) * 1000;
       }
     }
 

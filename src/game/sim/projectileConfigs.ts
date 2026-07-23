@@ -33,7 +33,7 @@ export function createProjectileConfigFromTurret(
     shot,
     shotProfile: getShotProfile(shot),
     sourceTurretBlueprintId: turretConfig.turretBlueprintId,
-    range: turretConfig.range,
+    range: turretConfig.turretRange.range,
     cooldown: turretConfig.cooldown,
     barrel: turretConfig.barrel,
     radius: { ...turretConfig.radius },

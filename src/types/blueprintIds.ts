@@ -12,24 +12,16 @@ export const UNIT_BLUEPRINT_IDS = [
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
-  'buildingSolar', 'buildingWind', 'buildingExtractor', 'buildingRadar', 'buildingResourceConverter',
-  'buildingExtractorT2', 'buildingSonar',
+  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor',
+  'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
+  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
-export const TOWER_BLUEPRINT_IDS = [
-  'towerFabricator', 'towerBeamMega', 'towerCannon', 'towerAntiAir',
-] as const;
-export type TowerBlueprintId = typeof TOWER_BLUEPRINT_IDS[number];
-
-// Compatibility wire/runtime surface for static structures. Keep the
-// order append-only because existing snapshots encode these ids as the
-// historical buildingBlueprintCode field.
-export const STRUCTURE_BLUEPRINT_IDS = [
-  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
-  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar',
-] as const;
-export type StructureBlueprintId = typeof STRUCTURE_BLUEPRINT_IDS[number];
+// Static structures have one blueprint family. The legacy IDs beginning with
+// "tower" remain stable opaque IDs for wire compatibility; they are buildings.
+export const STRUCTURE_BLUEPRINT_IDS = BUILDING_BLUEPRINT_IDS;
+export type StructureBlueprintId = BuildingBlueprintId;
 
 export const SHOT_BLUEPRINT_IDS = [
   'shotPlasmaLight',
@@ -96,12 +88,46 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretResourcePylonExtractionMetal',
   'turretResourcePylonExtractionEnergy',
   'turretTorpedo',
+  'turretSensorUnitJackal',
+  'turretSensorUnitLynx',
+  'turretSensorUnitDaddy',
+  'turretSensorUnitBadger',
+  'turretSensorUnitMongoose',
+  'turretSensorUnitTick',
+  'turretSensorUnitMammoth',
+  'turretSensorUnitFormik',
+  'turretSensorUnitWidow',
+  'turretSensorUnitHippo',
+  'turretSensorUnitSeaTurtle',
+  'turretSensorUnitOrca',
+  'turretSensorUnitTarantula',
+  'turretSensorUnitLoris',
+  'turretSensorUnitBee',
+  'turretSensorUnitDragonfly',
+  'turretSensorUnitConstructionDrone',
+  'turretSensorUnitEagle',
+  'turretSensorUnitDuck',
+  'turretSensorUnitAlbatros',
+  'turretSensorUnitQueenBee',
+  'turretSensorUnitQueenTick',
+  'turretSensorUnitTransport',
+  'turretSensorUnitCommander',
+  'turretSensorBuildingSolar',
+  'turretSensorBuildingWind',
+  'turretSensorBuildingExtractor',
+  'turretSensorBuildingExtractorT2',
+  'turretSensorBuildingRadar',
+  'turretSensorBuildingResourceConverter',
+  'turretSensorBuildingSonar',
+  'turretSensorBuildingFabricator',
+  'turretSensorBuildingBeamMega',
+  'turretSensorBuildingCannon',
+  'turretSensorBuildingAntiAir',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
 const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
 const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
-const TOWER_BLUEPRINT_ID_SET = new Set<string>(TOWER_BLUEPRINT_IDS);
 const STRUCTURE_BLUEPRINT_ID_SET = new Set<string>(STRUCTURE_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
 const RAY_BLUEPRINT_ID_SET = new Set<string>(RAY_BLUEPRINT_IDS);
@@ -114,10 +140,6 @@ export function isUnitBlueprintId(value: string): value is UnitBlueprintId {
 
 export function isBuildingBlueprintId(value: string): value is BuildingBlueprintId {
   return BUILDING_BLUEPRINT_ID_SET.has(value);
-}
-
-export function isTowerBlueprintId(value: string): value is TowerBlueprintId {
-  return TOWER_BLUEPRINT_ID_SET.has(value);
 }
 
 export function isStructureBlueprintId(value: string): value is StructureBlueprintId {

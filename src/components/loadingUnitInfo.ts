@@ -58,7 +58,7 @@ export function buildLoadingEntityInfo(
 ): LoadingUnitInfo {
   return kind === 'unit'
     ? buildUnitInfo(blueprintId as UnitBlueprintId)
-    : buildBuildingInfo(blueprintId as StructureBlueprintId, kind === 'tower');
+    : buildBuildingInfo(blueprintId as StructureBlueprintId);
 }
 
 function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
@@ -105,9 +105,9 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
   };
 }
 
-function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: boolean): LoadingUnitInfo {
+function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId): LoadingUnitInfo {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
-  const turrets = isTower ? createBuildingRuntimeTurrets(buildingBlueprintId) : [];
+  const turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
   const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
@@ -131,7 +131,7 @@ function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: b
 
   const identitySection: LoadingUnitInfoSection = {
     id: 'identity',
-    title: isTower ? 'Tower' : 'Building',
+    title: 'Building',
     items: [
       stat('Blueprint', blueprint.buildingBlueprintId),
       stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
@@ -145,12 +145,12 @@ function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: b
   const functionItems = buildBuildingFunctionItems(blueprint);
   const functionSection: LoadingUnitInfoSection = {
     id: 'function',
-    title: isTower ? 'Economy' : 'Function',
+    title: 'Function',
     items: functionItems.length > 0 ? functionItems : [stat('Output', 'passive structure')],
   };
 
   const summary: LoadingUnitInfoNode[] = [
-    stat('Role', summarizeBuildingRole(blueprint, isTower, damagingTurrets.length)),
+    stat('Role', summarizeBuildingRole(blueprint, damagingTurrets.length)),
     stat('Cost', `${fmt(buildCost.energy)}E / ${fmt(buildCost.metal)}M`),
     stat('HP', fmt(blueprint.hp)),
     stat('Output', describeBuildingOutput(blueprint, firepower)),
@@ -158,20 +158,13 @@ function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: b
     stat('Footprint', `${blueprint.gridWidth}x${blueprint.gridHeight}`),
   ];
 
-  if (isTower) {
-    return {
-      summary,
-      leftSections: functionItems.length > 0 ? [identitySection, functionSection] : [identitySection],
-      rightSections: [
-        buildCombatSummarySection(turrets, firepower, longestRange),
-        buildTurretsSection(turrets),
-      ],
-    };
-  }
   return {
     summary,
-    leftSections: [identitySection],
-    rightSections: [functionSection],
+    leftSections: functionItems.length > 0 ? [identitySection, functionSection] : [identitySection],
+    rightSections: [
+      buildCombatSummarySection(turrets, firepower, longestRange),
+      buildTurretsSection(turrets),
+    ],
   };
 }
 
@@ -186,17 +179,16 @@ function buildBuildingFunctionItems(blueprint: BuildingBlueprint): LoadingUnitIn
 
 function summarizeBuildingRole(
   blueprint: BuildingBlueprint,
-  isTower: boolean,
   weaponCount: number,
 ): string {
-  if (isTower && weaponCount > 0) return 'defense tower';
+  if (weaponCount > 0) return 'armed building';
   if (blueprint.constructionRate) return 'unit fabricator';
   if (blueprint.conversionRate) return 'resource converter';
   if (blueprint.metalProduction) return 'metal extractor';
   if (blueprint.energyProduction) return 'energy generator';
   if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
   if (blueprint.buildingBlueprintId === 'buildingSonar') return 'sonar';
-  return isTower ? 'static host' : 'structure';
+  return 'structure';
 }
 
 function describeBuildingOutput(blueprint: BuildingBlueprint, firepower: Firepower): string {
@@ -497,9 +489,6 @@ function describeLockOnInclusions(blueprint: ReturnType<typeof getTurretBlueprin
   }
   if (blueprint.includeLockOnLevel1Buildings.length > 0) {
     items.push(stat('Buildings', blueprint.includeLockOnLevel1Buildings.join(', ')));
-  }
-  if (blueprint.includeLockOnLevel1Towers.length > 0) {
-    items.push(stat('Towers', blueprint.includeLockOnLevel1Towers.join(', ')));
   }
   if (blueprint.includeLockOnLevel1Units.length > 0) {
     items.push(stat('Units', blueprint.includeLockOnLevel1Units.join(', ')));

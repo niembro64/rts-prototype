@@ -1,10 +1,8 @@
 /**
  * Building blueprints.
  *
- * Authored static facts live in buildings.json (pure infrastructure)
- * and towers.json (static turret/lock-on hosts). This module keeps
- * the current TypeScript API for validation, renderer helpers, and
- * derived runtime config while the blueprint tables themselves are data.
+ * Every static host is a building. Combat, production, resource, and sensor
+ * behavior all come from its mounted turrets.
  */
 
 import type {
@@ -15,17 +13,14 @@ import type {
   BuildingSupportSurface,
   ResourceCost,
 } from '../types';
-import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import type { UnitBlueprintId } from '../../../types/blueprintIds';
 import type {
   BuildingTurretMount,
   EntityBaseLedger,
   EntityHudBlueprint,
   LockOnInclusionObject,
-  SensorCapabilityConfig,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
-import rawTowerBlueprints from './towers.json';
 import { assertExplicitFields } from './jsonValidation';
 import {
   LOCK_ON_INCLUSION_FIELDS,
@@ -34,8 +29,8 @@ import {
 } from './lockOnValidation';
 import { productionHoldRingOuterRadius } from '../productionHoldGeometry';
 import {
-  assertTowerLockOnInclusionConfigIds,
-  getTowerLockOnInclusions,
+  assertBuildingLockOnInclusionConfigIds,
+  getBuildingLockOnInclusions,
 } from './lockOnConfig';
 import {
   isUnitBlueprintId,
@@ -49,10 +44,7 @@ import {
   assertValidShotArmingRadius,
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
-import {
-  getMaximumSensorMatrixRadius,
-  validateSensorCapabilityConfig,
-} from '../sensorConfig';
+import { getMaximumSensorMatrixRadius } from '../sensorConfig';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -97,43 +89,29 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
    *  torus is currently the only hovering structure type. */
   hoveringType: BuildingHoveringType;
   hud: EntityHudBlueprint;
-  sensors: SensorCapabilityConfig;
   /** Optional reusable turret hardpoints mounted on this building.
    *  Building mount coordinates are absolute world units relative to
    *  the building center/base, not body-radius fractions like units. */
   turrets: BuildingTurretMount[];
 };
 
-type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
+type JsonBuildingBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
 
-const PURE_BUILDING_BLUEPRINTS =
-  rawBuildingBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
-const RAW_TOWER_BLUEPRINTS =
-  rawTowerBlueprints as Partial<Record<BuildingBlueprintId, JsonTowerBlueprint>>;
+const RAW_BUILDING_BLUEPRINTS =
+  rawBuildingBlueprints as unknown as Partial<Record<BuildingBlueprintId, JsonBuildingBlueprint>>;
 
-assertTowerLockOnInclusionConfigIds(Object.keys(RAW_TOWER_BLUEPRINTS));
+assertBuildingLockOnInclusionConfigIds(Object.keys(RAW_BUILDING_BLUEPRINTS));
 
-function buildTowerBlueprints(): Partial<Record<BuildingBlueprintId, BuildingBlueprint>> {
-  const blueprints: Partial<Record<BuildingBlueprintId, BuildingBlueprint>> = {};
-  const ids = Object.keys(RAW_TOWER_BLUEPRINTS) as BuildingBlueprintId[];
-  for (let i = 0; i < ids.length; i++) {
-    const id = ids[i];
-    const blueprint = RAW_TOWER_BLUEPRINTS[id];
-    if (blueprint === undefined) continue;
-    assertNoInlineLockOnInclusionFields(`tower blueprint ${id}`, blueprint);
-    blueprints[id] = {
-      ...blueprint,
-      ...getTowerLockOnInclusions(id),
-    };
-  }
-  return blueprints;
+const STATIC_BLUEPRINTS_BY_ID: Partial<Record<BuildingBlueprintId, BuildingBlueprint>> = {};
+for (const id of Object.keys(RAW_BUILDING_BLUEPRINTS) as BuildingBlueprintId[]) {
+  const blueprint = RAW_BUILDING_BLUEPRINTS[id];
+  if (blueprint === undefined) continue;
+  assertNoInlineLockOnInclusionFields(`building blueprint ${id}`, blueprint);
+  STATIC_BLUEPRINTS_BY_ID[id] = {
+    ...blueprint,
+    ...getBuildingLockOnInclusions(id),
+  };
 }
-
-const TOWER_BLUEPRINTS = buildTowerBlueprints();
-const STATIC_BLUEPRINTS_BY_ID = {
-  ...PURE_BUILDING_BLUEPRINTS,
-  ...TOWER_BLUEPRINTS,
-} as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 for (const id of STRUCTURE_BLUEPRINT_IDS) {
   if (STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId] === undefined) {
     throw new Error(`Missing static blueprint for stable building blueprint id ${id}`);
@@ -152,14 +130,6 @@ function buildBuildingBlueprints(): Record<BuildingBlueprintId, BuildingBlueprin
 
 export const BUILDING_BLUEPRINTS = buildBuildingBlueprints();
 
-for (const id of Object.keys(rawTowerBlueprints)) {
-  if (Object.prototype.hasOwnProperty.call(rawBuildingBlueprints, id)) {
-    throw new Error(
-      `Static blueprint ${id} is authored in both buildings.json and towers.json`,
-    );
-  }
-}
-
 const BUILDING_EXPLICIT_FIELDS = [
   'base',
   'energyProduction',
@@ -171,7 +141,6 @@ const BUILDING_EXPLICIT_FIELDS = [
   'placementGridHeight',
   'supportSurface',
   'hoveringType',
-  'sensors',
   'turrets',
 ] as const;
 
@@ -347,12 +316,19 @@ function validateDedicatedContactSensor(
   blueprint: BuildingBlueprint,
 ): void {
   if (id !== 'buildingRadar' && id !== 'buildingSonar') return;
-  if (getMaximumSensorMatrixRadius(blueprint.sensors.fullSight) !== 0) {
+  const sensorMount = blueprint.turrets.find(
+    (mount) => TURRET_BLUEPRINTS[mount.turretBlueprintId]?.kind === 'sensor',
+  );
+  if (sensorMount === undefined) {
+    throw new Error(`Invalid building blueprint ${id}: missing dedicated sensor turret`);
+  }
+  const sensors = TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].turretRange.sensors;
+  if (getMaximumSensorMatrixRadius(sensors.fullSight) !== 0) {
     throw new Error(
       `Invalid building blueprint ${id}: dedicated contact sensors must not grant full sight`,
     );
   }
-  const contact = blueprint.sensors.contactSight;
+  const contact = sensors.contactSight;
   const expectedRadius = id === 'buildingRadar'
     ? contact.aboveWater.aboveWater
     : contact.underwater.underwater;
@@ -416,43 +392,37 @@ function validateFactoryUnitRoster(
 
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
-  const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
-  if (towerBlueprint) {
-    assertExplicitFields(`tower blueprint ${id}`, blueprint, LOCK_ON_INCLUSION_FIELDS);
-    validateLockOnInclusionObject(
-      `tower blueprint ${id}`,
-      blueprint as BuildingBlueprint & LockOnInclusionObject,
-    );
-  } else {
-    for (const field of LOCK_ON_INCLUSION_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(blueprint, field)) {
-        throw new Error(
-          `Invalid building blueprint ${id}: pure buildings do not carry lock-on inclusion field "${field}"`,
-        );
-      }
-    }
-  }
+  assertExplicitFields(`building blueprint ${id}`, blueprint, LOCK_ON_INCLUSION_FIELDS);
+  validateLockOnInclusionObject(
+    `building blueprint ${id}`,
+    blueprint as BuildingBlueprint & LockOnInclusionObject,
+  );
   if (id !== blueprint.buildingBlueprintId) {
     throw new Error(
       `Building blueprint key mismatch: key '${id}' has buildingBlueprintId '${blueprint.buildingBlueprintId}'`,
     );
   }
   blueprint.base = normalizeEntityBaseLedgerFromAliases(
-    `${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`,
+    `building blueprint ${id}`,
     blueprint.base,
     {
       cost: blueprint.cost,
       health: blueprint.hp,
     },
   );
-  if (towerBlueprint) {
-    assertValidShotArmingRadius(`tower blueprint ${id}`, blueprint.base.radius);
+  if (blueprint.turrets.some(
+    (mount) => TURRET_BLUEPRINTS[mount.turretBlueprintId]?.kind === 'attack',
+  )) {
+    assertValidShotArmingRadius(`building blueprint ${id}`, blueprint.base.radius);
+  }
+  if (blueprint.turrets.length === 0) {
+    throw new Error(`Invalid building blueprint ${id}: every building must mount at least one turret`);
   }
   for (const mount of blueprint.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (!turretBlueprint) {
       throw new Error(
-        `Invalid ${towerBlueprint ? 'tower' : 'building'} blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
+        `Invalid building blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
       );
     }
   }
@@ -489,7 +459,6 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   validateFabricatorTorusTargetRadius(id, blueprint);
   validateBuildingSupportSurface(id, blueprint.supportSurface);
   validateBuildingHoveringType(id, blueprint);
-  validateSensorCapabilityConfig(`building blueprint ${id}`, blueprint.sensors);
   validateDedicatedContactSensor(id, blueprint);
   if (
     !blueprint.hud ||

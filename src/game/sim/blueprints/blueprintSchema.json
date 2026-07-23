@@ -190,9 +190,7 @@
       "required": [
         "fullSight",
         "contactSight",
-        "detectorRadius",
-        "trackingRadius",
-        "scanRadius"
+        "detectorRadius"
       ],
       "properties": {
         "fullSight": {
@@ -203,12 +201,30 @@
         },
         "detectorRadius": {
           "type": "number"
-        },
-        "trackingRadius": {
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretRangeConfig": {
+      "type": "object",
+      "required": [
+        "range",
+        "rangeVolume",
+        "rangeMultiplierOverrides",
+        "sensors"
+      ],
+      "properties": {
+        "range": {
           "type": "number"
         },
-        "scanRadius": {
-          "type": "number"
+        "rangeVolume": {
+          "$ref": "#/$defs/TurretRangeVolume"
+        },
+        "rangeMultiplierOverrides": {
+          "$ref": "#/$defs/TurretRangeOverrides"
+        },
+        "sensors": {
+          "$ref": "#/$defs/SensorCapabilityConfig"
         }
       },
       "additionalProperties": false
@@ -1285,7 +1301,6 @@
     "TurretLockOnEntityFamilyInclusion": {
       "enum": [
         "buildings",
-        "towers",
         "units",
         "turrets",
         "shots"
@@ -1305,7 +1320,6 @@
         "includeLockOnLevel0FriendsAndEnemies",
         "includeLockOnLevel0Entities",
         "includeLockOnLevel1Buildings",
-        "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
         "includeLockOnLevel1Shots",
@@ -1325,12 +1339,6 @@
           }
         },
         "includeLockOnLevel1Buildings": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Towers": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1364,7 +1372,8 @@
       "enum": [
         "attack",
         "spawn",
-        "resourcePylon"
+        "resourcePylon",
+        "sensor"
       ]
     },
     "TurretMountControlMode": {
@@ -1376,7 +1385,7 @@
     },
     "SpawnProducedKind": {
       "enum": [
-        "buildingsAndTowers",
+        "buildings",
         "units"
       ]
     },
@@ -1518,14 +1527,12 @@
         "kind",
         "emissionKind",
         "emissionBlueprintId",
-        "range",
-        "rangeVolume",
+        "turretRange",
         "cooldown",
         "color",
         "turretTurnAccel",
         "turretDrag",
         "barrel",
-        "rangeMultiplierOverrides",
         "eventsSmooth",
         "launchForce",
         "addTurretVelocityToEmissionLaunch",
@@ -1545,7 +1552,6 @@
         "includeLockOnLevel0FriendsAndEnemies",
         "includeLockOnLevel0Entities",
         "includeLockOnLevel1Buildings",
-        "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
         "includeLockOnLevel1Shots",
@@ -1561,11 +1567,8 @@
         "kind": {
           "$ref": "#/$defs/TurretEmitterKind"
         },
-        "range": {
-          "type": "number"
-        },
-        "rangeVolume": {
-          "$ref": "#/$defs/TurretRangeVolume"
+        "turretRange": {
+          "$ref": "#/$defs/TurretRangeConfig"
         },
         "cooldown": {
           "oneOf": [
@@ -1588,9 +1591,6 @@
         },
         "barrel": {
           "$ref": "#/$defs/BarrelShape"
-        },
-        "rangeMultiplierOverrides": {
-          "$ref": "#/$defs/TurretRangeOverrides"
         },
         "eventsSmooth": {
           "type": "boolean"
@@ -1724,12 +1724,6 @@
           }
         },
         "includeLockOnLevel1Buildings": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Towers": {
           "type": "array",
           "items": {
             "type": "string"
@@ -3160,7 +3154,6 @@
         "radius",
         "supportPointOffsetZ",
         "supportSurface",
-        "sensors",
         "mass",
         "cost",
         "turrets",
@@ -3175,7 +3168,6 @@
         "includeLockOnLevel0FriendsAndEnemies",
         "includeLockOnLevel0Entities",
         "includeLockOnLevel1Buildings",
-        "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
         "includeLockOnLevel1Shots",
@@ -3202,9 +3194,6 @@
         },
         "supportSurface": {
           "$ref": "#/$defs/UnitSupportSurface"
-        },
-        "sensors": {
-          "$ref": "#/$defs/SensorCapabilityConfig"
         },
         "mass": {
           "type": "number"
@@ -3297,12 +3286,6 @@
           }
         },
         "includeLockOnLevel1Buildings": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Towers": {
           "type": "array",
           "items": {
             "type": "string"

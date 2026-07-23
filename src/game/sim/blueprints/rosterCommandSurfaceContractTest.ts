@@ -802,9 +802,12 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitJackal',
     'unitBadger',
     'unitMongoose',
-    'unitTick',
     'unitDragonfly',
   ]);
+  assertContract(
+    unitBlueprintBarDefaultMoveState('unitTick') === 'maneuver',
+    'Tick must default to maneuver so direct Attack orders pursue targets until the Mini Beam engages',
+  );
   const barDefaultHoldFireUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
     unitBlueprintBarDefaultFireState(unitBlueprintId) === 'holdFire',
   );

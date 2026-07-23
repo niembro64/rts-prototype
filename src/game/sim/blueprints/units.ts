@@ -30,17 +30,12 @@ import {
   assertValidShotArmingRadius,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
-import {
-  getMaximumSensorMatrixRadius,
-  validateSensorCapabilityConfig,
-} from '../sensorConfig';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 
 const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
-  'sensors',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -172,9 +167,9 @@ function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
   for (const mount of bp.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (mount.allowedBuildBlueprintIds !== undefined) {
-      if (turretBlueprint.spawn?.producedKind !== 'buildingsAndTowers') {
+      if (turretBlueprint.spawn?.producedKind !== 'buildings') {
         throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds belongs on a building/tower spawn turret mount`,
+          `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds belongs on a building spawn turret mount`,
         );
       }
       if (!Array.isArray(mount.allowedBuildBlueprintIds) || mount.allowedBuildBlueprintIds.length === 0) {
@@ -220,8 +215,10 @@ function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
-  validateSensorCapabilityConfig(`sensor config for ${bp.unitBlueprintId}`, bp.sensors);
   assertValidShotArmingRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
+  if (bp.turrets.length === 0) {
+    throw new Error(`Invalid unit blueprint ${bp.unitBlueprintId}: every unit must mount at least one turret`);
+  }
 
   if (!Number.isFinite(bp.supportPointOffsetZ) || bp.supportPointOffsetZ < 0) {
     throw new Error(
@@ -229,11 +226,6 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
-  if (getMaximumSensorMatrixRadius(bp.sensors.fullSight) <= 0) {
-    throw new Error(
-      `Invalid sensor config for ${bp.unitBlueprintId}: fullSight must contain a positive radius`,
-    );
-  }
   validateUnitWorkEmitterMounts(bp);
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {

@@ -59,7 +59,7 @@ import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } fro
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { isAreaCommandFilterCategory } from '../sim/areaCommandFilters';
-import { isBuildingBlueprintId, isTowerBlueprintId, isUnitBlueprintId } from '../../types/blueprintIds';
+import { isBuildingBlueprintId, isUnitBlueprintId } from '../../types/blueprintIds';
 import { SERVER_CONFIG } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
@@ -205,10 +205,6 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
         : null;
     case 'setBackgroundBuildingBlueprintEnabled':
       return typeof command.enabled === 'boolean' && isBuildingBlueprintId(command.buildingBlueprintId)
-        ? { ...command, tick }
-        : null;
-    case 'setBackgroundTowerBlueprintEnabled':
-      return typeof command.enabled === 'boolean' && isTowerBlueprintId(command.towerBlueprintId)
         ? { ...command, tick }
         : null;
     case 'setMaxTotalUnits':
@@ -400,8 +396,7 @@ function sanitizeAreaCommandFilterFields(
   if (filterBlueprintId !== undefined) {
     if (typeof filterBlueprintId !== 'string') return null;
     const knownBlueprint = isUnitBlueprintId(filterBlueprintId) ||
-      isBuildingBlueprintId(filterBlueprintId) ||
-      isTowerBlueprintId(filterBlueprintId);
+      isBuildingBlueprintId(filterBlueprintId);
     if (!knownBlueprint) return null;
   }
   return {

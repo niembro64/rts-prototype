@@ -20,12 +20,13 @@ const BAR_BOMBER_DEFAULT_HOLD_FIRE_UNIT_BLUEPRINT_IDS = new Set<string>([
 const BAR_DEFAULT_HOLD_POSITION_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM unitdefs that explicitly author movestate=0 among the current
   // local analogues, plus AircraftBomb bombers adjusted by
-  // unit_bombers_default_hold_fire.lua.
+  // unit_bombers_default_hold_fire.lua. Tick deliberately keeps the local
+  // maneuver default so a direct Attack order can pursue an out-of-range
+  // target; hold-position remains available as an explicit player state.
   'unitCommander',
   'unitJackal',
   'unitMongoose',
   'unitBadger',
-  'unitTick',
   'unitDragonfly',
 ]);
 const BAR_BOMBER_NO_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
@@ -123,7 +124,7 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
       shot !== null &&
       shot !== undefined &&
       shot.type !== 'shield' &&
-      config.range > 10
+      config.turretRange.range > 10
     ) {
       return true;
     }
@@ -162,10 +163,7 @@ export function buildingBlueprintHasBarStopCommand(
 
 export function entityHasBarStopCommand(entity: Entity): boolean {
   if ((entity.unit ?? null) !== null) return true;
-  if (entity.type === 'tower') {
-    const combat = entity.combat ?? null;
-    return combat !== null && combat.turrets.length > 0;
-  }
+  if (entity.type === 'building' && entityHasBarSetTargetCommand(entity)) return true;
   return buildingBlueprintHasBarStopCommand(entity.buildingBlueprintId);
 }
 

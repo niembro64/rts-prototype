@@ -8,7 +8,7 @@ import { assertExplicitFields, isObject } from './jsonValidation';
 
 type AuthoredLockOnInclusionConfigSection = Record<string, unknown>;
 type NormalizedLockOnInclusionConfigSection = Record<string, LockOnInclusionObject>;
-type LockOnInclusionSectionName = 'units' | 'turrets' | 'towers';
+type LockOnInclusionSectionName = 'units' | 'turrets' | 'buildings';
 type SecondaryLockOnProfile = {
   mode: 'incomingThreatReflector';
   candidateRelationship: 'enemy_entities';
@@ -20,7 +20,7 @@ type SecondaryLockOnProfile = {
 type LockOnInclusionConfig = {
   units: AuthoredLockOnInclusionConfigSection;
   turrets: AuthoredLockOnInclusionConfigSection;
-  towers: AuthoredLockOnInclusionConfigSection;
+  buildings: AuthoredLockOnInclusionConfigSection;
   secondaryLockOnProfiles?: Record<string, SecondaryLockOnProfile>;
 };
 
@@ -82,7 +82,7 @@ const NORMALIZED_LOCK_ON_INCLUSION_CONFIG: Record<
 > = {
   units: normalizeLockOnTargetConfigSection('units', LOCK_ON_INCLUSION_CONFIG.units),
   turrets: normalizeLockOnTargetConfigSection('turrets', LOCK_ON_INCLUSION_CONFIG.turrets),
-  towers: normalizeLockOnTargetConfigSection('towers', LOCK_ON_INCLUSION_CONFIG.towers),
+  buildings: normalizeLockOnTargetConfigSection('buildings', LOCK_ON_INCLUSION_CONFIG.buildings),
 };
 if (LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles !== undefined) {
   validateSecondaryLockOnProfiles(LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles);
@@ -143,8 +143,8 @@ export function assertTurretLockOnInclusionConfigIds(expectedIds: readonly strin
   assertLockOnInclusionConfigIds('turrets', 'turret blueprint', expectedIds);
 }
 
-export function assertTowerLockOnInclusionConfigIds(expectedIds: readonly string[]): void {
-  assertLockOnInclusionConfigIds('towers', 'tower blueprint', expectedIds);
+export function assertBuildingLockOnInclusionConfigIds(expectedIds: readonly string[]): void {
+  assertLockOnInclusionConfigIds('buildings', 'building blueprint', expectedIds);
 }
 
 export function getUnitLockOnInclusions(id: string): LockOnInclusionObject {
@@ -155,8 +155,8 @@ export function getTurretLockOnInclusions(id: string): LockOnInclusionObject {
   return getLockOnInclusions('turrets', 'turret blueprint', id);
 }
 
-export function getTowerLockOnInclusions(id: string): LockOnInclusionObject {
-  return getLockOnInclusions('towers', 'tower blueprint', id);
+export function getBuildingLockOnInclusions(id: string): LockOnInclusionObject {
+  return getLockOnInclusions('buildings', 'building blueprint', id);
 }
 
 export function getSecondaryLockOnProfile(id: string): SecondaryLockOnProfile | undefined {

@@ -24,6 +24,7 @@ import {
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import {
+  getEntityPrimaryTurretSensorSource,
   getEntityRadarRadius,
   getEntitySonarRadius,
 } from '../sim/sensorCoverage';
@@ -46,6 +47,7 @@ const RANGE_CIRCLE_SEGMENTS = 96;
 const RADIUS_SPHERE_RENDER_ORDER = 22;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
+const _selectedSensorPosition = { x: 0, y: 0, z: 0 };
 
 type OverlayEntityMesh = Pick<
   EntityMesh,
@@ -454,7 +456,14 @@ export class SelectionOverlayRenderer3D {
 
     if (showRadar) {
       if (!m.radarRing) m.radarRing = this.makeWorldRing('radar');
-      this.setWorldRing(m.radarRing, ux, uy, radarRadius, COLOR_RADAR);
+      const source = getEntityPrimaryTurretSensorSource(entity, _selectedSensorPosition);
+      this.setWorldRing(
+        m.radarRing,
+        source?.position.x ?? ux,
+        source?.position.y ?? uy,
+        radarRadius,
+        COLOR_RADAR,
+      );
     } else if (m.radarRing) {
       m.radarRing.hide();
     }

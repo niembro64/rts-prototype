@@ -40,7 +40,7 @@ export type SelectionBuilderTypeInfo = {
   active: boolean;
 };
 
-export type SelectionEntityType = 'unit' | 'tower' | 'building';
+export type SelectionEntityType = 'unit' | 'building';
 
 export type SelectedEntityInfo = {
   kind: SelectionEntityType | 'selection';
@@ -55,16 +55,10 @@ export type SelectedEntityInfo = {
 };
 
 export type SelectionInfo = {
-  // Per-type selection counts. The action panel branches on these so
-  // each entity type gets its own uniform action set
-  // (see budget_design_philosophy.html "Selection Menus Are Uniform Per
-  // Entity Type"). towerCount counts selected entities whose
-  // entity.type === 'tower' (fabricators + shooting towers);
-  // buildingCount counts selected entities whose
-  // entity.type === 'building' (pure infrastructure: solar, wind,
-  // extractor, radar, converter).
+  // Per-host-kind selection counts. Mounted capabilities determine which
+  // actions a unit or building exposes; armed/factory buildings are not a
+  // third "tower" host kind.
   unitCount: number;
-  towerCount: number;
   buildingCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
@@ -128,18 +122,18 @@ export type SelectionInfo = {
   /** True when a builder is selected alongside at least one reclaimable
    *  selected target. Enables the direct reclaim-selected command. */
   hasReclaimableSelection: boolean;
-  /** True when selected combat units/towers expose Set Target / Clear Target. */
+  /** True when selected combat hosts expose Set Target / Clear Target. */
   hasTowerTargetControl: boolean;
-  /** True when at least one selected combat unit/tower has a BAR-style
+  /** True when at least one selected combat host has a BAR-style
    *  manual-fire shot weapon. Gates the Manual Launch button. */
   hasManualLaunchControl: boolean;
   /** True when at least one selected combat entity has a host-level
    *  lock-on target set. Enables the Clear Target button. */
   hasTowerTargetActive: boolean;
   /** True while the user is in the click-to-pick mode for setting a
-   *  tower's lock-on target. Highlights the Set Target button. */
+   *  host's lock-on target. Highlights the Set Target button. */
   isTowerTargetMode: boolean;
-  /** True while the no-ground variant of tower target pick mode is active. */
+  /** True while the no-ground variant of target pick mode is active. */
   isTowerTargetNoGroundMode: boolean;
   isWaiting: boolean;
   isGatherWaiting: boolean;
@@ -186,9 +180,9 @@ export type SelectionInfo = {
   factoryProductionQuotas?: FactoryQuotaItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
-  /** True while the selected factory/tower shell itself is incomplete. */
+  /** True while the selected factory building shell itself is incomplete. */
   factoryUnderConstruction?: boolean;
-  /** Construction fraction for the selected incomplete factory/tower shell. */
+  /** Construction fraction for the selected incomplete factory building shell. */
   factoryConstructionProgress?: number;
   factoryRepeatsProduction?: boolean;
   /** True when the selected factory mirrors BAR's air-plant Land At state. */
@@ -240,11 +234,11 @@ export type SelectionActions = {
   splitArmySelection: () => void;
   loopSelection: () => void;
   /** Enter click-pick mode for setting the host lock-on target on the
-   *  selected towers. Right-click / Esc cancels. */
+   *  selected combat hosts. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;
   /** Enter click-pick mode for setting an entity-only host lock-on target. */
   setTowerTargetNoGroundMode: () => void;
-  /** Clear the host lock-on target on the selected towers. */
+  /** Clear the host lock-on target on the selected combat hosts. */
   clearTowerTarget: () => void;
   toggleAttackArea: () => void;
   toggleAttack: () => void;

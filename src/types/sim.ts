@@ -220,9 +220,6 @@ export type Unit = {
   /** Authored unit support proxy. Unit collision remains sphere-based;
    *  this separate proxy decides whether anything can stand on the unit. */
   supportSurface: UnitSupportSurface;
-  /** Authored source-medium × target-medium envelopes for full sight and
-   *  contact sight, plus detector/tracking/scan capabilities. */
-  sensors: SensorCapabilityConfig;
   mass: number;
   hp: number;
   maxHp: number;
@@ -424,15 +421,19 @@ export type TurretConfig = {
   /** Authoritative effect family. It survives blueprint compilation and
    *  dispatches the emitter executor. */
   kind: TurretEmitterKind;
-  range: number;
-  rangeVolume: TurretRangeVolume;
+  /** All lock-on and observation distances owned by this turret. */
+  turretRange: {
+    range: number;
+    rangeVolume: TurretRangeVolume;
+    rangeOverrides: TurretRangeOverrides;
+    sensors: SensorCapabilityConfig;
+  };
   cooldown: TurretCooldownConfig | null;
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
   color: number;
   barrel: BarrelShape;
   angular: { turnAccel: number; drag: number };
-  rangeOverrides: TurretRangeOverrides;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
   spread: { pelletCount: number; angle: number } | null;
@@ -938,7 +939,7 @@ type WreckSource =
       unitBlueprintId: string;
     }
   | {
-      kind: 'building' | 'tower';
+      kind: 'building';
       buildingBlueprintId: BuildingBlueprintId;
       width: number;
       height: number;
@@ -1020,7 +1021,6 @@ export type BuildingConfig = {
   /** Derived compatibility flag for existing runtime branches. */
   hovering: boolean;
   hud: import('./blueprints').EntityHudBlueprint;
-  sensors: SensorCapabilityConfig;
   radius: EntityRadii;
 };
 
@@ -1130,15 +1130,13 @@ type DGunProjectile = {
   groundOffset: number;
 };
 
-// Entity type discriminator. Towers are the immobile peer of units: they
-// mount turrets and carry a host-level lock-on, but have no locomotion.
-// See budget_design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
-export type EntityType = 'unit' | 'tower' | 'building' | 'shot';
+// Entity type discriminator. Static hosts are buildings; mounted turrets own
+// their combat, production, resource, and observation capabilities.
+export type EntityType = 'unit' | 'building' | 'shot';
 
 export type EntityMetaKind = EntityType | 'turret';
 export type EntityMetaBlueprintKind =
   | 'unit'
-  | 'tower'
   | 'building'
   | 'turret'
   | 'shot'

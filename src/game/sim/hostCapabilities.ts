@@ -48,7 +48,7 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
     const emitter = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (emitter === undefined) continue;
 
-    if (emitter.kind === 'spawn' && emitter.spawn?.producedKind === 'buildingsAndTowers') {
+    if (emitter.kind === 'spawn' && emitter.spawn?.producedKind === 'buildings') {
       const roster = mount.allowedBuildBlueprintIds ?? EMPTY_STRUCTURE_IDS;
       structureSpawners.push(Object.freeze({
         mountId: mount.mountId,

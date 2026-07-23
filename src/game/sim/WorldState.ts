@@ -77,9 +77,7 @@ export type RemovedSnapshotEntity = {
   playerId: PlayerId | null;
   x: number;
   y: number;
-  // 'tower' rides the building ghost path on death — same static
-  // last-seen-position semantics under FOW-02b.
-  type: 'unit' | 'building' | 'tower';
+  type: 'unit' | 'building';
 };
 
 // One pending init "spawn beam": the spawn turret on `sourceId` zaps the
@@ -529,8 +527,8 @@ export class WorldState {
     // Towers share the buildingVersion bucket because their structural
     // shape (static, footprint, building component) matches buildings;
     // the entity.type discriminator is what selection/UI code reads.
-    if (entity.type === 'building' || entity.type === 'tower') this.buildingVersion++;
-    if (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') {
+    if (entity.type === 'building') this.buildingVersion++;
+    if (entity.type === 'unit' || entity.type === 'building') {
       const r = entity.unit
         ? entity.unit.radius.hitbox
         : (entity.building ? entity.building.targetRadius : 0);
@@ -571,8 +569,8 @@ export class WorldState {
       }
     }
     if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
-    if (entity !== undefined && (entity.type === 'building' || entity.type === 'tower')) this.buildingVersion++;
-    if (entity !== undefined && (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')) {
+    if (entity !== undefined && (entity.type === 'building')) this.buildingVersion++;
+    if (entity !== undefined && (entity.type === 'unit' || entity.type === 'building')) {
       this.removedSnapshotEntities.push({
         id,
         playerId: entity.ownership !== null ? entity.ownership.playerId : null,
@@ -613,7 +611,7 @@ export class WorldState {
   markSnapshotDirty(id: EntityId, fields: number): void {
     if (fields === 0) return;
     const entity = this.entities.get(id);
-    if (!entity || (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')) return;
+    if (!entity || (entity.type !== 'unit' && entity.type !== 'building')) return;
     this.refreshEntitySlotState(entity, fields);
     this.enqueueSnapshotDirty(id, fields);
   }
@@ -623,7 +621,7 @@ export class WorldState {
   markSnapshotDirtyStateSynced(entity: Entity, fields: number): void {
     if (fields === 0) return;
     if (this.entities.get(entity.id) !== entity) return;
-    if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') return;
+    if (entity.type !== 'unit' && entity.type !== 'building') return;
     this.enqueueSnapshotDirty(entity.id, fields);
   }
 
@@ -909,7 +907,7 @@ export class WorldState {
     for (const e of this.getAllEntities()) {
       if (e.ownership !== null &&
           e.ownership.playerId !== playerId &&
-          (e.type === 'unit' || e.type === 'building' || e.type === 'tower')) {
+          (e.type === 'unit' || e.type === 'building')) {
         buf.push(e);
       }
     }

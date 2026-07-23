@@ -58,7 +58,6 @@ import {
   CT_ENTITY_FAMILY_BUILDING,
   CT_ENTITY_FAMILY_NONE,
   CT_ENTITY_FAMILY_SHOT,
-  CT_ENTITY_FAMILY_TOWER,
   CT_ENTITY_FAMILY_UNIT,
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -99,16 +98,13 @@ import {
 } from '../../../types/network';
 import {
   EMPTY_LOCK_ON_MASKS,
-  getTowerHostLockOnMasks,
+  getBuildingHostLockOnMasks,
   getUnitHostLockOnMasks,
   getUnitBlueprint,
   type LockOnMasks,
 } from '../blueprints';
 import {
-  getEntityFullVisionRadius,
-  getEntityCloakDetectionTargetRadii,
-  getEntityRadarRadius,
-  getEntitySonarRadius,
+  getEntityPrimaryTurretSensorSource,
   getEntityVisibilityPadding,
   isEntityCloaked,
 } from '../sensorCoverage';
@@ -127,11 +123,12 @@ import {
 } from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
+const _sensorSourcePos = { x: 0, y: 0, z: 0 };
 
 function getHostLockOnMasks(entity: Entity): LockOnMasks {
   if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
-  if (entity.type === 'tower' && entity.buildingBlueprintId !== null) {
-    return getTowerHostLockOnMasks(entity.buildingBlueprintId);
+  if (entity.type === 'building' && entity.buildingBlueprintId !== null) {
+    return getBuildingHostLockOnMasks(entity.buildingBlueprintId);
   }
   return EMPTY_LOCK_ON_MASKS;
 }
@@ -697,7 +694,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.requiresFullSight === true) {
     f |= CT_TURRET_CFG_REQUIRES_FULL_SIGHT;
   }
-  switch (turret.config.rangeVolume) {
+  switch (turret.config.turretRange.rangeVolume) {
     case 'turret-range-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED;
       break;
@@ -837,8 +834,7 @@ function stampCombatTargetingEntityInto(
     entityFamily = CT_ENTITY_FAMILY_UNIT;
     entityBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
   } else if (building) {
-    entityFamily =
-      entity.type === 'tower' ? CT_ENTITY_FAMILY_TOWER : CT_ENTITY_FAMILY_BUILDING;
+    entityFamily = CT_ENTITY_FAMILY_BUILDING;
     const buildingBlueprintId = entity.buildingBlueprintId;
     entityBlueprintCode =
       buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : CT_BLUEPRINT_CODE_NONE;
@@ -851,11 +847,20 @@ function stampCombatTargetingEntityInto(
   // Sight/contact radii are stamped per entity so the Rust observation
   // helper can walk the slab itself. Detection padding is always zero:
   // visibility and medium membership use the target center.
-  const fullVisionAboveWaterRadius = getEntityFullVisionRadius(entity, 'aboveWater');
-  const fullVisionUnderwaterRadius = getEntityFullVisionRadius(entity, 'underwater');
-  const radarRadius = getEntityRadarRadius(entity);
-  const sonarRadius = getEntitySonarRadius(entity);
-  const detectorRadii = getEntityCloakDetectionTargetRadii(entity);
+  const sensorSource = getEntityPrimaryTurretSensorSource(entity, _sensorSourcePos);
+  const sensorSourceMedium = sensorSource?.sourceMedium ?? 'aboveWater';
+  const sensorConfig = sensorSource?.sensors;
+  const fullVisionAboveWaterRadius =
+    sensorConfig?.fullSight[sensorSourceMedium].aboveWater ?? 0;
+  const fullVisionUnderwaterRadius =
+    sensorConfig?.fullSight[sensorSourceMedium].underwater ?? 0;
+  const radarRadius = sensorConfig?.contactSight[sensorSourceMedium].aboveWater ?? 0;
+  const sonarRadius = sensorConfig?.contactSight[sensorSourceMedium].underwater ?? 0;
+  const detectorRadius = sensorConfig?.detectorRadius ?? 0;
+  const detectorRadii = {
+    aboveWater: Math.min(detectorRadius, fullVisionAboveWaterRadius),
+    underwater: Math.min(detectorRadius, fullVisionUnderwaterRadius),
+  };
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
@@ -907,6 +912,8 @@ function stampCombatTargetingEntityInto(
     hostLockOn.building, hostLockOn.tower,
     hostLockOn.unit, hostLockOn.turret,
     hostLockOn.shot,
+    sensorSource?.position.x ?? _stampPos.x,
+    sensorSource?.position.y ?? _stampPos.y,
     fullVisionAboveWaterRadius, fullVisionUnderwaterRadius,
     radarRadius, sonarRadius,
     detectorRadii.aboveWater, detectorRadii.underwater,

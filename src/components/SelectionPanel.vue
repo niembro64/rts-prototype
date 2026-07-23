@@ -52,7 +52,6 @@ import {
   type FactoryProductionPresetSnapshot,
 } from '../game/input/factoryProductionPresets';
 import { factoryProductionClickModeFromEvent, queueModeFromEvent } from '../game/input/queueModifiers';
-import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
 
 import type {
@@ -70,44 +69,31 @@ const props = defineProps<{
   playableBottomInsetPx: number;
 }>();
 
-// Per budget_design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
-// every entity type carries its own uniform action set. Pure-
-// infrastructure buildings expose ON/OFF + Self-Destruct; the panel
-// opens whenever any owned entity is selected.
+// Per budget_design_philosophy.html "Selection Menus Are Uniform Per Host
+// Kind", units and buildings carry uniform base actions while mounted
+// capabilities add combat, sensor, builder, or factory controls.
 const showPanel = computed(() =>
   props.selection.unitCount > 0
-  || props.selection.towerCount > 0
   || props.selection.buildingCount > 0
   || props.selection.hasFactory,
 );
 const AREA_MEX_BLUEPRINT_ID: StructureBlueprintId = 'buildingExtractor';
 const selectedEntityTypeCount = computed(() =>
   (props.selection.unitCount > 0 ? 1 : 0)
-  + (props.selection.towerCount > 0 ? 1 : 0)
   + (props.selection.buildingCount > 0 ? 1 : 0),
 );
 const hasMixedEntityTypes = computed(() => selectedEntityTypeCount.value > 1);
 const isPureUnitSelection = computed(() =>
   props.selection.unitCount > 0
-  && props.selection.towerCount === 0
-  && props.selection.buildingCount === 0,
-);
-const isPureTowerSelection = computed(() =>
-  props.selection.towerCount > 0
-  && props.selection.unitCount === 0
   && props.selection.buildingCount === 0,
 );
 const isPureBuildingSelection = computed(() =>
   props.selection.buildingCount > 0
-  && props.selection.unitCount === 0
-  && props.selection.towerCount === 0,
+  && props.selection.unitCount === 0,
 );
 const showUnitActions = computed(() => isPureUnitSelection.value);
-const showTowerActions = computed(() => isPureTowerSelection.value);
 const showBuildingActions = computed(() => isPureBuildingSelection.value);
-const showCombatActions = computed(() =>
-  props.selection.hasFireControl && props.selection.buildingCount === 0,
-);
+const showCombatActions = computed(() => props.selection.hasFireControl);
 const isBarHotkeyPreset = computed(() => isBarCommandHotkeyPreset(props.hotkeyPreset));
 const showBarGridBuildCategories = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
 const showBarClassicBuildMenu = computed(() => isBarLegacyCommandHotkeyPreset(props.hotkeyPreset));
@@ -176,11 +162,11 @@ const showManualLaunchButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasManualLaunchControl : props.selection.hasTowerTargetControl,
 );
 // BAR ARM static defenses such as armllt/armbeamer/armrl set removewait=true
-// but do not set removestop, so pure combat-tower selections keep Stop visible
-// while Wait stays absent.
-const showTowerStopButton = computed(() =>
+// but do not set removestop, so pure armed-building selections keep Stop
+// visible while Wait stays absent.
+const showStaticStopButton = computed(() =>
   isBarHotkeyPreset.value &&
-  showTowerActions.value &&
+  showBuildingActions.value &&
   props.selection.hasFireControl &&
   !props.selection.hasFactory,
 );
@@ -210,9 +196,6 @@ const selectOnlyOptions = computed<
   if (props.selection.unitCount > 0) {
     options.push({ entityType: 'unit', label: 'Units', count: props.selection.unitCount });
   }
-  if (props.selection.towerCount > 0) {
-    options.push({ entityType: 'tower', label: 'Towers', count: props.selection.towerCount });
-  }
   if (props.selection.buildingCount > 0) {
     options.push({ entityType: 'building', label: 'Buildings', count: props.selection.buildingCount });
   }
@@ -220,11 +203,7 @@ const selectOnlyOptions = computed<
 });
 // True iff the selection contains no movable unit at all — used to
 // fold the unit-only action groups (movement, build, commander
-// specials) out of view when only towers are selected.
-const isStaticOnlySelection = computed(() =>
-  props.selection.unitCount === 0
-  && (props.selection.towerCount > 0 || props.selection.buildingCount > 0),
-);
+// specials) out of view when only buildings are selected.
 const SELECTION_PANEL = COLORS.ui.selectionPanel;
 const BUTTON_COLORS = SELECTION_PANEL.buttons;
 const BUILD_MENU_CATEGORY_BORDER_COLORS: Record<BuildMenuCategory, string> =
@@ -304,7 +283,7 @@ const barOrderCommandCellCount = computed(() => {
   if (showCombatActions.value && (!isBarHotkeyPreset.value || !showUnitActions.value)) {
     count += 1; // fire state
     if (showTrajectoryButton.value) count += 1;
-    if (showTowerStopButton.value) count += 1;
+    if (showStaticStopButton.value) count += 1;
   }
 
   if (
@@ -335,7 +314,7 @@ const barOrderCommandCellCount = computed(() => {
     if (showTowerTargetClearButton.value) count += 1;
   }
 
-  if (props.selection.hasFactory && props.selection.factoryId && showTowerActions.value) {
+  if (props.selection.hasFactory && props.selection.factoryId && showBuildingActions.value) {
     if (showPrototypeOnly) count += 2; // prototype factory status spans two cells
     count += 3; // repeat, wait, stop production
     if (isBarHotkeyPreset.value && props.selection.hasMoveStateControl) count += 1;
@@ -1233,7 +1212,7 @@ const showBarFactoryPresetOverlay = computed(() =>
   props.selection.factoryPresetOverlayVisible &&
   props.selection.hasFactory &&
   props.selection.factoryId !== undefined &&
-  showTowerActions.value,
+  showBuildingActions.value,
 );
 const barFactoryPresetTitle = computed(() =>
   props.selection.details.find((detail) => detail.label === 'Name')?.value ?? 'Factory',
@@ -1283,7 +1262,8 @@ onUnmounted(() => {
 });
 
 function structurePreviewKind(buildingBlueprintId: StructureBlueprintId): LoadingPreviewKind {
-  return isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
+  void buildingBlueprintId;
+  return 'building';
 }
 
 function entityThumbnailSrc(
@@ -1355,7 +1335,7 @@ function prefetchBuildButtonThumbnails(): void {
     }
   }
 
-  if (props.selection.hasFactory && showTowerActions.value) {
+  if (props.selection.hasFactory && showBuildingActions.value) {
     for (const option of unitOptions.value) {
       void requestEntityThumbnail('unit', option.unitBlueprintId as LoadingEntityBlueprintId);
     }
@@ -1379,7 +1359,7 @@ watch(
     buildingOptions.value.map((option) => option.buildingBlueprintId).join('|'),
     props.selection.selectedBuilderTypes.map((builderType) => builderType.unitBlueprintId).join('|'),
     props.selection.hasFactory,
-    showTowerActions.value,
+    showBuildingActions.value,
     unitOptions.value.map((option) => option.unitBlueprintId).join('|'),
     props.selection.selectedEntityInfo?.blueprintKind ?? '',
     props.selection.selectedEntityInfo?.blueprintId ?? '',
@@ -1601,19 +1581,14 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     :class="{ 'bar-hotkey-preset': isBarHotkeyPreset }"
     :style="selectionPanelStyle"
   >
-    <!-- Selection header. Per budget_design_philosophy.html "Selection Menus
-         Are Uniform Per Entity Type": the header reflects the
-         selection's entity type. Commanders read as Commander,
-         fabricator-class towers as Fabricator, other towers as Tower,
-         pure-infrastructure buildings as Building, otherwise N units. -->
+    <!-- Selection header. The header reflects the host kind and mounted
+         capability: commanders read as Commander, factory buildings as
+         Fabricator, other static hosts as Building, otherwise N units. -->
     <div v-if="showPrototypeOnlyCommandButtons" class="panel-header">
       <div class="selection-title">
         <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
         <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
-        <span v-else-if="selection.towerCount > 0 && selection.unitCount === 0" class="unit-type">
-          {{ selection.towerCount }} Tower{{ selection.towerCount > 1 ? 's' : '' }}
-        </span>
-        <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0 && selection.towerCount === 0" class="unit-type">
+        <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0" class="unit-type">
           {{ selection.buildingCount }} Building{{ selection.buildingCount > 1 ? 's' : '' }}
         </span>
         <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
@@ -2292,13 +2267,9 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Fire control (units + towers). Lives outside the Movement
-         group because towers also expose fire-at-will / hold-fire.
-         See budget_design_philosophy.html "Selection Menus Are Uniform Per
-         Entity Type": both unit and tower selection panels list a
-         fire-control toggle. -->
+    <!-- Fire control is capability-driven for armed units and buildings. -->
     <div v-if="showCombatActions && (!isBarHotkeyPreset || !showUnitActions)" class="button-group">
-      <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
+      <div class="group-label">Combat</div>
       <div class="buttons bar-command-grid">
         <button
           type="button"
@@ -2339,7 +2310,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </span>
         </button>
         <button
-          v-if="showTowerStopButton"
+          v-if="showStaticStopButton"
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
@@ -2694,7 +2665,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Factory production control -->
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions" class="button-group">
       <div class="group-label">Factory</div>
       <div
         v-if="showPrototypeOnlyCommandButtons"
@@ -2916,7 +2887,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions && showPrototypeOnlyCommandButtons" class="button-group factory-preset-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions && showPrototypeOnlyCommandButtons" class="button-group factory-preset-group">
       <div class="group-label">Presets</div>
       <div class="factory-preset-grid">
         <button
@@ -3001,9 +2972,9 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </button>
     </div>
 
-    <!-- Factory production (for fabricator towers). BAR labs use a
+    <!-- Factory production (for fabricator buildings). BAR labs use a
          fixed 3x4 unit grid with pages instead of separate long rows. -->
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group bar-menu-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions" class="button-group bar-menu-group">
       <div class="group-label">Produce</div>
       <div class="bar-grid-menu">
         <div class="bar-option-grid">
@@ -3080,7 +3051,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Combat lock-on. Applies to selected combat units and towers with turrets. -->
+    <!-- Combat lock-on applies to selected combat hosts with weapon turrets. -->
     <div v-if="selection.hasTowerTargetControl && showCombatActions" class="button-group">
       <div class="group-label">Target</div>
       <div class="buttons bar-command-grid">

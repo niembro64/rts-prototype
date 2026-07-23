@@ -1140,7 +1140,7 @@ export class RtsScene3D {
     this.inputManager?.selfDestructSelected(queue, queueFront, queueInsertIndex);
   }
 
-  public selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
+  public selectOnlyEntityType(entityType: 'unit' | 'building'): void {
     this.inputManager?.selectOnlyEntityType(entityType);
   }
 

@@ -756,7 +756,7 @@ export function resetCollisionBuffers(): void {
  * its sweep happened to touch:
  *
  *   - reflect (surface): the parent flew into a real surface — terrain,
- *     a unit/tower/building body, or a shield reflector. Fragments
+ *     a unit/building body, or a shield reflector. Fragments
  *     spray off that surface (a particle explosion that never tunnels
  *     back in).
  *   - momentum (no surface): the parent died in flight — chipped to

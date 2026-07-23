@@ -4,6 +4,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
 import { isCommander } from '../sim/combat/combatUtils';
+import { isShieldPanelTurret } from '../sim/shieldPanelRuntime';
 import type { Entity, PlayerId, Turret } from '../sim/types';
 import { getUnitSupportPointOffsetZ } from '../sim/unitGeometry';
 import {
@@ -430,7 +431,7 @@ export class UnitMeshBuilder3D {
     let shieldPanelTurret: Turret | undefined;
     for (let i = 0; i < turrets.length; i++) {
       const turret = turrets[i];
-      if (!turret.config.passive) continue;
+      if (!isShieldPanelTurret(turret)) continue;
       shieldPanelTurret = turret;
       break;
     }

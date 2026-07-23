@@ -1,6 +1,5 @@
 import type { BuildingBlueprintId, Entity, EntityId } from './types';
 import { createCombatComponent } from './types';
-import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
 import {
   buildingBlueprintHasActiveState,
   ensureBuildingActiveState,
@@ -19,7 +18,7 @@ export function applyBuildingBlueprintRuntime(
   options: ApplyBuildingBlueprintRuntimeOptions = {},
 ): void {
   entity.buildingBlueprintId = buildingBlueprintId;
-  entity.type = isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
+  entity.type = 'building';
 
   if (entity.building !== null) {
     const buildingConfig = getBuildingConfig(buildingBlueprintId);

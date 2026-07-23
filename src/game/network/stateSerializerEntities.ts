@@ -723,8 +723,7 @@ export function factoryPrivateSnapshotRequiresDto(
   visibility: SnapshotVisibility | undefined = undefined,
 ): boolean {
   if (
-    entity.type !== 'building' &&
-    entity.type !== 'tower'
+    entity.type !== 'building'
   ) {
     return false;
   }
@@ -1516,7 +1515,7 @@ export function appendEntitySnapshotWireRowDirect(
       appendDirectUnitEntityWireRow(entity, changedFields, world, visibility, typedPlaceholder);
       return;
     }
-  } else if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
+  } else if ((entity.type === 'building') && entity.building !== null) {
     const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
     if (isFull || (changedMask & buildingFieldMask) !== 0) {
@@ -1739,7 +1738,7 @@ export function serializeEntitySnapshot(
     }
   }
 
-  if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
+  if ((entity.type === 'building') && entity.building) {
     const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
     const hasBuildingFields = isFull || (changedFields! & buildingFieldMask);
@@ -1921,7 +1920,7 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
       orientationTriggersTypedRow ||
       hasBasicTransformFields;
   }
-  if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
+  if ((entity.type === 'building') && entity.building !== null) {
     if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
     if (factoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
     return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&

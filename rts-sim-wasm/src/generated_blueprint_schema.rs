@@ -70,8 +70,14 @@ pub struct SensorCapabilityConfig {
     pub fullSight: SensorMediumRadiusMatrix,
     pub contactSight: SensorMediumRadiusMatrix,
     pub detectorRadius: f64,
-    pub trackingRadius: f64,
-    pub scanRadius: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretRangeConfig {
+    pub range: f64,
+    pub rangeVolume: TurretRangeVolume,
+    pub rangeMultiplierOverrides: BlueprintJsonValue,
+    pub sensors: SensorCapabilityConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -484,7 +490,6 @@ pub enum TurretLockOnRelationshipInclusion {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TurretLockOnEntityFamilyInclusion {
     Buildings,
-    Towers,
     Units,
     Turrets,
     Shots,
@@ -503,7 +508,6 @@ pub struct LockOnInclusionObject {
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,
-    pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
@@ -515,6 +519,7 @@ pub enum TurretEmitterKind {
     Attack,
     Spawn,
     ResourcePylon,
+    Sensor,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -526,7 +531,7 @@ pub enum TurretMountControlMode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SpawnProducedKind {
-    BuildingsAndTowers,
+    Buildings,
     Units,
 }
 
@@ -586,14 +591,12 @@ pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub name: String,
     pub kind: TurretEmitterKind,
-    pub range: f64,
-    pub rangeVolume: TurretRangeVolume,
+    pub turretRange: TurretRangeConfig,
     pub cooldown: Option<TurretCooldownConfig>,
     pub color: f64,
     pub turretTurnAccel: f64,
     pub turretDrag: f64,
     pub barrel: BlueprintJsonValue,
-    pub rangeMultiplierOverrides: BlueprintJsonValue,
     pub eventsSmooth: bool,
     pub launchForce: f64,
     pub addTurretVelocityToEmissionLaunch: bool,
@@ -617,7 +620,6 @@ pub struct TurretBlueprint {
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,
-    pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
@@ -1091,7 +1093,6 @@ pub struct UnitBlueprint {
     pub hp: f64,
     pub radius: UnitRadiusConfig,
     pub supportSurface: UnitSupportSurface,
-    pub sensors: SensorCapabilityConfig,
     pub mass: f64,
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,
@@ -1106,7 +1107,6 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,
-    pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,

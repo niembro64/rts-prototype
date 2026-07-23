@@ -6,7 +6,7 @@ type ShieldPanelTurretRef = {
   turretIndex: number;
 };
 
-function isShieldPanelTurret(turret: Turret): boolean {
+export function isShieldPanelTurret(turret: Turret): boolean {
   const shot = turret.config.shot;
   return shot?.type === 'shield' && shot.barrier === undefined;
 }

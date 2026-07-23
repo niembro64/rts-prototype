@@ -74,10 +74,9 @@ import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
-/** What kind of entity the loading screen is previewing. Towers and
- *  buildings render through the same building-shape path; the distinction
- *  only matters for the stats panel (towers carry turrets). */
-export type LoadingPreviewKind = 'unit' | 'tower' | 'building';
+/** What kind of host the loading screen is previewing. Mounted turrets are
+ *  capabilities of either host kind, not a third host category. */
+export type LoadingPreviewKind = 'unit' | 'building';
 export type LoadingEntityBlueprintId = UnitBlueprintId | StructureBlueprintId;
 
 type LoadingUnitPreviewSceneOptions = {

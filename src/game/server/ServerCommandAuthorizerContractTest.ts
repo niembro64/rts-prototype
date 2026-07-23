@@ -89,41 +89,43 @@ export function runServerCommandAuthorizerContractTest(): void {
     allocateSubEntityIds: false,
   });
   const fabricator = world.createBuilding(280, 80, 80, 80, 40, 1);
-  fabricator.type = 'tower';
+  fabricator.type = 'building';
   fabricator.buildingBlueprintId = 'towerFabricator';
   fabricator.factory = { guardTargetId: null, moveState: 'holdPosition', airIdleState: 'land' } as typeof fabricator.factory;
   const cannonTower = world.createBuilding(300, 80, 80, 80, 40, 1);
-  cannonTower.type = 'tower';
+  cannonTower.type = 'building';
   cannonTower.buildingBlueprintId = 'towerCannon';
   cannonTower.combat = {
     turrets: [
       {
         config: {
+          kind: 'attack',
           passive: false,
-          range: 160,
+          turretRange: { range: 160 },
           shot: { type: 'plasma' },
         },
       },
     ],
-  } as NonNullable<Entity['combat']>;
+  } as unknown as NonNullable<Entity['combat']>;
   const enemyCannonTower = world.createBuilding(340, 80, 80, 80, 40, 2);
-  enemyCannonTower.type = 'tower';
+  enemyCannonTower.type = 'building';
   enemyCannonTower.buildingBlueprintId = 'towerCannon';
   enemyCannonTower.combat = cannonTower.combat;
   const antiAirTower = world.createBuilding(380, 80, 80, 80, 40, 1);
-  antiAirTower.type = 'tower';
+  antiAirTower.type = 'building';
   antiAirTower.buildingBlueprintId = 'towerAntiAir';
   antiAirTower.combat = {
     turrets: [
       {
         config: {
+          kind: 'attack',
           passive: false,
-          range: 240,
+          turretRange: { range: 240 },
           shot: { type: 'rocket' },
         },
       },
     ],
-  } as NonNullable<Entity['combat']>;
+  } as unknown as NonNullable<Entity['combat']>;
   const t2Extractor = world.createBuilding(420, 80, 64, 64, 40, 1);
   t2Extractor.type = 'building';
   t2Extractor.buildingBlueprintId = 'buildingExtractorT2';
@@ -349,7 +351,7 @@ export function runServerCommandAuthorizerContractTest(): void {
       authorizedStop.entityIds[0] === jackal.id &&
       authorizedStop.entityIds[1] === cannonTower.id &&
       authorizedStop.entityIds[2] === t2Extractor.id,
-    'Stop must authorize owned units, owned combat towers, and armamex/T2 mex pure buildings, but not removestop buildings, pure factories, or enemy towers',
+    'Stop must authorize owned units, owned armed buildings, and armamex/T2 mex buildings, but not removestop buildings, pure factories, or enemy buildings',
   );
 
   const carrierSpawnCommand: SetCarrierSpawnCommand = {

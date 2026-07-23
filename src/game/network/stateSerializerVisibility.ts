@@ -5,13 +5,9 @@ import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
-  getEntityCloakDetectionTargetRadii,
-  getEntityFullVisionRadius,
-  getEntityRadarRadius,
-  getEntitySensorMedium,
-  getEntitySonarRadius,
   getEntityVisibilityPadding,
   getSensorMediumAtZ,
+  forEachEntityTurretSensorSource,
   isEntityCloaked,
 } from '../sim/sensorCoverage';
 import type { SensorMedium } from '../sim/sensorConfig';
@@ -430,7 +426,7 @@ export class SnapshotVisibility {
       return this.radarEntityIdSet.has(entity.id);
     }
     const padding = 0;
-    const medium = getEntitySensorMedium(entity);
+    const medium = getSensorMediumAtZ(entity.transform.z);
     if (isEntityCloaked(entity)) {
       return this.isEntityDetected(
         entity.transform.x,
@@ -831,28 +827,22 @@ export class SnapshotVisibility {
   private addPlayerSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
-      const transform = entity.transform;
-      const x = transform.x;
-      const y = transform.y;
-      // Eye z = entity's ground height plus a fixed offset (FOW-04).
-      // A unit standing on a hill already has transform.z lifted by
-      // the hill, so the constant just adds the body / turret mount
-      // height — units on flat ground can still see over a small
-      // bump, units behind a tall ridge can't.
-      const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
-      for (const targetMedium of ['aboveWater', 'underwater'] as const) {
-        const fullSightRadius = getEntityFullVisionRadius(entity, targetMedium);
-        if (fullSightRadius <= 0) continue;
-        this.addSource(
-          this.fullSources,
-          this.fullSourceCells,
-          x,
-          y,
-          eyeZ,
-          fullSightRadius,
-          targetMedium,
-        );
-      }
+      forEachEntityTurretSensorSource(entity, (turretSource) => {
+        const { position, sourceMedium, sensors } = turretSource;
+        for (const targetMedium of ['aboveWater', 'underwater'] as const) {
+          const radius = sensors.fullSight[sourceMedium][targetMedium];
+          if (radius <= 0) continue;
+          this.addSource(
+            this.fullSources,
+            this.fullSourceCells,
+            position.x,
+            position.y,
+            position.z,
+            radius,
+            targetMedium,
+          );
+        }
+      });
     }
   }
 
@@ -889,48 +879,37 @@ export class SnapshotVisibility {
   private addAuxiliaryObservationSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
-      const transform = entity.transform;
-      const x = transform.x;
-      const y = transform.y;
-      const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
-      const radarRadius = getEntityRadarRadius(entity);
-      if (radarRadius > 0) {
-        this.addSource(
-          this.radarSources,
-          this.radarSourceCells,
-          x,
-          y,
-          eyeZ,
-          radarRadius,
-          'aboveWater',
-        );
-      }
-      const sonarRadius = getEntitySonarRadius(entity);
-      if (sonarRadius > 0) {
-        this.addSource(
-          this.sonarSources,
-          this.sonarSourceCells,
-          x,
-          y,
-          eyeZ,
-          sonarRadius,
-          'underwater',
-        );
-      }
-      const detectorRadii = getEntityCloakDetectionTargetRadii(entity);
-      for (const targetMedium of ['aboveWater', 'underwater'] as const) {
-        const detectorRadius = detectorRadii[targetMedium];
-        if (detectorRadius <= 0) continue;
-        this.addSource(
-          this.detectorSources,
-          this.detectorSourceCells,
-          x,
-          y,
-          eyeZ,
-          detectorRadius,
-          targetMedium,
-        );
-      }
+      forEachEntityTurretSensorSource(entity, (turretSource) => {
+        const { position, sourceMedium, sensors } = turretSource;
+        for (const targetMedium of ['aboveWater', 'underwater'] as const) {
+          const contactRadius = sensors.contactSight[sourceMedium][targetMedium];
+          if (contactRadius > 0) {
+            this.addSource(
+              targetMedium === 'aboveWater' ? this.radarSources : this.sonarSources,
+              targetMedium === 'aboveWater' ? this.radarSourceCells : this.sonarSourceCells,
+              position.x,
+              position.y,
+              position.z,
+              contactRadius,
+              targetMedium,
+            );
+          }
+          const detectorRadius = Math.min(
+            sensors.detectorRadius,
+            sensors.fullSight[sourceMedium][targetMedium],
+          );
+          if (detectorRadius <= 0) continue;
+          this.addSource(
+            this.detectorSources,
+            this.detectorSourceCells,
+            position.x,
+            position.y,
+            position.z,
+            detectorRadius,
+            targetMedium,
+          );
+        }
+      });
     }
   }
 

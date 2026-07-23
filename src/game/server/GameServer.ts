@@ -192,10 +192,6 @@ export class GameServer {
     return this.core.backgroundAllowedBuildingBlueprintIds;
   }
 
-  private get backgroundAllowedTowerBlueprintIds(): Set<string> {
-    return this.core.backgroundAllowedTowerBlueprintIds;
-  }
-
   private get terrainTileMap(): TerrainTileMap {
     return this.core.terrainTileMap;
   }
@@ -608,11 +604,6 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setBackgroundBuildingBlueprintEnabled(sanitizedCommand.buildingBlueprintId, sanitizedCommand.enabled);
         return;
-      case 'setBackgroundTowerBlueprintEnabled':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setBackgroundTowerBlueprintEnabled(sanitizedCommand.towerBlueprintId, sanitizedCommand.enabled);
-        return;
       case 'setMaxTotalUnits':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -907,8 +898,8 @@ export class GameServer {
     return this.backgroundAllowedUnitBlueprintIds;
   }
 
-  // Background demo: toggle a building / tower blueprint on or off.
-  // Shared by both BUILDINGS and TOWERS bar groups — buildings and
+  // Background demo: toggle a building blueprint on or off.
+  // Shared by every static host in the BUILDINGS bar group.
   // towers are both `building` entities distinguished by their
   // buildingBlueprintId. Disabling removes every existing structure of
   // that type from the field (mirrors setBackgroundUnitBlueprintEnabled's
@@ -947,11 +938,4 @@ export class GameServer {
     );
   }
 
-  setBackgroundTowerBlueprintEnabled(towerBlueprintId: string, enabled: boolean): void {
-    this.setBackgroundStructureBlueprintEnabled(
-      this.backgroundAllowedTowerBlueprintIds,
-      towerBlueprintId,
-      enabled,
-    );
-  }
 }

@@ -283,6 +283,16 @@ export function runClientRenderEntityStateSlabContractTest(): void {
     packet.lodProxyGlyph[0] === entityLodProxyGlyph3D(unit),
     'packet LOD proxy glyph must come from the slab row',
   );
+
+  const loris = createTestUnit(12, 2 as PlayerId, 'unitLoris');
+  const lorisSlot = slab.refreshUnit(loris);
+  assertContract(lorisSlot !== undefined, 'Loris refresh must allocate a slot');
+  assertContract(
+    slab.getViews().shieldPanelTurretIndex[lorisSlot!] === 1,
+    'Loris shield rendering must use the shield-panel mount, not its passive sensor mount',
+  );
+  slab.unsetEntity(loris.id);
+
   const lodProxyPacket = new UnitRenderPacket3D();
   lodProxyPacket.pushEntityState(unit, slab.getViews(), slot!, turretSlab, false, false, false, true);
   assertContract(lodProxyPacket.count === 1, 'LOD proxy packet must accept a unit slab row');

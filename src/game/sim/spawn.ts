@@ -384,6 +384,7 @@ function placeArcRow(
   factoryWaypoint: InitialFactoryWaypointConfig,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
+  ignoreTerrainForPlacement = false,
 ): Entity[] {
   if (count <= 0) return [];
   const entities: Entity[] = [];
@@ -403,6 +404,7 @@ function placeArcRow(
       searchOffsets,
       null,
       acceptCandidate,
+      ignoreTerrainForPlacement,
     );
     if (e) entities.push(e);
   }
@@ -574,11 +576,11 @@ function configureOuterWaterFactoryWaypoints(
  *           wind arc
  *           fabricator arc
  *           resource converter arc
- *           megaBeam tower arc
- *           cannon tower arc ← closest to map center
+ *           megaBeam defense arc
+ *           cannon defense arc ← closest to map center
  *
  * Each arc spans the same angular sector for the player, and every
- * building faces the map center. Solar/wind/tower counts and oval radius
+ * building faces the map center. Structure counts and oval radius
  * fractions are controlled by DEMO_CONFIG. Fabricators are derived from the
  * active demo unit roster: one fabricator per available unit blueprint, seeded
  * to repeat-build that unit.
@@ -590,17 +592,13 @@ export function spawnInitialBases(
   mode: InitialBaseMode = 'demo',
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
-  availableTowerBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   const entities: Entity[] = [];
 
-  // Demo BUILDINGS / TOWERS toggles: an undefined set means "place every
-  // structure" (unrestricted callers / real games), so each guard
-  // defaults to true. A defined set skips the arc for any disabled id.
+  // Demo BUILDINGS toggles: an undefined set means "place every building"
+  // (unrestricted callers / real games). A defined set skips disabled ids.
   const isBuildingEnabled = (id: string): boolean =>
     availableBuildingBlueprintIds === undefined || availableBuildingBlueprintIds.has(id);
-  const isTowerEnabled = (id: string): boolean =>
-    availableTowerBlueprintIds === undefined || availableTowerBlueprintIds.has(id);
 
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
@@ -729,10 +727,10 @@ export function spawnInitialBases(
     // of its assigned unit.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
-    // stay tied to the same unit roster. Gated by the towerFabricator
-    // tower toggle — disabling it removes the demo's whole factory ring.
+    // stay tied to the same unit roster. Disabling the towerFabricator
+    // building id removes the demo's whole factory ring.
     let waterFactories: Entity[] = [];
-    if (isTowerEnabled('towerFabricator')) {
+    if (isBuildingEnabled('towerFabricator')) {
       // Offshore factories are inserted first so the deterministic factory
       // update order is stable across every one-per-unit production line.
       waterFactories = placeFactoryArcRowForUnitBlueprintIds(
@@ -813,29 +811,30 @@ export function spawnInitialBases(
         (x, y) =>
           sampleMapOvalAt(oval, x, y).distance >= sonarRadius &&
           isRectFootprintOverWater(world, x, y, sonarWidth, sonarHeight),
+        true,
       ));
     }
 
-    // megaBeam tower arc — covers the approach to the base from the
+    // Mega-beam defense-building arc — covers the approach to the base from the
     // map center.
-    if (isTowerEnabled('towerBeamMega')) {
+    if (isBuildingEnabled('towerBeamMega')) {
       entities.push(...placeArcRow(
         world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
         oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
       ));
     }
 
-    // Cannon tower arc — companion static-defense ring for long-range
+    // Cannon defense-building arc — companion ring for long-range
     // heavy shots.
-    if (isTowerEnabled('towerCannon')) {
+    if (isBuildingEnabled('towerCannon')) {
       entities.push(...placeArcRow(
         world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
         oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
       ));
     }
 
-    // Anti-air tower arc — static missile cover for hover/flying units.
-    if (isTowerEnabled('towerAntiAir')) {
+    // Anti-air defense-building arc — static missile cover for flying units.
+    if (isBuildingEnabled('towerAntiAir')) {
       entities.push(...placeArcRow(
         world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
         oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,

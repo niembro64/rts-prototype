@@ -58,8 +58,6 @@ function minimapTypeToWireType(type: NetworkServerSnapshotMinimapEntity['type'])
   switch (type) {
     case 'unit':
       return ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
-    case 'tower':
-      return ENTITY_SNAPSHOT_WIRE_TYPE_TOWER;
     case 'building':
       return ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
   }
@@ -70,7 +68,7 @@ function wireTypeToMinimapType(typeTag: number): NetworkServerSnapshotMinimapEnt
     case ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING:
       return 'building';
     case ENTITY_SNAPSHOT_WIRE_TYPE_TOWER:
-      return 'tower';
+      return 'building';
     default:
       return 'unit';
   }

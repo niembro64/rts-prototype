@@ -138,8 +138,7 @@ function acceptsSerializedEntity(
 function isSerializedEntityKind(entity: Entity): boolean {
   return (
     entity.type === 'unit' ||
-    entity.type === 'building' ||
-    entity.type === 'tower'
+    entity.type === 'building'
   );
 }
 

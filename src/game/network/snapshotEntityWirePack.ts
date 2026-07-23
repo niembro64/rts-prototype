@@ -934,7 +934,7 @@ function tryAppendDecodedBuildingDetailTypedFullWireRow(
   entity: NetworkServerSnapshotEntity,
 ): boolean {
   if (
-    (entity.type !== 'building' && entity.type !== 'tower') ||
+    (entity.type !== 'building') ||
     entity.pos === null ||
     entity.rotation === null
   ) {

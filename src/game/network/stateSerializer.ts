@@ -108,7 +108,7 @@ export type SerializerMinimapOverride = {
 };
 
 function isSerializableSnapshotEntity(entity: Entity): boolean {
-  return entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower';
+  return entity.type === 'unit' || entity.type === 'building';
 }
 
 function acceptsSerializedEntity(entity: Entity, visibility: SnapshotVisibility): boolean {

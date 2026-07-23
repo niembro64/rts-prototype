@@ -7,7 +7,7 @@ import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getBuildingPlacementDiagnostics } from './buildPlacementValidation';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
-import { spawnMetalExtractorsOnDeposits } from './spawn';
+import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import type { PlayerId } from './types';
 import { WorldState } from './WorldState';
 import { WATER_LEVEL } from './Terrain';
@@ -44,6 +44,31 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   for (let i = 0; i < DEMO_CONFIG.playerCount; i++) {
     playerIds.push((i + 1) as PlayerId);
   }
+
+  const baseWorld = new WorldState(1241, mapWidth, mapHeight);
+  const baseConstruction = new ConstructionSystem(mapWidth, mapHeight, null);
+  const baseEntities = spawnInitialBases(
+    baseWorld,
+    baseConstruction,
+    playerIds,
+    'demo',
+  );
+  const sonarByPlayer = new Map<PlayerId, number>();
+  for (let i = 0; i < baseEntities.length; i++) {
+    const entity = baseEntities[i];
+    if (entity.buildingBlueprintId !== 'buildingSonar') continue;
+    const playerId = entity.ownership?.playerId;
+    assertContract(playerId !== undefined, 'demo Sonar must have an owning player');
+    sonarByPlayer.set(playerId, (sonarByPlayer.get(playerId) ?? 0) + 1);
+  }
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    assertContract(
+      sonarByPlayer.get(playerId) === DEMO_CONFIG.buildingSonarCount,
+      `demo base must spawn ${DEMO_CONFIG.buildingSonarCount} Sonar for player ${playerId}`,
+    );
+  }
+
   const deposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const expectedDepositIds = new Set<number>();
   const depositById = new Map<number, (typeof deposits)[number]>();

@@ -83,7 +83,6 @@ export function useGameCanvasSceneUi({
 }: UseGameCanvasSceneUiOptions) {
   const selectionInfo = reactive<SelectionInfo>({
     unitCount: 0,
-    towerCount: 0,
     buildingCount: 0,
     hasCommander: false,
     hasBuilder: false,

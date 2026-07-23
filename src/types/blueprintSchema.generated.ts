@@ -25,8 +25,13 @@ export type SensorCapabilityConfig = {
   fullSight: SensorMediumRadiusMatrix;
   contactSight: SensorMediumRadiusMatrix;
   detectorRadius: number;
-  trackingRadius: number;
-  scanRadius: number;
+};
+
+export type TurretRangeConfig = {
+  range: number;
+  rangeVolume: TurretRangeVolume;
+  rangeMultiplierOverrides: TurretRangeOverrides;
+  sensors: SensorCapabilityConfig;
 };
 
 export type ProjectileShotKind = 'plasma' | 'rocket' | 'missile';
@@ -314,7 +319,7 @@ export type TurretAimStyle = {
 
 export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
 
-export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
+export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'units' | 'turrets' | 'shots';
 
 export type LockOnRequiresTargetLockedOntoSelf = 'ignore' | 'require' | 'preferReacquire' | 'preferHold';
 
@@ -322,18 +327,17 @@ export type LockOnInclusionObject = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];
-  includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
 };
 
-export type TurretEmitterKind = 'attack' | 'spawn' | 'resourcePylon';
+export type TurretEmitterKind = 'attack' | 'spawn' | 'resourcePylon' | 'sensor';
 
 export type TurretMountControlMode = 'host' | 'autonomous' | 'manual';
 
-export type SpawnProducedKind = 'buildingsAndTowers' | 'units';
+export type SpawnProducedKind = 'buildings' | 'units';
 
 export type ResourcePylonResource = 'metal' | 'energy';
 
@@ -376,14 +380,12 @@ export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
   name: string;
   kind: TurretEmitterKind;
-  range: number;
-  rangeVolume: TurretRangeVolume;
+  turretRange: TurretRangeConfig;
   cooldown: TurretCooldownConfig | null;
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
   barrel: BarrelShape;
-  rangeMultiplierOverrides: TurretRangeOverrides;
   eventsSmooth: boolean;
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
@@ -407,7 +409,6 @@ export type TurretBlueprint = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];
-  includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
@@ -803,7 +804,6 @@ export type UnitBlueprint = {
   hp: number;
   radius: UnitRadiusConfig;
   supportSurface: UnitSupportSurface;
-  sensors: SensorCapabilityConfig;
   mass: number;
   cost: ResourceCost;
   turrets: TurretMount[];
@@ -818,7 +818,6 @@ export type UnitBlueprint = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];
-  includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];

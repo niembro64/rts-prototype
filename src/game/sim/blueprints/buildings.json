@@ -30,32 +30,17 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingSolar",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
         "mount": {
@@ -117,32 +102,17 @@
     "hud": {
       "barsOffsetAboveTop": -10
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingWind",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
         "mount": {
@@ -204,32 +174,17 @@
     "hud": {
       "barsOffsetAboveTop": 38
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingExtractor",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
         "mount": {
@@ -291,32 +246,17 @@
     "hud": {
       "barsOffsetAboveTop": 42
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingExtractorT2",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
         "mount": {
@@ -378,32 +318,18 @@
     "hud": {
       "barsOffsetAboveTop": 16
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingRadar",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
         },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 4200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
-    "turrets": [],
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
     "base": {
       "cost": {
         "energy": 450,
@@ -454,32 +380,18 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingResourceConverter",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
         },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
-    "turrets": [],
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
     "base": {
       "cost": {
         "energy": 180,
@@ -530,32 +442,18 @@
     "hud": {
       "barsOffsetAboveTop": 16
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingSonar",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
         },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 4200
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
-    "turrets": [],
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
     "base": {
       "cost": {
         "energy": 450,
@@ -572,6 +470,341 @@
         "other": 28.284,
         "hitbox": 28.284,
         "collision": 28.284
+      }
+    }
+  },
+  "towerFabricator": {
+    "buildingBlueprintId": "towerFabricator",
+    "name": "Fabricator",
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 3,
+    "hp": 1200,
+    "cost": {
+      "energy": 900,
+      "metal": 900
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": 100,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": [
+      "unitJackal",
+      "unitLynx",
+      "unitTarantula",
+      "unitBadger",
+      "unitMongoose",
+      "unitMammoth",
+      "unitTick",
+      "unitLoris",
+      "unitDaddy",
+      "unitWidow",
+      "unitFormik",
+      "unitHippo",
+      "unitSeaTurtle",
+      "unitOrca",
+      "unitBee",
+      "unitDragonfly",
+      "unitEagle",
+      "unitDuck",
+      "unitAlbatros",
+      "unitQueenBee",
+      "unitQueenTick",
+      "unitTransport",
+      "unitConstructionDrone"
+    ],
+    "renderProfile": "towerFabricator",
+    "visualHeight": 30,
+    "anchorProfile": "fabricator",
+    "supportSurface": {
+      "kind": "none"
+    },
+    "hoveringType": "fabricator",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingFabricator",
+        "mount": {
+          "x": -110,
+          "y": 0,
+          "z": 274
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretResourcePylonConstructionMetal",
+        "mount": {
+          "x": -110,
+          "y": 0,
+          "z": 274
+        },
+        "visualVariant": "large",
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
+      },
+      {
+        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
+        "mount": {
+          "x": 110,
+          "y": 0,
+          "z": 274
+        },
+        "visualVariant": "large",
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
+      },
+      {
+        "turretBlueprintId": "turretSpawnUnits",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 274
+        },
+        "mountId": "spawnUnits",
+        "controlMode": "host"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 900,
+        "metal": 900
+      },
+      "mass": 3000,
+      "health": 1200,
+      "deathExplosion": {
+        "radius": 203.647,
+        "force": 100000,
+        "damage": 700
+      },
+      "radius": {
+        "other": 130.272,
+        "hitbox": 130.272,
+        "collision": 130.272,
+        "shotArmingRadius": 195.408
+      }
+    }
+  },
+  "towerBeamMega": {
+    "buildingBlueprintId": "towerBeamMega",
+    "name": "Beam Tower",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 5,
+    "hp": 4200,
+    "cost": {
+      "energy": 5200,
+      "metal": 5200
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerBeamMega",
+    "visualHeight": 96,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 100,
+      "width": 60,
+      "height": 60
+    },
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingBeamMega",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 114
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamLong",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 114
+        },
+        "mountId": "beamLong",
+        "controlMode": "host"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 5200,
+        "metal": 5200
+      },
+      "mass": 4500,
+      "health": 4200,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 270000,
+        "damage": 2000
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426,
+        "shotArmingRadius": 63.639
+      }
+    }
+  },
+  "towerCannon": {
+    "buildingBlueprintId": "towerCannon",
+    "name": "Cannon Tower",
+    "gridWidth": 4,
+    "gridHeight": 4,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 3,
+    "hp": 3600,
+    "cost": {
+      "energy": 2600,
+      "metal": 2600
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerCannon",
+    "visualHeight": 30,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 60,
+      "width": 80,
+      "height": 80
+    },
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingCannon",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 60
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretCannonLong",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 60
+        },
+        "mountId": "cannonLong",
+        "controlMode": "host"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 2600,
+        "metal": 2600
+      },
+      "mass": 4200,
+      "health": 3600,
+      "deathExplosion": {
+        "radius": 67.882,
+        "force": 250000,
+        "damage": 1800
+      },
+      "radius": {
+        "other": 56.569,
+        "hitbox": 56.569,
+        "collision": 56.569,
+        "shotArmingRadius": 84.8535
+      }
+    }
+  },
+  "towerAntiAir": {
+    "buildingBlueprintId": "towerAntiAir",
+    "name": "Anti-Air Tower",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 4,
+    "hp": 2800,
+    "cost": {
+      "energy": 2200,
+      "metal": 2200
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerAntiAir",
+    "visualHeight": 44,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 80,
+      "width": 40,
+      "height": 40
+    },
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingAntiAir",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 66
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretAntiAir",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 66
+        },
+        "mountId": "antiAir",
+        "controlMode": "host"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 2200,
+        "metal": 2200
+      },
+      "mass": 2800,
+      "health": 2800,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 160000,
+        "damage": 1200
+      },
+      "radius": {
+        "other": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284,
+        "shotArmingRadius": 42.426
       }
     }
   }

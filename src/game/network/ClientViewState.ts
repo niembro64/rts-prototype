@@ -894,9 +894,8 @@ export class ClientViewState {
 
   private markNetworkEntityPredictionActive(server: NetworkServerSnapshotEntity): void {
     const cf = server.changedFields;
-    if (server.type === 'building' || server.type === 'tower') {
-      // Towers ride the same building turret-prediction path because
-      // their wire payload (server.building) carries turrets identically.
+    if (server.type === 'building') {
+      // Every static host uses the building turret-prediction path.
       const building = server.building;
       if (
         cf == null ||
@@ -3120,10 +3119,9 @@ export class ClientViewState {
         if (netEntity === undefined) continue;
         const cf = netEntity.changedFields;
         const isFull = cf == null;
-        // Towers ride the static-entity wire shape (no velocity, has
-        // turrets through server.building.turrets), so isBuildingUpdate
-        // gates the static branch for both.
-        const isBuildingUpdate = netEntity.type === 'building' || netEntity.type === 'tower';
+        // Static hosts have no velocity and publish mounted turrets through
+        // server.building.turrets.
+        const isBuildingUpdate = netEntity.type === 'building';
         const existing = this.entities.get(netEntity.id);
         const previousTarget = collectCorrectionStats
           ? this.serverTargets.get(netEntity.id)
@@ -4045,7 +4043,6 @@ export class ClientViewState {
 
   private hudTypeOf3D(entity: Entity): EntityHudType {
     if (entity.type === 'unit') return 'unit';
-    if (entity.type === 'tower') return 'tower';
     return 'building';
   }
 
@@ -4748,7 +4745,7 @@ export class ClientViewState {
     return this.cache.getHudEntities();
   }
 
-  /** Entities (unit/tower/building) with at least one attack
+  /** Entities (unit/building) with at least one attack
    *  turret. Feeds the turret HUD bar / name pass. */
   getArmedEntities(): Entity[] {
     this.rebuildCachesIfNeeded();

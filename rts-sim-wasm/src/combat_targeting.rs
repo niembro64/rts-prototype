@@ -96,6 +96,8 @@ pub const CT_LOCK_ON_REL_INCLUDE_ENEMY: u8 = 1 << 1;
 pub const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS: u8 = 1 << 0;
 pub const CT_LOCK_ON_FAM_INCLUDE_UNITS: u8 = 1 << 1;
 pub const CT_LOCK_ON_FAM_INCLUDE_TURRETS: u8 = 1 << 2;
+/// Reserved compatibility bit for snapshots authored before static hosts were
+/// unified as buildings. New blueprint policy never emits it.
 pub const CT_LOCK_ON_FAM_INCLUDE_TOWERS: u8 = 1 << 3;
 pub const CT_LOCK_ON_FAM_INCLUDE_SHOTS: u8 = 1 << 5;
 
@@ -116,6 +118,7 @@ pub const CT_LOCK_ON_RECIPROCAL_PREFER_HOLD: u8 = 3;
 pub const CT_ENTITY_FAMILY_NONE: u8 = 0;
 pub const CT_ENTITY_FAMILY_BUILDING: u8 = 1;
 pub const CT_ENTITY_FAMILY_UNIT: u8 = 2;
+/// Reserved compatibility tag. New runtime stamping uses BUILDING.
 pub const CT_ENTITY_FAMILY_TOWER: u8 = 3;
 pub const CT_ENTITY_FAMILY_SHOT: u8 = 4;
 
@@ -186,7 +189,7 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_family: Vec<u8>,
     pub(crate) entity_blueprint_code: Vec<u8>,
     // LOCK-ON-04 — Per-host lock-on exclusion masks compiled from
-    // unit/tower blueprints. These gate host priority targets before
+    // unit/building blueprints. These gate host priority targets before
     // host-controlled turrets apply their own per-turret policy.
     pub(crate) entity_lockon_relationship_mask: Vec<u8>,
     pub(crate) entity_lockon_entity_family_mask: Vec<u8>,
@@ -195,7 +198,11 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_lockon_unit_mask: Vec<u32>,
     pub(crate) entity_lockon_turret_mask: Vec<u32>,
     pub(crate) entity_lockon_shot_mask: Vec<u32>,
-    // Per-entity full-sight and contact-sensor source radii. Full sight
+    // Per-host mounted sensor origin plus full-sight/contact radii. The source
+    // point is the owning turret mount, never the host body center.
+    pub(crate) entity_sensor_source_x: Vec<f64>,
+    pub(crate) entity_sensor_source_y: Vec<f64>,
+    // Full sight
     // also counts as contact-level coverage because sight is the
     // stronger information tier. Stamped from shared sensor coverage
     // helpers; zero means the entity provides no source for that tier.
@@ -426,6 +433,8 @@ impl CombatTargetingPool {
             entity_lockon_unit_mask: Vec::new(),
             entity_lockon_turret_mask: Vec::new(),
             entity_lockon_shot_mask: Vec::new(),
+            entity_sensor_source_x: Vec::new(),
+            entity_sensor_source_y: Vec::new(),
             entity_full_vision_above_water_radius: Vec::new(),
             entity_full_vision_underwater_radius: Vec::new(),
             entity_radar_radius: Vec::new(),
@@ -564,6 +573,8 @@ impl CombatTargetingPool {
             self.entity_lockon_unit_mask.resize(entity_needed, 0);
             self.entity_lockon_turret_mask.resize(entity_needed, 0);
             self.entity_lockon_shot_mask.resize(entity_needed, 0);
+            self.entity_sensor_source_x.resize(entity_needed, 0.0);
+            self.entity_sensor_source_y.resize(entity_needed, 0.0);
             self.entity_full_vision_above_water_radius
                 .resize(entity_needed, 0.0);
             self.entity_full_vision_underwater_radius
@@ -984,6 +995,8 @@ pub fn combat_targeting_set_entity(
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
     lockon_shot_mask: u32,
+    sensor_source_x: f64,
+    sensor_source_y: f64,
     full_vision_above_water_radius: f32,
     full_vision_underwater_radius: f32,
     radar_radius: f32,
@@ -1051,6 +1064,8 @@ pub fn combat_targeting_set_entity(
     pool.entity_lockon_unit_mask[s] = lockon_unit_mask;
     pool.entity_lockon_turret_mask[s] = lockon_turret_mask;
     pool.entity_lockon_shot_mask[s] = lockon_shot_mask;
+    pool.entity_sensor_source_x[s] = sensor_source_x;
+    pool.entity_sensor_source_y[s] = sensor_source_y;
     pool.entity_full_vision_above_water_radius[s] = full_vision_above_water_radius;
     pool.entity_full_vision_underwater_radius[s] = full_vision_underwater_radius;
     pool.entity_radar_radius[s] = radar_radius;
@@ -2492,8 +2507,8 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
     if owner_bit == 0 {
         return;
     }
-    let source_x = pool.entity_pos_x[source_slot];
-    let source_y = pool.entity_pos_y[source_slot];
+    let source_x = pool.entity_sensor_source_x[source_slot];
+    let source_y = pool.entity_sensor_source_y[source_slot];
 
     let full_above_water_radius =
         pool.entity_full_vision_above_water_radius[source_slot] as f64;
@@ -4117,30 +4132,40 @@ pub(crate) fn combat_targeting_turret_halts_host(
     pool: &CombatTargetingPool,
     idx: usize,
     priority_point_present: bool,
+    expected_target_id: i32,
 ) -> bool {
-    pool.turret_state[idx] == CT_TURRET_STATE_ENGAGED
-        && (pool.turret_target_id[idx] >= 0 || priority_point_present)
+    if pool.turret_state[idx] != CT_TURRET_STATE_ENGAGED {
+        return false;
+    }
+    if expected_target_id >= 0 {
+        return pool.turret_target_id[idx] == expected_target_id;
+    }
+    pool.turret_target_id[idx] >= 0 || priority_point_present
 }
 
 /// C1 movement/combat bridge — classify whether the current movement
 /// action should halt because the host's combat slab is engaged.
 ///
-/// Mode `anyEngaged` mirrors attack / attack-ground / guard: any
-/// non-visual turret in ENGAGED state with a target, or with an active
-/// priority point, pins the unit. Mode `fightRequired` mirrors fight /
-/// patrol: every non-visual turret whose mount is flagged as required
-/// for fight-stop must be engaged.
+/// Mode `anyEngaged` mirrors attack / attack-ground / guard. A direct
+/// attack pins the host only when an engaged turret holds the same target as
+/// the current host order; an old lock may keep firing but cannot block a new
+/// movement order. Point intent still accepts any engaged attack turret while
+/// the priority point is active. Mode `fightRequired` mirrors fight / patrol:
+/// every non-visual turret whose mount is flagged as required for fight-stop
+/// must be engaged.
 #[wasm_bindgen]
 pub fn combat_targeting_halt_decision_batch(
     entity_slots: &[u32],
     modes: &[u8],
     priority_point_present: &[u8],
+    expected_target_ids: &[i32],
     out_should_halt: &mut [u8],
 ) -> u32 {
     let count = entity_slots
         .len()
         .min(modes.len())
         .min(priority_point_present.len())
+        .min(expected_target_ids.len())
         .min(out_should_halt.len());
     let pool = combat_targeting_pool();
     for i in 0..count {
@@ -4155,6 +4180,7 @@ pub fn combat_targeting_halt_decision_batch(
             continue;
         }
         let has_priority_point = priority_point_present[i] != 0;
+        let expected_target_id = expected_target_ids[i];
         if modes[i] == CT_COMBAT_HALT_MODE_ANY_ENGAGED {
             for turret_idx in 0..turret_count {
                 let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
@@ -4162,7 +4188,12 @@ pub fn combat_targeting_halt_decision_batch(
                 if (flags & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
                     continue;
                 }
-                if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
+                if combat_targeting_turret_halts_host(
+                    pool,
+                    idx,
+                    has_priority_point,
+                    expected_target_id,
+                ) {
                     out_should_halt[i] = 1;
                     break;
                 }
@@ -4185,7 +4216,7 @@ pub fn combat_targeting_halt_decision_batch(
                 continue;
             }
             required += 1;
-            if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
+            if combat_targeting_turret_halts_host(pool, idx, has_priority_point, -1) {
                 engaged_required += 1;
             }
         }

@@ -5,7 +5,6 @@ import {
 } from '@/game/sim/blueprints';
 import {
   BUILDING_BLUEPRINT_IDS,
-  TOWER_BLUEPRINT_IDS,
   type UnitBlueprintId,
   type StructureBlueprintId,
 } from '@/types/blueprintIds';
@@ -17,14 +16,11 @@ type LoadingUnitPreviewSelection = {
   name: string;
 };
 
-/** Pick a random entity to show on loading surfaces. Chooses a category
- *  (unit / tower / building) uniformly first, then a blueprint within it,
- *  so towers and buildings get fair screen time despite there being far
- *  more unit blueprints than structures. */
+/** Pick a random host to show on loading surfaces. Chooses units or
+ *  buildings uniformly first, then a blueprint within that host kind. */
 export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
   const pools = ([
     { kind: 'unit', ids: BUILDABLE_UNIT_BLUEPRINT_IDS },
-    { kind: 'tower', ids: TOWER_BLUEPRINT_IDS },
     { kind: 'building', ids: BUILDING_BLUEPRINT_IDS },
   ] as { kind: LoadingPreviewKind; ids: readonly LoadingEntityBlueprintId[] }[])
     .filter((pool) => pool.ids.length > 0);

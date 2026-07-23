@@ -56,11 +56,7 @@ function writeMinimapEntity(
 ): NetworkServerSnapshotMinimapEntity {
   const ownership = entity.ownership;
   out.id = entity.id;
-  out.type = entity.type === 'unit'
-    ? 'unit'
-    : entity.type === 'tower'
-      ? 'tower'
-      : 'building';
+  out.type = entity.type === 'unit' ? 'unit' : 'building';
   out.playerId = (ownership !== null ? ownership.playerId : 1) as PlayerId;
   out.pos.x = qPos(entity.transform.x);
   out.pos.y = qPos(entity.transform.y);
@@ -75,7 +71,7 @@ function minimapDtoTypeFromEntityStateKind(
   kind: number,
 ): NetworkServerSnapshotMinimapEntity['type'] | null {
   if (kind === ENTITY_STATE_KIND_UNIT) return 'unit';
-  if (kind === ENTITY_STATE_KIND_TOWER) return 'tower';
+  if (kind === ENTITY_STATE_KIND_TOWER) return 'building';
   if (kind === ENTITY_STATE_KIND_BUILDING) return 'building';
   return null;
 }
@@ -143,9 +139,7 @@ function appendMinimapWireRow(
   values[base + 2] = qPos(entity.transform.y);
   values[base + 3] = entity.unit
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
-    : entity.type === 'tower'
-      ? ENTITY_SNAPSHOT_WIRE_TYPE_TOWER
-      : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+    : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
   values[base + 4] = ownership !== null ? ownership.playerId : 1;
   let flags = 0;
   if (radarOnly) flags |= 0x01;
@@ -212,7 +206,7 @@ export function writeMinimapSnapshotWireRowsDirect(
       const source = minimapSources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
-        if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+        if (entity.type !== 'unit' && entity.type !== 'building') {
           continue;
         }
         if (visibility && !visibility.isEntityOnRadar(entity)) continue;
@@ -270,7 +264,7 @@ export function serializeMinimapSnapshotEntities(
       const source = minimapSources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
-        if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+        if (entity.type !== 'unit' && entity.type !== 'building') {
           continue;
         }
         // Minimap uses the wider full-vision-OR-radar check (FOW-03):

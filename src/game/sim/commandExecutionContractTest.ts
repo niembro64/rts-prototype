@@ -429,6 +429,13 @@ export function runCommandExecutionContractTest(): void {
       unit.combat.fireEnabled === true,
     'BAR armfav/unitJackal defaults must spawn on hold-position while keeping fire-at-will',
   );
+  const defaultStateTick = world.createUnitFromBlueprint(85, 240, 1, 'unitTick', {
+    allocateSubEntityIds: false,
+  });
+  assertContract(
+    defaultStateTick.unit?.moveState === 'maneuver',
+    'Tick must spawn in maneuver so a direct Attack order can approach an out-of-range target',
+  );
   const defaultStateDragonfly = world.createUnitFromBlueprint(90, 240, 1, 'unitDragonfly', {
     allocateSubEntityIds: false,
   });
@@ -732,14 +739,15 @@ export function runCommandExecutionContractTest(): void {
     'setTowerTarget command should set a durable ground lock-on point',
   );
   const antiAirTower = world.createBuilding(220, 260, 80, 80, 40, 1);
-  antiAirTower.type = 'tower';
+  antiAirTower.type = 'building';
   antiAirTower.buildingBlueprintId = 'towerAntiAir';
   antiAirTower.combat = {
     turrets: [
       {
         config: {
+          kind: 'attack',
           passive: false,
-          range: 240,
+          turretRange: { range: 240 },
           shot: { type: 'rocket' },
         },
       },
@@ -750,7 +758,7 @@ export function runCommandExecutionContractTest(): void {
     priorityTargetPoint: null,
     manualLaunchActive: false,
     nextCombatProbeTick: 0,
-  } as NonNullable<Entity['combat']>;
+  } as unknown as NonNullable<Entity['combat']>;
   const antiAirGroundTarget = world.createUnitFromBlueprint(260, 260, 2, 'unitJackal', {
     allocateSubEntityIds: false,
   });
@@ -810,14 +818,15 @@ export function runCommandExecutionContractTest(): void {
     'towerAntiAir/armrl Set Target must still lock air targets',
   );
   const stopTower = world.createBuilding(180, 260, 80, 80, 40, 1);
-  stopTower.type = 'tower';
+  stopTower.type = 'building';
   stopTower.buildingBlueprintId = 'towerCannon';
   stopTower.combat = {
     turrets: [
       {
         config: {
+          kind: 'attack',
           passive: false,
-          range: 180,
+          turretRange: { range: 180 },
           shot: { type: 'plasma' },
         },
       },
@@ -828,7 +837,7 @@ export function runCommandExecutionContractTest(): void {
     priorityTargetPoint: { x: 200, y: 260, z: world.getGroundZ(200, 260) },
     manualLaunchActive: true,
     nextCombatProbeTick: 25,
-  } as NonNullable<Entity['combat']>;
+  } as unknown as NonNullable<Entity['combat']>;
   world.addEntity(stopTower);
   executeCommand({
     world,

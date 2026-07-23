@@ -2,12 +2,7 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
-  canEntityProvideFullVision,
-  canEntityProvideRadarVision,
-  canEntityProvideSonarVision,
-  getEntityFullVisionRadius,
-  getEntityRadarRadius,
-  getEntitySonarRadius,
+  forEachEntityTurretSensorSource,
 } from '../sim/sensorCoverage';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -144,38 +139,33 @@ export class SightBoundaryRenderer3D {
   private collectSightFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideFullVision(entity)) continue;
-      this.pushSource(
-        entity.transform.x,
-        entity.transform.y,
-        Math.max(
-          getEntityFullVisionRadius(entity, 'aboveWater'),
-          getEntityFullVisionRadius(entity, 'underwater'),
-        ),
-        renderScope,
-      );
+      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
+        this.pushSource(
+          position.x,
+          position.y,
+          Math.max(
+            sensors.fullSight[sourceMedium].aboveWater,
+            sensors.fullSight[sourceMedium].underwater,
+          ),
+          renderScope,
+        );
+      });
     }
   }
 
   private collectRadarFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (canEntityProvideRadarVision(entity)) {
-        this.pushSource(
-          entity.transform.x,
-          entity.transform.y,
-          getEntityRadarRadius(entity),
-          renderScope,
-        );
-      }
-      if (canEntityProvideSonarVision(entity)) {
-        this.pushSource(
-          entity.transform.x,
-          entity.transform.y,
-          getEntitySonarRadius(entity),
-          renderScope,
-        );
-      }
+      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
+        const radarRadius = sensors.contactSight[sourceMedium].aboveWater;
+        if (radarRadius > 0) {
+          this.pushSource(position.x, position.y, radarRadius, renderScope);
+        }
+        const sonarRadius = sensors.contactSight[sourceMedium].underwater;
+        if (sonarRadius > 0) {
+          this.pushSource(position.x, position.y, sonarRadius, renderScope);
+        }
+      });
     }
   }
 

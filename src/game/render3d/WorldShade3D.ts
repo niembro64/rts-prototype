@@ -1,12 +1,7 @@
 import * as THREE from 'three';
 import { FOG_CONFIG } from '@/fogConfig';
 import {
-  canEntityProvideFullVision,
-  canEntityProvideRadarVision,
-  canEntityProvideSonarVision,
-  getEntityFullVisionRadius,
-  getEntityRadarRadius,
-  getEntitySonarRadius,
+  forEachEntityTurretSensorSource,
 } from '../sim/sensorCoverage';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
@@ -537,12 +532,12 @@ void main() {
   ): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (canEntityProvideFullVision(entity)) {
-        const aboveWaterRadius = getEntityFullVisionRadius(entity, 'aboveWater');
+      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
+        const aboveWaterRadius = sensors.fullSight[sourceMedium].aboveWater;
         if (aboveWaterRadius > 0) {
           this.pushCircleRegion(
-            entity.transform.x,
-            entity.transform.y,
+            position.x,
+            position.y,
             aboveWaterRadius,
             FULL_SIGHT_ABOVE_WATER_R,
             0,
@@ -551,11 +546,11 @@ void main() {
             0,
           );
         }
-        const underwaterRadius = getEntityFullVisionRadius(entity, 'underwater');
+        const underwaterRadius = sensors.fullSight[sourceMedium].underwater;
         if (underwaterRadius > 0) {
           this.pushCircleRegion(
-            entity.transform.x,
-            entity.transform.y,
+            position.x,
+            position.y,
             underwaterRadius,
             0,
             0,
@@ -564,31 +559,33 @@ void main() {
             0,
           );
         }
-      }
-      if (canEntityProvideRadarVision(entity)) {
-        this.pushCircleRegion(
-          entity.transform.x,
-          entity.transform.y,
-          getEntityRadarRadius(entity),
-          0,
-          CONTACT_SIGHT_ABOVE_WATER_G,
-          0,
-          0,
-          0,
-        );
-      }
-      if (canEntityProvideSonarVision(entity)) {
-        this.pushCircleRegion(
-          entity.transform.x,
-          entity.transform.y,
-          getEntitySonarRadius(entity),
-          0,
-          0,
-          0,
-          CONTACT_SIGHT_UNDERWATER_A,
-          0,
-        );
-      }
+        const radarRadius = sensors.contactSight[sourceMedium].aboveWater;
+        if (radarRadius > 0) {
+          this.pushCircleRegion(
+            position.x,
+            position.y,
+            radarRadius,
+            0,
+            CONTACT_SIGHT_ABOVE_WATER_G,
+            0,
+            0,
+            0,
+          );
+        }
+        const sonarRadius = sensors.contactSight[sourceMedium].underwater;
+        if (sonarRadius > 0) {
+          this.pushCircleRegion(
+            position.x,
+            position.y,
+            sonarRadius,
+            0,
+            0,
+            0,
+            CONTACT_SIGHT_UNDERWATER_A,
+            0,
+          );
+        }
+      });
     }
   }
 

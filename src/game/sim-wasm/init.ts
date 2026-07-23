@@ -2301,6 +2301,7 @@ export const CT_LOCK_ON_REL_INCLUDE_ENEMY = 1 << 1;
 export const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS = 1 << 0;
 export const CT_LOCK_ON_FAM_INCLUDE_UNITS = 1 << 1;
 export const CT_LOCK_ON_FAM_INCLUDE_TURRETS = 1 << 2;
+/** Reserved compatibility bit; new blueprint policy emits buildings. */
 export const CT_LOCK_ON_FAM_INCLUDE_TOWERS = 1 << 3;
 export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
 
@@ -2317,6 +2318,7 @@ export const CT_LOCK_ON_RECIPROCAL_PREFER_HOLD = 3;
 export const CT_ENTITY_FAMILY_NONE = 0;
 export const CT_ENTITY_FAMILY_BUILDING = 1;
 export const CT_ENTITY_FAMILY_UNIT = 2;
+/** Reserved compatibility tag; new runtime stamping uses BUILDING. */
 export const CT_ENTITY_FAMILY_TOWER = 3;
 export const CT_ENTITY_FAMILY_SHOT = 4;
 
@@ -2389,6 +2391,8 @@ export interface CombatTargetingApi {
     lockOnUnitIncludeMask: number,
     lockOnTurretIncludeMask: number,
     lockOnShotIncludeMask: number,
+    sensorSourceX: number,
+    sensorSourceY: number,
     fullVisionAboveWaterRadius: number,
     fullVisionUnderwaterRadius: number,
     radarRadius: number,
@@ -2533,12 +2537,13 @@ export interface CombatTargetingApi {
     viewerPlayerId: number,
   ) => number;
   /** C1 — Rust-owned per-turret combat halt classifier for movement.
-   *  Mode anyEngaged covers attack / attack-ground / guard; mode
-   *  fightRequired covers fight / patrol with per-mount stop flags. */
+   *  Direct attacks halt only for the ordered target id; point intent uses
+   *  the priority-point flag. Fight/patrol use per-mount stop flags. */
   haltDecisionBatch: (
     entitySlots: Uint32Array,
     modes: Uint8Array,
     priorityPointPresent: Uint8Array,
+    expectedTargetIds: Int32Array,
     outShouldHalt: Uint8Array,
   ) => number;
   readonly entityIdPtr: () => number;

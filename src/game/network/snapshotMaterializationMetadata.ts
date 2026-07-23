@@ -322,9 +322,6 @@ function addSnapshotEntityDtoBreakdownRow(
     case 'building':
       breakdown.buildingRows++;
       break;
-    case 'tower':
-      breakdown.towerRows++;
-      break;
     default:
       breakdown.basicRows++;
       break;

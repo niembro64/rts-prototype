@@ -8,11 +8,8 @@ import {
   saveConverterTax,
   saveDemoUnits,
   saveDemoBuildings,
-  saveDemoTowers,
   loadStoredDemoBuildings,
-  loadStoredDemoTowers,
   getDefaultDemoBuildings,
-  getDefaultDemoTowers,
   saveForceFieldsVisible,
   saveShieldsObstructSight,
   saveFogOfWarEnabled,
@@ -41,9 +38,6 @@ type GameCanvasBattleSettings = {
   currentAllowedBuildings: ComputedRef<readonly string[]>;
   currentAllowedBuildingsSet: ComputedRef<ReadonlySet<string>>;
   allDemoBuildingsActive: ComputedRef<boolean>;
-  currentAllowedTowers: ComputedRef<readonly string[]>;
-  currentAllowedTowersSet: ComputedRef<ReadonlySet<string>>;
-  allDemoTowersActive: ComputedRef<boolean>;
   currentForceFieldsVisible: ComputedRef<boolean>;
   currentShieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
@@ -53,8 +47,6 @@ type GameCanvasBattleSettings = {
   toggleAllDemoUnits(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
   toggleAllDemoBuildings(): void;
-  toggleDemoTowerBlueprintId(towerBlueprintId: string): void;
-  toggleAllDemoTowers(): void;
   changeMaxTotalUnits(value: number): void;
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
@@ -70,7 +62,6 @@ type GameCanvasBattleSettingsOptions = {
   currentBattleMode: ComputedRef<BattleMode>;
   demoUnitBlueprintIds: readonly string[];
   demoBuildingBlueprintIds: readonly string[];
-  demoTowerBlueprintIds: readonly string[];
   getActiveConnection: () => GameConnection | null;
   broadcastLobbySettingsIfHost: () => void;
   applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
@@ -93,7 +84,6 @@ export function useGameCanvasBattleSettings({
   currentBattleMode,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
-  demoTowerBlueprintIds,
   getActiveConnection,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
@@ -123,7 +113,7 @@ export function useGameCanvasBattleSettings({
     return true;
   });
 
-  // Building / tower enablement (BUILDINGS / TOWERS bar groups). Unlike
+  // Building enablement (the BUILDINGS bar group). Unlike
   // units — which read their allowed set back from the authoritative
   // server snapshot — structure toggles are driven by local refs seeded
   // from localStorage. Each toggle (a) sends the server command that
@@ -133,16 +123,9 @@ export function useGameCanvasBattleSettings({
   const allowedBuildings = ref<string[]>(
     loadStoredDemoBuildings() ?? getDefaultDemoBuildings(),
   );
-  const allowedTowers = ref<string[]>(
-    loadStoredDemoTowers() ?? getDefaultDemoTowers(),
-  );
   const currentAllowedBuildings = computed<readonly string[]>(() => allowedBuildings.value);
   const currentAllowedBuildingsSet = computed<ReadonlySet<string>>(
     () => new Set(allowedBuildings.value),
-  );
-  const currentAllowedTowers = computed<readonly string[]>(() => allowedTowers.value);
-  const currentAllowedTowersSet = computed<ReadonlySet<string>>(
-    () => new Set(allowedTowers.value),
   );
   const allDemoBuildingsActive = computed(() => {
     const allowed = currentAllowedBuildingsSet.value;
@@ -151,57 +134,23 @@ export function useGameCanvasBattleSettings({
     }
     return true;
   });
-  const allDemoTowersActive = computed(() => {
-    const allowed = currentAllowedTowersSet.value;
-    for (let i = 0; i < demoTowerBlueprintIds.length; i++) {
-      if (!allowed.has(demoTowerBlueprintIds[i])) return false;
-    }
-    return true;
-  });
-
-  // Generic structure-selection applier shared by buildings and towers.
-  // Diffs `nextIds` against the current ref, sends a command only for
-  // ids whose enablement actually changed (so toggling one button
-  // doesn't churn the others), then rewrites the ref in canonical
-  // blueprint order and persists. The command shape differs only in the
-  // type tag + id field name between the two structure kinds.
-  function applyStructureSelection(
-    kind: 'building' | 'tower',
-    blueprintIds: readonly string[],
-    allowedRef: Ref<string[]>,
-    save: (ids: string[]) => void,
-    nextIds: readonly string[],
-  ): void {
+  // Diff a requested building roster against the current one, send only
+  // changed ids, then persist the canonical blueprint order.
+  function applyBuildingSelection(nextIds: readonly string[]): void {
     const next = new Set(nextIds);
     const connection = getActiveConnection();
-    for (const blueprintId of blueprintIds) {
-      const enabled = next.has(blueprintId);
-      if (allowedRef.value.includes(blueprintId) === enabled) continue;
-      connection?.sendCommand(
-        kind === 'building'
-          ? {
-              type: 'setBackgroundBuildingBlueprintEnabled',
-              tick: 0,
-              buildingBlueprintId: blueprintId,
-              enabled,
-            }
-          : {
-              type: 'setBackgroundTowerBlueprintEnabled',
-              tick: 0,
-              towerBlueprintId: blueprintId,
-              enabled,
-            },
-      );
+    for (const buildingBlueprintId of demoBuildingBlueprintIds) {
+      const enabled = next.has(buildingBlueprintId);
+      if (allowedBuildings.value.includes(buildingBlueprintId) === enabled) continue;
+      connection?.sendCommand({
+        type: 'setBackgroundBuildingBlueprintEnabled',
+        tick: 0,
+        buildingBlueprintId,
+        enabled,
+      });
     }
-    allowedRef.value = blueprintIds.filter((id) => next.has(id));
-    save(allowedRef.value);
-  }
-
-  function applyBuildingSelection(nextIds: readonly string[]): void {
-    applyStructureSelection('building', demoBuildingBlueprintIds, allowedBuildings, saveDemoBuildings, nextIds);
-  }
-  function applyTowerSelection(nextIds: readonly string[]): void {
-    applyStructureSelection('tower', demoTowerBlueprintIds, allowedTowers, saveDemoTowers, nextIds);
+    allowedBuildings.value = demoBuildingBlueprintIds.filter((id) => next.has(id));
+    saveDemoBuildings(allowedBuildings.value);
   }
 
   function toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void {
@@ -214,17 +163,6 @@ export function useGameCanvasBattleSettings({
   }
   function toggleAllDemoBuildings(): void {
     applyBuildingSelection(allDemoBuildingsActive.value ? [] : demoBuildingBlueprintIds);
-  }
-  function toggleDemoTowerBlueprintId(towerBlueprintId: string): void {
-    const current = allowedTowers.value.includes(towerBlueprintId);
-    applyTowerSelection(
-      current
-        ? allowedTowers.value.filter((id) => id !== towerBlueprintId)
-        : [...allowedTowers.value, towerBlueprintId],
-    );
-  }
-  function toggleAllDemoTowers(): void {
-    applyTowerSelection(allDemoTowersActive.value ? [] : demoTowerBlueprintIds);
   }
   const currentShieldsObstructSight = computed(
     () =>
@@ -373,7 +311,6 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits([...preset.units]);
     applyBuildingSelection([...preset.buildings]);
-    applyTowerSelection([...preset.towers]);
     changeMaxTotalUnits(preset.cap, false);
     setForceFieldsVisible(preset.forceFieldsVisible, false);
     setShieldsObstructSight(preset.shieldsObstructSight);
@@ -411,9 +348,6 @@ export function useGameCanvasBattleSettings({
     currentAllowedBuildings,
     currentAllowedBuildingsSet,
     allDemoBuildingsActive,
-    currentAllowedTowers,
-    currentAllowedTowersSet,
-    allDemoTowersActive,
     currentForceFieldsVisible,
     currentShieldsObstructSight,
     currentFogOfWarEnabled,
@@ -423,8 +357,6 @@ export function useGameCanvasBattleSettings({
     toggleAllDemoUnits,
     toggleDemoBuildingBlueprintId,
     toggleAllDemoBuildings,
-    toggleDemoTowerBlueprintId,
-    toggleAllDemoTowers,
     changeMaxTotalUnits,
     setForceFieldsVisible,
     setShieldsObstructSight,

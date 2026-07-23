@@ -77,7 +77,6 @@ const WAYPOINT_SCRATCH_STRIDE = 5;
 import {
   SNAPSHOT_ENTITY_TYPE_UNIT,
   SNAPSHOT_ENTITY_TYPE_BUILDING,
-  SNAPSHOT_ENTITY_TYPE_TOWER,
 } from './init';
 import {
   ENTITY_CHANGED_BUILDING,
@@ -165,8 +164,6 @@ function entityTypeToSnapshotTag(type: EntityType): number {
   switch (type) {
     case 'unit':
       return SNAPSHOT_ENTITY_TYPE_UNIT;
-    case 'tower':
-      return SNAPSHOT_ENTITY_TYPE_TOWER;
     case 'building':
       return SNAPSHOT_ENTITY_TYPE_BUILDING;
     case 'shot':
@@ -3253,7 +3250,7 @@ function runPackedMinimapCases(memory: WebAssembly.Memory): { passed: number; fa
         { id: 3, pos: { x: 100, y: 200 }, type: 'unit', playerId: 1 },
         { id: 7, pos: { x: 120, y: 210 }, type: 'unit', playerId: 1 },
         { id: 9, pos: { x: -30, y: 40 }, type: 'building', playerId: 2 },
-        { id: 10, pos: { x: -24, y: 36 }, type: 'tower', playerId: 2 },
+        { id: 10, pos: { x: -24, y: 36 }, type: 'building', playerId: 2 },
         { id: 12, pos: { x: 400, y: -120 }, type: 'unit', playerId: 2, radarOnly: true },
         { id: 18, pos: { x: 401, y: -122 }, type: 'unit', playerId: 2, radarOnly: true },
       ],

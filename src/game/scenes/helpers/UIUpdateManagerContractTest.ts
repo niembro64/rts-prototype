@@ -9,13 +9,13 @@ function assertContract(condition: boolean, message: string): void {
   }
 }
 
-function factoryTowerEntity(
+function factoryBuildingEntity(
   id: number,
   buildingBlueprintId: StructureBlueprintId,
 ): Entity {
   return {
     id,
-    type: 'tower',
+    type: 'building',
     unit: null,
     builder: null,
     combat: null,
@@ -140,7 +140,7 @@ export function runUIUpdateManagerContractTest(): void {
   );
 
   const fabricatorSelection = buildSelectionInfo(
-    entitySourceForSelection([], [factoryTowerEntity(10, 'towerFabricator')]),
+    entitySourceForSelection([], [factoryBuildingEntity(10, 'towerFabricator')]),
     undefined,
   );
   assertContract(
@@ -152,10 +152,10 @@ export function runUIUpdateManagerContractTest(): void {
       fabricatorSelection.unitMoveState === 'holdPosition' &&
       fabricatorSelection.hasBuilderPriorityControl &&
       fabricatorSelection.builderPriorityLow,
-    'towerFabricator selection must expose BAR Factory Guard, Air LandAt, Move State, and default-low Builder Priority controls',
+    'fabricator building selection must expose BAR Factory Guard, Air LandAt, Move State, and default-low Builder Priority controls',
   );
 
-  const pausedFabricator = factoryTowerEntity(12, 'towerFabricator');
+  const pausedFabricator = factoryBuildingEntity(12, 'towerFabricator');
   pausedFabricator.factory!.paused = true;
   const pausedFabricatorSelection = buildSelectionInfo(
     entitySourceForSelection([], [pausedFabricator]),
@@ -193,13 +193,13 @@ export function runUIUpdateManagerContractTest(): void {
   );
 
   const nonBarFactorySelection = buildSelectionInfo(
-    entitySourceForSelection([], [factoryTowerEntity(11, 'towerCannon')]),
+    entitySourceForSelection([], [factoryBuildingEntity(11, 'towerCannon')]),
     undefined,
   );
   assertContract(
     nonBarFactorySelection.hasFactory &&
       !nonBarFactorySelection.hasFactoryGuardControl &&
       !nonBarFactorySelection.hasFactoryAirIdleControl,
-    'factory-capable non-BAR-factory-guard structures must not expose Factory Guard or Air LandAt controls',
+    'factory-capable non-BAR-factory-guard buildings must not expose Factory Guard or Air LandAt controls',
   );
 }

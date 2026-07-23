@@ -2,12 +2,8 @@ import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './typ
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
-import { cloneSensorCapabilityConfig } from './sensorConfig';
 import {
-  BUILDING_BLUEPRINT_IDS as PURE_BUILDING_BLUEPRINT_IDS,
-  TOWER_BLUEPRINT_IDS,
-  type BuildingBlueprintId as PureBuildingBlueprintId,
-  type TowerBlueprintId,
+  BUILDING_BLUEPRINT_IDS,
 } from '../../types/blueprintIds';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
@@ -36,7 +32,6 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     hoveringType: bp.hoveringType,
     hovering: bp.hoveringType !== null,
     hud: bp.hud,
-    sensors: cloneSensorCapabilityConfig(bp.sensors),
     radius: { ...bp.base.radius },
   };
 }
@@ -51,26 +46,15 @@ for (const buildingBlueprintId in BUILDING_BLUEPRINTS) {
   ALL_STRUCTURE_CONFIGS.push(config);
 }
 
-const BUILDING_CONFIGS = {} as Record<PureBuildingBlueprintId, BuildingConfig>;
-const ALL_BUILDING_CONFIGS = new Array<BuildingConfig>(PURE_BUILDING_BLUEPRINT_IDS.length);
-for (let i = 0; i < PURE_BUILDING_BLUEPRINT_IDS.length; i++) {
-  const buildingBlueprintId = PURE_BUILDING_BLUEPRINT_IDS[i];
+const BUILDING_CONFIGS = {} as Record<BuildingBlueprintId, BuildingConfig>;
+const ALL_BUILDING_CONFIGS = new Array<BuildingConfig>(BUILDING_BLUEPRINT_IDS.length);
+for (let i = 0; i < BUILDING_BLUEPRINT_IDS.length; i++) {
+  const buildingBlueprintId = BUILDING_BLUEPRINT_IDS[i];
   const config = STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId];
   BUILDING_CONFIGS[buildingBlueprintId] = config;
   ALL_BUILDING_CONFIGS[i] = config;
 }
 
-const TOWER_CONFIGS = {} as Record<TowerBlueprintId, BuildingConfig>;
-const ALL_TOWER_CONFIGS = new Array<BuildingConfig>(TOWER_BLUEPRINT_IDS.length);
-for (let i = 0; i < TOWER_BLUEPRINT_IDS.length; i++) {
-  const towerBlueprintId = TOWER_BLUEPRINT_IDS[i];
-  const config = STRUCTURE_CONFIGS[towerBlueprintId as BuildingBlueprintId];
-  TOWER_CONFIGS[towerBlueprintId] = config;
-  ALL_TOWER_CONFIGS[i] = config;
-}
-
-// Compatibility helper. New UI/config code should prefer
-// BUILDING_CONFIGS/getAllBuildings or TOWER_CONFIGS/getAllTowers.
 export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   return STRUCTURE_CONFIGS[buildingBlueprintId];
 }
@@ -102,10 +86,6 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {
   return copyBuildingConfigArray(ALL_BUILDING_CONFIGS);
-}
-
-export function getAllTowers(): BuildingConfig[] {
-  return copyBuildingConfigArray(ALL_TOWER_CONFIGS);
 }
 
 export function getAllStructures(): BuildingConfig[] {

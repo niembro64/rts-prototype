@@ -158,7 +158,6 @@ export class WorldEntityMetadata {
 
   private entityBlueprintKind(entity: Entity): EntityMetaBlueprintKind {
     if (entity.type === 'unit') return 'unit';
-    if (entity.type === 'tower') return 'tower';
     if (entity.type === 'building') return 'building';
     if (entity.type === 'shot') return 'shot';
     return 'none';

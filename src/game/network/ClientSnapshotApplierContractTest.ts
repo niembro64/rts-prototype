@@ -418,7 +418,7 @@ function fullBuildingEntity(id: number, hp: number, maxHp: number): NetworkServe
 function fullFactoryEntity(id: number): NetworkServerSnapshotEntity {
   return {
     id,
-    type: 'tower',
+    type: 'building',
     playerId: 1 as PlayerId,
     changedFields: null,
     pos: { x: 0, y: 0, z: 40 },

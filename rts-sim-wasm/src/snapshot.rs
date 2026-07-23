@@ -8663,13 +8663,12 @@ mod sim_kernel_tests {
     pub(crate) fn blueprint_manifest_includes_authored_tables() {
         assert!(blueprint_tables::BLUEPRINT_UNITS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_BUILDINGS_COUNT > 0);
-        assert!(blueprint_tables::BLUEPRINT_TOWERS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_TURRETS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_SHOTS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"unitJackal"));
         assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"buildingSolar"));
-        assert!(blueprint_tables::BLUEPRINT_TOWER_IDS.contains(&"towerFabricator"));
+        assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"towerFabricator"));
         assert!(blueprint_tables::BLUEPRINT_TURRET_BLUEPRINT_IDS.contains(&"turretGunLight"));
     }
 
@@ -8900,6 +8899,8 @@ mod lock_on_inclusion_tests {
             lockon_unit_mask,
             lockon_turret_mask,
             lockon_shot_mask,
+            x,
+            0.0,
             0.0,
             0.0,
             200.0,
@@ -9721,13 +9722,33 @@ mod lock_on_inclusion_tests {
         let slots = [SOURCE_SLOT];
         let modes = [CT_COMBAT_HALT_MODE_ANY_ENGAGED];
         let mut out = [0u8];
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[-1], &mut out);
         assert_eq!(
             out[0], 0,
             "engaged priority-point turret needs an active point"
         );
-        combat_targeting_halt_decision_batch(&slots, &modes, &[1], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[1], &[-1], &mut out);
         assert_eq!(out[0], 1);
+
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                ..TurretSpec::default()
+            },
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[202], &mut out);
+        assert_eq!(
+            out[0], 0,
+            "an old turret lock must not satisfy a newly ordered host target"
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[201], &mut out);
+        assert_eq!(
+            out[0], 1,
+            "a turret lock matching the host's ordered target must halt movement"
+        );
 
         reset_pools();
         stamp_source(-1);
@@ -9741,7 +9762,7 @@ mod lock_on_inclusion_tests {
                 ..TurretSpec::default()
             },
         );
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[-1], &mut out);
         assert_eq!(out[0], 0, "non-attack emitters must not halt movement");
     }
 
@@ -9793,7 +9814,7 @@ mod lock_on_inclusion_tests {
         let slots = [SOURCE_SLOT];
         let modes = [CT_COMBAT_HALT_MODE_FIGHT_REQUIRED];
         let mut out = [0u8];
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[-1], &mut out);
         assert_eq!(out[0], 0, "all required fight-stop turrets must be engaged");
         stamp_turret(
             SOURCE_SLOT,
@@ -9805,7 +9826,7 @@ mod lock_on_inclusion_tests {
                 ..TurretSpec::default()
             },
         );
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &[-1], &mut out);
         assert_eq!(
             out[0], 1,
             "host-controlled turrets do not matter unless their mount is marked required"
@@ -10438,6 +10459,50 @@ mod lock_on_inclusion_tests {
 
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(target_id, 204);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    pub(crate) fn mirror_policy_uses_panel_mount_after_a_sensor_mount() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            2,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_NON_ATTACK_EMITTER,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            1,
+            TurretSpec {
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target(4, 204, PLAYER_2, 30.0, &[TURRET_CODE_A], true);
+
+        run_schedule_tick(1);
+        let (target_id, state) = read_turret_lock(1);
+        assert_eq!(
+            target_id, 204,
+            "a leading sensor mount must not steal the Loris panel's threat lock",
+        );
         assert_ne!(state, CT_TURRET_STATE_IDLE);
     }
 

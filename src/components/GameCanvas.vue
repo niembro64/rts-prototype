@@ -34,7 +34,7 @@ import {
   type CommandHotkeyId,
 } from '../game/input/commandHotkeys';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
-import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
+import { BUILDING_BLUEPRINT_IDS } from '../types/blueprintIds';
 import {
   BATTLE_CONFIG,
   loadStoredCap,
@@ -1036,10 +1036,8 @@ onBeforeUnmount(() => {
 
 // Demo battle unit blueprint list (state read from snapshots)
 const demoUnitBlueprintIds = BACKGROUND_UNIT_BLUEPRINT_IDS;
-// Demo battle structure blueprint lists for the BUILDINGS / TOWERS bar
-// groups. Source of truth is the authoritative blueprint-id arrays.
+// Demo battle static-host blueprint list for the BUILDINGS bar group.
 const demoBuildingBlueprintIds: readonly string[] = [...BUILDING_BLUEPRINT_IDS];
-const demoTowerBlueprintIds: readonly string[] = [...TOWER_BLUEPRINT_IDS];
 
 // Terrain-shape selection. Source of truth is localStorage; the
 // refs below mirror it so the battle bar can reactively highlight
@@ -1504,9 +1502,6 @@ const {
   currentAllowedBuildings,
   currentAllowedBuildingsSet,
   allDemoBuildingsActive,
-  currentAllowedTowers,
-  currentAllowedTowersSet,
-  allDemoTowersActive,
   currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
@@ -1516,8 +1511,6 @@ const {
   toggleAllDemoUnits,
   toggleDemoBuildingBlueprintId,
   toggleAllDemoBuildings,
-  toggleDemoTowerBlueprintId,
-  toggleAllDemoTowers,
   changeMaxTotalUnits,
   setForceFieldsVisible,
   setShieldsObstructSight,
@@ -1531,7 +1524,6 @@ const {
   currentBattleMode,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
-  demoTowerBlueprintIds,
   getActiveConnection: () => activeConnection,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
@@ -1740,9 +1732,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   allDemoBuildingsActive: allDemoBuildingsActive.value,
   demoBuildingBlueprintIds,
   currentAllowedBuildingsSet: currentAllowedBuildingsSet.value,
-  allDemoTowersActive: allDemoTowersActive.value,
-  demoTowerBlueprintIds,
-  currentAllowedTowersSet: currentAllowedTowersSet.value,
   displayUnitCap: displayUnitCap.value,
   gameStarted: gameStarted.value,
   mapWidthLandCells: mapWidthLandCells.value,
@@ -1778,8 +1767,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   toggleDemoUnitBlueprintId,
   toggleAllDemoBuildings,
   toggleDemoBuildingBlueprintId,
-  toggleAllDemoTowers,
-  toggleDemoTowerBlueprintId,
   changeMaxTotalUnits,
   applyMapLandDimensions,
   applyCenterMagnitude,
@@ -1816,8 +1803,6 @@ watchEffect(() => {
   m.currentAllowedUnitsSet = currentAllowedUnitsSet.value;
   m.allDemoBuildingsActive = allDemoBuildingsActive.value;
   m.currentAllowedBuildingsSet = currentAllowedBuildingsSet.value;
-  m.allDemoTowersActive = allDemoTowersActive.value;
-  m.currentAllowedTowersSet = currentAllowedTowersSet.value;
   m.displayUnitCap = displayUnitCap.value;
   m.gameStarted = gameStarted.value;
   m.mapWidthLandCells = mapWidthLandCells.value;
@@ -1849,7 +1834,6 @@ watchEffect(() => {
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
     buildings: currentAllowedBuildings.value,
-    towers: currentAllowedTowers.value,
     cap: displayUnitCap.value,
     turretShieldPanelsEnabled: BATTLE_CONFIG.turretShieldPanelsEnabled.default,
     turretShieldSpheresEnabled: BATTLE_CONFIG.turretShieldSpheresEnabled.default,
@@ -2687,8 +2671,6 @@ watchEffect(() => {
       :allowed-units="currentAllowedUnits"
       :building-blueprint-ids="demoBuildingBlueprintIds"
       :allowed-buildings="currentAllowedBuildings"
-      :tower-blueprint-ids="demoTowerBlueprintIds"
-      :allowed-towers="currentAllowedTowers"
       :unit-cap="displayUnitCap"
       :force-fields-visible="currentForceFieldsVisible"
       :shields-obstruct-sight="currentShieldsObstructSight"
@@ -2720,8 +2702,6 @@ watchEffect(() => {
       @toggle-all-units="toggleAllDemoUnits"
       @toggle-building="(bt) => toggleDemoBuildingBlueprintId(bt)"
       @toggle-all-buildings="toggleAllDemoBuildings"
-      @toggle-tower="(tt) => toggleDemoTowerBlueprintId(tt)"
-      @toggle-all-towers="toggleAllDemoTowers"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-force-fields-visible="(e) => setForceFieldsVisible(e)"
       @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"

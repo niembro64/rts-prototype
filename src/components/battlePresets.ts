@@ -1,5 +1,5 @@
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
-import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
+import { BUILDING_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
 import { persist } from '../persistence';
 import type { ShieldReflectionMode } from '../types/shotTypes';
@@ -13,8 +13,6 @@ export type BattlePreset = {
    *  selection resets structure toggles and the active-preset highlight
    *  accounts for them, mirroring `units`. */
   readonly buildings: readonly string[];
-  /** Enabled tower blueprints (TOWERS bar group). */
-  readonly towers: readonly string[];
   readonly cap: number;
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
@@ -64,9 +62,6 @@ function allUnits(): readonly string[] {
 function allBuildings(): readonly string[] {
   return BUILDING_BLUEPRINT_IDS;
 }
-function allTowers(): readonly string[] {
-  return TOWER_BLUEPRINT_IDS;
-}
 
 // Shared subsystem toggles that historically lived as inline
 // BATTLE_CONFIG defaults. Folding them into the presets means every
@@ -80,12 +75,11 @@ const SUBSYSTEM_DEFAULTS = {
   slopePathMode: 'directional' as SlopePathMode,
 };
 
-// Every preset enables all buildings and towers — there is no preset
-// that ships with structures disabled. Spread into each literal so the
-// structure fields stay in one place (mirrors SUBSYSTEM_DEFAULTS).
+// Every preset enables all buildings — there is no preset that ships with
+// static hosts disabled. Spread into each literal so the structure field
+// stays in one place (mirrors SUBSYSTEM_DEFAULTS).
 const STRUCTURE_DEFAULTS = {
   buildings: allBuildings(),
-  towers: allTowers(),
 };
 
 function buildPresets(): readonly BattlePreset[] {
@@ -309,7 +303,6 @@ function presetMatchesCurrent(
   return (
     sameUnits(p.units, c.units) &&
     sameUnits(p.buildings, c.buildings) &&
-    sameUnits(p.towers, c.towers) &&
     p.cap === c.cap &&
     p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&

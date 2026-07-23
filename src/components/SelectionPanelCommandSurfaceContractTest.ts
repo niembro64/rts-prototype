@@ -96,13 +96,13 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'factoryStopProductionButtonColor()',
     factoryWaitIndex,
   );
-  const towerCombatStart = selectionPanelSource.indexOf('<!-- Fire control (units + towers).');
-  const towerFireStateIndex = selectionPanelSource.indexOf(
+  const staticCombatStart = selectionPanelSource.indexOf('<!-- Fire control is capability-driven');
+  const staticFireStateIndex = selectionPanelSource.indexOf(
     ':title="stateActionTitle(fireStateLabel(selection.fireState),',
-    towerCombatStart,
+    staticCombatStart,
   );
-  const towerStopIndex = selectionPanelSource.indexOf('v-if="showTowerStopButton"', towerFireStateIndex);
-  const towerTargetStart = selectionPanelSource.indexOf('<!-- Combat lock-on.', towerStopIndex);
+  const staticStopIndex = selectionPanelSource.indexOf('v-if="showStaticStopButton"', staticFireStateIndex);
+  const staticTargetStart = selectionPanelSource.indexOf('<!-- Combat lock-on', staticStopIndex);
   const buildingPowerStart = selectionPanelSource.indexOf('<!-- Building ON/OFF.');
   const buildingPowerIndex = selectionPanelSource.indexOf(
     ":title=\"stateActionTitle(selectedBuildingsActive ? 'On' : 'Off'",
@@ -258,14 +258,14 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
   );
   assertContract(
     /armllt\/armbeamer\/armrl set removewait=true[\s\S]{0,180}do not set removestop/.test(selectionPanelSource) &&
-      /const showTowerStopButton = computed\(\(\) =>\s*isBarHotkeyPreset\.value &&\s*showTowerActions\.value &&\s*props\.selection\.hasFireControl &&\s*!props\.selection\.hasFactory,\s*\);/.test(selectionPanelSource) &&
-      /if \(showCombatActions\.value && \(!isBarHotkeyPreset\.value \|\| !showUnitActions\.value\)\) \{\s*count \+= 1; \/\/ fire state\s*if \(showTrajectoryButton\.value\) count \+= 1;\s*if \(showTowerStopButton\.value\) count \+= 1;/.test(selectionPanelSource) &&
-      towerCombatStart >= 0 &&
-      towerFireStateIndex > towerCombatStart &&
-      towerStopIndex > towerFireStateIndex &&
-      towerTargetStart > towerStopIndex &&
-      /v-if="showTowerStopButton"[\s\S]{0,220}:title="actionTitle\('Stop', 'command\.stop'\)"[\s\S]{0,160}@click="actions\.stopSelectedUnits\(\)"/.test(selectionPanelSource),
-    'BAR pure combat-tower selections must show Stop after state commands and before target commands because ARM static defenses remove Wait but keep Stop',
+      /const showStaticStopButton = computed\(\(\) =>\s*isBarHotkeyPreset\.value &&\s*showBuildingActions\.value &&\s*props\.selection\.hasFireControl &&\s*!props\.selection\.hasFactory,\s*\);/.test(selectionPanelSource) &&
+      /if \(showCombatActions\.value && \(!isBarHotkeyPreset\.value \|\| !showUnitActions\.value\)\) \{\s*count \+= 1; \/\/ fire state\s*if \(showTrajectoryButton\.value\) count \+= 1;\s*if \(showStaticStopButton\.value\) count \+= 1;/.test(selectionPanelSource) &&
+      staticCombatStart >= 0 &&
+      staticFireStateIndex > staticCombatStart &&
+      staticStopIndex > staticFireStateIndex &&
+      staticTargetStart > staticStopIndex &&
+      /v-if="showStaticStopButton"[\s\S]{0,220}:title="actionTitle\('Stop', 'command\.stop'\)"[\s\S]{0,160}@click="actions\.stopSelectedUnits\(\)"/.test(selectionPanelSource),
+    'BAR pure armed-building selections must show Stop after state commands and before target commands because ARM static defenses remove Wait but keep Stop',
   );
   assertContract(
     /BAR armamex sets removewait=true[\s\S]{0,180}does not set removestop/.test(selectionPanelSource) &&

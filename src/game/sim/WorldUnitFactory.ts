@@ -12,7 +12,6 @@ import type {
   Entity,
   EntityId,
   PlayerId,
-  SensorCapabilityConfig,
   UnitLocomotion,
   UnitSupportSurface,
 } from './types';
@@ -28,7 +27,6 @@ import {
   unitBlueprintBarDefaultFireState,
   unitBlueprintBarDefaultMoveState,
 } from './unitCommandCapabilities';
-import { cloneSensorCapabilityConfig } from './sensorConfig';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -54,7 +52,6 @@ type CreateUnitBaseArgs = {
   radius: UnitRadius;
   supportPointOffsetZ: number;
   supportSurface: UnitSupportSurface;
-  sensors: SensorCapabilityConfig;
   locomotion: UnitLocomotion;
   mass: number;
   hp: number;
@@ -70,7 +67,6 @@ function createUnitBaseEntity({
   radius,
   supportPointOffsetZ,
   supportSurface,
-  sensors,
   locomotion,
   mass,
   hp,
@@ -91,7 +87,6 @@ function createUnitBaseEntity({
       radius: { ...radius },
       supportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(supportSurface),
-      sensors: cloneSensorCapabilityConfig(sensors),
       mass,
       hp,
       maxHp: hp,
@@ -149,7 +144,6 @@ export function createUnitFromBlueprintEntity(
     radius: bp.radius,
     supportPointOffsetZ: bp.supportPointOffsetZ,
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
-    sensors: cloneSensorCapabilityConfig(bp.sensors),
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
     hp: bp.hp * UNIT_HP_MULTIPLIER,

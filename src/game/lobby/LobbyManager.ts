@@ -7,18 +7,16 @@ import { ClientViewState } from '../network/ClientViewState';
 import { getMapSize } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../server/BackgroundBattleStandalone';
-import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import {
   loadStoredConverterTax,
   loadStoredDemoUnits,
   loadStoredDemoBuildings,
-  loadStoredDemoTowers,
   loadStoredDemoCap,
   loadStoredMapLandDimensions,
   loadStoredTerrainRuntimeConfig,
   getDefaultDemoUnits,
   getDefaultDemoBuildings,
-  getDefaultDemoTowers,
   type BattleMode,
 } from '../../battleBarConfig';
 import {
@@ -156,13 +154,12 @@ export async function createBackgroundBattle(
     ? savedDemoUnits
     : getDefaultDemoUnits();
   const initialAllowedUnitBlueprintIds = new Set<string>();
-  // Building / tower selections gate the demo base spawn (BUILDINGS /
-  // TOWERS bar groups). Same resolve-from-localStorage-up-front rule as
+  // Building selections gate the demo base spawn. Same
+  // resolve-from-localStorage-up-front rule as
   // units: the spawn reads them in the GameServer constructor. Empty
   // sets are honoured (user disabled everything) via the `?? defaults`
   // null-only fallback — matching the demo bar's local ref seed.
   const initialAllowedBuildingBlueprintIds = new Set<string>();
-  const initialAllowedTowerBlueprintIds = new Set<string>();
   if (!isLobbyPreview) {
     const storedDemoUnitIds = new Set<string>(storedDemoUnits);
     for (let i = 0; i < BACKGROUND_UNIT_BLUEPRINT_IDS.length; i++) {
@@ -173,11 +170,6 @@ export async function createBackgroundBattle(
     for (let i = 0; i < BUILDING_BLUEPRINT_IDS.length; i++) {
       const buildingBlueprintId = BUILDING_BLUEPRINT_IDS[i];
       if (storedDemoBuildingIds.has(buildingBlueprintId)) initialAllowedBuildingBlueprintIds.add(buildingBlueprintId);
-    }
-    const storedDemoTowerIds = new Set<string>(loadStoredDemoTowers() ?? getDefaultDemoTowers());
-    for (let i = 0; i < TOWER_BLUEPRINT_IDS.length; i++) {
-      const towerBlueprintId = TOWER_BLUEPRINT_IDS[i];
-      if (storedDemoTowerIds.has(towerBlueprintId)) initialAllowedTowerBlueprintIds.add(towerBlueprintId);
     }
   }
   await report(0.14, 'Choosing unit roster');
@@ -210,7 +202,6 @@ export async function createBackgroundBattle(
       backgroundMode: true,
       initialAllowedUnitBlueprintIds,
       initialAllowedBuildingBlueprintIds,
-      initialAllowedTowerBlueprintIds,
       initialMaxTotalUnits: loadStoredDemoCap(),
       converterTax: loadStoredConverterTax(mode),
       aiPlayerIds,

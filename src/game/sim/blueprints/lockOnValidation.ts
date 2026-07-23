@@ -18,7 +18,6 @@ export const LOCK_ON_INCLUSION_FIELDS = [
   'includeLockOnLevel0FriendsAndEnemies',
   'includeLockOnLevel0Entities',
   'includeLockOnLevel1Buildings',
-  'includeLockOnLevel1Towers',
   'includeLockOnLevel1Units',
   'includeLockOnLevel1Turrets',
   'includeLockOnLevel1Shots',
@@ -42,7 +41,6 @@ const LOCK_ON_TARGET_POLICY_FIELDS = [
 const LOCK_ON_TARGET_RELATIONSHIP_FIELDS = ['friendly', 'enemy'] as const;
 const LOCK_ON_TARGET_FAMILY_FIELDS = [
   'buildings',
-  'towers',
   'units',
   'turrets',
   'shots',
@@ -83,14 +81,12 @@ const TARGET_FAMILY_TO_LEVEL1_FIELD: Record<
   keyof Pick<
     LockOnInclusionObject,
     | 'includeLockOnLevel1Buildings'
-    | 'includeLockOnLevel1Towers'
     | 'includeLockOnLevel1Units'
     | 'includeLockOnLevel1Turrets'
     | 'includeLockOnLevel1Shots'
   >
 > = {
   buildings: 'includeLockOnLevel1Buildings',
-  towers: 'includeLockOnLevel1Towers',
   units: 'includeLockOnLevel1Units',
   turrets: 'includeLockOnLevel1Turrets',
   shots: 'includeLockOnLevel1Shots',
@@ -294,7 +290,6 @@ function normalizeLockOnTargetPolicy(
       includeLockOnLevel0FriendsAndEnemies: [],
       includeLockOnLevel0Entities: [],
       includeLockOnLevel1Buildings: [],
-      includeLockOnLevel1Towers: [],
       includeLockOnLevel1Units: [],
       includeLockOnLevel1Turrets: [],
       includeLockOnLevel1Shots: [],
@@ -349,7 +344,6 @@ function normalizeLockOnTargetPolicy(
     includeLockOnLevel0FriendsAndEnemies,
     includeLockOnLevel0Entities: [],
     includeLockOnLevel1Buildings: [],
-    includeLockOnLevel1Towers: [],
     includeLockOnLevel1Units: [],
     includeLockOnLevel1Turrets: [],
     includeLockOnLevel1Shots: [],
@@ -393,7 +387,6 @@ export function validateLockOnInclusionObject(
     LOCK_ON_ENTITY_FAMILY_SET,
   );
   assertStringArray(label, 'includeLockOnLevel1Buildings', value.includeLockOnLevel1Buildings);
-  assertStringArray(label, 'includeLockOnLevel1Towers', value.includeLockOnLevel1Towers);
   assertStringArray(label, 'includeLockOnLevel1Units', value.includeLockOnLevel1Units);
   assertStringArray(label, 'includeLockOnLevel1Turrets', value.includeLockOnLevel1Turrets);
   assertStringArray(label, 'includeLockOnLevel1Shots', value.includeLockOnLevel1Shots);
@@ -424,7 +417,6 @@ export function cloneLockOnInclusionObject(
     ],
     includeLockOnLevel0Entities: [...value.includeLockOnLevel0Entities],
     includeLockOnLevel1Buildings: [...value.includeLockOnLevel1Buildings],
-    includeLockOnLevel1Towers: [...value.includeLockOnLevel1Towers],
     includeLockOnLevel1Units: [...value.includeLockOnLevel1Units],
     includeLockOnLevel1Turrets: [...value.includeLockOnLevel1Turrets],
     includeLockOnLevel1Shots: [...value.includeLockOnLevel1Shots],

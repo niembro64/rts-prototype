@@ -966,7 +966,7 @@ export class Render3DEntities {
         if (!this.turretShieldPanelsEnabled) {
           this.deactivateShieldPanelMesh(m.mirrors);
         } else {
-          const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
+          const shieldPanelTurretIndex = unitRows.shieldPanelTurretIndex[row];
           const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
           const shieldPanelMaterialized = bodyMaterialized && (
             turretRows !== undefined

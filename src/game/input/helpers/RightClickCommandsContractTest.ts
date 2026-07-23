@@ -313,6 +313,7 @@ export function runRightClickCommandsContractTest(): void {
   const repairer = combatant(41, 1, 100, 0, 0, [
     { type: 'repair', x: 60, y: 0, targetId: damagedAlly.id },
   ]);
+  repairer.unit!.unitBlueprintId = 'unitCommander';
   repairer.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   assertContract(
     buildRepairCommandForTarget(damagedAlly, repairer, 4, true) === null,
@@ -358,6 +359,7 @@ export function runRightClickCommandsContractTest(): void {
   const assistingBuilder = combatant(43, 1, 100, 0, 0, [
     { type: 'build', x: 100, y: 100, buildingId: buildingShell.id },
   ]);
+  assistingBuilder.unit!.unitBlueprintId = 'unitCommander';
   assistingBuilder.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   assertContract(
     buildRepairCommandForTarget(buildingShell, assistingBuilder, 4, true) === null,
@@ -369,8 +371,10 @@ export function runRightClickCommandsContractTest(): void {
   // constructor becomes GUARD for the selection; other damaged friendlies
   // keep plain repair.
   const commander = combatant(50, 1, 100, 0, 0);
+  commander.unit!.unitBlueprintId = 'unitCommander';
   commander.builder = { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   const damagedConstructor = combatant(51, 1, 40, 10, 10);
+  damagedConstructor.unit!.unitBlueprintId = 'unitCommander';
   damagedConstructor.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
   const damagedTank = combatant(52, 1, 40, 80, 10);
   const assistSource = {
@@ -426,11 +430,11 @@ function combatant(
           config: {
             kind: 'attack',
             passive: false,
-            range: 160,
+            turretRange: { range: 160 },
             shot: { type: 'plasma' },
           },
         },
       ],
-    } as Entity['combat'],
+    } as unknown as Entity['combat'],
   };
 }

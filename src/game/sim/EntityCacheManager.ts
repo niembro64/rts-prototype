@@ -250,13 +250,8 @@ export class EntityCacheManager {
         }
         break;
       case 'building':
-      case 'tower':
-        // Towers and buildings share the static-entity caches —
-        // every getBuildings() / getBuildingsByPlayer() / health-bar
-        // / construction-shell consumer treats them identically.
-        // The entity.type discriminator differentiates them for
-        // selection-panel UI and combat targeting; everything else
-        // reads the building component the same way. The producer
+        // All static hosts share the building caches. Mounted turret
+        // capabilities determine combat, production, resources, and sensors.
         // active-state caches (solar/wind/extractor/radar/converter)
         // are gated on buildingBlueprintId, so towers naturally don't enter
         // them. Factories (a tower-class buildingBlueprintId) still ride

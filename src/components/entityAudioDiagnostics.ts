@@ -9,7 +9,6 @@ import {
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import {
   BUILDING_BLUEPRINT_IDS,
-  TOWER_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
   type StructureBlueprintId,
   type TurretBlueprintId,
@@ -44,14 +43,12 @@ export type UniqueSound = {
   ids: string[];
 };
 
-export const ENTITY_LAB_KINDS: readonly LoadingPreviewKind[] = ['unit', 'tower', 'building'];
+export const ENTITY_LAB_KINDS: readonly LoadingPreviewKind[] = ['unit', 'building'];
 
 export function buildEntityLabSelections(kind: LoadingPreviewKind): EntityLabSelection[] {
   const ids = kind === 'unit'
     ? UNIT_BLUEPRINT_IDS
-    : kind === 'tower'
-      ? TOWER_BLUEPRINT_IDS
-      : BUILDING_BLUEPRINT_IDS;
+    : BUILDING_BLUEPRINT_IDS;
   return ids.map((id) => ({
     kind,
     id,
@@ -188,8 +185,7 @@ function getEntityLabTurrets(
     const unitBlueprint = getUnitBlueprint(id as UnitBlueprintId);
     return createUnitRuntimeTurrets(unitBlueprint.unitBlueprintId, unitBlueprint.radius.other);
   }
-  if (kind === 'tower') return createBuildingRuntimeTurrets(id as StructureBlueprintId);
-  return [];
+  return createBuildingRuntimeTurrets(id as StructureBlueprintId);
 }
 
 function readHitSound(emissionBlueprintId: string): SoundEntry | null {

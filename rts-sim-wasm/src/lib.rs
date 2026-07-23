@@ -119,11 +119,6 @@ pub fn blueprint_building_count() -> u32 {
 }
 
 #[wasm_bindgen]
-pub fn blueprint_tower_count() -> u32 {
-    blueprint_tables::BLUEPRINT_TOWERS_COUNT as u32
-}
-
-#[wasm_bindgen]
 pub fn blueprint_turret_count() -> u32 {
     blueprint_tables::BLUEPRINT_TURRETS_COUNT as u32
 }

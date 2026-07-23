@@ -13,37 +13,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 45,
     "cost": {
       "energy": 60,
       "metal": 60
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitJackal",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.2
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretGunLight",
         "mount": {
@@ -138,37 +124,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 75,
     "cost": {
       "energy": 110,
       "metal": 110
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitLynx",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.3
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretGunBurst",
         "mount": {
@@ -262,37 +234,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 220,
     "cost": {
       "energy": 520,
       "metal": 520
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitDaddy",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 4.5
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
@@ -423,37 +381,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 430,
     "cost": {
       "energy": 430,
       "metal": 430
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitBadger",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.4
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretRocketSlow",
         "mount": {
@@ -547,37 +491,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 300,
     "cost": {
       "energy": 360,
       "metal": 360
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitMongoose",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.2
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretMortarSlow",
         "mount": {
@@ -673,37 +603,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 29.5,
     "cost": {
       "energy": 50,
       "metal": 50
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitTick",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0.8
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
@@ -827,37 +743,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 1500,
     "cost": {
       "energy": 1600,
       "metal": 1600
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitMammoth",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.5
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretCannon",
         "mount": {
@@ -951,37 +853,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 3400,
     "cost": {
       "energy": 5200,
       "metal": 5200
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitFormik",
+        "mount": {
+          "x": -0.85,
+          "y": 0,
+          "z": 3.3
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretMortarFast",
         "mount": {
@@ -1131,37 +1019,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 2600,
     "cost": {
       "energy": 6200,
       "metal": 6200
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitWidow",
+        "mount": {
+          "x": -0.286827201635,
+          "y": 0.813172798365,
+          "z": 2.8
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
@@ -1376,37 +1250,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 2100,
     "cost": {
       "energy": 3400,
       "metal": 3400
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitHippo",
+        "mount": {
+          "x": 0.2,
+          "y": 0,
+          "z": 1.8
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretGatling",
         "mount": {
@@ -1499,37 +1359,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 1500,
     "cost": {
       "energy": 2600,
       "metal": 2600
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitSeaTurtle",
+        "mount": {
+          "x": 0.1,
+          "y": 0,
+          "z": 1.35
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretGunBurst",
         "mount": {
@@ -1664,37 +1510,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1350,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1350
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 1800,
     "cost": {
       "energy": 3200,
       "metal": 3200
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitOrca",
+        "mount": {
+          "x": 0.48,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretTorpedo",
         "mount": {
@@ -1823,37 +1655,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 70,
     "cost": {
       "energy": 330,
       "metal": 330
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitTarantula",
+        "mount": {
+          "x": -0.65,
+          "y": 0,
+          "z": 2.5
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeam",
         "mount": {
@@ -1990,37 +1808,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 180,
     "cost": {
       "energy": 600,
       "metal": 600
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitLoris",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 2.4
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretShieldPanel",
         "mount": {
@@ -2037,7 +1841,7 @@
         ],
         "requiredEngagedForFightStop": true,
         "mountId": "shieldPanel",
-        "controlMode": "host"
+        "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
@@ -2118,37 +1922,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 40,
     "cost": {
       "energy": 150,
       "metal": 150
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitBee",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeamMini",
         "mount": {
@@ -2242,37 +2032,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 170,
     "cost": {
       "energy": 560,
       "metal": 560
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitDragonfly",
+        "mount": {
+          "x": 1.5,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretMortarDrop",
         "mount": {
@@ -2392,37 +2168,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 90,
     "cost": {
       "energy": 280,
       "metal": 240
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitConstructionDrone",
+        "mount": {
+          "x": -0.35,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",
         "mount": {
@@ -2571,37 +2333,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 150,
     "cost": {
       "energy": 800,
       "metal": 800
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitEagle",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretRocketFast",
         "mount": {
@@ -2710,37 +2458,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 175,
     "cost": {
       "energy": 900,
       "metal": 900
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitDuck",
+        "mount": {
+          "x": 0.56,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeamMega",
         "mount": {
@@ -2856,37 +2590,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1700,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1700
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 40000,
     "cost": {
       "energy": 12000,
       "metal": 12000
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitAlbatros",
+        "mount": {
+          "x": 0.8,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
         "mount": {
@@ -3023,37 +2743,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1700,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1700
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 18000,
     "cost": {
       "energy": 14000,
       "metal": 14000
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitQueenBee",
+        "mount": {
+          "x": 0.92,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretSpawnUnits",
         "mount": {
@@ -3188,37 +2894,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1700,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1700
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 20000,
     "cost": {
       "energy": 15000,
       "metal": 15000
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitQueenTick",
+        "mount": {
+          "x": 0.96,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretSpawnUnits",
         "mount": {
@@ -3367,37 +3059,24 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1200,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1200
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 0,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 220,
     "cost": {
       "energy": 500,
       "metal": 500
     },
-    "turrets": [],
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitTransport",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -3500,37 +3179,23 @@
     "supportSurface": {
       "kind": "none"
     },
-    "sensors": {
-      "fullSight": {
-        "aboveWater": {
-          "aboveWater": 1600,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 1600
-        }
-      },
-      "contactSight": {
-        "aboveWater": {
-          "aboveWater": 0,
-          "underwater": 0
-        },
-        "underwater": {
-          "aboveWater": 0,
-          "underwater": 0
-        }
-      },
-      "detectorRadius": 600,
-      "trackingRadius": 0,
-      "scanRadius": 0
-    },
     "mass": 650,
     "cost": {
       "energy": 2500,
       "metal": 2500
     },
     "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitCommander",
+        "mount": {
+          "x": 0.36,
+          "y": -0.42,
+          "z": 1
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
       {
         "turretBlueprintId": "turretBeam",
         "mount": {

@@ -1,7 +1,7 @@
 import { COST_MULTIPLIER } from '../../../config';
 import type { ResourceCost } from '@/types/economyTypes';
 import type { BuildingBlueprintId } from '../types';
-import { getAllBuildings, getAllTowers } from '../buildConfigs';
+import { getAllBuildings } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
@@ -139,26 +139,12 @@ const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDispl
   0,
 );
 
-const towerRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
-  getAllTowers(),
-  buildingRosterDisplay.length,
-);
+// Builder-authored allowed rosters filter this surface before display.
+export const structureRosterDisplay: BuildingRosterDisplay[] = buildingRosterDisplay;
 
-// Compatibility roster for the current build menu. Builder-authored
-// allowed rosters filter this combined surface before display.
-export const structureRosterDisplay: BuildingRosterDisplay[] = new Array<BuildingRosterDisplay>(
-  buildingRosterDisplay.length + towerRosterDisplay.length,
-);
-for (let i = 0; i < buildingRosterDisplay.length; i++) {
-  structureRosterDisplay[i] = buildingRosterDisplay[i];
-}
-for (let i = 0; i < towerRosterDisplay.length; i++) {
-  structureRosterDisplay[buildingRosterDisplay.length + i] = towerRosterDisplay[i];
-}
-
-// Short button labels for the BUILDINGS / TOWERS battle-bar toggle
-// groups — the structure analogue of getUnitDisplayShortName. Buildings
-// and towers carry no authored shortName, so we derive a compact label
+// Short button labels for the BUILDINGS battle-bar toggle group — the
+// structure analogue of getUnitDisplayShortName. Buildings carry no authored
+// shortName, so we derive a compact label
 // from the display name (dropping a trailing " Tower"): Solar -> SOLAR,
 // "Beam Tower" -> BEAM, "Anti-Air Tower" -> ANTI-AIR.
 function buildStructureRosterDisplayById(
@@ -172,7 +158,6 @@ function buildStructureRosterDisplayById(
 }
 
 const buildingRosterDisplayById = buildStructureRosterDisplayById(buildingRosterDisplay);
-const towerRosterDisplayById = buildStructureRosterDisplayById(towerRosterDisplay);
 
 function structureShortName(label: string): string {
   return label.replace(/\s*Tower$/i, '').trim().toUpperCase();
@@ -181,9 +166,4 @@ function structureShortName(label: string): string {
 export function getBuildingDisplayShortName(buildingBlueprintId: string): string {
   const row = buildingRosterDisplayById.get(buildingBlueprintId);
   return row !== undefined ? structureShortName(row.label) : fallbackShortName(buildingBlueprintId);
-}
-
-export function getTowerDisplayShortName(towerBlueprintId: string): string {
-  const row = towerRosterDisplayById.get(towerBlueprintId);
-  return row !== undefined ? structureShortName(row.label) : fallbackShortName(towerBlueprintId);
 }

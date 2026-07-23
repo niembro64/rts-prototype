@@ -144,9 +144,9 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         let axisEndZ = centerZ;
         if (barrier.shape === 'aimedCylinder') {
           const pitchCos = DMath.cos(weapon.pitch);
-          axisEndX = centerX + DMath.cos(weapon.rotation) * pitchCos * config.range;
-          axisEndY = centerY + DMath.sin(weapon.rotation) * pitchCos * config.range;
-          axisEndZ = centerZ + DMath.sin(weapon.pitch) * config.range;
+          axisEndX = centerX + DMath.cos(weapon.rotation) * pitchCos * config.turretRange.range;
+          axisEndY = centerY + DMath.sin(weapon.rotation) * pitchCos * config.turretRange.range;
+          axisEndZ = centerZ + DMath.sin(weapon.pitch) * config.turretRange.range;
           if (DMath.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
             continue;
           }

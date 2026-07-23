@@ -39,7 +39,7 @@ import {
 } from '../sim/spawn';
 import type { Entity, PlayerId } from '../sim/types';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
-import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
   createBuildingBodiesForEntities,
@@ -59,7 +59,6 @@ export interface BootstrappedServerWorld {
   backgroundMode: boolean;
   backgroundAllowedUnitBlueprintIds: Set<string>;
   backgroundAllowedBuildingBlueprintIds: Set<string>;
-  backgroundAllowedTowerBlueprintIds: Set<string>;
   terrainTileMap: TerrainTileMap;
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
 }
@@ -165,9 +164,6 @@ export class ServerBootstrap {
     const backgroundAllowedBuildingBlueprintIds = new Set(
       config.initialAllowedBuildingBlueprintIds ?? BUILDING_BLUEPRINT_IDS,
     );
-    const backgroundAllowedTowerBlueprintIds = new Set(
-      config.initialAllowedTowerBlueprintIds ?? TOWER_BLUEPRINT_IDS,
-    );
     if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
       world.maxTotalUnits = config.initialMaxTotalUnits;
     }
@@ -188,7 +184,6 @@ export class ServerBootstrap {
         'demo',
         backgroundAllowedUnitBlueprintIds,
         backgroundAllowedBuildingBlueprintIds,
-        backgroundAllowedTowerBlueprintIds,
       );
       await report(0.78, 'Spawning bases');
 
@@ -239,7 +234,6 @@ export class ServerBootstrap {
       backgroundMode,
       backgroundAllowedUnitBlueprintIds,
       backgroundAllowedBuildingBlueprintIds,
-      backgroundAllowedTowerBlueprintIds,
       terrainTileMap,
       terrainBuildabilityGrid,
     };
@@ -348,9 +342,6 @@ export class ServerBootstrap {
     const backgroundAllowedBuildingBlueprintIds = new Set(
       config.initialAllowedBuildingBlueprintIds ?? BUILDING_BLUEPRINT_IDS,
     );
-    const backgroundAllowedTowerBlueprintIds = new Set(
-      config.initialAllowedTowerBlueprintIds ?? TOWER_BLUEPRINT_IDS,
-    );
     // Same ordering rule for the unit cap: the demo spawn now fills
     // `maxTotalUnits / numPlayers` slots per team, so the cap must
     // be set BEFORE spawnBackgroundUnitsStandalone runs (in the
@@ -384,7 +375,6 @@ export class ServerBootstrap {
         'demo',
         backgroundAllowedUnitBlueprintIds,
         backgroundAllowedBuildingBlueprintIds,
-        backgroundAllowedTowerBlueprintIds,
       );
       if (backgroundAllowedBuildingBlueprintIds.has('buildingExtractor')) {
         entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
@@ -412,7 +402,6 @@ export class ServerBootstrap {
       backgroundMode,
       backgroundAllowedUnitBlueprintIds,
       backgroundAllowedBuildingBlueprintIds,
-      backgroundAllowedTowerBlueprintIds,
       terrainTileMap,
       terrainBuildabilityGrid,
     };

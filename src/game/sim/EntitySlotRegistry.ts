@@ -23,7 +23,6 @@ import {
   ENTITY_STATE_BLUEPRINT_NONE,
   ENTITY_STATE_KIND_BUILDING,
   ENTITY_STATE_KIND_SHOT,
-  ENTITY_STATE_KIND_TOWER,
   ENTITY_STATE_KIND_UNIT,
   ENTITY_STATE_NO_BODY_SLOT,
   SPATIAL_KIND_BUILDING,
@@ -1150,8 +1149,6 @@ export class EntitySlotRegistry {
         return ENTITY_STATE_KIND_UNIT;
       case 'building':
         return ENTITY_STATE_KIND_BUILDING;
-      case 'tower':
-        return ENTITY_STATE_KIND_TOWER;
       case 'shot':
         return ENTITY_STATE_KIND_SHOT;
     }

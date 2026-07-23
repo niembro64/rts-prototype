@@ -111,7 +111,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setUnitGroundNormalEmaMode':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
-    case 'setBackgroundTowerBlueprintEnabled':
     case 'setMaxTotalUnits':
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':

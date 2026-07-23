@@ -70,7 +70,6 @@ const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'clearSelection',
   'setBackgroundUnitBlueprintEnabled',
   'setBackgroundBuildingBlueprintEnabled',
-  'setBackgroundTowerBlueprintEnabled',
 ]);
 
 const ARCHITECTURE_CONTROL_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([

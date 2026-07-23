@@ -168,8 +168,8 @@ export function runShotLocomotionContractTest(): void {
     torpedoShot.mass,
   );
   assertContract(
-    torpedoReach >= torpedoTurret.range,
-    `torpedo locomotion reach ${torpedoReach} must support authored range ${torpedoTurret.range}`,
+    torpedoReach >= torpedoTurret.turretRange.range,
+    `torpedo locomotion reach ${torpedoReach} must support authored range ${torpedoTurret.turretRange.range}`,
   );
   assertContract(
     getPoweredShotReachabilityDistance(

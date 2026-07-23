@@ -36,7 +36,7 @@
   },
   "waterFabricators": {
     "radiusFraction": 0.96,
-    "sonarRadiusFraction": 1,
+    "sonarRadiusFraction": 0.97,
     "arcSectorFraction": 0.9,
     "unitBlueprintIds": [
       "unitSeaTurtle",

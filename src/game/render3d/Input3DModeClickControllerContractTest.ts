@@ -76,12 +76,12 @@ function makeUnit(id: number, playerId: number): Entity {
           config: {
             kind: 'attack',
             passive: false,
-            range: 160,
+            turretRange: { range: 160 },
             shot: { type: 'plasma' },
           },
         },
       ],
-    } as Entity['combat'],
+    } as unknown as Entity['combat'],
   };
 }
 

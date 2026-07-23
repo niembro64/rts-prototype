@@ -246,7 +246,7 @@ export class ServerSnapshotPublisher {
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
         if (
-          (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
+          (entity.type === 'unit' || entity.type === 'building') &&
           (!visibility.isFiltered || visibility.isEntityVisible(entity))
         ) {
           out.add(entity.id);
@@ -269,7 +269,7 @@ export class ServerSnapshotPublisher {
       const entity = world.getEntity(dirtyIds[i]);
       if (
         entity !== undefined &&
-        (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')
+        (entity.type === 'unit' || entity.type === 'building')
       ) {
         baseline.add(entity.id);
       }
@@ -930,7 +930,7 @@ export class ServerSnapshotPublisher {
       );
       if (
         entity === undefined ||
-        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+        (entity.type !== 'unit' && entity.type !== 'building')
       ) continue;
       const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
       if (netEntity !== null) {
@@ -951,7 +951,7 @@ export class ServerSnapshotPublisher {
       const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
-        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+        (entity.type !== 'unit' && entity.type !== 'building')
       ) continue;
       const netEntity = serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility);
       if (netEntity !== null) {
@@ -1004,7 +1004,7 @@ export class ServerSnapshotPublisher {
       const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
-        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+        (entity.type !== 'unit' && entity.type !== 'building')
       ) continue;
       const netEntity = changedFields !== undefined
         ? serializeEntityDeltaSnapshot(entity, changedFields, world, visibility)

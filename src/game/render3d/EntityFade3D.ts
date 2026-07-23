@@ -83,7 +83,7 @@ const PER_OBJECT_FADE_CACHE_KEY = 'entityFadePerObjectAlpha';
 /** Clone a material and patch the clone so a per-object `uFade` uniform
  *  drives the fade. Leaves the (often shared) base material untouched, so
  *  fading one per-Mesh object never bleeds onto others. Used for the
- *  per-Mesh building / tower render path. */
+ *  per-Mesh building render path. */
 function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
   if ((base as THREE.ShaderMaterial).isShaderMaterial === true) {
     return makeShaderPerObjectFadeMaterial(base as THREE.ShaderMaterial);

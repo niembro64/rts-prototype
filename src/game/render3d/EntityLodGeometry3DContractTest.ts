@@ -10,7 +10,6 @@ import {
   SHIELD_BLUEPRINT_IDS,
   SHOT_BLUEPRINT_IDS,
   STRUCTURE_BLUEPRINT_IDS,
-  TOWER_BLUEPRINT_IDS,
   TURRET_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
   type StructureBlueprintId,
@@ -105,7 +104,6 @@ const DETAIL_LEVELS = [
 export const ENTITY_LOD_VISUAL_REGRESSION_ROSTER = Object.freeze({
   units: UNIT_BLUEPRINT_IDS,
   buildings: BUILDING_BLUEPRINT_IDS,
-  towers: TOWER_BLUEPRINT_IDS,
 });
 
 const FULL_GFX: GraphicsConfig = {
@@ -1325,8 +1323,7 @@ function runEnvironmentLodMaterialContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 24, 'visual roster covers all 24 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 7, 'visual roster covers all 7 buildings');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.towers.length === 4, 'visual roster covers all 4 towers');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 11, 'visual roster covers all 11 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

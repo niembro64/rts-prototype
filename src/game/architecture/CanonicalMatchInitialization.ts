@@ -18,7 +18,6 @@ import raysJson from '../sim/blueprints/rays.json';
 import shieldMaterialsJson from '../sim/blueprints/shieldMaterials.json';
 import shieldsJson from '../sim/blueprints/shields.json';
 import shotsJson from '../sim/blueprints/shots.json';
-import towersJson from '../sim/blueprints/towers.json';
 import turretsJson from '../sim/blueprints/turrets.json';
 import unitRosterJson from '../sim/blueprints/unitRoster.json';
 import unitsJson from '../sim/blueprints/units.json';
@@ -99,7 +98,6 @@ const BLUEPRINT_CONTENT = {
   shieldMaterials: shieldMaterialsJson,
   shields: shieldsJson,
   shots: shotsJson,
-  towers: towersJson,
   turrets: turretsJson,
   unitRoster: unitRosterJson,
   units: unitsJson,

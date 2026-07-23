@@ -75,11 +75,12 @@ export const TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS: readonly TurretLockOnRelati
 
 /** Lock-on policy entity-family inclusions, kept as runtime arrays for validators. */
 export const TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS: readonly TurretLockOnEntityFamilyInclusion[] =
-  ['buildings', 'towers', 'units', 'turrets', 'shots'];
+  ['buildings', 'units', 'turrets', 'shots'];
 
 /** Authoritative mounted-emitter categories. */
 export const TURRET_EMITTER_KINDS: readonly TurretEmitterKind[] = [
   'attack',
   'spawn',
   'resourcePylon',
+  'sensor',
 ];

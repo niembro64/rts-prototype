@@ -22,7 +22,7 @@ export function findSpawnEmitter(
   host: Entity,
   blueprintKind: 'structure' | 'unit',
 ): Turret | null {
-  const producedKind = blueprintKind === 'unit' ? 'units' : 'buildingsAndTowers';
+  const producedKind = blueprintKind === 'unit' ? 'units' : 'buildings';
   const turrets = host.combat?.turrets;
   if (turrets === undefined) return null;
   for (let i = 0; i < turrets.length; i++) {

@@ -3,7 +3,6 @@
 import type { Entity, BuildingBlueprintId, FactoryDefaultWaypoint, Turret } from '../../sim/types';
 import {
   isMetalExtractorBlueprintId,
-  isTowerBuildingBlueprintId,
 } from '../../../types/buildingTypes';
 import {
   createCombatComponent,
@@ -70,10 +69,6 @@ import {
   type EntitySnapshotWireSource,
 } from '../stateSerializerEntities';
 import { unitBlueprintBarDefaultMoveState } from '../../sim/unitCommandCapabilities';
-import {
-  cloneSensorCapabilityConfig,
-  createSameMediumSensorCapabilityConfig,
-} from '../../sim/sensorConfig';
 
 function unitMoveStateFromWireCode(code: number): 'maneuver' | 'holdPosition' | 'roam' {
   return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
@@ -377,7 +372,7 @@ export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity):
     return createUnitFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
-  if (type === 'building' || type === 'tower') {
+  if (type === 'building') {
     return createBuildingFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
@@ -441,9 +436,6 @@ function createUnitFromNetwork(
     unitBlueprint.supportPointOffsetZ !== undefined
     ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
-  const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
-    ? unitBlueprint.sensors
-    : createSameMediumSensorCapabilityConfig(1200);
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -461,7 +453,6 @@ function createUnitFromNetwork(
         blueprintSupportPointOffsetZ,
       ),
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
-      sensors: cloneSensorCapabilityConfig(sensors),
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,
@@ -628,9 +619,6 @@ function createUnitFromTypedFullWireRow(
     unitBlueprint.supportPointOffsetZ !== undefined
     ? unitBlueprint.supportPointOffsetZ
     : radius.collision;
-  const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
-    ? unitBlueprint.sensors
-    : createSameMediumSensorCapabilityConfig(1200);
   const rotation = deqRot(values[base + 4]);
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
@@ -651,7 +639,6 @@ function createUnitFromTypedFullWireRow(
       radius,
       supportPointOffsetZ: blueprintSupportPointOffsetZ,
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
-      sensors: cloneSensorCapabilityConfig(sensors),
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: blueprintMass,
       actions: [],
@@ -835,13 +822,10 @@ function createBuildingFromNetwork(
   const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
   const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
   const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
-  // Towers ride the building wire flag but carry entity.type === 'tower'
-  // so the client UI / selection / dispatch code can match on the same
-  // discriminator the server stamps in spawn.ts.
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
-    type: isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building',
+    type: 'building',
     transform: createTransform(x, y, z, rotation),
     ownership: { playerId },
     selectable: { selected: false },
@@ -990,7 +974,7 @@ function createBuildingFromTypedFullWireRow(
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id: values[base + 0] | 0,
-    type: isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building',
+    type: 'building',
     transform: createTransform(
       deqEntityPos(values[base + 1]),
       deqEntityPos(values[base + 2]),

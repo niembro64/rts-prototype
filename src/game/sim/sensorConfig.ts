@@ -37,32 +37,6 @@ export function cloneSensorCapabilityConfig(
     fullSight: cloneRadiusMatrix(sensors.fullSight),
     contactSight: cloneRadiusMatrix(sensors.contactSight),
     detectorRadius: sensors.detectorRadius,
-    trackingRadius: sensors.trackingRadius,
-    scanRadius: sensors.scanRadius,
-  };
-}
-
-export function createSameMediumSensorCapabilityConfig(
-  fullSightRadius: number,
-): SensorCapabilityConfig {
-  return {
-    fullSight: {
-      aboveWater: {
-        aboveWater: fullSightRadius,
-        underwater: 0,
-      },
-      underwater: {
-        aboveWater: 0,
-        underwater: fullSightRadius,
-      },
-    },
-    contactSight: {
-      aboveWater: { ...ZERO_SENSOR_TARGET_RADII },
-      underwater: { ...ZERO_SENSOR_TARGET_RADII },
-    },
-    detectorRadius: 0,
-    trackingRadius: 0,
-    scanRadius: 0,
   };
 }
 
@@ -99,12 +73,10 @@ export function validateSensorCapabilityConfig(
       }
     }
   }
-  for (const field of ['detectorRadius', 'trackingRadius', 'scanRadius'] as const) {
-    assertFiniteNonNegativeRadius(
-      `Invalid ${context}: sensors.${field}`,
-      sensors[field],
-    );
-  }
+  assertFiniteNonNegativeRadius(
+    `Invalid ${context}: sensors.detectorRadius`,
+    sensors.detectorRadius,
+  );
 }
 
 export function getMaximumSensorMatrixRadius(
@@ -115,5 +87,13 @@ export function getMaximumSensorMatrixRadius(
     matrix.aboveWater.underwater,
     matrix.underwater.aboveWater,
     matrix.underwater.underwater,
+  );
+}
+
+export function hasAnySensorRadius(sensors: SensorCapabilityConfig): boolean {
+  return (
+    getMaximumSensorMatrixRadius(sensors.fullSight) > 0 ||
+    getMaximumSensorMatrixRadius(sensors.contactSight) > 0 ||
+    sensors.detectorRadius > 0
   );
 }

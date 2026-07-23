@@ -58,7 +58,6 @@ type CommandType =
   | 'setUnitGroundNormalEmaMode'
   | 'setBackgroundUnitBlueprintEnabled'
   | 'setBackgroundBuildingBlueprintEnabled'
-  | 'setBackgroundTowerBlueprintEnabled'
   | 'setMaxTotalUnits'
   | 'setTurretShieldPanelsEnabled'
   | 'setTurretShieldSpheresEnabled'
@@ -310,7 +309,7 @@ export type SetBuildingActiveCommand = BaseCommand & {
   open: boolean;
 };
 
-/** Demolish the listed entities (units, towers, buildings) on the
+/** Demolish the listed entities (units and buildings) on the
  *  authoritative sim. Sets hp to 0 so the per-tick death/cleanup path
  *  emits a synthetic death event and removes the entity. */
 export type SelfDestructCommand = BaseCommand & {
@@ -556,12 +555,6 @@ export type SetBackgroundBuildingBlueprintEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetBackgroundTowerBlueprintEnabledCommand = BaseCommand & {
-  type: 'setBackgroundTowerBlueprintEnabled';
-  towerBlueprintId: string;
-  enabled: boolean;
-};
-
 export type SetMaxTotalUnitsCommand = BaseCommand & {
   type: 'setMaxTotalUnits';
   maxTotalUnits: number;
@@ -660,7 +653,6 @@ export type Command =
   | SetUnitGroundNormalEmaModeCommand
   | SetBackgroundUnitBlueprintEnabledCommand
   | SetBackgroundBuildingBlueprintEnabledCommand
-  | SetBackgroundTowerBlueprintEnabledCommand
   | SetMaxTotalUnitsCommand
   | SetTurretShieldPanelsEnabledCommand
   | SetTurretShieldSpheresEnabledCommand

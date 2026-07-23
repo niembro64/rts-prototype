@@ -42,9 +42,6 @@ export type GameCanvasBattleControlBarModel = {
   readonly allDemoBuildingsActive: boolean;
   readonly demoBuildingBlueprintIds: readonly string[];
   readonly currentAllowedBuildingsSet: ReadonlySet<string>;
-  readonly allDemoTowersActive: boolean;
-  readonly demoTowerBlueprintIds: readonly string[];
-  readonly currentAllowedTowersSet: ReadonlySet<string>;
   readonly displayUnitCap: number;
   readonly gameStarted: boolean;
   readonly mapWidthLandCells: number;
@@ -78,8 +75,6 @@ export type GameCanvasBattleControlBarModel = {
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoBuildings(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
-  toggleAllDemoTowers(): void;
-  toggleDemoTowerBlueprintId(towerBlueprintId: string): void;
   changeMaxTotalUnits(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;

@@ -244,7 +244,6 @@ function actionTone(action: EntityLabSoundAction): string {
 
 function entityKindLabel(kind: LoadingPreviewKind): string {
   if (kind === 'unit') return 'Units';
-  if (kind === 'tower') return 'Towers';
   return 'Buildings';
 }
 

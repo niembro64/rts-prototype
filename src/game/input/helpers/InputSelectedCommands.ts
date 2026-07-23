@@ -5,6 +5,7 @@ import { isBallisticArcWeapon } from '../../sim/combat/combatUtils';
 import {
   entityHasBarBuilderPriorityCommand,
   entityHasBarCarrierSpawnCommand,
+  entityHasBarFireControlCommand,
   entityHasBarSetTargetCommand,
   entityHasBarMoveStateCommand,
   entityHasBarStopCommand,
@@ -78,11 +79,11 @@ export class InputSelectedCommands {
     this.source = source;
   }
 
-  selectedTowers(): Entity[] {
+  selectedTargetableBuildings(): Entity[] {
     const selectedStatic = this.source.getSelectedBuildings();
     const out: Entity[] = [];
     for (let i = 0; i < selectedStatic.length; i++) {
-      if (selectedStatic[i].type === 'tower') out.push(selectedStatic[i]);
+      if (entityHasBarSetTargetCommand(selectedStatic[i])) out.push(selectedStatic[i]);
     }
     return out;
   }
@@ -94,10 +95,10 @@ export class InputSelectedCommands {
       const unit = selectedUnits[i];
       if (entityHasBarSetTargetCommand(unit)) out.push(unit);
     }
-    const towers = this.selectedTowers();
-    for (let i = 0; i < towers.length; i++) {
-      const tower = towers[i];
-      if (entityHasBarSetTargetCommand(tower)) out.push(tower);
+    const buildings = this.selectedTargetableBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const building = buildings[i];
+      if (entityHasBarSetTargetCommand(building)) out.push(building);
     }
     return out;
   }
@@ -303,14 +304,12 @@ export class InputSelectedCommands {
       if (firstFireState === null) firstFireState = state;
       else if (state !== firstFireState) allSameFireState = false;
     }
-    // Towers carry the same host-fire contract as units; include any
-    // tower in the selection whose combat has at least one turret.
+    // Armed buildings carry the same host-fire contract as units.
     for (let i = 0; i < selectedStatic.length; i++) {
-      const tower = selectedStatic[i];
-      if (tower.type !== 'tower') continue;
-      if (!tower.combat || tower.combat.turrets.length === 0) continue;
-      entityIds.push(tower.id);
-      const state = combatFireState(tower.combat);
+      const building = selectedStatic[i];
+      if (!entityHasBarFireControlCommand(building) || !building.combat) continue;
+      entityIds.push(building.id);
+      const state = combatFireState(building.combat);
       if (firstFireState === null) firstFireState = state;
       else if (state !== firstFireState) allSameFireState = false;
     }

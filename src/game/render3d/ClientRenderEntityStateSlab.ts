@@ -23,8 +23,8 @@ import {
   entityLodProxyRadius3D,
 } from './EntityLod3D';
 import {
-  getPassiveTurretIndex,
-  NO_PASSIVE_TURRET_INDEX,
+  getShieldPanelTurretIndex,
+  NO_SHIELD_PANEL_TURRET_INDEX,
 } from './turretRenderHelpers3D';
 
 const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
@@ -96,7 +96,7 @@ export type ClientRenderEntityStateViews = {
   readonly buildMetalRatio: Float32Array;
   readonly groundContactEnabled: Uint8Array;
   readonly turretCount: Uint16Array;
-  readonly passiveTurretIndex: Int16Array;
+  readonly shieldPanelTurretIndex: Int16Array;
   readonly flags: Uint16Array;
   readonly unitBlueprintIds: (string | undefined)[];
   readonly buildingBlueprintIds: (string | null | undefined)[];
@@ -220,7 +220,7 @@ export class ClientRenderEntityStateSlab {
     buildMetalRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     groundContactEnabled: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     turretCount: new Uint16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    passiveTurretIndex: new Int16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    shieldPanelTurretIndex: new Int16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     flags: new Uint16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     unitBlueprintIds: [],
     buildingBlueprintIds: [],
@@ -309,16 +309,16 @@ export class ClientRenderEntityStateSlab {
     if (entity.unit !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
       views.turretCount[slot] = turrets?.length ?? 0;
-      views.passiveTurretIndex[slot] = turrets !== undefined
-        ? getPassiveTurretIndex(turrets)
-        : NO_PASSIVE_TURRET_INDEX;
+      views.shieldPanelTurretIndex[slot] = turrets !== undefined
+        ? getShieldPanelTurretIndex(turrets)
+        : NO_SHIELD_PANEL_TURRET_INDEX;
       this.markSlotDirty(slot);
       return slot;
     }
     if (entity.building !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
       views.turretCount[slot] = turrets?.length ?? 0;
-      views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+      views.shieldPanelTurretIndex[slot] = NO_SHIELD_PANEL_TURRET_INDEX;
       this.markSlotDirty(slot);
       return slot;
     }
@@ -425,9 +425,9 @@ export class ClientRenderEntityStateSlab {
       : 0;
     views.groundContactEnabled[slot] = unit.suspension?.legContact === false ? 0 : 1;
     views.turretCount[slot] = turrets?.length ?? 0;
-    views.passiveTurretIndex[slot] = turrets !== undefined
-      ? getPassiveTurretIndex(turrets)
-      : NO_PASSIVE_TURRET_INDEX;
+    views.shieldPanelTurretIndex[slot] = turrets !== undefined
+      ? getShieldPanelTurretIndex(turrets)
+      : NO_SHIELD_PANEL_TURRET_INDEX;
     views.flags[slot] = flags;
     views.unitBlueprintIds[slot] = unit.unitBlueprintId;
     views.buildingBlueprintIds[slot] = undefined;
@@ -492,7 +492,7 @@ export class ClientRenderEntityStateSlab {
       : 0;
     views.groundContactEnabled[slot] = 0;
     views.turretCount[slot] = turrets?.length ?? 0;
-    views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+    views.shieldPanelTurretIndex[slot] = NO_SHIELD_PANEL_TURRET_INDEX;
     views.flags[slot] = flags;
     views.unitBlueprintIds[slot] = undefined;
     views.buildingBlueprintIds[slot] = entity.buildingBlueprintId;
@@ -516,7 +516,7 @@ export class ClientRenderEntityStateSlab {
     this.views.ownerIds[slot] = NO_OWNER_ID;
     this.views.flags[slot] = 0;
     this.views.turretCount[slot] = 0;
-    this.views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+    this.views.shieldPanelTurretIndex[slot] = NO_SHIELD_PANEL_TURRET_INDEX;
     this.views.radiusHitbox[slot] = 0;
     this.views.radiusCollision[slot] = 0;
     this.views.hasFullOrientation[slot] = 0;
@@ -670,7 +670,7 @@ export class ClientRenderEntityStateSlab {
     this.views.ownerIds.fill(NO_OWNER_ID);
     this.views.flags.fill(0);
     this.views.turretCount.fill(0);
-    this.views.passiveTurretIndex.fill(NO_PASSIVE_TURRET_INDEX);
+    this.views.shieldPanelTurretIndex.fill(NO_SHIELD_PANEL_TURRET_INDEX);
     this.views.radiusHitbox.fill(0);
     this.views.radiusCollision.fill(0);
     this.views.lodProxyRadius.fill(0);
@@ -871,7 +871,7 @@ export class ClientRenderEntityStateSlab {
       buildMetalRatio: growFloat32(views.buildMetalRatio, nextCapacity),
       groundContactEnabled: growUint8(views.groundContactEnabled, nextCapacity),
       turretCount: growUint16(views.turretCount, nextCapacity),
-      passiveTurretIndex: growInt16(views.passiveTurretIndex, nextCapacity),
+      shieldPanelTurretIndex: growInt16(views.shieldPanelTurretIndex, nextCapacity),
       flags: growUint16(views.flags, nextCapacity),
       unitBlueprintIds: views.unitBlueprintIds,
       buildingBlueprintIds: views.buildingBlueprintIds,

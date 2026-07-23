@@ -42,7 +42,6 @@ export class ServerSimulationCore {
   readonly backgroundMode: boolean;
   readonly backgroundAllowedUnitBlueprintIds: Set<string>;
   readonly backgroundAllowedBuildingBlueprintIds: Set<string>;
-  readonly backgroundAllowedTowerBlueprintIds: Set<string>;
   readonly terrainTileMap: TerrainTileMap;
   readonly terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
@@ -66,7 +65,6 @@ export class ServerSimulationCore {
     this.backgroundMode = boot.backgroundMode;
     this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
     this.backgroundAllowedBuildingBlueprintIds = boot.backgroundAllowedBuildingBlueprintIds;
-    this.backgroundAllowedTowerBlueprintIds = boot.backgroundAllowedTowerBlueprintIds;
     this.terrainTileMap = boot.terrainTileMap;
     this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
     this.onGameOver = options.onGameOver;

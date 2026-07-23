@@ -1,5 +1,6 @@
 import type { TurretConfig, TurretRanges } from './types';
 import { buildAllTurretConfigs } from './blueprints';
+import { cloneSensorCapabilityConfig } from './sensorConfig';
 
 // Turret configurations — built from blueprints at init time
 export const TURRET_CONFIGS: Record<string, TurretConfig> =
@@ -26,8 +27,8 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
 // The blueprint authors all of these as multipliers of the turret's
 // own `range` so doubling `range` doubles every shell at once.
 export function computeTurretRanges(config: TurretConfig): TurretRanges {
-  const baseRange = config.range;
-  const m = config.rangeOverrides;
+  const baseRange = config.turretRange.range;
+  const m = config.turretRange.rangeOverrides;
   const fireMax = makeHysteresisRange(
     baseRange * m.engageRangeMax.acquire,
     baseRange * m.engageRangeMax.release,
@@ -56,5 +57,21 @@ export function getTurretConfig(id: string): TurretConfig {
   if (!config) {
     throw new Error(`Unknown turret config: ${id}`);
   }
-  return { ...config }; // Return a copy
+  const rangeOverrides = config.turretRange.rangeOverrides;
+  return {
+    ...config,
+    turretRange: {
+      ...config.turretRange,
+      rangeOverrides: {
+        engageRangeMax: { ...rangeOverrides.engageRangeMax },
+        engageRangeMin: rangeOverrides.engageRangeMin
+          ? { ...rangeOverrides.engageRangeMin }
+          : null,
+        trackingRange: rangeOverrides.trackingRange
+          ? { ...rangeOverrides.trackingRange }
+          : null,
+      },
+      sensors: cloneSensorCapabilityConfig(config.turretRange.sensors),
+    },
+  };
 }
