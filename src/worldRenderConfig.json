@@ -8,8 +8,8 @@
   },
   "horizonRenderExtend": 180000,
   "sun": {
-    "azimuthRad": -0.7853981633974483,
-    "elevationRad": 0.3769911184307752,
+    "azimuthRad": 1.5707963267948966,
+    "elevationRad": 0.7853981633974483,
     "ambientIntensity": 0.24,
     "directionalIntensity": 1.45,
     "distance": 6000,
@@ -69,23 +69,17 @@
     }
   },
   "groundRenderOrder": {
-    "terrain": -20,
-    "contactShadows": -10
+    "terrain": -20
   },
-  "contactShadow": {
+  "entityShadow": {
     "enabled": true,
     "maxInstances": 16000,
-    "lift": 1.35,
-    "opacity": 0.2,
-    "frameStride": 1,
-    "unitShotRadiusMultiplier": 1.25,
-    "buildingRadiusMultiplier": 0.72,
+    "edgeSoftnessRatio": 0.58,
+    "unitHitboxRadiusMultiplier": 2,
+    "unitSunStretch": 1.35,
+    "buildingRadiusMultiplier": 2,
     "minBuildingRadius": 22,
-    "sunStretch": 1.35,
-    "crossSunSquash": 0.78,
-    "unitSunOffsetPerHeight": 0.18,
-    "buildingSunOffsetPerHeight": 0.22,
-    "maxSunOffset": 70
+    "buildingSunStretch": 1.35
   },
   "overlayLines": {
     "feather": 0.16,

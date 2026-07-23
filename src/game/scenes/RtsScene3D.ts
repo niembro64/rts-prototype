@@ -71,7 +71,6 @@ import { AreaDrag3D } from '../render3d/AreaDrag3D';
 import { SurfaceLiftProbeOverlay3D } from '../render3d/SurfaceLiftProbeOverlay3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
-import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
 import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
@@ -194,7 +193,6 @@ export class RtsScene3D {
   private selectionSystem!: RtsScene3DSelectionSystem;
   private healthBar3D: HealthBar3D | null = null;
   private nameLabel3D: NameLabel3D | null = null;
-  private contactShadowRenderer: ContactShadowRenderer3D | null = null;
   private predictionPhase!: RtsScene3DPredictionPhase;
   private cameraControl!: RtsScene3DCameraControl;
   private cameraFramingSystem!: RtsScene3DCameraFramingSystem;
@@ -445,7 +443,6 @@ export class RtsScene3D {
     this.terrainTileRenderer = renderers.terrainTileRenderer;
     this.metalDepositRenderer = renderers.metalDepositRenderer;
     this.environmentPropRenderer = renderers.environmentPropRenderer;
-    this.contactShadowRenderer = renderers.contactShadowRenderer;
     this.waterRenderer = renderers.waterRenderer;
     this.cursorGround = renderers.cursorGround;
     this.explosionRenderer = renderers.explosionRenderer;
@@ -644,7 +641,6 @@ export class RtsScene3D {
         buildGhostRenderer: this.buildGhostRenderer,
         metalDepositRenderer: this.metalDepositRenderer,
         environmentPropRenderer: this.environmentPropRenderer,
-        contactShadowRenderer: this.contactShadowRenderer,
         waterRenderer: this.waterRenderer,
         explosionRenderer: this.explosionRenderer,
         shieldImpactRenderer: this.shieldImpactRenderer,
@@ -1634,7 +1630,6 @@ export class RtsScene3D {
       entityRenderer: this.entityRenderer,
       metalDepositRenderer: this.metalDepositRenderer,
       environmentPropRenderer: this.environmentPropRenderer,
-      contactShadowRenderer: this.contactShadowRenderer,
       beamRenderer: this.beamRenderer,
       shieldRenderer: this.shieldRenderer,
       terrainTileRenderer: this.terrainTileRenderer,
@@ -1666,7 +1661,6 @@ export class RtsScene3D {
     this.waypoint3D = null;
     this.metalDepositRenderer = null;
     this.environmentPropRenderer = null;
-    this.contactShadowRenderer = null;
     this.renderPhase = null;
     this.rendererWarmup = null;
     if (!opts.keepConnection) {

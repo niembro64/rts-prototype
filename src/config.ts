@@ -318,9 +318,9 @@ export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.c
 export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.colorHex;
 
 // One shared sun definition for scene lights, terrain shading, and
-// cheap contact-shadow offsets. Azimuth is in sim/map space:
-// x=+east, y=+south. A diagonal, lower sun angle makes baked terrain
-// shadows readable without paying for real-time shadow maps.
+// entity-shadow offsets. Azimuth is in sim/map space: x=+east,
+// y=+south. The sun is authored due south at 45 degrees elevation,
+// so its light travels northward and downward at 45 degrees.
 export const SUN_RENDER_CONFIG = {
   ...worldRenderConfigJson.sun,
   color: COLORS.world.sun.colorHex,
@@ -524,18 +524,14 @@ export const TREE_TRUNK_DETAIL_CONTRAST = worldRenderConfigJson.tree.trunk.detai
 export const TREE_LEAF_TEXTURE_REPEAT = worldRenderConfigJson.tree.leaf.textureRepeat;
 export const TREE_TRUNK_TEXTURE_REPEAT = worldRenderConfigJson.tree.trunk.textureRepeat;
 
-// Stable render layering for ground-adjacent systems. Contact shadows
-// render after terrain (so terrain depth is in the buffer for occlusion
-// tests) but before units/buildings (so entities overdraw shadows
-// naturally). Shadows depth-test against terrain so mountains occlude
-// them; polygonOffset on the shadow material keeps them from z-fighting
-// with the ground they sit on.
+// Stable render layering for ground-adjacent systems.
 export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 
-// Cheap object grounding shadows. This intentionally avoids Three.js
-// shadow maps: all units/buildings write into one transparent instanced
-// contact-shadow mesh and update at configured strides.
-export const CONTACT_SHADOW_RENDER_CONFIG = worldRenderConfigJson.contactShadow;
+// Entity shadows share WorldShade3D's GPU coverage field with full-sight and
+// radar regions. Unit footprints use two times radiusHitbox, then retain the
+// shared sun-axis stretch. Altitude translates the footprint opposite the
+// shared directional light without changing size, softness, or strength.
+export const ENTITY_SHADOW_RENDER_CONFIG = worldRenderConfigJson.entityShadow;
 
 // Per-kind styling (screen-pixel width, ground lift, render order) for the
 // unified ground overlay line system (selection rings, range circles,

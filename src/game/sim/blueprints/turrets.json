@@ -62,7 +62,7 @@
     "range": 230,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 2000,
+      "duration": 500,
       "durationRandomness": 0.2
     },
     "launchForce": 4000,
@@ -98,7 +98,7 @@
       "pelletCount": 1
     },
     "burst": {
-      "count": 4,
+      "count": 1,
       "delay": 30
     },
     "shieldPanels": [],

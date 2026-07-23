@@ -181,7 +181,7 @@ import {
   type PieceNameRenderPacket3D,
 } from '../render3d/NameLabel3D';
 import type { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
-import type { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
+import type { EntityShadowRenderPacket3D } from '../render3d/EntityShadowRenderPacket3D';
 import type { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import type { Locomotion3DMesh } from '../render3d/Locomotion3D';
 import { getLocomotionSurfaceHeight } from '../render3d/LocomotionTerrainSampler';
@@ -327,7 +327,7 @@ type ClientViewRenderEntityPackets3D = {
   bodyHud: BodyHudRenderPacket3D;
   shields: ShieldRenderPacket3D;
   pieceNames: PieceNameRenderPacket3D;
-  contactShadows: ContactShadowRenderPacket3D;
+  entityShadows: EntityShadowRenderPacket3D;
   groundPrints: GroundPrintRenderPacket3D;
 };
 
@@ -336,7 +336,7 @@ type ClientViewRenderPacketOptions3D = {
   includeBodyHud: boolean;
   includeBodyNames: boolean;
   includeShields: boolean;
-  includeContactShadows: boolean;
+  includeEntityShadows: boolean;
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
   scopedUnitsOut: Entity[];
@@ -3725,7 +3725,7 @@ export class ClientViewState {
     out.bodyHud.reset();
     out.shields.reset();
     out.pieceNames.reset();
-    out.contactShadows.reset();
+    out.entityShadows.reset();
     out.groundPrints.reset();
     this.populateRenderRemovalRows3D(out);
 
@@ -3752,8 +3752,8 @@ export class ClientViewState {
         if (options.includeShields) {
           this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
         }
-        if (options.includeContactShadows) {
-          this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
+        if (options.includeEntityShadows) {
+          this.populateEntityShadowPacket3D(units, buildings, renderScope, out);
         }
         if (options.includeGroundPrints) {
           this.populateGroundPrintPacket3D(units, options, out);
@@ -3830,12 +3830,11 @@ export class ClientViewState {
         // host is just outside the viewport but the barrier overlaps it.
         this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
       }
-      if (options.includeContactShadows) {
-        this.populateContactShadowPacket3D(
+      if (options.includeEntityShadows) {
+        this.populateEntityShadowPacket3D(
           units,
           buildings,
           renderScope,
-          options,
           out,
           unitRowSlots,
           buildingRowSlots,
@@ -4523,11 +4522,10 @@ export class ClientViewState {
     }
   }
 
-  private populateContactShadowPacket3D(
+  private populateEntityShadowPacket3D(
     units: readonly Entity[],
     buildings: readonly Entity[],
     renderScope: ViewportFootprint,
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
     unitSlots?: readonly number[],
     buildingSlots?: readonly number[],
@@ -4537,7 +4535,6 @@ export class ClientViewState {
     let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4550,7 +4547,7 @@ export class ClientViewState {
         views = this.renderEntityState.getViews();
       }
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
-        out.contactShadows.pushUnitState(
+        out.entityShadows.pushUnitState(
           views.entityIds[slot],
           views.x[slot],
           views.y[slot],
@@ -4563,12 +4560,11 @@ export class ClientViewState {
           renderScope,
         );
       } else {
-        out.contactShadows.pushUnit(entity, mapWidth, mapHeight, renderScope);
+        out.entityShadows.pushUnit(entity, mapWidth, mapHeight, renderScope);
       }
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = buildingSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4581,16 +4577,16 @@ export class ClientViewState {
         views = this.renderEntityState.getViews();
       }
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING) {
-        out.contactShadows.pushBuildingState(
+        out.entityShadows.pushBuildingState(
           views.x[slot],
           views.y[slot],
           views.hp[slot],
-          views.contactShadowWidth[slot],
-          views.contactShadowDepth[slot],
+          views.entityShadowWidth[slot],
+          views.entityShadowDepth[slot],
           renderScope,
         );
       } else {
-        out.contactShadows.pushBuilding(entity, renderScope);
+        out.entityShadows.pushBuilding(entity, renderScope);
       }
     }
   }

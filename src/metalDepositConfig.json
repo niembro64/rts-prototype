@@ -133,7 +133,7 @@
       }
     },
     {
-      "comment": "RIGHT ARC — one smoothed terrain group per player; spots are ring coordinates, placed exactly where the four former standalone RIGHT ARC rings were",
+      "comment": "RIGHT ARC LAND",
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
@@ -182,7 +182,7 @@
       }
     },
     {
-      "comment": "WATER TRIANGLE FRONT",
+      "comment": "WATER LEFT CORNER",
       "radiusFraction": 0.86,
       "countPerPlayer": 1,
       "sliceOffset": 1.42,
@@ -198,7 +198,7 @@
       }
     },
     {
-      "comment": "RIGHT ARC — one smoothed terrain group per player; spots are ring coordinates, placed exactly where the four former standalone RIGHT ARC rings were",
+      "comment": "RIGHT ARC WATER",
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
       "sliceOffset": 0.68,

@@ -33,7 +33,7 @@ import {
   geometryTierForDetail,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
-import type { FogOfWarShade3D } from './FogOfWarShade3D';
+import type { WorldShade3D } from './WorldShade3D';
 import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -151,7 +151,7 @@ type EnvironmentPropRenderer3DOptions = {
   playerCount: number;
   metalDeposits: ReadonlyArray<MetalDeposit>;
   renderScope: ViewportFootprint;
-  fogOfWarShade: FogOfWarShade3D;
+  worldShade: WorldShade3D;
   sampleTerrainHeight: (x: number, z: number) => number;
 };
 
@@ -167,7 +167,7 @@ installKnownFbxMaterialWarningFilter();
 export class EnvironmentPropRenderer3D {
   private readonly root = new THREE.Group();
   private readonly renderScope: ViewportFootprint;
-  private readonly fogOfWarShade: FogOfWarShade3D;
+  private readonly worldShade: WorldShade3D;
   private readonly placements: EnvironmentPlacement[];
   private readonly nodes: EnvironmentPropNode[] = [];
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -187,7 +187,7 @@ export class EnvironmentPropRenderer3D {
     options: EnvironmentPropRenderer3DOptions,
   ) {
     this.renderScope = options.renderScope;
-    this.fogOfWarShade = options.fogOfWarShade;
+    this.worldShade = options.worldShade;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
     logActiveEnvironmentAssets();
@@ -358,9 +358,9 @@ export class EnvironmentPropRenderer3D {
         geometry.computeVertexNormals();
       mesh.material = this.materialForAsset(spec, mesh.material);
       if (Array.isArray(mesh.material)) {
-        for (const material of mesh.material) this.fogOfWarShade.patchMaterial(material);
+        for (const material of mesh.material) this.worldShade.patchMaterial(material);
       } else {
-        this.fogOfWarShade.patchMaterial(mesh.material);
+        this.worldShade.patchMaterial(mesh.material);
       }
       mesh.castShadow = false;
       mesh.receiveShadow = false;
@@ -409,7 +409,7 @@ export class EnvironmentPropRenderer3D {
     const material = this.environmentLodFlatMaterial('foliage');
     material.side = THREE.DoubleSide;
     material.needsUpdate = true;
-    this.fogOfWarShade.patchMaterial(material);
+    this.worldShade.patchMaterial(material);
     group.add(new THREE.Mesh(geometry, material));
     return group;
   }
@@ -428,8 +428,8 @@ export class EnvironmentPropRenderer3D {
     // omit the bark/leaf texture maps.
     const trunkMaterial = this.environmentLodFlatMaterial('wood');
     const leafMaterial = this.environmentLodFlatMaterial('foliage');
-    this.fogOfWarShade.patchMaterial(trunkMaterial);
-    this.fogOfWarShade.patchMaterial(leafMaterial);
+    this.worldShade.patchMaterial(trunkMaterial);
+    this.worldShade.patchMaterial(leafMaterial);
 
     // Medium and Low deliberately share one sturdy trunk silhouette. The
     // simplified authored High trunk became too spindly at Medium distance.

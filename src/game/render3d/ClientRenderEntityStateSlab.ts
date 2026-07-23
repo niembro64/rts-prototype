@@ -87,8 +87,8 @@ export type ClientRenderEntityStateViews = {
   readonly bodyHudWidth: Float32Array;
   readonly hudBarsY: Float32Array;
   readonly hudNameY: Float32Array;
-  readonly contactShadowWidth: Float32Array;
-  readonly contactShadowDepth: Float32Array;
+  readonly entityShadowWidth: Float32Array;
+  readonly entityShadowDepth: Float32Array;
   readonly renderScopePadding: Float32Array;
   readonly hp: Float32Array;
   readonly maxHp: Float32Array;
@@ -211,8 +211,8 @@ export class ClientRenderEntityStateSlab {
     bodyHudWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hudBarsY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hudNameY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    contactShadowWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    contactShadowDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    entityShadowWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    entityShadowDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     renderScopePadding: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     maxHp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -412,8 +412,8 @@ export class ClientRenderEntityStateSlab {
     views.bodyHudWidth[slot] = unit.radius.other * 2;
     views.hudBarsY[slot] = getUnitHudBarsY(entity);
     views.hudNameY[slot] = getUnitHudNameY(entity);
-    views.contactShadowWidth[slot] = 0;
-    views.contactShadowDepth[slot] = 0;
+    views.entityShadowWidth[slot] = 0;
+    views.entityShadowDepth[slot] = 0;
     views.renderScopePadding[slot] = Math.max(350, views.radiusOther[slot]);
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
@@ -476,8 +476,8 @@ export class ClientRenderEntityStateSlab {
     views.bodyHudWidth[slot] = building.width;
     views.hudBarsY[slot] = getBuildingHudBarsY(entity);
     views.hudNameY[slot] = getBuildingHudNameY(entity);
-    views.contactShadowWidth[slot] = building.width;
-    views.contactShadowDepth[slot] = building.height;
+    views.entityShadowWidth[slot] = building.width;
+    views.entityShadowDepth[slot] = building.height;
     views.renderScopePadding[slot] = Math.max(
       200,
       Math.max(building.width, building.height) * 0.75,
@@ -525,8 +525,8 @@ export class ClientRenderEntityStateSlab {
     this.views.bodyHudWidth[slot] = 0;
     this.views.hudBarsY[slot] = 0;
     this.views.hudNameY[slot] = 0;
-    this.views.contactShadowWidth[slot] = 0;
-    this.views.contactShadowDepth[slot] = 0;
+    this.views.entityShadowWidth[slot] = 0;
+    this.views.entityShadowDepth[slot] = 0;
     this.views.renderScopePadding[slot] = 0;
     this.views.groundContactEnabled[slot] = 0;
     this.views.unitBlueprintIds[slot] = undefined;
@@ -678,8 +678,8 @@ export class ClientRenderEntityStateSlab {
     this.views.bodyHudWidth.fill(0);
     this.views.hudBarsY.fill(0);
     this.views.hudNameY.fill(0);
-    this.views.contactShadowWidth.fill(0);
-    this.views.contactShadowDepth.fill(0);
+    this.views.entityShadowWidth.fill(0);
+    this.views.entityShadowDepth.fill(0);
     this.views.renderScopePadding.fill(0);
     this.views.groundContactEnabled.fill(0);
     this.views.unitBlueprintIds.length = 0;
@@ -780,8 +780,8 @@ export class ClientRenderEntityStateSlab {
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], building.width);
       assertNear('hudBarsY', views.hudBarsY[slot], getBuildingHudBarsY(entity));
       assertNear('hudNameY', views.hudNameY[slot], getBuildingHudNameY(entity));
-      assertNear('contactShadowWidth', views.contactShadowWidth[slot], building.width);
-      assertNear('contactShadowDepth', views.contactShadowDepth[slot], building.height);
+      assertNear('entityShadowWidth', views.entityShadowWidth[slot], building.width);
+      assertNear('entityShadowDepth', views.entityShadowDepth[slot], building.height);
       assertNear(
         'renderScopePadding',
         views.renderScopePadding[slot],
@@ -862,8 +862,8 @@ export class ClientRenderEntityStateSlab {
       bodyHudWidth: growFloat32(views.bodyHudWidth, nextCapacity),
       hudBarsY: growFloat32(views.hudBarsY, nextCapacity),
       hudNameY: growFloat32(views.hudNameY, nextCapacity),
-      contactShadowWidth: growFloat32(views.contactShadowWidth, nextCapacity),
-      contactShadowDepth: growFloat32(views.contactShadowDepth, nextCapacity),
+      entityShadowWidth: growFloat32(views.entityShadowWidth, nextCapacity),
+      entityShadowDepth: growFloat32(views.entityShadowDepth, nextCapacity),
       renderScopePadding: growFloat32(views.renderScopePadding, nextCapacity),
       hp: growFloat32(views.hp, nextCapacity),
       maxHp: growFloat32(views.maxHp, nextCapacity),

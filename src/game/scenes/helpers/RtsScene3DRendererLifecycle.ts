@@ -18,7 +18,6 @@ type RtsScene3DRendererResources = {
   entityRenderer?: Destroyable | null;
   metalDepositRenderer?: Disposable | null;
   environmentPropRenderer?: Destroyable | null;
-  contactShadowRenderer?: Disposable | null;
   beamRenderer?: Destroyable | null;
   shieldRenderer?: Destroyable | null;
   terrainTileRenderer?: Destroyable | null;
@@ -55,7 +54,6 @@ export function teardownRtsScene3DRenderers(
   resources.entityRenderer?.destroy();
   resources.metalDepositRenderer?.dispose();
   resources.environmentPropRenderer?.destroy();
-  resources.contactShadowRenderer?.dispose();
   resources.beamRenderer?.destroy();
   resources.shieldRenderer?.destroy();
   resources.terrainTileRenderer?.destroy();

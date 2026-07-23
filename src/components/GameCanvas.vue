@@ -1108,6 +1108,7 @@ const {
   locomotionMarks,
   smokeTrails,
   smokeSoftEdges,
+  entityShadows,
   fogShade,
   materialExplosions,
   triangleDebug,
@@ -1172,6 +1173,7 @@ const {
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleEntityShadows,
   toggleFogShade,
   toggleMaterialExplosions,
   toggleTriangleDebug,
@@ -2007,6 +2009,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   locomotionMarks: locomotionMarks.value,
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
+  entityShadows: entityShadows.value,
   fogShade: fogShade.value,
   materialExplosions: materialExplosions.value,
   clientUnitGroundNormalEmaMode: clientUnitGroundNormalEmaMode.value,
@@ -2060,6 +2063,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleEntityShadows,
   toggleFogShade,
   toggleMaterialExplosions,
   changeClientUnitGroundNormalEmaMode,
@@ -2208,6 +2212,7 @@ watchEffect(() => {
   m.locomotionMarks = locomotionMarks.value;
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
+  m.entityShadows = entityShadows.value;
   m.fogShade = fogShade.value;
   m.materialExplosions = materialExplosions.value;
   m.clientUnitGroundNormalEmaMode = clientUnitGroundNormalEmaMode.value;

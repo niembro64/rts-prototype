@@ -5,11 +5,10 @@ import { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeOverla
 import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import { BurnMark3D } from '../../render3d/BurnMark3D';
-import { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import { CursorGround } from '../../render3d/CursorGround';
 import { Debris3D } from '../../render3d/Debris3D';
 import { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
-import { FogOfWarShade3D } from '../../render3d/FogOfWarShade3D';
+import { WorldShade3D } from '../../render3d/WorldShade3D';
 import { Explosion3D } from '../../render3d/Explosion3D';
 import { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import { LegInstancedRenderer } from '../../render3d/LegInstancedRenderer';
@@ -63,7 +62,6 @@ type RtsScene3DRendererBootstrapResult = {
   terrainTileRenderer: TerrainTileRenderer3D;
   metalDepositRenderer: MetalDepositRenderer3D;
   environmentPropRenderer: EnvironmentPropRenderer3D;
-  contactShadowRenderer: ContactShadowRenderer3D;
   waterRenderer: WaterRenderer3D;
   cursorGround: CursorGround;
   explosionRenderer: Explosion3D;
@@ -123,14 +121,14 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.camera,
     (eid) => entityRenderer.getUnitYawGroup(eid),
   );
-  const fogOfWarShade = new FogOfWarShade3D(mapWidth, mapHeight);
+  const worldShade = new WorldShade3D(threeApp.renderer, mapWidth, mapHeight);
   const terrainTileRenderer = new TerrainTileRenderer3D(
     threeApp.world,
     clientViewState,
     mapWidth,
     mapHeight,
     metalDeposits,
-    fogOfWarShade,
+    worldShade,
   );
   const metalDepositRenderer = new MetalDepositRenderer3D(
     threeApp.world,
@@ -145,14 +143,9 @@ export function bootstrapRtsScene3DRenderers(
       playerCount,
       metalDeposits,
       renderScope,
-      fogOfWarShade,
+      worldShade,
       sampleTerrainHeight: (x, z) => getTerrainMeshHeight(x, z, mapWidth, mapHeight),
     },
-  );
-  const contactShadowRenderer = new ContactShadowRenderer3D(
-    threeApp.world,
-    mapWidth,
-    mapHeight,
   );
   const waterRenderer = new WaterRenderer3D(
     threeApp.world,
@@ -264,7 +257,6 @@ export function bootstrapRtsScene3DRenderers(
     terrainTileRenderer,
     metalDepositRenderer,
     environmentPropRenderer,
-    contactShadowRenderer,
     waterRenderer,
     cursorGround,
     explosionRenderer,

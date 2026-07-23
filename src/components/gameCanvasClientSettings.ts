@@ -18,6 +18,7 @@ import {
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getElevationMap,
+  getEntityShadows,
   getFogShade,
   getMaterialExplosions,
   getPathingMap,
@@ -58,6 +59,7 @@ import {
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setElevationMap,
+  setEntityShadows,
   setFogShade,
   setMaterialExplosions,
   setPathingMap,
@@ -137,6 +139,7 @@ export function useGameCanvasClientSettings({
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
+  const entityShadows = ref<boolean>(getEntityShadows());
   const fogShade = ref<boolean>(getFogShade());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
   const triangleDebug = ref<boolean>(getTriangleDebug());
@@ -225,6 +228,7 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = getLocomotionMarks();
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
+    entityShadows.value = getEntityShadows();
     fogShade.value = getFogShade();
     materialExplosions.value = getMaterialExplosions();
     triangleDebug.value = getTriangleDebug();
@@ -428,6 +432,12 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = newValue;
   }
 
+  function toggleEntityShadows(): void {
+    const newValue = !entityShadows.value;
+    setEntityShadows(newValue);
+    entityShadows.value = newValue;
+  }
+
   function toggleFogShade(): void {
     const newValue = !fogShade.value;
     setFogShade(newValue);
@@ -596,6 +606,8 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = cd.smokeTrails.default;
     setSmokeSoftEdges(cd.smokeSoftEdges.default);
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
+    setEntityShadows(cd.entityShadows.default);
+    entityShadows.value = cd.entityShadows.default;
     setFogShade(cd.fogShade.default);
     fogShade.value = cd.fogShade.default;
     setMaterialExplosions(cd.materialExplosions.default);
@@ -688,6 +700,7 @@ export function useGameCanvasClientSettings({
     locomotionMarks,
     smokeTrails,
     smokeSoftEdges,
+    entityShadows,
     fogShade,
     materialExplosions,
     triangleDebug,
@@ -754,6 +767,7 @@ export function useGameCanvasClientSettings({
     toggleLocomotionMarks,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
+    toggleEntityShadows,
     toggleFogShade,
     toggleMaterialExplosions,
     toggleTriangleDebug,

@@ -69,6 +69,7 @@ type ClientDefaults = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly entityShadows: boolean;
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly triangleDebug: boolean;
@@ -141,6 +142,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
+    entityShadows: pickDefault(clientBarConfig.entityShadows, mode),
     fogShade: FOG_PRESENTATION.enabledByDefault,
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
@@ -221,6 +223,7 @@ export const CLIENT_CONFIG = {
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
+  entityShadows: { default: DEMO_CLIENT_DEFAULTS.entityShadows },
   fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
@@ -302,6 +305,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     locomotionMarks: { default: defaults.locomotionMarks },
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
+    entityShadows: { default: defaults.entityShadows },
     fogShade: { default: defaults.fogShade },
     materialExplosions: { default: defaults.materialExplosions },
     triangleDebug: { default: defaults.triangleDebug },
@@ -362,6 +366,7 @@ type ClientStorageKeyName =
   | 'locomotionMarks'
   | 'smokeTrails'
   | 'smokeSoftEdges'
+  | 'entityShadows'
   | 'fogShade'
   | 'materialExplosions'
   | 'triangleDebug'
@@ -405,6 +410,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'locomotionMarks',
   'smokeTrails',
   'smokeSoftEdges',
+  'entityShadows',
   'fogShade',
   'materialExplosions',
   'triangleDebug',
@@ -499,6 +505,7 @@ let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
+let currentEntityShadows: boolean = _cd.entityShadows.default;
 let currentFogShade: boolean = _cd.fogShade.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
@@ -580,6 +587,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
+  currentEntityShadows = cd.entityShadows.default;
   currentFogShade = cd.fogShade.default;
   currentMaterialExplosions = cd.materialExplosions.default;
   currentTriangleDebug = cd.triangleDebug.default;
@@ -660,6 +668,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedSmokeSoftEdges = readPersisted(keys.smokeSoftEdges);
   if (storedSmokeSoftEdges !== null) {
     currentSmokeSoftEdges = storedSmokeSoftEdges === 'true';
+  }
+  const storedEntityShadows = readPersisted(keys.entityShadows);
+  if (storedEntityShadows !== null) {
+    currentEntityShadows = storedEntityShadows === 'true';
   }
   const storedFogShade = readPersisted(keys.fogShade);
   if (storedFogShade !== null) {
@@ -1070,6 +1082,17 @@ export function getSmokeSoftEdges(): boolean {
 export function setSmokeSoftEdges(enabled: boolean): void {
   currentSmokeSoftEdges = enabled;
   persist(activeStorageKeys().smokeSoftEdges, String(enabled));
+}
+
+/** Entity-shadow toggle: presentation-only grounding shadows written into
+ *  the shared world coverage field. Turning this off also skips packet work. */
+export function getEntityShadows(): boolean {
+  return currentEntityShadows;
+}
+
+export function setEntityShadows(enabled: boolean): void {
+  currentEntityShadows = enabled;
+  persist(activeStorageKeys().entityShadows, String(enabled));
 }
 
 /** Fog-shade toggle: world-attached live shade for terrain and environment props.

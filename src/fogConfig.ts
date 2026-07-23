@@ -3,7 +3,8 @@ import rawFogConfig from './fogConfig.json';
 type FogPresentationConfig = {
   enabledByDefault: boolean;
   coverage: {
-    cellSizeWorld: number;
+    textureSize: number;
+    maxRegions: number;
   };
   shade: {
     colorHex: string;
@@ -23,7 +24,14 @@ const FOG_CONFIG_RAW = rawFogConfig as FogConfig;
 const presentation = FOG_CONFIG_RAW.presentation;
 
 assertBoolean(presentation.enabledByDefault, 'fogConfig.presentation.enabledByDefault');
-assertPositive(presentation.coverage.cellSizeWorld, 'fogConfig.presentation.coverage.cellSizeWorld');
+assertPositiveInteger(
+  presentation.coverage.textureSize,
+  'fogConfig.presentation.coverage.textureSize',
+);
+assertPositiveInteger(
+  presentation.coverage.maxRegions,
+  'fogConfig.presentation.coverage.maxRegions',
+);
 assertCssHex(presentation.shade.colorHex, 'fogConfig.presentation.shade.colorHex');
 assertPercent(presentation.shade.unseenDarknessPercent, 'fogConfig.presentation.shade.unseenDarknessPercent');
 assertPercent(presentation.shade.radarDarknessPercent, 'fogConfig.presentation.shade.radarDarknessPercent');
@@ -39,6 +47,13 @@ function assertBoolean(value: unknown, fieldName: string): asserts value is bool
 function assertPositive(value: unknown, fieldName: string): asserts value is number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new Error(`${fieldName} must be a positive finite number`);
+  }
+}
+
+function assertPositiveInteger(value: unknown, fieldName: string): asserts value is number {
+  assertPositive(value, fieldName);
+  if (!Number.isInteger(value)) {
+    throw new Error(`${fieldName} must be a positive integer`);
   }
 }
 

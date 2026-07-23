@@ -1264,6 +1264,24 @@
         renderer's structure first. The sim remains physical; rendering stays downstream of that
         physical truth.
       </p>
+
+      <h3>Fog, radar, and entity shadows are one coverage field</h3>
+      <p>
+        Full sight, radar, and entity grounding shadows are map-space coverage regions, not three
+        unrelated overlay renderers. The client rasterizes every visible region into one
+        viewport-local GPU texture in one instanced, per-channel maximum-blended draw:
+        red carries full sight, green carries radar-level coverage, and blue carries entity-shadow
+        coverage. Terrain samples that field once and takes the darker applicable shade; environment
+        props consume the fog/radar channels but do not receive the ground-only entity-shadow channel.
+        Authoritative visibility and recipient filtering remain unchanged.
+      </p>
+      <ul class="rule-list">
+        <li>Radar-only terrain and entity shadows share the authored lighter darkness; fully unseen terrain uses the authored darker darkness.</li>
+        <li>Overlapping regions combine by per-channel maximum, so neither fog sources nor entity shadows accumulate into unintended black patches.</li>
+        <li>A unit shadow uses twice the unit's hitbox radius before the shared sun-axis stretch, with one shared softness and darkness. Building shadows follow the same two-times rule using their footprint extents. The shared directional light comes from due south at 45 degrees elevation. Unit altitude translates the shadow northward, opposite that light, but never changes shadow size, softness, or strength.</li>
+        <li>The coverage target follows the visible camera footprint at fixed texture cost, preserving close shadow detail without allocating a high-resolution full-map texture.</li>
+        <li>There is no standalone scene-level contact-shadow mesh and no CPU-stamped fog bitmap once the shared GPU coverage path is active.</li>
+      </ul>
     </section>
 
     <section>

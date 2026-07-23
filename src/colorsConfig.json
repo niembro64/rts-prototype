@@ -87,10 +87,6 @@
         "baseColorRgb01": "#060b0d"
       }
     },
-    "contactShadow": {
-      "colorHex": "#000000",
-      "opacity": 0.16
-    },
     "groundPrint": {
       "colorHex": "#1a1308",
       "initialAlpha": 0.2

@@ -218,6 +218,7 @@ export type GameCanvasClientControlBarModel = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly entityShadows: boolean;
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly clientUnitGroundNormalEmaMode: DriftMode;
@@ -271,6 +272,7 @@ export type GameCanvasClientControlBarModel = {
   toggleLocomotionMarks(): void;
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
+  toggleEntityShadows(): void;
   toggleFogShade(): void;
   toggleMaterialExplosions(): void;
   changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;

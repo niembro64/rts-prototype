@@ -2,12 +2,13 @@
   "presentation": {
     "enabledByDefault": true,
     "coverage": {
-      "cellSizeWorld": 128
+      "textureSize": 1024,
+      "maxRegions": 65536
     },
     "shade": {
       "colorHex": "#06090b",
-      "unseenDarknessPercent": 42,
-      "radarDarknessPercent": 24,
+      "unseenDarknessPercent": 60,
+      "radarDarknessPercent": 40,
       "unseenColorLossPercent": 50,
       "radarColorLossPercent": 25,
       "edgeSoftnessWorld": 192

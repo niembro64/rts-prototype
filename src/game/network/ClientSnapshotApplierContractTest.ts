@@ -24,7 +24,7 @@ import {
 import { BodyHudRenderPacket3D } from '../render3d/HealthBar3D';
 import { PieceNameRenderPacket3D } from '../render3d/NameLabel3D';
 import { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
-import { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
+import { EntityShadowRenderPacket3D } from '../render3d/EntityShadowRenderPacket3D';
 import { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import type { PlayerId } from '../sim/types';
@@ -70,7 +70,7 @@ function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket
       bodyHud: new BodyHudRenderPacket3D(),
       shields: new ShieldRenderPacket3D(),
       pieceNames: new PieceNameRenderPacket3D(),
-      contactShadows: new ContactShadowRenderPacket3D(),
+      entityShadows: new EntityShadowRenderPacket3D(),
       groundPrints: new GroundPrintRenderPacket3D(),
     },
     {
@@ -78,7 +78,7 @@ function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket
       includeBodyHud: false,
       includeBodyNames: false,
       includeShields: false,
-      includeContactShadows: false,
+      includeEntityShadows: false,
       includeGroundPrints: false,
       hoveredEntity: null,
       scopedUnitsOut: [],
@@ -104,7 +104,7 @@ function collectShieldRenderPacket(
       bodyHud: new BodyHudRenderPacket3D(),
       shields,
       pieceNames: new PieceNameRenderPacket3D(),
-      contactShadows: new ContactShadowRenderPacket3D(),
+      entityShadows: new EntityShadowRenderPacket3D(),
       groundPrints: new GroundPrintRenderPacket3D(),
     },
     {
@@ -112,7 +112,7 @@ function collectShieldRenderPacket(
       includeBodyHud: false,
       includeBodyNames: false,
       includeShields: true,
-      includeContactShadows: false,
+      includeEntityShadows: false,
       includeGroundPrints: false,
       hoveredEntity: null,
       scopedUnitsOut: [],

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   getFogShade,
   getFogShadePresentationSettings,
+  getEntityShadows,
   getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
@@ -51,9 +52,8 @@ import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import type { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import {
-  ContactShadowRenderPacket3D,
-  type ContactShadowRenderer3D,
-} from '../../render3d/ContactShadowRenderer3D';
+  EntityShadowRenderPacket3D,
+} from '../../render3d/EntityShadowRenderPacket3D';
 import {
   BodyHudRenderPacket3D,
   type HealthBar3D,
@@ -79,6 +79,7 @@ import {
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
+  ENTITY_SHADOW_RENDER_CONFIG,
 } from '@/config';
 import type {
   RenderFrameState3D,
@@ -97,7 +98,6 @@ type RtsScene3DRenderPhaseResources = {
   buildGhostRenderer: BuildGhost3D;
   metalDepositRenderer: MetalDepositRenderer3D | null;
   environmentPropRenderer: EnvironmentPropRenderer3D | null;
-  contactShadowRenderer: ContactShadowRenderer3D | null;
   waterRenderer: WaterRenderer3D;
   explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
@@ -150,7 +150,7 @@ type RenderPhaseEntityLists = {
   bodyHud: BodyHudRenderPacket3D;
   shields: ShieldRenderPacket3D;
   pieceNames: PieceNameRenderPacket3D;
-  contactShadows: ContactShadowRenderPacket3D;
+  entityShadows: EntityShadowRenderPacket3D;
   groundPrints: GroundPrintRenderPacket3D;
 };
 
@@ -158,7 +158,7 @@ type RenderPhaseEntityListOptions = {
   includeBodyHud: boolean;
   includeBodyNames: boolean;
   includeShields: boolean;
-  includeContactShadows: boolean;
+  includeEntityShadows: boolean;
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
 };
@@ -189,7 +189,7 @@ export class RtsScene3DRenderPhase {
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
   private readonly shieldPacket = new ShieldRenderPacket3D();
   private readonly pieceNamePacket = new PieceNameRenderPacket3D();
-  private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
+  private readonly entityShadowPacket = new EntityShadowRenderPacket3D();
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly unitRenderPacket = new UnitRenderPacket3D();
   private readonly buildingRenderPacket = new BuildingRenderPacket3D();
@@ -203,7 +203,7 @@ export class RtsScene3DRenderPhase {
     bodyHud: this.bodyHudPacket,
     shields: this.shieldPacket,
     pieceNames: this.pieceNamePacket,
-    contactShadows: this.contactShadowPacket,
+    entityShadows: this.entityShadowPacket,
     groundPrints: this.groundPrintPacket,
   };
   private readonly frustum = new THREE.Frustum();
@@ -312,7 +312,6 @@ export class RtsScene3DRenderPhase {
       terrainTileRenderer,
       metalDepositRenderer,
       environmentPropRenderer,
-      contactShadowRenderer,
       waterRenderer,
       explosionRenderer,
       shieldImpactRenderer,
@@ -424,14 +423,12 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle('building', 'healthBar') ||
         getEntityHudToggle('building', 'buildBars')
       );
-    const updateContactShadowsThisFrame =
-      contactShadowRenderer?.shouldUpdate(this.renderFrameIndex) ?? false;
     const entityLists = this.prepareEntityLists({
       includeBodyHud: bodyHudEnabled,
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
-      includeContactShadows:
-        contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
+      includeEntityShadows:
+        ENTITY_SHADOW_RENDER_CONFIG.enabled && getEntityShadows(),
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
     }, selectionHudMode, renderFrameState.view);
@@ -478,13 +475,6 @@ export class RtsScene3DRenderPhase {
     if (turretNamesEnabled) {
       this.populateRenderListTurretNamePacket(entityLists, selectionHudMode);
     }
-    if (contactShadowRenderer && updateContactShadowsThisFrame) {
-      contactShadowRenderer.update(
-        entityLists.contactShadows,
-        this.renderFrameIndex,
-        renderFrameState.view,
-      );
-    }
     // Whole-map cell overlays (DEBUG: BUILD / METAL / WATER and CLIENT PATH)
     // are baked directly onto the terrain AND metal-deposit coin surfaces by
     // the shared BuildGridOverlayShader inside terrainTileRenderer.update().
@@ -499,6 +489,8 @@ export class RtsScene3DRenderPhase {
           ...getFogShadePresentationSettings(),
           enabled: fogOfWarEnabled && getFogShade(),
         },
+        entityShadows: entityLists.entityShadows,
+        visibleBounds: this.renderScope.getBounds(),
       },
     );
     phaseNow = performance.now();
@@ -741,7 +733,7 @@ export class RtsScene3DRenderPhase {
         includeBodyHud: options.includeBodyHud,
         includeBodyNames: options.includeBodyNames,
         includeShields: options.includeShields,
-        includeContactShadows: options.includeContactShadows,
+        includeEntityShadows: options.includeEntityShadows,
         includeGroundPrints: options.includeGroundPrints,
         hoveredEntity: options.hoveredEntity,
         scopedUnitsOut: this.scopedUnitsScratch,

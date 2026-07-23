@@ -632,6 +632,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleSmokeSoftEdges"
         >SOFT</BarButton>
         <BarButton
+          :active="model.entityShadows"
+          title="Draw client-side entity shadows in the shared world coverage field"
+          @click="model.toggleEntityShadows"
+        >SHADOWS</BarButton>
+        <BarButton
           :active="model.fogShade"
           title="Shade currently unseen terrain and environment props with a world-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
           @click="model.toggleFogShade"

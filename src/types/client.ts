@@ -126,6 +126,9 @@ export type ClientBarConfig = {
    *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
    *  off. */
   readonly smokeSoftEdges: BooleanSetting;
+  /** Client-side entity grounding shadows in the shared world coverage
+   *  texture. Presentation only; disabling also skips shadow packet work. */
+  readonly entityShadows: BooleanSetting;
   /** World-attached fog-of-war shade over terrain and environment props.
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
