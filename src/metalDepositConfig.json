@@ -143,7 +143,7 @@
       "depositCluster": {
         "type": "group-manual",
         "spots": [
-          { "radiusFraction": 0.83, "sliceOffset": 0.68 },
+          { "radiusFraction": 0.9, "sliceOffset": 0.68 },
           { "radiusFraction": 0.8, "sliceOffset": 0.63 },
           { "radiusFraction": 0.7, "sliceOffset": 0.6 },
           { "radiusFraction": 0.6, "sliceOffset": 0.6 }
@@ -187,7 +187,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 1.42,
       "dTerrainLevels": null,
-      "flatPadCells": 40,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "demoAutoExtractor": true,
       "depositCluster": {
@@ -203,7 +203,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 1.3,
       "dTerrainLevels": null,
-      "flatPadCells": 40,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "demoAutoExtractor": true,
       "depositCluster": {
@@ -219,7 +219,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
       "dTerrainLevels": null,
-      "flatPadCells": 13,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "demoAutoExtractor": true,
       "depositCluster": {
@@ -227,8 +227,8 @@
         "spots": [
           { "radiusFraction": 0.9, "sliceOffset": -0.2 },
           { "radiusFraction": 1.0, "sliceOffset": -0.25 },
-          { "radiusFraction": 1.1, "sliceOffset": -0.25 },
-          { "radiusFraction": 1.15, "sliceOffset": -0.2 }
+          { "radiusFraction": 1.7, "sliceOffset": -0.25 },
+          { "radiusFraction": 1.14, "sliceOffset": -0.2 }
         ]
       }
     },
