@@ -41,7 +41,8 @@
     "unitBlueprintIds": [
       "unitSeaTurtle",
       "unitOrca",
-      "unitDuck"
+      "unitDuck",
+      "unitConstructionSubmarine"
     ]
   },
   "initialUnitWaypointType": "patrol",

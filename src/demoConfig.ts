@@ -7,6 +7,7 @@ const REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS = [
   'unitSeaTurtle',
   'unitOrca',
   'unitDuck',
+  'unitConstructionSubmarine',
 ] as const;
 
 function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
@@ -18,7 +19,7 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
   ) {
     throw new Error(
       'demoConfig.waterFabricators.unitBlueprintIds must contain exactly ' +
-        REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.join(' and '),
+        REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.join(', '),
     );
   }
   if (

@@ -7,10 +7,11 @@ import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getBuildingPlacementDiagnostics } from './buildPlacementValidation';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
+import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import type { PlayerId } from './types';
 import { WorldState } from './WorldState';
-import { WATER_LEVEL } from './Terrain';
+import { isWaterAt, WATER_LEVEL } from './Terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
@@ -53,9 +54,56 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
     playerIds,
     'demo',
   );
+  const expectedFactoryUnitBlueprintIds =
+    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  const expectedFactoryUnitBlueprintIdSet =
+    new Set<string>(expectedFactoryUnitBlueprintIds);
+  const waterFactoryUnitBlueprintIdSet =
+    new Set<string>(DEMO_CONFIG.waterFabricators.unitBlueprintIds);
+  assertContract(
+    waterFactoryUnitBlueprintIdSet.has('unitConstructionSubmarine'),
+    'the construction submarine must use an outer-water demo Fabricator',
+  );
+  const factorySelectionsByPlayer = new Map<PlayerId, Map<string, number>>();
   const sonarByPlayer = new Map<PlayerId, number>();
   for (let i = 0; i < baseEntities.length; i++) {
     const entity = baseEntities[i];
+    if (entity.buildingBlueprintId === 'towerFabricator') {
+      const playerId = entity.ownership?.playerId;
+      const factory = entity.factory;
+      assertContract(playerId !== undefined, 'demo Fabricator must have an owning player');
+      assertContract(factory !== null, 'demo Fabricator must have factory state');
+      assertContract(
+        factory.repeatProduction === true &&
+          factory.selectedUnitBlueprintId !== null,
+        `demo Fabricator ${entity.id} must start repeat-producing one unit`,
+      );
+      const selectedUnitBlueprintId = factory.selectedUnitBlueprintId;
+      assertContract(
+        expectedFactoryUnitBlueprintIdSet.has(selectedUnitBlueprintId),
+        `demo Fabricator ${entity.id} selected unexpected unit ${selectedUnitBlueprintId}`,
+      );
+      let selectionCounts = factorySelectionsByPlayer.get(playerId);
+      if (selectionCounts === undefined) {
+        selectionCounts = new Map<string, number>();
+        factorySelectionsByPlayer.set(playerId, selectionCounts);
+      }
+      selectionCounts.set(
+        selectedUnitBlueprintId,
+        (selectionCounts.get(selectedUnitBlueprintId) ?? 0) + 1,
+      );
+      if (waterFactoryUnitBlueprintIdSet.has(selectedUnitBlueprintId)) {
+        assertContract(
+          isWaterAt(
+            entity.transform.x,
+            entity.transform.y,
+            baseWorld.mapWidth,
+            baseWorld.mapHeight,
+          ),
+          `${selectedUnitBlueprintId} demo Fabricator must be on the outer-water ring`,
+        );
+      }
+    }
     if (entity.buildingBlueprintId !== 'buildingSonar') continue;
     const playerId = entity.ownership?.playerId;
     assertContract(playerId !== undefined, 'demo Sonar must have an owning player');
@@ -63,6 +111,23 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   }
   for (let i = 0; i < playerIds.length; i++) {
     const playerId = playerIds[i];
+    const selectionCounts = factorySelectionsByPlayer.get(playerId);
+    assertContract(
+      selectionCounts !== undefined,
+      `demo base must spawn Fabricators for player ${playerId}`,
+    );
+    assertContract(
+      selectionCounts.size === expectedFactoryUnitBlueprintIds.length,
+      `demo player ${playerId} must have one repeat Fabricator for every unit; ` +
+        `expected ${expectedFactoryUnitBlueprintIds.length}, got ${selectionCounts.size}`,
+    );
+    for (let j = 0; j < expectedFactoryUnitBlueprintIds.length; j++) {
+      const unitBlueprintId = expectedFactoryUnitBlueprintIds[j];
+      assertContract(
+        selectionCounts.get(unitBlueprintId) === 1,
+        `demo player ${playerId} must have exactly one repeat Fabricator for ${unitBlueprintId}`,
+      );
+    }
     assertContract(
       sonarByPlayer.get(playerId) === DEMO_CONFIG.buildingSonarCount,
       `demo base must spawn ${DEMO_CONFIG.buildingSonarCount} Sonar for player ${playerId}`,

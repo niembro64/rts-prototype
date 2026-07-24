@@ -778,7 +778,7 @@ export function spawnInitialBases(
       entities.push(...waterFactories, ...landFactories);
     }
 
-    // One Sonar sits immediately outside the three offshore Fabricator rings.
+    // One Sonar sits immediately outside the offshore Fabricator arc.
     // Use their actual post-grid-snap radius, then add both collision radii
     // plus one grid cell so the installation remains visually separated.
     if (isBuildingEnabled('buildingSonar')) {
