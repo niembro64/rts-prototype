@@ -26,10 +26,10 @@
     "travelClampFraction": 0.5,
     "distanceSampling": {
       "pointMode": "seventeen",
-      "distanceAggregation": "average-of-shortest-3",
+      "distanceAggregation": "average-of-shortest-8",
       "ringPointCount": 8,
-      "innerRadiusPixels": 100.0,
-      "outerRadiusPixels": 200.0,
+      "innerRadiusPixels": 120.0,
+      "outerRadiusPixels": 240.0,
       "minCenterDistanceFraction": 0.1,
       "debugPointSizePixels": 10.0,
       "debugVisibleMilliseconds": 500.0,
