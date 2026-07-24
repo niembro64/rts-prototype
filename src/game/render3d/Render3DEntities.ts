@@ -818,15 +818,16 @@ export class Render3DEntities {
 
       // A production shell mirrors its factory's pylon orbit: the same
       // EMA-smoothed phase, opposite direction, spun in place around its
-      // own origin. Applied to the drawn yaw only, via this frame-local
-      // packet mutation (the packet is rebuilt every frame) — the
-      // authoritative rotation stays the launch heading, so the whole
-      // posed assembly (chassis, turrets, legs) counter-rotates while
-      // the sim and the eventual launch are untouched.
-      const hold = e.heldBy;
-      if (hold !== null && hold.kind === 'production' && unitRows.progress[row] < 1) {
-        unitRows.rotation[row] +=
-          this.constructionVisuals.getHeldShellCounterSpinYaw(hold.holderId);
+      // own origin. The shell association comes from the construction
+      // controller's resource-flow resolution (the hold relation never
+      // crosses the wire). Applied to the drawn yaw only, via this
+      // frame-local packet mutation (the packet is rebuilt every frame)
+      // — the authoritative rotation stays the launch heading, so the
+      // whole posed assembly (chassis, turrets, legs) counter-rotates
+      // while the sim and the eventual launch are untouched.
+      if (unitRows.progress[row] < 1) {
+        const counterYaw = this.constructionVisuals.getHeldShellCounterSpinYaw(entityId);
+        if (counterYaw !== 0) unitRows.rotation[row] += counterYaw;
       }
 
       const liftPos = m.liftGroup?.position;
