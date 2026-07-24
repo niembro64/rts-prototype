@@ -1357,7 +1357,7 @@
         "water": {
           "maxPropulsiveForce": 2.666666666667,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 327.3576026,
+            "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
           }
         }
