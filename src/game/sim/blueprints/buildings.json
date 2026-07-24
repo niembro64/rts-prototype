@@ -482,8 +482,8 @@
     "name": "Fabricator",
     "gridWidth": 12,
     "gridHeight": 12,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "placementGridWidth": 14,
+    "placementGridHeight": 14,
     "gridDepth": 3,
     "hp": 1200,
     "cost": {
