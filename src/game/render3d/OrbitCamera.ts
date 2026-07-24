@@ -875,7 +875,7 @@ export class OrbitCamera {
       this.lastMouseTimeMs = e.timeStamp;
       if (this.dragMode === 'pan' || this.dragMode === 'height-pan') {
         this.capturePanAnchor(e.clientX, e.clientY);
-      } else if (this.dragMode === 'orbit' && !this.usesBarSpringMovement()) {
+      } else if (this.dragMode === 'orbit') {
         this.captureOrbitPivot(e.clientX, e.clientY);
       }
     };
@@ -898,8 +898,7 @@ export class OrbitCamera {
       if (requestedDragMode !== this.dragMode) {
         this.dragMode = requestedDragMode;
         if (requestedDragMode === 'orbit') {
-          if (this.usesBarSpringMovement()) this.orbitPivotActive = false;
-          else this.captureOrbitPivot(e.clientX, e.clientY);
+          this.captureOrbitPivot(e.clientX, e.clientY);
         } else {
           this.orbitPivotActive = false;
           this.capturePanAnchor(e.clientX, e.clientY);
@@ -927,26 +926,7 @@ export class OrbitCamera {
       if (this.dragMode === 'orbit') {
         const scaledDx = dx * inputGain;
         const scaledDy = dy * inputGain;
-        if (this.usesBarSpringMovement()) {
-          if (this.usesBarSpringTransition()) this.beginContinuousMovement();
-          const radiansPerPixel = this.orbitRadiansPerPixel();
-          this.barRawYaw -= scaledDx * radiansPerPixel;
-          const nextYaw = this.resolveBarYaw(this.barRawYaw);
-          const nextPitch = Math.min(
-            this.maxPitch,
-            Math.max(this.minPitch, this.controllerPitch() + scaledDy * radiansPerPixel),
-          );
-          this.toYaw = nextYaw;
-          this.toPitch = nextPitch;
-          if (this.usesBarSpringTransition()) this.finishContinuousMovement();
-          else {
-            this.yaw = nextYaw;
-            this.pitch = nextPitch;
-            this.apply();
-          }
-          return;
-        }
-        // RIGID TUMBLE around the cursor's 3D ground pivot. The
+        // RIGID TUMBLE around the rotate anchor's 3D ground pivot. The
         // total yaw/pitch deltas since drag-start are applied as a
         // single rigid rotation of the camera around `orbitPivot`:
         //
@@ -988,9 +968,20 @@ export class OrbitCamera {
             this.orbitPitchAccum = newPitch - this.orbitStartPitch;
           }
           this.orbitYawAccum = OrbitCamera.normalizeAngleDelta(this.orbitYawAccum);
-          const newYaw = OrbitCamera.normalizeAngleDelta(
+          const rawYaw = OrbitCamera.normalizeAngleDelta(
             this.orbitStartYaw + this.orbitYawAccum,
           );
+          // Bar movement resolves the displayed yaw through the same raw-yaw
+          // law as the focus fallback (cardinal lock when enabled; identity
+          // canonically). Raw accumulation stays in orbitYawAccum so a locked
+          // drag can still push out of its dead zone.
+          const newYaw = this.usesBarSpringMovement()
+            ? this.resolveBarYaw(rawYaw)
+            : rawYaw;
+          const appliedYawAccum = OrbitCamera.normalizeAngleDelta(
+            newYaw - this.orbitStartYaw,
+          );
+          this.barRawYaw = rawYaw;
 
           // Rigid rotation: yaw around world Y, then pitch around
           // the (post-yaw) right axis. Apply to the start offset
@@ -999,7 +990,7 @@ export class OrbitCamera {
           // Yaw: world Y by −Δyaw_value (see header comment).
           this._orbitYawQuatTmp.setFromAxisAngle(
             OrbitCamera._ORBIT_WORLD_Y,
-            -this.orbitYawAccum,
+            -appliedYawAccum,
           );
           this._orbitOffsetTmp.applyQuaternion(this._orbitYawQuatTmp);
           // Pitch axis: right_world at the NEW yaw. For our orbit
@@ -1041,10 +1032,30 @@ export class OrbitCamera {
           this.toTargetY = this.target.y;
           this.toTargetZ = this.target.z;
           this.toYaw = this.yaw;
+          this.toPitch = this.pitch;
           // apply() will write camera.position = target + d·dir = (cx,cy,cz)
           // and camera.lookAt(target) = lookAt the synthesized point,
           // giving the rigid-rotation orientation.
           this.apply();
+        } else if (this.usesBarSpringMovement()) {
+          // No pivot (the rotate anchor ray resolved no surface): rotate the
+          // controller focus in place, BAR SpringController-style.
+          if (this.usesBarSpringTransition()) this.beginContinuousMovement();
+          const radiansPerPixel = this.orbitRadiansPerPixel();
+          this.barRawYaw -= scaledDx * radiansPerPixel;
+          const nextYaw = this.resolveBarYaw(this.barRawYaw);
+          const nextPitch = Math.min(
+            this.maxPitch,
+            Math.max(this.minPitch, this.controllerPitch() + scaledDy * radiansPerPixel),
+          );
+          this.toYaw = nextYaw;
+          this.toPitch = nextPitch;
+          if (this.usesBarSpringTransition()) this.finishContinuousMovement();
+          else {
+            this.yaw = nextYaw;
+            this.pitch = nextPitch;
+            this.apply();
+          }
         } else {
           // Fallback: no pivot — orbit around the existing target
           // exactly the way the camera always did before this fix.
@@ -2205,26 +2216,39 @@ export class OrbitCamera {
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
     if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
-    if (this.usesBarSpringMovement()) {
-      if (this.usesBarSpringTransition()) this.beginContinuousMovement();
-      this.barRawYaw += yawDelta;
-      this.toYaw = this.resolveBarYaw(this.barRawYaw);
-      if (this.usesBarSpringTransition()) this.finishContinuousMovement();
-      else {
-        this.yaw = this.toYaw;
-        this.apply();
-      }
-      return;
-    }
-    const oldYaw = this.yaw;
-    const newYaw = oldYaw + yawDelta;
     const pivot = this._anchorWorldPoint(clientX, clientY, this.rotateAnchor);
     if (!pivot) {
-      this.yaw = newYaw;
+      // Anchor ray resolved no surface: rotate the controller focus in
+      // place instead of pivoting on a fallback plane at pathological depth.
+      if (this.usesBarSpringMovement()) {
+        if (this.usesBarSpringTransition()) this.beginContinuousMovement();
+        this.barRawYaw += yawDelta;
+        this.toYaw = this.resolveBarYaw(this.barRawYaw);
+        if (this.usesBarSpringTransition()) this.finishContinuousMovement();
+        else {
+          this.yaw = this.toYaw;
+          this.apply();
+        }
+        return;
+      }
+      this.yaw += yawDelta;
       this.toYaw = this.yaw;
       this.apply();
       return;
     }
+    const oldYaw = this.yaw;
+    // Bar movement resolves the twist through the same raw-yaw law as drag
+    // orbit (cardinal lock when enabled; identity canonically).
+    let newYaw: number;
+    if (this.usesBarSpringMovement()) {
+      this.barRawYaw += yawDelta;
+      newYaw = this.resolveBarYaw(this.barRawYaw);
+    } else {
+      newYaw = oldYaw + yawDelta;
+      this.barRawYaw = newYaw;
+    }
+    const appliedDelta = newYaw - oldYaw;
+    if (appliedDelta === 0) return;
 
     this.apply();
     const sinP = Math.sin(this.pitch);
@@ -2236,7 +2260,7 @@ export class OrbitCamera {
     const newDirY = cosP;
     const newDirZ = sinP * -Math.cos(newYaw);
 
-    this._orbitYawQuatTmp.setFromAxisAngle(OrbitCamera._ORBIT_WORLD_Y, -yawDelta);
+    this._orbitYawQuatTmp.setFromAxisAngle(OrbitCamera._ORBIT_WORLD_Y, -appliedDelta);
 
     // Rotate the rendered camera around the configured rotate anchor,
     // then synthesize the target that preserves that new camera pose

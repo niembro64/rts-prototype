@@ -1363,10 +1363,17 @@
       <p>
         Every configurable anchor-based camera operation answers two independent questions, and
         each question remains its own config axis. Collapsing them into a single mode enum is the
-        drift this rule exists to prevent. The canonical <code>bar-spring</code> mode keeps BAR&rsquo;s
-        fixed controller semantics: orbit rotates around controller focus, pan uses controller
-        distance, zoom-in uses the cursor ray, and zoom-out uses the center ray. Its unused generic
-        rotate/pan anchor fields stay in the shared config shape but do not replace those rules.
+        drift this rule exists to prevent. The rotate gesture honors its authored
+        <code>(screen, terrain)</code> anchor pair in <em>every</em> movement mode, including
+        <code>bar-spring</code>: Alt-drag orbit and touch twist pivot rigidly around the resolved
+        anchor point &mdash; <code>cursor</code> tumbles the world around the spot under the
+        mouse, <code>screen-center</code> around the 3D point at the middle of the canvas &mdash;
+        and the pivoted point stays pinned under that screen spot through the whole gesture. Only
+        when the anchor ray resolves no surface does rotation fall back to turning in place around
+        controller focus. The canonical <code>bar-spring</code> mode keeps BAR&rsquo;s remaining
+        fixed controller semantics: pan uses controller distance, zoom-in uses the cursor ray, and
+        zoom-out uses the center ray; its unused generic pan anchor field stays in the shared
+        config shape but does not replace those rules.
       </p>
 
       <h3>Axis one &mdash; where on the screen (<code>anchorPointCameraScreen</code>)</h3>
