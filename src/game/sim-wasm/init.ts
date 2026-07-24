@@ -4725,6 +4725,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runResourceMovementConformanceContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
+        const { runWaterSurfaceBuildingContractTest } = await import('../sim/waterSurfaceBuildingContractTest');
+        runWaterSurfaceBuildingContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
         runDemoMetalExtractorSpawnContractTest();
       }

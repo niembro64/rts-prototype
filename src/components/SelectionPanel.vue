@@ -565,6 +565,7 @@ const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprin
   towerAntiAir: 'aa',
   towerBeamMega: 'weapon',
   towerCannon: 'weapon',
+  towerTorpedo: 'weapon',
 };
 
 const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconId>> = {
@@ -572,6 +573,7 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitBadger: 'weapon',
   unitBee: 'util',
   unitConstructionDrone: 'builder',
+  unitConstructionSubmarine: 'builder',
   unitDaddy: 'weapon',
   unitDragonfly: 'weapon',
   unitEagle: 'aa',

@@ -3507,5 +3507,185 @@
       }
     },
     "supportPointOffsetZ": 22.4
+  },
+  "unitConstructionSubmarine": {
+    "unitBlueprintId": "unitConstructionSubmarine",
+    "name": "Construction Submarine",
+    "shortName": "CSUB",
+    "hp": 700,
+    "radius": {
+      "other": 28,
+      "hitbox": 24,
+      "collision": 36,
+      "shotArmingRadius": 54
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 950,
+    "cost": {
+      "energy": 1100,
+      "metal": 1100
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitOrca",
+        "mount": {
+          "x": 0.42,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretResourcePylonConstructionMetal",
+        "mount": {
+          "x": -0.1,
+          "y": -0.3,
+          "z": 0
+        },
+        "visualVariant": "small",
+        "constructionRate": 45,
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionMetal",
+        "controlMode": "host"
+      },
+      {
+        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
+        "mount": {
+          "x": -0.1,
+          "y": 0.3,
+          "z": 0
+        },
+        "visualVariant": "small",
+        "constructionRate": 45,
+        "requiredEngagedForFightStop": false,
+        "mountId": "resourcePylonConstructionEnergy",
+        "controlMode": "host"
+      },
+      {
+        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
+        "mount": {
+          "x": 0.42,
+          "y": 0,
+          "z": 0
+        },
+        "allowedBuildBlueprintIds": [
+          "buildingExtractor",
+          "buildingExtractorT2",
+          "buildingResourceConverter",
+          "buildingSonar",
+          "towerFabricator",
+          "towerTorpedo"
+        ],
+        "requiredEngagedForFightStop": false,
+        "mountId": "spawnBuildingsAndTowers",
+        "controlMode": "host"
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "xFrac": 1.14,
+          "yFrac": 0.4,
+          "zFrac": 0.44
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.7,
+          "xFrac": 0.36,
+          "yFrac": 0.24,
+          "zFrac": 0.28
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.2,
+          "lengthFrac": 0.72,
+          "radiusFrac": 0.08,
+          "centerYFrac": 0.27,
+          "pitchRad": 0
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": {
+      "buildRange": 170
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "unitLocomotion": {
+      "type": "submarine",
+      "physicsPresetId": "submarine",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 14,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingProportionalForceFromWater": 0.01
+          }
+        }
+      },
+      "config": {
+        "pectoralOffsetXFrac": 0.1,
+        "pectoralLateralOffsetFrac": 0.34,
+        "pectoralHeightFrac": 0.02,
+        "pectoralSpanFrac": 0.64,
+        "pectoralRootChordFrac": 0.4,
+        "pectoralTipChordFrac": 0.16,
+        "rearFanOffsetXFrac": -1.08,
+        "rearFanHeightFrac": 0,
+        "rearFanRadius": 0.28,
+        "rearFanRingTubeRadius": 0.035,
+        "rearFanSpinRadPerSec": 22,
+        "thicknessFrac": 0.06,
+        "strokeAngleDeg": 12,
+        "cycleDistanceFrac": 2
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 1100,
+        "metal": 1100
+      },
+      "mass": 950,
+      "health": 700,
+      "deathExplosion": {
+        "radius": 48,
+        "force": 60000,
+        "damage": 480
+      },
+      "radius": {
+        "other": 28,
+        "hitbox": 24,
+        "collision": 36,
+        "shotArmingRadius": 54
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 9
   }
 }

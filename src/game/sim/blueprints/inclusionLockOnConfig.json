@@ -31,7 +31,8 @@
         "towerFabricator",
         "towerBeamMega",
         "towerCannon",
-        "towerAntiAir"
+        "towerAntiAir",
+        "towerTorpedo"
       ],
       "units": [
         "unitJackal",
@@ -57,7 +58,8 @@
         "unitQueenBee",
         "unitQueenTick",
         "unitTransport",
-        "unitCommander"
+        "unitCommander",
+        "unitConstructionSubmarine"
       ],
       "turrets": [
         "turretGunLight",
@@ -289,6 +291,18 @@
       }
     },
     "unitConstructionDrone": {
+      "targets": {
+        "friendly": {
+          "buildings": "all",
+          "units": "all"
+        },
+        "enemy": {
+          "buildings": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitConstructionSubmarine": {
       "targets": {
         "friendly": {
           "buildings": "all",
@@ -779,6 +793,14 @@
               "unitQueenTick"
             ]
           }
+        }
+      }
+    },
+    "towerTorpedo": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "units": "all"
         }
       }
     }

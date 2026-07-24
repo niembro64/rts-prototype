@@ -7,14 +7,14 @@ export const UNIT_BLUEPRINT_IDS = [
   'unitFormik', 'unitHippo', 'unitCommander', 'unitBee', 'unitDragonfly',
   'unitEagle', 'unitConstructionDrone', 'unitAlbatros', 'unitTransport',
   'unitQueenBee', 'unitQueenTick', 'unitSeaTurtle',
-  'unitOrca', 'unitDuck',
+  'unitOrca', 'unitDuck', 'unitConstructionSubmarine',
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
   'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor',
   'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
-  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar',
+  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar', 'towerTorpedo',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 

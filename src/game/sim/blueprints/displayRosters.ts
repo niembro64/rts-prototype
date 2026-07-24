@@ -128,6 +128,7 @@ export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId)
     case 'towerBeamMega':
     case 'towerCannon':
     case 'towerAntiAir':
+    case 'towerTorpedo':
       return 'Defense';
     default:
       return 'Economy';

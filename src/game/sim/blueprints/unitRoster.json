@@ -22,7 +22,8 @@
     "unitQueenBee",
     "unitQueenTick",
     "unitTransport",
-    "unitConstructionDrone"
+    "unitConstructionDrone",
+    "unitConstructionSubmarine"
   ],
   "defaultDisabledDemoUnitIds": [
     "unitQueenBee",

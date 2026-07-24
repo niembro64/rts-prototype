@@ -84,6 +84,7 @@ const BAR_CARRIER_SPAWN_UNIT_BLUEPRINT_IDS = new Set<string>();
 const BAR_BUILDER_PRIORITY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitCommander',
   'unitConstructionDrone',
+  'unitConstructionSubmarine',
 ]);
 const BAR_BUILDER_PRIORITY_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',

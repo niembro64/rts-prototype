@@ -1107,6 +1107,7 @@ export class WorldState {
         height,
         depth,
         supportSurface: createCollisionTopBuildingSupportSurface(width, height, depth),
+        placementType: 'ground',
         hoveringType: null,
         hovering: false,
         hp: 500,

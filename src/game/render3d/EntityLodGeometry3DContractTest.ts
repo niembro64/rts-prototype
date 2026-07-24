@@ -150,6 +150,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerBeamMega: { close: 900, mid: 500, far: 260 },
   towerCannon: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
+  towerTorpedo: { close: 1100, mid: 650, far: 360 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
@@ -171,6 +172,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitBee: { close: 1250, mid: 650, far: 240 },
   unitDragonfly: { close: 1500, mid: 780, far: 330 },
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
+  unitConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
   unitEagle: { close: 600, mid: 420, far: 220 },
   unitDuck: { close: 600, mid: 420, far: 220 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
@@ -1337,8 +1339,8 @@ function runEnvironmentLodMaterialContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 24, 'visual roster covers all 24 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 11, 'visual roster covers all 11 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 25, 'visual roster covers all 25 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 12, 'visual roster covers all 12 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

@@ -1,12 +1,14 @@
-import type { BuildingBlueprintId } from './types';
+import type { BuildingBlueprintId, BuildingPlacementType } from './types';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import type { SensorMedium } from './sensorConfig';
+import { WATER_LEVEL } from './Terrain';
 
-/** Fabricators are suspended unit builders; terrain shape never rejects them. */
+/** Suspended and waterline-anchored structures do not require a flat bed. */
 export function buildingIgnoresTerrainForPlacement(
   buildingBlueprintId: BuildingBlueprintId,
 ): boolean {
-  return buildingBlueprintId === 'towerFabricator';
+  return buildingBlueprintId === 'towerFabricator' ||
+    buildingBlueprintId === 'buildingSonar';
 }
 
 /** Dedicated contact sensors must be placed in the source medium authored by
@@ -15,21 +17,32 @@ export function getBuildingRequiredSensorSourceMedium(
   buildingBlueprintId: BuildingBlueprintId,
 ): SensorMedium | null {
   if (buildingBlueprintId === 'buildingRadar') return 'aboveWater';
-  if (buildingBlueprintId === 'buildingSonar') return 'underwater';
+  if (
+    buildingBlueprintId === 'buildingSonar' ||
+    buildingBlueprintId === 'towerTorpedo'
+  ) return 'underwater';
   return null;
 }
 
-/** Normal buildings sit on the solid terrain bed, including underwater.
- *  Hovering buildings instead use the visible terrain/water surface and apply
- *  their authored hover clearance from there. */
+/** Resolve the bottom of a building's collision cuboid. */
 export function getBuildingPlacementBaseZ(
-  hovering: boolean,
+  placementType: BuildingPlacementType,
+  buildingDepth: number,
   x: number,
   y: number,
   getSurfaceZ: (x: number, y: number) => number,
   getTerrainBedZ: (x: number, y: number) => number,
 ): number {
-  return hovering ? getSurfaceZ(x, y) : getTerrainBedZ(x, y);
+  switch (placementType) {
+    case 'hover':
+      return getSurfaceZ(x, y);
+    case 'water-surface':
+      // Runtime transform.z is base + depth/2, so this centers the collision
+      // and combat volume exactly on the water plane.
+      return WATER_LEVEL - buildingDepth * 0.5;
+    case 'ground':
+      return getTerrainBedZ(x, y);
+  }
 }
 
 /**

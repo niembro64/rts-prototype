@@ -10,6 +10,7 @@ import {
   forEachEntityTurretSensorSource,
   isEntityCloaked,
 } from '../sim/sensorCoverage';
+import { getEntityMediumOccupancy } from '../sim/entityMediumOccupancy';
 import type { SensorMedium } from '../sim/sensorConfig';
 import {
   ENTITY_STATE_KIND_BUILDING,
@@ -426,7 +427,7 @@ export class SnapshotVisibility {
       return this.radarEntityIdSet.has(entity.id);
     }
     const padding = 0;
-    const medium = getSensorMediumAtZ(entity.transform.z);
+    const occupancy = getEntityMediumOccupancy(entity);
     if (isEntityCloaked(entity)) {
       return this.isEntityDetected(
         entity.transform.x,
@@ -435,35 +436,55 @@ export class SnapshotVisibility {
         padding,
       );
     }
-    if (this.isPointVisibleIn(
-      this.fullSources,
-      this.fullSourceCells,
-      entity.transform.x,
-      entity.transform.y,
-      padding,
-      medium,
-    )) {
+    if (
+      (
+        occupancy.aboveWater > 0 &&
+        this.isPointVisibleIn(
+          this.fullSources,
+          this.fullSourceCells,
+          entity.transform.x,
+          entity.transform.y,
+          padding,
+          'aboveWater',
+        )
+      ) ||
+      (
+        occupancy.underwater > 0 &&
+        this.isPointVisibleIn(
+          this.fullSources,
+          this.fullSourceCells,
+          entity.transform.x,
+          entity.transform.y,
+          padding,
+          'underwater',
+        )
+      )
+    ) {
       return true;
     }
     this.ensureAuxiliaryObservationSources();
-    return medium === 'underwater'
-      ? this.isPointVisibleIn(
+    return (
+      occupancy.underwater > 0 &&
+      this.isPointVisibleIn(
           this.sonarSources,
           this.sonarSourceCells,
           entity.transform.x,
           entity.transform.y,
           padding,
-          medium,
+          'underwater',
         )
-      : this.isPointVisibleIn(
+    ) || (
+      occupancy.aboveWater > 0 &&
+      this.isPointVisibleIn(
           this.radarSources,
           this.radarSourceCells,
           entity.transform.x,
           entity.transform.y,
           padding,
-          medium,
-        );
-  }
+          'aboveWater',
+        )
+    );
+}
 
   /** Full-visibility entity ids for the main snapshot serializer.
    *  Built once per filtered team visibility, then shared by serializers

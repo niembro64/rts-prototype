@@ -29,8 +29,9 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
     supportSurface: bp.supportSurface,
+    placementType: bp.placementType,
     hoveringType: bp.hoveringType,
-    hovering: bp.hoveringType !== null,
+    hovering: bp.placementType === 'hover',
     hud: bp.hud,
     radius: { ...bp.base.radius },
   };

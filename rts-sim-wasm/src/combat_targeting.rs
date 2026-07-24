@@ -177,6 +177,12 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_aabb_half_x: Vec<f64>,
     pub(crate) entity_aabb_half_y: Vec<f64>,
     pub(crate) entity_aabb_half_z: Vec<f64>,
+    // Complementary volume occupancy for every targetable entity. Buildings
+    // use their cuboid height; sphere-shaped units/projectiles use the same
+    // spherical-cap fraction as unit locomotion. Any nonzero occupancy makes
+    // the entity observable by that medium's sensor lane.
+    pub(crate) entity_above_water_fraction: Vec<f32>,
+    pub(crate) entity_underwater_fraction: Vec<f32>,
     pub(crate) entity_hp: Vec<f32>,
     pub(crate) entity_flags: Vec<u8>,
     // LOCK-ON-03 — Per-entity family + blueprint id stamped on entity
@@ -422,6 +428,8 @@ impl CombatTargetingPool {
             entity_aabb_half_x: Vec::new(),
             entity_aabb_half_y: Vec::new(),
             entity_aabb_half_z: Vec::new(),
+            entity_above_water_fraction: Vec::new(),
+            entity_underwater_fraction: Vec::new(),
             entity_hp: Vec::new(),
             entity_flags: Vec::new(),
             entity_family: Vec::new(),
@@ -558,6 +566,8 @@ impl CombatTargetingPool {
             self.entity_aabb_half_x.resize(entity_needed, 0.0);
             self.entity_aabb_half_y.resize(entity_needed, 0.0);
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
+            self.entity_above_water_fraction.resize(entity_needed, 1.0);
+            self.entity_underwater_fraction.resize(entity_needed, 0.0);
             self.entity_hp.resize(entity_needed, 0.0);
             self.entity_flags.resize(entity_needed, 0);
             self.entity_family
@@ -958,6 +968,42 @@ pub fn combat_targeting_entity_capacity() -> u32 {
 /// `turret_count` advertises how many `combat_targeting_set_turret`
 /// calls will follow for this slot — past the count, slots hold stale
 /// data and the kernel gates on `turret_count_per_entity`.
+#[inline]
+fn combat_targeting_underwater_fraction(
+    pos_z: f64,
+    radius_hitbox: f64,
+    aabb_half_z: f64,
+) -> f32 {
+    if !pos_z.is_finite() {
+        return 0.0;
+    }
+    let fraction = if aabb_half_z.is_finite() && aabb_half_z > 0.0 {
+        let full_height = 2.0 * aabb_half_z;
+        let bottom_z = pos_z - aabb_half_z;
+        (TERRAIN_WATER_LEVEL - bottom_z)
+            .max(0.0)
+            .min(full_height)
+            / full_height
+    } else if radius_hitbox.is_finite() && radius_hitbox > 0.0 {
+        let submerged_height = (TERRAIN_WATER_LEVEL - (pos_z - radius_hitbox))
+            .max(0.0)
+            .min(2.0 * radius_hitbox);
+        if submerged_height <= 0.0 {
+            0.0
+        } else if submerged_height >= 2.0 * radius_hitbox {
+            1.0
+        } else {
+            submerged_height * submerged_height * (3.0 * radius_hitbox - submerged_height)
+                / (4.0 * radius_hitbox * radius_hitbox * radius_hitbox)
+        }
+    } else if pos_z <= TERRAIN_WATER_LEVEL {
+        1.0
+    } else {
+        0.0
+    };
+    fraction.clamp(0.0, 1.0) as f32
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_set_entity(
     entity_slot: u32,
@@ -1053,6 +1099,10 @@ pub fn combat_targeting_set_entity(
     pool.entity_aabb_half_x[s] = aabb_half_x;
     pool.entity_aabb_half_y[s] = aabb_half_y;
     pool.entity_aabb_half_z[s] = aabb_half_z;
+    let underwater_fraction =
+        combat_targeting_underwater_fraction(pos_z, radius_hitbox, aabb_half_z);
+    pool.entity_underwater_fraction[s] = underwater_fraction;
+    pool.entity_above_water_fraction[s] = 1.0 - underwater_fraction;
     pool.entity_hp[s] = hp;
     pool.entity_flags[s] = flags;
     pool.entity_family[s] = family;
@@ -2373,7 +2423,8 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
-    entity_pos_z: &[f64],
+    entity_above_water_fraction: &[f32],
+    entity_underwater_fraction: &[f32],
     coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
@@ -2388,9 +2439,10 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     if (coverage_mask[target_slot] & owner_bit) != 0 {
         return;
     }
-    let target_is_water = entity_pos_z[target_slot] <= TERRAIN_WATER_LEVEL;
-    if (target_medium == CT_OBSERVATION_TARGET_WATER && !target_is_water)
-        || (target_medium == CT_OBSERVATION_TARGET_AIR && target_is_water)
+    if (target_medium == CT_OBSERVATION_TARGET_WATER
+        && entity_underwater_fraction[target_slot] <= 0.0)
+        || (target_medium == CT_OBSERVATION_TARGET_AIR
+            && entity_above_water_fraction[target_slot] <= 0.0)
     {
         return;
     }
@@ -2412,7 +2464,8 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
-    entity_pos_z: &[f64],
+    entity_above_water_fraction: &[f32],
+    entity_underwater_fraction: &[f32],
     coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
@@ -2429,7 +2482,8 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             entity_owner_bit,
             entity_pos_x,
             entity_pos_y,
-            entity_pos_z,
+            entity_above_water_fraction,
+            entity_underwater_fraction,
             coverage_mask,
             source_x,
             source_y,
@@ -2475,7 +2529,8 @@ pub(crate) fn combat_targeting_mark_observation_circle(
     let entity_owner_bit = &pool.entity_owner_bit;
     let entity_pos_x = &pool.entity_pos_x;
     let entity_pos_y = &pool.entity_pos_y;
-    let entity_pos_z = &pool.entity_pos_z;
+    let entity_above_water_fraction = &pool.entity_above_water_fraction;
+    let entity_underwater_fraction = &pool.entity_underwater_fraction;
     let observation_cells = &pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
     let coverage_mask = match mask_kind {
@@ -2503,7 +2558,8 @@ pub(crate) fn combat_targeting_mark_observation_circle(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
-                entity_pos_z,
+                entity_above_water_fraction,
+                entity_underwater_fraction,
                 coverage_mask,
                 source_x,
                 source_y,
@@ -2526,7 +2582,8 @@ pub(crate) fn combat_targeting_mark_observation_circle(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
-                entity_pos_z,
+                entity_above_water_fraction,
+                entity_underwater_fraction,
                 coverage_mask,
                 source_x,
                 source_y,
@@ -10404,7 +10461,7 @@ mod tests {
     }
 
     #[test]
-    fn contact_sensors_filter_target_centers_by_medium_without_hitbox_padding() {
+    fn contact_sensors_include_every_medium_with_nonzero_volume_occupancy() {
         let _guard = match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -10428,16 +10485,22 @@ mod tests {
         }
         pool.entity_pos_x[1] = 50.0;
         pool.entity_pos_z[1] = TERRAIN_WATER_LEVEL + 0.001;
+        pool.entity_above_water_fraction[1] = 1.0;
+        pool.entity_underwater_fraction[1] = 0.0;
         pool.entity_pos_x[2] = 50.0;
         pool.entity_pos_z[2] = TERRAIN_WATER_LEVEL;
+        pool.entity_above_water_fraction[2] = 0.5;
+        pool.entity_underwater_fraction[2] = 0.5;
         pool.entity_pos_x[3] = 100.001;
         pool.entity_pos_z[3] = TERRAIN_WATER_LEVEL + 0.001;
+        pool.entity_above_water_fraction[3] = 1.0;
+        pool.entity_underwater_fraction[3] = 0.0;
         pool.entity_detection_padding[3] = 1000.0;
 
         pool.entity_radar_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
         assert_ne!(pool.entity_sensor_coverage_mask[1] & 1, 0);
-        assert_eq!(pool.entity_sensor_coverage_mask[2] & 1, 0);
+        assert_ne!(pool.entity_sensor_coverage_mask[2] & 1, 0);
         assert_eq!(pool.entity_sensor_coverage_mask[3] & 1, 0);
 
         pool.entity_radar_radius[0] = 0.0;
@@ -10451,7 +10514,7 @@ mod tests {
         pool.entity_full_vision_above_water_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
         assert_ne!(pool.entity_full_sight_coverage_mask[1] & 1, 0);
-        assert_eq!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
+        assert_ne!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
 
         pool.entity_full_vision_above_water_radius[0] = 0.0;
         pool.entity_full_vision_underwater_radius[0] = 100.0;

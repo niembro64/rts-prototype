@@ -65,6 +65,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitDragonfly: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitConstructionDrone: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
   unitEagle: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitDuck: { type: 'dive', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitAlbatros: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },

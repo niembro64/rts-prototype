@@ -97,6 +97,7 @@ const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, n
   ['towerCannon', 0],
   ['towerBeamMega', 1],
   ['towerAntiAir', 4],
+  ['towerTorpedo', 2],
 ]);
 
 const BAR_EQUIVALENT_HOME_SLOT_INDEX = new Map<StructureBlueprintId, number>([
@@ -119,6 +120,7 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingRadar',
   'buildingSonar',
   'towerCannon',
+  'towerTorpedo',
   'towerBeamMega',
   'towerAntiAir',
 ];
@@ -535,6 +537,27 @@ export function runRosterCommandSurfaceContractTest(): void {
     'construction drone BAR home Combat column must stack cannon, beam tower, then anti-air like ARM T1 constructors',
   );
 
+  const constructionSubBuildBlueprintIds =
+    getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS.unitConstructionSubmarine);
+  assertSameMembers(
+    'construction submarine naval build roster',
+    constructionSubBuildBlueprintIds,
+    [
+      'buildingExtractor',
+      'buildingExtractorT2',
+      'buildingResourceConverter',
+      'buildingSonar',
+      'towerFabricator',
+      'towerTorpedo',
+    ],
+  );
+  assertContract(
+    !constructionSubBuildBlueprintIds.includes('buildingRadar') &&
+      !constructionSubBuildBlueprintIds.includes('towerCannon') &&
+      !constructionSubBuildBlueprintIds.includes('towerAntiAir'),
+    'construction submarine must expose its naval roster instead of the land-defense roster',
+  );
+
   const factoryStructureBlueprintIds = STRUCTURE_BLUEPRINT_IDS.filter(
     (structureBlueprintId) =>
       getStructureFactoryAllowedUnitBlueprintIds(structureBlueprintId).length > 0,
@@ -876,6 +899,7 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertSameMembers('BAR-equivalent builder-priority command units', barBuilderPriorityUnitIds, [
     'unitCommander',
     'unitConstructionDrone',
+    'unitConstructionSubmarine',
   ]);
   const barBuilderPriorityStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarBuilderPriorityCommand);
   assertSameMembers('BAR-equivalent builder-priority command structures', barBuilderPriorityStructureIds, [

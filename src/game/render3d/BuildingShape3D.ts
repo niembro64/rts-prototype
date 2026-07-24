@@ -25,6 +25,7 @@ import { COLORS } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   RADAR_BUILDING_VISUAL_HEIGHT,
+  SONAR_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
 import {
@@ -239,6 +240,8 @@ export function buildBuildingShape(
         );
       case 'buildingRadar':
         return buildRadarMesh(width, depth, primaryMat);
+      case 'buildingSonar':
+        return buildSonarMesh(width, depth, primaryMat);
       case 'towerBeamMega':
         return buildMegaBeamTowerMesh(primaryMat);
       case 'towerCannon':
@@ -331,6 +334,104 @@ function buildRadarMesh(
   const feedZ = Math.max(14, dishRadiusX * 0.36);
   dishPivot.add(makeBox(radarFrameMat, dishRadiusX * 0.08, dishRadiusX * 0.08, feedZ, 0, 0, feedZ * 0.5));
   dishPivot.add(makeSphere(radarDarkMat, Math.max(2.8, minDim * 0.028), 0, 0, feedZ));
+  head.add(dishPivot);
+
+  details.push(detail(sweep, 'low', undefined, 'radarRig'));
+  details.push(detail(head, 'low', undefined, 'radarRig'));
+  return {
+    primary,
+    height,
+    details,
+    radarRig: { head, sweep },
+  };
+}
+
+function buildSonarMesh(
+  width: number,
+  depth: number,
+  primaryMat: THREE.Material,
+): BuildingShape {
+  const height = SONAR_BUILDING_VISUAL_HEIGHT;
+  const waterlineY = height * 0.5;
+  const geometryTier = getActiveBuildingGeometryTier();
+  const minDim = Math.min(width, depth);
+  const primary = new THREE.Mesh(radarTowerGeom, primaryMat);
+  const details: BuildingShape['details'] = [];
+
+  // The buoy collar and warning beacon stay above the waterline while the
+  // rotating transducer and its ping rig live below it.
+  const collarRadius = Math.max(15, minDim * 0.38);
+  details.push(detail(
+    makeCylinder(
+      radarDarkMat,
+      collarRadius,
+      10,
+      0,
+      waterlineY + 5,
+      0,
+      hexCylinderGeom,
+    ),
+    'min',
+  ));
+  details.push(detail(
+    makeCylinder(
+      radarFrameMat,
+      Math.max(5, minDim * 0.12),
+      height * 0.28,
+      0,
+      waterlineY + height * 0.14,
+      0,
+      hexCylinderGeom,
+    ),
+    'low',
+  ));
+  details.push(detail(
+    makeSphere(
+      radarSweepMat,
+      Math.max(4, minDim * 0.1),
+      0,
+      height * 0.9,
+      0,
+    ),
+    'low',
+  ));
+
+  const sweep = new THREE.Mesh(boxGeom, invisibleMat);
+  sweep.position.set(0, waterlineY - height * 0.16, 0);
+  const sweepRadius = Math.max(20, minDim * 0.48);
+  const sweepRing = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarSweepMat);
+  sweepRing.rotation.x = Math.PI / 2;
+  sweepRing.scale.set(sweepRadius, sweepRadius, 3);
+  sweep.add(sweepRing);
+
+  const head = new THREE.Mesh(boxGeom, invisibleMat);
+  head.position.set(0, waterlineY - height * 0.28, 0);
+  head.add(makeSphere(radarDarkMat, Math.max(5.5, minDim * 0.14), 0, 0, 0));
+
+  const dishPivot = new THREE.Mesh(boxGeom, invisibleMat);
+  // Radar dishes face outward/upward along local +Z. Rotating +Z onto -Y
+  // makes this transducer unambiguously point down into the water.
+  dishPivot.rotation.x = Math.PI / 2;
+  const dishRadiusX = Math.max(18, minDim * 0.45);
+  const dishRadiusY = dishRadiusX * 0.58;
+  const dishDepth = Math.max(5, minDim * 0.12);
+  const dish = new THREE.Mesh(getRadarDishGeometry(geometryTier), radarDishMat);
+  dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
+  dishPivot.add(dish);
+  const rim = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarFrameMat);
+  rim.scale.set(dishRadiusX, dishRadiusY, 3);
+  dishPivot.add(rim);
+  const feedZ = Math.max(10, dishRadiusX * 0.36);
+  dishPivot.add(makeBox(
+    radarFrameMat,
+    dishRadiusX * 0.08,
+    dishRadiusX * 0.08,
+    feedZ,
+    0,
+    0,
+    feedZ * 0.5,
+  ));
+  dishPivot.add(makeSphere(radarDarkMat, Math.max(2.5, minDim * 0.06), 0, 0, feedZ));
   head.add(dishPivot);
 
   details.push(detail(sweep, 'low', undefined, 'radarRig'));

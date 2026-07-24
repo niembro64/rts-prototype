@@ -10,6 +10,7 @@ import type {
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingHoveringType,
+  BuildingPlacementType,
   BuildingSupportSurface,
   ResourceCost,
 } from '../types';
@@ -85,6 +86,8 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   anchorProfile: BuildingAnchorProfile;
   /** Authored walkable/support proxy, independent from the collision cuboid. */
   supportSurface: BuildingSupportSurface;
+  /** Semantic terrain/water anchor and placement validation policy. */
+  placementType: BuildingPlacementType;
   /** Hovering structure classification. Null means grounded. The fabricator
    *  torus is currently the only hovering structure type. */
   hoveringType: BuildingHoveringType;
@@ -140,6 +143,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'placementGridWidth',
   'placementGridHeight',
   'supportSurface',
+  'placementType',
   'hoveringType',
   'turrets',
 ] as const;
@@ -151,6 +155,7 @@ const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.towerFabricator.visualHei
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingExtractor.visualHeight;
 export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.visualHeight;
+export const SONAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSonar.visualHeight;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
@@ -263,6 +268,16 @@ function validateBuildingHoveringType(
   id: string,
   blueprint: BuildingBlueprint,
 ): void {
+  const placementType = blueprint.placementType;
+  if (
+    placementType !== 'ground' &&
+    placementType !== 'hover' &&
+    placementType !== 'water-surface'
+  ) {
+    throw new Error(
+      `Invalid building blueprint ${id}: unknown placementType "${String(placementType)}"`,
+    );
+  }
   const hoveringType = blueprint.hoveringType;
   if (hoveringType !== null && hoveringType !== 'fabricator') {
     throw new Error(
@@ -281,6 +296,16 @@ function validateBuildingHoveringType(
   if (hoveringType !== null && blueprint.supportSurface.kind !== 'none') {
     throw new Error(
       `Invalid building blueprint ${id}: hovering structures must use supportSurface.none`,
+    );
+  }
+  if ((placementType === 'hover') !== (hoveringType !== null)) {
+    throw new Error(
+      `Invalid building blueprint ${id}: placementType "hover" and hoveringType must be authored together`,
+    );
+  }
+  if (id === 'buildingSonar' && placementType !== 'water-surface') {
+    throw new Error(
+      'Invalid building blueprint buildingSonar: placementType must be "water-surface"',
     );
   }
 }

@@ -26,6 +26,7 @@
       "width": 60,
       "height": 60
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -98,6 +99,7 @@
       "width": 40,
       "height": 40
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": -10
@@ -170,6 +172,7 @@
       "width": 100,
       "height": 100
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 38
@@ -242,6 +245,7 @@
       "width": 100,
       "height": 100
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 42
@@ -314,6 +318,7 @@
       "width": 40,
       "height": 40
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 16
@@ -376,6 +381,7 @@
       "width": 60,
       "height": 60
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -429,15 +435,13 @@
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
-    "renderProfile": "buildingRadar",
-    "visualHeight": 150,
+    "renderProfile": "buildingSonar",
+    "visualHeight": 140,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
-      "kind": "boxTop",
-      "topZ": 140,
-      "width": 40,
-      "height": 40
+      "kind": "none"
     },
+    "placementType": "water-surface",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 16
@@ -448,7 +452,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 0
+          "z": 40
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
@@ -513,7 +517,8 @@
       "unitQueenBee",
       "unitQueenTick",
       "unitTransport",
-      "unitConstructionDrone"
+      "unitConstructionDrone",
+      "unitConstructionSubmarine"
     ],
     "renderProfile": "towerFabricator",
     "visualHeight": 30,
@@ -521,6 +526,7 @@
     "supportSurface": {
       "kind": "none"
     },
+    "placementType": "hover",
     "hoveringType": "fabricator",
     "hud": {
       "barsOffsetAboveTop": 12
@@ -616,6 +622,7 @@
       "width": 60,
       "height": 60
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -689,6 +696,7 @@
       "width": 80,
       "height": 80
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -762,6 +770,7 @@
       "width": 40,
       "height": 40
     },
+    "placementType": "ground",
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -799,6 +808,80 @@
         "radius": 33.941,
         "force": 160000,
         "damage": 1200
+      },
+      "radius": {
+        "other": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284,
+        "shotArmingRadius": 42.426
+      }
+    }
+  },
+  "towerTorpedo": {
+    "buildingBlueprintId": "towerTorpedo",
+    "name": "Torpedo Tower",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 3,
+    "hp": 1800,
+    "cost": {
+      "energy": 1600,
+      "metal": 1600
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerCannon",
+    "visualHeight": 30,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 60,
+      "width": 40,
+      "height": 40
+    },
+    "placementType": "ground",
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingSonar",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 45
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretTorpedo",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 45
+        },
+        "mountId": "torpedo",
+        "controlMode": "host"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 1600,
+        "metal": 1600
+      },
+      "mass": 2200,
+      "health": 1800,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 120000,
+        "damage": 850
       },
       "radius": {
         "other": 28.284,

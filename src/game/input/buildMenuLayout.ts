@@ -439,6 +439,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 106300;
     case 'towerAntiAir':
       return 130100;
+    case 'towerTorpedo':
+      return 130110;
     default:
       return Number.MAX_SAFE_INTEGER;
   }
@@ -475,6 +477,8 @@ function barClassicFactoryUnitSortIndex(id: string): number {
       return 5500; // prototype amphibious combat vehicle
     case 'unitOrca':
       return 5510; // prototype underwater torpedo vehicle
+    case 'unitConstructionSubmarine':
+      return 5520; // prototype underwater constructor
     case 'unitTarantula':
       return 5600; // armwar assault bot
     case 'unitTransport':

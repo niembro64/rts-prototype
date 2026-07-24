@@ -31,7 +31,6 @@ import {
 } from './metalExtractorUpgrade';
 import {
   getBuildingPlacementBaseZ,
-  buildingIgnoresTerrainForPlacement,
   getHighestBuildFootprintGroundZ,
 } from './buildingPlacementPolicy';
 
@@ -127,7 +126,8 @@ export class ConstructionSystem {
     // Get world position for building center
     const worldPos = { x: diagnostics.x, y: diagnostics.y };
     const baseZ = getBuildingPlacementBaseZ(
-      config.hovering,
+      config.placementType,
+      config.gridDepth * BUILD_GRID_CELL_SIZE,
       worldPos.x,
       worldPos.y,
       (x, y) => world.getGroundZ(x, y),
@@ -176,7 +176,7 @@ export class ConstructionSystem {
       rotation,
     );
     entity.transform.z = baseZ + physicalSize.depth / 2;
-    if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
+    if (config.placementType === 'hover') {
       const baselineZ = getHighestBuildFootprintGroundZ(
         gridX,
         gridY,
@@ -424,14 +424,15 @@ export class ConstructionSystem {
       playerId
     );
     const baseZ = getBuildingPlacementBaseZ(
-      config.hovering,
+      config.placementType,
+      config.gridDepth * BUILD_GRID_CELL_SIZE,
       centerX,
       centerY,
       (x, y) => world.getGroundZ(x, y),
       (x, y) => world.getTerrainBedZ(x, y),
     );
     entity.transform.z = baseZ + entity.building!.depth / 2;
-    if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
+    if (config.placementType === 'hover') {
       const footprint = getRotatedGridFootprint(
         config.placementGridWidth,
         config.placementGridHeight,

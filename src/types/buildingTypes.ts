@@ -12,6 +12,7 @@ export type {
 export type BuildingBlueprintId = StructureBlueprintId;
 export type BuildingRenderProfile = StructureBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'fabricator' | 'collisionDepth';
+export type BuildingPlacementType = 'ground' | 'hover' | 'water-surface';
 export type BuildingHoveringType = 'fabricator' | null;
 export type BuildingSupportSurface =
   | { kind: 'none' }

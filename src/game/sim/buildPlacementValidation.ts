@@ -134,6 +134,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const requiredSensorSourceMedium =
     getBuildingRequiredSensorSourceMedium(candidateType);
   const centerSensorSourceMedium =
+    config.placementType === 'water-surface' ||
     getTerrainBedHeight(center.x, center.y, mapWidth, mapHeight) <= WATER_LEVEL
       ? 'underwater'
       : 'aboveWater';
@@ -161,6 +162,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
     options.ignoreTerrain ||
     buildingIgnoresTerrainForPlacement(candidateType) ||
     (extractorCoverage !== null && extractorCoverage.coveredCells > 0);
+  const waterSurfaceMinimumDepth = config.placementType === 'water-surface'
+    ? config.gridDepth * BUILD_GRID_CELL_SIZE * 0.5
+    : 0;
 
   // Walk the whole-footprint perimeter once. Per-cell loop below also
   // walks each cell's perimeter ONCE and reads BOTH the buildable
@@ -202,6 +206,19 @@ function getBuildingPlacementDiagnosticsAtGrid(
         reason = 'occupied';
         blocking = true;
       } else if (sensorSourceMediumMismatch) {
+        reason = 'terrain';
+        blocking = true;
+      } else if (
+        config.placementType === 'water-surface' &&
+        !waterSurfaceCellHasClearance(
+          x,
+          y,
+          BUILD_GRID_CELL_SIZE * 0.5,
+          waterSurfaceMinimumDepth,
+          mapWidth,
+          mapHeight,
+        )
+      ) {
         reason = 'terrain';
         blocking = true;
       } else if (!ignoreTerrain) {
@@ -327,6 +344,35 @@ function getBuildingPlacementDiagnosticsAtGrid(
     metalTotalCells,
     metalDepositCells,
   };
+}
+
+/**
+ * A water-surface structure is anchored independently from the terrain, but
+ * every sample beneath each reserved physical cell must contain enough water
+ * for the submerged half of its cuboid. This rejects shoreline straddling and
+ * seabed clipping without requiring a flat underwater plateau.
+ */
+function waterSurfaceCellHasClearance(
+  centerX: number,
+  centerY: number,
+  halfCell: number,
+  minimumDepth: number,
+  mapWidth: number,
+  mapHeight: number,
+): boolean {
+  const maxBedZ = WATER_LEVEL - minimumDepth;
+  const samples = [
+    [centerX, centerY],
+    [centerX - halfCell, centerY - halfCell],
+    [centerX + halfCell, centerY - halfCell],
+    [centerX - halfCell, centerY + halfCell],
+    [centerX + halfCell, centerY + halfCell],
+  ] as const;
+  for (let i = 0; i < samples.length; i++) {
+    const [x, y] = samples[i];
+    if (getTerrainBedHeight(x, y, mapWidth, mapHeight) > maxBedZ) return false;
+  }
+  return true;
 }
 
 export function getBuildingPlacementDiagnosticsForGrid(
