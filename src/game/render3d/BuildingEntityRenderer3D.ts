@@ -1116,9 +1116,9 @@ export class BuildingEntityRenderer3D {
       // resource-rate orbit applied inside the rig by
       // ConstructionVisualController3D.
       if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
-        // Building construction pylons (the fabricator's) are radial arms
-        // fused to the torus inner wall, lying at ring height and pointing
-        // inward — the rig stays upright (no construction-drone flip).
+        // Building construction pylons (the fabricator's) stand fused to
+        // the TOP of the torus ring, pointing straight up — the rig stays
+        // upright (no construction-drone flip).
         if (turretMesh.constructionEmitter) {
           setEulerZIfChanged(turretMesh.constructionEmitter.group.rotation, 0);
         }

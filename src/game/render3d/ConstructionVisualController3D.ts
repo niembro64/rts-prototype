@@ -345,10 +345,10 @@ export class ConstructionVisualController3D {
       part.mesh.position.x = part.baseX * c - part.baseZ * s;
       part.mesh.position.z = part.baseX * s + part.baseZ * c;
       // Minus: a three.js yaw of -θ advances a child's azimuth by +θ,
-      // matching the (c, s) endpoint/position rotation above. Radial
-      // arms (center-anchored groups, base offset 0) rely on this to
-      // keep their fused ring attachment and inward aim in lockstep
-      // with the rotating pylon endpoints.
+      // matching the (c, s) endpoint/position rotation above, so any
+      // part whose yaw must track its orbit azimuth stays aligned.
+      // Today's parts are rotationally symmetric, so the sign is
+      // cosmetic — but keep it the correct one.
       part.mesh.rotation.y = part.baseRotationY - rig.towerSpinPhase;
     }
     for (let i = 0; i < rig.pylons.length; i++) {

@@ -213,12 +213,13 @@ const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
   bandRadiusMult: number;
   bandHeightMult: number;
   capRadiusMult: number;
-  /** Radial-arm layout (single-resource pylons only): the pylon lies on
-   *  its side with its base fused to the host ring at the emitter offset
-   *  and its cap pointing at the ring center; the tower-spin orbit
-   *  carries the whole arm around that center, keeping it aimed inward.
-   *  Standing layout keeps the classic upright pylon at the offset. */
-  radialArm: boolean;
+  /** Vertical lift applied to a single-resource pylon's base so it
+   *  stands ON TOP of the host ring tube instead of at the mount plane.
+   *  The fabricator torus tube radius is 0.18 x its ~110 ring radius
+   *  (~20); a lift of 17 sinks the collar a few units into the crown so
+   *  the pylon reads as fused to the ring while pointing straight up.
+   *  Unit-mounted pylons (small) keep their base at the mount plane. */
+  pylonBaseLift: number;
 }> = {
   large: {
     baseRadiusMult: 2.85,
@@ -226,7 +227,7 @@ const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
     bandRadiusMult: 2.55,
     bandHeightMult: 0.95,
     capRadiusMult: 1.65,
-    radialArm: true,
+    pylonBaseLift: 17,
   },
   small: {
     baseRadiusMult: 2.55,
@@ -234,7 +235,7 @@ const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
     bandRadiusMult: 2.25,
     bandHeightMult: 0.78,
     capRadiusMult: 1.55,
-    radialArm: false,
+    pylonBaseLift: 0,
   },
 };
 
@@ -393,12 +394,14 @@ function buildConstructionPylonTrio(
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
   const pylons: ResourcePylonRig[] = [];
 
-  // Single-resource pylon turrets (Phase C split): one pylon of the
-  // turret's own resource with a resource-fixed base angle (metal and
-  // energy opposed) so a host that mounts both pylons at one anchor gets
-  // an opposed pair that the shared tower-spin orbit carries around that
-  // anchor. Otherwise the legacy emitter renders the energy + metal pair
-  // around the mount circle.
+  // Single-resource pylon turrets (Phase C split): one upright pylon of
+  // the turret's own resource, standing at the authored emitter offset
+  // with a resource-fixed base angle (metal and energy opposed) and the
+  // style's base lift, so a fabricator's pair stands fused to the top of
+  // its torus ring, pointing straight up, and the shared tower-spin
+  // orbit slides both around the ring while resources flow. Otherwise
+  // the legacy emitter renders the energy + metal pair around the mount
+  // circle.
   const style = CONSTRUCTION_TOWER_SIZE_STYLE[size];
   const variants = singleResource !== null
     ? [CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[singleResource]]
@@ -408,58 +411,16 @@ function buildConstructionPylonTrio(
     const a = singleResource !== null
       ? (singleResource === 'metal' ? 0 : Math.PI)
       : (i / variants.length) * Math.PI * 2;
-
-    if (singleResource !== null && style.radialArm) {
-      // Radial arm: build the stack at the local origin, lay it on its
-      // side pointing radially inward, and fuse its base to the host
-      // ring at `pylonOffset`. The arm group is anchored at the ring
-      // CENTER, so one yaw value carries both its orbit position and
-      // its inward aim — the spin loop writes
-      // `rotation.y = baseRotationY - phase`, which tracks the
-      // endpoint azimuth rotation exactly (see
-      // ConstructionVisualController3D.updateConstructionTowerSpin).
-      const tower = buildConstructionTowerPiece(
-        variants[i],
-        size,
-        teamBaseMat,
-        pylonHeight,
-        innerPylonRadius,
-        pylonBaseY,
-        0,
-        0,
-        geometryTier,
-      );
-      const lay = new THREE.Group();
-      for (const mesh of tower.staticMeshes) lay.add(mesh);
-      lay.rotation.z = Math.PI / 2; // stack +Y → arm-local −X (inward)
-      lay.position.x = pylonOffset; // base plane fused to the ring tube
-      const arm = new THREE.Group();
-      arm.add(lay);
-      arm.rotation.y = -a;
-      staticMeshes.push(arm);
-      towerOrbitParts.push({ mesh: arm, baseX: 0, baseZ: 0, baseRotationY: -a });
-      // Rig endpoints in emitter space: a stack-local point (0, y, 0)
-      // lands at radius `pylonOffset - y` on the arm's azimuth, at the
-      // ring's height plane.
-      const radialize = (v: THREE.Vector3): void => {
-        const r = pylonOffset - (v.y - pylonBaseY);
-        v.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-      };
-      radialize(tower.rig.rootLocal);
-      radialize(tower.rig.rootBaseLocal);
-      radialize(tower.rig.topLocal);
-      radialize(tower.rig.topBaseLocal);
-      pylons.push(tower.rig);
-      continue;
-    }
-
+    const baseY = singleResource !== null
+      ? pylonBaseY + style.pylonBaseLift
+      : pylonBaseY;
     const tower = buildConstructionTowerPiece(
       variants[i],
       size,
       teamBaseMat,
       pylonHeight,
       innerPylonRadius,
-      pylonBaseY,
+      baseY,
       Math.cos(a) * pylonOffset,
       Math.sin(a) * pylonOffset,
       geometryTier,
