@@ -39,6 +39,7 @@ import type {
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -169,6 +170,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeSetRallyPointCommand(command, world, tick);
     case 'setFactoryGuard':
       return sanitizeSetFactoryGuardCommand(command, tick);
+    case 'setFactoryOutputGuard':
+      return sanitizeSetFactoryOutputGuardCommand(command, tick);
     case 'fireDGun':
       return sanitizeFireDgunCommand(command, world, tick);
     case 'repair':
@@ -968,17 +971,29 @@ function sanitizeSetRallyPointCommand(
     command.rallyZ,
   );
   const waypointType = sanitizeWaypointType(command.waypointType);
-  return !isEntityId(command.factoryId) || point === null || waypointType === null
-    ? null
-    : {
-        type: 'setRallyPoint',
-        tick,
-        factoryId: command.factoryId,
-        rallyX: point.x,
-        rallyY: point.y,
-        rallyZ: point.z,
-        waypointType,
-      };
+  if (
+    !isEntityId(command.factoryId) ||
+    point === null ||
+    waypointType === null ||
+    typeof command.queue !== 'boolean'
+  ) return null;
+  const queued = sanitizeQueuedCommandFields(
+    command.queue,
+    command.queueFront,
+    command.queueInsertIndex,
+  );
+  return queued === null ? null : {
+    type: 'setRallyPoint',
+    tick,
+    factoryId: command.factoryId,
+    rallyX: point.x,
+    rallyY: point.y,
+    rallyZ: point.z,
+    waypointType,
+    queue: command.queue,
+    queueFront: queued.queueFront,
+    queueInsertIndex: queued.queueInsertIndex,
+  };
 }
 
 function sanitizeSetFactoryGuardCommand(
@@ -992,6 +1007,31 @@ function sanitizeSetFactoryGuardCommand(
     tick,
     factoryId: command.factoryId,
     targetId: command.targetId,
+  };
+}
+
+function sanitizeSetFactoryOutputGuardCommand(
+  command: SetFactoryOutputGuardCommand,
+  tick: number,
+): SetFactoryOutputGuardCommand | null {
+  if (
+    !isEntityId(command.factoryId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) return null;
+  const queued = sanitizeQueuedCommandFields(
+    command.queue,
+    command.queueFront,
+    command.queueInsertIndex,
+  );
+  return queued === null ? null : {
+    type: 'setFactoryOutputGuard',
+    tick,
+    factoryId: command.factoryId,
+    targetId: command.targetId,
+    queue: command.queue,
+    queueFront: queued.queueFront,
+    queueInsertIndex: queued.queueInsertIndex,
   };
 }
 

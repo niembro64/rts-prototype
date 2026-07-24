@@ -26,6 +26,7 @@ import {
 } from './buildableHelpers';
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { COST_MULTIPLIER } from '../../config';
 
 export type { EnergyBuffers,  } from '@/types/ui';
 import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
@@ -130,13 +131,16 @@ function addEnergyConsumer(
     consumer.maxResourcePerTick = maxResourcePerTick;
   }
   consumers.push(consumer);
+  // Free repair participates in the deterministic repair pass above, but it
+  // is not a resource consumer and therefore must not enter either debit lane.
+  if (type === 'heal') return;
   let indices = buffers.consumersByPlayer.get(playerId);
   if (indices === undefined) {
     indices = _consumerIndexArrayPool.pop() ?? [];
     buffers.consumersByPlayer.set(playerId, indices);
   }
   indices.push(idx);
-  if (type === 'build') buffers.buildingConsumerIds.add(entity.id);
+  buffers.buildingConsumerIds.add(entity.id);
 }
 
 // A mobile unit factory (queen) has no building config; its per-tick build
@@ -252,11 +256,8 @@ let consumerMetalRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY
 let consumerChangedMask = new Uint8Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 const consumerDebitTotals = new Float64Array(2);
 const CONSTRUCTION_CONSUMER_BUILD_CODE = 1;
-const CONSTRUCTION_CONSUMER_HEAL_CODE = 2;
 const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE = 1;
-const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE = 2;
-const HEAL_COST_PER_HP = 0.5;
-const _healEnergyRemainingByTarget = new Map<EntityId, number>();
+const _freeRepairRemainingByTarget = new Map<EntityId, number>();
 
 export function trimEnergyDistributionBuffers(
   maxRetained = DEFAULT_CONSUMER_DEBIT_CAPACITY,
@@ -443,7 +444,7 @@ function applyConsumerSpendResults(sim: SimWasm, count: number): void {
     consumerMetalSpent,
     consumerCaps,
     count,
-    HEAL_COST_PER_HP,
+    1,
     consumerBuildProgress,
     consumerEnergyRateFraction,
     consumerMetalRateFraction,
@@ -453,13 +454,38 @@ function applyConsumerSpendResults(sim: SimWasm, count: number): void {
   }
 }
 
+/** Match local construction duration: construction fills its energy/metal
+ * lanes in parallel, so max(required energy, required metal) is the target's
+ * effective build work. BAR repair scales build power by maxHP/buildTime and
+ * charges no resources. */
+function repairHpCapForBuilder(builder: Entity, target: Entity, dtSec: number): number {
+  const hpState = target.unit ?? target.building;
+  if (hpState === null || dtSec <= 0) return 0;
+  const originalRequired = target.buildable?.required;
+  let buildWork = originalRequired === undefined
+    ? 0
+    : Math.max(originalRequired.energy, originalRequired.metal);
+  if (buildWork <= 0 && target.unit !== null) {
+    const cost = getUnitBlueprint(target.unit.unitBlueprintId).cost;
+    buildWork = Math.max(cost.energy, cost.metal) * COST_MULTIPLIER;
+  } else if (buildWork <= 0 && target.buildingBlueprintId !== null) {
+    const cost = getBuildingConfig(target.buildingBlueprintId).cost;
+    buildWork = Math.max(cost.energy, cost.metal);
+  }
+  if (!Number.isFinite(buildWork) || buildWork <= 0) {
+    return getBuilderConstructionRate(builder) * dtSec;
+  }
+  return getBuilderConstructionRate(builder) * dtSec * hpState.maxHp / buildWork;
+}
+
 // Distribute resources to active consumers (one player at a time).
 // Consumers come in two flavours:
 //   • 'build' — an in-progress Buildable being funded by a builder unit,
 //               a commander, or a factory's currentShellId. The
 //               consumer.entity points at the SHELL/BUILDING entity
 //               carrying the buildable.
-//   • 'heal'  — a commander healing a damaged unit (energy only).
+//   • 'heal'  — free BAR-style repair, rate-limited by builder power and
+//               the target's original construction duration.
 export function distributeEnergy(world: WorldState, dtMs: number, buffers: EnergyBuffers): void {
   const dtSec = dtMs / 1000;
   releaseEnergyConsumerRows(buffers);
@@ -750,7 +776,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (hpState === null || hpState.hp <= 0 || hpState.hp >= hpState.maxHp) continue;
       assignActiveConstructionTask(world, entity, target.id, 'repair');
       const hpToHeal = hpState.maxHp - hpState.hp;
-      const remaining = hpToHeal * HEAL_COST_PER_HP;
+      const remaining = hpToHeal;
       if (remaining > 0) {
         addEnergyConsumer(
           buffers,
@@ -758,7 +784,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           target,
           'heal',
           remaining,
-          builderRateCap,
+          repairHpCapForBuilder(entity, target, dtSec),
           entity.id,
           null,
         );
@@ -782,7 +808,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (hpState === null) continue;
     if (guardHealedTargetIds.has(target.id)) continue;
     if (!isBuildTargetInRange(entity, target)) continue;
-    const remaining = (hpState.maxHp - hpState.hp) * HEAL_COST_PER_HP;
+    const remaining = hpState.maxHp - hpState.hp;
     if (remaining <= 0) continue;
     assignActiveConstructionTask(world, entity, target.id, 'repair');
     guardHealedTargetIds.add(target.id);
@@ -792,7 +818,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       target,
       'heal',
       remaining,
-      getBuilderConstructionRate(entity) * dtSec,
+      repairHpCapForBuilder(entity, target, dtSec),
       entity.id,
       null,
     );
@@ -818,7 +844,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (autoAssistedBuilderIds.has(entity.id)) continue; // already assisting a build
       const target = findNearestDamagedUnit(entity, damagedUnits, guardHealedTargetIds);
       if (target === null || target.unit === null) continue;
-      const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
+      const remaining = target.unit.maxHp - target.unit.hp;
       if (remaining <= 0) continue;
       assignActiveConstructionTask(world, entity, target.id, 'repair');
       guardHealedTargetIds.add(target.id);
@@ -829,7 +855,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         target,
         'heal',
         remaining,
-        getBuilderConstructionRate(entity) * dtSec,
+        repairHpCapForBuilder(entity, target, dtSec),
         entity.id,
         null,
       );
@@ -837,6 +863,25 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   }
 
   clearInactiveConstructionTasks(world, world.getBuilderUnits(), factoryEntities);
+
+  // BAR repair consumes no metal or energy. Apply each builder's repair work
+  // directly before the construction debit lanes; multiple builders stack,
+  // while the shared remaining map prevents same-tick over-heal.
+  _freeRepairRemainingByTarget.clear();
+  for (let i = 0; i < consumers.length; i++) {
+    const consumer = consumers[i];
+    if (consumer.type !== 'heal') continue;
+    const hpState = consumer.entity.unit ?? consumer.entity.building;
+    if (hpState === null) continue;
+    const remaining = _freeRepairRemainingByTarget.get(consumer.entity.id) ??
+      Math.max(0, hpState.maxHp - hpState.hp);
+    const hpGain = Math.min(remaining, Math.max(0, consumer.maxResourcePerTick));
+    if (hpGain > 0) {
+      hpState.hp = Math.min(hpState.maxHp, hpState.hp + hpGain);
+      world.markSnapshotDirty(consumer.entity.id, ENTITY_CHANGED_HP);
+    }
+    _freeRepairRemainingByTarget.set(consumer.entity.id, Math.max(0, remaining - hpGain));
+  }
 
   // ── Per-player resource distribution ──
   // Each construction resource flows independently. A consumer with
@@ -854,18 +899,13 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
 
-    // Healing is energy-only — bookkeep separately so it doesn't
-    // block metal flow to other consumers.
     let buildCount = 0;
-    let healCount = 0;
     for (const idx of indices) {
       if (consumers[idx].type === 'build') buildCount++;
-      else healCount++;
     }
-    const totalEnergyConsumers = buildCount + healCount;
+    const totalEnergyConsumers = buildCount;
 
     ensureConsumerDebitCapacity(indices.length);
-    _healEnergyRemainingByTarget.clear();
     for (let i = 0; i < indices.length; i++) {
       const c = consumers[indices[i]];
       consumerCaps[i] = c.maxResourcePerTick;
@@ -882,22 +922,17 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         consumerEnergyRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'energy');
         consumerMetalRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'metal');
       } else {
-        const hpState = c.entity.unit ?? c.entity.building;
-        consumerTypeCodes[i] = hpState === null ? 0 : CONSTRUCTION_CONSUMER_HEAL_CODE;
+        // Heal entries never enter consumersByPlayer; retain a defensive
+        // zero-row fallback if a malformed buffer is supplied.
+        consumerTypeCodes[i] = 0;
         consumerPaidEnergy[i] = 0;
         consumerPaidMetal[i] = 0;
         consumerRequiredEnergy[i] = 0;
         consumerRequiredMetal[i] = 0;
-        consumerHp[i] = hpState === null ? 0 : hpState.hp;
+        consumerHp[i] = 0;
         consumerInitialHp[i] = consumerHp[i];
-        consumerMaxHp[i] = hpState === null ? 0 : hpState.maxHp;
-        const targetRemaining = _healEnergyRemainingByTarget.get(c.entity.id) ??
-          Math.max(0, consumerMaxHp[i] - consumerHp[i]) * HEAL_COST_PER_HP;
-        consumerEnergyRemaining[i] = targetRemaining;
-        _healEnergyRemainingByTarget.set(
-          c.entity.id,
-          Math.max(0, targetRemaining - consumerCaps[i]),
-        );
+        consumerMaxHp[i] = 0;
+        consumerEnergyRemaining[i] = 0;
         consumerMetalRemaining[i] = 0;
       }
     }
@@ -953,17 +988,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
               world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
             }
           }
-        }
-      } else {
-        // Healing — energy only.
-        const energyToSpend = consumerEnergySpent[i];
-        recordResourceSpendForConsumer(world, buffers, c, 'energy', energyToSpend, dtSec);
-        const hpState = c.entity.unit ?? c.entity.building;
-        if (hpState === null) continue;
-        if ((consumerChangedMask[i] & CONSTRUCTION_CONSUMER_CHANGED_HP_CODE) !== 0) {
-          const hpGain = Math.max(0, consumerHp[i] - consumerInitialHp[i]);
-          hpState.hp = Math.min(hpState.maxHp, hpState.hp + hpGain);
-          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_HP);
         }
       }
     }

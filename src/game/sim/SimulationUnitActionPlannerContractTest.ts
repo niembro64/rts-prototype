@@ -21,7 +21,6 @@ import {
   UNIT_ACTION_RANGE_KIND_GUARD_SERVICE,
   UNIT_ACTION_RANGE_KIND_LOAD,
   UNIT_ACTION_RANGE_KIND_NONE,
-  UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD,
   UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
   UNIT_ACTION_PLAN_ATTACK_HOLD,
   UNIT_ACTION_PLAN_ATTACK_MOVE,
@@ -133,8 +132,15 @@ export function runSimulationUnitActionPlannerContractTest(): void {
     'attack-ground moves when not halted',
   );
   assertContract(
-    classify(action('attackGround'), UNIT_ACTION_FLAG_MOVE_STATE_HOLD) === UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD,
-    'attack-ground hold-position holds',
+    classify(
+      action('attack', { targetId: 5 }),
+      UNIT_ACTION_FLAG_TARGET_PRESENT | UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
+    ) === UNIT_ACTION_PLAN_ATTACK_MOVE,
+    'explicit attack overrides hold-position and pursues its target',
+  );
+  assertContract(
+    classify(action('attackGround'), UNIT_ACTION_FLAG_MOVE_STATE_HOLD) === UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
+    'explicit attack-ground overrides hold-position until a turret engages',
   );
 
   assertContract(

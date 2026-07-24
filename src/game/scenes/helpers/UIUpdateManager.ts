@@ -873,6 +873,7 @@ export function buildSelectionInfo(
   // as units; the host kind itself does not determine the command surface.
   for (let i = 0; i < selectedBuildings.length; i++) {
     const selectedBuilding = selectedBuildings[i];
+    if (entityHasBarAttackCommand(selectedBuilding)) barAttackControlCount++;
     if (selectedBuilding.factory !== null) {
       waitableEntityCount++;
       if (selectedBuilding.factory.paused === true) waitingCount++;
@@ -1052,8 +1053,7 @@ export function buildSelectionInfo(
     hasBarAreaAttackControl: barAreaAttackControlCount > 0,
     hasMoveStateControl: moveStateControlCount > 0,
     hasFireControl:
-      fireControlCount > 0
-      && fireControlCount === selectedUnits.length + selectedBuildings.length,
+      fireControlCount > 0,
     fireEnabled: fireControlCount > 0 && holdFireCount === 0,
     fireState: fireControlCount === 0
       ? 'fireAtWill'

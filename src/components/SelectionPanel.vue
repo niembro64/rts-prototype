@@ -83,16 +83,12 @@ const selectedEntityTypeCount = computed(() =>
   + (props.selection.buildingCount > 0 ? 1 : 0),
 );
 const hasMixedEntityTypes = computed(() => selectedEntityTypeCount.value > 1);
-const isPureUnitSelection = computed(() =>
-  props.selection.unitCount > 0
-  && props.selection.buildingCount === 0,
-);
-const isPureBuildingSelection = computed(() =>
-  props.selection.buildingCount > 0
-  && props.selection.unitCount === 0,
-);
-const showUnitActions = computed(() => isPureUnitSelection.value);
-const showBuildingActions = computed(() => isPureBuildingSelection.value);
+// BAR merges command descriptors across a mixed selection. Host-kind sections
+// stay visible whenever that kind is present; execution capability-filters the
+// entity list instead of hiding every command because a building and unit are
+// selected together.
+const showUnitActions = computed(() => props.selection.unitCount > 0);
+const showBuildingActions = computed(() => props.selection.buildingCount > 0);
 const showCombatActions = computed(() => props.selection.hasFireControl);
 const isBarHotkeyPreset = computed(() => isBarCommandHotkeyPreset(props.hotkeyPreset));
 const showBarGridBuildCategories = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
@@ -274,6 +270,10 @@ const barOrderCommandCellCount = computed(() => {
     }
     if (showPrototypeOnly) count += 2; // prototype visible skip/cancel queue buttons
     if (showPrototypeOnly) count += 1; // clear queue
+  }
+
+  if (showBuildingActions.value && showAttackCommand.value) {
+    count += 1;
   }
 
   if (showQueueInsertPicker.value) {
@@ -1513,7 +1513,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
     event,
     props.selection.factoryRepeatsProduction === true,
   );
-  if (props.selection.factoryQueueMode && !event.altKey) {
+  if (props.selection.factoryQueueMode && !productionMode.front) {
     props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, productionMode.count);
     return;
   }
@@ -1522,7 +1522,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
   // BAR gui_gridmenu.lua: Alt-queued clicks insert at the FRONT of the build
   // queue. queueUnit appends, so compose the insert client-side by moving the
   // appended run to index 0 (server-authorized editFactoryQueue move).
-  if (event.altKey && !productionMode.repeat && queueLengthBeforeAdd > 0) {
+  if (productionMode.front && !productionMode.repeat && queueLengthBeforeAdd > 0) {
     props.actions.editFactoryQueue(factoryId, 'move', queueLengthBeforeAdd, productionMode.count, 0);
   }
 }
@@ -1530,7 +1530,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
 function removeFactoryQueuedUnitFromCell(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
   const productionMode = factoryProductionClickModeFromEvent(event, false);
   const quotaDelta = -productionMode.count;
-  if (props.selection.factoryQueueMode && !event.altKey && factoryQuotaTarget(unitBlueprintId) > 0) {
+  if (props.selection.factoryQueueMode && !productionMode.front && factoryQuotaTarget(unitBlueprintId) > 0) {
     props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, quotaDelta);
     return;
   }
@@ -2271,6 +2271,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="showCombatActions && (!isBarHotkeyPreset || !showUnitActions)" class="button-group">
       <div class="group-label">Combat</div>
       <div class="buttons bar-command-grid">
+        <button
+          v-if="showBuildingActions && showAttackCommand"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isAttackMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
+          :title="actionTitle('Attack', 'combat.attack', 'Click an enemy target')"
+          @click="actions.toggleAttack()"
+        >
+          <span class="btn-label">Attack</span>
+          <span class="btn-key">{{ hotkey('combat.attack') }}</span>
+        </button>
         <button
           type="button"
           class="action-btn bar-order-state"

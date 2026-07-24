@@ -15,6 +15,7 @@ export type QueueCommandMode = {
 export type FactoryProductionClickMode = {
   repeat: boolean;
   count: number;
+  front: boolean;
 };
 
 const trackedQueueModifiers: QueueModifierEvent = {
@@ -160,6 +161,7 @@ export function factoryProductionClickModeFromEvent(
     repeat: factoryRepeatsProduction &&
       !(modifiers.shiftKey || modifiers.ctrlKey || modifiers.altKey || modifiers.metaKey),
     count,
+    front: modifiers.altKey,
   };
 }
 
@@ -168,11 +170,16 @@ export function factoryProductionKeyModeFromEvent(
   factoryRepeatsProduction: boolean,
 ): FactoryProductionClickMode {
   const modifiers = effectiveQueueModifierEvent(event);
-  const count = (modifiers.shiftKey ? 5 : 1) * (modifiers.ctrlKey ? 20 : 1);
+  // BAR gui_gridmenu keyboard grammar differs from mouse clicks:
+  // plain/Shift add 1/5, Ctrl removes 1, Ctrl+Shift removes 5, and Alt
+  // inserts additions at the front. Mouse Ctrl remains the +20 multiplier.
+  const count = (modifiers.shiftKey ? 5 : 1) *
+    (modifiers.ctrlKey ? -1 : 1);
   return {
     repeat: factoryRepeatsProduction &&
       !(modifiers.shiftKey || modifiers.ctrlKey || modifiers.altKey || modifiers.metaKey),
     count,
+    front: modifiers.altKey,
   };
 }
 

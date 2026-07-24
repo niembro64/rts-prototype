@@ -26,6 +26,7 @@ import type {
   SetFactoryAirIdleStateCommand,
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetRepeatQueueCommand,
   SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
@@ -204,6 +205,8 @@ export function authorizeGameServerGameplayCommand(
 
     case 'setFactoryGuard':
       return authorizeSetFactoryGuardCommand(world, command, playerId);
+    case 'setFactoryOutputGuard':
+      return authorizeSetFactoryOutputGuardCommand(world, command, playerId);
 
     case 'fireDGun':
       return authorizeFireDGunCommand(world, command, playerId);
@@ -782,8 +785,19 @@ function authorizeSetFactoryGuardCommand(
   ) {
     return null;
   }
-  if (command.targetId === null) return command;
-  return isAlliedEntity(world, command.targetId, playerId) ? command : null;
+  return command.targetId === null || command.targetId === factory.id ? command : null;
+}
+
+function authorizeSetFactoryOutputGuardCommand(
+  world: WorldState,
+  command: SetFactoryOutputGuardCommand,
+  playerId: PlayerId,
+): SetFactoryOutputGuardCommand | null {
+  return isOwnedFactory(world, command.factoryId, playerId) &&
+    command.targetId !== command.factoryId &&
+    isAlliedEntity(world, command.targetId, playerId)
+    ? command
+    : null;
 }
 
 function authorizeSetFactoryAirIdleStateCommand(

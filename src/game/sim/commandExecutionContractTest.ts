@@ -433,8 +433,8 @@ export function runCommandExecutionContractTest(): void {
     allocateSubEntityIds: false,
   });
   assertContract(
-    defaultStateTick.unit?.moveState === 'maneuver',
-    'Tick must spawn in maneuver so a direct Attack order can approach an out-of-range target',
+    defaultStateTick.unit?.moveState === 'holdPosition',
+    'BAR armflea/unitTick starts on hold-position; explicit Attack overrides that stance',
   );
   const defaultStateDragonfly = world.createUnitFromBlueprint(90, 240, 1, 'unitDragonfly', {
     allocateSubEntityIds: false,
@@ -554,6 +554,58 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     moveStateFactory.factory?.airIdleState === 'fly',
     'setFactoryAirIdleState command should apply BAR air-plant Fly/Land state to tower factories',
+  );
+  const factoryOrderCtx: CommandContext = {
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  executeCommand(factoryOrderCtx, {
+    type: 'setFactoryGuard',
+    tick: 1,
+    factoryId: moveStateFactory.id,
+    targetId: moveStateFactory.id,
+  });
+  executeCommand(factoryOrderCtx, {
+    type: 'setRallyPoint',
+    tick: 2,
+    factoryId: moveStateFactory.id,
+    rallyX: 360,
+    rallyY: 300,
+    waypointType: 'move',
+    queue: false,
+  });
+  executeCommand(factoryOrderCtx, {
+    type: 'setRallyPoint',
+    tick: 3,
+    factoryId: moveStateFactory.id,
+    rallyX: 420,
+    rallyY: 320,
+    waypointType: 'fight',
+    queue: true,
+  });
+  executeCommand(factoryOrderCtx, {
+    type: 'setFactoryOutputGuard',
+    tick: 4,
+    factoryId: moveStateFactory.id,
+    targetId: priorityBuilder.id,
+    queue: true,
+    queueFront: true,
+  });
+  const factoryOrders = moveStateFactory.factory?.defaultWaypoints ?? [];
+  assertContract(
+    moveStateFactory.factory?.guardTargetId === moveStateFactory.id,
+    'player output orders must not disable the independent BAR Factory Guard toggle',
+  );
+  assertContract(
+    factoryOrders.length === 3 &&
+      factoryOrders[0].type === 'guard' &&
+      factoryOrders[0].targetId === priorityBuilder.id &&
+      factoryOrders[1].type === 'move' &&
+      factoryOrders[2].type === 'fight',
+    'factory output Move/Fight/Patrol/Guard commands must share one ordered queue with front insertion',
   );
 
   const quotaWorld = new WorldState(2, 512, 512);
@@ -839,6 +891,40 @@ export function runCommandExecutionContractTest(): void {
     nextCombatProbeTick: 25,
   } as unknown as NonNullable<Entity['combat']>;
   world.addEntity(stopTower);
+  const stopTowerCtx: CommandContext = {
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  executeCommand(stopTowerCtx, {
+    type: 'attack',
+    tick: 1,
+    entityIds: [stopTower.id],
+    targetId: antiAirGroundTarget.id,
+    queue: false,
+  });
+  assertContract(
+    stopTower.combat.priorityTargetId === antiAirGroundTarget.id &&
+      stopTower.combat.priorityTargetPoint === null,
+    'BAR armed buildings must execute Attack as a host target consumed by their turrets',
+  );
+  executeCommand(stopTowerCtx, {
+    type: 'attackGround',
+    tick: 1,
+    entityIds: [stopTower.id],
+    targetX: 210,
+    targetY: 270,
+    targetZ: world.getGroundZ(210, 270),
+    queue: false,
+  });
+  const staticAttackGroundCombat = world.getEntity(stopTower.id)?.combat;
+  assertContract(
+    staticAttackGroundCombat?.priorityTargetId === null &&
+      staticAttackGroundCombat.priorityTargetPoint?.x === 210,
+    'BAR ground-capable armed buildings must execute the map-point form of Attack',
+  );
   executeCommand({
     world,
     constructionSystem: construction,

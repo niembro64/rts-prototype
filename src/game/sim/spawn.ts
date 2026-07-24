@@ -336,7 +336,7 @@ function setFactoryDefaultWaypoints(
   entity.factory.rallyX = rally.x;
   entity.factory.rallyY = rally.y;
   entity.factory.rallyZ = rally.z;
-  entity.factory.rallyType = rally.type;
+  entity.factory.rallyType = rally.type === 'guard' ? 'move' : rally.type;
 }
 
 // (Building rows replaced by per-player arcs along the spawn oval —

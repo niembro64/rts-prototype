@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity } from './types';
+import type { Entity, EntityId } from './types';
 import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
@@ -132,7 +132,13 @@ function ensureFactoryProductionCapacity(required: number): void {
 
 function directFactoryRallyActions(
   world: WorldState,
-  route: ReadonlyArray<{ x: number; y: number; z?: number | null; type: UnitAction['type'] }>,
+  route: ReadonlyArray<{
+    x: number;
+    y: number;
+    z?: number | null;
+    type: UnitAction['type'];
+    targetId?: EntityId;
+  }>,
   startX: number,
   startY: number,
 ): { actions: UnitAction[]; patrolStartIndex: number | null } {
@@ -152,12 +158,14 @@ function directFactoryRallyActions(
     if (wp.type === 'patrol' && patrolStartIndex === null) {
       patrolStartIndex = actions.length;
     }
-    actions.push({
+    const action: UnitAction = {
       type: wp.type,
       x: wp.x,
       y: wp.y,
       z: wp.z ?? world.getTerrainBedZ(wp.x, wp.y),
-    });
+    };
+    if (wp.targetId !== undefined) action.targetId = wp.targetId;
+    actions.push(action);
   }
   return { actions, patrolStartIndex };
 }
@@ -544,24 +552,23 @@ class FactoryProductionSystem {
         unit.unit.moveState = factoryComp.moveState;
       }
 
-      const guardTarget = factoryComp.guardTargetId !== null
-        ? world.getEntity(factoryComp.guardTargetId)
-        : undefined;
-      const isSelfFactoryGuard = guardTarget?.id === factory.id;
+      const hasOutputOrders = (factoryComp.defaultWaypoints?.length ?? 0) > 0;
+      const factoryGuardEnabled = factoryComp.guardTargetId === factory.id;
       if (
-        guardTarget !== undefined &&
-        (!isSelfFactoryGuard || unit.builder !== null) &&
+        !hasOutputOrders &&
+        factoryGuardEnabled &&
+        unit.builder !== null &&
         factory.ownership !== null &&
-        guardTarget.ownership !== null &&
-        world.arePlayersAllied(factory.ownership.playerId, guardTarget.ownership.playerId)
+        unit.ownership !== null &&
+        world.arePlayersAllied(factory.ownership.playerId, unit.ownership.playerId)
       ) {
-        const targetPoint = getEntityTargetPoint(guardTarget);
+        const targetPoint = getEntityTargetPoint(factory);
         setUnitActions(unit.unit, [{
           type: 'guard',
           x: targetPoint.x,
           y: targetPoint.y,
           z: targetPoint.z,
-          targetId: guardTarget.id,
+          targetId: factory.id,
         }]);
         unit.unit.patrolStartIndex = null;
       } else {

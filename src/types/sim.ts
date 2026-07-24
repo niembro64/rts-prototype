@@ -1115,7 +1115,8 @@ export type FactoryDefaultWaypoint = {
   x: number;
   y: number;
   z: number | null;
-  type: WaypointType;
+  type: WaypointType | 'guard';
+  targetId?: EntityId;
 };
 
 // Commander component

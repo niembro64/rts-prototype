@@ -44,6 +44,7 @@ import type {
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopFactoryProductionCommand,
@@ -53,7 +54,16 @@ import type {
   UnloadTransportCommand,
   WaitCommand,
 } from './commands';
-import type { CombatFireState, Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
+import type {
+  CombatFireState,
+  Entity,
+  EntityId,
+  FactoryDefaultWaypoint,
+  PlayerId,
+  ShotSource,
+  Unit,
+  UnitAction,
+} from './types';
 import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
@@ -285,6 +295,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setFactoryGuard':
       executeSetFactoryGuardCommand(ctx, command);
+      break;
+    case 'setFactoryOutputGuard':
+      executeSetFactoryOutputGuardCommand(ctx, command);
       break;
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
@@ -1451,12 +1464,12 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null) return;
 
-  factory.factory.guardTargetId = null;
-  factory.factory.rallyX = command.rallyX;
-  factory.factory.rallyY = command.rallyY;
-  factory.factory.rallyZ = command.rallyZ ?? null;
-  factory.factory.rallyType = command.waypointType;
-  factory.factory.defaultWaypoints = null;
+  addFactoryOutputOrder(factory, {
+    x: command.rallyX,
+    y: command.rallyY,
+    z: command.rallyZ ?? null,
+    type: command.waypointType,
+  }, command);
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 
@@ -1470,27 +1483,71 @@ function executeSetFactoryGuardCommand(ctx: CommandContext, command: SetFactoryG
     return;
   }
 
-  const target = ctx.world.getEntity(command.targetId);
-  if (
-    target === undefined ||
-    target.ownership === null ||
-    !ctx.world.arePlayersAllied(factory.ownership.playerId, target.ownership.playerId)
-  ) return;
-
-  if (target.id === factory.id) {
+  if (command.targetId === factory.id) {
     factory.factory.guardTargetId = factory.id;
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-    return;
   }
+}
 
+function executeSetFactoryOutputGuardCommand(
+  ctx: CommandContext,
+  command: SetFactoryOutputGuardCommand,
+): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  const target = ctx.world.getEntity(command.targetId);
+  if (
+    factory === undefined ||
+    factory.factory === null ||
+    factory.ownership === null ||
+    target === undefined ||
+    target.ownership === null ||
+    target.id === factory.id ||
+    !ctx.world.arePlayersAllied(factory.ownership.playerId, target.ownership.playerId)
+  ) return;
   const targetPoint = getEntityTargetPoint(target);
-  factory.factory.guardTargetId = target.id;
-  factory.factory.defaultWaypoints = null;
-  factory.factory.rallyX = targetPoint.x;
-  factory.factory.rallyY = targetPoint.y;
-  factory.factory.rallyZ = targetPoint.z;
-  factory.factory.rallyType = 'move';
+  addFactoryOutputOrder(factory, {
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    type: 'guard',
+    targetId: target.id,
+  }, command);
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+}
+
+function addFactoryOutputOrder(
+  factory: Entity,
+  order: FactoryDefaultWaypoint,
+  command: { queue: boolean; queueFront?: boolean; queueInsertIndex?: number },
+): void {
+  const factoryComp = factory.factory;
+  if (factoryComp === null) return;
+  const orders = command.queue
+    ? [...(factoryComp.defaultWaypoints ?? [])]
+    : [];
+  if (!command.queue) {
+    orders.push(order);
+  } else {
+    const requestedIndex = commandQueuesInFront(command)
+      ? 0
+      : commandQueueInsertIndex(command);
+    const index = requestedIndex === undefined
+      ? orders.length
+      : Math.max(0, Math.min(Math.floor(requestedIndex), orders.length));
+    orders.splice(index, 0, order);
+  }
+  factoryComp.defaultWaypoints = orders;
+
+  // Keep the legacy first-rally mirror coherent for compact snapshots and
+  // rally visualization. Guard is rendered as a move line to its target;
+  // the authoritative route retains its target id and Guard semantics.
+  const first = orders[0];
+  if (first !== undefined) {
+    factoryComp.rallyX = first.x;
+    factoryComp.rallyY = first.y;
+    factoryComp.rallyZ = first.z;
+    factoryComp.rallyType = first.type === 'guard' ? 'move' : first.type;
+  }
 }
 
 function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): void {
@@ -2738,10 +2795,23 @@ function enqueueAttackAction(
   queueFront: boolean,
   queueInsertIndex?: number,
 ): void {
-  if (!entity || entity.type !== 'unit' || !entity.unit) return;
+  if (!entity) return;
   if (!entity.ownership || !isAttackableEnemyTargetForPlayer(ctx.world, target, entity.ownership.playerId)) return;
   if (!entityHasBarAttackCommand(entity)) return;
   if (!entityCanBarAttackTarget(entity, target)) return;
+  if (entity.unit === null) {
+    const combat = entity.combat;
+    if (combat === null) return;
+    // Static hosts execute the same host-authored Attack intent without a
+    // locomotion queue. Their mounted turrets consume this priority through
+    // the normal host→turret adapter; they never own the player order.
+    combat.priorityTargetId = target.id;
+    combat.priorityTargetPoint = null;
+    combat.manualLaunchActive = false;
+    combat.nextCombatProbeTick = -1;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE);
+    return;
+  }
   if (
     target.type !== 'unit' &&
     unitBlueprintHasBarBomberAttackBuildingGroundRule(entity.unit.unitBlueprintId)
@@ -2785,11 +2855,21 @@ function enqueueAttackGroundAction(
 ): void {
   if (
     !entity ||
-    entity.type !== 'unit' ||
-    !entity.unit ||
     !entity.combat ||
     !entityCanBarAttackGround(entity)
   ) return;
+  if (entity.unit === null) {
+    entity.combat.priorityTargetId = null;
+    entity.combat.priorityTargetPoint = {
+      x: targetX,
+      y: targetY,
+      z: targetZ ?? ctx.world.getGroundZ(targetX, targetY),
+    };
+    entity.combat.manualLaunchActive = false;
+    entity.combat.nextCombatProbeTick = -1;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE);
+    return;
+  }
   const action: UnitAction = {
     type: 'attackGround',
     x: targetX,

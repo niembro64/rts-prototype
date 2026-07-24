@@ -54,6 +54,7 @@ import {
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
   shiftUnitAction,
+  unshiftUnitAction,
 } from './unitActions';
 import {
   getFirstActionIntentEnd,
@@ -70,6 +71,8 @@ import {
   ARRIVAL_RADIUS,
   SimulationArrivalController,
 } from './SimulationArrivalController';
+import { isBuildTargetInRange } from './builderRange';
+import { isReclaimableTarget } from './reclaim';
 import {
   SimulationFlyingLoiterController,
 } from './SimulationFlyingLoiterController';
@@ -880,6 +883,37 @@ export class Simulation {
     unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
   }
 
+  private findPatrolReclaimTarget(builder: Entity): Entity | null {
+    const playerId = builder.ownership?.playerId;
+    if (playerId === undefined) return null;
+    let best: Entity | null = null;
+    let bestDistanceSq = Number.POSITIVE_INFINITY;
+    const consider = (target: Entity): void => {
+      if (!isReclaimableTarget(target) || target.id === builder.id) return;
+      const targetPlayerId = target.ownership?.playerId;
+      if (
+        targetPlayerId !== undefined &&
+        this.world.arePlayersAllied(playerId, targetPlayerId)
+      ) return;
+      if (!isBuildTargetInRange(builder, target)) return;
+      const dx = target.transform.x - builder.transform.x;
+      const dy = target.transform.y - builder.transform.y;
+      const distanceSq = dx * dx + dy * dy;
+      if (
+        distanceSq < bestDistanceSq ||
+        (distanceSq === bestDistanceSq && (best === null || target.id < best.id))
+      ) {
+        best = target;
+        bestDistanceSq = distanceSq;
+      }
+    };
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) consider(units[i]);
+    const buildings = this.world.getBuildings();
+    for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
+    return best;
+  }
+
   private handleSatisfiedMovementAnchor(entity: Entity, currentAction: UnitAction): boolean {
     const unit = entity.unit;
     if (!unit || !isSatisfiedMovementAnchorAction(currentAction)) return false;
@@ -1189,8 +1223,32 @@ export class Simulation {
 
       this.actionQueueMaintenance.promoteReachableBuildAction(entity);
 
-      // Get current action
-      const currentAction = unit.actions[0];
+      // BAR constructor Patrol services nearby allies first (the energy pass
+      // marks that above), then temporarily reclaims a nearby non-allied
+      // entity before resuming its loop. The durable Patrol remains on the
+      // host queue; turret locks are not used to choose construction work.
+      let currentAction = unit.actions[0];
+      if (
+        currentAction.type === 'patrol' &&
+        entity.builder !== null &&
+        !this.energyBuffers.sweepServicingBuilderIds.has(entity.id)
+      ) {
+        const reclaimTarget = this.findPatrolReclaimTarget(entity);
+        if (reclaimTarget !== null) {
+          const targetPoint = getEntityTargetPoint(reclaimTarget);
+          unshiftUnitAction(unit, {
+            type: 'reclaim',
+            x: targetPoint.x,
+            y: targetPoint.y,
+            z: targetPoint.z,
+            targetId: reclaimTarget.id,
+          });
+          this.refreshPatrolStartIndex(unit);
+          unit.activePath = null;
+          currentAction = unit.actions[0];
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+        }
+      }
       if (currentAction.type === 'selfDestruct') {
         this.activateQueuedSelfDestructAction(entity);
         continue;

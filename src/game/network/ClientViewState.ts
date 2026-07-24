@@ -1861,7 +1861,7 @@ export class ClientViewState {
     factory.rallyX = rally.x;
     factory.rallyY = rally.y;
     factory.rallyZ = rally.z;
-    factory.rallyType = rally.type;
+    factory.rallyType = rally.type === 'guard' ? 'move' : rally.type;
 
     const routeCount = values[base + 41] | 0;
     const routeOffset = values[base + 40] | 0;

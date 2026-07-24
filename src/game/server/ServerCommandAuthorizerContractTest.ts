@@ -15,6 +15,7 @@ import type {
   SetFactoryAirIdleStateCommand,
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetTowerTargetCommand,
   SetUnitMoveStateCommand,
   WaitCommand,
@@ -1121,6 +1122,23 @@ export function runServerCommandAuthorizerContractTest(): void {
       authorizedFactorySelfGuard.factoryId === fabricator.id &&
       authorizedFactorySelfGuard.targetId === fabricator.id,
     'setFactoryGuard must authorize owned BAR-equivalent builder-producing factories',
+  );
+  const factoryOutputGuardCommand: SetFactoryOutputGuardCommand = {
+    type: 'setFactoryOutputGuard',
+    tick: 1,
+    factoryId: fabricator.id,
+    targetId: queen.id,
+    queue: false,
+  };
+  const authorizedFactoryOutputGuard = authorizeGameServerGameplayCommand(
+    world,
+    factoryOutputGuardCommand,
+    { mode: 'player', playerId: 1 },
+  );
+  assertContract(
+    authorizedFactoryOutputGuard?.type === 'setFactoryOutputGuard' &&
+      authorizedFactoryOutputGuard.targetId === queen.id,
+    'factory output Guard must authorize an allied target independently of Factory Guard state',
   );
 
   const editFactoryQueueCommand: EditFactoryQueueCommand = {

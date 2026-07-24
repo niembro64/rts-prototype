@@ -300,11 +300,13 @@ function queueCombatTargetingSourceSlot(entity: Entity, slot: number): void {
 
 function combatCanFire(combat: Entity['combat']): boolean {
   if (combat === null) return false;
+  // Fire states govern autonomous acquisition. A player-authored Attack,
+  // Attack Ground, or Set Target is a host priority and remains executable
+  // even under Hold Fire. Entering Hold Fire still cancels old priorities;
+  // only a command issued after that transition recreates one.
+  if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) return true;
   const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
   if (fireState === 'fireAtWill' || fireState === 'defend' || fireState === 'fireAtAll') return true;
-  if (fireState === 'returnFire') {
-    return combat.priorityTargetId !== null || combat.priorityTargetPoint !== null;
-  }
   return false;
 }
 

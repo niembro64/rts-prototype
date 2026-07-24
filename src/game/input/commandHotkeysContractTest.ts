@@ -1661,13 +1661,13 @@ export function runCommandHotkeysContractTest(): void {
   );
   const ctrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true }), false);
   assertContract(
-    ctrlFactoryKey.repeat === false && ctrlFactoryKey.count === 20,
-    'BAR factory Ctrl grid key should queue twenty units',
+    ctrlFactoryKey.repeat === false && ctrlFactoryKey.count === -1,
+    'BAR factory Ctrl grid key should remove one unit',
   );
   const shiftCtrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), false);
   assertContract(
-    shiftCtrlFactoryKey.repeat === false && shiftCtrlFactoryKey.count === 100,
-    'BAR factory Shift+Ctrl grid key should queue one hundred units',
+    shiftCtrlFactoryKey.repeat === false && shiftCtrlFactoryKey.count === -5,
+    'BAR factory Shift+Ctrl grid key should remove five units',
   );
   const queuedDragStart = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 4);
   const plainDragRelease = queueModeFromEvent(keyEvent('w', 'KeyW'));

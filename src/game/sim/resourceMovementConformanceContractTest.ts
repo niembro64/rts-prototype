@@ -228,13 +228,16 @@ export function runResourceMovementConformanceContractTest(): void {
   repairWorld.addEntity(damaged);
 
   resourceMovementSystem.beginTick(repairWorld);
+  const repairEnergyBefore = economyManager.getEconomy(playerId)?.stockpile.curr;
+  const repairMetalBefore = economyManager.getEconomy(playerId)?.metal.stockpile.curr;
   distributeEnergy(repairWorld, 1000, createEnergyBuffers());
   const repairMovement = repairWorld.resourceMovements.find((movement) => movement.reason === 'repair');
-  assertContract(repairMovement !== undefined, 'repair funding must publish a resource movement');
-  assertContract(repairMovement.resource === 'energy', 'repair spend must use energy');
-  assertContract(repairMovement.direction === 'outbound', 'repair spend must be outbound from the commander pylon');
-  assertContract(repairMovement.sourceEntityId === commander.id, 'repair spend must preserve the commander host pylon');
-  assertContract(repairMovement.targetEntityId === damaged.id, 'repair spend must preserve the repair target endpoint');
+  assertContract(repairMovement === undefined, 'BAR repair must not publish a fake resource transfer');
+  assertContract(
+    economyManager.getEconomy(playerId)?.stockpile.curr === repairEnergyBefore &&
+      economyManager.getEconomy(playerId)?.metal.stockpile.curr === repairMetalBefore,
+    'BAR repair must consume neither energy nor metal',
+  );
 
   const damagedStructure = createCompletedOpenBuilding(
     repairWorld,
@@ -271,20 +274,13 @@ export function runResourceMovementConformanceContractTest(): void {
   const structureRepairMovements = repairWorld.resourceMovements.filter(
     (movement) => movement.reason === 'repair' && movement.targetEntityId === damagedStructure.id,
   );
-  const structureRepairEnergy = structureRepairMovements.reduce(
-    (sum, movement) => sum + movement.amount,
-    0,
+  assertContract(
+    structureRepairMovements.length === 0,
+    'stacked BAR repair must remain resource-free for every contributing builder',
   );
   assertContract(
-    structureRepairMovements.length === 2 &&
-      structureRepairMovements.some((movement) => movement.sourceEntityId === commander.id) &&
-      structureRepairMovements.some((movement) => movement.sourceEntityId === repairHelper.id),
-    'every explicitly ordered builder must contribute repair energy to a damaged structure',
-  );
-  assertNear(
-    damagedStructure.building!.hp - structureHpBeforeRepair,
-    structureRepairEnergy / 0.5,
-    'stacked repair HP must equal the sum of builder energy without duplicated or wasted spend',
+    damagedStructure.building!.hp > structureHpBeforeRepair,
+    'stacked builder repair power must restore HP without duplicated resource spend',
   );
 
   economyManager.reset();

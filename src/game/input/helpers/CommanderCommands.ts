@@ -15,7 +15,7 @@ import type {
   RepairCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
-  SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetRallyPointCommand,
   UnloadTransportCommand,
 } from '../../sim/commands';
@@ -437,6 +437,9 @@ export function buildFactoryRallyCommands(
   mode: WaypointType,
   tick: number,
   worldZ?: number,
+  queue = false,
+  queueFront = false,
+  queueInsertIndex?: number,
 ): SetRallyPointCommand[] {
   const cmds: SetRallyPointCommand[] = [];
   for (const f of factories) {
@@ -449,6 +452,9 @@ export function buildFactoryRallyCommands(
       rallyY: worldY,
       rallyZ: worldZ,
       waypointType: mode,
+      queue,
+      queueFront,
+      queueInsertIndex,
     });
   }
   return cmds;
@@ -460,16 +466,22 @@ export function buildFactoryGuardCommands(
   playerId: PlayerId,
   tick: number,
   arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
-): SetFactoryGuardCommand[] {
+  queue = false,
+  queueFront = false,
+  queueInsertIndex?: number,
+): SetFactoryOutputGuardCommand[] {
   if (!isGuardableFriendlyTarget(target, playerId, arePlayersAllied)) return [];
-  const cmds: SetFactoryGuardCommand[] = [];
+  const cmds: SetFactoryOutputGuardCommand[] = [];
   for (const f of factories) {
-    if (!f.factory) continue;
+    if (!f.factory || target.id === f.id) continue;
     cmds.push({
-      type: 'setFactoryGuard',
+      type: 'setFactoryOutputGuard',
       tick,
       factoryId: f.id,
       targetId: target.id,
+      queue,
+      queueFront,
+      queueInsertIndex,
     });
   }
   return cmds;

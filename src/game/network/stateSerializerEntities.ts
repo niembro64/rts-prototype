@@ -1008,7 +1008,7 @@ function appendDirectFactoryRouteWireRows(entity: Entity): { offset: number; cou
     values[base + 2] = waypoint.z !== null && waypoint.z !== undefined ? 1 : 0;
     values[base + 3] = waypoint.z ?? 0;
     values[base + 4] = strings.length;
-    strings.push(waypoint.type);
+    strings.push(waypoint.type === 'guard' ? 'move' : waypoint.type);
   }
   return { offset, count: defaultWaypoints.length };
 }
@@ -1887,7 +1887,7 @@ export function serializeEntitySnapshot(
               dst.pos.x = src.x;
               dst.pos.y = src.y;
               dst.posZ = src.z;
-              dst.type = src.type;
+              dst.type = src.type === 'guard' ? 'move' : src.type;
             }
             f.route = route;
           } else {

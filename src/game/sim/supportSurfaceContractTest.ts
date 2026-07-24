@@ -638,6 +638,7 @@ function assertFactoryShellContract(): void {
   factory.factory.productionQueue.length = 0;
   factory.factory.currentShellId = null;
   factory.factory.isProducing = false;
+  factory.factory.defaultWaypoints = null;
   const builderSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(builderSpawned.length === 1, 'factory guard mode must still produce builder shells');
   const builderShell = builderSpawned[0];
@@ -662,6 +663,13 @@ function assertFactoryShellContract(): void {
   factory.factory.selectedUnitBlueprintId = 'unitBee';
   factory.factory.repeatProduction = false;
   factory.factory.guardTargetId = null;
+  factory.factory.defaultWaypoints = [{
+    x: shell.transform.x,
+    y: shell.transform.y,
+    z: shell.transform.z,
+    type: 'guard',
+    targetId: shell.id,
+  }];
   factory.factory.productionQueue.length = 0;
   factory.factory.currentShellId = null;
   factory.factory.currentBuildProgress = 0;
@@ -680,10 +688,21 @@ function assertFactoryShellContract(): void {
     airPageShell.unit?.moveState === 'maneuver',
     'BAR air-factory page outputs must keep the normal maneuver move state',
   );
+  const guardedAirPageUnit = assertUnitActionCount(
+    airPageShell,
+    1,
+    'factory output Guard must copy one Guard action to the produced unit',
+  );
+  assertContract(
+    guardedAirPageUnit.actions[0].type === 'guard' &&
+      guardedAirPageUnit.actions[0].targetId === shell.id,
+    'factory output Guard must preserve its allied host target instead of degrading to a rally Move',
+  );
 
   factory.factory.selectedUnitBlueprintId = hoverUnitBlueprintId;
   factory.factory.repeatProduction = false;
   factory.factory.guardTargetId = null;
+  factory.factory.defaultWaypoints = null;
   factory.factory.productionQueue.length = 0;
   factory.factory.productionQueue.push('unitLynx');
   const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;

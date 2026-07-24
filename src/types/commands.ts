@@ -33,6 +33,7 @@ type CommandType =
   | 'changeFactoryUnitQuota'
   | 'setRallyPoint'
   | 'setFactoryGuard'
+  | 'setFactoryOutputGuard'
   | 'fireDGun'
   | 'setFireEnabled'
   | 'setBuildingActive'
@@ -272,12 +273,28 @@ export type SetRallyPointCommand = BaseCommand & {
   rallyY: number;
   rallyZ?: number;
   waypointType: WaypointType;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type SetFactoryGuardCommand = BaseCommand & {
   type: 'setFactoryGuard';
   factoryId: EntityId;
   targetId: EntityId | null;
+};
+
+/** A Guard order copied to units subsequently produced by a factory.
+ *  This is deliberately distinct from SetFactoryGuard: Factory Guard is a
+ *  persistent factory state that only auto-guards eligible builder outputs
+ *  when the factory has no output-order queue. */
+export type SetFactoryOutputGuardCommand = BaseCommand & {
+  type: 'setFactoryOutputGuard';
+  factoryId: EntityId;
+  targetId: EntityId;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type FireDGunCommand = BaseCommand & {
@@ -628,6 +645,7 @@ export type Command =
   | ChangeFactoryUnitQuotaCommand
   | SetRallyPointCommand
   | SetFactoryGuardCommand
+  | SetFactoryOutputGuardCommand
   | FireDGunCommand
   | SetFireEnabledCommand
   | SetBuildingActiveCommand

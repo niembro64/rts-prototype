@@ -34,6 +34,7 @@ import {
   type CommandHotkeyPresetId,
 } from '../input/commandHotkeys';
 import {
+  factoryProductionClickModeFromEvent,
   factoryProductionKeyModeFromEvent,
   queueModeFromEvent,
   queueModeFromEventIgnoringControlModifiers,
@@ -82,7 +83,12 @@ type Input3DKeyboardControllerConfig = {
   cycleActiveBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   setBuildMode: (buildingBlueprintId: StructureBlueprintId) => void;
-  queueSelectedFactoryUnitSlot: (slotIndex: number, repeat: boolean, count: number) => boolean;
+  queueSelectedFactoryUnitSlot: (
+    slotIndex: number,
+    repeat: boolean,
+    count: number,
+    front?: boolean,
+  ) => boolean;
   changeSelectedFactoryUnitSlotQuota: (slotIndex: number, delta: number) => boolean;
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
   increaseBuildLineSpacing: () => void;
@@ -801,16 +807,22 @@ export class Input3DKeyboardController {
     const productionMode = factoryBuildSlotIndex >= 0
       ? factoryProductionKeyModeFromEvent(e, this.config.getSelectedFactoryRepeatProduction())
       : null;
+    const factoryQuotaMode = factoryBuildSlotIndex >= 0 &&
+      this.config.getFactoryQueueMode() &&
+      !e.altKey
+      ? factoryProductionClickModeFromEvent(e, false)
+      : null;
     if (
       factoryBuildSlotIndex >= 0 &&
       productionMode !== null &&
       (
-        this.config.getFactoryQueueMode() && !e.altKey
-          ? this.config.changeSelectedFactoryUnitSlotQuota(factoryBuildSlotIndex, productionMode.count)
+        factoryQuotaMode !== null
+          ? this.config.changeSelectedFactoryUnitSlotQuota(factoryBuildSlotIndex, factoryQuotaMode.count)
           : this.config.queueSelectedFactoryUnitSlot(
             factoryBuildSlotIndex,
             productionMode.repeat,
             productionMode.count,
+            productionMode.front,
           )
       )
     ) {

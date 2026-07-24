@@ -414,7 +414,7 @@ function runBarFactoryQueueModeContract(): void {
   let toggleCount = 0;
   let airIdleToggleCount = 0;
   const factoryRepeatStates: boolean[] = [];
-  const queuedSlots: { slotIndex: number; repeat: boolean; count: number }[] = [];
+  const queuedSlots: { slotIndex: number; repeat: boolean; count: number; front: boolean }[] = [];
   const quotaSlots: { slotIndex: number; delta: number }[] = [];
   const controller = new Input3DKeyboardController(new Proxy({
     moveCameraByKeyboard: () => {},
@@ -438,17 +438,17 @@ function runBarFactoryQueueModeContract(): void {
     toggleSelectedFactoryAirIdleState: () => {
       airIdleToggleCount++;
     },
-    queueSelectedFactoryUnitSlot: (slotIndex: number, repeat: boolean, count: number) => {
-      queuedSlots.push({ slotIndex, repeat, count });
+    queueSelectedFactoryUnitSlot: (slotIndex: number, repeat: boolean, count: number, front = false) => {
+      queuedSlots.push({ slotIndex, repeat, count, front });
       return true;
     },
     changeSelectedFactoryUnitSlotQuota: (slotIndex: number, delta: number) => {
       quotaSlots.push({ slotIndex, delta });
       return true;
     },
-  }, {
-    get(target, prop: string | symbol) {
-      if (prop in target) return target[prop as keyof typeof target];
+  } as Record<PropertyKey, unknown>, {
+    get(target: Record<PropertyKey, unknown>, prop: string | symbol) {
+      if (prop in target) return target[prop];
       return () => false;
     },
   }) as never);
@@ -498,8 +498,8 @@ function runBarFactoryQueueModeContract(): void {
     queuedSlots.length === 4 &&
       queuedSlots[3].slotIndex === 2 &&
       queuedSlots[3].repeat === false &&
-      queuedSlots[3].count === 20,
-    'BAR-grid Ctrl factory slot hotkeys must queue twenty units',
+      queuedSlots[3].count === -1,
+    'BAR-grid Ctrl factory slot hotkeys must remove one unit',
   );
   assertContract(
     ctrlEvent.defaultPrevented,
@@ -512,8 +512,8 @@ function runBarFactoryQueueModeContract(): void {
     queuedSlots.length === 5 &&
       queuedSlots[4].slotIndex === 3 &&
       queuedSlots[4].repeat === false &&
-      queuedSlots[4].count === 100,
-    'BAR-grid Shift+Ctrl factory slot hotkeys must queue one hundred units',
+      queuedSlots[4].count === -5,
+    'BAR-grid Shift+Ctrl factory slot hotkeys must remove five units',
   );
   assertContract(
     shiftCtrlEvent.defaultPrevented,
@@ -584,8 +584,9 @@ function runBarFactoryQueueModeContract(): void {
       queuedSlots[5].slotIndex === 2 &&
       queuedSlots[5].repeat === false &&
       queuedSlots[5].count === 1 &&
+      queuedSlots[5].front === true &&
       quotaSlots.length === 3,
-    'BAR-grid factory quota mode must let Alt bypass quota mode and queue normally',
+    'BAR-grid factory quota mode must let Alt bypass quota mode and queue at the front',
   );
   assertContract(
     altQueueBypassEvent.defaultPrevented,

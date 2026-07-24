@@ -20,7 +20,6 @@ const ACTION_TYPE_UNLOAD_TRANSPORT: u8 = 13;
 const ACTION_TYPE_NONE: u8 = 255;
 
 const UNIT_ACTION_FLAG_MOVE_STATE_ROAM: u32 = 1 << 0;
-const UNIT_ACTION_FLAG_MOVE_STATE_HOLD: u32 = 1 << 1;
 const UNIT_ACTION_FLAG_LOAD_IN_RANGE: u32 = 1 << 2;
 const UNIT_ACTION_FLAG_TRANSPORT_EMPTY: u32 = 1 << 3;
 const UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE: u32 = 1 << 4;
@@ -92,11 +91,6 @@ fn movement_blocked_by_combat(flags: u32, fight_mode: bool) -> bool {
     } else {
         has(flags, UNIT_ACTION_FLAG_COMBAT_STOP_ANY)
     }
-}
-
-#[inline]
-fn movement_blocked_by_hold(flags: u32) -> bool {
-    has(flags, UNIT_ACTION_FLAG_MOVE_STATE_HOLD)
 }
 
 /// Horizontal reach distance from the acting slot to the target slot,
@@ -252,13 +246,13 @@ pub fn unit_action_plan_batch(
         } else if action == ACTION_TYPE_ATTACK {
             if !has(f, UNIT_ACTION_FLAG_TARGET_PRESENT) {
                 UNIT_ACTION_PLAN_MOVE_COMPLETION
-            } else if movement_blocked_by_combat(f, false) || movement_blocked_by_hold(f) {
+            } else if movement_blocked_by_combat(f, false) {
                 UNIT_ACTION_PLAN_ATTACK_HOLD
             } else {
                 UNIT_ACTION_PLAN_ATTACK_MOVE
             }
         } else if action == ACTION_TYPE_ATTACK_GROUND {
-            if movement_blocked_by_combat(f, false) || movement_blocked_by_hold(f) {
+            if movement_blocked_by_combat(f, false) {
                 UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD
             } else {
                 UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE

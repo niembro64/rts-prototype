@@ -20,10 +20,10 @@ const BAR_BOMBER_DEFAULT_HOLD_FIRE_UNIT_BLUEPRINT_IDS = new Set<string>([
 const BAR_DEFAULT_HOLD_POSITION_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM unitdefs that explicitly author movestate=0 among the current
   // local analogues, plus AircraftBomb bombers adjusted by
-  // unit_bombers_default_hold_fire.lua. Tick deliberately keeps the local
-  // maneuver default so a direct Attack order can pursue an out-of-range
-  // target; hold-position remains available as an explicit player state.
+  // unit_bombers_default_hold_fire.lua. Explicit Attack overrides this
+  // autonomous stance and still pursues an out-of-range target.
   'unitCommander',
+  'unitTick',
   'unitJackal',
   'unitMongoose',
   'unitBadger',
@@ -133,16 +133,18 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
 }
 
 export function entityHasBarAttackCommand(entity: Entity): boolean {
-  return entity.unit !== null && entityHasBarSetTargetCommand(entity);
+  return entityHasBarSetTargetCommand(entity);
 }
 
 /** Recoil's Attack command is unit-or-map, but weapons authored with
  *  canattackground=false must not receive the map-point form. */
 export function entityCanBarAttackGround(entity: Entity): boolean {
   const unitBlueprintId = entity.unit?.unitBlueprintId;
-  return unitBlueprintId !== undefined &&
-    entityHasBarAttackCommand(entity) &&
-    !unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId);
+  if (!entityHasBarAttackCommand(entity)) return false;
+  if (unitBlueprintId !== undefined) {
+    return !unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId);
+  }
+  return !buildingBlueprintHasBarAirTargetOnlyRule(entity.buildingBlueprintId);
 }
 
 export function entityMatchesBarLegacyGroundWeaponSelection(entity: Entity): boolean {

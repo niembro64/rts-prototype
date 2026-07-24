@@ -102,6 +102,7 @@ export class Input3DRightDragController {
   handleMouseDown(e: MouseEvent): void {
     const source = this.source();
     const selectedUnits = source.getSelectedUnits();
+    const selectedAttackHosts = selectedUnits.concat(source.getSelectedBuildings());
     const tick = this.config.getTick();
     const activePlayerId = this.config.getActivePlayerId();
     const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
@@ -110,14 +111,14 @@ export class Input3DRightDragController {
       ? source.getEntity(entityHitId)
       : null;
     const preserveFormationMove = selectedUnits.length > 0 && this.shouldUseFormationOffsets(e);
-    const selectionHasAttacker = selectedUnits.some(entityHasBarAttackCommand);
+    const selectionHasAttacker = selectedAttackHosts.some(entityHasBarAttackCommand);
 
     // Enemy under the cursor: an attack-capable selection attacks it; a pure
     // builder selection reclaims it instead (BAR default-command leader rule).
     if (!preserveFormationMove && selectionHasAttacker) {
       const meshAttackCmd = buildAttackCommandForTarget(
         entityHit,
-        selectedUnits,
+        selectedAttackHosts,
         activePlayerId,
         tick,
         queueMode.queue,
@@ -130,7 +131,7 @@ export class Input3DRightDragController {
           debugLog(
             GAME_DIAGNOSTICS.commandPlans,
             '[click] attack-mesh: hit target #%d, %d unit(s)',
-            meshAttackCmd.targetId, selectedUnits.length,
+            meshAttackCmd.targetId, selectedAttackHosts.length,
           );
         } else {
           debugLog(
@@ -139,7 +140,7 @@ export class Input3DRightDragController {
             Math.round(meshAttackCmd.targetX),
             Math.round(meshAttackCmd.targetY),
             Math.round(meshAttackCmd.targetZ ?? 0),
-            selectedUnits.length,
+            selectedAttackHosts.length,
           );
         }
         this.config.applyCursor('attack');
@@ -181,33 +182,15 @@ export class Input3DRightDragController {
       }
     }
 
-    if (selectedUnits.length === 0) {
-      const factoryGuardCmds = buildFactoryGuardCommands(
-        this.getSelectedFactories(),
-        entityHit,
-        activePlayerId,
-        tick,
-        source.arePlayersAllied,
-      );
-      if (factoryGuardCmds.length > 0) {
-        debugLog(
-          GAME_DIAGNOSTICS.commandPlans,
-          '[click] factory-guard: hit target #%d, %d factory(s)',
-          factoryGuardCmds[0].targetId, factoryGuardCmds.length,
-        );
-        this.config.applyCursor('guard');
-        for (const cmd of factoryGuardCmds) this.config.commandQueue.enqueue(cmd);
-        return;
-      }
-    }
-
     // Right-click on a friendly body in 3D issues GUARD — BAR's smart
     // default command over an ally. What the guard then does (defend the
     // target, repair/heal it, or assist what it is building) is resolved
     // per the guarder's own capabilities in the guard behavior. Self-guard
     // is excluded by buildGuardCommandForTarget (drops the target itself).
-    if (!preserveFormationMove && selectedUnits.length > 0) {
-      const guardCmd = buildGuardCommandForTarget(
+    // In a mixed unit+factory selection, the same click also becomes a Guard
+    // order in each factory's produced-unit command queue.
+    if (!preserveFormationMove) {
+      const unitGuardCmd = buildGuardCommandForTarget(
         entityHit,
         selectedUnits,
         activePlayerId,
@@ -217,14 +200,25 @@ export class Input3DRightDragController {
         queueMode.queueInsertIndex,
         source.arePlayersAllied,
       );
-      if (guardCmd) {
+      const factoryGuardCmds = buildFactoryGuardCommands(
+        this.getSelectedFactories(),
+        entityHit,
+        activePlayerId,
+        tick,
+        source.arePlayersAllied,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (unitGuardCmd !== null || factoryGuardCmds.length > 0) {
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
-          '[click] guard-mesh: hit target #%d, %d unit(s)',
-          guardCmd.targetId, selectedUnits.length,
+          '[click] guard-mesh: hit target #%d, %d unit(s), %d factory(s)',
+          entityHit?.id ?? -1, selectedUnits.length, factoryGuardCmds.length,
         );
         this.config.applyCursor('guard');
-        this.config.commandQueue.enqueue(guardCmd);
+        if (unitGuardCmd !== null) this.config.commandQueue.enqueue(unitGuardCmd);
+        for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
         return;
       }
     }
@@ -357,6 +351,18 @@ export class Input3DRightDragController {
           for (let i = 0; i < repairCmds.length; i++) {
             this.config.commandQueue.enqueue(repairCmds[i]);
           }
+          const target = source.getEntity(repairCmd.targetId);
+          const factoryGuardCmds = buildFactoryGuardCommands(
+            this.getSelectedFactories(),
+            target,
+            this.config.getActivePlayerId(),
+            tick,
+            source.arePlayersAllied,
+            queueMode.queue,
+            queueMode.queueFront,
+            queueMode.queueInsertIndex,
+          );
+          for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
           this.resetLineDrag();
           this.config.refreshCursor();
           return;
@@ -378,11 +384,7 @@ export class Input3DRightDragController {
         this.config.commandQueue.enqueue(moveCmd);
         if (this.isFormationModeActive() && !queueMode.queue) this.config.exitFormationModes();
       }
-      this.resetLineDrag();
-      this.config.refreshCursor();
-      return;
     }
-
     const factories = this.getSelectedFactories();
     if (factories.length > 0 && points.length > 0) {
       const finalPoint = points[points.length - 1];
@@ -396,8 +398,14 @@ export class Input3DRightDragController {
       const cmds = buildFactoryRallyCommands(
         factories, finalPoint.x, finalPoint.y,
         this.config.getWaypointMode(), tick, finalPoint.z,
+        queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex,
       );
       for (const cmd of cmds) this.config.commandQueue.enqueue(cmd);
+    }
+    if (selectedUnits.length > 0 && points.length > 0) {
+      this.resetLineDrag();
+      this.config.refreshCursor();
+      return;
     }
     this.resetLineDrag();
     this.config.refreshCursor();
@@ -412,6 +420,7 @@ export class Input3DRightDragController {
   issueWorldPointCommand(x: number, y: number, queueMode: QueueCommandMode): void {
     const source = this.source();
     const selectedUnits = source.getSelectedUnits();
+    const selectedAttackHosts = selectedUnits.concat(source.getSelectedBuildings());
     const tick = this.config.getTick();
     const bounds = this.config.getMapSampleBounds();
     const z = getTerrainBedHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
@@ -430,12 +439,26 @@ export class Input3DRightDragController {
         for (let i = 0; i < repairCmds.length; i++) {
           this.config.commandQueue.enqueue(repairCmds[i]);
         }
+        const target = source.getEntity(repairCmds[0].targetId);
+        const factoryGuardCmds = buildFactoryGuardCommands(
+          this.getSelectedFactories(),
+          target,
+          this.config.getActivePlayerId(),
+          tick,
+          source.arePlayersAllied,
+          queueMode.queue,
+          queueMode.queueFront,
+          queueMode.queueInsertIndex,
+        );
+        for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
         return;
       }
+    }
+    if (selectedAttackHosts.length > 0) {
       const attackCmd = buildAttackCommandAt(
         source,
         x, y,
-        selectedUnits,
+        selectedAttackHosts,
         this.config.getActivePlayerId(),
         tick,
         queueMode.queue,
@@ -446,6 +469,8 @@ export class Input3DRightDragController {
         this.config.commandQueue.enqueue(attackCmd);
         return;
       }
+    }
+    if (selectedUnits.length > 0) {
       this.worldPointPath.start(x, y, selectedUnits.length, z);
       const moveCmd = buildLinePathMoveCommand(
         this.worldPointPath,
@@ -457,7 +482,6 @@ export class Input3DRightDragController {
         queueMode.queueInsertIndex,
       );
       if (moveCmd) this.config.commandQueue.enqueue(moveCmd);
-      return;
     }
 
     const factories = this.getSelectedFactories();
@@ -465,6 +489,7 @@ export class Input3DRightDragController {
       const cmds = buildFactoryRallyCommands(
         factories, x, y,
         this.config.getWaypointMode(), tick, z,
+        queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex,
       );
       for (const cmd of cmds) this.config.commandQueue.enqueue(cmd);
     }

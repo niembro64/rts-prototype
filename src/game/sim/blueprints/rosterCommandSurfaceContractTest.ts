@@ -799,14 +799,15 @@ export function runRosterCommandSurfaceContractTest(): void {
   );
   assertSameMembers('BAR-equivalent default hold-position units', barDefaultHoldPositionUnitIds, [
     'unitCommander',
+    'unitTick',
     'unitJackal',
     'unitBadger',
     'unitMongoose',
     'unitDragonfly',
   ]);
   assertContract(
-    unitBlueprintBarDefaultMoveState('unitTick') === 'maneuver',
-    'Tick must default to maneuver so direct Attack orders pursue targets until the Mini Beam engages',
+    unitBlueprintBarDefaultMoveState('unitTick') === 'holdPosition',
+    'BAR armflea/unitTick starts on hold-position while explicit Attack still pursues',
   );
   const barDefaultHoldFireUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
     unitBlueprintBarDefaultFireState(unitBlueprintId) === 'holdFire',

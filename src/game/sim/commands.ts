@@ -28,6 +28,7 @@ export type {
   ChangeFactoryUnitQuotaCommand,
   SetRallyPointCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   FireDGunCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,

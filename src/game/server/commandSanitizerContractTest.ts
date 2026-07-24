@@ -14,6 +14,7 @@ import type {
   ResurrectAreaCommand,
   ResurrectCommand,
   SetFactoryGuardCommand,
+  SetFactoryOutputGuardCommand,
   SetFactoryRepeatProductionCommand,
   SetRallyPointCommand,
   SetFireEnabledCommand,
@@ -233,6 +234,20 @@ export function runCommandSanitizerContractTest(): void {
     clearFactoryGuard.factoryId === 42 &&
     clearFactoryGuard.targetId === null,
     'setFactoryGuard must preserve null target for factory guard clear',
+  );
+  const factoryOutputGuard = sanitizeRequired<SetFactoryOutputGuardCommand>(world, {
+    type: 'setFactoryOutputGuard',
+    tick: 5,
+    factoryId: 42,
+    targetId: 7,
+    queue: true,
+    queueFront: true,
+  });
+  assertContract(
+    factoryOutputGuard.tick === 9001 &&
+      factoryOutputGuard.queue === true &&
+      factoryOutputGuard.queueFront === true,
+    'factory output Guard must preserve BAR queue/front-insertion modifiers',
   );
 
   const setBuilderPriority = sanitizeRequired<SetBuilderPriorityCommand>(world, {
@@ -626,6 +641,7 @@ export function runCommandSanitizerContractTest(): void {
     rallyY: 15,
     rallyZ: 999,
     waypointType: 'move',
+    queue: false,
   });
   assertContract(
     rally.rallyZ === world.getTerrainBedZ(14, 15),

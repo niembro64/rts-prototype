@@ -466,8 +466,8 @@ export class Input3DManager {
       cycleActiveBuilder: () => this.cycleActiveBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       setBuildMode: (buildingBlueprintId) => this.setBuildMode(buildingBlueprintId),
-      queueSelectedFactoryUnitSlot: (slotIndex, repeat, count) =>
-        this.queueSelectedFactoryUnitSlot(slotIndex, repeat, count),
+      queueSelectedFactoryUnitSlot: (slotIndex, repeat, count, front) =>
+        this.queueSelectedFactoryUnitSlot(slotIndex, repeat, count, front),
       changeSelectedFactoryUnitSlotQuota: (slotIndex, delta) =>
         this.changeSelectedFactoryUnitSlotQuota(slotIndex, delta),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
@@ -2151,6 +2151,10 @@ export class Input3DManager {
     for (let i = 0; i < selectedUnits.length; i++) {
       if (entityHasBarAttackCommand(selectedUnits[i])) return true;
     }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (entityHasBarAttackCommand(selectedStatic[i])) return true;
+    }
     return false;
   }
 
@@ -2358,7 +2362,12 @@ export class Input3DManager {
     }
   }
 
-  private queueSelectedFactoryUnitSlot(slotIndex: number, repeat: boolean, count: number): boolean {
+  private queueSelectedFactoryUnitSlot(
+    slotIndex: number,
+    repeat: boolean,
+    count: number,
+    front = false,
+  ): boolean {
     const slot = this.resolveSelectedFactoryUnitSlot(slotIndex);
     if (slot === null) return false;
     if (count < 0) {
@@ -2372,6 +2381,7 @@ export class Input3DManager {
       });
       return true;
     }
+    const queueLengthBeforeAdd = slot.factory.factory?.productionQueue.length ?? 0;
     this.commandSink.enqueue({
       type: 'queueUnit',
       tick: this.context.getTick(),
@@ -2380,6 +2390,17 @@ export class Input3DManager {
       repeat,
       count,
     });
+    if (front && !repeat && queueLengthBeforeAdd > 0) {
+      this.commandSink.enqueue({
+        type: 'editFactoryQueue',
+        tick: this.context.getTick(),
+        factoryId: slot.factory.id,
+        operation: 'move',
+        index: queueLengthBeforeAdd,
+        length: count,
+        toIndex: 0,
+      });
+    }
     return true;
   }
 

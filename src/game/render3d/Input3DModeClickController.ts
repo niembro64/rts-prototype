@@ -59,6 +59,7 @@ import {
   resolveAreaCommandTargetFilter,
   type AreaCommandTargetFilter,
 } from '../sim/areaCommandFilters';
+import { entityHasBarAttackCommand } from '../sim/unitCommandCapabilities';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -120,6 +121,7 @@ type ModeClickEntitySource = {
   getBuildings: () => Entity[];
   getEntity: (id: EntityId) => Entity | undefined;
   getSelectedUnits: () => Entity[];
+  getSelectedBuildings?: () => Entity[];
   arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
   getEntitySetVersion?: () => number;
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
@@ -384,6 +386,13 @@ export class Input3DModeClickController {
   private beginAreaDrag(e: MouseEvent): boolean {
     const kind = this.activeAreaDragKind();
     if (kind === null) return false;
+    // BAR only enters multi-placement drag grammar while Shift is held.
+    // Without Shift, the ordinary build click places exactly one structure
+    // even if the pointer happens to move before release.
+    if (
+      kind === 'buildLine' &&
+      !effectiveQueueModifierEvent(e).shiftKey
+    ) return false;
     return this.beginAreaDragWithKind(e, kind, 0);
   }
 
@@ -1372,8 +1381,9 @@ export class Input3DModeClickController {
   }
 
   private handleAttackClick(e: MouseEvent): void {
-    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
-    if (selectedUnits.length === 0) {
+    const source = this.config.getEntitySource();
+    const selectedAttackHosts = source.getSelectedUnits().concat(source.getSelectedBuildings?.() ?? []);
+    if (!selectedAttackHosts.some(entityHasBarAttackCommand)) {
       this.config.exitAttackMode();
       return;
     }
@@ -1386,13 +1396,13 @@ export class Input3DModeClickController {
     const queueMode = this.resolveClickQueueMode(e);
     const meshAttackCmd = buildAttackCommandForTarget(
       entityHit,
-      selectedUnits,
+      selectedAttackHosts,
       activePlayerId,
       tick,
       queueMode.queue,
       queueMode.queueFront,
       queueMode.queueInsertIndex,
-      this.config.getEntitySource().arePlayersAllied,
+      source.arePlayersAllied,
     );
     if (meshAttackCmd) {
       this.config.commandQueue.enqueue(meshAttackCmd);
@@ -1409,7 +1419,7 @@ export class Input3DModeClickController {
       this.config.getEntitySource().arePlayersAllied,
     )) {
       const allyGroundAttackCmd = buildAttackGroundCommand(
-        selectedUnits,
+        selectedAttackHosts,
         world.x,
         world.y,
         tick,
@@ -1425,10 +1435,10 @@ export class Input3DModeClickController {
       return;
     }
     const attackCmd = buildAttackCommandAt(
-      this.config.getEntitySource(),
+      source,
       world.x,
       world.y,
-      selectedUnits,
+      selectedAttackHosts,
       activePlayerId,
       tick,
       queueMode.queue,
@@ -1439,7 +1449,7 @@ export class Input3DModeClickController {
     // Attack Point order, not Fight. buildAttackGroundCommand capability-
     // filters unarmed scouts and air-only fighters from mixed selections.
     const cmd = attackCmd ?? buildAttackGroundCommand(
-      selectedUnits,
+      selectedAttackHosts,
       world.x,
       world.y,
       tick,
@@ -1909,11 +1919,10 @@ function isAlliedTargetForPlayer(
 
 
 /** BAR placement-drag modes (engine GuiHandler, mirrored by
- *  gui_pregame_build.lua determineBuildMode): Alt+drag = GRID (fill the
- *  dragged rectangle), Alt+Ctrl+drag = BOX (hollow frame), plain drag =
- *  LINE. BAR additionally requires Shift because unqueued orders would
- *  overwrite each other there; our batch queues its tail internally, so
- *  Shift stays the orthogonal queue modifier. */
+ *  gui_pregame_build.lua determineBuildMode): Shift+drag = LINE,
+ *  Shift+Alt+drag = GRID (filled rectangle), and Shift+Alt+Ctrl+drag =
+ *  BOX (hollow frame). beginAreaDrag owns the required Shift gate; this
+ *  resolver re-reads Alt/Ctrl during a live drag for immediate previews. */
 function resolveBuildDragKind(e: MouseEvent): Input3DAreaDragKind {
   const modifiers = effectiveQueueModifierEvent(e);
   if (modifiers.altKey && (modifiers.ctrlKey || modifiers.metaKey)) return 'buildBorder';

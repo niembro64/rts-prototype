@@ -1123,7 +1123,7 @@ function createBuildingFromTypedFullWireRow(
       rallyX: rally.x,
       rallyY: rally.y,
       rallyZ: rally.z,
-      rallyType: rally.type,
+      rallyType: rally.type === 'guard' ? 'move' : rally.type,
       guardTargetId: values[base + 35] !== 0
         ? (values[base + 36] | 0)
         : null,
