@@ -57,10 +57,10 @@ export class RtsScene3DCameraFootprintSystem {
   }
 
   private computeCameraQuad(camera: THREE.Camera): void {
-    this.writePointOnHorizontalPlane(camera, -1,  1, 0, this.cameraQuad[0]);
-    this.writePointOnHorizontalPlane(camera,  1,  1, 0, this.cameraQuad[1]);
-    this.writePointOnHorizontalPlane(camera,  1, -1, 0, this.cameraQuad[2]);
-    this.writePointOnHorizontalPlane(camera, -1, -1, 0, this.cameraQuad[3]);
+    this.writePointOnHorizontalPlane(camera, -1,  1, this.cameraQuad[0]);
+    this.writePointOnHorizontalPlane(camera,  1,  1, this.cameraQuad[1]);
+    this.writePointOnHorizontalPlane(camera,  1, -1, this.cameraQuad[2]);
+    this.writePointOnHorizontalPlane(camera, -1, -1, this.cameraQuad[3]);
   }
 
   private computeRenderScopeBounds(
@@ -96,6 +96,21 @@ export class RtsScene3DCameraFootprintSystem {
       }
     }
 
+    // The plane samples above bracket each frustum ray only from the FAR
+    // side: a ray's terrain hit lies between t=0 (the eye) and its first
+    // plane crossing ahead. Without the eye's own footprint the near bracket
+    // is missing, and a mountain face rising right beside the camera — much
+    // more common with the constant-altitude camera hugging its clearance —
+    // can produce visible fragments outside these bounds. Fragments outside
+    // the bounds receive NO fog-of-war shade and no entity shadows (the
+    // world-shade shader gates on the coverage window), so the eye's ground
+    // projection must always be part of the scope AABB.
+    const eye = this.raycaster.ray.origin;
+    if (eye.x < bounds.minX) bounds.minX = eye.x;
+    if (eye.x > bounds.maxX) bounds.maxX = eye.x;
+    if (eye.z < bounds.minY) bounds.minY = eye.z;
+    if (eye.z > bounds.maxY) bounds.maxY = eye.z;
+
     return bounds;
   }
 
@@ -103,11 +118,16 @@ export class RtsScene3DCameraFootprintSystem {
     camera: THREE.Camera,
     ndcX: number,
     ndcY: number,
-    worldY: number,
     out: { x: number; y: number },
   ): void {
     this.setRayFromCamera(camera, ndcX, ndcY);
-    this.writePointOnCurrentRay(worldY, out);
+    // The camera may now fly below y=0 (basins reach the world floor and the
+    // camera submerges freely), where the y=0 plane is behind every downward
+    // ray and the old single-plane intersection degraded all four corners to
+    // the far fallback. Cascade to the world-floor plane so the quad keeps
+    // tracking the ground the camera is actually looking at.
+    if (this.writePointOnCurrentRay(0, out)) return;
+    this.writePointOnCurrentRay(TILE_FLOOR_Y, out);
   }
 
   private setRayFromCamera(
@@ -119,27 +139,34 @@ export class RtsScene3DCameraFootprintSystem {
     this.raycaster.setFromCamera(this.ndc, camera);
   }
 
+  /** Intersect the current ray with a horizontal plane. Returns true when
+   *  the plane lies ahead of the ray; otherwise writes the capped far point
+   *  and returns false. The far cap also bounds legitimate but nearly
+   *  parallel intersections so one grazing ray cannot blow the scope AABB
+   *  out to astronomic coordinates. */
   private writePointOnCurrentRay(
     worldY: number,
     out: { x: number; y: number },
-  ): void {
+  ): boolean {
     const ray = this.raycaster.ray;
+    const farT = Math.max(this.mapWidth, this.mapHeight) * 4;
     const denom = ray.direction.y;
     if (Math.abs(denom) > 1e-6) {
       const t = (worldY - ray.origin.y) / denom;
       if (t >= 0) {
+        const cappedT = Math.min(t, farT);
         this.hit.set(
-          ray.origin.x + ray.direction.x * t,
+          ray.origin.x + ray.direction.x * cappedT,
           worldY,
-          ray.origin.z + ray.direction.z * t,
+          ray.origin.z + ray.direction.z * cappedT,
         );
         out.x = this.hit.x;
         out.y = this.hit.z;
-        return;
+        return true;
       }
     }
-    const farT = Math.max(this.mapWidth, this.mapHeight) * 4;
     out.x = ray.origin.x + ray.direction.x * farT;
     out.y = ray.origin.z + ray.direction.z * farT;
+    return false;
   }
 }

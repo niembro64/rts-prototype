@@ -207,7 +207,7 @@
     "unitRadiusToggles": "unit-radius-toggles",
     "legsRadius": "legs-radius",
     "legsReach": "legs-reach",
-    "cameraSmooth": "camera-smooth-v2",
+    "cameraSmooth": "camera-smooth-v3",
     "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
     "waterBoundaryMode": "water-boundary-mode",

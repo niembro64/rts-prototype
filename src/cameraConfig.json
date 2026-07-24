@@ -5,13 +5,13 @@
   "transitionScope": "zoom-only",
   "smoothingTauSeconds": {
     "snap": 0.0,
-    "fast": 0.02,
+    "fast": 0.08,
     "mid": 0.12,
     "slow": 0.4
   },
   "barSpringHalfLifeSeconds": {
     "snap": 0.0,
-    "fast": 0.02,
+    "fast": 0.08,
     "mid": 0.18,
     "slow": 0.4
   },
