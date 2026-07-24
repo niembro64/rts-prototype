@@ -820,14 +820,33 @@ export class Render3DEntities {
       // EMA-smoothed phase, opposite direction, spun in place around its
       // own origin. The shell association comes from the construction
       // controller's resource-flow resolution (the hold relation never
-      // crosses the wire). Applied to the drawn yaw only, via this
+      // crosses the wire). Applied to the drawn pose only, via this
       // frame-local packet mutation (the packet is rebuilt every frame)
       // — the authoritative rotation stays the launch heading, so the
       // whole posed assembly (chassis, turrets, legs) counter-rotates
-      // while the sim and the eventual launch are untouched.
+      // while the sim and the eventual launch are untouched. Units with
+      // a full body quaternion pose from it (the scalar yaw is ignored
+      // there), so the offset is applied to BOTH channels: the scalar,
+      // and a sim-vertical yaw pre-multiplied onto the quaternion.
       if (unitRows.progress[row] < 1) {
         const counterYaw = this.constructionVisuals.getHeldShellCounterSpinYaw(entityId);
-        if (counterYaw !== 0) unitRows.rotation[row] += counterYaw;
+        if (counterYaw !== 0) {
+          unitRows.rotation[row] += counterYaw;
+          if (unitRows.hasFullOrientation[row] !== 0) {
+            const half = counterYaw * 0.5;
+            const sc = Math.sin(half);
+            const cc = Math.cos(half);
+            const ox = unitRows.orientationX[row];
+            const oy = unitRows.orientationY[row];
+            const oz = unitRows.orientationZ[row];
+            const ow = unitRows.orientationW[row];
+            // q' = qz(counterYaw) ⊗ q — world-frame yaw about sim +Z.
+            unitRows.orientationX[row] = cc * ox - sc * oy;
+            unitRows.orientationY[row] = cc * oy + sc * ox;
+            unitRows.orientationZ[row] = cc * oz + sc * ow;
+            unitRows.orientationW[row] = cc * ow - sc * oz;
+          }
+        }
       }
 
       const liftPos = m.liftGroup?.position;
