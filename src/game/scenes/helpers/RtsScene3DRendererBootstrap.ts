@@ -182,7 +182,8 @@ export function bootstrapRtsScene3DRenderers(
   threeApp.orbit.setWorldRayTracer((origin, direction, terrainMode, fallbackPlaneHeight) =>
     cursorGround.pickWorldRay(origin, direction, terrainMode, fallbackPlaneHeight)
   );
-  threeApp.orbit.setTerrainCollisionFloorHeight(WATER_LEVEL);
+  // Camera clearance floors on the terrain bed alone — under water that is
+  // the basin floor, so the camera may dive below the surface freely.
   threeApp.orbit.setTerrainSampler((x, z) =>
     getTerrainMeshHeight(x, z, mapWidth, mapHeight)
   );

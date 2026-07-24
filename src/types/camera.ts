@@ -20,11 +20,27 @@ export type CameraMovementScaleMode =
   | 'absolute-world-momentum';
 
 export type CameraWheelInputMode =
-  /** Treat each browser wheel event as one BAR/SDL wheel unit. This removes
-   * OS/browser acceleration from notched-wheel input. */
+  /** Treat each browser wheel event from a notched wheel as one BAR/SDL wheel
+   * unit (removes OS/browser acceleration). Continuous devices (trackpads,
+   * free-spin wheels) are detected per event and keep fractional pixel
+   * conversion so an inertial two-finger fling cannot become dozens of full
+   * notches. */
   | 'bar-discrete-event'
   /** Preserve the previous raw DOM delta conversion for continuous devices. */
   | 'dom-continuous-delta';
+
+/** How the battle camera's focus altitude behaves while moving.
+ *
+ *  - 'terrain-follow'     — BAR SpringController parity: the focus is glued to
+ *                           the terrain bed plus a persistent elevation offset,
+ *                           so panning over hills raises and lowers the camera
+ *                           with the ground.
+ *  - 'constant-altitude'  — the focus keeps its world height through pan,
+ *                           orbit, and follow. Altitude changes only through
+ *                           explicit height-pan, zoom translation toward the
+ *                           anchor, and terrain-collision lift. Terrain acts as
+ *                           a floor, never as a rail the camera rides. */
+export type CameraFocusHeightMode = 'terrain-follow' | 'constant-altitude';
 
 /** Rendered-camera transition applied after controller state changes. */
 export type CameraTransitionMode =
@@ -66,6 +82,10 @@ export type CameraOrbitMovementConfig = {
 export type CameraMovementConfig = {
   readonly scaleMode: CameraMovementScaleMode;
   readonly wheelInputMode: CameraWheelInputMode;
+  /** Focus-altitude policy for bar-spring movement. 'constant-altitude' is
+   * the canonical Budget Annihilation mode; 'terrain-follow' retains BAR's
+   * bed-glued focus for comparison. */
+  readonly focusHeightMode: CameraFocusHeightMode;
   /** Apply BAR's cardinal-direction yaw dead zones in bar-spring mode. */
   readonly cardinalYawLockEnabled: boolean;
   /** Middle-click drag pan. */

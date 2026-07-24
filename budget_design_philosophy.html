@@ -1401,7 +1401,7 @@
         pixel to move a fixed world amount.
       </p>
       <ul class="rule-list">
-        <li><code>bar-spring</code> &mdash; the canonical battle mode. It follows Recoil&rsquo;s SpringController/BAR contract: wheel distance uses BAR&rsquo;s asymmetric factor, pan derives pixel size from controller distance, focus tracks the terrain bed, scroll-in follows the cursor, and scroll-out remains centered. BAR&rsquo;s cardinal yaw lock remains available as the independent <code>cardinalYawLockEnabled</code> movement config.</li>
+        <li><code>bar-spring</code> &mdash; the canonical battle mode. It follows Recoil&rsquo;s SpringController/BAR contract: wheel distance uses BAR&rsquo;s asymmetric factor, pan derives pixel size from controller distance, scroll-in follows the cursor, and scroll-out remains centered. Whether the focus rides the terrain bed is the separate <code>focusHeightMode</code> axis below. BAR&rsquo;s cardinal yaw lock remains available as the independent <code>cardinalYawLockEnabled</code> movement config.</li>
         <li><code>anchor-distance-relative</code> &mdash; an alternate terrain-aware feel: wheel and pinch zoom move by a fraction of the camera-to-anchor distance, and pan derives world-per-pixel from the depth grabbed by the cursor.</li>
         <li><code>absolute-world</code> &mdash; pan uses fixed world-units-per-pixel, orbit uses fixed radians-per-pixel, and zoom uses fixed signed world-unit distance steps, so terrain height and current camera-to-surface distance do not change the amount of movement.</li>
         <li><code>absolute-world-momentum</code> &mdash; absolute-world movement with velocity-sensitive gain. Center-click pan, zoom-in, zoom-out, alt-center-click orbit, and ctrl-center-click height-pan each own an explicit momentum block with <code>enabled</code>, <code>minGain</code>, <code>maxGain</code>, <code>velocityForMaxGain</code>, and <code>curve</code>. This is input acceleration, not post-release camera drift; the camera stops receiving movement when the gesture stops.</li>
@@ -1424,9 +1424,13 @@
         BAR wheel input itself does not gain movement from wheel-event velocity; the
         continuing motion after a wheel event is active-camera spring velocity, not accelerated
         scroll input. <code>bar-discrete-event</code> therefore maps every signed browser wheel
-        event to one BAR wheel unit regardless of OS-accelerated DOM magnitude.
-        <code>dom-continuous-delta</code> retains raw fractional DOM-delta conversion as an explicit
-        option for continuous devices.
+        event from a notched wheel to one BAR wheel unit regardless of OS-accelerated DOM
+        magnitude. Events are classified per device: line/page delta modes and legacy
+        wheel-delta multiples of 120 are notched clicks; every other pixel stream (trackpad
+        two-finger scroll, Magic Mouse surface, free-spin wheels) keeps fractional conversion,
+        because an inertial fling arrives as dozens of small events and must not become dozens
+        of full notches. <code>dom-continuous-delta</code> retains raw fractional DOM-delta
+        conversion for every event as an explicit option.
       </p>
       <p>
         Middle mouse is hold-to-pan in the browser battle camera. BAR&rsquo;s optional quick-click
@@ -1438,9 +1442,19 @@
         Ctrl plus middle-mouse drag is an intentional Budget Annihilation extension retained in
         every movement mode. Horizontal mouse motion pans left/right relative to camera yaw, while
         vertical mouse motion changes world height instead of moving forward/back. Alt takes
-        precedence when both modifiers are held, preserving Alt plus middle-drag orbit. Inward
-        wheel zoom scales any accumulated focus-height offset back toward the terrain together with
-        orbit distance, so vertical pan cannot strand the camera above the map at its zoom-in rail.
+        precedence when both modifiers are held, preserving Alt plus middle-drag orbit. In
+        terrain-follow mode, inward wheel zoom scales any accumulated focus-height offset back
+        toward the terrain together with orbit distance; in constant-altitude mode the focus
+        altitude band bounds height pan directly, so vertical pan cannot strand the camera above
+        the map either way.
+      </p>
+      <p>
+        Wheel modifiers follow the same split as drag modifiers. Alt plus wheel tilts, sharing
+        Alt&rsquo;s camera-angle role with Alt-drag orbit. Ctrl plus wheel remains ordinary zoom
+        because macOS delivers trackpad pinch as Ctrl+wheel, and pinch must zoom. BAR&rsquo;s
+        Alt-wheel movereset overview teleport is deliberately absent: Alt is this camera&rsquo;s
+        orbit modifier, and an instant overview jump while orbit-scrolling reads as the camera
+        flying away on its own.
       </p>
       <p>
         This movement metric is not terrain collision. Collision decides whether the rendered eye
@@ -1463,15 +1477,61 @@
         default battle camera contract.
       </p>
 
-      <h3>The battle camera follows BAR terrain handling with a permanent lift</h3>
+      <h3>Focus altitude is a config axis; the canonical mode is constant altitude</h3>
       <p>
-        The battle camera keeps BAR&rsquo;s five-world-unit clearance above
-        <code>max(terrain bed, water level)</code> beneath its eye; anchoring and focus still use the
-        real bed below water. The one intentional difference is persistence: when that floor lifts the eye,
-        translate the focus upward by the same amount and commit that translation into ordinary
-        camera state. There is no remembered pre-collision pose, recovery interpolation, or later
+        Bar-spring movement resolves its focus height through the
+        <code>focusHeightMode</code> movement config. <code>terrain-follow</code> preserves the
+        BAR SpringController contract: the focus is glued to the terrain bed plus a persistent
+        elevation offset, so panning across hills raises and lowers the camera with the ground.
+        <code>constant-altitude</code> is the canonical Budget Annihilation mode: pan, orbit, and
+        follow never change the focus height, and altitude changes come only from explicit
+        Ctrl-drag height pan, zoom translation toward the anchor, and terrain-collision lift.
+        On this game&rsquo;s terrain relief, riding the bed is a rollercoaster; constant altitude
+        treats terrain as a floor, never as a rail the camera rides.
+      </p>
+      <p>
+        In constant-altitude mode wheel zoom is the anchor-scaling law: eye and focus contract
+        toward (or expand away from) the resolved 3D anchor by BAR&rsquo;s asymmetric wheel
+        factor, so distance still scales by 0.825/1.175 per notch, cursor zoom-in descends into a
+        valley because the anchor is lower, and screen-center zoom-out ascends symmetrically.
+        When the anchor ray finds no terrain, the factor applies around the focus itself &mdash;
+        a plain center zoom &mdash; never around a fallback plane at pathological depth.
+      </p>
+
+      <h3>Zoom anchors are depth-filtered and travel-clamped</h3>
+      <p>
+        A cursor anchor is a raycast depth, and that depth is discontinuous at terrain
+        silhouettes: the pixel on a peak and the pixel beside it can differ by two orders of
+        magnitude. Two invariants keep relative zoom stable on extreme relief. First, the anchor
+        depth is reduced across the configured screen-space sample neighborhood
+        (<code>zoom.distanceSampling</code>, canonically min-aggregated), so a peak near the
+        cursor wins over the valley behind it. Second, one wheel tick&rsquo;s eye travel is
+        hard-clamped to <code>zoom.travelClampFraction</code> of the current controller distance
+        &mdash; the anchor point is never moved, but no anchor, however deep, can teleport the
+        camera.
+      </p>
+
+      <h3>The battle camera floors on the terrain bed and keeps its lift</h3>
+      <p>
+        The eye keeps its configured clearance above the terrain bed alone &mdash; under water
+        that is the basin floor, so the camera submerges freely; the water surface is never a
+        camera surface and never a camera floor. When that floor lifts the eye, the focus
+        translates upward by the same amount and the translation commits into ordinary camera
+        state. There is no remembered pre-collision pose, recovery interpolation, or later
         downward correction after the camera clears the mountain. Terrain response never rebuilds
         yaw, pitch, or orbit distance and therefore cannot ratchet or wedge those rails.
+      </p>
+
+      <h3>Camera state is validated at one commit point</h3>
+      <p>
+        Every gesture and driver commits through a single constraint step that replaces
+        non-finite fields loudly, clamps the focus into the padded map and its altitude band
+        &mdash; never below the bed beneath it, never further above that bed than the zoom-out
+        distance rail &mdash; and keeps distance and pitch on their rails. An impossible camera
+        pose is unrepresentable rather than recovered-from. The optional lost-map recovery EMA
+        remains a config switch (<code>lostTerrainRecovery</code>, canonically disabled) and
+        cancels the moment the player touches any camera input, so the fixer can never fight the
+        player&rsquo;s hands.
       </p>
     </section>
 
@@ -3291,7 +3351,7 @@
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>
-        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All four anchor behaviors and all movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, and the canonical scope smooths discrete zoom and snaps continuous movement without canceling an in-flight zoom. Water is never an anchor surface; anchoring over water reads the terrain bed. The canonical battle camera maintains its configured terrain/water-floor clearance, commits any collision lift into ordinary camera state, and carries no pre-collision height or downward recovery memory.</li>
+        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and the canonical scope smooths discrete zoom and snaps continuous movement without canceling an in-flight zoom. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera commits any collision lift into ordinary camera state, carries no pre-collision height or downward recovery memory, and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>
         <li>Keep unit, building, turret, shot, and ray definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong>; a building is the single immobile host family. Every unit and building mounts at least one turret. Make the turret a standardized, addressable mounted emitter with one authoritative effect family: <code>attack</code>, <code>spawn</code>, <code>resourcePylon</code>, or <code>sensor</code>. Every turret blueprint directly owns one nested <code>turretRange</code> object containing lock-on range/volume/hysteresis and sensor matrices. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>

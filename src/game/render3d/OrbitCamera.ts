@@ -2,6 +2,10 @@
 //
 // Controls:
 //   - Scroll wheel        → zoom (dolly along view direction)
+//   - Ctrl + wheel        → zoom too (macOS trackpad pinch arrives as
+//                           ctrl+wheel; treating it as anything else makes
+//                           pinch do surprising things)
+//   - Alt + wheel         → tilt (pitch step)
 //   - Alt + middle drag   → orbit (yaw + pitch)
 //   - Middle drag         → pan (slide target on the world ground)
 //   - Ctrl + middle drag  → height pan (left/right on ground, up/down in world height)
@@ -29,6 +33,7 @@ import * as THREE from 'three';
 import type {
   CameraAnchor,
   CameraAnchorTerrain,
+  CameraFocusHeightMode,
   CameraInputMomentumConfig,
   CameraLostTerrainRecoveryConfig,
   CameraMovementConfig,
@@ -58,7 +63,14 @@ const BAR_FAST_POINTER_MULTIPLIER = 4;
 const BAR_FAST_WHEEL_MULTIPLIER = 2;
 const BAR_TILT_RADIANS_PER_WHEEL_TICK = 0.125;
 const BAR_CARDINAL_LOCK_WIDTH = 0.2;
-const BAR_RESET_PITCH = Math.PI - 2.677;
+/** Eye travel from one wheel tick may never exceed this fraction of the
+ *  current controller distance. See barCameraTravelClampedZoomFactor. */
+const DEFAULT_ZOOM_TRAVEL_CLAMP_FRACTION = 0.5;
+/** WebKit/Blink report legacy wheelDelta in multiples of 120 for notched
+ *  wheels; trackpads and free-spin wheels produce other values. */
+const LEGACY_NOTCHED_WHEEL_DELTA_UNIT = 120;
+/** Rate-limited "camera invariant violated" diagnostics. */
+const MAX_INVARIANT_WARNINGS = 8;
 
 const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = {
   pointMode: 'seventeen',
@@ -78,6 +90,7 @@ const DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG: CameraZoomDistanceSamplingConfig = 
 const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
   scaleMode: 'anchor-distance-relative',
   wheelInputMode: 'dom-continuous-delta',
+  focusHeightMode: 'constant-altitude',
   cardinalYawLockEnabled: false,
   centerClickPan: {
     absoluteWorldUnitsPerPixel: 2,
@@ -165,6 +178,9 @@ type OrbitCameraOptions = {
    *  Distance and target both scale by the resulting factor, which keeps the
    *  configured anchor pixel pinned through the move. */
   zoomStepFraction?: number;
+  /** Per-tick eye-travel ceiling as a fraction of current orbit distance.
+   *  See barCameraTravelClampedZoomFactor. */
+  zoomTravelClampFraction?: number;
   /** Screen-space terrain neighborhood used to derive the distance scalar
    *  for relative zoom movement. */
   zoomDistanceSampling?: CameraZoomDistanceSamplingConfig;
@@ -235,19 +251,45 @@ export type CameraZoomTerrainSampleSnapshot = {
   version: number;
 };
 
+/** Classify a wheel event as a notched-wheel click or a continuous-device
+ * stream (trackpad two-finger scroll, Magic Mouse surface, free-spin wheel).
+ *
+ * Line/page delta modes only come from real wheels. In pixel mode the only
+ * portable signal is the legacy `wheelDelta`, which WebKit/Blink emit in
+ * exact multiples of 120 for notched clicks and in arbitrary values for
+ * touch streams. Browsers without the legacy field (Firefox) report real
+ * wheels in line mode, so their pixel events are continuous streams too. */
+export function barCameraWheelEventIsNotched(
+  deltaMode: number,
+  legacyWheelDelta: number | undefined,
+): boolean {
+  if (deltaMode !== 0) return true;
+  if (legacyWheelDelta === undefined || !Number.isFinite(legacyWheelDelta)) {
+    return false;
+  }
+  if (legacyWheelDelta === 0) return false;
+  return legacyWheelDelta % LEGACY_NOTCHED_WHEEL_DELTA_UNIT === 0;
+}
+
 /** Convert a DOM wheel delta into the platform-independent wheel unit used by
  * BAR/Recoil. Exported so the browser-input edge cases have a small, pure
- * contract surface independent of Three.js and the DOM event dispatcher. */
+ * contract surface independent of Three.js and the DOM event dispatcher.
+ *
+ * `notchedDevice` matters only to `bar-discrete-event`: a notched click is
+ * exactly one signed BAR unit regardless of OS-accelerated magnitude, while a
+ * continuous stream keeps fractional pixel conversion — a trackpad fling is
+ * dozens of small events and must not become dozens of full notches. */
 export function barCameraWheelTicks(
   delta: number,
   deltaMode: number,
   inputMode: CameraWheelInputMode = 'dom-continuous-delta',
+  notchedDevice = true,
 ): number {
   if (!Number.isFinite(delta) || delta === 0) return 0;
   // SDL hands BAR one signed wheel unit for an ordinary notched-wheel event.
   // Browser pixel deltas can grow when the OS accelerates rapid scrolling;
   // magnitude must not turn one physical click into several controller units.
-  if (inputMode === 'bar-discrete-event') return Math.sign(delta);
+  if (inputMode === 'bar-discrete-event' && notchedDevice) return Math.sign(delta);
   // WheelEvent.DOM_DELTA_LINE/PAGE are specified as 1 and 2. Use the numeric
   // values so this pure helper is also safe in Node-based contract tests.
   if (deltaMode === 1) return delta / WHEEL_LINES_PER_TICK;
@@ -277,6 +319,43 @@ export function barCameraRelativeZoomFactor(
   if (!Number.isFinite(signedTicks) || signedTicks === 0) return 1;
   const fraction = Math.max(0, Number.isFinite(stepFraction) ? stepFraction : 0);
   return Math.max(1e-6, 1 + signedTicks * fraction);
+}
+
+/** Bound an anchor-relative zoom factor so the eye's travel cannot exceed
+ * `clampFraction` of the current orbit distance.
+ *
+ * Anchor-relative zoom moves the eye by |1 − factor| · anchorDistance, and
+ * anchorDistance is a raycast depth that is discontinuous at terrain
+ * silhouettes: the pixel on a peak and the pixel beside it can differ by two
+ * orders of magnitude, and a fallback hit can be quasi-infinite. Clamping the
+ * factor — never the anchor point — keeps the gesture aimed at the same
+ * world point while making per-tick motion proportional to the camera's own
+ * scale. Ordinary zooms (anchorDistance ≈ orbitDistance) are unaffected. */
+export function barCameraTravelClampedZoomFactor(
+  wantFactor: number,
+  anchorDistance: number,
+  orbitDistance: number,
+  clampFraction: number,
+): number {
+  if (!Number.isFinite(wantFactor) || wantFactor <= 0) return 1;
+  if (
+    !Number.isFinite(anchorDistance)
+    || !(anchorDistance > 0)
+    || !Number.isFinite(orbitDistance)
+    || !(orbitDistance > 0)
+  ) {
+    return wantFactor;
+  }
+  // Zero or negative disables the clamp entirely.
+  const fraction = Number.isFinite(clampFraction)
+    ? clampFraction
+    : DEFAULT_ZOOM_TRAVEL_CLAMP_FRACTION;
+  if (!(fraction > 0)) return wantFactor;
+  const maxFactorDelta = (fraction * orbitDistance) / anchorDistance;
+  if (wantFactor < 1) {
+    return Math.max(wantFactor, Math.max(1e-6, 1 - maxFactorDelta));
+  }
+  return Math.min(wantFactor, 1 + maxFactorDelta);
 }
 
 /** Ctrl-height pan and persistent terrain clearance both become the same
@@ -440,11 +519,9 @@ export class OrbitCamera {
   private targetMaxX = Infinity;
   private targetMinZ = -Infinity;
   private targetMaxZ = Infinity;
-  private barMapWidth = 0;
-  private barMapHeight = 0;
-  private barZoomBack = false;
-  private barOldDistance = 0;
   private zoomStepFraction: number;
+  private zoomTravelClampFraction = DEFAULT_ZOOM_TRAVEL_CLAMP_FRACTION;
+  private invariantWarningCount = 0;
   private zoomDistanceSampling: CameraZoomDistanceSamplingConfig;
   private zoomTerrainSamples: CameraZoomTerrainSampleSnapshot;
   private movementScaleMode: CameraMovementScaleMode = 'anchor-distance-relative';
@@ -468,8 +545,6 @@ export class OrbitCamera {
     fallbackPlaneHeight: number,
   ) => THREE.Vector3 | null;
   private getTerrainHeight?: (x: number, z: number) => number;
-  /** BAR's GetHeightAboveWater floor, expressed in this world's coordinates. */
-  private terrainCollisionFloorHeight = Number.NEGATIVE_INFINITY;
   /** Minimum 3D gap between the camera and nearby terrain when an
    *  explicit collision mode is enabled. The default app camera does
    *  not use terrain clearance. */
@@ -609,6 +684,12 @@ export class OrbitCamera {
     this.minPitch = opts.minPitch ?? Math.PI * 0.01;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.175;
+    if (
+      opts.zoomTravelClampFraction !== undefined
+      && Number.isFinite(opts.zoomTravelClampFraction)
+    ) {
+      this.zoomTravelClampFraction = Math.max(0, opts.zoomTravelClampFraction);
+    }
     this.zoomDistanceSampling = opts.zoomDistanceSampling
       ?? DEFAULT_ZOOM_DISTANCE_SAMPLING_CONFIG;
     const zoomRingPointCount = Math.max(
@@ -659,26 +740,34 @@ export class OrbitCamera {
 
     this.onWheel = (e) => {
       e.preventDefault();
+      this.cancelMapRecovery();
       //   scroll up   (delta < 0)  → zoom in
       //   scroll down (delta > 0)  → zoom out
       //
       // Browsers commonly remap Shift + wheel into horizontal deltaX
-      // scrolling. It is still BAR's movefast wheel gesture.
-      const wheelDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      // scrolling. It is still BAR's movefast wheel gesture. WITHOUT Shift,
+      // horizontal deltas are a sideways trackpad swipe and must not zoom.
+      const wheelDelta = e.deltaY !== 0 ? e.deltaY : (e.shiftKey ? e.deltaX : 0);
       if (wheelDelta === 0) return;
 
       let signedTicks = barCameraWheelTicks(
         wheelDelta,
         e.deltaMode,
         this.movementConfig.wheelInputMode,
+        barCameraWheelEventIsNotched(
+          e.deltaMode,
+          (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY,
+        ),
       );
       if (signedTicks === 0) return;
       // BAR binds Shift to movefast. SpringController scales wheel input by
       // 2x and pointer movement by 4x with the engine defaults.
       if (e.shiftKey) signedTicks *= BAR_FAST_WHEEL_MULTIPLIER;
 
-      // BAR's Ctrl+wheel path tilts immediately instead of zooming.
-      if (e.ctrlKey) {
+      // Wheel tilt lives on Alt so it shares the camera-angle modifier with
+      // Alt+drag orbit. BAR's Ctrl+wheel tilt is deliberately not used:
+      // macOS delivers trackpad pinch as Ctrl+wheel, and pinch must zoom.
+      if (e.altKey) {
         const nextPitch = Math.min(
           this.maxPitch,
           Math.max(
@@ -699,11 +788,6 @@ export class OrbitCamera {
       }
 
       const zoomingIn = signedTicks < 0;
-      if (
-        e.altKey
-        && this.usesBarSpringMovement()
-        && this.barResetZoom(zoomingIn)
-      ) return;
       const zoomMovement = zoomingIn
         ? this.movementConfig.zoomIn
         : this.movementConfig.zoomOut;
@@ -726,6 +810,7 @@ export class OrbitCamera {
       // Middle mouse button = camera control
       if (e.button !== 1) return;
       e.preventDefault();
+      this.cancelMapRecovery();
       this.dragMode = this.mouseDragModeForModifiers(e.altKey, e.ctrlKey);
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
@@ -940,6 +1025,7 @@ export class OrbitCamera {
     this.onTouchStart = (e) => {
       if (e.touches.length === 0) return;
       e.preventDefault();
+      this.cancelMapRecovery();
       this.dragMode = 'none';
       this.orbitPivotActive = false;
       this.beginTouchGesture(e);
@@ -1096,7 +1182,7 @@ export class OrbitCamera {
     anchor: CameraAnchor,
     absoluteWorldUnitsPerWheelTick: number,
   ): void {
-    if (this.usesBarSpringMovement()) {
+    if (this.usesBarSpringMovement() && this.usesTerrainFollowFocus()) {
       const signedTicks = zoomingIn ? -wheelTicks : wheelTicks;
       this.zoomBarSpringAt(clientX, clientY, signedTicks, anchor);
       return;
@@ -1111,6 +1197,14 @@ export class OrbitCamera {
     // rails and shifts the target by the same factor around the
     // selected anchor. Absolute modes take the branch above so in/out
     // use the same fixed world-step path with only the sign flipped.
+    //
+    // Constant-altitude bar-spring zoom deliberately shares this path: eye
+    // and focus contract toward (or expand away from) the 3D anchor by
+    // BAR's asymmetric factor, so distance still scales 0.825/1.175 per
+    // notch while focus altitude changes only through that anchor
+    // translation. When the anchor ray finds no terrain, the factor is
+    // applied around the focus itself — a plain center zoom — instead of
+    // anchoring on a fallback plane at quasi-infinite depth.
     const signedTicks = zoomingIn ? -wheelTicks : wheelTicks;
     const factor = barCameraRelativeZoomFactor(signedTicks, this.zoomStepFraction);
     this.zoomByFactorAt(clientX, clientY, factor, anchor);
@@ -1123,6 +1217,17 @@ export class OrbitCamera {
 
   private usesBarSpringMovement(): boolean {
     return this.movementScaleMode === 'bar-spring';
+  }
+
+  private focusHeightMode(): CameraFocusHeightMode {
+    return this.movementConfig.focusHeightMode;
+  }
+
+  /** BAR-parity focus handling: focus glued to the terrain bed with a
+   * persistent elevation offset. Only meaningful under bar-spring movement. */
+  private usesTerrainFollowFocus(): boolean {
+    return this.usesBarSpringMovement()
+      && this.focusHeightMode() === 'terrain-follow';
   }
 
   private resolveBarYaw(rawYaw: number): number {
@@ -1239,9 +1344,6 @@ export class OrbitCamera {
     anchor: CameraAnchor,
   ): void {
     if (!Number.isFinite(signedTicks) || signedTicks === 0) return;
-    // Any ordinary zoom-out cancels SpringController's pending Alt-zoom
-    // distance restore. Ordinary zoom-in deliberately does not.
-    if (signedTicks > 0) this.barZoomBack = false;
     const factor = barCameraRelativeZoomFactor(signedTicks, this.zoomStepFraction);
     const oldDistance = this.toDistance;
     const scaledDistance = this.clampBarDistance(oldDistance * factor);
@@ -1320,10 +1422,21 @@ export class OrbitCamera {
       ? Math.min(1 - factor, maxZoomInFraction)
       : 1 - factor;
 
+    // The cursor-ray depth is discontinuous at silhouettes and its plane
+    // fallback can be quasi-infinite; a single tick must never travel more
+    // than the configured fraction of the current controller distance.
+    const requestedTravel = Math.abs(baseTravelFraction) * cursorDistance;
+    const maxTravel = this.zoomTravelClampFraction > 0
+      ? this.zoomTravelClampFraction * oldDistance
+      : Number.POSITIVE_INFINITY;
+    const anchorTravelDistance = requestedTravel > maxTravel && requestedTravel > 0
+      ? cursorDistance * (maxTravel / requestedTravel)
+      : cursorDistance;
+
     const attempt = (travelScale: number): { distance: number; target: THREE.Vector3 } | null => {
       const wantedEye = this._barWantedEyeTmp.copy(controllerEye).addScaledVector(
         renderedRay,
-        cursorDistance * baseTravelFraction * travelScale,
+        anchorTravelDistance * baseTravelFraction * travelScale,
       );
       const target = this.traceBarFocusSurface(
         wantedEye,
@@ -1364,45 +1477,6 @@ export class OrbitCamera {
     this.toDistance = this.clampBarDistance(result.distance);
     this.clearZoomTerrainSamples();
     this.applyDestinationIfSnap();
-  }
-
-  /** SpringController's movereset (BAR binds it to Alt). Zoom-out stores the
-   * prior controller distance and moves to the standard overview; the next
-   * Alt+zoom-in restores that distance. A plain Alt+zoom-in with no pending
-   * overview falls through to ordinary cursor zoom. */
-  private barResetZoom(zoomingIn: boolean): boolean {
-    if (zoomingIn) {
-      if (!this.barZoomBack) return false;
-      this.toDistance = this.clampBarDistance(this.barOldDistance);
-      this.barZoomBack = false;
-      this.clearZoomTerrainSamples();
-      this.applyDestinationIfSnap();
-      return true;
-    }
-
-    if (!this.barZoomBack) this.barOldDistance = this.toDistance;
-    this.barZoomBack = true;
-    const elevationOffset = this.barFocusElevationOffset(
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-    );
-    this.toTargetX = this.barMapWidth * 0.5;
-    this.toTargetZ = this.barMapHeight * 0.55;
-    this.toTargetY = this.barFocusSurfaceHeight(
-      this.toTargetX,
-      this.toTargetZ,
-      elevationOffset,
-      this.toTargetY,
-    );
-    this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, BAR_RESET_PITCH));
-    if (!this.usesBarSpringTransition()) this.pitch = this.toPitch;
-    this.toDistance = this.clampBarDistance(
-      Math.hypot(this.toTargetX, this.toTargetZ) * 1.5,
-    );
-    this.clearZoomTerrainSamples();
-    this.applyDestinationIfSnap();
-    return true;
   }
 
   private clampBarDistance(distance: number): number {
@@ -1751,12 +1825,34 @@ export class OrbitCamera {
     p0: THREE.Vector3 | null,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
+    // Bound this tick's eye travel by the camera's own scale first: the
+    // anchor stays where it is, but a silhouette or fallback anchor at
+    // pathological depth can only pull the eye a configured fraction of the
+    // current distance per tick.
+    let travelSafeFactor = wantFactor;
+    if (p0) {
+      const controllerEye = this.cameraPositionForState(
+        this.toTargetX,
+        this.toTargetY,
+        this.toTargetZ,
+        this.toDistance,
+        this.toYaw,
+        this.pitch,
+        this._cameraPosTmp,
+      );
+      travelSafeFactor = barCameraTravelClampedZoomFactor(
+        wantFactor,
+        controllerEye.distanceTo(p0),
+        this.toDistance,
+        this.zoomTravelClampFraction,
+      );
+    }
     // Clamp the factor BEFORE it translates target + eye around an anchor,
     // so an outward zoom ends exactly on the eye-distance rail instead of
     // leaving an impossible target/rail combination for the distance solver.
     const railSafeFactor = p0
-      ? this.constrainZoomFactorToCameraRail(wantFactor, p0)
-      : wantFactor;
+      ? this.constrainZoomFactorToCameraRail(travelSafeFactor, p0)
+      : travelSafeFactor;
     const wantedDistance = this.toDistance * railSafeFactor;
     const startTargetX = this.toTargetX;
     const startTargetY = this.toTargetY;
@@ -1809,9 +1905,10 @@ export class OrbitCamera {
       return;
     }
 
-    // No terrain clip-test on zoom. The camera state is allowed to pass
-    // through terrain; optional collision modes are render-time only and
-    // are not wired by the app-level camera config.
+    // No terrain clip-test here: eye clearance is resolved by the configured
+    // terrain-collision mode in apply(), and the focus floor/ceiling by
+    // constrainTargets(), so the committed state passes through the same
+    // invariants as every other gesture.
     this.toTargetX = nextTargetX;
     this.toTargetY = nextTargetY;
     this.toTargetZ = nextTargetZ;
@@ -1889,9 +1986,13 @@ export class OrbitCamera {
     const refDist = this.usesBarSpringMovement()
       ? this.toDistance
       : this.panAnchorValid ? this.panAnchorDistance : this.distance;
+    // A zero-height canvas (mid-layout, detached tab) would make this
+    // Infinity and poison the target state through one drag event.
+    const canvasHeight = this.canvas.clientHeight;
+    if (!(canvasHeight > 0)) return 0;
     const vFovRad = (this.camera.fov * Math.PI) / 180;
     const worldPerPixel =
-      (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
+      (2 * Math.tan(vFovRad / 2) * refDist) / canvasHeight;
     return worldPerPixel * this.panMultiplier;
   }
 
@@ -1912,7 +2013,7 @@ export class OrbitCamera {
     const rz = Math.sin(panYaw);
     const fx = Math.sin(panYaw);
     const fz = -Math.cos(panYaw);
-    const elevationOffset = this.usesBarSpringMovement()
+    const elevationOffset = this.usesTerrainFollowFocus()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
     this.toTargetX -= dx * scale * rx - dy * scale * fx;
@@ -1920,12 +2021,16 @@ export class OrbitCamera {
     if (this.usesBarSpringMovement()) {
       this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
-      this.toTargetY = this.barFocusSurfaceHeight(
-        this.toTargetX,
-        this.toTargetZ,
-        elevationOffset,
-        this.toTargetY,
-      );
+      // Constant-altitude flight: pan never changes focus height. Only the
+      // terrain-follow mode reseats Y onto the bed-plus-offset surface.
+      if (this.usesTerrainFollowFocus()) {
+        this.toTargetY = this.barFocusSurfaceHeight(
+          this.toTargetX,
+          this.toTargetZ,
+          elevationOffset,
+          this.toTargetY,
+        );
+      }
     }
     this.finishContinuousMovement();
   }
@@ -1937,7 +2042,7 @@ export class OrbitCamera {
     const panYaw = this.controllerYaw();
     const rx = Math.cos(panYaw);
     const rz = Math.sin(panYaw);
-    const elevationOffset = this.usesBarSpringMovement()
+    const elevationOffset = this.usesTerrainFollowFocus()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
     // Sim calls this vertical axis Z; Three.js stores it as world Y.
@@ -1948,12 +2053,17 @@ export class OrbitCamera {
     if (this.usesBarSpringMovement()) {
       this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
-      this.toTargetY = this.barFocusSurfaceHeight(
-        this.toTargetX,
-        this.toTargetZ,
-        elevationOffset - dy * scale,
-        this.toTargetY,
-      );
+      // Constant-altitude mode keeps the direct world-height change; the
+      // focus floor/ceiling in constrainTargets bounds it. Terrain-follow
+      // folds the change into its persistent bed offset.
+      if (this.usesTerrainFollowFocus()) {
+        this.toTargetY = this.barFocusSurfaceHeight(
+          this.toTargetX,
+          this.toTargetZ,
+          elevationOffset - dy * scale,
+          this.toTargetY,
+        );
+      }
     }
     this.finishContinuousMovement();
   }
@@ -1979,6 +2089,7 @@ export class OrbitCamera {
   ): void {
     const magnitude = Math.hypot(screenX, screenY);
     if (magnitude <= 0) return;
+    this.cancelMapRecovery();
     const x = screenX / magnitude;
     const y = screenY / magnitude;
     const step = KEYBOARD_CAMERA_SCREEN_STEP_PX * (fast ? KEYBOARD_CAMERA_FAST_MULTIPLIER : 1);
@@ -2112,24 +2223,27 @@ export class OrbitCamera {
     return Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
   }
 
-  /** Clamp rendered and smooth-destination state to active camera rails.
+  /** Single choke point for every state commit: sanitize, then clamp
+   *  rendered and smooth-destination state to the active camera rails.
    *  Keeping both states constrained avoids a smoothing tug-of-war at
-   *  map edges and zoom rails. */
+   *  map edges and zoom rails, and makes an impossible camera pose
+   *  unrepresentable regardless of which gesture or driver wrote it. */
   private constrainTargets(): void {
+    this.sanitizeCameraState();
     if (this.usesBarSpringTransition()) {
-      const elevationOffset = this.barFocusElevationOffset(
-        this.toTargetX,
-        this.toTargetY,
-        this.toTargetZ,
-      );
+      const elevationOffset = this.usesTerrainFollowFocus()
+        ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
+        : 0;
       this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
-      this.toTargetY = this.barFocusSurfaceHeight(
-        this.toTargetX,
-        this.toTargetZ,
-        elevationOffset,
-        this.toTargetY,
-      );
+      this.toTargetY = this.usesTerrainFollowFocus()
+        ? this.barFocusSurfaceHeight(
+            this.toTargetX,
+            this.toTargetZ,
+            elevationOffset,
+            this.toTargetY,
+          )
+        : this.clampFocusAltitude(this.toTargetX, this.toTargetZ, this.toTargetY);
       this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.toPitch));
       // SpringController has no map-center eye sphere. Its focus is map-bound
       // and curDist is independently clamped to minDist/maxDist.
@@ -2140,10 +2254,10 @@ export class OrbitCamera {
       this.distance = this.toDistance;
       return;
     }
-    const renderedElevationOffset = this.usesBarSpringMovement()
+    const renderedElevationOffset = this.usesTerrainFollowFocus()
       ? this.barFocusElevationOffset(this.target.x, this.target.y, this.target.z)
       : 0;
-    const destinationElevationOffset = this.usesBarSpringMovement()
+    const destinationElevationOffset = this.usesTerrainFollowFocus()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
     if (Number.isFinite(this.targetMinX) || Number.isFinite(this.targetMaxX)) {
@@ -2154,7 +2268,7 @@ export class OrbitCamera {
       this.target.z = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.target.z));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
     }
-    if (this.usesBarSpringMovement()) {
+    if (this.usesTerrainFollowFocus()) {
       this.target.y = this.barFocusSurfaceHeight(
         this.target.x,
         this.target.z,
@@ -2167,7 +2281,12 @@ export class OrbitCamera {
         destinationElevationOffset,
         this.toTargetY,
       );
+    } else {
+      this.target.y = this.clampFocusAltitude(this.target.x, this.target.z, this.target.y);
+      this.toTargetY = this.clampFocusAltitude(this.toTargetX, this.toTargetZ, this.toTargetY);
     }
+    this.toPitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.toPitch));
+    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
     if (this.usesBarSpringMovement()) {
       this.distance = this.clampBarDistance(this.distance);
       this.toDistance = this.clampBarDistance(this.toDistance);
@@ -2189,6 +2308,74 @@ export class OrbitCamera {
         this.pitch,
       );
     }
+  }
+
+  /** Focus altitude band for every mode that does not glue the focus to the
+   *  terrain: never below the bed beneath it (the basin floor under water —
+   *  the water surface is not a camera constraint), and never further above
+   *  that bed than the zoom-out distance rail. The upper bound is what stops
+   *  height-pan plus committed collision lift from ratcheting the camera
+   *  into a sky-only view; the lower bound is what stops minimap jumps and
+   *  ping cuts from parking the focus inside a mountain. */
+  private clampFocusAltitude(x: number, z: number, y: number): number {
+    const ground = this.getTerrainHeight?.(x, z);
+    if (ground === undefined || !Number.isFinite(ground)) return y;
+    const ceiling = Number.isFinite(this.maxDistance)
+      ? ground + this.maxDistance
+      : Number.POSITIVE_INFINITY;
+    return Math.min(ceiling, Math.max(ground, y));
+  }
+
+  /** Replace any non-finite camera field with a safe value. This should be
+   *  unreachable; when it fires, something upstream produced NaN/Infinity,
+   *  so the first few occurrences are reported loudly instead of being
+   *  silently absorbed into a "camera randomly broke" mystery. */
+  private sanitizeCameraState(): void {
+    const fallbackX = Number.isFinite(this.targetMinX) && Number.isFinite(this.targetMaxX)
+      ? (this.targetMinX + this.targetMaxX) * 0.5
+      : 0;
+    const fallbackZ = Number.isFinite(this.targetMinZ) && Number.isFinite(this.targetMaxZ)
+      ? (this.targetMinZ + this.targetMaxZ) * 0.5
+      : 0;
+    this.toTargetX = this.finiteOr(this.toTargetX, fallbackX, 'toTargetX');
+    this.toTargetZ = this.finiteOr(this.toTargetZ, fallbackZ, 'toTargetZ');
+    this.target.x = this.finiteOr(this.target.x, this.toTargetX, 'target.x');
+    this.target.z = this.finiteOr(this.target.z, this.toTargetZ, 'target.z');
+    if (!Number.isFinite(this.toTargetY)) {
+      const ground = this.getTerrainHeight?.(this.toTargetX, this.toTargetZ);
+      this.toTargetY = this.finiteOr(
+        this.toTargetY,
+        ground !== undefined && Number.isFinite(ground) ? ground : 0,
+        'toTargetY',
+      );
+    }
+    this.target.y = this.finiteOr(this.target.y, this.toTargetY, 'target.y');
+    this.toDistance = this.finiteOr(this.toDistance, this.farReferenceDistance, 'toDistance');
+    this.distance = this.finiteOr(this.distance, this.toDistance, 'distance');
+    this.toYaw = this.finiteOr(this.toYaw, 0, 'toYaw');
+    this.yaw = this.finiteOr(this.yaw, this.toYaw, 'yaw');
+    this.barRawYaw = this.finiteOr(this.barRawYaw, this.toYaw, 'barRawYaw');
+    this.toPitch = this.finiteOr(this.toPitch, Math.PI * 0.25, 'toPitch');
+    this.pitch = this.finiteOr(this.pitch, this.toPitch, 'pitch');
+    // Endlessly wound yaw (hours of lobby auto-rotate) slowly loses float
+    // precision. Renormalize all yaw fields together, far outside one turn,
+    // so no in-flight transition ever sees a synthetic delta.
+    if (Math.abs(this.yaw) > 4 * Math.PI || Math.abs(this.toYaw) > 4 * Math.PI) {
+      this.yaw = OrbitCamera.normalizeAngleDelta(this.yaw);
+      this.toYaw = OrbitCamera.normalizeAngleDelta(this.toYaw);
+      this.barRawYaw = OrbitCamera.normalizeAngleDelta(this.barRawYaw);
+    }
+  }
+
+  private finiteOr(value: number, fallback: number, field: string): number {
+    if (Number.isFinite(value)) return value;
+    if (this.invariantWarningCount < MAX_INVARIANT_WARNINGS) {
+      this.invariantWarningCount += 1;
+      console.error(
+        `[OrbitCamera] non-finite ${field} replaced with ${fallback} — upstream camera-input bug`,
+      );
+    }
+    return fallback;
   }
 
   private constrainOrbitDistance(
@@ -2483,10 +2670,9 @@ export class OrbitCamera {
       this._cameraPosTmp,
     );
     if (sample && this.terrainCollisionMode === 'persistRaiseEye') {
-      const terrainY = Math.max(
-        sample(pos.x, pos.z),
-        this.terrainCollisionFloorHeight,
-      );
+      // The clearance floor is the terrain bed alone — under water that is
+      // the basin floor, so the camera may submerge freely.
+      const terrainY = sample(pos.x, pos.z);
       const lift = persistentTerrainRaise(pos.y, terrainY, this.minTerrainClearance);
       if (lift > 0) {
         // This is the one intentional difference from BAR's render-only
@@ -2527,7 +2713,7 @@ export class OrbitCamera {
     );
     const sample = this.minTerrainClearance > 0 ? this.getTerrainHeight : undefined;
     if (sample && this.terrainCollisionMode === 'persistRaiseEye') {
-      const floorY = Math.max(sample(goal.x, goal.z), this.terrainCollisionFloorHeight);
+      const floorY = sample(goal.x, goal.z);
       const lift = persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
       if (lift > 0) {
         this.toTargetY += lift;
@@ -2535,7 +2721,7 @@ export class OrbitCamera {
         goal.y += lift;
       }
     } else if (sample && this.terrainCollisionMode === 'raiseEye') {
-      const floorY = Math.max(sample(goal.x, goal.z), this.terrainCollisionFloorHeight);
+      const floorY = sample(goal.x, goal.z);
       goal.y += persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
     }
     return goal;
@@ -2578,10 +2764,7 @@ export class OrbitCamera {
     if (this.minTerrainClearance <= 0 || this.terrainCollisionMode === 'none') return;
     const sample = this.getTerrainHeight;
     if (!sample) return;
-    const terrainY = Math.max(
-      sample(this.camera.position.x, this.camera.position.z),
-      this.terrainCollisionFloorHeight,
-    );
+    const terrainY = sample(this.camera.position.x, this.camera.position.z);
     const lift = persistentTerrainRaise(
       this.camera.position.y,
       terrainY,
@@ -2632,14 +2815,16 @@ export class OrbitCamera {
    *  With `zoom-only`, position and yaw apply immediately. */
   followStep(x: number, y: number, z: number, behindYaw: number | null): void {
     this.beginContinuousMovement();
-    const elevationOffset = this.usesBarSpringMovement()
-      && this.terrainCollisionMode === 'persistRaiseEye'
+    // Constant-altitude follow tracks the unit's true center, aircraft
+    // included; the focus floor and eye clearance keep it out of terrain.
+    const followsTerrainOffset = this.usesTerrainFollowFocus()
+      && this.terrainCollisionMode === 'persistRaiseEye';
+    const elevationOffset = followsTerrainOffset
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
     this.toTargetX = x;
     this.toTargetZ = z;
-    this.toTargetY = this.usesBarSpringMovement()
-      && this.terrainCollisionMode === 'persistRaiseEye'
+    this.toTargetY = followsTerrainOffset
       ? Math.max(y, this.barFocusSurfaceHeight(x, z, elevationOffset, y))
       : y;
     if (behindYaw !== null && this.usesBarSpringMovement()) {
@@ -2658,7 +2843,7 @@ export class OrbitCamera {
     if (!Number.isFinite(dx) || !Number.isFinite(dz)) return;
     if (dx === 0 && dz === 0) return;
     this.beginContinuousMovement();
-    const elevationOffset = this.usesBarSpringMovement()
+    const elevationOffset = this.usesTerrainFollowFocus()
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
     this.toTargetX += dx;
@@ -2666,12 +2851,14 @@ export class OrbitCamera {
     if (this.usesBarSpringMovement()) {
       this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
-      this.toTargetY = this.barFocusSurfaceHeight(
-        this.toTargetX,
-        this.toTargetZ,
-        elevationOffset,
-        this.toTargetY,
-      );
+      if (this.usesTerrainFollowFocus()) {
+        this.toTargetY = this.barFocusSurfaceHeight(
+          this.toTargetX,
+          this.toTargetZ,
+          elevationOffset,
+          this.toTargetY,
+        );
+      }
     }
     this.finishContinuousMovement();
   }
@@ -2777,8 +2964,6 @@ export class OrbitCamera {
     const rawMaxX = Math.max(minX, maxX);
     const rawMinZ = Math.min(minZ, maxZ);
     const rawMaxZ = Math.max(minZ, maxZ);
-    this.barMapWidth = Math.max(0, rawMaxX);
-    this.barMapHeight = Math.max(0, rawMaxZ);
     const edgeInset = this.usesBarSpringMovement() ? 0.01 : 0;
     this.targetMinX = Math.min(rawMaxX, rawMinX + edgeInset);
     this.targetMaxX = Math.max(this.targetMinX, rawMaxX - edgeInset);
@@ -3003,6 +3188,12 @@ export class OrbitCamera {
     if (checker === undefined) this.mapRecoveryActive = false;
   }
 
+  /** User input takes the camera back from an in-progress automatic map
+   *  recovery immediately: the fixer must never fight the player's hands. */
+  private cancelMapRecovery(): void {
+    this.mapRecoveryActive = false;
+  }
+
   private updateLostTerrainRecovery(): boolean {
     if (!this.lostTerrainRecovery.enabled || this.surfaceVisibilityChecker === undefined) {
       this.mapRecoveryActive = false;
@@ -3161,14 +3352,6 @@ export class OrbitCamera {
     cb: ((x: number, z: number) => number) | undefined,
   ): void {
     this.getTerrainHeight = cb;
-  }
-
-  /** Set the water-level lower bound used only by BAR eye clearance. Focus
-   * tracking and camera anchors continue to use the terrain bed below water. */
-  setTerrainCollisionFloorHeight(height: number): void {
-    this.terrainCollisionFloorHeight = Number.isFinite(height)
-      ? height
-      : Number.NEGATIVE_INFINITY;
   }
 
   destroy(): void {

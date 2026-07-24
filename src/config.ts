@@ -789,6 +789,14 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 
+/** Hard ceiling on eye travel from one wheel tick, as a fraction of the
+ * current controller distance. Cursor-relative zoom travels a fraction of the
+ * camera-to-anchor distance, and that anchor depth is discontinuous at
+ * terrain silhouettes (a peak pixel and the valley pixel beside it can differ
+ * by 100x). This clamp makes a single tick's motion Lipschitz in camera
+ * state: no anchor, however far, can teleport the view. */
+export const ZOOM_TRAVEL_CLAMP_FRACTION = cameraConfigJson.zoom.travelClampFraction;
+
 /** Terrain-neighborhood sampling used to smooth cursor-relative zoom depth,
  *  plus the presentation settings for the matching CLIENT debug overlay. */
 export const CAMERA_ZOOM_DISTANCE_SAMPLING =

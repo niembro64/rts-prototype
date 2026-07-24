@@ -36,6 +36,7 @@ import {
   ZOOM_MIN_ORBIT_DISTANCE,
   ZOOM_MAX_ORBIT_DISTANCE_MAP_FACTOR,
   ZOOM_STEP_FRACTION,
+  ZOOM_TRAVEL_CLAMP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
   CAMERA_LOST_TERRAIN_RECOVERY,
   CAMERA_TERRAIN_COLLISION,
@@ -64,7 +65,10 @@ export type ThreeAppFrameComplete = {
 // near→far range, so widening the range is roughly free for
 // shoreline z-fight.
 const CAMERA_NEAR_PLANE = 50;
-const CAMERA_FAR_PLANE = 100000;
+/** Exported so world-extent renderers (water/terrain horizon skirts) can
+ *  guarantee they finish inside the clip range instead of visibly ending
+ *  mid-skirt at extreme zoom-out. */
+export const CAMERA_FAR_PLANE = 100000;
 
 function makeSkyGradientTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -237,6 +241,7 @@ export class ThreeApp {
       minTerrainClearance: CAMERA_TERRAIN_COLLISION.minClearance,
       terrainCollisionMode: CAMERA_TERRAIN_COLLISION.mode,
       zoomStepFraction: ZOOM_STEP_FRACTION,
+      zoomTravelClampFraction: ZOOM_TRAVEL_CLAMP_FRACTION,
       zoomDistanceSampling: CAMERA_ZOOM_DISTANCE_SAMPLING,
       movementConfig: CAMERA_MOVEMENT_CONFIG,
       panMultiplier: CAMERA_PAN_MULTIPLIER,

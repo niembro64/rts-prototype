@@ -23,8 +23,9 @@
     "maxOrbitDistanceMapFactor": 1.333,
     "maxMapCenterDistance": 50000.0,
     "stepFraction": 0.175,
+    "travelClampFraction": 0.5,
     "distanceSampling": {
-      "pointMode": "single",
+      "pointMode": "seventeen",
       "distanceAggregation": "min",
       "ringPointCount": 8,
       "innerRadiusPixels": 100.0,
@@ -53,6 +54,7 @@
   "movement": {
     "scaleMode": "bar-spring",
     "wheelInputMode": "bar-discrete-event",
+    "focusHeightMode": "constant-altitude",
     "cardinalYawLockEnabled": false,
     "centerClickPan": {
       "absoluteWorldUnitsPerPixel": 5.0,

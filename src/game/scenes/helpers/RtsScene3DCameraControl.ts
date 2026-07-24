@@ -85,7 +85,11 @@ export class RtsScene3DCameraControl {
   }
 
   centerOn(x: number, y: number): void {
-    this.threeApp.orbit.setTarget(x, 0, y);
+    // Altitude-preserving jump: keep the current focus height rather than
+    // hard-coding y=0, which parked the focus inside mountains and below
+    // basins. The orbit camera's focus floor/ceiling then resolves any
+    // terrain the destination happens to have.
+    this.threeApp.orbit.setTarget(x, this.threeApp.orbit.target.y, y);
   }
 
   flipYaw(): void {

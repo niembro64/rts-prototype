@@ -2,6 +2,8 @@ import {
   barCameraLockedYaw,
   barCameraYaw,
   barCameraRelativeZoomFactor,
+  barCameraTravelClampedZoomFactor,
+  barCameraWheelEventIsNotched,
   barCameraZoomElevationOffset,
   barSpringDamperStep,
   barCameraWheelTicks,
@@ -64,6 +66,53 @@ export function runOrbitCameraContractTest(): void {
   assertContract(
     close(spacedClicks, 5) && close(rapidClicks, 5),
     'five rapid clicks and five spaced clicks must deliver the same BAR input',
+  );
+
+  assertContract(
+    barCameraWheelEventIsNotched(1, undefined)
+      && barCameraWheelEventIsNotched(2, undefined),
+    'line and page wheel deltas only come from real notched wheels',
+  );
+  assertContract(
+    barCameraWheelEventIsNotched(0, 120)
+      && barCameraWheelEventIsNotched(0, -240),
+    'legacy wheelDelta multiples of 120 must classify as notched clicks',
+  );
+  assertContract(
+    !barCameraWheelEventIsNotched(0, -7.5)
+      && !barCameraWheelEventIsNotched(0, 100)
+      && !barCameraWheelEventIsNotched(0, 0)
+      && !barCameraWheelEventIsNotched(0, undefined),
+    'trackpad-style pixel streams must classify as continuous input',
+  );
+  assertContract(
+    close(barCameraWheelTicks(4, 0, 'bar-discrete-event', false), 0.04)
+      && close(barCameraWheelTicks(-25, 0, 'bar-discrete-event', false), -0.25),
+    'continuous devices in discrete mode must keep fractional pixel ticks '
+      + 'so a trackpad fling cannot become dozens of full notches',
+  );
+
+  assertContract(
+    close(barCameraTravelClampedZoomFactor(0.825, 1000, 1000, 0.5), 0.825),
+    'ordinary zoom (anchor near orbit distance) must pass through unclamped',
+  );
+  assertContract(
+    close(barCameraTravelClampedZoomFactor(0.825, 100000, 1000, 0.5), 0.995),
+    'a silhouette/fallback anchor at pathological depth must be limited to '
+      + 'the configured travel fraction of the orbit distance',
+  );
+  assertContract(
+    close(barCameraTravelClampedZoomFactor(1.175, 100000, 1000, 0.5), 1.005),
+    'outward zoom against a distant anchor must respect the same ceiling',
+  );
+  const clampedInwardTravel = (1 - barCameraTravelClampedZoomFactor(0.825, 50000, 2000, 0.5)) * 50000;
+  assertContract(
+    close(clampedInwardTravel, 0.5 * 2000),
+    'clamped eye travel must equal exactly the fraction of orbit distance',
+  );
+  assertContract(
+    close(barCameraTravelClampedZoomFactor(0.825, 100000, 1000, 0), 0.825),
+    'a zero travel-clamp fraction must disable the ceiling entirely',
   );
 
   assertContract(
