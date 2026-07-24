@@ -17,7 +17,7 @@ import { fabricatorTorusHoverHeight } from '../sim/blueprints';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { getEntityBodyOrientation, getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getHostShotArmingRadius } from '../sim/combat/shotArming';
 import {
   createWorldSupportSurface,
@@ -413,6 +413,7 @@ export class SelectionOverlayRenderer3D {
           cos, sin,
           weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
           mountSurfaceNormal,
+          getEntityBodyOrientation(entity),
         );
         const mountX = mount.x;
         const mountY = mount.y;

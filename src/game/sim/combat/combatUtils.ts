@@ -5,8 +5,13 @@ import { isProjectileShot } from '../types';
 import { isAttackEmitterConfig, isManualEmitterConfig } from '../emitterKinds';
 import { getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
+import type { MountBodyOrientation } from '../../math/MountGeometry';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
+import {
+  ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
+  entitySlotRegistry,
+} from '../EntitySlotRegistry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
 import { GRAVITY } from '../../../config';
 import {
@@ -124,6 +129,7 @@ export function decrementCooldown(cd: number, dtMs: number): number {
 }
 
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+const _bodyOrientationScratch: MountBodyOrientation = { x: 0, y: 0, z: 0, w: 1 };
 const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
@@ -132,6 +138,26 @@ const _sourceTurretMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _weaponMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
+
+/** Full authoritative body orientation for a live entity, read from the
+ *  canonical entity_state slab (written by the Rust unit-force attitude
+ *  step). Returns null for hosts without one (buildings, yaw+tilt units,
+ *  paths where the slab is unavailable) — callers then keep the legacy
+ *  yaw + surface-tilt mount math. The returned object is a shared
+ *  scratch; consume it before the next call. */
+export function getEntityBodyOrientation(entity: Entity): MountBodyOrientation | null {
+  const views = entitySlotRegistry.getViews();
+  if (views === null) return null;
+  const slot = entity.entitySlotId;
+  if (slot < 0 || slot >= views.capacity) return null;
+  if (views.entityId[slot] !== entity.id) return null;
+  if ((views.unitMotionFlags[slot] & ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION) === 0) return null;
+  _bodyOrientationScratch.x = views.orientationX[slot];
+  _bodyOrientationScratch.y = views.orientationY[slot];
+  _bodyOrientationScratch.z = views.orientationZ[slot];
+  _bodyOrientationScratch.w = views.orientationW[slot];
+  return _bodyOrientationScratch;
+}
 
 type WeaponKinematicsOptions = {
   currentTick: number | undefined;
@@ -217,6 +243,7 @@ export function resolveWeaponWorldMount(
     localMount.y + (suspension !== null ? suspension.offsetY : 0),
     localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     optionSurfaceN ?? FLAT_SURFACE_NORMAL,
+    getEntityBodyOrientation(unit),
     out,
   );
 }
@@ -298,6 +325,7 @@ export function updateWeaponWorldKinematics(
     localMount.y + (suspension !== null ? suspension.offsetY : 0),
     localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     options.surfaceN ?? FLAT_SURFACE_NORMAL,
+    getEntityBodyOrientation(unit),
     _weaponMountScratch,
   );
 

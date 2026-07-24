@@ -304,7 +304,7 @@ pub(crate) const UF_OUT_HOVER_ORIENTATION: u32 = 1 << 3;
 pub(crate) const UF_OUT_WOKE_BODY: u32 = 1 << 4;
 pub(crate) const UF_OUT_ENTITY_STATE_SYNCED: u32 = 1 << 5;
 
-const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION: u32 = 1 << 1;
+pub(crate) const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION: u32 = 1 << 1;
 const ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY: u32 = 1 << 2;
 
 #[inline]

@@ -12,7 +12,11 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { isAttackEmitter } from '../sim/emitterKinds';
 import { getUnitGroundZ } from '../sim/unitGeometry';
-import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import {
+  getEntityBodyOrientation,
+  getEntityPosition3d,
+  getProjectileLaunchSpeed,
+} from '../sim/combat/combatUtils';
 import { getProjectileAirFrictionPer60HzFrame } from '../sim/shotLocomotionMotion';
 
 const SEARCH_ITERATIONS = 14;
@@ -105,6 +109,7 @@ export function resolveProjectileWeaponMount(
     mount.y,
     mount.z,
     surfaceN,
+    getEntityBodyOrientation(entity),
   );
 }
 

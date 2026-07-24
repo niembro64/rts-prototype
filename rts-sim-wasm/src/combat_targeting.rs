@@ -1277,6 +1277,34 @@ pub(crate) fn combat_targeting_apply_surface_tilt(
     )
 }
 
+/// Authoritative full body orientation for an entity slot, when the
+/// unit-force attitude step owns one. The combat pool does not carry the
+/// quaternion; it lives in the canonical entity_state slab, which shares
+/// the same slot space. The entity-id parity check rejects recycled slots.
+#[inline]
+pub(crate) fn combat_targeting_entity_mount_orientation(
+    pool: &CombatTargetingPool,
+    entity_slot: usize,
+) -> Option<[f64; 4]> {
+    let state = crate::entity_state::entity_state();
+    if entity_slot >= state.entity_id.len() || entity_slot >= pool.entity_id.len() {
+        return None;
+    }
+    let id = state.entity_id[entity_slot];
+    if id < 0 || pool.entity_id[entity_slot] != id {
+        return None;
+    }
+    if state.unit_motion_flags[entity_slot] & ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION == 0 {
+        return None;
+    }
+    Some([
+        state.orientation_x[entity_slot],
+        state.orientation_y[entity_slot],
+        state.orientation_z[entity_slot],
+        state.orientation_w[entity_slot],
+    ])
+}
+
 #[inline]
 pub(crate) fn combat_targeting_world_mount(
     unit_x: f64,
@@ -1290,7 +1318,20 @@ pub(crate) fn combat_targeting_world_mount(
     surface_nx: f64,
     surface_ny: f64,
     surface_nz: f64,
+    orientation: Option<[f64; 4]>,
 ) -> (f64, f64, f64) {
+    // Full-orientation hosts: the renderer's chassis parent IS this
+    // quaternion (yaw included), so emissions must ride it too or shots
+    // detach from the drawn turret whenever the body's attitude diverges
+    // from the yaw+surface-tilt approximation (steep slopes, buoyancy).
+    if let Some(q) = orientation {
+        let rotated = quat_rotate_vec(q, [offset_x, offset_y, mount_height]);
+        return (
+            unit_x + rotated[0],
+            unit_y + rotated[1],
+            unit_ground_z + rotated[2],
+        );
+    }
     let yawed_x = cos * offset_x - sin * offset_y;
     let yawed_y = sin * offset_x + cos * offset_y;
     let (tilted_x, tilted_y, tilted_z) = combat_targeting_apply_surface_tilt(
@@ -1342,6 +1383,7 @@ pub fn combat_targeting_update_mount_kinematics(
     let suspension_x = pool.entity_suspension_offset_x[s];
     let suspension_y = pool.entity_suspension_offset_y[s];
     let suspension_z = pool.entity_suspension_offset_z[s];
+    let orientation = combat_targeting_entity_mount_orientation(pool, s);
     let inv_elapsed_sec = if dt_ms > 0.0 { 1000.0 / dt_ms } else { 0.0 };
 
     for turret_idx in 0..turret_count {
@@ -1381,6 +1423,7 @@ pub fn combat_targeting_update_mount_kinematics(
             surface_nx,
             surface_ny,
             surface_nz,
+            orientation,
         );
 
         if prev_tick >= 0 && current_tick - prev_tick == 1 && inv_elapsed_sec > 0.0 {
@@ -3506,6 +3549,7 @@ pub(crate) fn combat_targeting_resolve_turret_mount_from_slab(
         pool.entity_surface_nx[target_entity_slot],
         pool.entity_surface_ny[target_entity_slot],
         pool.entity_surface_nz[target_entity_slot],
+        combat_targeting_entity_mount_orientation(pool, target_entity_slot),
     )
 }
 

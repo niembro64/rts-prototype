@@ -1,5 +1,6 @@
 import { getTransformCosSin } from '../math/MathHelpers';
 import { getTurretWorldMount } from '../math/MountGeometry';
+import { getEntityBodyOrientation } from '../sim/combat/combatUtils';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import type { Entity, EntityId } from '../sim/types';
@@ -36,6 +37,7 @@ function resolveCurrentTurretMount(
     localMount.y + (suspension !== null ? suspension.offsetY : 0),
     localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     source.unit?.surfaceNormal ?? FLAT_SURFACE_NORMAL,
+    getEntityBodyOrientation(source),
     _mountScratch,
   );
 }
