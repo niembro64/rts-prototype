@@ -79,8 +79,11 @@ export class ZoomTerrainPointsOverlay3D {
 
   private refreshColors(): void {
     for (let i = 0; i < this.samples.distances.length; i++) {
-      const selected = this.samples.aggregation === 'min'
-        && i === this.samples.selectedSampleIndex;
+      // A flagged sample contributed to the aggregate depth: the single
+      // winner in `min`, the N nearest in `average-of-shortest-N`. Plain
+      // `average` flags nothing — every point contributes equally.
+      const selected = i < this.samples.count
+        && this.samples.selectedFlags[i] === 1;
       const color = selected
         ? this.selectedColor
         : i === 0

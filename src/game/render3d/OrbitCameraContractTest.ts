@@ -1,4 +1,5 @@
 import {
+  averageOfShortestDistances,
   barCameraLockedYaw,
   barCameraYaw,
   barCameraRelativeZoomFactor,
@@ -9,6 +10,7 @@ import {
   barCameraWheelTicks,
   cameraMouseDragModeForModifiers,
   persistentTerrainRaise,
+  zoomAggregationShortestCount,
 } from './OrbitCamera';
 
 function assertContract(condition: boolean, message: string): void {
@@ -113,6 +115,60 @@ export function runOrbitCameraContractTest(): void {
   assertContract(
     close(barCameraTravelClampedZoomFactor(0.825, 100000, 1000, 0), 0.825),
     'a zero travel-clamp fraction must disable the ceiling entirely',
+  );
+
+  assertContract(
+    zoomAggregationShortestCount('average-of-shortest-3') === 3
+      && zoomAggregationShortestCount('average-of-shortest-5') === 5
+      && zoomAggregationShortestCount('average-of-shortest-8') === 8
+      && zoomAggregationShortestCount('min') === 1,
+    'every average-of-shortest mode must map to its named sample count',
+  );
+  // Silhouette neighborhood: peak surface near, valley floor far behind.
+  const silhouette = [520, 480, 500, 9000, 9400, 8800, 9100, 9600, 9200];
+  const silhouetteFlags = new Uint8Array(silhouette.length);
+  const nearTail = averageOfShortestDistances(silhouette, silhouette.length, 3, silhouetteFlags);
+  assertContract(
+    close(nearTail, (480 + 500 + 520) / 3),
+    'average-of-shortest-3 must average exactly the three nearest samples',
+  );
+  assertContract(
+    silhouetteFlags[0] === 1 && silhouetteFlags[1] === 1 && silhouetteFlags[2] === 1
+      && silhouetteFlags[3] === 0 && silhouetteFlags[8] === 0,
+    'contributing samples must be flagged for the debug overlay, others not',
+  );
+  assertContract(
+    nearTail < 1000,
+    'the near-tail mean must stay on the peak surface a full average abandons',
+  );
+  const flagsK1 = new Uint8Array(silhouette.length);
+  assertContract(
+    close(averageOfShortestDistances(silhouette, silhouette.length, 1, flagsK1), 480),
+    'average-of-shortest with k=1 must degenerate to min',
+  );
+  const flagsAll = new Uint8Array(silhouette.length);
+  const fullMean = silhouette.reduce((a, b) => a + b, 0) / silhouette.length;
+  assertContract(
+    close(
+      averageOfShortestDistances(silhouette, silhouette.length, 99, flagsAll),
+      fullMean,
+    ),
+    'k beyond the sample count must degenerate to the plain average',
+  );
+  const withOutlier = [30, 5000, 5100, 5200];
+  const outlierFlags = new Uint8Array(withOutlier.length);
+  assertContract(
+    close(
+      averageOfShortestDistances(withOutlier, withOutlier.length, 3, outlierFlags),
+      (30 + 5000 + 5100) / 3,
+    ),
+    'one spurious near sample must be diluted instead of dictating the depth',
+  );
+  const nanFlags = new Uint8Array(3);
+  assertContract(
+    close(averageOfShortestDistances([Number.NaN, 700, 900], 3, 2, nanFlags), 800)
+      && nanFlags[0] === 0,
+    'non-finite samples must never contribute to the near-tail mean',
   );
 
   assertContract(

@@ -26,7 +26,7 @@
     "travelClampFraction": 0.5,
     "distanceSampling": {
       "pointMode": "seventeen",
-      "distanceAggregation": "min",
+      "distanceAggregation": "average-of-shortest-3",
       "ringPointCount": 8,
       "innerRadiusPixels": 100.0,
       "outerRadiusPixels": 200.0,

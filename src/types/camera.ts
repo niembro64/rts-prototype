@@ -102,8 +102,24 @@ export type CameraMovementConfig = {
 
 export type CameraZoomDistanceSamplingMode = 'single' | 'nine' | 'seventeen';
 /** How a configured zoom-sample neighborhood becomes one camera-distance
- *  scalar. */
-export type CameraZoomDistanceAggregation = 'min' | 'average';
+ *  scalar.
+ *
+ *  - 'min'     — nearest sample wins outright. Locks onto a peak beside the
+ *                cursor, but a single spurious near sample (one foreground
+ *                bump clipped by the ring) hijacks the whole zoom.
+ *  - 'average' — mean of every sample. Smooth, but a silhouette
+ *                neighborhood is bimodal (peak + valley behind) and the
+ *                mean lands mid-air between the two surfaces.
+ *  - 'average-of-shortest-N' (3 / 5 / 8) — mean of only the N nearest
+ *                samples: stays on the near surface like 'min' while no
+ *                single sample can dictate the depth. Lower N behaves more
+ *                like 'min', higher N more like 'average'. */
+export type CameraZoomDistanceAggregation =
+  | 'min'
+  | 'average'
+  | 'average-of-shortest-3'
+  | 'average-of-shortest-5'
+  | 'average-of-shortest-8';
 
 /** Screen-space terrain neighborhood sampled by relative camera zoom.
  *  The center anchor plus zero, one, or two configured rings resolve surface
@@ -113,8 +129,8 @@ export type CameraZoomDistanceSamplingConfig = {
   /** single = center only; nine = center + inner ring; seventeen = center +
    *  inner and outer rings. */
   readonly pointMode: CameraZoomDistanceSamplingMode;
-  /** min favors the closest sampled surface; average smooths across the
-   *  complete configured neighborhood. */
+  /** Reduction from the sampled neighborhood to one depth scalar — see
+   *  CameraZoomDistanceAggregation for each mode's trade-off. */
   readonly distanceAggregation: CameraZoomDistanceAggregation;
   /** Number of evenly spaced rays on each ring. Eight produces 9 samples
    *  with one ring or 17 with two. */

@@ -239,17 +239,74 @@ type OrbitCameraOptions = {
 export type CameraZoomTerrainSampleSnapshot = {
   readonly positions: Float32Array;
   readonly distances: Float32Array;
+  /** 1 where the sample contributed to the aggregate: the single winner in
+   *  `min`, the N nearest in `average-of-shortest-N`, none in `average`
+   *  (every sample contributes equally, so nothing is highlighted). */
+  readonly selectedFlags: Uint8Array;
   readonly ringPointCount: number;
   count: number;
   aggregation: CameraZoomDistanceAggregation;
   aggregateDistance: number;
   appliedAggregateDistance: number;
   centerDistance: number;
-  /** Index of the point selected by `min`; -1 for average mode. */
+  /** Index of the nearest contributing point; -1 for average mode. */
   selectedSampleIndex: number;
   sampledAtMilliseconds: number;
   version: number;
 };
+
+/** Sample count for the average-of-shortest family; 1 for every other mode
+ * (making it degenerate to `min`). */
+export function zoomAggregationShortestCount(
+  aggregation: CameraZoomDistanceAggregation,
+): number {
+  switch (aggregation) {
+    case 'average-of-shortest-3': return 3;
+    case 'average-of-shortest-5': return 5;
+    case 'average-of-shortest-8': return 8;
+    default: return 1;
+  }
+}
+
+/** Mean of the `k` smallest of the first `count` distances — the robust
+ * near-surface depth estimator behind `average-of-shortest-N`. `min` is
+ * hijacked by any single spurious near sample, while the full mean of a
+ * bimodal silhouette neighborhood lands mid-air between peak and valley;
+ * averaging only the near tail keeps the estimate on the near surface with
+ * no single sample dictating it. Non-finite entries never contribute.
+ * `outFlags` doubles as the selection state and the result: entries must
+ * arrive 0 over the first `count` indices, and contributing indices are
+ * marked 1. Allocation-free: k·count comparisons on the caller's buffers. */
+export function averageOfShortestDistances(
+  distances: ArrayLike<number>,
+  count: number,
+  k: number,
+  outFlags: Uint8Array,
+): number {
+  const usable = Math.max(0, Math.min(count, distances.length, outFlags.length));
+  if (usable === 0) return Number.NaN;
+  const take = Math.max(1, Math.min(usable, Math.floor(k)));
+  let sum = 0;
+  let taken = 0;
+  for (let pass = 0; pass < take; pass++) {
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < usable; i++) {
+      if (outFlags[i] === 1) continue;
+      const distance = distances[i];
+      if (!Number.isFinite(distance)) continue;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+    if (bestIndex < 0) break;
+    outFlags[bestIndex] = 1;
+    sum += bestDistance;
+    taken += 1;
+  }
+  return taken > 0 ? sum / taken : Number.NaN;
+}
 
 /** Classify a wheel event as a notched-wheel click or a continuous-device
  * stream (trackpad two-finger scroll, Magic Mouse surface, free-spin wheel).
@@ -700,6 +757,7 @@ export class OrbitCamera {
     this.zoomTerrainSamples = {
       positions: new Float32Array(zoomSampleCount * 3),
       distances: new Float32Array(zoomSampleCount),
+      selectedFlags: new Uint8Array(zoomSampleCount),
       ringPointCount: zoomRingPointCount,
       count: 0,
       aggregation: this.zoomDistanceSampling.distanceAggregation,
@@ -1700,9 +1758,23 @@ export class OrbitCamera {
     }
 
     const aggregation = this.zoomDistanceSampling.distanceAggregation;
-    const aggregateDistance = aggregation === 'min'
-      ? minDistance
-      : sum / sampleIndex;
+    const flags = samples.selectedFlags;
+    flags.fill(0);
+    let aggregateDistance: number;
+    if (aggregation === 'average') {
+      aggregateDistance = sum / sampleIndex;
+    } else if (aggregation === 'min') {
+      aggregateDistance = minDistance;
+      flags[minSampleIndex] = 1;
+    } else {
+      aggregateDistance = averageOfShortestDistances(
+        samples.distances,
+        sampleIndex,
+        zoomAggregationShortestCount(aggregation),
+        flags,
+      );
+      if (!Number.isFinite(aggregateDistance)) aggregateDistance = minDistance;
+    }
     let appliedAggregateDistance = aggregateDistance;
     if (wantFactor < 1 && motionCenterDistance > 1e-6) {
       // A deep valley beside an extremely close peak can otherwise ask one
@@ -1723,7 +1795,7 @@ export class OrbitCamera {
     samples.aggregateDistance = aggregateDistance;
     samples.appliedAggregateDistance = appliedAggregateDistance;
     samples.centerDistance = centerDistance;
-    samples.selectedSampleIndex = aggregation === 'min' ? minSampleIndex : -1;
+    samples.selectedSampleIndex = aggregation === 'average' ? -1 : minSampleIndex;
     samples.sampledAtMilliseconds = performance.now();
     samples.version += 1;
 
@@ -1755,6 +1827,7 @@ export class OrbitCamera {
 
   private clearZoomTerrainSamples(): void {
     this.zoomTerrainSamples.count = 0;
+    this.zoomTerrainSamples.selectedFlags.fill(0);
     this.zoomTerrainSamples.aggregateDistance = 0;
     this.zoomTerrainSamples.appliedAggregateDistance = 0;
     this.zoomTerrainSamples.centerDistance = 0;
