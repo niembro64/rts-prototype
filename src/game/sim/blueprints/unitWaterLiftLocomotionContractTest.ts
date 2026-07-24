@@ -12,17 +12,15 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   for (const presetId of ['flippers', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
-      preset.actuator.ground.maxPropulsiveForce >= 0 &&
-        preset.actuator.ground.staticFrictionCoefficient >= 0,
-      `${presetId}.ground declares propulsion and static friction`,
+      preset.actuator.ground.staticFrictionCoefficient >= 0,
+      `${presetId}.ground declares static friction`,
     );
     for (const medium of ['air', 'water'] as const) {
       const fluid = preset.actuator[medium];
       assertContract(
-        fluid.maxPropulsiveForce >= 0 &&
-          fluid.linearDampingRate >= 0 &&
+        fluid.linearDampingRate >= 0 &&
           fluid.angularDampingRate >= 0,
-        `${presetId}.${medium} owns propulsion plus linear and angular damping`,
+        `${presetId}.${medium} owns linear and angular damping`,
       );
       for (const field of UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS) {
         assertContract(

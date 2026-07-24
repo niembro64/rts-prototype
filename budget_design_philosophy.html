@@ -977,20 +977,21 @@
         A unit&rsquo;s locomotion is not a closed set of discriminated chassis types
         (&ldquo;this is a wheeled unit,&rdquo; &ldquo;this is a flyer&rdquo;) that each
         carry their own private physics. It is one <em>fully-abstracted force profile</em>
-        that every runtime unit receives from its locomotion preset: the same physically
-        applicable groups are present on every unit, while the authored unit contributes mass and any
-        body-specific surface-lift/gravity-counter terms. The chassis archetypes
+        assembled from the unit blueprint and its locomotion preset: the same physically
+        applicable groups are present on every runtime unit, while the authored unit contributes
+        per-medium maximum propulsive force, mass, and body-specific
+        surface-lift/gravity-counter terms. The chassis archetypes
         &mdash; wheels, treads, legs, hover, flying &mdash; survive as <strong>visual rig
         choices and authored default presets</strong> (see <strong>Locomotion Visuals Are
         Frontend</strong>), not as separate physics code paths. Two units with the same
         force-profile numbers move identically regardless of which rig draws them, exactly
         as two shapes with the same material look identically (<strong>Materials Are
-        Independent Of Shape</strong>). A zero remains a real, meaningful preset value, but
-        every unit deliberately owns at least a small positive water drive so an externally
+        Independent Of Shape</strong>). A zero remains a real, meaningful unit propulsion value, but
+        every unit deliberately authors at least a small positive water drive so an externally
         displaced body can attempt to recover. Intended aquatic locomotion has useful water
-        authority; ordinary locomotion has only emergency authority. Units sharing a preset
-        receive the same maximum propulsive force; their different masses create different
-        accelerations.
+        authority; ordinary locomotion has only emergency authority. Locomotion presets
+        provide shared contact, resistance, control, and navigation behavior without
+        overriding unit-specific propulsion.
       </p>
       <p>
         The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
@@ -1512,7 +1513,7 @@
         separate foot. On land they use a diagonal, leg-like support gait; as the physical
         submerged fraction rises they continuously unfold into wing-like paddles. The visual
         transition reads the same body-in-water fraction as locomotion physics, while maximum
-        propulsive force remains wholly owned by the locomotion preset.</li>
+        propulsive force remains wholly owned by the unit blueprint.</li>
         <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
         balances gravity with downward thrust against the air column underneath. Visually: spinning
         fans, downward smoke columns, chassis riding a target altitude. The contract is

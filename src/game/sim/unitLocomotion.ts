@@ -40,23 +40,43 @@ function canPropel(force: number): boolean {
 
 type AuthoredAirFluidPhysics = UnitLocomotionBlueprint['physics']['air'];
 type AuthoredWaterFluidPhysics = UnitLocomotionBlueprint['physics']['water'];
+type AuthoredGroundPhysics = UnitLocomotionBlueprint['physics']['ground'];
 
 function createRuntimeGroundPhysics(
-  preset: UnitLocomotionPresetConfig,
+  presetId: string,
+  presetPhysics: UnitLocomotionPresetConfig['actuator']['ground'],
+  authored: AuthoredGroundPhysics,
 ): UnitLocomotionGroundPhysics {
-  return { ...preset.actuator.ground };
+  assertAuthoredPhysicsKeys(presetId, 'ground', authored, ['maxPropulsiveForce']);
+  assertUnitLocomotionNonNegativeFinite(
+    `${presetId}.physics.ground.maxPropulsiveForce`,
+    authored.maxPropulsiveForce,
+  );
+  return {
+    maxPropulsiveForce: authored.maxPropulsiveForce,
+    ...presetPhysics,
+  };
 }
 
-function assertAuthoredLiftKeys(
+function assertAuthoredPhysicsKeys(
   presetId: string,
-  medium: 'air' | 'water',
-  authored: AuthoredAirFluidPhysics | AuthoredWaterFluidPhysics,
+  medium: 'ground' | 'air' | 'water',
+  authored: AuthoredGroundPhysics | AuthoredAirFluidPhysics | AuthoredWaterFluidPhysics,
+  expectedFields: readonly string[],
 ): void {
+  if (!authored || typeof authored !== 'object') {
+    throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}: missing object`);
+  }
   for (const key of Object.keys(authored)) {
-    if (key !== 'lift') {
+    if (!expectedFields.includes(key)) {
       throw new Error(
-        `Invalid unit locomotion ${presetId}.physics.${medium}.${key}: this belongs in the locomotion preset`,
+        `Invalid unit locomotion ${presetId}.physics.${medium}.${key}`,
       );
+    }
+  }
+  for (const field of expectedFields) {
+    if (!Object.prototype.hasOwnProperty.call(authored, field)) {
+      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}: missing ${field}`);
     }
   }
 }
@@ -84,7 +104,7 @@ function createRuntimeAirFluidPhysics(
   presetPhysics: UnitLocomotionPresetConfig['actuator']['air'],
   authored: AuthoredAirFluidPhysics,
 ): UnitLocomotionAirFluidPhysics {
-  assertAuthoredLiftKeys(presetId, 'air', authored);
+  assertAuthoredPhysicsKeys(presetId, 'air', authored, ['maxPropulsiveForce', 'lift']);
   assertLiftFields(
     presetId,
     'air',
@@ -96,6 +116,10 @@ function createRuntimeAirFluidPhysics(
     surfaceFollowingInverseForceFromWater,
   } = authored.lift;
   assertUnitLocomotionNonNegativeFinite(
+    `${presetId}.physics.air.maxPropulsiveForce`,
+    authored.maxPropulsiveForce,
+  );
+  assertUnitLocomotionNonNegativeFinite(
     `${presetId}.physics.air.lift.surfaceFollowingInverseForceFromGround`,
     surfaceFollowingInverseForceFromGround,
   );
@@ -104,7 +128,7 @@ function createRuntimeAirFluidPhysics(
     surfaceFollowingInverseForceFromWater,
   );
   return {
-    maxPropulsiveForce: presetPhysics.maxPropulsiveForce,
+    maxPropulsiveForce: authored.maxPropulsiveForce,
     resistance: {
       linearDampingRate: presetPhysics.linearDampingRate,
       angularDampingRate: presetPhysics.angularDampingRate,
@@ -121,7 +145,7 @@ function createRuntimeWaterFluidPhysics(
   presetPhysics: UnitLocomotionPresetConfig['actuator']['water'],
   authored: AuthoredWaterFluidPhysics,
 ): UnitLocomotionWaterFluidPhysics {
-  assertAuthoredLiftKeys(presetId, 'water', authored);
+  assertAuthoredPhysicsKeys(presetId, 'water', authored, ['maxPropulsiveForce', 'lift']);
   assertLiftFields(
     presetId,
     'water',
@@ -133,6 +157,10 @@ function createRuntimeWaterFluidPhysics(
     surfaceFollowingProportionalForceFromWater,
   } = authored.lift;
   assertUnitLocomotionNonNegativeFinite(
+    `${presetId}.physics.water.maxPropulsiveForce`,
+    authored.maxPropulsiveForce,
+  );
+  assertUnitLocomotionNonNegativeFinite(
     `${presetId}.physics.water.lift.surfaceFollowingInverseForceFromGround`,
     surfaceFollowingInverseForceFromGround,
   );
@@ -141,7 +169,7 @@ function createRuntimeWaterFluidPhysics(
     surfaceFollowingProportionalForceFromWater,
   );
   return {
-    maxPropulsiveForce: presetPhysics.maxPropulsiveForce,
+    maxPropulsiveForce: authored.maxPropulsiveForce,
     resistance: {
       linearDampingRate: presetPhysics.linearDampingRate,
       angularDampingRate: presetPhysics.angularDampingRate,
@@ -162,7 +190,7 @@ function createRuntimeLocomotionPhysics(
     throw new Error(`Invalid unit locomotion ${presetId}.physics: missing physics object`);
   }
   return {
-    ground: createRuntimeGroundPhysics(preset),
+    ground: createRuntimeGroundPhysics(presetId, preset.actuator.ground, authored.ground),
     air: createRuntimeAirFluidPhysics(presetId, preset.actuator.air, authored.air),
     water: createRuntimeWaterFluidPhysics(presetId, preset.actuator.water, authored.water),
   };

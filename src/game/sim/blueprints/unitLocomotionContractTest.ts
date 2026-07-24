@@ -100,26 +100,24 @@ export function runUnitLocomotionContractTest(): void {
     const preset = getUnitLocomotionPreset(presetId);
     const ground = preset.actuator.ground;
     assertContract(
-      ground.maxPropulsiveForce >= 0 &&
-        ground.staticFrictionCoefficient >= 0 &&
+      ground.staticFrictionCoefficient >= 0 &&
         ground.tangentialDampingRate >= 0,
-      `${presetId}.ground owns propulsion and contact physics`,
+      `${presetId}.ground owns contact physics`,
     );
     assertContract(
-      rawPreset.actuator.ground.maxPropulsiveForce === ground.maxPropulsiveForce,
-      `${presetId}.ground preserves its authored propulsion force`,
+      !Object.prototype.hasOwnProperty.call(rawPreset.actuator.ground, 'maxPropulsiveForce'),
+      `${presetId}.ground does not own unit propulsion`,
     );
     for (const medium of ['air', 'water'] as const) {
       const runtime = preset.actuator[medium];
       assertContract(
-        runtime.maxPropulsiveForce >= 0 &&
-          runtime.linearDampingRate >= 0 &&
+        runtime.linearDampingRate >= 0 &&
           runtime.angularDampingRate >= 0,
-        `${presetId}.${medium} owns propulsion plus linear and angular damping`,
+        `${presetId}.${medium} owns linear and angular damping`,
       );
       assertContract(
-        rawPreset.actuator[medium].maxPropulsiveForce === runtime.maxPropulsiveForce,
-        `${presetId}.${medium} preserves its authored propulsion force`,
+        !Object.prototype.hasOwnProperty.call(rawPreset.actuator[medium], 'maxPropulsiveForce'),
+        `${presetId}.${medium} does not own unit propulsion`,
       );
       for (const field of UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS) {
         assertContract(
@@ -147,7 +145,13 @@ export function runUnitLocomotionContractTest(): void {
       `${blueprint.unitBlueprintId} locomotion cloning preserves per-medium propulsion and navigation`,
     );
     assertContract(
-      runtime.physics.air.lift.surfaceFollowingInverseForceFromGround ===
+      runtime.physics.ground.maxPropulsiveForce ===
+        blueprint.unitLocomotion.physics.ground.maxPropulsiveForce &&
+        runtime.physics.air.maxPropulsiveForce ===
+          blueprint.unitLocomotion.physics.air.maxPropulsiveForce &&
+        runtime.physics.water.maxPropulsiveForce ===
+          blueprint.unitLocomotion.physics.water.maxPropulsiveForce &&
+        runtime.physics.air.lift.surfaceFollowingInverseForceFromGround ===
         blueprint.unitLocomotion.physics.air.lift.surfaceFollowingInverseForceFromGround &&
         runtime.physics.air.lift.surfaceFollowingInverseForceFromWater ===
           blueprint.unitLocomotion.physics.air.lift.surfaceFollowingInverseForceFromWater &&
@@ -155,19 +159,12 @@ export function runUnitLocomotionContractTest(): void {
           blueprint.unitLocomotion.physics.water.lift.surfaceFollowingInverseForceFromGround &&
         runtime.physics.water.lift.surfaceFollowingProportionalForceFromWater ===
           blueprint.unitLocomotion.physics.water.lift.surfaceFollowingProportionalForceFromWater,
-      `${blueprint.unitBlueprintId} owns explicit inverse and proportional surface-following forces`,
+      `${blueprint.unitBlueprintId} owns per-medium propulsion and explicit surface-following forces`,
     );
     assertContract(
       getUnitLocomotionTraversalCapabilities(runtime).waypoint.allowInAir ===
         runtime.navigation.waypoint.allowInAir,
       `${blueprint.unitBlueprintId} route permissions come from navigation, not visual type`,
-    );
-    assertContract(
-      runtime.physics.air.maxPropulsiveForce ===
-        getUnitLocomotionPreset(runtime.physicsPresetId).actuator.air.maxPropulsiveForce &&
-        runtime.physics.water.maxPropulsiveForce ===
-          getUnitLocomotionPreset(runtime.physicsPresetId).actuator.water.maxPropulsiveForce,
-      `${blueprint.unitBlueprintId} retains authored air and water drive independently of route permission`,
     );
   }
 
@@ -215,6 +212,26 @@ export function runUnitLocomotionContractTest(): void {
     eagle.navigation.waypoint.allowInAir && eagle.physics.air.maxPropulsiveForce > 0,
     'Eagle has explicit air navigation and air propulsion',
   );
+  const eagleMass = getUnitBlueprint('unitEagle').base.mass;
+  const bee = getUnitLocomotion('unitBee');
+  const beeMass = getUnitBlueprint('unitBee').base.mass;
+  for (const unitBlueprintId of ['unitAlbatros', 'unitQueenTick'] as const) {
+    const heavyFlyer = getUnitLocomotion(unitBlueprintId);
+    const heavyFlyerMass = getUnitBlueprint(unitBlueprintId).base.mass;
+    assertContract(
+      heavyFlyer.physics.air.maxPropulsiveForce / heavyFlyerMass >=
+        eagle.physics.air.maxPropulsiveForce / eagleMass,
+      `${unitBlueprintId} authors enough air propulsion for at least Eagle-class acceleration`,
+    );
+  }
+  const queenBee = getUnitLocomotion('unitQueenBee');
+  const queenBeeMass = getUnitBlueprint('unitQueenBee').base.mass;
+  assertContract(
+    queenBee.physics.air.maxPropulsiveForce / queenBeeMass >=
+      bee.physics.air.maxPropulsiveForce / beeMass &&
+      queenBee.physics.water.maxPropulsiveForce === queenBee.physics.air.maxPropulsiveForce,
+    'Queen Bee authors Bee-class acceleration in both supported fluid media',
+  );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(
       !orca.navigation.waypoint.allowOnGround &&
@@ -231,6 +248,18 @@ export function runUnitLocomotionContractTest(): void {
     surfaceFollowingInverseForceFromWater?: number;
   }).surfaceFollowingInverseForceFromWater;
   expectLocomotionError(incompleteAirLift, 'air lift requires both inverse surface sources');
+
+  const missingGroundPropulsion = cloneBlueprint(getUnitBlueprint('unitEagle').unitLocomotion);
+  delete (missingGroundPropulsion.physics.ground as {
+    maxPropulsiveForce?: number;
+  }).maxPropulsiveForce;
+  expectLocomotionError(missingGroundPropulsion, 'ground requires maxPropulsiveForce');
+
+  const missingAirPropulsion = cloneBlueprint(getUnitBlueprint('unitEagle').unitLocomotion);
+  delete (missingAirPropulsion.physics.air as {
+    maxPropulsiveForce?: number;
+  }).maxPropulsiveForce;
+  expectLocomotionError(missingAirPropulsion, 'air requires maxPropulsiveForce');
 
   const invalidWaterLift = cloneBlueprint(getUnitBlueprint('unitOrca').unitLocomotion);
   const waterLift = invalidWaterLift.physics.water.lift as {

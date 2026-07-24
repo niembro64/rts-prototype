@@ -787,16 +787,24 @@ pub struct LocomotionWaterLiftPhysics {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionAirFluidBodyPhysics {
+    pub maxPropulsiveForce: f64,
     pub lift: LocomotionAirLiftPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionWaterFluidBodyPhysics {
+    pub maxPropulsiveForce: f64,
     pub lift: LocomotionWaterLiftPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionGroundBodyPhysics {
+    pub maxPropulsiveForce: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitUnitLocomotionBlueprintPhysics {
+    pub ground: LocomotionGroundBodyPhysics,
     pub air: LocomotionAirFluidBodyPhysics,
     pub water: LocomotionWaterFluidBodyPhysics,
 }

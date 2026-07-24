@@ -63,13 +63,18 @@
       "type": "wheels",
       "physicsPresetId": "wheels",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -174,13 +179,18 @@
       "type": "treads",
       "physicsPresetId": "treads",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 45.333333333333
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -289,13 +299,18 @@
       "type": "legs",
       "physicsPresetId": "legs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -431,13 +446,18 @@
       "type": "treads",
       "physicsPresetId": "treads",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 45.333333333333
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -542,13 +562,18 @@
       "type": "wheels",
       "physicsPresetId": "wheels",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -651,13 +676,18 @@
       "type": "legs",
       "physicsPresetId": "legs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -793,13 +823,18 @@
       "type": "treads",
       "physicsPresetId": "treads",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 45.333333333333
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -921,13 +956,18 @@
       "type": "legs",
       "physicsPresetId": "legs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1158,13 +1198,18 @@
       "type": "legs",
       "physicsPresetId": "legs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1299,13 +1344,18 @@
       "type": "amphibious-treads",
       "physicsPresetId": "amphibiousTreads",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 8.613333333333
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 2.666666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 327.3576026,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1442,13 +1492,18 @@
       "type": "flippers",
       "physicsPresetId": "flippers",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 700,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1586,13 +1641,18 @@
       "type": "submarine",
       "physicsPresetId": "submarine",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 20,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 100,
             "surfaceFollowingProportionalForceFromWater": 0.01
@@ -1716,13 +1776,18 @@
       "type": "legs",
       "physicsPresetId": "legs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1863,13 +1928,18 @@
       "type": "treads",
       "physicsPresetId": "treads",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 45.333333333333
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -1970,13 +2040,18 @@
       "type": "hover",
       "physicsPresetId": "hover",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 22,
             "surfaceFollowingInverseForceFromWater": 8
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2106,13 +2181,18 @@
       "type": "hover",
       "physicsPresetId": "hover",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 160,
             "surfaceFollowingInverseForceFromWater": 100
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2272,13 +2352,18 @@
       "type": "hover",
       "physicsPresetId": "hover",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 60,
             "surfaceFollowingInverseForceFromWater": 140
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2388,13 +2473,18 @@
       "type": "flying",
       "physicsPresetId": "flying",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 1.2,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 120,
             "surfaceFollowingInverseForceFromWater": 80
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2513,13 +2603,18 @@
       "type": "dive",
       "physicsPresetId": "dive",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 100,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 90,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2667,13 +2762,18 @@
       "type": "flying",
       "physicsPresetId": "flying",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 320,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 40000,
             "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2833,13 +2933,18 @@
       "type": "hover",
       "physicsPresetId": "hover",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 50,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 14000,
             "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
+          "maxPropulsiveForce": 50,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -2984,13 +3089,18 @@
       "type": "flying",
       "physicsPresetId": "flying",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 160,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 10000,
             "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -3118,13 +3228,18 @@
       "type": "hover",
       "physicsPresetId": "hover",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 80,
             "surfaceFollowingInverseForceFromWater": 240
           }
         },
         "water": {
+          "maxPropulsiveForce": 0.106666666667,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -3311,13 +3426,18 @@
       "type": "legs",
       "physicsPresetId": "amphibiousLegs",
       "physics": {
+        "ground": {
+          "maxPropulsiveForce": 11.8
+        },
         "air": {
+          "maxPropulsiveForce": 0,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
+          "maxPropulsiveForce": 11.8,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0

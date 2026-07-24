@@ -2289,9 +2289,14 @@
     "LocomotionAirFluidBodyPhysics": {
       "type": "object",
       "required": [
+        "maxPropulsiveForce",
         "lift"
       ],
       "properties": {
+        "maxPropulsiveForce": {
+          "type": "number",
+          "minimum": 0
+        },
         "lift": {
           "$ref": "#/$defs/LocomotionAirLiftPhysics"
         }
@@ -2301,11 +2306,29 @@
     "LocomotionWaterFluidBodyPhysics": {
       "type": "object",
       "required": [
+        "maxPropulsiveForce",
         "lift"
       ],
       "properties": {
+        "maxPropulsiveForce": {
+          "type": "number",
+          "minimum": 0
+        },
         "lift": {
           "$ref": "#/$defs/LocomotionWaterLiftPhysics"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionGroundBodyPhysics": {
+      "type": "object",
+      "required": [
+        "maxPropulsiveForce"
+      ],
+      "properties": {
+        "maxPropulsiveForce": {
+          "type": "number",
+          "minimum": 0
         }
       },
       "additionalProperties": false
@@ -2313,10 +2336,14 @@
     "UnitUnitLocomotionBlueprintPhysics": {
       "type": "object",
       "required": [
+        "ground",
         "air",
         "water"
       ],
       "properties": {
+        "ground": {
+          "$ref": "#/$defs/LocomotionGroundBodyPhysics"
+        },
         "air": {
           "$ref": "#/$defs/LocomotionAirFluidBodyPhysics"
         },

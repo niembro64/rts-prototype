@@ -557,14 +557,21 @@ export type LocomotionWaterLiftPhysics = {
 };
 
 export type LocomotionAirFluidBodyPhysics = {
+  maxPropulsiveForce: number;
   lift: LocomotionAirLiftPhysics;
 };
 
 export type LocomotionWaterFluidBodyPhysics = {
+  maxPropulsiveForce: number;
   lift: LocomotionWaterLiftPhysics;
 };
 
+export type LocomotionGroundBodyPhysics = {
+  maxPropulsiveForce: number;
+};
+
 export type UnitUnitLocomotionBlueprintPhysics = {
+  ground: LocomotionGroundBodyPhysics;
   air: LocomotionAirFluidBodyPhysics;
   water: LocomotionWaterFluidBodyPhysics;
 };

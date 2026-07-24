@@ -1,6 +1,5 @@
 import type {
   SurfaceProbeSetId,
-  UnitLocomotionGroundPhysics,
   UnitLocomotionResistancePhysics,
 } from '@/types/unitLocomotionTypes';
 import rawUnitLocomotionConfig from './unitLocomotionConfig.json';
@@ -25,7 +24,6 @@ export type UnitLocomotionSurfaceFollowingResponse = {
 };
 
 export type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics & {
-  maxPropulsiveForce: number;
   /** Kept explicit and fixed at zero: surface following is deterministic and
    * unfiltered. */
   surfaceLiftResponse: UnitLocomotionSurfaceFollowingResponse;
@@ -34,7 +32,10 @@ export type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics &
 export type UnitLocomotionPresetConfig = {
   actuator: {
     propulsionAxis: 'bodyForward' | 'worldPlanar';
-    ground: UnitLocomotionGroundPhysics;
+    ground: {
+      staticFrictionCoefficient: number;
+      tangentialDampingRate: number;
+    };
     air: UnitLocomotionPresetFluidPhysics;
     water: UnitLocomotionPresetFluidPhysics;
   };
@@ -87,11 +88,9 @@ function assertGroundPhysics(presetId: string, value: unknown): void {
   const label = `presets.${presetId}.actuator.ground`;
   assertObject(label, value);
   assertExactKeys(label, value, [
-    'maxPropulsiveForce',
     'staticFrictionCoefficient',
     'tangentialDampingRate',
   ]);
-  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
   assertUnitLocomotionNonNegativeFinite(
     `${label}.staticFrictionCoefficient`,
     value.staticFrictionCoefficient as number,
@@ -110,12 +109,10 @@ function assertFluidPhysics(
   const label = `presets.${presetId}.actuator.${medium}`;
   assertObject(label, value);
   assertExactKeys(label, value, [
-    'maxPropulsiveForce',
     'linearDampingRate',
     'angularDampingRate',
     'surfaceLiftResponse',
   ]);
-  assertUnitLocomotionNonNegativeFinite(`${label}.maxPropulsiveForce`, value.maxPropulsiveForce as number);
   assertUnitLocomotionNonNegativeFinite(`${label}.linearDampingRate`, value.linearDampingRate as number);
   assertUnitLocomotionNonNegativeFinite(`${label}.angularDampingRate`, value.angularDampingRate as number);
   assertSurfaceFollowingResponse(`${label}.surfaceLiftResponse`, value.surfaceLiftResponse);
