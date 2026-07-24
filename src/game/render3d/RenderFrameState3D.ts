@@ -17,8 +17,8 @@ function graphicsKey(gfx: GraphicsConfig): string {
   if (gfx === lastGraphicsKeyConfig) return lastGraphicsKey;
   lastGraphicsKeyConfig = gfx;
   lastGraphicsKey = `${gfx.unitShape}|${gfx.legs}|${
-    gfx.treadsAnimated ? 'tw' : 'ts'
-  }|${gfx.chassisDetail ? 'cd' : '-'}|${gfx.turretStyle}|${
+    gfx.chassisDetail ? 'cd' : '-'
+  }|${gfx.turretStyle}|${
     gfx.forceTurretStyle
   }|${gfx.paletteShading ? 'ps' : '-'}|${
     gfx.barrelSpin ? 'bs' : '-'

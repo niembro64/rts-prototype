@@ -29,7 +29,6 @@ export type GraphicsConfig = {
   waterWaveAmplitude: number;
   unitShape: UnitShape;
   legs: LegStyle;
-  treadsAnimated: boolean;
   chassisDetail: boolean;
   paletteShading: boolean;
   turretStyle: TurretStyle;

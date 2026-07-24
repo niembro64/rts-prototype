@@ -41,6 +41,7 @@
       "barrelSecondary": "far",
       "projectileGlow": "mid",
       "locomotionAnimated": "far",
+      "treadCleats": "mid",
       "muzzleDetail": "far"
     },
     "visualFeatureMinRung": {

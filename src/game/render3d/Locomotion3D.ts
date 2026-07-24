@@ -330,7 +330,7 @@ export function getChassisLift(blueprint: UnitBlueprint, unitRadius: number): nu
 }
 
 function geometryKeyFor(gfx: GraphicsConfig): string {
-  return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
+  return gfx.legs;
 }
 
 function hoverSmokeUseId(unitBlueprintId: string): HoverSmokeUseId {
@@ -390,7 +390,12 @@ export function buildLocomotion(
     case 'treads':
     case 'amphibious-treads': {
       const mesh = buildTreads(
-        unitGroup, unitRadius, loc.config, gfx.treadsAnimated, ownerId, geometryTier,
+        unitGroup,
+        unitRadius,
+        loc.config,
+        featureVisibleAtDetail('treadCleats', detailLevel),
+        ownerId,
+        geometryTier,
       );
       mesh.geometryKey = geometryKey;
       return mesh;

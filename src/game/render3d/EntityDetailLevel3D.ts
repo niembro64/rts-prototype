@@ -48,6 +48,7 @@ export type DetailFeature =
   | 'barrelSecondary'
   | 'projectileGlow'
   | 'locomotionAnimated'
+  | 'treadCleats'
   | 'muzzleDetail';
 
 export const DETAIL_LEVEL_FULL = 1;
@@ -146,6 +147,7 @@ const FEATURE_MIN_RUNG: Record<DetailFeature, DetailRung> = {
   barrelSecondary: DETAIL_RUNG_MID,
   projectileGlow: DETAIL_RUNG_MID,
   locomotionAnimated: DETAIL_RUNG_MID,
+  treadCleats: DETAIL_RUNG_MID,
   muzzleDetail: DETAIL_RUNG_CLOSE,
 };
 {
@@ -430,11 +432,6 @@ export function unitShapeForDetail(level: number, ceiling: UnitShape): UnitShape
   return ceiling;
 }
 
-export function treadsAnimatedForDetail(level: number, ceiling: boolean): boolean {
-  void level;
-  return ceiling;
-}
-
 // ── Effect spawn scales (one value per authored rung) ────────────────
 
 function effectSpawnScale(config: EffectSpawnScaleConfig, level: number): number {
@@ -468,13 +465,11 @@ export function unitDetailBand(level: number, gfx: GraphicsConfig): number {
   const turret = TURRET_STYLE_ORDER.indexOf(turretStyleForDetail(level, gfx.turretStyle));
   const legs = LEG_STYLE_ORDER.indexOf(legStyleForDetail(level, gfx.legs));
   const shape = UNIT_SHAPE_ORDER.indexOf(unitShapeForDetail(level, gfx.unitShape));
-  const treadsAnimated = treadsAnimatedForDetail(level, gfx.treadsAnimated);
   return (
     rung * 64 +
     (turret < 0 ? 0 : turret) * 16 +
     (legs < 0 ? 0 : legs) * 4 +
-    (shape < 0 ? 0 : shape) * 2 +
-    (treadsAnimated ? 1 : 0)
+    (shape < 0 ? 0 : shape) * 2
   );
 }
 

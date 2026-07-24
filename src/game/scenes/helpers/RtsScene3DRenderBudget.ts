@@ -28,12 +28,6 @@ type RenderBudgetTierConfig = {
   readonly tier: RtsScene3DRenderBudgetTier;
   readonly hudFrameStride: number;
   readonly effectFrameStride: number;
-  /**
-   * Animated tread wheels and cleats create a large per-object scene graph.
-   * At high battlefield counts preserve the track envelope, but shed this
-   * presentation-only motion before it can dominate frame preparation.
-   */
-  readonly treadsAnimated: boolean;
   readonly burnMarkDensityScale: number;
   readonly groundPrintDensityScale: number;
   readonly materialExplosionPieceBudgetCap: number;
@@ -45,7 +39,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     tier: 'normal',
     hudFrameStride: 1,
     effectFrameStride: 1,
-    treadsAnimated: true,
     burnMarkDensityScale: 1,
     groundPrintDensityScale: 1,
     materialExplosionPieceBudgetCap: Number.POSITIVE_INFINITY,
@@ -55,7 +48,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     tier: 'busy',
     hudFrameStride: 2,
     effectFrameStride: 2,
-    treadsAnimated: true,
     burnMarkDensityScale: 0.7,
     groundPrintDensityScale: 0.7,
     materialExplosionPieceBudgetCap: 24,
@@ -65,7 +57,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     tier: 'heavy',
     hudFrameStride: 3,
     effectFrameStride: 3,
-    treadsAnimated: false,
     burnMarkDensityScale: 0.35,
     groundPrintDensityScale: 0.35,
     materialExplosionPieceBudgetCap: 12,
@@ -75,7 +66,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     tier: 'extreme',
     hudFrameStride: 4,
     effectFrameStride: 4,
-    treadsAnimated: false,
     burnMarkDensityScale: 0.15,
     groundPrintDensityScale: 0.15,
     materialExplosionPieceBudgetCap: 4,
@@ -174,10 +164,6 @@ export class RtsScene3DRenderBudget {
     copyGraphicsConfig(base, out);
     out.hudFrameStride = Math.max(base.hudFrameStride | 0, tier.hudFrameStride);
     out.effectFrameStride = Math.max(base.effectFrameStride | 0, tier.effectFrameStride);
-    // This only changes the local visual rig. Unit movement, terrain contact,
-    // collision, and lockstep state remain authored and simulated exactly as
-    // before; the lower-detail mesh still renders each tread's full envelope.
-    out.treadsAnimated = base.treadsAnimated && tier.treadsAnimated;
     out.burnMarkDensity = clamp01(base.burnMarkDensity * tier.burnMarkDensityScale);
     out.groundPrintDensity = clamp01(base.groundPrintDensity * tier.groundPrintDensityScale);
     out.materialExplosionPieceBudget = Math.min(

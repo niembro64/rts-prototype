@@ -67,6 +67,7 @@ import {
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_MID,
   detailLevelForRung,
+  featureVisibleAtDetail,
 } from '@/game/render3d/EntityDetailLevel3D';
 import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
@@ -113,7 +114,6 @@ const PREVIEW_GFX: GraphicsConfig = {
   waterWaveAmplitude: 1,
   unitShape: 'full',
   legs: 'full',
-  treadsAnimated: true,
   chassisDetail: true,
   paletteShading: false,
   turretStyle: 'full',
@@ -683,7 +683,17 @@ function buildPreviewLocomotion(
   switch (locomotion.type) {
     case 'treads':
     case 'amphibious-treads':
-      return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID, geometryTier) };
+      return {
+        type: 'treads',
+        mesh: buildTreads(
+          yawGroup,
+          radius,
+          locomotion.config,
+          featureVisibleAtDetail('treadCleats', detailLevelForGeometryTier(geometryTier)),
+          HOST_PLAYER_ID,
+          geometryTier,
+        ),
+      };
     case 'wheels':
       return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier) };
     case 'flippers':

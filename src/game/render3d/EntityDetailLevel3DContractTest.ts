@@ -50,7 +50,6 @@ const FULL_GFX: GraphicsConfig = {
   waterWaveAmplitude: 1,
   unitShape: 'full',
   legs: 'full',
-  treadsAnimated: true,
   chassisDetail: true,
   paletteShading: true,
   turretStyle: 'full',
@@ -85,6 +84,7 @@ const DETAIL_FEATURES: readonly DetailFeature[] = [
   'barrelSecondary',
   'projectileGlow',
   'locomotionAnimated',
+  'treadCleats',
   'muzzleDetail',
 ];
 
@@ -283,6 +283,18 @@ export function runEntityDetailLevel3DContractTest(): void {
       wasVisible = visible;
     }
   }
+  assertContract(
+    featureVisibleAtDetail('treadCleats', DETAIL_LEVEL_FULL) &&
+      featureVisibleAtDetail(
+        'treadCleats',
+        detailLevelForRung(DETAIL_RUNG_MID),
+      ) &&
+      !featureVisibleAtDetail(
+        'treadCleats',
+        detailLevelForRung(DETAIL_RUNG_FAR),
+      ),
+    'tread cleats are present at HIGH/MED and absent at LOW/OFF',
+  );
 
   assertContract(
     visualFeatureVisibleAtDetail('building', 'typeDetails', DETAIL_LEVEL_FULL),

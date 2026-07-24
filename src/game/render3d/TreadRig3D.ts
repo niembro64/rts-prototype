@@ -161,9 +161,9 @@ export type TreadMesh = {
    *  each ribbon's center so per-frame signed distance can be sampled
    *  as the input to the belt-velocity EMA. */
   treadContacts: RollingContactState[];
-  /** Animated cleat strips around the tread belt (empty when
-   *  treadsAnimated is off). The first half is the left side, the
-   *  second half the right side; layout consumes `beltPhase` per side. */
+  /** Animated cleat strips around the tread belt (empty below the
+   *  `treadCleats` LOD feature rung). The first half is the left side,
+   *  the second half the right side; layout consumes `beltPhase` per side. */
   cleats: THREE.Mesh[];
   cleatSpacing: number;
   cleatLoopLength: number;
@@ -177,8 +177,8 @@ export type TreadMesh = {
    *  belt so the two parallel ruts are visually separated rather
    *  than reading as one wide smear. */
   printWidth: number;
-  /** False for the Low box representation, which has no moving cleats or
-   *  wheel meshes and performs no belt/wheel phase integration. */
+  /** False when the resolved LOD rung has no cleats and therefore needs
+   *  no belt-phase integration. */
   rotationAnimated: boolean;
 } & LocomotionBase;
 
@@ -186,7 +186,7 @@ export function buildTreads(
   unitGroup: THREE.Group,
   r: number,
   cfg: TreadConfig,
-  animatedWheels: boolean,
+  cleatsVisible: boolean,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
 ): TreadMesh {
@@ -256,7 +256,7 @@ export function buildTreads(
     rollingContact(0, offset),
   ];
 
-  if (animatedWheels && geometryTier !== 'far') {
+  if (cleatsVisible) {
     // Animated cleats cover the full belt loop: top run, rounded front
     // return, bottom ground-contact run, and rounded rear return. This
     // makes treads read correctly from side/front/back instead of
@@ -298,7 +298,7 @@ export function buildTreads(
     treadRadius,
     maxLift: Math.max(1, Math.min(r * 0.35, TREAD_HEIGHT)),
     printWidth,
-    rotationAnimated: geometryTier !== 'far',
+    rotationAnimated: cleatsVisible,
     geometryKey: '',
   };
 }
@@ -310,9 +310,10 @@ const _treadUp = { x: 0, y: 1, z: 0 };
 /** Per-frame: integrate each side's visual channels forward. The floor
  *  clamp drives the lift channel via EMA; the per-side signed distance
  *  drives the beltVelocity channel via EMA. beltPhase integrates from
- *  beltVelocity and feeds the cleat layout. Low skips belt scroll while
- *  retaining the floor clamp. The interior is a single static belt shell
- *  (no spinning road wheels), so only the cleats move. */
+ *  beltVelocity and feeds the cleat layout. Rungs without the
+ *  `treadCleats` feature skip belt scroll while retaining the floor clamp.
+ *  The interior is a single static belt shell (no spinning road wheels),
+ *  so only the cleats move. */
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,

@@ -36,6 +36,7 @@ import {
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
   detailLevelForRung,
+  featureVisibleAtDetail,
 } from './EntityDetailLevel3D';
 import {
   PLASMA_PROJECTILE_TRIANGLE_COUNTS,
@@ -116,7 +117,6 @@ const FULL_GFX: GraphicsConfig = {
   waterWaveAmplitude: 1,
   unitShape: 'full',
   legs: 'full',
-  treadsAnimated: true,
   chassisDetail: true,
   paletteShading: true,
   turretStyle: 'full',
@@ -450,7 +450,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
       });
       continue;
     }
-    const builds = TIERS.map((tier) => {
+    const builds = TIERS.map((tier, tierIndex) => {
       const root = new THREE.Group();
       const radius = blueprint.radius.other;
       switch (locomotion.type) {
@@ -481,10 +481,25 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
         }
         case 'treads':
         case 'amphibious-treads': {
-          const rig = buildTreads(root, radius, locomotion.config, true, undefined, tier);
+          const cleatsVisible = featureVisibleAtDetail(
+            'treadCleats',
+            DETAIL_LEVELS[tierIndex],
+          );
+          const rig = buildTreads(
+            root,
+            radius,
+            locomotion.config,
+            cleatsVisible,
+            undefined,
+            tier,
+          );
           assertContract(
-            rig.rotationAnimated === (tier !== 'far'),
+            rig.rotationAnimated === cleatsVisible,
             `${unitId}/${tier} tread rotation matches its geometry rung`,
+          );
+          assertContract(
+            cleatsVisible ? rig.cleats.length > 0 : rig.cleats.length === 0,
+            `${unitId}/${tier} tread cleats match the shared LOD feature rung`,
           );
           if (tier === 'far') {
             assertContract(
