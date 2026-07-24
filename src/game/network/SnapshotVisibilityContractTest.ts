@@ -105,6 +105,20 @@ export function runSnapshotVisibilityContractTest(): void {
     assertContract(entity.unit !== null, 'detected cloaked target must have a unit component');
     entity.unit.cloaked = true;
   });
+  const detectedCloakedStraddlingEnemy = createUnit(
+    world,
+    900,
+    650,
+    2 as PlayerId,
+    (entity) => {
+      assertContract(
+        entity.unit !== null,
+        'detected cloaked straddling target must have a unit component',
+      );
+      entity.unit.cloaked = true;
+      entity.transform.z = WATER_LEVEL;
+    },
+  );
   const hiddenCloakedEnemy = createUnit(world, 1400, 512, 2 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'hidden cloaked target must have a unit component');
     entity.unit.cloaked = true;
@@ -163,6 +177,10 @@ export function runSnapshotVisibilityContractTest(): void {
     'target hitbox must not extend full sight beyond the target center',
   );
   assertContract(legacyVisible.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be visible');
+  assertContract(
+    legacyVisible.includes(detectedCloakedStraddlingEnemy.id),
+    'an above-water detector must reveal a cloaked entity with any above-water volume',
+  );
   assertContract(!legacyVisible.includes(radarOnlyEnemy.id), 'radar-only enemy must not be fully visible');
   assertContract(!legacyVisible.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be visible');
   assertContract(!legacyVisible.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be visible');
@@ -191,6 +209,10 @@ export function runSnapshotVisibilityContractTest(): void {
   );
   assertContract(legacyRadar.includes(radarOnlyEnemy.id), 'radar-covered enemy must be on radar list');
   assertContract(legacyRadar.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be on radar list');
+  assertContract(
+    legacyRadar.includes(detectedCloakedStraddlingEnemy.id),
+    'a detected cloaked entity with any above-water volume must be on the contact list',
+  );
   assertContract(!legacyRadar.includes(radarRejectedWaterEnemy.id), 'radar must reject an underwater target center');
   assertContract(
     !legacyRadar.includes(centerOutsideRadarEnemy.id),

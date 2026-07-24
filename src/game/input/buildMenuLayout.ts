@@ -356,6 +356,8 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'towerBeamMega':
     case 'towerAntiAir':
       return 'C';
+    case 'towerTorpedo':
+      return 'C';
     default:
       return barLegacyFallbackBuildKeyForCategory(structureBuildCategory(buildingBlueprintId as BuildingBlueprintId));
   }
@@ -477,8 +479,6 @@ function barClassicFactoryUnitSortIndex(id: string): number {
       return 5500; // prototype amphibious combat vehicle
     case 'unitOrca':
       return 5510; // prototype underwater torpedo vehicle
-    case 'unitConstructionSubmarine':
-      return 5520; // prototype underwater constructor
     case 'unitTarantula':
       return 5600; // armwar assault bot
     case 'unitTransport':
@@ -587,6 +587,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 0;
     case 'towerBeamMega':
       return 1;
+    case 'towerTorpedo':
+      return 2;
     case 'towerAntiAir':
       return 4;
     default:

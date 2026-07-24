@@ -2,6 +2,7 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
+import { getBuildingBlueprint } from './blueprints/buildings';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   BUILD_GRID_CELL_SIZE,
@@ -18,10 +19,12 @@ import {
   evaluateBuildabilityFootprint,
   getTerrainBedHeight,
   getTerrainBuildabilityGridCell,
+  getSurfaceHeight,
   WATER_LEVEL,
 } from './Terrain';
 import {
   buildingIgnoresTerrainForPlacement,
+  getBuildingPlacementBaseZ,
   getBuildingRequiredSensorSourceMedium,
 } from './buildingPlacementPolicy';
 
@@ -133,9 +136,19 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const requiredSensorSourceMedium =
     getBuildingRequiredSensorSourceMedium(candidateType);
+  const centerPlacementBaseZ = getBuildingPlacementBaseZ(
+    config.placementType,
+    config.gridDepth * BUILD_GRID_CELL_SIZE,
+    center.x,
+    center.y,
+    (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight),
+    (x, y) => getTerrainBedHeight(x, y, mapWidth, mapHeight),
+  );
+  const sensorMountZ = getBuildingBlueprint(candidateType).turrets.find(
+    (mount) => mount.mountId === 'sensor',
+  )?.mount.z ?? 0;
   const centerSensorSourceMedium =
-    config.placementType === 'water-surface' ||
-    getTerrainBedHeight(center.x, center.y, mapWidth, mapHeight) <= WATER_LEVEL
+    centerPlacementBaseZ + sensorMountZ <= WATER_LEVEL
       ? 'underwater'
       : 'aboveWater';
   const sensorSourceMediumMismatch =

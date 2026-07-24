@@ -343,20 +343,36 @@ export class SnapshotVisibility {
     }
     const padding = getEntityVisibilityPadding(entity);
     const result = isEntityCloaked(entity)
-      ? this.isEntityDetected(
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.z,
-          padding,
-        )
-      : this.isEntityVisibleWithLos(
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.z,
-          padding,
-        );
+      ? this.isEntityDetectedInOccupiedMedia(entity, padding)
+      : this.isEntityVisibleWithLosInOccupiedMedia(entity, padding);
     this.entityVisibilityMemo.set(entity.id, result);
     return result;
+  }
+
+  private isEntityVisibleWithLosInOccupiedMedia(
+    entity: Entity,
+    padding: number,
+  ): boolean {
+    const occupancy = getEntityMediumOccupancy(entity);
+    return (
+      occupancy.aboveWater > 0 &&
+      this.isEntityVisibleWithLos(
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+        padding,
+        'aboveWater',
+      )
+    ) || (
+      occupancy.underwater > 0 &&
+      this.isEntityVisibleWithLos(
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+        padding,
+        'underwater',
+      )
+    );
   }
 
   /** Distance-then-LOS scan over fullSources. Reuses the spatial hash
@@ -369,6 +385,7 @@ export class SnapshotVisibility {
     y: number,
     z: number,
     padding: number,
+    targetMedium: SensorMedium = getSensorMediumAtZ(z),
   ): boolean {
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
@@ -376,7 +393,6 @@ export class SnapshotVisibility {
     const sourceIndexes = this.fullSourceCells[this.cellKey(cx, cy)];
     if (!sourceIndexes) return false;
     const targetZ = z;
-    const targetMedium = getSensorMediumAtZ(z);
     for (let i = 0; i < sourceIndexes.length; i++) {
       const source = this.fullSources[sourceIndexes[i]];
       if (
@@ -400,11 +416,35 @@ export class SnapshotVisibility {
     return false;
   }
 
-  private isEntityDetected(
+  private isEntityDetectedInOccupiedMedia(
+    entity: Entity,
+    padding: number,
+  ): boolean {
+    const occupancy = getEntityMediumOccupancy(entity);
+    return (
+      occupancy.aboveWater > 0 &&
+      this.isEntityDetectedInMedium(
+        entity.transform.x,
+        entity.transform.y,
+        padding,
+        'aboveWater',
+      )
+    ) || (
+      occupancy.underwater > 0 &&
+      this.isEntityDetectedInMedium(
+        entity.transform.x,
+        entity.transform.y,
+        padding,
+        'underwater',
+      )
+    );
+  }
+
+  private isEntityDetectedInMedium(
     x: number,
     y: number,
-    z: number,
     padding: number,
+    targetMedium: SensorMedium,
   ): boolean {
     this.ensureAuxiliaryObservationSources();
     return this.isPointVisibleIn(
@@ -413,7 +453,7 @@ export class SnapshotVisibility {
       x,
       y,
       padding,
-      getSensorMediumAtZ(z),
+      targetMedium,
     );
   }
 
@@ -429,12 +469,7 @@ export class SnapshotVisibility {
     const padding = 0;
     const occupancy = getEntityMediumOccupancy(entity);
     if (isEntityCloaked(entity)) {
-      return this.isEntityDetected(
-        entity.transform.x,
-        entity.transform.y,
-        entity.transform.z,
-        padding,
-      );
+      return this.isEntityDetectedInOccupiedMedia(entity, padding);
     }
     if (
       (
@@ -646,6 +681,10 @@ export class SnapshotVisibility {
     views: EntityStateViews,
     slot: number,
   ): boolean {
+    const entity = this.world.getEntity(views.entityId[slot] as EntityId);
+    if (entity !== undefined) {
+      return this.isEntityVisibleWithLosInOccupiedMedia(entity, 0);
+    }
     return this.isEntityVisibleWithLos(
       views.posX[slot],
       views.posY[slot],
