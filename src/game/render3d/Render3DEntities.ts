@@ -816,6 +816,19 @@ export class Render3DEntities {
       const bodyOpacity = unitRows.bodyOpacity[row] * visionFadeIn;
       setObjectVisibleIfChanged(m.chassis, fullUnitDetail && bodyOpacity > 0);
 
+      // A production shell mirrors its factory's pylon orbit: the same
+      // EMA-smoothed phase, opposite direction, spun in place around its
+      // own origin. Applied to the drawn yaw only, via this frame-local
+      // packet mutation (the packet is rebuilt every frame) — the
+      // authoritative rotation stays the launch heading, so the whole
+      // posed assembly (chassis, turrets, legs) counter-rotates while
+      // the sim and the eventual launch are untouched.
+      const hold = e.heldBy;
+      if (hold !== null && hold.kind === 'production' && unitRows.progress[row] < 1) {
+        unitRows.rotation[row] +=
+          this.constructionVisuals.getHeldShellCounterSpinYaw(hold.holderId);
+      }
+
       const liftPos = m.liftGroup?.position;
       this.unitRenderPose.writeUnit(
         poseCount,

@@ -66,6 +66,11 @@ export class ConstructionVisualController3D {
   private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private _resourceEndpointWorld = new THREE.Vector3();
   private factoryConstructionTargetBySource = new IndexedEntityIdMap<EntityId>();
+  /** Latest pylon-orbit phase per factory host, recorded each time its
+   *  emitter rig spins. The held production shell reads this to
+   *  counter-rotate in lockstep with the pylons (same two-stage EMA
+   *  rate, opposite direction). */
+  private factoryPylonSpinPhase = new IndexedEntityIdMap<number>();
   private _factoryBuildSpot: FactoryBuildSpot = {
     x: 0,
     y: 0,
@@ -86,6 +91,17 @@ export class ConstructionVisualController3D {
 
   destroy(): void {
     this.factoryConstructionTargetBySource.clear();
+    this.factoryPylonSpinPhase.clear();
+  }
+
+  /** Visual counter-spin yaw offset (sim-rotation space) for a
+   *  production shell held by `holderId`: the holder's pylon-orbit
+   *  phase, mirrored. Adding this to the shell's drawn rotation spins
+   *  it at exactly the pylons' EMA-smoothed rate in the opposite
+   *  direction. 0 when the holder has no spinning emitter rig. */
+  getHeldShellCounterSpinYaw(holderId: EntityId): number {
+    const phase = this.factoryPylonSpinPhase.get(holderId);
+    return phase === undefined ? 0 : -phase;
   }
 
   /** Drop the cached factory→build-target association for a source entity
@@ -96,6 +112,7 @@ export class ConstructionVisualController3D {
    *  while it is still being called for that source. */
   unregister(entityId: EntityId): void {
     this.factoryConstructionTargetBySource.delete(entityId);
+    this.factoryPylonSpinPhase.delete(entityId);
   }
 
   /** Drive a builder-unit's construction emitter (commander, future
@@ -245,6 +262,10 @@ export class ConstructionVisualController3D {
     // orbit rate rides the same two-stage EMA over the summed resource
     // rate fractions, so spin eases in and out with actual spend.
     this.updateConstructionTowerSpin(rig, targetEnergy + targetMetal, dtSec);
+    // Publish the phase so the held shell can counter-rotate in
+    // lockstep. A factory's rigs (metal + energy) advance identically,
+    // so last-writer-wins is deterministic per frame.
+    this.factoryPylonSpinPhase.set(e.id, rig.towerSpinPhase);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.syncPylonDisplayRates(rig);
