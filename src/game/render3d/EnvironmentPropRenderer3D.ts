@@ -153,6 +153,7 @@ type EnvironmentPropRenderer3DOptions = {
   renderScope: ViewportFootprint;
   worldShade: WorldShade3D;
   sampleTerrainHeight: (x: number, z: number) => number;
+  isTerrainSettled: () => boolean;
 };
 
 const FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY =
@@ -166,9 +167,10 @@ installKnownFbxMaterialWarningFilter();
 
 export class EnvironmentPropRenderer3D {
   private readonly root = new THREE.Group();
+  private readonly options: EnvironmentPropRenderer3DOptions;
   private readonly renderScope: ViewportFootprint;
   private readonly worldShade: WorldShade3D;
-  private readonly placements: EnvironmentPlacement[];
+  private placements: EnvironmentPlacement[] = [];
   private readonly nodes: EnvironmentPropNode[] = [];
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
   private readonly mtlCache = new Map<
@@ -177,6 +179,8 @@ export class EnvironmentPropRenderer3D {
   >();
   private readonly assets = new Map<string, LoadedEnvironmentAsset>();
   private destroyed = false;
+  private initializationStarted = false;
+  private assetLoadingFinished = false;
   private ready = false;
   private loaded = false;
   private lastScopeVersion = -1;
@@ -186,19 +190,14 @@ export class EnvironmentPropRenderer3D {
     parentWorld: THREE.Group,
     options: EnvironmentPropRenderer3DOptions,
   ) {
+    this.options = options;
     this.renderScope = options.renderScope;
     this.worldShade = options.worldShade;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
     logActiveEnvironmentAssets();
-    this.placements = generateEnvironmentPlacements({
-      mapWidth: options.mapWidth,
-      mapHeight: options.mapHeight,
-      playerCount: options.playerCount,
-      metalDeposits: options.metalDeposits,
-      sampleTerrainHeight: options.sampleTerrainHeight,
-    });
-    logEnvironmentPlacementCounts(this.placements, options);
+    // Asset IO can overlap terrain startup. Only placement and node creation
+    // wait for the authoritative terrain below.
     void this.loadAssets();
   }
 
@@ -207,6 +206,7 @@ export class EnvironmentPropRenderer3D {
   }
 
   update(view?: RenderViewState3D): void {
+    this.initializeAfterTerrainSettles();
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
     const lodMode = getLodMode();
@@ -257,6 +257,39 @@ export class EnvironmentPropRenderer3D {
     }
   }
 
+  private initializeAfterTerrainSettles(): void {
+    if (
+      this.initializationStarted ||
+      this.destroyed ||
+      !this.options.isTerrainSettled()
+    ) {
+      return;
+    }
+    this.initializationStarted = true;
+    this.placements = generateEnvironmentPlacements({
+      mapWidth: this.options.mapWidth,
+      mapHeight: this.options.mapHeight,
+      playerCount: this.options.playerCount,
+      metalDeposits: this.options.metalDeposits,
+      sampleTerrainHeight: this.options.sampleTerrainHeight,
+    });
+    logEnvironmentPlacementCounts(this.placements, this.options);
+    this.finishInitializationIfReady();
+  }
+
+  private finishInitializationIfReady(): void {
+    if (
+      this.ready ||
+      this.destroyed ||
+      !this.initializationStarted ||
+      !this.assetLoadingFinished
+    ) {
+      return;
+    }
+    if (this.loaded) this.buildNodes();
+    this.ready = true;
+  }
+
   destroy(): void {
     this.destroyed = true;
     const geometries = new Set<THREE.BufferGeometry>();
@@ -298,14 +331,14 @@ export class EnvironmentPropRenderer3D {
         return;
       }
       for (const asset of loadedAssets) this.assets.set(asset.spec.id, asset);
-      this.buildNodes();
       this.loaded = true;
       this.lastScopeVersion = -1;
       this.lastViewKey = '';
     } catch (error) {
       console.warn('Failed to load environment asset pack props', error);
     } finally {
-      this.ready = true;
+      this.assetLoadingFinished = true;
+      this.finishInitializationIfReady();
     }
   }
 

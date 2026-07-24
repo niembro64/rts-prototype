@@ -145,6 +145,11 @@ export function bootstrapRtsScene3DRenderers(
       renderScope,
       worldShade,
       sampleTerrainHeight: (x, z) => getTerrainMeshHeight(x, z, mapWidth, mapHeight),
+      // Environment placement samples terrain height, slope, and water
+      // clearance. Wait until the authoritative terrain mesh has completed
+      // its first render build so trees and grass cannot bind to the
+      // analytical pre-snapshot fallback.
+      isTerrainSettled: () => terrainTileRenderer.isReady(),
     },
   );
   const waterRenderer = new WaterRenderer3D(
