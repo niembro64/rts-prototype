@@ -13,16 +13,13 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Design choices we kept from the JS impl:
 //   • 8-connected A* with the octile heuristic. Bounded by
 //     MAX_A_STAR_NODES so a pathological query can't stall a tick.
-//   • Multi-point water/slope sampling plus every terrain triangle
-//     touching the path cell, so shoreline cells and vertical cliff
-//     faces cannot slip between center samples.
-//   • Terrain C-space inflation: configurable cells around water still
-//     blocks ground-only routes, while water-capable routes can use wet
-//     cells and the shoreline buffer. Construction and hovering building
-//     footprints reserve placement squares only; they do not alter the
-//     terrain locomotion surface.
-//   • Air-capable queries ignore terrain blocking so water and slope do
-//     not force them onto land-only routes; they still stay inside the map.
+//   • Exact clipped-triangle water/slope classification. A cell can contain
+//     exposed terrain, water, or both; mixed cells must pass both cases.
+//   • Terrain C-space inflation comes only from the unit's physical radius.
+//     There is no extra shoreline band. Construction and hovering building
+//     footprints reserve placement squares only; they do not alter terrain.
+//   • Air capability removes slope coupling, but does not bypass an explicitly
+//     invalid water case for a water-containing cell.
 //   • Connected-component pre-flight for symmetric blockers only. Every cell
 //     must fit the query's dry/wet force envelope; directional traversal then
 //     applies the inter-cell climb coupling only to uphill edges.

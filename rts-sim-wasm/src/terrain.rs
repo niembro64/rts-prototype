@@ -3747,16 +3747,120 @@ pub(crate) fn terrain_triangle_touches_rect(
     true
 }
 
+type TerrainClipVertex = (f64, f64, f64);
+const TERRAIN_CLIP_VERTEX_CAPACITY: usize = 12;
+
+#[inline]
+fn terrain_clip_polygon_axis(
+    input: &[TerrainClipVertex; TERRAIN_CLIP_VERTEX_CAPACITY],
+    input_len: usize,
+    output: &mut [TerrainClipVertex; TERRAIN_CLIP_VERTEX_CAPACITY],
+    axis: usize,
+    limit: f64,
+    keep_greater: bool,
+) -> usize {
+    if input_len == 0 {
+        return 0;
+    }
+    let coordinate = |vertex: TerrainClipVertex| {
+        if axis == 0 {
+            vertex.0
+        } else {
+            vertex.1
+        }
+    };
+    let inside = |value: f64| {
+        if keep_greater {
+            value >= limit
+        } else {
+            value <= limit
+        }
+    };
+    let mut output_len = 0usize;
+    let mut previous = input[input_len - 1];
+    let mut previous_coordinate = coordinate(previous);
+    let mut previous_inside = inside(previous_coordinate);
+    for &current in input.iter().take(input_len) {
+        let current_coordinate = coordinate(current);
+        let current_inside = inside(current_coordinate);
+        if current_inside != previous_inside {
+            let denominator = current_coordinate - previous_coordinate;
+            if denominator.abs() > 1.0e-12 && output_len < TERRAIN_CLIP_VERTEX_CAPACITY {
+                let t = ((limit - previous_coordinate) / denominator).clamp(0.0, 1.0);
+                output[output_len] = (
+                    previous.0 + (current.0 - previous.0) * t,
+                    previous.1 + (current.1 - previous.1) * t,
+                    previous.2 + (current.2 - previous.2) * t,
+                );
+                output_len += 1;
+            }
+        }
+        if current_inside && output_len < TERRAIN_CLIP_VERTEX_CAPACITY {
+            output[output_len] = current;
+            output_len += 1;
+        }
+        previous = current;
+        previous_coordinate = current_coordinate;
+        previous_inside = current_inside;
+    }
+    output_len
+}
+
+/// Exact terrain-height range over the positive intersection of a triangle
+/// and a path-cell rectangle. The height field is linear inside a triangle,
+/// so extrema occur at vertices of the clipped convex polygon.
+#[inline]
+pub(crate) fn terrain_triangle_rect_height_range(
+    sample: TerrainTriangleSample,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+) -> Option<(f64, f64)> {
+    let (_, _, _, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
+    let rect_min_x = min_x.min(max_x);
+    let rect_max_x = min_x.max(max_x);
+    let rect_min_y = min_y.min(max_y);
+    let rect_max_y = min_y.max(max_y);
+    let mut a = [(0.0, 0.0, 0.0); TERRAIN_CLIP_VERTEX_CAPACITY];
+    let mut b = [(0.0, 0.0, 0.0); TERRAIN_CLIP_VERTEX_CAPACITY];
+    a[0] = (ax, az, ah);
+    a[1] = (bx, bz, bh);
+    a[2] = (cx, cz, ch);
+    let mut len = terrain_clip_polygon_axis(&a, 3, &mut b, 0, rect_min_x, true);
+    len = terrain_clip_polygon_axis(&b, len, &mut a, 0, rect_max_x, false);
+    len = terrain_clip_polygon_axis(&a, len, &mut b, 1, rect_min_y, true);
+    len = terrain_clip_polygon_axis(&b, len, &mut a, 1, rect_max_y, false);
+    if len == 0 {
+        return None;
+    }
+    let mut min_height = f64::INFINITY;
+    let mut max_height = f64::NEG_INFINITY;
+    for vertex in a.iter().take(len) {
+        min_height = min_height.min(vertex.2);
+        max_height = max_height.max(vertex.2);
+    }
+    if min_height.is_finite() && max_height.is_finite() {
+        Some((min_height, max_height))
+    } else {
+        None
+    }
+}
+
 #[inline]
 pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     sample: TerrainTriangleSample,
+    min_height: f64,
+    max_height_in_rect: f64,
     has_water: &mut bool,
+    has_air: &mut bool,
     min_normal_z: &mut f32,
-    max_height: &mut f64,
 ) {
-    let (_, _, _, _, _, ah, _, _, bh, _, _, ch) = sample;
-    if ah < TERRAIN_WATER_LEVEL || bh < TERRAIN_WATER_LEVEL || ch < TERRAIN_WATER_LEVEL {
+    if min_height < TERRAIN_WATER_LEVEL {
         *has_water = true;
+    }
+    if max_height_in_rect >= TERRAIN_WATER_LEVEL {
+        *has_air = true;
     }
     // Retain the actual bed angle here. Water-surface-supported traversals
     // ignore this value later, while bed-supported traversals still need the
@@ -3766,7 +3870,6 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     if normal_z < *min_normal_z {
         *min_normal_z = normal_z;
     }
-    *max_height = max_height.max(ah.max(bh).max(ch));
 }
 
 pub(crate) fn terrain_accumulate_touching_triangle_safety(
@@ -3775,8 +3878,8 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
     max_x: f64,
     max_y: f64,
     has_water: &mut bool,
+    has_air: &mut bool,
     min_normal_z: &mut f32,
-    max_height: &mut f64,
 ) {
     let t = terrain_grid();
     if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
@@ -3817,82 +3920,22 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
                 if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
                     continue;
                 }
+                let Some((min_height, max_height_in_rect)) =
+                    terrain_triangle_rect_height_range(sample, min_x, min_y, max_x, max_y)
+                else {
+                    continue;
+                };
                 terrain_accumulate_touching_triangle_safety_sample(
                     sample,
+                    min_height,
+                    max_height_in_rect,
                     has_water,
+                    has_air,
                     min_normal_z,
-                    max_height,
                 );
             }
         }
     }
-}
-
-/// Returns true only when the interior of a rectangle is covered by terrain
-/// triangles whose three vertices all lie below the water plane.  This is the
-/// conservative water-navigation counterpart to
-/// `terrain_accumulate_touching_triangle_safety`: a cell that merely touches
-/// water is useful for keeping land routes out, but it is not enough volume
-/// for a water-only body to occupy.
-pub(crate) fn terrain_touching_triangles_are_submerged(
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-) -> bool {
-    let t = terrain_grid();
-    if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
-        return false;
-    }
-
-    let min_cell_x = ((min_x / t.cell_size).floor() as i32)
-        .max(0)
-        .min(t.cells_x - 1);
-    let max_cell_x = ((max_x / t.cell_size).floor() as i32)
-        .max(0)
-        .min(t.cells_x - 1);
-    let min_cell_y = ((min_y / t.cell_size).floor() as i32)
-        .max(0)
-        .min(t.cells_y - 1);
-    let max_cell_y = ((max_y / t.cell_size).floor() as i32)
-        .max(0)
-        .min(t.cells_y - 1);
-
-    let mut found_triangle = false;
-    for cy in min_cell_y..=max_cell_y {
-        for cx in min_cell_x..=max_cell_x {
-            let cell_idx = (cy * t.cells_x + cx) as usize;
-            if cell_idx + 1 >= t.cell_triangle_offsets.len() {
-                continue;
-            }
-            let start = t.cell_triangle_offsets[cell_idx].max(0) as usize;
-            let end = t.cell_triangle_offsets[cell_idx + 1]
-                .max(0) as usize;
-            let end = end.min(t.cell_triangle_indices.len());
-            for ref_idx in start..end {
-                let tri = t.cell_triangle_indices[ref_idx];
-                if tri < 0 {
-                    continue;
-                }
-                let sample = match terrain_triangle_sample_from_index(t, tri as usize) {
-                    Some(sample) => sample,
-                    None => continue,
-                };
-                if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
-                    continue;
-                }
-                found_triangle = true;
-                let (_, _, _, _, _, ah, _, _, bh, _, _, ch) = sample;
-                if ah >= TERRAIN_WATER_LEVEL
-                    || bh >= TERRAIN_WATER_LEVEL
-                    || ch >= TERRAIN_WATER_LEVEL
-                {
-                    return false;
-                }
-            }
-        }
-    }
-    found_triangle
 }
 
 pub(crate) fn terrain_triangle_sample_at(

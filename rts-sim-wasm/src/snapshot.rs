@@ -7279,7 +7279,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_medium_permissions_respect_water_strip_buffer() {
+    pub(crate) fn pathfinder_medium_permissions_intersect_on_mixed_water_squares() {
         let _guard = lock_tests();
         install_pathfinder_water_strip_test_terrain();
         pathfinder_init(320.0, 180.0);
@@ -7297,7 +7297,7 @@ mod sim_kernel_tests {
         let ground_only_last = (ground_only_count as usize - 1) * 2;
         assert!(
             (ground_only_waypoints[ground_only_last] - 250.0).abs() > 1.0e-9,
-            "ground-only routes should not cross the water-buffered strip"
+            "ground-only routes should not cross a water-containing strip"
         );
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
         assert_eq!(
@@ -7385,7 +7385,7 @@ mod sim_kernel_tests {
                 false,
             ),
             0,
-            "translating that formation segment into the water buffer must be rejected",
+            "translating that formation segment across the water cell must be rejected",
         );
 
         let recovered_land_count = pathfinder_find_path(
@@ -7393,7 +7393,7 @@ mod sim_kernel_tests {
             0.0, 0.0, 0.0, false,
         );
         assert!(recovered_land_count >= 1);
-        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
         let recovered_land_waypoints = unsafe {
             std::slice::from_raw_parts(
                 pathfinder_waypoints_ptr(),
@@ -7401,7 +7401,10 @@ mod sim_kernel_tests {
             )
         };
         let recovered_last = (recovered_land_count as usize - 1) * 2;
-        assert!((recovered_land_waypoints[recovered_last] - 250.0).abs() < 1.0e-9);
+        assert!(
+            (recovered_land_waypoints[recovered_last] - 250.0).abs() > 1.0e-9,
+            "a now-valid dry start may not enter its recovery-only water MOVE domain",
+        );
 
         let stranded_water_count = pathfinder_find_path(
             70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
@@ -7417,16 +7420,16 @@ mod sim_kernel_tests {
         };
         assert_eq!(stranded_water_waypoints, &[70.0, 90.0]);
 
-        // This strip contains only one fully submerged cell. The shared
-        // two-cell shore buffer leaves no legal pure-water waypoint, so a
-        // water-only unit must remain stranded rather than being routed along
-        // a beach-adjacent sliver of water.
+        // This strip contains one fully submerged cell beside one mixed cell.
+        // With no shoreline band, the fully wet cell is valid; the mixed goal
+        // still fails because its exposed case is invalid for a water-only
+        // unit, so the click snaps back to the wet cell.
         let shore_goal_count = pathfinder_find_path(
             170.0, 90.0, 190.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, false,
         );
         assert_eq!(shore_goal_count, 1);
-        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
         let shore_goal_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (shore_goal_count as usize) * 2)
         };

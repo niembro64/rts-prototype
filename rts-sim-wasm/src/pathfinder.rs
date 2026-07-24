@@ -33,6 +33,9 @@ pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
 pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
 pub(crate) const PATHFINDER_RESULT_SNAPPED: u32 = 2;
 pub(crate) const PATHFINDER_RESULT_PARTIAL: u32 = 3;
+/// Independent of shoreline classification. Terrain-bound unit centers stay
+/// out of the outer map guard cells even for point-size developer queries.
+pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_CELLS: i32 = 2;
 
 pub(crate) struct PathfinderState {
     grid_w: i32,
@@ -43,19 +46,14 @@ pub(crate) struct PathfinderState {
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
-    /// Broad water contact mask. A cell is set when any part of its terrain
-    /// touches water; ground routes use it to conservatively avoid shorelines.
+    /// A cell is set when any positive interior portion lies below water.
     terrain_water: Vec<u8>,
-    /// Strict water-occupancy mask. A cell is set only when its interior is
-    /// fully submerged, so water-only units cannot plan onto a beach cell
-    /// that merely contains a sliver of water.
+    /// A cell is set only when no positive interior portion is exposed above
+    /// water. Together with `terrain_water`, this yields the exact binary
+    /// medium cases: dry/exposed, water, or both.
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
     terrain_height: Vec<f32>,
-    /// Highest terrain vertex belonging to any triangle that touches the
-    /// path cell. Used to conservatively derive the minimum displaced-water
-    /// fraction available anywhere in that cell.
-    terrain_max_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
     /// Minimum normal of the terrain transition between neighboring cell
     /// interiors. Four canonical forward edges (E, SE, S, SW) per cell retain
@@ -69,13 +67,12 @@ pub(crate) struct PathfinderState {
     /// not routed through gaps narrower than it can fit. Independent of unit
     /// size, so it is cached once per mask rather than per radius.
     clearance: Vec<u16>,
-    /// Clearance from map edges only. Water-capable and bed-walking queries
-    /// use this so wet cells are not self-obstacles.
+    /// Clearance from map edges only. Traversals valid in both exposed and
+    /// water cases use this because neither medium is an obstacle.
     medium_clearance: Vec<u16>,
-    /// Clearance from dry shore and map edges. Pure water navigation uses
-    /// this configuration-space field so the shared shoreline buffer and
-    /// the body's collision disk stay in navigable water rather than
-    /// clipping a beach.
+    /// Clearance from cells containing any exposed terrain and map edges.
+    /// Water-only navigation uses this so the collision disk remains inside
+    /// cells whose water case is exclusively applicable.
     water_clearance: Vec<u16>,
 
     // A* scratch (reused per query)
@@ -121,13 +118,11 @@ pub(crate) struct PathfinderTraversal {
     /// grip; there is no global angle ceiling.
     min_ground_normal_z: f32,
     /// Equivalent threshold while water covers the terrain. Fluid-supported
-    /// bodies ignore the bed. Bed-supported bodies derive their wet threshold
-    /// per cell from actual displaced volume at that cell's highest terrain.
+    /// bodies ignore the bed. Any water-containing cell applies the same full
+    /// water force case; a mixed cell then intersects it with the dry case.
     safe_ground_accel: f64,
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
-    body_radius: f64,
-    support_point_offset_z: f64,
     water_surface_supported: bool,
     water_waypoint_hold: bool,
     allow_ground: bool,
@@ -225,7 +220,6 @@ impl PathfinderState {
             terrain_submerged: Vec::new(),
             terrain_edge_blocked: Vec::new(),
             terrain_height: Vec::new(),
-            terrain_max_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             terrain_transition_normal_z: Vec::new(),
             cc_labels: Vec::new(),
@@ -247,8 +241,6 @@ impl PathfinderState {
                 safe_ground_accel: 0.0,
                 safe_water_drive_accel: 0.0,
                 static_friction_coefficient: 0.0,
-                body_radius: 0.0,
-                support_point_offset_z: 0.0,
                 water_surface_supported: false,
                 water_waypoint_hold: false,
                 allow_ground: true,
@@ -334,10 +326,6 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state
         .terrain_height
         .resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
-    state.terrain_max_height.clear();
-    state
-        .terrain_max_height
-        .resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
     state.terrain_transition_normal_z.clear();
@@ -415,7 +403,7 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
 pub(crate) fn pathfinder_sample_cell_terrain(
     gx: i32,
     gy: i32,
-) -> (bool, bool, f32, f32, f32, [f32; 8]) {
+) -> (bool, bool, f32, f32, [f32; 8]) {
     let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
     let x0 = gx as f64 * cs;
     let y0 = gy as f64 * cs;
@@ -440,9 +428,8 @@ pub(crate) fn pathfinder_sample_cell_terrain(
         (right, bottom),
     ];
     let mut has_water = center_h < TERRAIN_WATER_LEVEL;
-    let mut fully_submerged = has_water;
+    let mut has_air = center_h >= TERRAIN_WATER_LEVEL;
     let mut min_normal_z = center_nz;
-    let mut max_height = center_h;
     let mut boundary_heights = [0.0f32; 8];
     for (sample_idx, (x, y)) in sample_points.into_iter().enumerate() {
         let (h, nz) = pathfinder_sample_terrain(x, y);
@@ -450,12 +437,11 @@ pub(crate) fn pathfinder_sample_cell_terrain(
         if h < TERRAIN_WATER_LEVEL {
             has_water = true;
         } else {
-            fully_submerged = false;
+            has_air = true;
         }
         if nz < min_normal_z {
             min_normal_z = nz;
         }
-        max_height = max_height.max(h);
     }
     terrain_accumulate_touching_triangle_safety(
         left,
@@ -463,20 +449,18 @@ pub(crate) fn pathfinder_sample_cell_terrain(
         right,
         bottom,
         &mut has_water,
+        &mut has_air,
         &mut min_normal_z,
-        &mut max_height,
     );
-    // Use the cell interior for the strict test. Adjacent terrain triangles
-    // that only share the boundary must not turn an otherwise submerged cell
-    // into a shore cell; any actual beach area inside the cell still rejects
-    // it conservatively through the triangle-vertex test.
-    fully_submerged &= terrain_touching_triangles_are_submerged(left, top, right, bottom);
+    // Both medium flags use the inset cell interior. A triangle that merely
+    // shares a boundary contributes to the transition edge, not to either
+    // cell's medium cases.
+    let fully_submerged = has_water && !has_air;
     (
         has_water,
         fully_submerged,
         min_normal_z,
         center_h as f32,
-        max_height as f32,
         boundary_heights,
     )
 }
@@ -510,10 +494,9 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
-            let (has_water, fully_submerged, nz, height, max_height, cell_boundary_heights) =
+            let (has_water, fully_submerged, nz, height, cell_boundary_heights) =
                 pathfinder_sample_cell_terrain(gx, gy);
             state.terrain_height[idx] = height;
-            state.terrain_max_height[idx] = max_height;
             state.terrain_normal_z[idx] = nz;
             boundary_heights[idx] = cell_boundary_heights;
             if has_water {
@@ -563,35 +546,18 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         }
     }
 
-    // Step 2 — dilate water by WATER_BUFFER_CELLS into terrain_blocked.
-    // Map-edge cells within `tk` of any border are blocked so ground routes
-    // keep their collision space in-bounds.
-    let tk = PATHFINDING_WATER_BUFFER_CELLS;
-    for cell in state.terrain_blocked.iter_mut() {
-        *cell = 0;
-    }
-    for cell in state.terrain_edge_blocked.iter_mut() {
-        *cell = 0;
-    }
+    // Step 2 — retain the exact per-cell water domain. There is no synthetic
+    // shoreline dilation: a dry-only traversal is blocked by a cell iff that
+    // cell itself contains water.
+    state.terrain_blocked.copy_from_slice(&water_mask);
     for gy in 0..grid_h {
         for gx in 0..grid_w {
-            let out_idx = (gy * grid_w + gx) as usize;
-            if gx < tk || gy < tk || gx >= grid_w - tk || gy >= grid_h - tk {
-                state.terrain_edge_blocked[out_idx] = 1;
-                state.terrain_blocked[out_idx] = 1;
-                continue;
-            }
-            let mut blk = 0u8;
-            'stencil: for dy in -tk..=tk {
-                let row = (gy + dy) * grid_w;
-                for dx in -tk..=tk {
-                    if water_mask[(row + gx + dx) as usize] == 1 {
-                        blk = 1;
-                        break 'stencil;
-                    }
-                }
-            }
-            state.terrain_blocked[out_idx] = blk;
+            let idx = (gy * grid_w + gx) as usize;
+            let edge_blocked = gx < PATHFINDER_MAP_EDGE_BUFFER_CELLS
+                || gy < PATHFINDER_MAP_EDGE_BUFFER_CELLS
+                || gx >= grid_w - PATHFINDER_MAP_EDGE_BUFFER_CELLS
+                || gy >= grid_h - PATHFINDER_MAP_EDGE_BUFFER_CELLS;
+            state.terrain_edge_blocked[idx] = if edge_blocked { 1 } else { 0 };
         }
     }
 
@@ -600,23 +566,27 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     // or a clearance source here. Hovering structures therefore never change
     // the movement surface a unit plans across.
     state.blocked.copy_from_slice(&state.terrain_blocked);
+    for idx in 0..n {
+        if state.terrain_edge_blocked[idx] != 0 {
+            state.blocked[idx] = 1;
+        }
+    }
 
-    // Clearance distance fields: Chebyshev cell-distance from each open cell
-    // to the nearest terrain obstacle (0 for obstacle cells). Ground-only
-    // clearance treats water + map edges as obstacles. Medium clearance treats
-    // only map edges as obstacles, so amphibious and bed-walking routes do not
-    // make wet cells self-blocking. Water-only clearance treats every
-    // non-submerged shore cell as an obstacle, keeping an aquatic body's
-    // collision disk in water.
+    // Clearance distance fields: Chebyshev cell-distance from each invalid
+    // medium cell. Ground/air-only traversal treats every water-containing
+    // cell as an obstacle; water-only traversal treats every cell containing
+    // exposed terrain as an obstacle. Dual-medium traversal has no terrain
+    // medium obstacle. All three fields are then clamped by exact map-edge
+    // distance so physical body radius still remains in bounds.
     for idx in 0..n {
         state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
-        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] == 1 {
+        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] != 0 {
             0
         } else {
             u16::MAX
         };
         state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
-            || state.terrain_edge_blocked[idx] == 1
+            || state.terrain_edge_blocked[idx] != 0
         {
             0
         } else {
@@ -626,6 +596,19 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
     pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
     pathfinder_rebuild_clearance_distance(&mut state.water_clearance, grid_w, grid_h);
+    for gy in 0..grid_h {
+        for gx in 0..grid_w {
+            let idx = (gy * grid_w + gx) as usize;
+            let edge_clearance = (gx + 1)
+                .min(gy + 1)
+                .min(grid_w - gx)
+                .min(grid_h - gy)
+                .max(0) as u16;
+            state.clearance[idx] = state.clearance[idx].min(edge_clearance);
+            state.medium_clearance[idx] = state.medium_clearance[idx].min(edge_clearance);
+            state.water_clearance[idx] = state.water_clearance[idx].min(edge_clearance);
+        }
+    }
 
     // CC labelling is an obstacle pre-flight only: slope capability is
     // query-specific and directional, so it cannot be encoded in one shared
@@ -761,7 +744,7 @@ pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
 pub fn pathfinder_bake_traversability_grid(
     min_ground_normal_z: f32,
     water_surface_supported: bool,
-    support_point_offset_z: f64,
+    _support_point_offset_z: f64,
     waypoint_allow_ground: bool,
     waypoint_allow_water: bool,
     waypoint_allow_air: bool,
@@ -784,8 +767,6 @@ pub fn pathfinder_bake_traversability_grid(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: false,
         allow_ground: move_allow_ground,
@@ -797,8 +778,6 @@ pub fn pathfinder_bake_traversability_grid(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: true,
         allow_ground: waypoint_allow_ground,
@@ -822,36 +801,13 @@ pub fn pathfinder_bake_traversability_grid(
 }
 
 #[inline]
-pub(crate) fn pathfinder_is_water_only_traversal(traversal: PathfinderTraversal) -> bool {
-    !traversal.allow_air && traversal.allow_water && !traversal.allow_ground
+pub(crate) fn pathfinder_allows_exposed_case(traversal: PathfinderTraversal) -> bool {
+    traversal.allow_ground || traversal.allow_air
 }
 
-/// Translate the land-side water dilation into the opposite configuration
-/// space for pure-water navigation. Land treats every cell within
-/// `PATHFINDING_WATER_BUFFER_CELLS` of water as blocked, then applies the
-/// body's hard clearance from that expanded obstacle. Water must do the
-/// mirror image: first reserve the same number of cells from dry shore, then
-/// apply the body's hard clearance from the resulting shore buffer.
-///
-/// A zero-radius query still needs one open cell beyond the inclusive buffer:
-/// distance zero is the dry-shore obstacle itself, just as a land cell inside
-/// the inclusive water dilation is blocked.
-#[inline]
-pub(crate) fn pathfinder_required_water_clearance_cells(
-    hard_clearance_cells: i32,
-) -> i32 {
-    let shore_buffer = PATHFINDING_WATER_BUFFER_CELLS.max(0);
-    if hard_clearance_cells > 0 {
-        hard_clearance_cells.saturating_add(shore_buffer)
-    } else {
-        shore_buffer.saturating_add(1)
-    }
-}
-
-/// Water-only movement is a volume-occupancy class: its reference point must
-/// itself be below the water plane. Cell classification below supplies the
-/// conservative footprint clearance; this point check prevents a final raw
-/// waypoint from landing on a dry corner of an otherwise relevant grid cell.
+/// Validate a raw world point against the same binary medium permissions as
+/// its containing cell. A point below the water plane exercises the water
+/// case; a point on or above it exercises the exposed ground/air case.
 #[inline]
 pub(crate) fn pathfinder_position_is_in_navigation_domain(
     state: &PathfinderState,
@@ -862,8 +818,12 @@ pub(crate) fn pathfinder_position_is_in_navigation_domain(
     if !x.is_finite() || !y.is_finite() || x < 0.0 || y < 0.0 || x >= state.map_width || y >= state.map_height {
         return false;
     }
-    !pathfinder_is_water_only_traversal(traversal)
-        || pathfinder_sample_terrain(x, y).0 < TERRAIN_WATER_LEVEL
+    let point_is_water = pathfinder_sample_terrain(x, y).0 < TERRAIN_WATER_LEVEL;
+    if point_is_water {
+        traversal.allow_water
+    } else {
+        pathfinder_allows_exposed_case(traversal)
+    }
 }
 
 #[inline]
@@ -872,31 +832,17 @@ pub(crate) fn pathfinder_is_cell_passable(
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> bool {
-    if traversal.allow_air {
-        return true;
-    }
-    if state.terrain_edge_blocked[idx] == 1 {
+    if !traversal.allow_air && state.terrain_edge_blocked[idx] != 0 {
         return false;
     }
-    let water_only = pathfinder_is_water_only_traversal(traversal);
-    if water_only && state.terrain_submerged[idx] == 0 {
-        return false;
-    }
-    let wet = state.terrain_water[idx] == 1;
-    let terrain_blocked = state.blocked[idx] == 1;
-    let passable_by_medium = if wet {
-        // Intentional water traversal is an explicit pathing class.
-        // Ground contact may physically exist on the lakebed, but that does
-        // not authorize an ordinary land unit to route itself into water.
-        traversal.allow_water
-    } else if terrain_blocked {
-        // Dry shoreline-buffer cells are blocked for ground-only units, but
-        // amphibious units may cross them because the adjacent wet cells are
-        // part of their legal route space.
-        traversal.allow_water && traversal.allow_ground
-    } else {
-        traversal.allow_ground
-    };
+    let has_water = state.terrain_water[idx] == 1;
+    let has_exposed = state.terrain_submerged[idx] == 0;
+    let allows_exposed = pathfinder_allows_exposed_case(traversal);
+    // Every medium present in the square must be valid. A mixed shoreline
+    // square therefore intersects its exposed and water permissions instead
+    // of receiving a special shoreline class or buffer.
+    let passable_by_medium =
+        (!has_exposed || allows_exposed) && (!has_water || traversal.allow_water);
     if !passable_by_medium {
         return false;
     }
@@ -908,15 +854,15 @@ pub(crate) fn pathfinder_is_cell_passable(
     // out of cells whose nearest blocker is closer than the body can fit.
     // cur_required_clearance is 0 during start/goal snapping and for point-size
     // units, so this is inert there (every open cell has clearance >= 1).
-    let clearance = if water_only {
+    let clearance = if traversal.allow_water && !allows_exposed {
         state.water_clearance[idx]
-    } else if wet || traversal.allow_water {
+    } else if traversal.allow_water && allows_exposed {
         state.medium_clearance[idx]
     } else {
         state.clearance[idx]
     };
-    let required_clearance = if water_only {
-        pathfinder_required_water_clearance_cells(state.cur_required_clearance)
+    let required_clearance = if traversal.allow_air {
+        0
     } else {
         state.cur_required_clearance
     };
@@ -927,24 +873,8 @@ pub(crate) fn pathfinder_is_cell_passable(
 }
 
 #[inline]
-fn pathfinder_cell_water_fraction(
-    state: &PathfinderState,
-    idx: usize,
-    traversal: PathfinderTraversal,
-) -> f64 {
-    if state.terrain_water[idx] == 0 {
-        return 0.0;
-    }
-    let terrain_height = state.terrain_max_height[idx] as f64;
-    let support_offset = if traversal.support_point_offset_z.is_finite() {
-        traversal.support_point_offset_z.max(0.0)
-    } else {
-        0.0
-    };
-    unit_force_water_fraction(
-        terrain_height + support_offset,
-        traversal.body_radius,
-    )
+fn pathfinder_cell_water_case_scale(state: &PathfinderState, idx: usize) -> f64 {
+    if state.terrain_water[idx] == 0 { 0.0 } else { 1.0 }
 }
 
 #[inline]
@@ -953,11 +883,21 @@ fn pathfinder_required_cell_normal_z(
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> f32 {
-    if state.terrain_water[idx] == 0 || !traversal.allow_water {
-        return pathfinder_required_normal_z(traversal.min_ground_normal_z);
-    }
-    if traversal.allow_air || traversal.water_surface_supported || !traversal.allow_ground {
+    if traversal.allow_air {
         return 0.0;
+    }
+    let has_water = state.terrain_water[idx] == 1;
+    let has_exposed = state.terrain_submerged[idx] == 0;
+    let mut required = if has_exposed {
+        pathfinder_required_normal_z(traversal.min_ground_normal_z)
+    } else {
+        0.0
+    };
+    if !has_water || !traversal.allow_water {
+        return required;
+    }
+    if traversal.water_surface_supported || !traversal.allow_ground {
+        return required;
     }
     if traversal.min_ground_normal_z <= 0.0
         && traversal.safe_ground_accel <= 0.0
@@ -965,21 +905,20 @@ fn pathfinder_required_cell_normal_z(
         && traversal.static_friction_coefficient <= 0.0
     {
         // Explicitly unfiltered developer/test queries keep slope gates off.
-        return 0.0;
+        return required;
     }
 
     // Wet contact propulsion is weighted by the sphere volume actually below
     // the water plane. Use the highest terrain belonging to the conservative
     // path cell, so every point represented by a green square has at least
     // this much water authority at its ground-resting body height.
-    let water_fraction = pathfinder_cell_water_fraction(state, idx, traversal);
     let max_move_slope = pathfinder_max_contact_slope_rad(
         traversal.safe_ground_accel,
-        traversal.safe_water_drive_accel * water_fraction,
+        traversal.safe_water_drive_accel,
         traversal.static_friction_coefficient,
         GRAVITY,
     );
-    let mut required = max_move_slope.cos();
+    let mut water_required = max_move_slope.cos();
     if traversal.water_waypoint_hold {
         // A destination must both be actively reachable and remain held after
         // commanded water thrust ends. Passive Coulomb grip supplies the hold.
@@ -988,9 +927,10 @@ fn pathfinder_required_cell_normal_z(
             .max(0.0)
             .atan()
             .cos();
-        required = required.max(hold_normal);
+        water_required = water_required.max(hold_normal);
     }
-    pathfinder_required_normal_z(required as f32)
+    required = required.max(pathfinder_required_normal_z(water_required as f32));
+    required
 }
 
 /// Hard configuration-space clearance for the unit's physical collision disk.
@@ -1340,13 +1280,10 @@ fn pathfinder_clearance_at(
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> i32 {
-    if pathfinder_is_water_only_traversal(traversal) {
-        // Match ground-space clearance: land measures from the water mask
-        // after it has been dilated by the shared shore buffer, so water must
-        // measure from dry shore after removing the same buffer.
-        (state.water_clearance[idx] as i32)
-            .saturating_sub(PATHFINDING_WATER_BUFFER_CELLS.max(0))
-    } else if state.terrain_water[idx] == 1 || traversal.allow_water {
+    let allows_exposed = pathfinder_allows_exposed_case(traversal);
+    if traversal.allow_water && !allows_exposed {
+        state.water_clearance[idx] as i32
+    } else if traversal.allow_water && allows_exposed {
         state.medium_clearance[idx] as i32
     } else {
         state.clearance[idx] as i32
@@ -1409,10 +1346,10 @@ pub(crate) fn pathfinder_edge_cost(
             let from_wet = state.terrain_water[from_idx] != 0;
             let to_wet = state.terrain_water[to_idx] != 0;
             let water_fraction = match (from_wet, to_wet) {
-                (true, true) => pathfinder_cell_water_fraction(state, from_idx, traversal)
-                    .min(pathfinder_cell_water_fraction(state, to_idx, traversal)),
-                (true, false) => pathfinder_cell_water_fraction(state, from_idx, traversal),
-                (false, true) => pathfinder_cell_water_fraction(state, to_idx, traversal),
+                (true, true) => pathfinder_cell_water_case_scale(state, from_idx)
+                    .min(pathfinder_cell_water_case_scale(state, to_idx)),
+                (true, false) => pathfinder_cell_water_case_scale(state, from_idx),
+                (false, true) => pathfinder_cell_water_case_scale(state, to_idx),
                 (false, false) => 0.0,
             };
             cost_profile.safe_water_drive_accel * water_fraction
@@ -1845,9 +1782,10 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// its MOVE and WAYPOINT thresholds per cell from body immersion, safe force
 /// budgets, and whether lift makes the body independent of the lakebed. The
 /// waypoint_allow_* flags define intentional destinations and entries, while
-/// move_allow_* flags define physical traversal. A pure-water route
-/// additionally requires fully submerged cells and shore clearance. Physical
-/// lakebed contact does not by itself authorize an intentional water route.
+/// move_allow_* flags define physical traversal. Each cell independently
+/// reports whether exposed and/or water cases are present; mixed cells require
+/// both cases to pass. Physical lakebed contact does not by itself authorize
+/// an intentional water route.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
 /// (x, y) f64 pairs; returns the waypoint count.
 ///
@@ -1862,7 +1800,7 @@ pub fn pathfinder_find_path(
     goal_y: f64,
     min_ground_normal_z: f32,
     water_surface_supported: bool,
-    support_point_offset_z: f64,
+    _support_point_offset_z: f64,
     waypoint_allow_ground: bool,
     waypoint_allow_water: bool,
     waypoint_allow_air: bool,
@@ -1885,8 +1823,6 @@ pub fn pathfinder_find_path(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: false,
         allow_ground: move_allow_ground,
@@ -1898,8 +1834,6 @@ pub fn pathfinder_find_path(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: true,
         allow_ground: waypoint_allow_ground,
@@ -2167,15 +2101,14 @@ pub fn pathfinder_last_result_status() -> u32 {
 /// by direct LOS, A*, and string-pull smoothing. `points` is interleaved x/y
 /// and includes the unit's current position as its first point. Validation uses
 /// hard collision clearance only: a translated shared route may give up comfort
-/// margin, but it may never overlap water, dry shore for a pure-water unit, a
-/// structure, map bounds, an unsupported local surface, or an illegal
-/// directed climb edge.
+/// margin, but it may never overlap an unsupported medium, map bounds, an
+/// unsupported local surface, or an illegal directed climb edge.
 #[wasm_bindgen]
 pub fn pathfinder_validate_path(
     points: &[f64],
     min_ground_normal_z: f32,
     water_surface_supported: bool,
-    support_point_offset_z: f64,
+    _support_point_offset_z: f64,
     waypoint_allow_ground: bool,
     waypoint_allow_water: bool,
     waypoint_allow_air: bool,
@@ -2200,8 +2133,6 @@ pub fn pathfinder_validate_path(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: false,
         allow_ground: move_allow_ground,
@@ -2213,8 +2144,6 @@ pub fn pathfinder_validate_path(
         safe_ground_accel: safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        body_radius: unit_radius,
-        support_point_offset_z,
         water_surface_supported,
         water_waypoint_hold: true,
         allow_ground: waypoint_allow_ground,
@@ -2289,7 +2218,6 @@ mod tests {
         state.terrain_submerged = vec![0; n];
         state.terrain_edge_blocked = vec![0; n];
         state.terrain_height = vec![0.0; n];
-        state.terrain_max_height = vec![0.0; n];
         state.terrain_normal_z = vec![1.0; n];
         state.terrain_transition_normal_z = vec![1.0; n * 4];
         state.clearance = vec![u16::MAX; n];
@@ -2310,8 +2238,6 @@ mod tests {
             safe_ground_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            body_radius: 1.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: true,
@@ -2346,6 +2272,35 @@ mod tests {
         );
         assert!(!terrain_triangle_touches_rect(sample, 8.0, 8.0, 9.0, 9.0));
         assert!(terrain_triangle_touches_rect(sample, 1.0, 1.0, 2.0, 2.0));
+    }
+
+    #[test]
+    fn terrain_triangle_water_case_uses_only_the_clipped_cell_portion() {
+        let sample: TerrainTriangleSample = (
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            TERRAIN_WATER_LEVEL - 10.0,
+            10.0,
+            0.0,
+            TERRAIN_WATER_LEVEL + 10.0,
+            0.0,
+            10.0,
+            TERRAIN_WATER_LEVEL + 10.0,
+        );
+        let (dry_min, dry_max) =
+            terrain_triangle_rect_height_range(sample, 4.0, 4.0, 5.0, 5.0)
+                .expect("dry rectangle overlaps the triangle");
+        assert!(dry_min >= TERRAIN_WATER_LEVEL);
+        assert!(dry_max >= dry_min);
+
+        let (mixed_min, mixed_max) =
+            terrain_triangle_rect_height_range(sample, 0.0, 0.0, 5.0, 5.0)
+                .expect("mixed rectangle overlaps the triangle");
+        assert!(mixed_min < TERRAIN_WATER_LEVEL);
+        assert!(mixed_max >= TERRAIN_WATER_LEVEL);
     }
 
     #[test]
@@ -2444,19 +2399,16 @@ mod tests {
     }
 
     #[test]
-    fn wet_cell_force_uses_actual_displaced_water_volume() {
+    fn partial_and_full_water_use_the_same_binary_water_force_case() {
         let mut state = open_test_state(1, 1);
         state.terrain_water[0] = 1;
         state.terrain_submerged[0] = 1;
         state.terrain_normal_z[0] = 0.6;
-        state.terrain_max_height[0] = (TERRAIN_WATER_LEVEL - 100.0) as f32;
         let move_traversal = PathfinderTraversal {
             min_ground_normal_z: 0.8,
             safe_ground_accel: 100.0,
             safe_water_drive_accel: 300.0,
             static_friction_coefficient: 1.0,
-            body_radius: 20.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: true,
@@ -2471,10 +2423,9 @@ mod tests {
         };
         assert!(!pathfinder_is_cell_passable(&state, 0, waypoint_traversal));
 
-        state.terrain_max_height[0] = (TERRAIN_WATER_LEVEL + 25.0) as f32;
         assert!(
-            !pathfinder_is_cell_passable(&state, 0, move_traversal),
-            "a terrain-wet cell whose resting body is dry has no water-thrust budget",
+            pathfinder_is_cell_passable(&state, 0, move_traversal),
+            "water presence applies the full water MOVE case without an immersion threshold",
         );
     }
 
@@ -2514,8 +2465,6 @@ mod tests {
             safe_ground_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            body_radius: 1.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: true,
@@ -2541,8 +2490,6 @@ mod tests {
             safe_ground_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            body_radius: 1.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: true,
@@ -2593,8 +2540,6 @@ mod tests {
             safe_ground_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            body_radius: 1.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: true,
@@ -2608,15 +2553,13 @@ mod tests {
     }
 
     #[test]
-    fn water_only_navigation_mirrors_land_water_buffer_and_body_clearance() {
+    fn water_only_navigation_uses_body_clearance_without_a_shore_buffer() {
         let mut state = open_test_state(7, 1);
         let traversal = PathfinderTraversal {
             min_ground_normal_z: 0.0,
             safe_ground_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            body_radius: 1.0,
-            support_point_offset_z: 0.0,
             water_surface_supported: false,
             water_waypoint_hold: false,
             allow_ground: false,
@@ -2635,21 +2578,90 @@ mod tests {
             "a shoreline cell that merely touches water is not pure-water navigable"
         );
         assert!(
-            !pathfinder_is_cell_passable(&state, 2, traversal),
-            "pure-water navigation must reserve the same inclusive shore buffer as land"
-        );
-        assert!(
-            pathfinder_is_cell_passable(&state, 3, traversal),
-            "the first water cell beyond the shared shore buffer is usable"
+            pathfinder_is_cell_passable(&state, 1, traversal),
+            "the first fully wet point-size square is valid without a shoreline band"
         );
 
         state.cur_required_clearance = 3;
         assert!(
-            !pathfinder_is_cell_passable(&state, 4, traversal),
-            "body clearance must be measured beyond, not instead of, the shore buffer"
+            !pathfinder_is_cell_passable(&state, 2, traversal),
+            "physical body clearance still rejects a center too close to exposed terrain"
         );
-        assert!(pathfinder_is_cell_passable(&state, 5, traversal));
-        assert_eq!(pathfinder_clearance_at(&state, 5, traversal), 3);
+        assert!(pathfinder_is_cell_passable(&state, 3, traversal));
+        assert_eq!(pathfinder_clearance_at(&state, 3, traversal), 3);
+    }
+
+    #[test]
+    fn mixed_cells_intersect_exposed_and_water_permissions() {
+        let mut state = open_test_state(3, 1);
+        state.terrain_water = vec![0, 1, 1];
+        state.terrain_submerged = vec![0, 0, 1];
+
+        let dry_only = ground_traversal();
+        assert!(pathfinder_is_cell_passable(&state, 0, dry_only));
+        assert!(!pathfinder_is_cell_passable(&state, 1, dry_only));
+        assert!(!pathfinder_is_cell_passable(&state, 2, dry_only));
+
+        let water_only = PathfinderTraversal {
+            allow_ground: false,
+            allow_water: true,
+            ..dry_only
+        };
+        assert!(!pathfinder_is_cell_passable(&state, 0, water_only));
+        assert!(!pathfinder_is_cell_passable(&state, 1, water_only));
+        assert!(pathfinder_is_cell_passable(&state, 2, water_only));
+
+        let amphibious = PathfinderTraversal {
+            allow_water: true,
+            ..dry_only
+        };
+        assert!(pathfinder_is_cell_passable(&state, 0, amphibious));
+        assert!(pathfinder_is_cell_passable(&state, 1, amphibious));
+        assert!(pathfinder_is_cell_passable(&state, 2, amphibious));
+
+        let air_only = PathfinderTraversal {
+            allow_ground: false,
+            allow_air: true,
+            ..dry_only
+        };
+        assert!(pathfinder_is_cell_passable(&state, 0, air_only));
+        assert!(!pathfinder_is_cell_passable(&state, 1, air_only));
+        assert!(!pathfinder_is_cell_passable(&state, 2, air_only));
+
+        let air_and_water = PathfinderTraversal {
+            allow_water: true,
+            ..air_only
+        };
+        assert!(pathfinder_is_cell_passable(&state, 0, air_and_water));
+        assert!(pathfinder_is_cell_passable(&state, 1, air_and_water));
+        assert!(pathfinder_is_cell_passable(&state, 2, air_and_water));
+    }
+
+    #[test]
+    fn mixed_cell_uses_the_worse_dry_and_water_slope_case() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_water.fill(1);
+        state.terrain_submerged = vec![0, 1];
+        state.terrain_normal_z.fill(0.6);
+        let traversal = PathfinderTraversal {
+            min_ground_normal_z: 0.8,
+            safe_ground_accel: 100.0,
+            safe_water_drive_accel: 300.0,
+            static_friction_coefficient: 1.0,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: true,
+            allow_air: false,
+        };
+        assert!(
+            !pathfinder_is_cell_passable(&state, 0, traversal),
+            "mixed square must retain the failing dry slope case"
+        );
+        assert!(
+            pathfinder_is_cell_passable(&state, 1, traversal),
+            "the same normal may pass when only the powered water case applies"
+        );
     }
 
     #[test]
@@ -2689,7 +2701,7 @@ mod tests {
         // available, the same hard-clearance cells remain legal.
         for gy in [0, 2] {
             for gx in 0..state.grid_w {
-                state.blocked[(gy * state.grid_w + gx) as usize] = 1;
+                state.terrain_water[(gy * state.grid_w + gx) as usize] = 1;
             }
         }
         let result = pathfinder_a_star(&mut state, 0, 1, 4, 1, traversal, profile)
@@ -2703,9 +2715,9 @@ mod tests {
         state.cur_required_clearance = 0;
         let traversal = ground_traversal();
 
-        state.blocked[1 * 3 + 2] = 1;
+        state.terrain_water[1 * 3 + 2] = 1;
         assert!(!pathfinder_can_step_neighbor(&state, 1, 1, 2, 2, traversal,));
-        state.blocked[1 * 3 + 2] = 0;
+        state.terrain_water[1 * 3 + 2] = 0;
         assert!(pathfinder_can_step_neighbor(&state, 1, 1, 2, 2, traversal,));
     }
 }

@@ -1,5 +1,4 @@
 {
-  "waterBufferCells": 2,
   "forceSafetyRatio": 0.85,
   "allowDiagonalNeighbors": true,
   "arrivalRadius": 50,

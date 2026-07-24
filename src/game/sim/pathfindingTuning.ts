@@ -1,7 +1,6 @@
 import rawPathfindingTuningConfig from './pathfindingTuningConfig.json';
 
 type PathfindingTuningConfig = {
-  waterBufferCells: number;
   forceSafetyRatio: number;
   arrivalRadius: number;
   allowDiagonalNeighbors: boolean;
@@ -21,16 +20,6 @@ const config = rawPathfindingTuningConfig as PathfindingTuningConfig;
 function requireFinite(label: string, value: number): number {
   if (!Number.isFinite(value)) {
     throw new Error(`Invalid pathfinding tuning ${label}: expected finite number, got ${value}`);
-  }
-  return value;
-}
-
-function readWaterBufferCells(): number {
-  const value = requireFinite('waterBufferCells', config.waterBufferCells);
-  if (value < 0 || Math.floor(value) !== value) {
-    throw new Error(
-      `Invalid pathfinding tuning waterBufferCells: expected non-negative integer, got ${value}`,
-    );
   }
   return value;
 }
@@ -127,7 +116,6 @@ function requireUnitIntervalRatio(label: string, value: number): number {
   return value;
 }
 
-export const PATHFINDING_WATER_BUFFER_CELLS = readWaterBufferCells();
 /** Arrival tolerance in world units (distance at which a unit ticks a waypoint
  *  as reached). This is controller behavior and is deliberately not folded
  *  into the unit's hard pathfinding collision clearance. */

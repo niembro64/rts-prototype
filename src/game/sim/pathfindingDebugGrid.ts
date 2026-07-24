@@ -9,11 +9,10 @@ import {
   type PathfinderTraversalInput,
 } from './pathfindingTraversal';
 import type { UnitNavigationDomain } from '@/types/unitLocomotionTypes';
-import { PATHFINDING_WATER_BUFFER_CELLS } from './pathfindingTuning';
 import { GRAVITY } from '@/config';
-import { WATER_LEVEL } from './terrain/terrainConfig';
 
 const CLEARANCE_UNREACHABLE = 0xffff;
+const PATHFINDER_MAP_EDGE_BUFFER_CELLS = 2;
 
 export type PathfindingDebugGrid = {
   readonly waterBlocked: Uint8Array;
@@ -28,7 +27,6 @@ export type PathfindingDebugGrid = {
 export type PathfindingDebugTraversal = Readonly<{
   traversal: PathfinderTraversalInput;
   requiredGroundNormalZ: number;
-  bodyRadius: number;
   hardClearanceCells: number;
 }>;
 
@@ -44,7 +42,6 @@ export type PathfindingDebugPassabilityInput = Readonly<{
   terrainWater: Uint8Array;
   terrainSubmerged: Uint8Array;
   terrainNormalZ: Float32Array;
-  terrainMaxHeight: Float32Array;
   traversal: PathfindingDebugTraversal;
   cellsX: number;
   cellsY: number;
@@ -84,14 +81,6 @@ export function pathfinderHardClearanceCellsForRadius(radius: number, cellSize: 
   return Math.ceil(radius / cellSize + 0.5);
 }
 
-/** Mirrors `pathfinder_required_water_clearance_cells` in Rust. */
-export function pathfinderRequiredWaterClearanceCells(hardClearanceCells: number): number {
-  const shoreBuffer = Math.max(0, PATHFINDING_WATER_BUFFER_CELLS);
-  return hardClearanceCells > 0
-    ? hardClearanceCells + shoreBuffer
-    : shoreBuffer + 1;
-}
-
 export function createPathfindingDebugTraversal(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
@@ -101,7 +90,6 @@ export function createPathfindingDebugTraversal(
   return {
     traversal,
     requiredGroundNormalZ: traversal.minGroundNormalZ,
-    bodyRadius: Number.isFinite(unitRadius) && unitRadius > 0 ? unitRadius : 0.5,
     hardClearanceCells: pathfinderHardClearanceCellsForRadius(unitRadius, cellSize),
   };
 }
@@ -143,9 +131,9 @@ function rebuildClearanceDistance(clearance: Uint16Array, cellsX: number, cellsY
 
 /**
  * Rebuild the terrain configuration-space fields used by the PATH overlay.
- * `terrainWater` means any water touches the cell (the land
- * exclusion input); `terrainSubmerged` means the whole cell is below water
- * (the water-only occupancy input).
+ * `terrainWater` means the cell contains water; `terrainSubmerged` means it
+ * contains no exposed terrain. A mixed cell has `terrainWater=1` and
+ * `terrainSubmerged=0` and therefore exercises both medium cases.
  */
 export function rebuildPathfindingDebugGrid(
   grid: PathfindingDebugGrid,
@@ -153,32 +141,20 @@ export function rebuildPathfindingDebugGrid(
 ): void {
   const { cellsX, cellsY, terrainWater, terrainSubmerged } = input;
   const cellCount = cellsX * cellsY;
-  const waterBuffer = PATHFINDING_WATER_BUFFER_CELLS;
 
   grid.waterBlocked.fill(0, 0, cellCount);
   grid.edgeBlocked.fill(0, 0, cellCount);
   for (let gy = 0; gy < cellsY; gy++) {
     for (let gx = 0; gx < cellsX; gx++) {
       const index = gy * cellsX + gx;
-      const atEdge = waterBuffer > 0 &&
-        (gx < waterBuffer || gy < waterBuffer ||
-          gx >= cellsX - waterBuffer || gy >= cellsY - waterBuffer);
-      if (atEdge) {
-        grid.edgeBlocked[index] = 1;
-        grid.waterBlocked[index] = 1;
-        continue;
-      }
-      let blockedByWater = false;
-      for (let dy = -waterBuffer; dy <= waterBuffer && !blockedByWater; dy++) {
-        const rowOffset = (gy + dy) * cellsX;
-        for (let dx = -waterBuffer; dx <= waterBuffer; dx++) {
-          if (terrainWater[rowOffset + gx + dx] !== 0) {
-            blockedByWater = true;
-            break;
-          }
-        }
-      }
-      grid.waterBlocked[index] = blockedByWater ? 1 : 0;
+      const edgeBlocked =
+        gx < PATHFINDER_MAP_EDGE_BUFFER_CELLS ||
+        gy < PATHFINDER_MAP_EDGE_BUFFER_CELLS ||
+        gx >= cellsX - PATHFINDER_MAP_EDGE_BUFFER_CELLS ||
+        gy >= cellsY - PATHFINDER_MAP_EDGE_BUFFER_CELLS;
+      grid.edgeBlocked[index] = edgeBlocked ? 1 : 0;
+      grid.waterBlocked[index] =
+        edgeBlocked || terrainWater[index] !== 0 ? 1 : 0;
     }
   }
 
@@ -197,29 +173,31 @@ export function rebuildPathfindingDebugGrid(
   rebuildClearanceDistance(grid.groundClearance, cellsX, cellsY);
   rebuildClearanceDistance(grid.mediumClearance, cellsX, cellsY);
   rebuildClearanceDistance(grid.waterClearance, cellsX, cellsY);
+  for (let gy = 0; gy < cellsY; gy++) {
+    for (let gx = 0; gx < cellsX; gx++) {
+      const index = gy * cellsX + gx;
+      const edgeClearance = Math.max(
+        0,
+        Math.min(gx + 1, gy + 1, cellsX - gx, cellsY - gy),
+      );
+      grid.groundClearance[index] = Math.min(
+        grid.groundClearance[index],
+        edgeClearance,
+      );
+      grid.mediumClearance[index] = Math.min(
+        grid.mediumClearance[index],
+        edgeClearance,
+      );
+      grid.waterClearance[index] = Math.min(
+        grid.waterClearance[index],
+        edgeClearance,
+      );
+    }
+  }
 }
 
-function isWaterOnlyTraversal(domain: UnitNavigationDomain): boolean {
-  return !domain.allowInAir && domain.allowInWater && !domain.allowOnGround;
-}
-
-function sphericalWaterFraction(originZ: number, radius: number): number {
-  if (!Number.isFinite(originZ)) return 0;
-  const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 0.5;
-  const submergedHeight = Math.max(
-    0,
-    Math.min(2 * safeRadius, WATER_LEVEL - (originZ - safeRadius)),
-  );
-  if (submergedHeight <= 0) return 0;
-  if (submergedHeight >= 2 * safeRadius) return 1;
-  return Math.max(
-    0,
-    Math.min(
-      1,
-      submergedHeight * submergedHeight * (3 * safeRadius - submergedHeight) /
-        (4 * safeRadius * safeRadius * safeRadius),
-    ),
-  );
+function allowsExposedCase(domain: UnitNavigationDomain): boolean {
+  return domain.allowOnGround || domain.allowInAir;
 }
 
 /** Mirrors the monotone Coulomb + fluid force solve in Rust. */
@@ -249,7 +227,6 @@ function maxContactSlopeNormalZ(
 function requiredWaterNormalZForCell(
   debugTraversal: PathfindingDebugTraversal,
   domain: UnitNavigationDomain,
-  terrainMaxHeight: number,
   requireWaypointHold: boolean,
 ): number {
   const traversal = debugTraversal.traversal;
@@ -260,13 +237,9 @@ function requiredWaterNormalZForCell(
     traversal.safeWaterDriveAccel <= 0 &&
     traversal.staticFrictionCoefficient <= 0
   ) return 0;
-  const waterFraction = sphericalWaterFraction(
-    terrainMaxHeight + traversal.supportPointOffsetZ,
-    debugTraversal.bodyRadius,
-  );
   let required = maxContactSlopeNormalZ(
     traversal.safeDriveAccel,
-    traversal.safeWaterDriveAccel * waterFraction,
+    traversal.safeWaterDriveAccel,
     traversal.staticFrictionCoefficient,
   );
   if (requireWaypointHold) {
@@ -289,51 +262,45 @@ function rebuildDomainPassability(
     terrainWater,
     terrainSubmerged,
     terrainNormalZ,
-    terrainMaxHeight,
     traversal: debugTraversal,
     cellsX,
     cellsY,
   } = input;
   const { requiredGroundNormalZ, hardClearanceCells } = debugTraversal;
-  const waterOnly = isWaterOnlyTraversal(domain);
-  const requiredWaterClearance = pathfinderRequiredWaterClearanceCells(hardClearanceCells);
+  const exposedAllowed = allowsExposedCase(domain);
   const cellCount = cellsX * cellsY;
 
   for (let index = 0; index < cellCount; index++) {
-    let passable = domain.allowInAir;
-    if (!passable) {
-      if (grid.edgeBlocked[index] !== 0) {
-        passable = false;
-      } else if (waterOnly && terrainSubmerged[index] === 0) {
-        passable = false;
-      } else {
-        const wet = terrainWater[index] !== 0;
-        const terrainBlocked = grid.waterBlocked[index] !== 0;
-        const passableByMedium = wet
-          ? domain.allowInWater
-          : terrainBlocked
-            ? domain.allowInWater && domain.allowOnGround
-            : domain.allowOnGround;
-        const clearance = waterOnly
-          ? grid.waterClearance[index]
-          : wet || domain.allowInWater
-            ? grid.mediumClearance[index]
-            : grid.groundClearance[index];
-        const requiredClearance = waterOnly
-          ? requiredWaterClearance
-          : hardClearanceCells;
-        const requiredNormalZ = wet && domain.allowInWater
-          ? requiredWaterNormalZForCell(
-              debugTraversal,
-              domain,
-              terrainMaxHeight[index],
-              requireWaypointHold,
-            )
-          : requiredGroundNormalZ;
-        const terrainPassable = terrainNormalZ[index] >= requiredNormalZ;
-        passable = passableByMedium && clearance >= requiredClearance && terrainPassable;
-      }
+    const hasWater = terrainWater[index] !== 0;
+    const hasExposed = terrainSubmerged[index] === 0;
+    const passableByMedium =
+      (domain.allowInAir || grid.edgeBlocked[index] === 0) &&
+      (!hasExposed || exposedAllowed) &&
+      (!hasWater || domain.allowInWater);
+    const clearance = domain.allowInWater && !exposedAllowed
+      ? grid.waterClearance[index]
+      : domain.allowInWater && exposedAllowed
+        ? grid.mediumClearance[index]
+        : grid.groundClearance[index];
+    const requiredClearance = domain.allowInAir ? 0 : hardClearanceCells;
+    let requiredNormalZ = hasExposed && !domain.allowInAir
+      ? requiredGroundNormalZ
+      : 0;
+    if (hasWater && domain.allowInWater && !domain.allowInAir) {
+      requiredNormalZ = Math.max(
+        requiredNormalZ,
+        requiredWaterNormalZForCell(
+          debugTraversal,
+          domain,
+          requireWaypointHold,
+        ),
+      );
     }
+    const terrainPassable = terrainNormalZ[index] >= requiredNormalZ;
+    const passable =
+      passableByMedium &&
+      clearance >= requiredClearance &&
+      terrainPassable;
     output[index] = passable ? 1 : 0;
   }
 }

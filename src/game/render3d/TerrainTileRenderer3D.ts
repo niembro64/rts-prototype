@@ -134,7 +134,6 @@ const BUILD_GRID_COLOR_MOVE_VALID = readRgbaTuple(
   'colorsConfig.world.terrain.buildGrid.moveValidRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
-const TERRAIN_TRIANGLE_TOUCH_EPSILON = 1.0e-9;
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
@@ -317,9 +316,6 @@ function normalizeTerrainNormal(normal: SimTerrainNormal): SimTerrainNormal | nu
 type PathingCellTerrainSample = {
   hasWater: boolean;
   fullySubmerged: boolean;
-  minNormalZ: number;
-  centerHeight: number;
-  maxHeight: number;
 };
 
 const PATHING_CELL_SAMPLE_INSET_WU = 0.001;
@@ -365,8 +361,6 @@ function samplePathingCellTerrain(
   const centerHeight = terrainMeshHeightFromSample(centerSample);
   let hasWater = centerHeight < WATER_LEVEL;
   let fullySubmerged = hasWater;
-  let minNormalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(centerSample).nz));
-  let maxHeight = centerHeight;
   for (let i = 0; i < PATHING_CELL_EDGE_SAMPLE_POINTS.length; i++) {
     const point = PATHING_CELL_EDGE_SAMPLE_POINTS[i];
     const x = pathingCellSampleCoordinate(x0, x1, midX, point[0], inset);
@@ -375,77 +369,48 @@ function samplePathingCellTerrain(
     const height = terrainMeshHeightFromSample(sample);
     if (height < WATER_LEVEL) hasWater = true;
     else fullySubmerged = false;
-    maxHeight = Math.max(maxHeight, height);
-    const normalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(sample).nz));
-    if (normalZ < minNormalZ) minNormalZ = normalZ;
   }
-  return { hasWater, fullySubmerged, minNormalZ, centerHeight, maxHeight };
+  return { hasWater, fullySubmerged };
 }
 
-function terrainTriangleTouchesRect(
-  ax: number,
-  az: number,
-  bx: number,
-  bz: number,
-  cx: number,
-  cz: number,
-  minX: number,
-  minZ: number,
-  maxX: number,
-  maxZ: number,
-): boolean {
-  const rectMinX = Math.min(minX, maxX);
-  const rectMaxX = Math.max(minX, maxX);
-  const rectMinZ = Math.min(minZ, maxZ);
-  const rectMaxZ = Math.max(minZ, maxZ);
-  const triMinX = Math.min(ax, bx, cx);
-  const triMaxX = Math.max(ax, bx, cx);
-  const triMinZ = Math.min(az, bz, cz);
-  const triMaxZ = Math.max(az, bz, cz);
-  if (
-    triMaxX + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectMinX ||
-    triMinX - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectMaxX ||
-    triMaxZ + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectMinZ ||
-    triMinZ - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectMaxZ
-  ) {
-    return false;
-  }
-  const rectCenterX = (rectMinX + rectMaxX) * 0.5;
-  const rectCenterZ = (rectMinZ + rectMaxZ) * 0.5;
-  const rectHalfX = (rectMaxX - rectMinX) * 0.5;
-  const rectHalfZ = (rectMaxZ - rectMinZ) * 0.5;
-  const edges = [
-    [bx - ax, bz - az],
-    [cx - bx, cz - bz],
-    [ax - cx, az - cz],
-  ] as const;
-  for (const [edgeX, edgeZ] of edges) {
-    if (
-      Math.abs(edgeX) <= TERRAIN_TRIANGLE_TOUCH_EPSILON &&
-      Math.abs(edgeZ) <= TERRAIN_TRIANGLE_TOUCH_EPSILON
-    ) {
-      continue;
+type TerrainHeightVertex = Readonly<{ x: number; z: number; height: number }>;
+
+function clipTerrainHeightPolygon(
+  input: readonly TerrainHeightVertex[],
+  coordinate: 'x' | 'z',
+  limit: number,
+  keepGreater: boolean,
+): TerrainHeightVertex[] {
+  if (input.length === 0) return [];
+  const inside = (value: number): boolean =>
+    keepGreater ? value >= limit : value <= limit;
+  const output: TerrainHeightVertex[] = [];
+  let previous = input[input.length - 1];
+  let previousValue = previous[coordinate];
+  let previousInside = inside(previousValue);
+  for (const current of input) {
+    const currentValue = current[coordinate];
+    const currentInside = inside(currentValue);
+    if (currentInside !== previousInside) {
+      const denominator = currentValue - previousValue;
+      if (Math.abs(denominator) > 1e-12) {
+        const t = Math.max(0, Math.min(1, (limit - previousValue) / denominator));
+        output.push({
+          x: previous.x + (current.x - previous.x) * t,
+          z: previous.z + (current.z - previous.z) * t,
+          height: previous.height + (current.height - previous.height) * t,
+        });
+      }
     }
-    const axisX = -edgeZ;
-    const axisZ = edgeX;
-    const projectionA = ax * axisX + az * axisZ;
-    const projectionB = bx * axisX + bz * axisZ;
-    const projectionC = cx * axisX + cz * axisZ;
-    const triangleMin = Math.min(projectionA, projectionB, projectionC);
-    const triangleMax = Math.max(projectionA, projectionB, projectionC);
-    const rectCenter = rectCenterX * axisX + rectCenterZ * axisZ;
-    const rectRadius = rectHalfX * Math.abs(axisX) + rectHalfZ * Math.abs(axisZ);
-    if (
-      triangleMax + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectCenter - rectRadius ||
-      triangleMin - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectCenter + rectRadius
-    ) {
-      return false;
-    }
+    if (currentInside) output.push(current);
+    previous = current;
+    previousValue = currentValue;
+    previousInside = currentInside;
   }
-  return true;
+  return output;
 }
 
-function terrainTriangleNormalZ(
+function terrainTriangleRectHeightRange(
   ax: number,
   az: number,
   ah: number,
@@ -455,18 +420,34 @@ function terrainTriangleNormalZ(
   cx: number,
   cz: number,
   ch: number,
-): number {
-  const ux = bx - ax;
-  const uy = bh - ah;
-  const uz = bz - az;
-  const vx = cx - ax;
-  const vy = ch - ah;
-  const vz = cz - az;
-  const nx = uy * vz - uz * vy;
-  const vertical = uz * vx - ux * vz;
-  const nz = ux * vy - uy * vx;
-  const len = Math.hypot(nx, vertical, nz);
-  return len > 0 ? Math.min(1, Math.abs(vertical) / len) : 1;
+  minX: number,
+  minZ: number,
+  maxX: number,
+  maxZ: number,
+): { minHeight: number; maxHeight: number } | null {
+  const rectMinX = Math.min(minX, maxX);
+  const rectMaxX = Math.max(minX, maxX);
+  const rectMinZ = Math.min(minZ, maxZ);
+  const rectMaxZ = Math.max(minZ, maxZ);
+  let polygon: TerrainHeightVertex[] = [
+    { x: ax, z: az, height: ah },
+    { x: bx, z: bz, height: bh },
+    { x: cx, z: cz, height: ch },
+  ];
+  polygon = clipTerrainHeightPolygon(polygon, 'x', rectMinX, true);
+  polygon = clipTerrainHeightPolygon(polygon, 'x', rectMaxX, false);
+  polygon = clipTerrainHeightPolygon(polygon, 'z', rectMinZ, true);
+  polygon = clipTerrainHeightPolygon(polygon, 'z', rectMaxZ, false);
+  if (polygon.length === 0) return null;
+  let minHeight = Number.POSITIVE_INFINITY;
+  let maxHeight = Number.NEGATIVE_INFINITY;
+  for (const vertex of polygon) {
+    minHeight = Math.min(minHeight, vertex.height);
+    maxHeight = Math.max(maxHeight, vertex.height);
+  }
+  return Number.isFinite(minHeight) && Number.isFinite(maxHeight)
+    ? { minHeight, maxHeight }
+    : null;
 }
 
 function writeTriangleDebugColor(
@@ -641,8 +622,6 @@ export class TerrainTileRenderer3D {
   private buildGridMetalMask = new Uint8Array(1);
   private buildGridWaterRawMask = new Uint8Array(1);
   private buildGridWaterSubmergedMask = new Uint8Array(1);
-  private pathingTerrainMinNormalZ = new Float32Array(1);
-  private pathingTerrainMaxHeight = new Float32Array(1);
   private pathingDebugGrid: PathfindingDebugGrid = createPathfindingDebugGrid(1);
   private pathingTerrainMaskKeyValid = false;
   private pathingTerrainMaskKeyCellsX = 0;
@@ -1010,12 +989,6 @@ export class TerrainTileRenderer3D {
     if (this.buildGridWaterSubmergedMask.length < safeCount) {
       this.buildGridWaterSubmergedMask = new Uint8Array(safeCount);
     }
-    if (this.pathingTerrainMinNormalZ.length < safeCount) {
-      this.pathingTerrainMinNormalZ = new Float32Array(safeCount);
-    }
-    if (this.pathingTerrainMaxHeight.length < safeCount) {
-      this.pathingTerrainMaxHeight = new Float32Array(safeCount);
-    }
     this.pathingDebugGrid = ensurePathfindingDebugGrid(this.pathingDebugGrid, safeCount);
   }
 
@@ -1196,8 +1169,6 @@ export class TerrainTileRenderer3D {
     const cellCount = cellsX * cellsY;
     this.buildGridWaterRawMask.fill(0, 0, cellCount);
     this.buildGridWaterSubmergedMask.fill(0, 0, cellCount);
-    this.pathingTerrainMinNormalZ.fill(1, 0, cellCount);
-    this.pathingTerrainMaxHeight.fill(WATER_LEVEL + 1, 0, cellCount);
 
     const terrainMap = getAuthoritativeTerrainTileMap();
     if (
@@ -1221,8 +1192,6 @@ export class TerrainTileRenderer3D {
           );
           this.buildGridWaterRawMask[cellIndex] = terrain.hasWater ? 1 : 0;
           this.buildGridWaterSubmergedMask[cellIndex] = terrain.fullySubmerged ? 1 : 0;
-          this.pathingTerrainMinNormalZ[cellIndex] = terrain.minNormalZ;
-          this.pathingTerrainMaxHeight[cellIndex] = terrain.maxHeight;
         }
       }
       this.storePathingTerrainMaskCacheKey(cellsX, cellsY, buildCellSize, terrainVersion);
@@ -1261,10 +1230,8 @@ export class TerrainTileRenderer3D {
         const strictMinZ = minZ + strictInset;
         const strictMaxX = maxX - strictInset;
         const strictMaxZ = maxZ - strictInset;
-        let fullySubmerged = true;
+        let hasExposed = false;
         let foundStrictTriangle = false;
-        let minNormalZ = 1;
-        let maxHeight = Number.NEGATIVE_INFINITY;
         for (let terrainGy = minTerrainCellY; terrainGy <= maxTerrainCellY; terrainGy++) {
           for (let terrainGx = minTerrainCellX; terrainGx <= maxTerrainCellX; terrainGx++) {
             const terrainCellIndex = terrainGy * terrainMap.cellsX + terrainGx;
@@ -1287,62 +1254,34 @@ export class TerrainTileRenderer3D {
               const bz = terrainMap.meshVertexCoords[ib * 2 + 1];
               const cx = terrainMap.meshVertexCoords[ic * 2];
               const cz = terrainMap.meshVertexCoords[ic * 2 + 1];
-              if (
-                !terrainTriangleTouchesRect(
-                  ax,
-                  az,
-                  bx,
-                  bz,
-                  cx,
-                  cz,
-                  minX,
-                  minZ,
-                  maxX,
-                  maxZ,
-                )
-              ) {
-                continue;
-              }
               const ah = terrainMap.meshVertexHeights[ia] ?? 0;
               const bh = terrainMap.meshVertexHeights[ib] ?? 0;
               const ch = terrainMap.meshVertexHeights[ic] ?? 0;
-              maxHeight = Math.max(maxHeight, ah, bh, ch);
-              if (ah < WATER_LEVEL || bh < WATER_LEVEL || ch < WATER_LEVEL) {
-                hasWater = true;
-              }
-              if (
-                terrainTriangleTouchesRect(
-                  ax,
-                  az,
-                  bx,
-                  bz,
-                  cx,
-                  cz,
-                  strictMinX,
-                  strictMinZ,
-                  strictMaxX,
-                  strictMaxZ,
-                )
-              ) {
-                foundStrictTriangle = true;
-                if (ah >= WATER_LEVEL || bh >= WATER_LEVEL || ch >= WATER_LEVEL) {
-                  fullySubmerged = false;
-                }
-              }
-              minNormalZ = Math.min(
-                minNormalZ,
-                terrainTriangleNormalZ(ax, az, ah, bx, bz, bh, cx, cz, ch),
+              const heightRange = terrainTriangleRectHeightRange(
+                ax,
+                az,
+                ah,
+                bx,
+                bz,
+                bh,
+                cx,
+                cz,
+                ch,
+                strictMinX,
+                strictMinZ,
+                strictMaxX,
+                strictMaxZ,
               );
+              if (heightRange === null) continue;
+              foundStrictTriangle = true;
+              hasWater ||= heightRange.minHeight < WATER_LEVEL;
+              hasExposed ||= heightRange.maxHeight >= WATER_LEVEL;
             }
           }
         }
         this.buildGridWaterRawMask[cellIndex] = hasWater ? 1 : 0;
         this.buildGridWaterSubmergedMask[cellIndex] =
-          fullySubmerged && foundStrictTriangle ? 1 : 0;
-        this.pathingTerrainMinNormalZ[cellIndex] = minNormalZ;
-        this.pathingTerrainMaxHeight[cellIndex] = Number.isFinite(maxHeight)
-          ? maxHeight
-          : WATER_LEVEL + 1;
+          hasWater && !hasExposed && foundStrictTriangle ? 1 : 0;
       }
     }
 
