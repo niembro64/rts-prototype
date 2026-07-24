@@ -1942,7 +1942,7 @@
         "large": {
           "towerSize": "large",
           "pylonHeight": 45,
-          "pylonOffset": 55,
+          "pylonOffset": 94,
           "innerPylonRadius": 3.6
         }
       }
@@ -2038,7 +2038,7 @@
         "large": {
           "towerSize": "large",
           "pylonHeight": 45,
-          "pylonOffset": 55,
+          "pylonOffset": 94,
           "innerPylonRadius": 3.6
         }
       }

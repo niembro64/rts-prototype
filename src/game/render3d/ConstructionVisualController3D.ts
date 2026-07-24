@@ -344,7 +344,12 @@ export class ConstructionVisualController3D {
       const part = rig.towerOrbitParts[i];
       part.mesh.position.x = part.baseX * c - part.baseZ * s;
       part.mesh.position.z = part.baseX * s + part.baseZ * c;
-      part.mesh.rotation.y = part.baseRotationY + rig.towerSpinPhase;
+      // Minus: a three.js yaw of -θ advances a child's azimuth by +θ,
+      // matching the (c, s) endpoint/position rotation above. Radial
+      // arms (center-anchored groups, base offset 0) rely on this to
+      // keep their fused ring attachment and inward aim in lockstep
+      // with the rotating pylon endpoints.
+      part.mesh.rotation.y = part.baseRotationY - rig.towerSpinPhase;
     }
     for (let i = 0; i < rig.pylons.length; i++) {
       const pylon = rig.pylons[i];
