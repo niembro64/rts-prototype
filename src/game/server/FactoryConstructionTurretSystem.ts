@@ -54,8 +54,12 @@ export class FactoryConstructionTurretSystem {
   }
 
   private isProductionTurret(turret: Turret): boolean {
-    return turret.config.constructionEmitter !== null ||
-      turret.config.turretBlueprintId === 'turretSpawnUnits';
+    // Only the spawn turret tracks the launch heading. Construction
+    // resource pylons keep a fixed authoritative yaw: their rigs orbit
+    // the factory's ring center client-side with the resource-rate spin
+    // (ConstructionVisualController3D), so a sim-side launch aim would
+    // only fight that presentation.
+    return turret.config.turretBlueprintId === 'turretSpawnUnits';
   }
 
   private aimProductionTurrets(factory: Entity, yaw: number): void {

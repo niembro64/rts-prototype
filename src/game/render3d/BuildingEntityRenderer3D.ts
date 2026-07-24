@@ -1111,8 +1111,10 @@ export class BuildingEntityRenderer3D {
       if (!visible) continue;
       // Construction emitters have no head sphere, no barrels, and
       // don't pitch barrels. The root still consumes the authoritative
-      // turret yaw/velocity stream so the whole fabricator construction
-      // deck can rotate smoothly on the client.
+      // turret yaw stream (pinned to 0 for factory pylons — see
+      // FactoryConstructionTurretSystem); the visible pylon motion is the
+      // resource-rate orbit applied inside the rig by
+      // ConstructionVisualController3D.
       if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
         // Building construction pylons (the fabricator's) hang UNDER the torus
         // and point DOWN at the held shell — flip the rig like the construction

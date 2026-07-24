@@ -385,16 +385,20 @@ function buildConstructionPylonTrio(
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
   const pylons: ResourcePylonRig[] = [];
 
-  // Single-resource pylon turrets (Phase C split): one centered pylon of the
-  // turret's own resource. Otherwise the legacy emitter renders the
-  // energy + metal pair around the mount circle.
+  // Single-resource pylon turrets (Phase C split): one pylon of the
+  // turret's own resource, standing at the authored emitter offset with a
+  // resource-fixed base angle (metal and energy opposed) so a host that
+  // mounts both pylons at one anchor gets an opposed pair that the shared
+  // tower-spin orbit carries around that anchor. Otherwise the legacy
+  // emitter renders the energy + metal pair around the mount circle.
   const variants = singleResource !== null
     ? [CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[singleResource]]
     : CONSTRUCTION_TOWER_VARIANTS;
 
   for (let i = 0; i < variants.length; i++) {
-    const a = (i / variants.length) * Math.PI * 2;
-    const offset = singleResource !== null ? 0 : pylonOffset;
+    const a = singleResource !== null
+      ? (singleResource === 'metal' ? 0 : Math.PI)
+      : (i / variants.length) * Math.PI * 2;
     const tower = buildConstructionTowerPiece(
       variants[i],
       size,
@@ -402,8 +406,8 @@ function buildConstructionPylonTrio(
       pylonHeight,
       innerPylonRadius,
       pylonBaseY,
-      Math.cos(a) * offset,
-      Math.sin(a) * offset,
+      Math.cos(a) * pylonOffset,
+      Math.sin(a) * pylonOffset,
       geometryTier,
     );
     staticMeshes.push(...tower.staticMeshes);

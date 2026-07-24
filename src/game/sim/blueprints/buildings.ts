@@ -540,27 +540,24 @@ export function fabricatorTorusOuterRadius(width: number, depth: number): number
 
 // Finalize the fabricator's turret mounts from the torus geometry: the spawn
 // turret sits at the ring center (where the unit materializes), and the two
-// construction pylons hang on opposite sides of the ring. Mutating loaded
-// blueprint data at import time mirrors normalizeEntityBaseLedgerFromAliases.
+// construction pylons anchor there too — their rigs stand at the authored
+// emitter offset INSIDE the ring and visually orbit that center while the
+// fabricator spends resources (see ConstructionVisualController3D tower
+// spin). Mutating loaded blueprint data at import time mirrors
+// normalizeEntityBaseLedgerFromAliases.
 {
   const fabricator = BUILDING_BLUEPRINTS.towerFabricator;
   if (fabricator) {
-    const width = fabricator.gridWidth * BUILD_GRID_CELL_SIZE;
-    const depth = fabricator.gridHeight * BUILD_GRID_CELL_SIZE;
-    const ring = fabricatorTorusRingRadius(width, depth);
     const hover = fabricatorTorusHoverHeight();
-    let nextPylonX = -ring;
     for (const mount of fabricator.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-      if (turretBlueprint.spawn != null) {
+      if (
+        turretBlueprint.spawn != null ||
+        turretBlueprint.resourcePylon?.role === 'construction'
+      ) {
         mount.mount.x = 0;
         mount.mount.y = 0;
         mount.mount.z = hover;
-      } else if (turretBlueprint.resourcePylon?.role === 'construction') {
-        mount.mount.x = nextPylonX;
-        mount.mount.y = 0;
-        mount.mount.z = hover;
-        nextPylonX = ring;
       }
     }
   }
