@@ -491,8 +491,10 @@ export function writeNetworkUnitActions(
     plan.goalZ === actions[0].z
   ) {
     // Skip points already passed, but always include the resolved final point.
-    // A snapped/partial route does not end at actions[0], and omitting that
-    // endpoint would force the renderer to invent an illegal connector.
+    // A snapped/partial route does not end at actions[0]; Waypoint3D shows
+    // this truthful resolved endpoint as the last detailed path dot, then
+    // keeps the authored queue visually exhaustive with an undotted direct
+    // tail to the requested waypoint.
     previewStart = plan.index > 0 ? plan.index : 0;
     previewEnd = plan.points.length;
     if (previewEnd < previewStart) previewEnd = previewStart;

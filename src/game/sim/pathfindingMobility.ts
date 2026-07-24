@@ -25,6 +25,7 @@ export type LocomotionClimbProfile = {
   readonly allowOnGround: boolean;
   readonly allowInWater: boolean;
   readonly allowInAir: boolean;
+  /** Coulomb coefficient after the same traversal reserve as propulsion. */
   readonly staticFrictionCoefficient: number;
   readonly cacheKey: string;
 };
@@ -115,7 +116,8 @@ export function computeLocomotionClimbProfile(
     allowOnGround,
     allowInWater,
     allowInAir,
-    staticFrictionCoefficient: groundPhysics.staticFrictionCoefficient,
+    staticFrictionCoefficient:
+      groundPhysics.staticFrictionCoefficient * PATHFINDING_FORCE_SAFETY_RATIO,
     cacheKey,
   });
   climbProfileCache.set(cacheKey, profile);

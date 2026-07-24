@@ -284,6 +284,7 @@ import __wbg_init, {
   pathfinder_init,
   pathfinder_compute_locomotion_climb_profile,
   pathfinder_rebuild_terrain_mask_and_cc,
+  pathfinder_bake_traversability_grid,
   pathfinder_find_path,
   pathfinder_last_result_status,
   pathfinder_validate_path,
@@ -3606,6 +3607,25 @@ export interface PathfinderApi {
   /** Rebuild the terrain-only locomotion mask and connected components.
    *  Build-grid reservations deliberately do not enter this surface. */
   rebuildTerrainMaskAndCc: (terrainVersion: number) => void;
+  /** Bake authoritative WAYPOINT and MOVE validity for every build square.
+   *  Both arrays must hold at least gridWidth()*gridHeight() bytes. */
+  bakeTraversabilityGrid: (
+    minGroundNormalZ: number,
+    waterSurfaceSupported: boolean,
+    supportPointOffsetZ: number,
+    waypointAllowOnGround: boolean,
+    waypointAllowInWater: boolean,
+    waypointAllowInAir: boolean,
+    moveAllowOnGround: boolean,
+    moveAllowInWater: boolean,
+    moveAllowInAir: boolean,
+    unitRadius: number,
+    safeDriveAccel: number,
+    safeWaterDriveAccel: number,
+    staticFrictionCoefficient: number,
+    waypointOut: Uint8Array,
+    moveOut: Uint8Array,
+  ) => number;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
    *  waypoint COUNT (not the f64 element count). Waypoint-domain flags own
@@ -4166,6 +4186,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           init: pathfinder_init,
           computeLocomotionClimbProfile: pathfinder_compute_locomotion_climb_profile,
           rebuildTerrainMaskAndCc: pathfinder_rebuild_terrain_mask_and_cc,
+          bakeTraversabilityGrid: pathfinder_bake_traversability_grid,
           findPath: pathfinder_find_path,
           lastResultStatus: pathfinder_last_result_status,
           validatePath: pathfinder_validate_path,

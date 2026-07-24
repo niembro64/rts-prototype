@@ -57,6 +57,11 @@ pub(crate) struct PathfinderState {
     /// fraction available anywhere in that cell.
     terrain_max_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
+    /// Minimum normal of the terrain transition between neighboring cell
+    /// interiors. Four canonical forward edges (E, SE, S, SW) per cell retain
+    /// cliffs as blocked transitions without making either flat neighbor an
+    /// invalid square.
+    terrain_transition_normal_z: Vec<f32>,
     cc_labels: Vec<i16>,
     /// Chebyshev cell-distance from each open cell to the nearest blocked
     /// cell (0 for blocked cells). Rebuilt with the mask and consumed as a
@@ -222,6 +227,7 @@ impl PathfinderState {
             terrain_height: Vec::new(),
             terrain_max_height: Vec::new(),
             terrain_normal_z: Vec::new(),
+            terrain_transition_normal_z: Vec::new(),
             cc_labels: Vec::new(),
             clearance: Vec::new(),
             medium_clearance: Vec::new(),
@@ -334,6 +340,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
         .resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
+    state.terrain_transition_normal_z.clear();
+    state.terrain_transition_normal_z.resize(n * 4, 1.0);
     state.cc_labels.clear();
     state.cc_labels.resize(n, 0);
     state.clearance.clear();
@@ -404,7 +412,10 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
 }
 
 #[inline]
-pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f32, f32, f32) {
+pub(crate) fn pathfinder_sample_cell_terrain(
+    gx: i32,
+    gy: i32,
+) -> (bool, bool, f32, f32, f32, [f32; 8]) {
     let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
     let x0 = gx as f64 * cs;
     let y0 = gy as f64 * cs;
@@ -418,7 +429,7 @@ pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f
     let mid_x = x0 + cs * 0.5;
     let mid_y = y0 + cs * 0.5;
     let (center_h, center_nz) = pathfinder_sample_terrain(mid_x, mid_y);
-    let samples = [
+    let sample_points = [
         (left, top),
         (mid_x, top),
         (right, top),
@@ -432,8 +443,10 @@ pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f
     let mut fully_submerged = has_water;
     let mut min_normal_z = center_nz;
     let mut max_height = center_h;
-    for (x, y) in samples {
+    let mut boundary_heights = [0.0f32; 8];
+    for (sample_idx, (x, y)) in sample_points.into_iter().enumerate() {
         let (h, nz) = pathfinder_sample_terrain(x, y);
+        boundary_heights[sample_idx] = h as f32;
         if h < TERRAIN_WATER_LEVEL {
             has_water = true;
         } else {
@@ -445,10 +458,10 @@ pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f
         max_height = max_height.max(h);
     }
     terrain_accumulate_touching_triangle_safety(
-        x0,
-        y0,
-        x1,
-        y1,
+        left,
+        top,
+        right,
+        bottom,
         &mut has_water,
         &mut min_normal_z,
         &mut max_height,
@@ -464,7 +477,17 @@ pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f
         min_normal_z,
         center_h as f32,
         max_height as f32,
+        boundary_heights,
     )
+}
+
+#[inline]
+fn pathfinder_transition_normal_z(from_height: f32, to_height: f32, horizontal: f64) -> f32 {
+    if !from_height.is_finite() || !to_height.is_finite() || horizontal <= 1.0e-9 {
+        return 0.0;
+    }
+    let dz = (to_height as f64 - from_height as f64).abs();
+    (horizontal / (horizontal * horizontal + dz * dz).sqrt()) as f32
 }
 
 pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version: u32) {
@@ -483,14 +506,16 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     // on applicable directed edges.
     let mut water_mask: Vec<u8> = vec![0u8; n];
     let mut submerged_mask: Vec<u8> = vec![0u8; n];
+    let mut boundary_heights: Vec<[f32; 8]> = vec![[0.0; 8]; n];
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
-            let (has_water, fully_submerged, nz, height, max_height) =
+            let (has_water, fully_submerged, nz, height, max_height, cell_boundary_heights) =
                 pathfinder_sample_cell_terrain(gx, gy);
             state.terrain_height[idx] = height;
             state.terrain_max_height[idx] = max_height;
             state.terrain_normal_z[idx] = nz;
+            boundary_heights[idx] = cell_boundary_heights;
             if has_water {
                 water_mask[idx] = 1;
             }
@@ -501,6 +526,42 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     }
     state.terrain_water.copy_from_slice(&water_mask);
     state.terrain_submerged.copy_from_slice(&submerged_mask);
+    state.terrain_transition_normal_z.fill(1.0);
+    const TRANSITION_PROBE_DISTANCE: f64 = 0.002;
+    const DIAGONAL_TRANSITION_PROBE_DISTANCE: f64 =
+        TRANSITION_PROBE_DISTANCE * std::f64::consts::SQRT_2;
+    for gy in 0..grid_h {
+        for gx in 0..grid_w {
+            let idx = (gy * grid_w + gx) as usize;
+            let from = boundary_heights[idx];
+            if gx + 1 < grid_w {
+                let east = boundary_heights[(gy * grid_w + gx + 1) as usize];
+                state.terrain_transition_normal_z[idx * 4] =
+                    pathfinder_transition_normal_z(from[4], east[3], TRANSITION_PROBE_DISTANCE);
+            }
+            if gx + 1 < grid_w && gy + 1 < grid_h {
+                let south_east = boundary_heights[((gy + 1) * grid_w + gx + 1) as usize];
+                state.terrain_transition_normal_z[idx * 4 + 1] = pathfinder_transition_normal_z(
+                    from[7],
+                    south_east[0],
+                    DIAGONAL_TRANSITION_PROBE_DISTANCE,
+                );
+            }
+            if gy + 1 < grid_h {
+                let south = boundary_heights[((gy + 1) * grid_w + gx) as usize];
+                state.terrain_transition_normal_z[idx * 4 + 2] =
+                    pathfinder_transition_normal_z(from[6], south[1], TRANSITION_PROBE_DISTANCE);
+            }
+            if gx > 0 && gy + 1 < grid_h {
+                let south_west = boundary_heights[((gy + 1) * grid_w + gx - 1) as usize];
+                state.terrain_transition_normal_z[idx * 4 + 3] = pathfinder_transition_normal_z(
+                    from[5],
+                    south_west[2],
+                    DIAGONAL_TRANSITION_PROBE_DISTANCE,
+                );
+            }
+        }
+    }
 
     // Step 2 — dilate water by WATER_BUFFER_CELLS into terrain_blocked.
     // Map-edge cells within `tk` of any border are blocked so ground routes
@@ -690,6 +751,74 @@ pub(crate) fn pathfinder_rebuild_clearance_distance(
 pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
     let state = pathfinder_state();
     pathfinder_rebuild_terrain_mask(state, terrain_version);
+}
+
+/// Bake the complete per-build-square WAYPOINT and MOVE domains for one unit
+/// capability profile. This calls the same cell kernel used by A*, so the
+/// presentation grid is authoritative data rather than a second
+/// implementation of slope, medium, and clearance math.
+#[wasm_bindgen]
+pub fn pathfinder_bake_traversability_grid(
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    safe_drive_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    waypoint_out: &mut [u8],
+    move_out: &mut [u8],
+) -> u32 {
+    let state = pathfinder_state();
+    if state.n == 0 || waypoint_out.len() < state.n || move_out.len() < state.n {
+        return 0;
+    }
+    let move_traversal = PathfinderTraversal {
+        min_ground_normal_z,
+        safe_ground_accel: safe_drive_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        body_radius: unit_radius,
+        support_point_offset_z,
+        water_surface_supported,
+        water_waypoint_hold: false,
+        allow_ground: move_allow_ground,
+        allow_water: move_allow_water,
+        allow_air: move_allow_air,
+    };
+    let waypoint_traversal = PathfinderTraversal {
+        min_ground_normal_z,
+        safe_ground_accel: safe_drive_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        body_radius: unit_radius,
+        support_point_offset_z,
+        water_surface_supported,
+        water_waypoint_hold: true,
+        allow_ground: waypoint_allow_ground,
+        allow_water: waypoint_allow_water,
+        allow_air: waypoint_allow_air,
+    };
+    let previous_clearance = state.cur_required_clearance;
+    state.cur_required_clearance = if move_allow_air && waypoint_allow_air {
+        0
+    } else {
+        pathfinder_hard_clearance_cells_for_radius(unit_radius)
+    };
+    for idx in 0..state.n {
+        waypoint_out[idx] =
+            if pathfinder_is_cell_passable(state, idx, waypoint_traversal) { 1 } else { 0 };
+        move_out[idx] =
+            if pathfinder_is_cell_passable(state, idx, move_traversal) { 1 } else { 0 };
+    }
+    state.cur_required_clearance = previous_clearance;
+    1
 }
 
 #[inline]
@@ -981,6 +1110,12 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         0.0
     };
     let mu = static_friction_coefficient.max(0.0);
+    // The traversal reserve applies to every commanded contact force, not
+    // only to the motor rating. At atan(mu) static friction is fully consumed
+    // merely holding the body against gravity, leaving no authority to
+    // accelerate uphill. Reserving the same ratio from the Coulomb budget
+    // makes the advertised maximum a slope the runtime can actually traverse.
+    let safe_mu = mu * ratio;
     let weight_force = physics_mass * gravity / 1_000_000.0;
     let drive_accel = ground_force * 1_000_000.0 / physics_mass;
     let traction_accel = gravity * mu;
@@ -993,7 +1128,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     let (max_ground_slope_deg, min_ground_normal_z, drive_limited_slope_deg,
         traction_limited_slope_deg) = if allow_ground {
         let drive_limit = (safe_drive_accel / gravity).clamp(0.0, 1.0).asin();
-        let traction_limit = mu.atan();
+        let traction_limit = safe_mu.atan();
         let max_slope = drive_limit.min(traction_limit);
         (
             max_slope * radians_to_degrees,
@@ -1014,7 +1149,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         let max_slope = pathfinder_max_contact_slope_rad(
             safe_ground_force,
             safe_water_force,
-            mu,
+            safe_mu,
             weight_force,
         );
         (max_slope * radians_to_degrees, max_slope.cos())
@@ -1053,6 +1188,35 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         },
     ]);
     1
+}
+
+#[inline]
+fn pathfinder_precomputed_transition_normal_z(
+    state: &PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+) -> f64 {
+    let dx = to_gx - from_gx;
+    let dy = to_gy - from_gy;
+    let (owner_gx, owner_gy, slot) = match (dx, dy) {
+        (1, 0) => (from_gx, from_gy, 0usize),
+        (-1, 0) => (to_gx, to_gy, 0usize),
+        (1, 1) => (from_gx, from_gy, 1usize),
+        (-1, -1) => (to_gx, to_gy, 1usize),
+        (0, 1) => (from_gx, from_gy, 2usize),
+        (0, -1) => (to_gx, to_gy, 2usize),
+        (-1, 1) => (from_gx, from_gy, 3usize),
+        (1, -1) => (to_gx, to_gy, 3usize),
+        _ => return 0.0,
+    };
+    let owner_idx = (owner_gy * state.grid_w + owner_gx) as usize;
+    state
+        .terrain_transition_normal_z
+        .get(owner_idx * 4 + slot)
+        .copied()
+        .unwrap_or(0.0) as f64
 }
 
 #[inline]
@@ -1095,18 +1259,30 @@ pub(crate) fn pathfinder_can_step_height_delta(
     if horizontal <= 1.0e-9 {
         return true;
     }
-    let dz = to_h - from_h;
-    // DIRECTIONAL mode preserves one-way controlled descent, but unlike the old
-    // fall-permitting rule the full surface already passed its local force test
-    // above. SYMMETRIC mode additionally requires uphill coupling authority in
-    // both directions.
-    if dz <= 0.0 && !state.cur_symmetric_slope {
+    let center_dz = to_h - from_h;
+
+    // DIRECTIONAL mode preserves one-way controlled descent, but unlike the
+    // old fall-permitting rule both cell surfaces already passed their local
+    // force test above. SYMMETRIC mode additionally requires uphill coupling
+    // authority in both directions.
+    if center_dz <= 0.0 && !state.cur_symmetric_slope {
         return true;
     }
     let required_normal_z = from_required_normal_z.max(to_required_normal_z);
-    let abs_dz = dz.abs();
-    let step_normal_z = horizontal / (horizontal * horizontal + abs_dz * abs_dz).sqrt();
-    step_normal_z >= required_normal_z as f64
+    let center_abs_dz = if state.cur_symmetric_slope {
+        center_dz.abs()
+    } else {
+        center_dz.max(0.0)
+    };
+    let center_normal_z =
+        horizontal / (horizontal * horizontal + center_abs_dz * center_abs_dz).sqrt();
+    // Cell interiors deliberately exclude triangles that only lie on their
+    // boundary, so a perfectly flat square beside a cliff remains visibly
+    // valid. This independently precomputed transition retains that cliff as
+    // a blocked edge instead of smearing it over either neighboring square.
+    let transition_normal_z =
+        pathfinder_precomputed_transition_normal_z(state, from_gx, from_gy, to_gx, to_gy);
+    center_normal_z.min(transition_normal_z) >= required_normal_z as f64
 }
 
 pub(crate) fn pathfinder_can_step_between(
@@ -2115,6 +2291,7 @@ mod tests {
         state.terrain_height = vec![0.0; n];
         state.terrain_max_height = vec![0.0; n];
         state.terrain_normal_z = vec![1.0; n];
+        state.terrain_transition_normal_z = vec![1.0; n * 4];
         state.clearance = vec![u16::MAX; n];
         state.medium_clearance = vec![u16::MAX; n];
         state.water_clearance = vec![u16::MAX; n];
@@ -2157,6 +2334,21 @@ mod tests {
     }
 
     #[test]
+    fn terrain_triangle_overlap_does_not_group_unused_aabb_cells() {
+        // The upper-right rectangle lies inside this right triangle's AABB,
+        // but entirely outside the triangle itself. It represents the flat
+        // build squares that used to inherit a diagonal cliff's normal.
+        let sample: TerrainTriangleSample = (
+            1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            10.0, 0.0, 0.0,
+            0.0, 10.0, 0.0,
+        );
+        assert!(!terrain_triangle_touches_rect(sample, 8.0, 8.0, 9.0, 9.0));
+        assert!(terrain_triangle_touches_rect(sample, 1.0, 1.0, 2.0, 2.0));
+    }
+
+    #[test]
     fn locomotion_climb_profile_is_limited_by_contact_grip() {
         let mut out = [0.0; 12];
         assert_eq!(
@@ -2166,7 +2358,8 @@ mod tests {
             ),
             1,
         );
-        let expected_grip_slope = 0.5_f64.atan() * 180.0 / core::f64::consts::PI;
+        let expected_grip_slope =
+            (0.5_f64 * 0.85).atan() * 180.0 / core::f64::consts::PI;
         assert!((out[0] - expected_grip_slope).abs() < 1e-9);
         assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
         assert!((out[4] - expected_grip_slope).abs() < 1e-9);
@@ -2231,7 +2424,8 @@ mod tests {
             1,
         );
         assert!(out[6] > out[10]);
-        assert!((out[10] - 45.0).abs() < 1.0e-9);
+        let expected_safe_hold = 0.85_f64.atan() * 180.0 / core::f64::consts::PI;
+        assert!((out[10] - expected_safe_hold).abs() < 1.0e-9);
         assert!(out[11] > out[7]);
     }
 

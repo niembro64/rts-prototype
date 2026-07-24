@@ -94,16 +94,13 @@ import {
 import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
-import { UNIT_BLUEPRINTS, getUnitLocomotion } from '../sim/blueprints/units';
-import { pathTerrainFilterForLocomotion } from '../sim/pathfindingTraversal';
 import {
   createPathfindingDebugGrid,
-  createPathfindingDebugTraversal,
   ensurePathfindingDebugGrid,
   rebuildPathfindingDebugGrid,
-  rebuildPathfindingDebugPassability,
   type PathfindingDebugGrid,
 } from '../sim/pathfindingDebugGrid';
+import { getUnitPathTraversabilityGrid } from '../sim/pathfindingTraversabilityGrid';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
@@ -397,14 +394,55 @@ function terrainTriangleTouchesRect(
   maxX: number,
   maxZ: number,
 ): boolean {
+  const rectMinX = Math.min(minX, maxX);
+  const rectMaxX = Math.max(minX, maxX);
+  const rectMinZ = Math.min(minZ, maxZ);
+  const rectMaxZ = Math.max(minZ, maxZ);
   const triMinX = Math.min(ax, bx, cx);
   const triMaxX = Math.max(ax, bx, cx);
   const triMinZ = Math.min(az, bz, cz);
   const triMaxZ = Math.max(az, bz, cz);
-  return triMaxX + TERRAIN_TRIANGLE_TOUCH_EPSILON >= minX &&
-    triMinX - TERRAIN_TRIANGLE_TOUCH_EPSILON <= maxX &&
-    triMaxZ + TERRAIN_TRIANGLE_TOUCH_EPSILON >= minZ &&
-    triMinZ - TERRAIN_TRIANGLE_TOUCH_EPSILON <= maxZ;
+  if (
+    triMaxX + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectMinX ||
+    triMinX - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectMaxX ||
+    triMaxZ + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectMinZ ||
+    triMinZ - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectMaxZ
+  ) {
+    return false;
+  }
+  const rectCenterX = (rectMinX + rectMaxX) * 0.5;
+  const rectCenterZ = (rectMinZ + rectMaxZ) * 0.5;
+  const rectHalfX = (rectMaxX - rectMinX) * 0.5;
+  const rectHalfZ = (rectMaxZ - rectMinZ) * 0.5;
+  const edges = [
+    [bx - ax, bz - az],
+    [cx - bx, cz - bz],
+    [ax - cx, az - cz],
+  ] as const;
+  for (const [edgeX, edgeZ] of edges) {
+    if (
+      Math.abs(edgeX) <= TERRAIN_TRIANGLE_TOUCH_EPSILON &&
+      Math.abs(edgeZ) <= TERRAIN_TRIANGLE_TOUCH_EPSILON
+    ) {
+      continue;
+    }
+    const axisX = -edgeZ;
+    const axisZ = edgeX;
+    const projectionA = ax * axisX + az * axisZ;
+    const projectionB = bx * axisX + bz * axisZ;
+    const projectionC = cx * axisX + cz * axisZ;
+    const triangleMin = Math.min(projectionA, projectionB, projectionC);
+    const triangleMax = Math.max(projectionA, projectionB, projectionC);
+    const rectCenter = rectCenterX * axisX + rectCenterZ * axisZ;
+    const rectRadius = rectHalfX * Math.abs(axisX) + rectHalfZ * Math.abs(axisZ);
+    if (
+      triangleMax + TERRAIN_TRIANGLE_TOUCH_EPSILON < rectCenter - rectRadius ||
+      triangleMin - TERRAIN_TRIANGLE_TOUCH_EPSILON > rectCenter + rectRadius
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function terrainTriangleNormalZ(
@@ -1333,22 +1371,14 @@ export class TerrainTileRenderer3D {
       return;
     }
 
-    const selectedUnitBlueprint =
-      pathingUnitRequested
-        ? UNIT_BLUEPRINTS[pathingDebugUnitId as keyof typeof UNIT_BLUEPRINTS]
-        : undefined;
-    const selectedUnitLocomotion = selectedUnitBlueprint !== undefined
-      ? getUnitLocomotion(selectedUnitBlueprint.unitBlueprintId)
+    const selectedUnitGrid = pathingUnitRequested
+      ? getUnitPathTraversabilityGrid(
+          pathingDebugUnitId,
+          this.mapWidth,
+          this.mapHeight,
+        )
       : null;
-    const selectedUnitTerrainFilter =
-      selectedUnitBlueprint !== undefined && selectedUnitLocomotion !== null
-        ? pathTerrainFilterForLocomotion(
-            selectedUnitLocomotion,
-            selectedUnitBlueprint.mass,
-            selectedUnitBlueprint.supportPointOffsetZ,
-          )
-        : null;
-    const selectedUnitPathingEnabled = selectedUnitTerrainFilter !== null &&
+    const selectedUnitPathingEnabled = selectedUnitGrid !== null &&
       (waypointValidEnabled || moveValidEnabled);
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
@@ -1371,19 +1401,10 @@ export class TerrainTileRenderer3D {
     const cellsY = buildabilityGrid?.cellsY ?? Math.max(1, Math.ceil(this.mapHeight / buildCellSize));
     this.ensureBuildGridTexture(cellsX, cellsY);
     this.buildGridMapSizeUniform.value.set(cellsX, cellsY);
-    const selectedUnitDebugTraversal = selectedUnitTerrainFilter !== null &&
-      selectedUnitBlueprint !== undefined
-      ? createPathfindingDebugTraversal(
-          selectedUnitTerrainFilter,
-          selectedUnitBlueprint.radius.collision,
-          buildCellSize,
-        )
-      : null;
-    const selectedUnitNeedsTerrainMask = selectedUnitDebugTraversal !== null &&
-      (
-        (waypointValidEnabled && !selectedUnitDebugTraversal.traversal.waypoint.allowInAir) ||
-        (moveValidEnabled && !selectedUnitDebugTraversal.traversal.move.allowInAir)
-      );
+    const selectedUnitGridMatches = selectedUnitGrid !== null &&
+      selectedUnitGrid.cellSize === buildCellSize &&
+      selectedUnitGrid.cellsX === cellsX &&
+      selectedUnitGrid.cellsY === cellsY;
 
     const entityVersion = overlayMode === 'build'
       ? this.clientViewState.getEntitySetVersion()
@@ -1414,20 +1435,8 @@ export class TerrainTileRenderer3D {
     if (overlayMode === 'build' || overlayMode === 'metal') {
       this.refreshBuildGridMetalMask(cellsX, cellsY);
     }
-    if (waterPathingMapEnabled || selectedUnitNeedsTerrainMask) {
+    if (waterPathingMapEnabled) {
       this.refreshPathfindingDebugGrid(cellsX, cellsY, buildCellSize, terrainVersion);
-    }
-    if (selectedUnitDebugTraversal !== null) {
-      rebuildPathfindingDebugPassability({
-        grid: this.pathingDebugGrid,
-        terrainWater: this.buildGridWaterRawMask,
-        terrainSubmerged: this.buildGridWaterSubmergedMask,
-        terrainNormalZ: this.pathingTerrainMinNormalZ,
-        terrainMaxHeight: this.pathingTerrainMaxHeight,
-        traversal: selectedUnitDebugTraversal,
-        cellsX,
-        cellsY,
-      });
     }
 
     for (let gy = 0; gy < cellsY; gy++) {
@@ -1445,7 +1454,7 @@ export class TerrainTileRenderer3D {
           continue;
         }
         if (overlayMode.startsWith('path:')) {
-          if (!selectedUnitPathingEnabled || selectedUnitDebugTraversal === null) {
+          if (selectedUnitGrid === null || !selectedUnitGridMatches) {
             this.writeBuildGridPixel(
               offset,
               waterPathingMapEnabled && this.pathingDebugGrid.waterBlocked[cellIndex] !== 0
@@ -1455,9 +1464,9 @@ export class TerrainTileRenderer3D {
             continue;
           }
           const waypointValid = waypointValidEnabled &&
-            this.pathingDebugGrid.waypointPassable[cellIndex] !== 0;
+            selectedUnitGrid.waypoint[cellIndex] !== 0;
           const moveValid = moveValidEnabled &&
-            this.pathingDebugGrid.movePassable[cellIndex] !== 0;
+            selectedUnitGrid.move[cellIndex] !== 0;
           this.writeBuildGridPixel(
             offset,
             waypointValid

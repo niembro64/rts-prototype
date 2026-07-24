@@ -17,7 +17,7 @@ function assertUnitInterval(value: number, label: string): void {
 export function runPathfindingMobilityContractTest(): void {
   assertContract(
     PATHFINDING_FORCE_SAFETY_RATIO === 0.85,
-    'the sole pathfinding propulsion reserve must be 85% of authored force',
+    'pathfinding must reserve 15% of authored propulsion and contact grip',
   );
   for (const blueprint of getAllUnitBlueprints()) {
     const locomotion = getUnitLocomotion(blueprint.unitBlueprintId);
@@ -71,6 +71,31 @@ export function runPathfindingMobilityContractTest(): void {
     }
   }
 
+  const hippoBlueprint = getAllUnitBlueprints().find(
+    (blueprint) => blueprint.unitBlueprintId === 'unitHippo',
+  );
+  if (hippoBlueprint === undefined) {
+    throw new Error('[pathfinding mobility contract] Hippo blueprint is missing');
+  }
+  const hippoLocomotion = getUnitLocomotion(hippoBlueprint.unitBlueprintId);
+  const hippoClimb = computeLocomotionClimbProfile(
+    hippoLocomotion,
+    hippoBlueprint.mass,
+  );
+  const hippoAuthoredGrip = hippoLocomotion.physics.ground.staticFrictionCoefficient;
+  const expectedHippoGripSlope =
+    Math.atan(hippoAuthoredGrip * PATHFINDING_FORCE_SAFETY_RATIO) * 180 / Math.PI;
+  assertContract(
+    hippoClimb.maxSlopeDeg !== null &&
+      Math.abs(hippoClimb.maxSlopeDeg - expectedHippoGripSlope) < 1e-9,
+    'Hippo maximum slope must reserve uphill authority from its grip-limited angle',
+  );
+  assertContract(
+    hippoClimb.maxSlopeDeg <
+      Math.atan(hippoAuthoredGrip) * 180 / Math.PI,
+    'Hippo must not advertise the zero-margin angle where grip can only hold position',
+  );
+
   const seaTurtleBlueprint = getAllUnitBlueprints().find(
     (blueprint) => blueprint.unitBlueprintId === 'unitSeaTurtle',
   );
@@ -86,7 +111,7 @@ export function runPathfindingMobilityContractTest(): void {
     seaTurtleClimb.allowOnGround &&
       seaTurtleClimb.allowInWater &&
       seaTurtleClimb.maxSlopeDeg !== null &&
-      seaTurtleClimb.maxSlopeDeg >= 60,
+      seaTurtleClimb.maxSlopeDeg >= 55,
     'Sea Turtle remains amphibious and has enough supported ground force to climb a steep beach from the water',
   );
   assertContract(

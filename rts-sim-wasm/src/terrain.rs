@@ -3695,15 +3695,56 @@ pub(crate) fn terrain_triangle_touches_rect(
     max_y: f64,
 ) -> bool {
     let (_, _, _, ax, az, _, bx, bz, _, cx, cz, _) = sample;
+    const TOUCH_EPS: f64 = 1.0e-9;
+
+    // Triangle and rectangle are both convex. They overlap iff no separating
+    // axis exists among the rectangle axes and the normals of all three
+    // triangle edges. The previous implementation stopped after the first two
+    // axes (their AABBs), so a large diagonal triangle classified every build
+    // square in the unused half of its bounding box as if the triangle
+    // actually covered it.
+    let rect_min_x = min_x.min(max_x);
+    let rect_max_x = min_x.max(max_x);
+    let rect_min_y = min_y.min(max_y);
+    let rect_max_y = min_y.max(max_y);
     let tri_min_x = ax.min(bx).min(cx);
     let tri_max_x = ax.max(bx).max(cx);
     let tri_min_y = az.min(bz).min(cz);
     let tri_max_y = az.max(bz).max(cz);
-    const TOUCH_EPS: f64 = 1.0e-9;
-    tri_max_x + TOUCH_EPS >= min_x
-        && tri_min_x - TOUCH_EPS <= max_x
-        && tri_max_y + TOUCH_EPS >= min_y
-        && tri_min_y - TOUCH_EPS <= max_y
+    if tri_max_x + TOUCH_EPS < rect_min_x
+        || tri_min_x - TOUCH_EPS > rect_max_x
+        || tri_max_y + TOUCH_EPS < rect_min_y
+        || tri_min_y - TOUCH_EPS > rect_max_y
+    {
+        return false;
+    }
+
+    let rect_center_x = (rect_min_x + rect_max_x) * 0.5;
+    let rect_center_y = (rect_min_y + rect_max_y) * 0.5;
+    let rect_half_x = (rect_max_x - rect_min_x) * 0.5;
+    let rect_half_y = (rect_max_y - rect_min_y) * 0.5;
+    for (edge_x, edge_y) in [(bx - ax, bz - az), (cx - bx, cz - bz), (ax - cx, az - cz)] {
+        // A zero-length projected edge contributes no separating axis. This
+        // also keeps projected vertical wall faces well-defined.
+        if edge_x.abs() <= TOUCH_EPS && edge_y.abs() <= TOUCH_EPS {
+            continue;
+        }
+        let axis_x = -edge_y;
+        let axis_y = edge_x;
+        let tri_a = ax * axis_x + az * axis_y;
+        let tri_b = bx * axis_x + bz * axis_y;
+        let tri_c = cx * axis_x + cz * axis_y;
+        let tri_min = tri_a.min(tri_b).min(tri_c);
+        let tri_max = tri_a.max(tri_b).max(tri_c);
+        let rect_center = rect_center_x * axis_x + rect_center_y * axis_y;
+        let rect_radius = rect_half_x * axis_x.abs() + rect_half_y * axis_y.abs();
+        if tri_max + TOUCH_EPS < rect_center - rect_radius
+            || tri_min - TOUCH_EPS > rect_center + rect_radius
+        {
+            return false;
+        }
+    }
+    true
 }
 
 #[inline]
@@ -3717,7 +3758,10 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     if ah < TERRAIN_WATER_LEVEL || bh < TERRAIN_WATER_LEVEL || ch < TERRAIN_WATER_LEVEL {
         *has_water = true;
     }
-    let (_, _, nz) = terrain_normal_from_triangle_sample(sample);
+    // Retain the actual bed angle here. Water-surface-supported traversals
+    // ignore this value later, while bed-supported traversals still need the
+    // slope of submerged terrain for their force envelope.
+    let (_, _, nz) = terrain_bed_normal_from_triangle_sample(sample);
     let normal_z = nz.abs().min(1.0) as f32;
     if normal_z < *min_normal_z {
         *min_normal_z = normal_z;

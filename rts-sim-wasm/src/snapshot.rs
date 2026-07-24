@@ -7622,6 +7622,35 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_terrain_mask_and_cc(10_005);
 
+        let mut waypoint_valid = [0u8; 50];
+        let mut move_valid = [0u8; 50];
+        assert_eq!(
+            pathfinder_bake_traversability_grid(
+                0.5,
+                false,
+                0.0,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                &mut waypoint_valid,
+                &mut move_valid,
+            ),
+            1,
+        );
+        let high_flat = 2 * 10 + 4;
+        let low_flat = 2 * 10 + 5;
+        assert_eq!(waypoint_valid[high_flat], 1);
+        assert_eq!(move_valid[high_flat], 1);
+        assert_eq!(waypoint_valid[low_flat], 1);
+        assert_eq!(move_valid[low_flat], 1);
+
         let count = pathfinder_find_path(
             110.0,
             50.0,
@@ -7756,6 +7785,35 @@ mod sim_kernel_tests {
         install_pathfinder_sloped_wall_escape_test_terrain();
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_terrain_mask_and_cc(10_006);
+
+        let mut waypoint_valid = [0u8; 50];
+        let mut move_valid = [0u8; 50];
+        assert_eq!(
+            pathfinder_bake_traversability_grid(
+                0.5,
+                false,
+                0.0,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                &mut waypoint_valid,
+                &mut move_valid,
+            ),
+            1,
+        );
+        let flat_cell = 2 * 10 + 2;
+        let steep_cell = 2 * 10 + 5;
+        assert_eq!(waypoint_valid[flat_cell], 1);
+        assert_eq!(move_valid[flat_cell], 1);
+        assert_eq!(waypoint_valid[steep_cell], 0);
+        assert_eq!(move_valid[steep_cell], 0);
 
         let count = pathfinder_find_path(
             100.0,

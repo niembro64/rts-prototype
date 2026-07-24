@@ -32,7 +32,7 @@ export function runPathfindingDebugGridContractTest(): void {
   const terrainWater = new Uint8Array(cellCount).fill(1);
   const terrainSubmerged = new Uint8Array(cellCount).fill(1);
   const terrainNormalZ = new Float32Array(cellCount).fill(1);
-  const terrainMaxHeight = new Float32Array(cellCount).fill(-100);
+  const terrainMaxHeight = new Float32Array(cellCount).fill(WATER_LEVEL - 100);
   // This represents a sloping beach cell: it touches water, but is not a
   // wholly submerged volume that an Orca can occupy.
   terrainSubmerged[indexOf(cellsX, shoreX, shoreY)] = 0;

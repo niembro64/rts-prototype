@@ -58,6 +58,7 @@ import {
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
+import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
 import { ClientSprayTargetStore } from './ClientSprayTargetStore';
@@ -2914,6 +2915,10 @@ export class ClientViewState {
     if (state.terrain) {
       this.setMapDimensions(state.terrain.mapWidth, state.terrain.mapHeight);
       setAuthoritativeTerrainTileMap(state.terrain);
+      precomputeAllUnitPathTraversabilityGrids(
+        state.terrain.mapWidth,
+        state.terrain.mapHeight,
+      );
     }
     if (state.buildability) {
       this.terrainBuildabilityGrid = state.buildability;

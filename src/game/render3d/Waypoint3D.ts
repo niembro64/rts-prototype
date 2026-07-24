@@ -25,7 +25,11 @@ import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getTerrainBedHeight } from '../sim/Terrain';
 import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
-import { getEntityTargetPoint } from '../sim/buildingAnchors';
+import {
+  getBuildingVisualCenterZ,
+  getEntityTargetPoint,
+} from '../sim/buildingAnchors';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
 import {
   CanvasSpritePool,
@@ -85,6 +89,12 @@ type LabelState = {
 };
 
 type LabelSlot = CanvasSpriteSlot<LabelState>;
+
+type ActionDisplayPoint = {
+  x: number;
+  y: number;
+  target?: Entity;
+};
 
 function configureFlagSprite(slot: FlagSlot): void {
   slot.sprite.scale.set(STYLE.flagWorldSize, STYLE.flagWorldSize, 1);
@@ -298,6 +308,33 @@ export class Waypoint3D {
     }
   }
 
+  /** Join a unit or build target's 3D center to the raised ground route at
+   *  the same x/y. These stems make ownership and build endpoints explicit
+   *  without letting the terrain-following route cut through either model. */
+  private pushGroundStem(
+    x: number,
+    y: number,
+    centerZ: number,
+    color: number,
+    alpha: number,
+  ): void {
+    const groundZ = this.resolveY(x, y);
+    if (!Number.isFinite(centerZ) || Math.abs(centerZ - groundZ) < 1e-6) return;
+    const c = hexToRgb01(color);
+    this.pushSegment(
+      x,
+      y,
+      centerZ,
+      x,
+      y,
+      groundZ,
+      c.r,
+      c.g,
+      c.b,
+      alpha,
+    );
+  }
+
   /** Push a hollow square outline centered on (x, y) at terrain
    *  elevation — used for build / repair commands. Edges go into
    *  the same line buffer as path lines. */
@@ -340,7 +377,7 @@ export class Waypoint3D {
     state.dotCount++;
   }
 
-  private actionDisplayPoint(a: UnitAction): { x: number; y: number } {
+  private actionDisplayPoint(a: UnitAction): ActionDisplayPoint {
     // Entity-targeting orders (attack / guard / repair / reclaim / capture /
     // resurrect / build) draw to the target's LIVE position so a queued line
     // follows a moving target (e.g. guarding or attacking a moving unit),
@@ -351,7 +388,8 @@ export class Waypoint3D {
       if (targetId !== undefined && targetId !== null) {
         const target = this.getEntity(targetId);
         if (target !== undefined) {
-          return getEntityTargetPoint(target);
+          const point = getEntityTargetPoint(target);
+          return { x: point.x, y: point.y, target };
         }
       }
     }
@@ -403,10 +441,10 @@ export class Waypoint3D {
     // terrain-bed elevation, including under water.
     //
     // `actions` is durable intent; `activePath` is the disposable resolved
-    // plan for actions[0]. SIMPLE connects authored waypoints conventionally.
-    // DETAILED draws only the exact remaining activePath, including its real
-    // snapped/partial endpoint, and leaves future unplanned command markers
-    // unconnected. It must never synthesize a segment to the requested goal.
+    // plan for actions[0]. Both modes connect the complete authored queue.
+    // DETAILED replaces the active leg's straight connection with the exact
+    // remaining activePath when one exists; later, not-yet-planned legs keep
+    // their direct authored connections. SIMPLE never reads activePath.
     const detailed = getWaypointDetail() === 'detailed';
     for (const u of selectedUnits) {
       const unit = u.unit;
@@ -415,6 +453,15 @@ export class Waypoint3D {
       let prevX = u.transform.x;
       let prevY = u.transform.y;
       const previewPoints = detailed ? unit.activePath?.points : undefined;
+      const firstActionColor =
+        ACTION_COLORS[actions[0].type] ?? COLORS.units.turret.barrel.colorHex;
+      this.pushGroundStem(
+        prevX,
+        prevY,
+        u.transform.z,
+        firstActionColor,
+        STYLE.lineAlpha,
+      );
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
         const p = this.actionDisplayPoint(a);
@@ -430,8 +477,32 @@ export class Waypoint3D {
             prevY = pt.y;
           }
         }
-        if (!detailed) {
+        // SIMPLE always draws the direct authored leg. DETAILED does the same
+        // for future legs and as a fallback when no active plan exists. If a
+        // snapped/partial active path ends before the requested first
+        // waypoint, retain a direct tail so the visible queue stays exhaustive
+        // without pretending that tail came from the pathfinder.
+        if (
+          !detailed ||
+          i > 0 ||
+          previewPoints === undefined ||
+          previewPoints.length === 0 ||
+          Math.abs(prevX - p.x) > 1e-6 ||
+          Math.abs(prevY - p.y) > 1e-6
+        ) {
           this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha);
+        }
+        if (
+          p.target?.building &&
+          (a.type === 'build' || isBuildInProgress(p.target.buildable))
+        ) {
+          this.pushGroundStem(
+            p.x,
+            p.y,
+            getBuildingVisualCenterZ(p.target),
+            color,
+            STYLE.lineAlpha,
+          );
         }
         // User waypoint marker + queue-order label.
         if (a.type === 'build' || a.type === 'repair') {
@@ -445,7 +516,7 @@ export class Waypoint3D {
       }
       // Patrol return — link the last patrol waypoint back to the first
       // with a dimmer line.
-      if (!detailed && unit.patrolStartIndex !== null && actions.length > 0) {
+      if (unit.patrolStartIndex !== null && actions.length > 0) {
         const last = actions[actions.length - 1];
         const first = actions[unit.patrolStartIndex];
         if (last && last.type === 'patrol' && first) {
@@ -474,6 +545,16 @@ export class Waypoint3D {
         let prevY = startY;
         let firstPatrolIdx = -1;
         let lastPatrolIdx = -1;
+        const firstColor =
+          WAYPOINT_COLORS[route[0].type as keyof typeof WAYPOINT_COLORS]
+          ?? COLORS.units.turret.barrel.colorHex;
+        this.pushGroundStem(
+          startX,
+          startY,
+          getBuildingVisualCenterZ(b),
+          firstColor,
+          STYLE.lineAlpha,
+        );
         for (let i = 0; i < route.length; i++) {
           const wp = route[i];
           const color = WAYPOINT_COLORS[wp.type as keyof typeof WAYPOINT_COLORS]
@@ -506,6 +587,13 @@ export class Waypoint3D {
 
       const color = WAYPOINT_COLORS[factory.rallyType as keyof typeof WAYPOINT_COLORS]
         ?? COLORS.units.turret.barrel.colorHex;
+      this.pushGroundStem(
+        startX,
+        startY,
+        getBuildingVisualCenterZ(b),
+        color,
+        STYLE.lineAlpha,
+      );
       this.pushTerrainLine(startX, startY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha);
       this.pushDot(state, factory.rallyX, factory.rallyY, color);
       this.acquireFlag(flagCount++, color, factory.rallyX, factory.rallyY);

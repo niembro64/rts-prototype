@@ -49,6 +49,7 @@ import {
   DEFAULT_GAME_GENERATION_SEED,
   normalizeGameGenerationSeed,
 } from '../network/gameGenerationSeed';
+import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -140,6 +141,8 @@ export class ServerBootstrap {
 
     const terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
     await report(0.48, 'Building placement grid');
+    precomputeAllUnitPathTraversabilityGrids(mapWidth, mapHeight);
+    await report(0.53, 'Classifying unit path squares');
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
@@ -312,6 +315,7 @@ export class ServerBootstrap {
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
     const terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
+    precomputeAllUnitPathTraversabilityGrids(mapWidth, mapHeight);
 
     // The physics engine is now fully 3D — same module for every path.
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
