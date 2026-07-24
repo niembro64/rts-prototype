@@ -42,6 +42,19 @@ export function refreshUnitActionHash(unit: Unit): number {
   return hash;
 }
 
+/** Recompute the queue hash after an in-place approach-point rewrite on the
+ *  current action (attack/guard chase re-aim). Unlike a queue edit, this
+ *  keeps the active path plan alive and re-syncs its stored hash: route
+ *  freshness for chases is governed by drift against the plan's stamped
+ *  goal, not by every sub-cell target wobble. */
+export function refreshUnitActionHashPreservingActivePath(unit: Unit): number {
+  const hash = computeUnitActionHash(unit.actions);
+  unit.actionHash = hash;
+  const plan = unit.activePath;
+  if (plan !== null) plan.actionHash = hash;
+  return hash;
+}
+
 export function setUnitActions(unit: Unit, actions: UnitAction[]): void {
   unit.actions = actions;
   refreshUnitActionHash(unit);

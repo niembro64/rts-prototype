@@ -17,6 +17,7 @@ import type {
 } from './types';
 import type { WorldSupportSurface } from './supportSurface';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
+import { PATH_REQUEST_NONE } from './SimulationPathPlanScheduler';
 import { cloneUnitLocomotion } from './unitLocomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import { buildShieldPanelCache } from './shieldPanelCache';
@@ -99,6 +100,8 @@ function createUnitBaseEntity({
       cloakRestoreFireState: null,
       patrolStartIndex: null,
       activePath: null,
+      pathRequestLane: PATH_REQUEST_NONE,
+      pathRequestForceLocal: false,
       flyingLoiterTargetX: null,
       flyingLoiterTargetY: null,
       flyingLoiterTargetZ: null,

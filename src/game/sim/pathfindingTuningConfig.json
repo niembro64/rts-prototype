@@ -4,5 +4,12 @@
   "allowDiagonalNeighbors": true,
   "arrivalRadius": 50,
   "softClearanceCells": 2,
-  "softClearancePenaltyPerCell": 0.35
+  "softClearancePenaltyPerCell": 0.35,
+  "planBudgetPerPlayerPerTick": 8,
+  "planBudgetGlobalPerTick": 24,
+  "chaseRepathCooldownTicks": 10,
+  "chaseRepathDriftMinWu": 150,
+  "chaseRepathDriftDistanceFraction": 0.15,
+  "partialPlanRetryTicks": 90,
+  "directPlanMaxDistanceWu": 800
 }

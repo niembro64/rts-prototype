@@ -813,6 +813,7 @@ export function runClientSnapshotApplierContractTest(): void {
   ];
   refreshUnitActionHash(wireMotionEntity.unit);
   wireMotionEntity.unit.activePath = {
+    plannedAtTick: 0,
     points: [
       { x: 255, y: 260, z: 11 },
       { x: 285, y: 295, z: 13 },
@@ -908,6 +909,7 @@ export function runClientSnapshotApplierContractTest(): void {
   );
 
   wireMotionEntity.unit.activePath = {
+    plannedAtTick: 0,
     points: [{ x: 275, y: 280, z: 12 }],
     resolution: 'snapped',
     index: 0,

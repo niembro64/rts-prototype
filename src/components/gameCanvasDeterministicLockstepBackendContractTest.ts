@@ -91,6 +91,7 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
       const previousActivePath = commander.unit.activePath;
       commander.unit.activePath = {
         resolution: 'complete',
+        plannedAtTick: 0,
         points: [
           {
             x: commander.transform.x + 16,

@@ -34,6 +34,7 @@ import { initializeConstructionPieceHealth } from '../../sim/constructionLifecyc
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
+import { PATH_REQUEST_NONE } from '../../sim/SimulationPathPlanScheduler';
 import { createTransportComponentForUnitBlueprint } from '../../sim/transports';
 import {
   decodeFactoryProductionQueue,
@@ -464,6 +465,8 @@ function createUnitFromNetwork(
       cloakRestoreFireState: null,
       patrolStartIndex: null,
       activePath: decodedActions.routePreview,
+      pathRequestLane: PATH_REQUEST_NONE,
+      pathRequestForceLocal: false,
       flyingLoiterTargetX: null,
       flyingLoiterTargetY: null,
       flyingLoiterTargetZ: null,
@@ -654,6 +657,8 @@ function createUnitFromTypedFullWireRow(
       cloakRestoreFireState: null,
       patrolStartIndex: null,
       activePath: null,
+      pathRequestLane: PATH_REQUEST_NONE,
+      pathRequestForceLocal: false,
       flyingLoiterTargetX: null,
       flyingLoiterTargetY: null,
       flyingLoiterTargetZ: null,

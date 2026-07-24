@@ -252,6 +252,13 @@ export type Unit = {
    *  actions are durable player/factory waypoints, while activePath
    *  holds transient pathfinder points for the leg being executed. */
   activePath: UnitPathPlan | null;
+  /** Plan-scheduler request state (PATH_REQUEST_NONE/FRESH/REFRESH). A unit
+   *  holds at most one live queue entry; a popped entry whose lane no longer
+   *  matches this field is skipped at serve time. Sim-only state. */
+  pathRequestLane: number;
+  /** Serve the queued request from the unit's live position and skip the
+   *  shared formation corridor (stuck-replan semantics). */
+  pathRequestForceLocal: boolean;
   /** Flying-only loiter center. When a flying unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */

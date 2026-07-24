@@ -4,13 +4,12 @@ import type { Entity } from './types';
 
 const STUCK_VEL_THRESHOLD = 5;
 const STUCK_TICK_THRESHOLD = 60;
-const MAX_REPLANS_PER_TICK = 5;
 export const REPLAN_COOLDOWN = -150;
 export const REPLAN_FAILURE_COOLDOWN = REPLAN_COOLDOWN;
 const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 
 export class SimulationStuckReplanController {
-  private readonly tryReplan: (entity: Entity) => boolean;
+  private readonly queueRepath: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
   private slots = new Uint32Array(0);
   private ticks = new Int32Array(0);
@@ -19,14 +18,12 @@ export class SimulationStuckReplanController {
   private settlingFlags = new Uint8Array(0);
   private outTicks = new Int32Array(0);
   private outReplan = new Uint8Array(0);
-  private replansThisTick = 0;
 
-  constructor(tryReplan: (entity: Entity) => boolean) {
-    this.tryReplan = tryReplan;
-  }
-
-  beginFrame(): void {
-    this.replansThisTick = 0;
+  /** `queueRepath` enqueues the stuck unit into the shared path-plan
+   *  scheduler (fresh lane, force-local serve); the per-tick replan cap
+   *  that used to live here is now that scheduler's plan budget. */
+  constructor(queueRepath: (entity: Entity) => void) {
+    this.queueRepath = queueRepath;
   }
 
   evaluate(movingUnits: readonly Entity[]): void {
@@ -92,23 +89,17 @@ export class SimulationStuckReplanController {
         this.entities[i] = undefined as unknown as Entity;
         continue;
       }
-      if (this.replansThisTick >= MAX_REPLANS_PER_TICK) {
-        this.entities[i] = undefined as unknown as Entity;
-        continue;
-      }
-      if (this.tryReplan(entity)) {
-        unit.stuckTicks = REPLAN_COOLDOWN;
-        this.replansThisTick++;
-      } else {
-        unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-      }
+      // Hand the unit to the shared plan scheduler and go quiet: the
+      // cooldown keeps detection from re-firing while the request waits
+      // for a budget slot and while the fresh route gets moving.
+      this.queueRepath(entity);
+      unit.stuckTicks = REPLAN_COOLDOWN;
       this.entities[i] = undefined as unknown as Entity;
     }
   }
 
   reset(): void {
     this.entities.length = 0;
-    this.replansThisTick = 0;
   }
 
   private ensureCapacity(required: number): void {

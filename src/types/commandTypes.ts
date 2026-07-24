@@ -69,6 +69,9 @@ export type UnitPathPlan = {
   index: number;
   actionHash: number;
   terrainVersion: number;
+  /** World tick this plan was installed. Chase drift/cooldown refresh and
+   *  partial-plan retries measure plan age against this stamp. */
+  plannedAtTick: number;
   goalX: number;
   goalY: number;
   goalZ?: number;
