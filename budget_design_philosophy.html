@@ -2212,23 +2212,32 @@
         diagnostic renders the same authored host sphere used by this rule.
       </p>
 
-      <h3>Materialization: build-in and death-out are one reversible opacity channel</h3>
+      <h3>Materialization: BAR-faithful build-in, alpha death-out, one build channel</h3>
       <p>
-        Every host body and every mounted turret visual carries a per-host <em>materialization
-        opacity</em> that runs <code>0 &rarr; 1</code> as it is built and <code>1 &rarr; 0</code>
-        as it dies: <code>0</code> is fully transparent, <code>1</code> is fully opaque. This is the
-        same &ldquo;construction mirrors destruction&rdquo; pipeline run in two directions
-        &mdash; one channel, not two effects. It applies to the two assembled host kinds
-        (<strong>buildings, units, and their mounted turret visuals</strong>); a
-        <code>shot</code> is exempt
-        (see below).
+        Every host body and every mounted turret visual carries a per-host <em>build fraction</em>
+        (<code>0 &rarr; 1</code>) and a presentation alpha that runs <code>1 &rarr; 0</code> as it
+        dies. Construction and destruction share one materialization module (the renderer&rsquo;s
+        entity-fade channel), but the two directions no longer look identical: build-in follows
+        Beyond All Reason&rsquo;s construction language, death-out remains the alpha de-rez. It
+        applies to the two assembled host kinds (<strong>buildings, units, and their mounted turret
+        visuals</strong>); a <code>shot</code> is exempt (see below).
       </p>
       <p>
-        <strong>Build-in.</strong> A host assembly fades from transparent to opaque over the host
-        build fraction. The body and authored turret visuals materialize together because turrets are
-        not separate construction pieces (see <strong>Hosts build as complete assemblies</strong>).
-        A host counts as complete once the host body is complete; its mounted turrets are present as
-        part of that product, even if their firing logic remains disabled until completion.
+        <strong>Build-in is the BAR nanoframe.</strong> A queued-but-unfunded build site renders as
+        the full team-tinted model at BAR&rsquo;s queued-ghost alpha (0.24). Once resources flow,
+        the assembly materializes bottom-to-top through four rising height bands at
+        <code>pow(buildFraction, {3, 1.5, 0.7, 0.35})</code> &mdash; finished material below the
+        lowest band, pulsing team tint between bands (1.0&times;&harr;1.78&times;), flat translucent
+        team color (alpha floor 0.4) above the highest &mdash; with white scan lines climbing at
+        each band and a pulsing team-colored construction grid that shrinks as progress rises and
+        fades over the final 5%. The numbers are data in <code>constructionVisualConfig.json</code>
+        (<code>nanoframe</code>). Backends that carry a single alpha (instanced detail/leg pools,
+        custom shader parts) ride the same envelope as one curve: ghost alpha at fraction 0, the
+        top-alpha floor rising with the fraction, opaque at completion. The body and authored turret
+        visuals materialize together because turrets are not separate construction pieces (see
+        <strong>Hosts build as complete assemblies</strong>). A host counts as complete once the
+        host body is complete; its mounted turrets are present as part of that product, even if
+        their firing logic remains disabled until completion.
       </p>
       <p>
         <strong>Death-out.</strong> The same channel runs backward, but death is still an
@@ -2253,10 +2262,9 @@
         &mdash; force changes future positions, so all clients must agree. The opacity ramp, the
         tumbling debris, and the fireball are client-only cosmetics driven off the death event;
         non-deterministic randomness is fine there because nothing downstream of the sim reads them
-        (cross-ref <strong>Locomotion Visuals Are Frontend</strong>). The fade is rendered as a
-        screen-door (dithered) dissolve in the <em>opaque</em> pass, not alpha blending, so a
-        multi-part body still writes depth and self-occludes through the transition &mdash; no
-        see-through-to-the-back-faces artifact and no transparent-queue sort cost at scale.
+        (cross-ref <strong>Locomotion Visuals Are Frontend</strong>). The fade is rendered as
+        continuous alpha with depth writes kept on, so a multi-part body still writes depth and
+        self-occludes through the transition without a transparent-queue sort cost at scale.
       </p>
       <p>
         <strong>Shots are exempt from build-in.</strong> A shot is spawned whole from its turret, not

@@ -35,7 +35,6 @@
 // updated.
 
 import * as THREE from 'three';
-import { createShellMaterial } from './ShellMaterial';
 import { disposeMesh } from './threeUtils';
 import {
   createExtrudedEquilateralTriangleGeometry,
@@ -263,8 +262,7 @@ vec3 transformed = _segMid
 // ── Per-instance materialization alpha ────────────────────────────────
 // Mirrors EntityFade3D's instanced fade: a per-instance `aFade` scalar
 // drives `vFade`, which multiplies the fragment's `diffuseColor.a` before
-// `opaque_fragment`. Preserves any authored/base material opacity (the
-// pale shell material) and applies build-in / death-out as ordinary alpha.
+// `opaque_fragment`, applying build-in / death-out as ordinary alpha.
 const FADE_VERTEX_DECL = 'attribute float aFade;\nvarying float vFade;';
 const FADE_VERTEX_ASSIGN = 'vFade = aFade;';
 const FADE_FRAGMENT_DECL = 'varying float vFade;';
@@ -284,10 +282,8 @@ function makeFadeAttribute(): THREE.InstancedBufferAttribute {
   ).setUsage(THREE.DynamicDrawUsage);
 }
 
-function makeInstancedLegMaterial(shell: boolean): THREE.MeshBasicMaterial {
-  const material = shell
-    ? createShellMaterial()
-    : new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+function makeInstancedLegMaterial(): THREE.MeshBasicMaterial {
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
   // Alpha-fade in the transparent pass while still writing depth, so a
   // finished (aFade=1) leg self-occludes like a solid body — identical to
   // the unit body/turret instanced pools (see EntityFade3D).
@@ -307,18 +303,15 @@ function makeInstancedLegMaterial(shell: boolean): THREE.MeshBasicMaterial {
   };
   // Distinct from the body's 'entityFadeInstancedAlpha' program and from
   // the joint/pad program below — the cylinder vertex shader is unique.
-  material.customProgramCacheKey = () =>
-    shell ? 'legInstancedFadeCylinderShell' : 'legInstancedFadeCylinder';
+  material.customProgramCacheKey = () => 'legInstancedFadeCylinder';
   return material;
 }
 
 /** Joint spheres and foot pads ride on a stock InstancedMesh, so their
  *  vertex shader keeps the standard `begin_vertex` and only needs the
  *  fade varying appended. */
-function makeInstancedSphereMaterial(shell: boolean): THREE.MeshBasicMaterial {
-  const material = shell
-    ? createShellMaterial()
-    : new THREE.MeshBasicMaterial({ color: 0xffffff });
+function makeInstancedSphereMaterial(): THREE.MeshBasicMaterial {
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   material.transparent = true;
   material.depthWrite = true;
   material.onBeforeCompile = (shader) => {
@@ -332,8 +325,7 @@ function makeInstancedSphereMaterial(shell: boolean): THREE.MeshBasicMaterial {
   };
   // Joint and pad materials produce identical shader source, so they may
   // share one compiled program; distinct from the cylinder program.
-  material.customProgramCacheKey = () =>
-    shell ? 'legInstancedFadeSphereShell' : 'legInstancedFadeSphere';
+  material.customProgramCacheKey = () => 'legInstancedFadeSphere';
   return material;
 }
 
@@ -398,7 +390,7 @@ class CylinderPool {
   // pitfall documented in detail.
   private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
+  constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
     this.startBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -417,7 +409,7 @@ class CylinderPool {
       this.startBuf, this.endBuf, this.thickBuf, this.colorBuf, this.fadeBuf,
       geometryTier,
     );
-    const material = makeInstancedLegMaterial(shell);
+    const material = makeInstancedLegMaterial();
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = LEG_RENDER_ORDER;
@@ -603,7 +595,6 @@ class CylinderPool {
 class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
   private readonly fadeBuf: THREE.InstancedBufferAttribute;
-  private readonly shell: boolean;
   private readonly matrixDirty = createDirtySpan();
   private readonly colorDirty = createDirtySpan();
   private readonly fadeDirty = createDirtySpan();
@@ -617,21 +608,18 @@ class JointSpherePool {
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, shell: boolean, geometryTier: PrimitiveGeometryTier) {
-    this.shell = shell;
+  constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
     const geom = geometryTier === 'far'
       ? createPrimitiveTetrahedronGeometry()
       : createPrimitiveSphereGeometry('locomotion', geometryTier);
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
-    const material = makeInstancedSphereMaterial(shell);
+    const material = makeInstancedSphereMaterial();
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    if (!shell) {
-      const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
-      colorAttr.setUsage(THREE.DynamicDrawUsage);
-      this.mesh.instanceColor = colorAttr;
-    }
+    const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.instanceColor = colorAttr;
     this.mesh.count = 0;
     // Same caveat as the cylinder + chassis + particle pools — instances
     // live anywhere on the map, source-geom bounding sphere is at origin.
@@ -653,16 +641,14 @@ class JointSpherePool {
     writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
-    if (!this.shell) {
-      const c = JointSpherePool._scratchColor.set(color);
-      const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
-      if (arr) {
-        const i3 = slot * 3;
-        arr[i3 + 0] = c.r;
-        arr[i3 + 1] = c.g;
-        arr[i3 + 2] = c.b;
-        markDirtySlot(this.colorDirty, slot);
-      }
+    const c = JointSpherePool._scratchColor.set(color);
+    const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
+    if (arr) {
+      const i3 = slot * 3;
+      arr[i3 + 0] = c.r;
+      arr[i3 + 1] = c.g;
+      arr[i3 + 2] = c.b;
+      markDirtySlot(this.colorDirty, slot);
     }
     return slot;
   }
@@ -752,7 +738,7 @@ class JointSpherePool {
 
 export class LegInstancedRenderer {
   private readonly parent: THREE.Group;
-  private readonly pools = new Map<string, {
+  private readonly pools = new Map<PrimitiveGeometryTier, {
     upper: CylinderPool;
     lower: CylinderPool;
     joints: JointSpherePool;
@@ -762,20 +748,15 @@ export class LegInstancedRenderer {
     this.parent = parent;
   }
 
-  private poolKey(tier: PrimitiveGeometryTier, shell: boolean): string {
-    return `${tier}:${shell ? 'shell' : 'solid'}`;
-  }
-
-  private pool(tier: PrimitiveGeometryTier, shell: boolean) {
-    const key = this.poolKey(tier, shell);
-    let pools = this.pools.get(key);
+  private pool(tier: PrimitiveGeometryTier) {
+    let pools = this.pools.get(tier);
     if (!pools) {
       pools = {
-        upper: new CylinderPool(this.parent, shell, tier),
-        lower: new CylinderPool(this.parent, shell, tier),
-        joints: new JointSpherePool(this.parent, shell, tier),
+        upper: new CylinderPool(this.parent, tier),
+        lower: new CylinderPool(this.parent, tier),
+        joints: new JointSpherePool(this.parent, tier),
       };
-      this.pools.set(key, pools);
+      this.pools.set(tier, pools);
     }
     return pools;
   }
@@ -787,40 +768,40 @@ export class LegInstancedRenderer {
    *  this slot is moved — the caller MUST update its stored slot
    *  index in the callback or subsequent updates will write the wrong
    *  buffer entries. */
-  allocUpper(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier, shell).upper.alloc(color, onRelocate);
+  allocUpper(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier).upper.alloc(color, onRelocate);
   }
-  allocLower(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier, shell).lower.alloc(color, onRelocate);
+  allocLower(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier).lower.alloc(color, onRelocate);
   }
   /** Allocate a joint-sphere slot (used by the full leg style for hips).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
-  allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier, shell).joints.alloc(color, onRelocate);
+  allocJoint(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
+    return this.pool(tier).joints.alloc(color, onRelocate);
   }
-  freeUpper(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).upper.free(slot); }
-  freeLower(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).lower.free(slot); }
-  freeJoint(slot: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier, shell).joints.free(slot); }
+  freeUpper(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).upper.free(slot); }
+  freeLower(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).lower.free(slot); }
+  freeJoint(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).joints.free(slot); }
 
-  fadeUpper(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).upper.fade(slot, fade);
+  fadeUpper(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).upper.fade(slot, fade);
   }
-  fadeLower(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).lower.fade(slot, fade);
+  fadeLower(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).lower.fade(slot, fade);
   }
-  fadeJoint(slot: number, fade: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).joints.fade(slot, fade);
+  fadeJoint(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).joints.fade(slot, fade);
   }
 
-  translateUpper(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).upper.translate(slot, dx, dy, dz);
+  translateUpper(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).upper.translate(slot, dx, dy, dz);
   }
-  translateLower(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).lower.translate(slot, dx, dy, dz);
+  translateLower(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).lower.translate(slot, dx, dy, dz);
   }
-  translateJoint(slot: number, dx: number, dy: number, dz: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).joints.translate(slot, dx, dy, dz);
+  translateJoint(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).joints.translate(slot, dx, dy, dz);
   }
 
   updateUpper(
@@ -828,10 +809,9 @@ export class LegInstancedRenderer {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
-    shell = false,
     tier: PrimitiveGeometryTier = 'close',
   ): void {
-    this.pool(tier, shell).upper.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier).upper.update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   updateLower(
@@ -839,18 +819,17 @@ export class LegInstancedRenderer {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
-    shell = false,
     tier: PrimitiveGeometryTier = 'close',
   ): void {
-    this.pool(tier, shell).lower.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier).lower.update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   /** Per-frame write for one joint sphere — encodes world position
    *  and radius (uniform scale) into the slot's instanceMatrix. The
    *  radius is constant per joint, so most frames this is the same
    *  value; the matrix compose is cheap and lets the API stay flat. */
-  updateJoint(slot: number, x: number, y: number, z: number, radius: number, shell = false, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier, shell).joints.update(slot, x, y, z, radius);
+  updateJoint(slot: number, x: number, y: number, z: number, radius: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).joints.update(slot, x, y, z, radius);
   }
 
   /** Upload dirty per-instance spans — call once per frame after every

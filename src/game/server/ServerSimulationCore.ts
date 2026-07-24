@@ -4,7 +4,6 @@ import type { Command, CommandQueue } from '../sim/commands';
 import type { DeathContext } from '../sim/combat';
 import {
   ENTITY_SLOT_BUILD_FLAG_COMPLETE,
-  ENTITY_SLOT_BUILD_FLAG_GHOST,
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
   ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
   entitySlotRegistry,
@@ -281,7 +280,6 @@ export class ServerSimulationCore {
             (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0 &&
             (buildFlags & (
               ENTITY_SLOT_BUILD_FLAG_COMPLETE |
-              ENTITY_SLOT_BUILD_FLAG_GHOST |
               ENTITY_SLOT_BUILD_FLAG_INTERRUPTED
             )) === 0
           )

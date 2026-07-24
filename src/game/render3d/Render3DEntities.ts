@@ -10,7 +10,8 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
 import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -58,6 +59,9 @@ import {
   disposeEntityGroupFade,
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
+  setEntityBuildTimeMs,
+  updateEntityBuildVisual,
+  type EntityBuildVisual,
 } from './EntityFade3D';
 import { DyingUnitScatter3D } from './DyingUnitScatter3D';
 import { VISION_FADE_OUT_MS } from '@/visionConfig';
@@ -245,6 +249,7 @@ export class Render3DEntities {
   private readonly _poseUnitRows: number[] = [];
   private readonly _poseUnitMeshes: EntityMesh[] = [];
   private readonly _poseBodyOpacity: number[] = [];
+  private readonly _poseVisionFade: number[] = [];
   private readonly _poseAnimate: boolean[] = [];
 
   // Per-entity leg-state snapshots stashed right before a mesh teardown
@@ -476,6 +481,9 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     setHoverFanAnimationTime(frameSpin.timeMs / 1000);
+    // Shared clock for the nanoframe pulse/scan-line animation (one
+    // uniform object across every patched build material).
+    setEntityBuildTimeMs(frameSpin.timeMs);
     // Keep the shared beam wave clock advancing even when BeamRenderer3D
     // early-returns on a frame with no live beams.
     tickBeamWaveTime();
@@ -559,8 +567,26 @@ export class Render3DEntities {
     m: EntityMesh,
     bodyFade: number,
     turretFades: readonly number[] | null,
+    build: EntityBuildVisual | null = null,
+    groupFade: number = bodyFade,
   ): void {
-    applyUnitEntityFade3D(m, bodyFade, turretFades, this.unitDetailInstances, this.legRenderer);
+    applyUnitEntityFade3D(
+      m,
+      bodyFade,
+      turretFades,
+      this.unitDetailInstances,
+      this.legRenderer,
+      build,
+      groupFade,
+    );
+  }
+
+  private unitBuildVisualFor(
+    m: EntityMesh,
+    progress: number,
+    ownerId: PlayerId | undefined,
+  ): EntityBuildVisual {
+    return updateEntityBuildVisual(m, progress, entityBodyColorHexForPlayer(ownerId));
   }
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
@@ -607,10 +633,12 @@ export class Render3DEntities {
     const poseRows = this._poseUnitRows;
     const poseMeshes = this._poseUnitMeshes;
     const poseBodyOpacity = this._poseBodyOpacity;
+    const poseVisionFade = this._poseVisionFade;
     const poseAnimate = this._poseAnimate;
     poseRows.length = 0;
     poseMeshes.length = 0;
     poseBodyOpacity.length = 0;
+    poseVisionFade.length = 0;
     poseAnimate.length = 0;
     this.unitRenderPose.begin(unitRows.count);
     let poseCount = 0;
@@ -784,7 +812,8 @@ export class Render3DEntities {
       // local player's vision eases in instead of appearing instantly;
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
-      const bodyOpacity = unitRows.bodyOpacity[row] * this.advanceSpawnFadeIn(entityId);
+      const visionFadeIn = this.advanceSpawnFadeIn(entityId);
+      const bodyOpacity = unitRows.bodyOpacity[row] * visionFadeIn;
       setObjectVisibleIfChanged(m.chassis, fullUnitDetail && bodyOpacity > 0);
 
       const liftPos = m.liftGroup?.position;
@@ -817,6 +846,7 @@ export class Render3DEntities {
       poseRows[poseCount] = row;
       poseMeshes[poseCount] = m;
       poseBodyOpacity[poseCount] = bodyOpacity;
+      poseVisionFade[poseCount] = visionFadeIn;
       poseAnimate[poseCount] = animateUnit;
       poseCount++;
     }
@@ -1056,11 +1086,25 @@ export class Render3DEntities {
         }
       }
 
-      // Materialization fade — mounted turrets share the host body's
-      // build fraction because they are not separate construction pieces.
+      // Materialization — mounted turrets share the host body's build
+      // fraction because they are not separate construction pieces.
       // Pass null for the uniform fade so finished units skip the per-turret
       // scratch loop and only restore instanced/leg fade slots once.
-      this.applyUnitEntityFade(m, bodyOpacity, null);
+      // While under construction the per-Mesh body runs the BAR nanoframe
+      // bands (ghost at fraction 0, bottom-to-top materialization after);
+      // instanced parts ride the single translucency-curve alpha.
+      const unitBuildProgress = unitRows.progress[row];
+      if (unitBuildProgress < 1) {
+        this.applyUnitEntityFade(
+          m,
+          bodyOpacity,
+          null,
+          this.unitBuildVisualFor(m, unitBuildProgress, e.ownership?.playerId),
+          poseVisionFade[poseIndex],
+        );
+      } else {
+        this.applyUnitEntityFade(m, bodyOpacity, null);
+      }
 
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).

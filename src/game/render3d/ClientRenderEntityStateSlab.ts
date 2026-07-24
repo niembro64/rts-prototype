@@ -3,8 +3,8 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import {
-  getConstructionPieceOpacity,
-  getConstructionPieceRenderFraction,
+  getConstructionPieceBuildFraction,
+  getConstructionPieceRenderAlpha,
   getResourceFillRatio,
   isBuildInProgress,
   isConstructionPieceMaterialized,
@@ -83,7 +83,7 @@ export type ClientRenderEntityStateViews = {
   readonly buildingBaseY: Float32Array;
   readonly buildingWidth: Float32Array;
   readonly buildingFootprintDepth: Float32Array;
-  readonly buildingProgress: Float32Array;
+  readonly buildProgress: Float32Array;
   readonly bodyHudWidth: Float32Array;
   readonly hudBarsY: Float32Array;
   readonly hudNameY: Float32Array;
@@ -207,7 +207,7 @@ export class ClientRenderEntityStateSlab {
     buildingBaseY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingFootprintDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    buildingProgress: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    buildProgress: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     bodyHudWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hudBarsY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hudNameY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -334,7 +334,8 @@ export class ClientRenderEntityStateSlab {
     if (entity.unit !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
       views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
-      views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+      views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
+      views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
       views.buildEnergyRatio[slot] = buildable !== null
         ? getResourceFillRatio(buildable, 'energy')
         : 0;
@@ -347,8 +348,8 @@ export class ClientRenderEntityStateSlab {
     if (entity.building !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
       views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
-      views.buildingProgress[slot] = getConstructionPieceRenderFraction(entity, 'body');
-      views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+      views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
+      views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
       views.buildEnergyRatio[slot] = buildable !== null
         ? getResourceFillRatio(buildable, 'energy')
         : 0;
@@ -407,7 +408,8 @@ export class ClientRenderEntityStateSlab {
     views.orientationZ[slot] = orientation?.z ?? 0;
     views.orientationW[slot] = orientation?.w ?? 1;
     views.hasFullOrientation[slot] = orientation !== null ? 1 : 0;
-    views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+    views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
+    views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
     views.supportPointOffsetZ[slot] = unit.supportPointOffsetZ;
     views.bodyHudWidth[slot] = unit.radius.other * 2;
     views.hudBarsY[slot] = getUnitHudBarsY(entity);
@@ -471,8 +473,8 @@ export class ClientRenderEntityStateSlab {
     views.buildingFootprintDepth[slot] = visualConfig !== null
       ? visualConfig.gridHeight * BUILD_GRID_CELL_SIZE
       : building.height;
-    views.buildingProgress[slot] = getConstructionPieceRenderFraction(entity, 'body');
-    views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+    views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
+    views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
     views.bodyHudWidth[slot] = building.width;
     views.hudBarsY[slot] = getBuildingHudBarsY(entity);
     views.hudNameY[slot] = getBuildingHudNameY(entity);
@@ -735,7 +737,8 @@ export class ClientRenderEntityStateSlab {
       assertNear('hp', views.hp[slot], unit.hp);
       assertNear('maxHp', views.maxHp[slot], unit.maxHp);
       const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
-      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceOpacity(entity, 'body'));
+      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceRenderAlpha(entity, 'body'));
+      assertNear('buildProgress', views.buildProgress[slot], getConstructionPieceBuildFraction(entity, 'body'));
       assertNear(
         'buildEnergyRatio',
         views.buildEnergyRatio[slot],
@@ -790,8 +793,8 @@ export class ClientRenderEntityStateSlab {
       assertNear('hp', views.hp[slot], building.hp);
       assertNear('maxHp', views.maxHp[slot], building.maxHp);
       const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
-      assertNear('buildingProgress', views.buildingProgress[slot], getConstructionPieceRenderFraction(entity, 'body'));
-      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceOpacity(entity, 'body'));
+      assertNear('buildProgress', views.buildProgress[slot], getConstructionPieceBuildFraction(entity, 'body'));
+      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceRenderAlpha(entity, 'body'));
       assertNear(
         'buildEnergyRatio',
         views.buildEnergyRatio[slot],
@@ -858,7 +861,7 @@ export class ClientRenderEntityStateSlab {
       buildingBaseY: growFloat32(views.buildingBaseY, nextCapacity),
       buildingWidth: growFloat32(views.buildingWidth, nextCapacity),
       buildingFootprintDepth: growFloat32(views.buildingFootprintDepth, nextCapacity),
-      buildingProgress: growFloat32(views.buildingProgress, nextCapacity),
+      buildProgress: growFloat32(views.buildProgress, nextCapacity),
       bodyHudWidth: growFloat32(views.bodyHudWidth, nextCapacity),
       hudBarsY: growFloat32(views.hudBarsY, nextCapacity),
       hudNameY: growFloat32(views.hudNameY, nextCapacity),

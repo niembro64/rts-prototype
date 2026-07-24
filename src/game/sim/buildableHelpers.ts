@@ -1,4 +1,5 @@
 import type { Buildable, ConstructionPieceBuildRecord, ConstructionPieceKind, Entity, ResourceCost } from './types';
+import { NANOFRAME_VISUAL_CONFIG } from '@/constructionVisualConfig';
 
 type ResourceKind = keyof ResourceCost;
 
@@ -10,7 +11,6 @@ export function makeZeroResourceCost(): ResourceCost {
 
 type BuildableState = {
   paid: ResourceCost | null;
-  isGhost: boolean | null;
   isInterrupted?: boolean | null;
   healthBuildFraction: number | null;
 };
@@ -26,7 +26,6 @@ export function createBuildable(required: ResourceCost, state: BuildableState | 
     paid,
     required: cloneResourceCost(required),
     isComplete: false,
-    isGhost: state !== null && state.isGhost === true,
     isInterrupted: state !== null && state.isInterrupted === true,
     healthBuildFraction: state === null || state.healthBuildFraction === null
       ? 0
@@ -72,7 +71,7 @@ function getConstructionPieceRecord(
   mountIndex: number | null = null,
 ): ConstructionPieceBuildRecord | null {
   const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return null;
+  if (buildable === null || buildable.isComplete) return null;
   for (let i = 0; i < buildable.pieces.length; i++) {
     const piece = buildable.pieces[i];
     if (piece.kind === kind && piece.mountIndex === mountIndex) return piece;
@@ -86,41 +85,54 @@ export function isConstructionPieceMaterialized(
   mountIndex: number | null = null,
 ): boolean {
   const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return true;
+  if (buildable === null || buildable.isComplete) return true;
   const piece = getConstructionPieceRecord(entity, kind, mountIndex);
   return piece === null || piece.isActive;
 }
 
-export function getConstructionPieceRenderFraction(
+/** Raw per-piece build fraction (0..1) for the renderer's nanoframe
+ *  bands. 0 = queued (nothing paid yet), 1 = complete or not under
+ *  construction. This is the value the BAR-style materialization
+ *  thresholds `pow(fraction, e)` consume. */
+export function getConstructionPieceBuildFraction(
   entity: Entity,
   kind: ConstructionPieceKind,
   mountIndex: number | null = null,
 ): number {
   const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return 1;
-  const piece = getConstructionPieceRecord(entity, kind, mountIndex);
-  if (piece === null) return 1;
-  if (!piece.isActive) return 0;
-  return Math.max(0.05, Math.min(1, getPieceBuildFraction(piece)));
-}
-
-/** Per-piece build-in opacity (0..1) for the materialization fade.
- *  0 = piece not yet started (fully transparent / dithered out), 1 =
- *  fully built / opaque. Mirrors getConstructionPieceRenderFraction but
- *  with a true 0 floor: that function floors at 0.05 because it drives
- *  body SCALE, whereas opacity wants real transparency at the start so a
- *  piece materializes from invisible rather than popping in at 5%. */
-export function getConstructionPieceOpacity(
-  entity: Entity,
-  kind: ConstructionPieceKind,
-  mountIndex: number | null = null,
-): number {
-  const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return 1;
+  if (buildable === null || buildable.isComplete) return 1;
   const piece = getConstructionPieceRecord(entity, kind, mountIndex);
   if (piece === null) return 1;
   if (!piece.isActive) return 0;
   return Math.max(0, Math.min(1, getPieceBuildFraction(piece)));
+}
+
+/** BAR-derived whole-part translucency for a build fraction: a queued
+ *  frame renders as the 24%-alpha ghost, an in-progress frame never
+ *  drops below the not-yet-built alpha floor, and completion is fully
+ *  opaque. One curve for every backend that carries a single alpha
+ *  (instanced pools, custom shader parts); the per-object band shader
+ *  reproduces the same envelope per-fragment. */
+export function getBuildAlphaForFraction(fraction: number): number {
+  if (fraction >= 1) return 1;
+  if (fraction <= 0) return NANOFRAME_VISUAL_CONFIG.ghostAlpha;
+  return Math.max(NANOFRAME_VISUAL_CONFIG.topAlphaFloor, fraction);
+}
+
+/** Per-piece render alpha for single-alpha backends: the BAR
+ *  translucency curve over the piece's build fraction. Inactive pieces
+ *  stay fully transparent until construction activates them. */
+export function getConstructionPieceRenderAlpha(
+  entity: Entity,
+  kind: ConstructionPieceKind,
+  mountIndex: number | null = null,
+): number {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isComplete) return 1;
+  const piece = getConstructionPieceRecord(entity, kind, mountIndex);
+  if (piece === null) return 1;
+  if (!piece.isActive) return 0;
+  return getBuildAlphaForFraction(getPieceBuildFraction(piece));
 }
 
 export function isConstructionBodyMaterialized(entity: Entity): boolean {
@@ -172,19 +184,18 @@ export function getTotalRemainingCost(b: Buildable): number {
 export function isEntityActive(entity: Entity): boolean {
   const b = entity.buildable;
   if (!b) return true;
-  if (b.isGhost) return false;
   return b.isComplete;
 }
 
-/** Convenience: true iff the entity is a shell (in-world, non-ghost,
+/** Convenience: true iff the entity is a shell (in-world,
  *  non-complete). Drives shell rendering + bar visibility. */
 export function isShell(entity: Entity): boolean {
   const b = entity.buildable;
-  return !!b && !b.isGhost && !b.isComplete && !b.isInterrupted;
+  return !!b && !b.isComplete && !b.isInterrupted;
 }
 
 export function isBuildInProgress(buildable: Buildable | null | undefined): buildable is Buildable {
-  return !!buildable && !buildable.isGhost && !buildable.isComplete && !buildable.isInterrupted;
+  return !!buildable && !buildable.isComplete && !buildable.isInterrupted;
 }
 
 export function isBuildBlockingActivation(buildable: Buildable | null | undefined): boolean {

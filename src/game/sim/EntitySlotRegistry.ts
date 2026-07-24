@@ -42,7 +42,6 @@ export const ENTITY_SLOT_FLAG_HAS_COMBAT = 1 << 6;
 
 export const ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE = 1 << 0;
 export const ENTITY_SLOT_BUILD_FLAG_COMPLETE = 1 << 1;
-export const ENTITY_SLOT_BUILD_FLAG_GHOST = 1 << 2;
 export const ENTITY_SLOT_BUILD_FLAG_INTERRUPTED = 1 << 3;
 
 export const ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL = 1 << 0;
@@ -1159,7 +1158,6 @@ export class EntitySlotRegistry {
     if (buildable === null) return ENTITY_SLOT_BUILD_FLAG_COMPLETE;
     let flags = ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE;
     if (buildable.isComplete) flags |= ENTITY_SLOT_BUILD_FLAG_COMPLETE;
-    if (buildable.isGhost) flags |= ENTITY_SLOT_BUILD_FLAG_GHOST;
     if (buildable.isInterrupted) flags |= ENTITY_SLOT_BUILD_FLAG_INTERRUPTED;
     return flags;
   }

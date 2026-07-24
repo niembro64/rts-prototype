@@ -224,7 +224,7 @@ function pieceRecordsMatchSpecs(
 
 function ensureConstructionPieceRecords(entity: Entity): void {
   const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return;
+  if (buildable === null || buildable.isComplete) return;
   const specs = scalePieceCostsToBuildableRequired(
     getConstructionPieceSpecs(entity),
     buildable.required,
@@ -338,7 +338,7 @@ function reconcileAndGrowConstructionPieces(
 
 export function initializeConstructionPieceHealth(entity: Entity, world: WorldState | null = null): void {
   const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) return;
+  if (buildable === null || buildable.isComplete) return;
   ensureConstructionPieceRecords(entity);
   buildable.healthBuildFraction = getBuildFraction(buildable);
   reconcileAndGrowConstructionPieces(world, entity, 'zero');
@@ -374,7 +374,7 @@ function completeConstruction(
   result: ConstructionLifecycleResult,
 ): void {
   const buildable = entity.buildable;
-  if (!buildable || buildable.isComplete || buildable.isGhost) return;
+  if (!buildable || buildable.isComplete) return;
   buildable.paid = { ...buildable.required };
   buildable.isComplete = true;
   buildable.healthBuildFraction = 1;
@@ -408,7 +408,7 @@ export function updateConstructionLifecycle(world: WorldState): ConstructionLife
   for (const list of sources) {
     for (const entity of list) {
       const buildable = entity.buildable;
-      if (!buildable || buildable.isComplete || buildable.isGhost || buildable.isInterrupted) continue;
+      if (!buildable || buildable.isComplete || buildable.isInterrupted) continue;
       const buildFraction = getBuildFraction(buildable);
       growConstructionHp(world, entity, buildFraction);
       if (isConstructionAlive(entity) && isBuildFullyPaid(buildable)) {

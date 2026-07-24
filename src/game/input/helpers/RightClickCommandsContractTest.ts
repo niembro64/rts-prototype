@@ -352,7 +352,6 @@ export function runRightClickCommandsContractTest(): void {
     building: { hp: 10, maxHp: 100, width: 40, height: 40 } as Entity['building'],
     buildable: {
       isComplete: false,
-      isGhost: false,
       isInterrupted: false,
     } as Entity['buildable'],
   };

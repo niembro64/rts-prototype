@@ -1,7 +1,4 @@
 {
-  "buildBubble": {
-    "radiusCollisionMult": 2
-  },
   "shellBar": {
     "worldHeight": 4,
     "canvasWidth": 128,

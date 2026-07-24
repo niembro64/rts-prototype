@@ -11,7 +11,9 @@ import {
   disposeEntityGroupFade,
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
+  updateEntityBuildVisual,
 } from './EntityFade3D';
+import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import {
   buildBuildingShape,
@@ -659,9 +661,14 @@ export class BuildingEntityRenderer3D {
   }
 
   private applyBuildingEntityFade(mesh: EntityMesh, fade: number): void {
-    if (fade < 1 || mesh.buildingGroupFadeActive === true) {
-      applyEntityGroupFade(mesh.group, fade);
-      mesh.buildingGroupFadeActive = fade < 1;
+    const build = mesh.entityBuildVisual !== undefined
+      && mesh.entityBuildVisual.progress < 1
+      ? mesh.entityBuildVisual
+      : null;
+    const fadeActive = fade < 1 || build !== null;
+    if (fadeActive || mesh.buildingGroupFadeActive === true) {
+      applyEntityGroupFade(mesh.group, fade, build);
+      mesh.buildingGroupFadeActive = fadeActive;
     }
   }
 
@@ -967,13 +974,29 @@ export class BuildingEntityRenderer3D {
       mesh.buildingUnitOverlayVersion = unitOverlayStateVersion;
     }
 
-    // Materialization fade — mounted turrets share the host body's build
+    // Materialization — mounted turrets share the host body's build
     // fraction because they are not separate construction pieces.
     // Finished buildings sit at opacity 1, where applyEntityGroupFade
-    // restores the real materials and costs nothing.
+    // restores the real materials and costs nothing. While under
+    // construction the per-Mesh assembly runs the BAR nanoframe bands
+    // (queued ghost at fraction 0, bottom-to-top materialization after),
+    // so the group fade carries only the vision fade-in — the bands own
+    // the build translucency.
     const bodyOpacity = rows.bodyOpacity[row];
     mesh.buildingMaterializationOpacity = bodyOpacity;
-    this.applyBuildingEntityFade(mesh, bodyOpacity * this.currentSpawnFadeIn(entity.id));
+    if (progress < 1) {
+      updateEntityBuildVisual(
+        mesh,
+        progress,
+        entityBodyColorHexForPlayer(ownerId),
+      );
+    } else {
+      mesh.entityBuildVisual = undefined;
+    }
+    this.applyBuildingEntityFade(
+      mesh,
+      (progress < 1 ? 1 : bodyOpacity) * this.currentSpawnFadeIn(entity.id),
+    );
     // While the detail-rung gate holds this building's animators frozen,
     // sync would re-register them right before this frame's animation
     // tick — the gate owns registration until the rung climbs back.

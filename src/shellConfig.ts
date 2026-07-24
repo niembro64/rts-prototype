@@ -4,57 +4,14 @@
 // a unit at a factory or starts a building. It carries independent
 // resource accumulators (energy / metal) that fill
 // from the owner's stockpile. Until every accumulator hits its
-// blueprint cost the entity is rendered as a colorless shell, with no
-// animations / combat / production / income. Per-mesh shell fallbacks are
-// translucent; instanced shell paths use plain pale instance colors to avoid
-// cross-GPU alpha shader artifacts.
+// blueprint cost the entity renders through the shared BAR-style
+// nanoframe materialization (see EntityFade3D / constructionVisualConfig),
+// with no animations / combat / production / income.
 //
 // Every tunable knob for that look-and-feel lives here. Renderers and
 // the per-tick HP-sync pass import from this single source.
 import shellConfig from './shellConfig.json';
 import { COLORS, RESOURCE_COLOR_CSS } from './colorsConfig';
-
-/** Same color as a 0xRRGGBB hex literal — keeps Three's Color
- *  constructors that expect a number happy. Must agree with
- *  SHELL_PALE_RGB rounded to 8-bit per channel. */
-export const SHELL_PALE_HEX = COLORS.construction.shell.pale.colorHex;
-
-// ── Build-bubble visuals ─────────────────────────────────────────
-// The "build bubble" is the cluster of orbs the factory's
-// FactoryBuildSpotRig emits while a unit is forming at the center
-// bay — outer ghost shell, inner glowing core, travelling pulses
-// from the nozzle, orbiting sparks. Per user direction the palette is
-// strictly whitish / grayish (no team color, no amber, no cyan
-// glass), and the outer ghost shell sizes off the queued unit's collision
-// radius (not its visual radius).
-
-/** Outer ghost shell — the big translucent bubble centered on the
- *  center bay. */
-export const BUILD_BUBBLE_GHOST_COLOR_HEX =
-  COLORS.construction.buildBubble.ghost.colorHex;
-export const BUILD_BUBBLE_GHOST_OPACITY = COLORS.construction.buildBubble.ghost.opacity;
-
-/** Small inner core orb — the bright center inside the ghost. */
-export const BUILD_BUBBLE_CORE_COLOR_HEX = COLORS.construction.buildBubble.core.colorHex;
-export const BUILD_BUBBLE_CORE_OPACITY = COLORS.construction.buildBubble.core.opacity;
-
-/** Travelling pulses that arc from the factory nozzle to the center
- *  bay. Slightly cooler / more saturated than core so they read as
- *  "energy being delivered". Still strictly grayscale. */
-export const BUILD_BUBBLE_PULSE_COLOR_HEX =
-  COLORS.construction.buildBubble.pulse.colorHex;
-export const BUILD_BUBBLE_PULSE_OPACITY = COLORS.construction.buildBubble.pulse.opacity;
-
-/** Tiny sparks orbiting the bubble at MAX tier. */
-export const BUILD_BUBBLE_SPARK_COLOR_HEX =
-  COLORS.construction.buildBubble.spark.colorHex;
-export const BUILD_BUBBLE_SPARK_OPACITY = COLORS.construction.buildBubble.spark.opacity;
-
-/** Outer-ghost-shell radius as a multiplier of the queued unit's
- *  collision radius. The bubble grows toward this size with build
- *  progress (eased), with a small pulse modulation for life. */
-export const BUILD_BUBBLE_RADIUS_COLLISION_MULT =
-  shellConfig.buildBubble.radiusCollisionMult;
 
 /** Bar palette + layout. Both the HP bar (with its build-mode overlay)
  *  and the construction-progress bars (energy / metal)

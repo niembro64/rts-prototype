@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import type { UnitBodyShape } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
+import type { EntityBuildVisual } from './EntityFade3D';
 import type { TurretMesh } from './TurretMesh3D';
 import type { GroundRing3D } from './GroundRing3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
@@ -196,6 +197,15 @@ export type EntityMesh = {
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */
   unitGroupFadeActive?: boolean;
+  /** Reusable nanoframe band parameters while this entity is under
+   *  construction (see EntityFade3D). Mutated in place each frame so
+   *  the steady-state build loop allocates nothing. */
+  entityBuildVisual?: EntityBuildVisual;
+  /** Cached visual height (world units) and group-local base offset for
+   *  normalizing nanoframe band height. Computed once per mesh from its
+   *  bounding box the first frame it renders under construction. */
+  buildVisualHeight?: number;
+  buildVisualBaseOffsetY?: number;
   /** Whether instanced body/turret/mirror slots or leg slots are carrying
    *  a non-opaque materialization fade. Used to restore those slots to
    *  opacity 1 exactly once, then skip steady-state fade writes. */

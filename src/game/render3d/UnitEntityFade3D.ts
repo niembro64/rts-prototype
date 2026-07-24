@@ -1,6 +1,6 @@
 import { VISION_FADE_IN_MS } from '@/visionConfig';
 import type { EntityId } from '../sim/types';
-import { applyEntityGroupFade } from './EntityFade3D';
+import { applyEntityGroupFade, type EntityBuildVisual } from './EntityFade3D';
 import type { EntityMesh } from './EntityMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { fadeLocomotion } from './Locomotion3D';
@@ -25,7 +25,14 @@ export function applyUnitEntityFade3D(
   turretFades: readonly number[] | null,
   unitDetailInstances: UnitDetailInstanceRenderer3D,
   legRenderer: LegInstancedRenderer,
+  build: EntityBuildVisual | null = null,
+  groupFade: number = bodyFade,
 ): void {
+  // Instanced pools (chassis slots, details, legs) carry the single
+  // BAR translucency-curve alpha; the per-Mesh group additionally runs
+  // the nanoframe bands while `build` is present, with `groupFade`
+  // holding only the vision/death alpha so the bands own the build
+  // translucency without double-applying the curve.
   const bodyFadeActive = bodyFade < 1;
   const specificTurretFadeActive = hasSpecificUnitTurretFade(mesh, bodyFade, turretFades);
   if (bodyFadeActive || specificTurretFadeActive || mesh.unitFadeActive === true) {
@@ -34,9 +41,10 @@ export function applyUnitEntityFade3D(
     mesh.unitFadeActive = bodyFadeActive || specificTurretFadeActive;
   }
 
-  if (bodyFadeActive || mesh.unitGroupFadeActive === true) {
-    applyEntityGroupFade(mesh.group, bodyFade);
-    mesh.unitGroupFadeActive = bodyFadeActive;
+  const groupFadeActive = groupFade < 1 || build !== null;
+  if (groupFadeActive || mesh.unitGroupFadeActive === true) {
+    applyEntityGroupFade(mesh.group, groupFade, build);
+    mesh.unitGroupFadeActive = groupFadeActive;
   }
 
   if (turretFades === null) return;

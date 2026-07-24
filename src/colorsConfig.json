@@ -264,31 +264,6 @@
     }
   },
   "construction": {
-    "shell": {
-      "pale": {
-        "colorHex": "#e0e0e0",
-        "rgb01": "#e0e0e0",
-        "opacity": 0.5
-      }
-    },
-    "buildBubble": {
-      "ghost": {
-        "colorHex": "#d8d8d8",
-        "opacity": 0.45
-      },
-      "core": {
-        "colorHex": "#f4f4f4",
-        "opacity": 0.85
-      },
-      "pulse": {
-        "colorHex": "#c8c8c8",
-        "opacity": 0.7
-      },
-      "spark": {
-        "colorHex": "#ffffff",
-        "opacity": 0.9
-      }
-    },
     "shellBar": {
       "background": {
         "cssColor": "#333333",

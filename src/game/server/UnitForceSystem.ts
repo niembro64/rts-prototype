@@ -36,7 +36,6 @@ import { createWorldSupportSurface } from '../sim/supportSurface';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import {
   ENTITY_SLOT_BUILD_FLAG_COMPLETE,
-  ENTITY_SLOT_BUILD_FLAG_GHOST,
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
   ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
   ENTITY_SLOT_FLAG_HAS_BODY,
@@ -450,7 +449,6 @@ export class UnitForceSystem {
             (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0 &&
             (buildFlags & (
               ENTITY_SLOT_BUILD_FLAG_COMPLETE |
-              ENTITY_SLOT_BUILD_FLAG_GHOST |
               ENTITY_SLOT_BUILD_FLAG_INTERRUPTED
             )) === 0
           )

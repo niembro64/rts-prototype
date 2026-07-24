@@ -36,3 +36,49 @@ export const CONSTRUCTION_TOWER_SPIN_CONFIG = {
   radPerSec: constructionVisualConfig.towerSpin.radPerSec,
   responseHalfLifeMultiplier: constructionVisualConfig.towerSpin.responseHalfLifeMultiplier,
 } as const;
+
+/** BAR-faithful nanoframe/build-flow visual constants.
+ *
+ * Sourced from Beyond All Reason's construction rendering so the build
+ * flow reads the same here:
+ *  - ghostAlpha 0.24: a queued-but-unstarted build renders as the full
+ *    team-tinted model at 24% alpha (BAR gfx_showbuilderqueue
+ *    `shapeOpacity`).
+ *  - bandExponents [3, 1.5, 0.7, 0.35]: the four rising height
+ *    thresholds `pow(buildProgress, e)` of BAR's CUS GL4 nanoframe —
+ *    finished material below the lowest band, team-pulse tint between
+ *    bands, flat translucent team color above the highest.
+ *  - topAlphaFloor 0.4: alpha floor of the not-yet-built top portion.
+ *  - pulseRadPerSec 4.5 / pulseMaxGain 1.78: BAR's
+ *    `sin(simFrame * 0.15)` at 30 sim-Hz pulsing team color 1.0x-1.78x.
+ *  - scanLineHalfWidth: white glow band half-width (fraction of model
+ *    height) around each threshold — BAR's climbing "scan lines".
+ *  - worldGridCell: world-space construction lattice (this game's
+ *    20-unit build grid stands in for BAR's 8-elmo lattice) and
+ *    modelGridCellMax→Min: the model-space grid that shrinks 12→2 as
+ *    progress rises; both fade out over the final `gridLastFraction`.
+ */
+function readBandExponents(raw: number[]): readonly [number, number, number, number] {
+  if (raw.length !== 4) {
+    throw new Error(
+      `constructionVisualConfig.nanoframe.bandExponents must have exactly 4 entries, got ${raw.length}`,
+    );
+  }
+  return [raw[0], raw[1], raw[2], raw[3]];
+}
+
+export const NANOFRAME_VISUAL_CONFIG = {
+  ghostAlpha: constructionVisualConfig.nanoframe.ghostAlpha,
+  ghostTeamMix: constructionVisualConfig.nanoframe.ghostTeamMix,
+  topAlphaFloor: constructionVisualConfig.nanoframe.topAlphaFloor,
+  bandExponents: readBandExponents(constructionVisualConfig.nanoframe.bandExponents),
+  pulseRadPerSec: constructionVisualConfig.nanoframe.pulseRadPerSec,
+  pulseMaxGain: constructionVisualConfig.nanoframe.pulseMaxGain,
+  scanLineHalfWidth: constructionVisualConfig.nanoframe.scanLineHalfWidth,
+  worldGridCell: constructionVisualConfig.nanoframe.worldGridCell,
+  modelGridCellMax: constructionVisualConfig.nanoframe.modelGridCellMax,
+  modelGridCellMin: constructionVisualConfig.nanoframe.modelGridCellMin,
+  gridLastFraction: constructionVisualConfig.nanoframe.gridLastFraction,
+  gridIntensity: constructionVisualConfig.nanoframe.gridIntensity,
+  tintMix: constructionVisualConfig.nanoframe.tintMix,
+} as const;

@@ -1394,7 +1394,6 @@ export function runClientSnapshotApplierContractTest(): void {
     { energy: 100, metal: 50 },
     {
       paid: { energy: 25, metal: 10 },
-      isGhost: null,
       isInterrupted: false,
       healthBuildFraction: null,
     },
@@ -1475,7 +1474,6 @@ export function runClientSnapshotApplierContractTest(): void {
     { energy: 100, metal: 50 },
     {
       paid: { energy: 45, metal: 22 },
-      isGhost: null,
       isInterrupted: false,
       healthBuildFraction: null,
     },
@@ -1644,7 +1642,6 @@ export function runClientSnapshotApplierContractTest(): void {
     { energy: 200, metal: 100 },
     {
       paid: { energy: 50, metal: 20 },
-      isGhost: null,
       isInterrupted: false,
       healthBuildFraction: null,
     },
@@ -1681,7 +1678,6 @@ export function runClientSnapshotApplierContractTest(): void {
     { energy: 200, metal: 100 },
     {
       paid: { energy: 75, metal: 25 },
-      isGhost: null,
       isInterrupted: false,
       healthBuildFraction: null,
     },

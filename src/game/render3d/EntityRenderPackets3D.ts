@@ -3,8 +3,8 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import {
-  getConstructionPieceOpacity,
-  getConstructionPieceRenderFraction,
+  getConstructionPieceBuildFraction,
+  getConstructionPieceRenderAlpha,
   isBuildInProgress,
   isConstructionPieceMaterialized,
   isShell,
@@ -189,6 +189,7 @@ export class UnitRenderPacket3D {
   orientationW = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   hasFullOrientation = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  progress = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   supportPointOffsetZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   shieldPanelTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -252,7 +253,8 @@ export class UnitRenderPacket3D {
     this.orientationZ[cursor] = unit.orientation?.z ?? 0;
     this.orientationW[cursor] = unit.orientation?.w ?? 1;
     this.hasFullOrientation[cursor] = unit.orientation !== null ? 1 : 0;
-    this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
+    this.bodyOpacity[cursor] = getConstructionPieceRenderAlpha(entity, 'body');
+    this.progress[cursor] = getConstructionPieceBuildFraction(entity, 'body');
     this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
     this.turretCount[cursor] = turretRows.length;
     this.shieldPanelTurretIndex[cursor] = getShieldPanelTurretIndex(turretRows);
@@ -345,6 +347,7 @@ export class UnitRenderPacket3D {
     this.orientationW[cursor] = state.orientationW[slot];
     this.hasFullOrientation[cursor] = state.hasFullOrientation[slot];
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
+    this.progress[cursor] = state.buildProgress[slot];
     this.supportPointOffsetZ[cursor] = state.supportPointOffsetZ[slot];
     this.turretCount[cursor] = state.turretCount[slot];
     this.shieldPanelTurretIndex[cursor] = state.shieldPanelTurretIndex[slot];
@@ -447,6 +450,7 @@ export class UnitRenderPacket3D {
     this.orientationW = growFloat32(this.orientationW, nextCapacity);
     this.hasFullOrientation = growUint8(this.hasFullOrientation, nextCapacity);
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
+    this.progress = growFloat32(this.progress, nextCapacity);
     this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.shieldPanelTurretIndex = growInt16(this.shieldPanelTurretIndex, nextCapacity);
@@ -548,8 +552,8 @@ export class BuildingRenderPacket3D {
     this.footprintDepth[cursor] = visualConfig !== null
       ? visualConfig.gridHeight * BUILD_GRID_CELL_SIZE
       : building.height;
-    this.progress[cursor] = getConstructionPieceRenderFraction(entity, 'body');
-    this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
+    this.progress[cursor] = getConstructionPieceBuildFraction(entity, 'body');
+    this.bodyOpacity[cursor] = getConstructionPieceRenderAlpha(entity, 'body');
     this.lodProxyRadius[cursor] = entityLodProxyRadius3D(entity);
     this.lodProxyGlyph[cursor] = entityLodProxyGlyph3D(entity);
     this.turretCount[cursor] = turretRows.length;
@@ -628,7 +632,7 @@ export class BuildingRenderPacket3D {
     this.baseY[cursor] = state.buildingBaseY[slot];
     this.width[cursor] = state.buildingWidth[slot];
     this.footprintDepth[cursor] = state.buildingFootprintDepth[slot];
-    this.progress[cursor] = state.buildingProgress[slot];
+    this.progress[cursor] = state.buildProgress[slot];
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
     this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
     this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];

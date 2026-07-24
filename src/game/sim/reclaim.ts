@@ -6,14 +6,13 @@ export const RECLAIM_REFUND_FRACTION = 0.5;
 
 export function isReclaimableTarget(target: Entity | null | undefined): target is Entity {
   if (!target || target.commander) return false;
-  if (target.buildable !== null && target.buildable.isGhost) return false;
   if (target.unit) return target.unit.hp > 0;
   if (target.building) return target.building.hp > 0;
   return false;
 }
 
 export function getReclaimResourceValue(target: Entity): ResourceCost {
-  if (target.buildable && !target.buildable.isGhost) {
+  if (target.buildable) {
     const hpState = target.unit ?? target.building;
     const hpFraction = hpState ? hpState.hp / Math.max(1, hpState.maxHp) : 0;
     const buildFraction = Math.max(

@@ -919,7 +919,6 @@ export type Buildable = {
   paid: ResourceCost;
   required: ResourceCost;
   isComplete: boolean;
-  isGhost: boolean;
   /** True once construction was cancelled after at least one real
    *  piece materialized. Funding stops, but the piece records remain
    *  authoritative for rendering/targeting the partial assembly. */

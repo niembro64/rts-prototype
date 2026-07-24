@@ -578,7 +578,6 @@ function createUnitFromNetwork(
       },
       {
         paid: unitBuild.paid,
-        isGhost: null,
         isInterrupted: unitBuild.interrupted === true,
         healthBuildFraction: null,
       },
@@ -791,7 +790,6 @@ function createUnitFromTypedFullWireRow(
       },
       {
         paid: { energy: values[base + 47], metal: values[base + 48] },
-        isGhost: null,
         isInterrupted: values[base + 63] !== 0,
         healthBuildFraction: null,
       },
@@ -876,7 +874,6 @@ function createBuildingFromNetwork(
     // contract, so snapshots only ship paid counters.
     entity.buildable = createBuildable(config.cost, {
       paid: b.build.paid,
-      isGhost: null,
       isInterrupted: b.build.interrupted === true,
       healthBuildFraction: null,
     });
@@ -1019,7 +1016,6 @@ function createBuildingFromTypedFullWireRow(
   if (values[base + 15] === 0) {
     entity.buildable = createBuildable(config.cost, {
       paid: { energy: values[base + 16], metal: values[base + 17] },
-      isGhost: null,
       isInterrupted: values[base + 34] !== 0,
       healthBuildFraction: null,
     });

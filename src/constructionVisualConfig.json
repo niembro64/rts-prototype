@@ -2,5 +2,20 @@
   "towerSpin": {
     "radPerSec": 0.42,
     "responseHalfLifeMultiplier": 1
+  },
+  "nanoframe": {
+    "ghostAlpha": 0.24,
+    "ghostTeamMix": 0.5,
+    "topAlphaFloor": 0.4,
+    "bandExponents": [3.0, 1.5, 0.7, 0.35],
+    "pulseRadPerSec": 4.5,
+    "pulseMaxGain": 1.78,
+    "scanLineHalfWidth": 0.01,
+    "worldGridCell": 20,
+    "modelGridCellMax": 12,
+    "modelGridCellMin": 2,
+    "gridLastFraction": 0.05,
+    "gridIntensity": 0.35,
+    "tintMix": 0.5
   }
 }

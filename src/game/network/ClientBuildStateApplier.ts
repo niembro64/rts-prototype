@@ -74,7 +74,6 @@ export function applyNetworkBuildStateFields(
   if (!buildable) {
     buildable = createBuildable(required, {
       paid: { energy: paidEnergy, metal: paidMetal },
-      isGhost: null,
       isInterrupted: interrupted,
       healthBuildFraction: null,
     });
@@ -89,7 +88,6 @@ export function applyNetworkBuildStateFields(
   buildable.paid.energy = paidEnergy;
   buildable.paid.metal = paidMetal;
   buildable.isComplete = false;
-  buildable.isGhost = false;
   buildable.isInterrupted = interrupted;
   buildable.healthBuildFraction = getBuildFraction(buildable);
   initializeConstructionPieceHealth(entity);
