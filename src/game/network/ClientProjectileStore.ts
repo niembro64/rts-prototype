@@ -29,6 +29,7 @@ import {
   decodeProjectileShotBlueprintId,
   isLineProjectileEntity,
 } from './ClientProjectileUtils';
+import { createBeamPointDto, type BeamPointDto } from './snapshotDtoCopy';
 import {
   dequantizeNormal as deqNormal,
   dequantizeProjectilePosition as deqProjPos,
@@ -91,6 +92,14 @@ function projectileConfigWithTurretIndex(
   const resolved = config.turretIndex === turretIndex ? config : { ...config, turretIndex };
   projectileConfigCache.set(cacheKey, resolved);
   return resolved;
+}
+
+function createBeamEndpoint(x: number, y: number, z: number): BeamPointDto {
+  const p = createBeamPointDto();
+  p.x = x;
+  p.y = y;
+  p.z = z;
+  return p;
 }
 
 export class ClientProjectileStore {
@@ -748,30 +757,16 @@ export class ClientProjectileStore {
         endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
         segmentLimitReached: false,
         points: spawn.beam ? [
-          {
-            x: deqProjPos(spawn.beam.start.x),
-            y: deqProjPos(spawn.beam.start.y),
-            z: deqProjPos(spawn.beam.start.z),
-            vx: 0, vy: 0, vz: 0,
-            reflectorEntityId: null,
-            reflectorKind: null,
-            reflectorPlayerId: null,
-            normalX: null,
-            normalY: null,
-            normalZ: null,
-          },
-          {
-            x: deqProjPos(spawn.beam.end.x),
-            y: deqProjPos(spawn.beam.end.y),
-            z: deqProjPos(spawn.beam.end.z),
-            vx: 0, vy: 0, vz: 0,
-            reflectorEntityId: null,
-            reflectorKind: null,
-            reflectorPlayerId: null,
-            normalX: null,
-            normalY: null,
-            normalZ: null,
-          },
+          createBeamEndpoint(
+            deqProjPos(spawn.beam.start.x),
+            deqProjPos(spawn.beam.start.y),
+            deqProjPos(spawn.beam.start.z),
+          ),
+          createBeamEndpoint(
+            deqProjPos(spawn.beam.end.x),
+            deqProjPos(spawn.beam.end.y),
+            deqProjPos(spawn.beam.end.z),
+          ),
         ] : null,
       },
     };
@@ -883,30 +878,16 @@ export class ClientProjectileStore {
         endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
         segmentLimitReached: false,
         points: hasBeam ? [
-          {
-            x: deqProjPos(values[base + 17]),
-            y: deqProjPos(values[base + 18]),
-            z: deqProjPos(values[base + 19]),
-            vx: 0, vy: 0, vz: 0,
-            reflectorEntityId: null,
-            reflectorKind: null,
-            reflectorPlayerId: null,
-            normalX: null,
-            normalY: null,
-            normalZ: null,
-          },
-          {
-            x: deqProjPos(values[base + 20]),
-            y: deqProjPos(values[base + 21]),
-            z: deqProjPos(values[base + 22]),
-            vx: 0, vy: 0, vz: 0,
-            reflectorEntityId: null,
-            reflectorKind: null,
-            reflectorPlayerId: null,
-            normalX: null,
-            normalY: null,
-            normalZ: null,
-          },
+          createBeamEndpoint(
+            deqProjPos(values[base + 17]),
+            deqProjPos(values[base + 18]),
+            deqProjPos(values[base + 19]),
+          ),
+          createBeamEndpoint(
+            deqProjPos(values[base + 20]),
+            deqProjPos(values[base + 21]),
+            deqProjPos(values[base + 22]),
+          ),
         ] : null,
       },
     };

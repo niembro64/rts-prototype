@@ -109,6 +109,27 @@ function hpPair(entity: Entity): { hp: number; maxHp: number } | null {
   return null;
 }
 
+function sumSelectionHp(
+  selectedUnits: readonly Entity[],
+  selectedBuildings: readonly Entity[],
+): { hp: number; maxHp: number } {
+  let hp = 0;
+  let maxHp = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const pair = hpPair(selectedUnits[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const pair = hpPair(selectedBuildings[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  return { hp, maxHp };
+}
+
 function maxWeaponRange(entity: Entity): number | null {
   const turrets = entity.combat?.turrets;
   if (turrets === undefined || turrets.length === 0) return null;
@@ -429,20 +450,7 @@ function buildSelectionDetails(
     return buildSingleSelectionDetails(entity);
   }
 
-  let hp = 0;
-  let maxHp = 0;
-  for (let i = 0; i < selectedUnits.length; i++) {
-    const pair = hpPair(selectedUnits[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
-  for (let i = 0; i < selectedBuildings.length; i++) {
-    const pair = hpPair(selectedBuildings[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
+  const { hp, maxHp } = sumSelectionHp(selectedUnits, selectedBuildings);
   const details: SelectionInfo['details'] = [
     { label: 'Selected', value: `${totalSelected}` },
     { label: 'Types', value: `${selectedUnits.length}U ${selectedBuildings.length}B` },
@@ -614,20 +622,7 @@ function buildSelectionEntityInfo(
     if (selectedBuildings[0] !== undefined) return buildEntitySelectionInfo(selectedBuildings[0], 'building');
   }
 
-  let hp = 0;
-  let maxHp = 0;
-  for (let i = 0; i < selectedUnits.length; i++) {
-    const pair = hpPair(selectedUnits[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
-  for (let i = 0; i < selectedBuildings.length; i++) {
-    const pair = hpPair(selectedBuildings[i]);
-    if (pair === null) continue;
-    hp += pair.hp;
-    maxHp += pair.maxHp;
-  }
+  const { hp, maxHp } = sumSelectionHp(selectedUnits, selectedBuildings);
 
   const typeLabels: string[] = [];
   if (selectedUnits.length > 0) typeLabels.push(`${selectedUnits.length} unit${selectedUnits.length === 1 ? '' : 's'}`);

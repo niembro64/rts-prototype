@@ -15,6 +15,15 @@
 import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
+import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
   createPrimitiveSphereGeometry,
@@ -63,26 +72,6 @@ type PendingTubeBirths = {
   intensitySum: number;
 };
 
-const VERTEX_SHADER = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const FRAGMENT_SHADER = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
 type TubeBeadPool = {
   geom: THREE.BufferGeometry;
   mesh: THREE.InstancedMesh;
@@ -96,6 +85,9 @@ export class PylonTubeFlowRenderer {
   private root: THREE.Group;
   private mat: THREE.ShaderMaterial;
   private pools: Record<PrimitiveGeometryTier, TubeBeadPool>;
+  // Per-frame tier tallies — instance-level scratch so update() does not
+  // allocate a counter object every frame.
+  private readonly _tierCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
   private _scratchMat = new THREE.Matrix4();
   private frameIndex = 0;
   private beadCount = 0;
@@ -113,8 +105,8 @@ export class PylonTubeFlowRenderer {
     parentWorld.add(this.root);
 
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
+      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });
@@ -130,21 +122,7 @@ export class PylonTubeFlowRenderer {
     const geom = tier === 'far'
       ? getSharedPrimitiveTetrahedronGeometry(1).clone()
       : createPrimitiveSphereGeometry('effect', tier);
-    const alphaArr = new Float32Array(MAX_BEADS);
-    const colorArr = new Float32Array(MAX_BEADS * 3);
-    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
-    alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
-    colorAttr.setUsage(THREE.DynamicDrawUsage);
-    geom.setAttribute('aAlpha', alphaAttr);
-    geom.setAttribute('aColor', colorAttr);
-    const mesh = new THREE.InstancedMesh(geom, this.mat, MAX_BEADS);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.count = 0;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 6;
-    this.root.add(mesh);
-    return { geom, mesh, alphaArr, colorArr, alphaAttr, colorAttr };
+    return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_BEADS, this.mat, 6) };
   }
 
   /** Called by SprayRenderer3D when an inbound free-leg particle reaches
@@ -179,7 +157,9 @@ export class PylonTubeFlowRenderer {
       this.pendingTubeBirths.size === 0 &&
       this.flowRuntimes.size === 0
     ) {
-      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
+      this.pools.close.mesh.count = 0;
+      this.pools.mid.mesh.count = 0;
+      this.pools.far.mesh.count = 0;
       return this.handoffSprays;
     }
 
@@ -190,7 +170,10 @@ export class PylonTubeFlowRenderer {
     this.spawnPendingTubeBirths();
     this.spawnRateGatedBeads(dtSec);
     this.advanceBeads(dtSec);
-    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const counts = this._tierCounts;
+    counts.close = 0;
+    counts.mid = 0;
+    counts.far = 0;
     for (let i = 0; i < this.beadCount; i++) {
       const runtime = this.flowRuntimes.get(this.beadFlowKeys[i]);
       if (!runtime) continue;
@@ -226,20 +209,10 @@ export class PylonTubeFlowRenderer {
       pool.alphaArr[n] = BASE_ALPHA * this.beadAlphaScale[i] * Math.max(0, rootFade);
     }
 
-    for (const tier of ['close', 'mid', 'far'] as const) {
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      const tier = PRIMITIVE_GEOMETRY_TIERS[t];
       const pool = this.pools[tier];
-      const n = counts[tier];
-      pool.mesh.count = n;
-      if (n <= 0) continue;
-      pool.mesh.instanceMatrix.clearUpdateRanges();
-      pool.mesh.instanceMatrix.addUpdateRange(0, n * 16);
-      pool.mesh.instanceMatrix.needsUpdate = true;
-      pool.alphaAttr.clearUpdateRanges();
-      pool.alphaAttr.addUpdateRange(0, n);
-      pool.alphaAttr.needsUpdate = true;
-      pool.colorAttr.clearUpdateRanges();
-      pool.colorAttr.addUpdateRange(0, n * 3);
-      pool.colorAttr.needsUpdate = true;
+      uploadColorAlphaMatrixPrefix(pool.mesh, pool.alphaAttr, pool.colorAttr, counts[tier]);
     }
     this.pruneStaleRuntimes();
     return this.handoffSprays;

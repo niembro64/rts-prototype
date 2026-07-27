@@ -63,6 +63,7 @@ import {
   unregisterEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
+import { createEmptyNetworkServerSnapshot } from './stateSerializer';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -91,9 +92,18 @@ function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBui
   return grid;
 }
 
-function copyStringArrayInto(src: readonly string[], dst: string[]): void {
+function copyScalarArrayInto<T>(src: readonly T[], dst: T[]): T[] {
   dst.length = src.length;
   for (let i = 0; i < src.length; i++) dst[i] = src[i];
+  return dst;
+}
+
+function copyNullableScalarArrayInto<T>(
+  src: readonly T[] | null | undefined,
+  dst: T[] | null | undefined,
+): T[] | null {
+  if (src == null) return null;
+  return copyScalarArrayInto(src, dst ?? []);
 }
 
 function copyFloat64WireRowsInto(
@@ -127,11 +137,11 @@ function copyEntitySnapshotWireSourceInto(
   copyFloat64WireRowsInto(src.unitRows, dst.unitRows, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
   copyFloat64WireRowsInto(src.buildingRows, dst.buildingRows, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
   copyFloat64WireRowsInto(src.actionRows, dst.actionRows, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
-  copyStringArrayInto(src.actionStrings, dst.actionStrings);
+  copyScalarArrayInto(src.actionStrings, dst.actionStrings);
   copyFloat64WireRowsInto(src.turretRows, dst.turretRows, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
   copyUint32WireRowsInto(src.factorySelectedUnitRows, dst.factorySelectedUnitRows, 1);
   copyFloat64WireRowsInto(src.waypointRows, dst.waypointRows, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
-  copyStringArrayInto(src.waypointStrings, dst.waypointStrings);
+  copyScalarArrayInto(src.waypointStrings, dst.waypointStrings);
 }
 
 function clearEntitySnapshotWireSource(source: EntitySnapshotWireSource): void {
@@ -213,30 +223,9 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.paused = src.paused === true;
   dst.moveState = src.moveState;
   dst.airIdleState = src.airIdleState;
-  const srcQueue = src.queue ?? null;
-  if (srcQueue !== null) {
-    const queue = dst.queue ?? (dst.queue = []);
-    queue.length = srcQueue.length;
-    for (let i = 0; i < srcQueue.length; i++) queue[i] = srcQueue[i];
-  } else {
-    dst.queue = null;
-  }
-  const srcQuotas = src.quotas ?? null;
-  if (srcQuotas !== null) {
-    const quotas = dst.quotas ?? (dst.quotas = []);
-    quotas.length = srcQuotas.length;
-    for (let i = 0; i < srcQuotas.length; i++) quotas[i] = srcQuotas[i];
-  } else {
-    dst.quotas = null;
-  }
-  const srcQuotaCounts = src.quotaCounts ?? null;
-  if (srcQuotaCounts !== null) {
-    const quotaCounts = dst.quotaCounts ?? (dst.quotaCounts = []);
-    quotaCounts.length = srcQuotaCounts.length;
-    for (let i = 0; i < srcQuotaCounts.length; i++) quotaCounts[i] = srcQuotaCounts[i];
-  } else {
-    dst.quotaCounts = null;
-  }
+  dst.queue = copyNullableScalarArrayInto(src.queue, dst.queue);
+  dst.quotas = copyNullableScalarArrayInto(src.quotas, dst.quotas);
+  dst.quotaCounts = copyNullableScalarArrayInto(src.quotaCounts, dst.quotaCounts);
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   dst.guardTargetId = src.guardTargetId ?? null;
@@ -410,26 +399,11 @@ function copyEconomyInto(
  * snapshot would create GC spikes on the render thread.
  */
 export class ReusableNetworkSnapshotCloner {
-  private snapshot: NetworkServerSnapshot = {
-    tick: 0,
-    entities: [],
-    entityDeltaOnly: undefined,
-    projectileDeltaOnly: undefined,
-    minimapEntities: undefined,
-    economy: {} as NetworkServerSnapshot['economy'],
-    resourceMovements: undefined,
-    sprayTargets: undefined,
-    audioEvents: undefined,
-    scanPulses: undefined,
-    projectiles: undefined,
-    gameState: undefined,
-    serverMeta: undefined,
-    terrain: undefined,
-    buildability: undefined,
-    visibilityFiltered: undefined,
-    visionPlayerMask: undefined,
-    removedEntityIds: undefined,
-  };
+  private snapshot: NetworkServerSnapshot = createEmptyNetworkServerSnapshot(
+    [],
+    {} as NetworkServerSnapshot['economy'],
+    undefined,
+  );
   private economyKeys: string[] = [];
   private resourceMovements: NetworkServerSnapshotResourceMovement[] = [];
   private sprayTargets: NetworkServerSnapshotSprayTarget[] = [];
@@ -646,12 +620,7 @@ export class ReusableNetworkSnapshotCloner {
       dsm.server.ip = sm.server.ip;
       const dunits = dsm.units;
       if (sm.units.allowed) {
-        const allowed = this.serverMetaUnitsAllowed;
-        allowed.length = sm.units.allowed.length;
-        for (let i = 0; i < sm.units.allowed.length; i++) {
-          allowed[i] = sm.units.allowed[i];
-        }
-        dunits.allowed = allowed;
+        dunits.allowed = copyScalarArrayInto(sm.units.allowed, this.serverMetaUnitsAllowed);
       } else {
         dunits.allowed = undefined;
       }
@@ -703,11 +672,7 @@ export class ReusableNetworkSnapshotCloner {
     dst.visibilityFiltered = state.visibilityFiltered === true ? true : undefined;
     dst.visionPlayerMask = state.visionPlayerMask;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {
-      this.removedEntityIds.length = state.removedEntityIds.length;
-      for (let i = 0; i < state.removedEntityIds.length; i++) {
-        this.removedEntityIds[i] = state.removedEntityIds[i];
-      }
-      dst.removedEntityIds = this.removedEntityIds;
+      dst.removedEntityIds = copyScalarArrayInto(state.removedEntityIds, this.removedEntityIds);
     } else {
       dst.removedEntityIds = undefined;
     }

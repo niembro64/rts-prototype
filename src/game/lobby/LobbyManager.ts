@@ -29,6 +29,7 @@ import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
 import { applyStoredBattleServerSettings } from '../server/battleServerSettings';
 import { createHostGameGenerationSeed } from '../network/gameGenerationSeed';
+import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 
 export type BackgroundBattleState = {
   gameInstance: GameInstance;
@@ -75,13 +76,7 @@ export async function createBackgroundBattle(
   onLoadProgress?: BackgroundBattleLoadProgress,
   onStartupReady?: () => void,
 ): Promise<BackgroundBattleState> {
-  const report = async (progress: number, phase?: string) => {
-    if (!onLoadProgress) return;
-    const clamped = Number.isFinite(progress)
-      ? Math.max(0, Math.min(1, progress))
-      : 0;
-    await onLoadProgress(clamped, phase);
-  };
+  const report = createLoadProgressReporter(onLoadProgress);
 
   await report(0, 'Preparing battle');
   const rect = container.getBoundingClientRect();

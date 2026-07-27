@@ -6,6 +6,7 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getOrCreate,
   getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
@@ -47,50 +48,31 @@ export function getActiveBuildingGeometryTier(): PrimitiveGeometryTier {
 export function getBuildingCylinderGeometry(
   tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
 ): THREE.BufferGeometry {
-  let geometry = cylinderGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = tier === 'far'
-      ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
-      : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5);
-    cylinderGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(cylinderGeomByTier, tier, () => tier === 'far'
+    ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
+    : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5));
 }
 
 function getBuildingSphereGeometry(
   tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
 ): THREE.BufferGeometry {
-  let geometry = sphereGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = tier === 'far'
-      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
-      : createPrimitiveSphereGeometry('building', tier);
-    sphereGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(sphereGeomByTier, tier, () => tier === 'far'
+    ? getSharedPrimitiveTetrahedronGeometry(1).clone()
+    : createPrimitiveSphereGeometry('building', tier));
 }
 
 function getBuildingConeGeometry(
   tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
 ): THREE.BufferGeometry {
-  let geometry = coneGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = createPrimitiveConeGeometry('building', tier, 0.5);
-    coneGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(coneGeomByTier, tier, () =>
+    createPrimitiveConeGeometry('building', tier, 0.5));
 }
 const windBladeGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
 function getWindBladeGeometry(
   tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
 ): THREE.BufferGeometry {
-  let geometry = windBladeGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = createWindBladeGeometry(tier);
-    windBladeGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(windBladeGeomByTier, tier, () => createWindBladeGeometry(tier));
 }
 
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });

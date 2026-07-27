@@ -17,6 +17,7 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import { detachObject, disposeMesh } from './threeUtils';
+import { uploadPrefixRange } from './instancedBufferUpdate';
 import beamConfig from '@/beamConfig.json';
 import {
   BEAM_ENDPOINT_VERTEX_SHADER,
@@ -828,42 +829,30 @@ export class BeamRenderer3D {
       const layer = layers[layerIndex];
       layer.segmentMesh.count = segIdx;
       if (segIdx > 0) {
-        layer.segmentMesh.instanceMatrix.clearUpdateRanges();
-        layer.segmentMesh.instanceMatrix.addUpdateRange(0, segIdx * 16);
-        layer.segmentMesh.instanceMatrix.needsUpdate = true;
-        layer.segmentFlowAttr.clearUpdateRanges();
-        layer.segmentFlowAttr.addUpdateRange(0, segIdx * 4);
-        layer.segmentFlowAttr.needsUpdate = true;
+        uploadPrefixRange(layer.segmentMesh.instanceMatrix, segIdx * 16);
+        uploadPrefixRange(layer.segmentFlowAttr, segIdx * 4);
       }
       layer.activeSegmentCount = segIdx;
 
       layer.endpointMesh.count = endpointIdx;
       if (endpointIdx > 0) {
-        layer.endpointMesh.instanceMatrix.clearUpdateRanges();
-        layer.endpointMesh.instanceMatrix.addUpdateRange(0, endpointIdx * 16);
-        layer.endpointMesh.instanceMatrix.needsUpdate = true;
+        uploadPrefixRange(layer.endpointMesh.instanceMatrix, endpointIdx * 16);
       }
       layer.activeEndpointCount = endpointIdx;
     }
 
     this.mediumLayer.segmentMesh.count = mediumSegIdx;
     if (mediumSegIdx > 0) {
-      this.mediumLayer.segmentMesh.instanceMatrix.clearUpdateRanges();
-      this.mediumLayer.segmentMesh.instanceMatrix.addUpdateRange(0, mediumSegIdx * 16);
-      this.mediumLayer.segmentMesh.instanceMatrix.needsUpdate = true;
-      this.mediumLayer.segmentFlowAttr.clearUpdateRanges();
-      this.mediumLayer.segmentFlowAttr.addUpdateRange(0, mediumSegIdx * 4);
-      this.mediumLayer.segmentFlowAttr.needsUpdate = true;
+      uploadPrefixRange(this.mediumLayer.segmentMesh.instanceMatrix, mediumSegIdx * 16);
+      uploadPrefixRange(this.mediumLayer.segmentFlowAttr, mediumSegIdx * 4);
     }
     this.mediumLayer.activeSegmentCount = mediumSegIdx;
     this.mediumLayer.endpointMesh.count = mediumEndpointIdx;
     if (mediumEndpointIdx > 0) {
-      this.mediumLayer.endpointMesh.instanceMatrix.clearUpdateRanges();
-      this.mediumLayer.endpointMesh.instanceMatrix.addUpdateRange(
-        0,
+      uploadPrefixRange(
+        this.mediumLayer.endpointMesh.instanceMatrix,
         mediumEndpointIdx * 16,
       );
-      this.mediumLayer.endpointMesh.instanceMatrix.needsUpdate = true;
     }
     this.mediumLayer.activeEndpointCount = mediumEndpointIdx;
 
@@ -872,9 +861,7 @@ export class BeamRenderer3D {
       BEAM_IMPOSTER_SEGMENT_CONFIG.enabled && imposterSegIdx > 0;
     this.imposterSegmentMesh.count = imposterSegIdx;
     if (imposterSegIdx > 0) {
-      this.imposterSegmentMesh.instanceMatrix.clearUpdateRanges();
-      this.imposterSegmentMesh.instanceMatrix.addUpdateRange(0, imposterSegIdx * 16);
-      this.imposterSegmentMesh.instanceMatrix.needsUpdate = true;
+      uploadPrefixRange(this.imposterSegmentMesh.instanceMatrix, imposterSegIdx * 16);
     }
   }
 

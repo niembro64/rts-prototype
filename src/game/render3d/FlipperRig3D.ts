@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { FlipperConfig } from '@/types/blueprints';
+import { lerp, smoothstep01 } from '../math';
 import type { PlayerId } from '../sim/types';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import { getLocomotionMatByCache } from './RenderUtils';
@@ -174,13 +175,4 @@ export function poseFlippersAtCycle(
     panel.hinge.rotation.x = lerp(groundDown, waterDown, blend);
     panel.hinge.rotation.y = lerp(groundSweep, waterSweepAngle, blend);
   }
-}
-
-function smoothstep01(value: number): number {
-  const t = Math.max(0, Math.min(1, value));
-  return t * t * (3 - 2 * t);
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
 }

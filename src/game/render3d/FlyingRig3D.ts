@@ -15,9 +15,10 @@ import type {
 } from './AirborneEmitterBatch3D';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
-import { locomotionPieceColorHex } from './colorUtils';
+import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveCylinderGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -63,13 +64,11 @@ function buildWingPanelGeom(
 const wingGeomCache = new Map<string, THREE.BufferGeometry>();
 const jetGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 function getJetGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geometry = jetGeomByTier.get(tier);
-  if (!geometry) {
-    geometry = createPrimitiveCylinderGeometry('locomotion', tier, 1, 1, 1, 1, true);
+  return getOrCreate(jetGeomByTier, tier, () => {
+    const geometry = createPrimitiveCylinderGeometry('locomotion', tier, 1, 1, 1, 1, true);
     geometry.rotateZ(Math.PI / 2);
-    jetGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+    return geometry;
+  });
 }
 const wingMats = new Map<number, THREE.MeshBasicMaterial>();
 const jetMats = new Map<number, THREE.MeshBasicMaterial>();
@@ -77,35 +76,14 @@ const _jetWorldPos = new THREE.Vector3();
 const _jetWorldQuat = new THREE.Quaternion();
 const _jetWorldDir = new THREE.Vector3();
 
-function getFlyingMat(
-  cache: Map<number, THREE.MeshBasicMaterial>,
-  baseColor: number,
-  ownerId: PlayerId | undefined,
-  side?: THREE.Side,
-): THREE.MeshBasicMaterial {
-  const color = locomotionPieceColorHex(baseColor, ownerId);
-  let mat = cache.get(color);
-  if (!mat) {
-    mat = side === undefined
-      ? new THREE.MeshBasicMaterial({ color })
-      : new THREE.MeshBasicMaterial({ color, side });
-    cache.set(color, mat);
-  }
-  return mat;
-}
-
 function getWingPanelGeom(
   lateralSign: -1 | 1,
   sweepFrac: number,
   tier: PrimitiveGeometryTier,
 ): THREE.BufferGeometry {
   const key = `${tier}:${lateralSign}:${sweepFrac.toFixed(3)}`;
-  let geom = wingGeomCache.get(key);
-  if (!geom) {
-    geom = buildWingPanelGeom(lateralSign, sweepFrac, tier);
-    wingGeomCache.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(wingGeomCache, key, () =>
+    buildWingPanelGeom(lateralSign, sweepFrac, tier));
 }
 
 type FlyingJet = {
@@ -190,7 +168,7 @@ export function buildFlyingRig(
 
     const nozzle = new THREE.Mesh(
       getJetGeom(geometryTier),
-      getFlyingMat(jetMats, JET_COLOR, ownerId),
+      getLocomotionMatByCache(jetMats, JET_COLOR, ownerId),
     );
     nozzle.scale.set(jetLength, jetRadius, jetRadius);
     jetGroup.add(nozzle);
@@ -272,7 +250,7 @@ function addWingPanels(
 
     const panel = new THREE.Mesh(
       getWingPanelGeom(side, sweepFrac, spec.geometryTier),
-      getFlyingMat(wingMats, WING_COLOR, spec.ownerId, THREE.DoubleSide),
+      getLocomotionMatByCache(wingMats, WING_COLOR, spec.ownerId, THREE.DoubleSide),
     );
     panel.scale.set(chord * chordSign, thickness, sideSpan);
     panelGroup.add(panel);

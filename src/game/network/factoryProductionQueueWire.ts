@@ -37,7 +37,14 @@ export function encodeFactoryProductionQueue(unitBlueprintIds: readonly string[]
 export function decodeFactoryProductionQuotas(
   codes: FactoryProductionQuotaCodes | null | undefined,
 ): Record<string, number> {
-  const quotas: Record<string, number> = {};
+  return decodeFactoryProductionQuotasInto(codes, {});
+}
+
+export function decodeFactoryProductionQuotasInto(
+  codes: FactoryProductionQuotaCodes | null | undefined,
+  quotas: Record<string, number>,
+): Record<string, number> {
+  for (const key in quotas) delete quotas[key];
   if (codes === null || codes === undefined || codes.length < 2) return quotas;
   for (let i = 0; i + 1 < codes.length; i += 2) {
     const unitBlueprintId = codeToUnitBlueprintId(codes[i]);
@@ -49,19 +56,17 @@ export function decodeFactoryProductionQuotas(
   return quotas;
 }
 
-export function decodeFactoryProductionQuotasInto(
-  codes: FactoryProductionQuotaCodes | null | undefined,
-  quotas: Record<string, number>,
-): Record<string, number> {
-  for (const key of Object.keys(quotas)) delete quotas[key];
-  Object.assign(quotas, decodeFactoryProductionQuotas(codes));
-  return quotas;
-}
-
 export function decodeFactoryProductionQuotaCounts(
   codes: FactoryProductionQuotaCodes | null | undefined,
 ): Record<string, number> {
-  const counts: Record<string, number> = {};
+  return decodeFactoryProductionQuotaCountsInto(codes, {});
+}
+
+export function decodeFactoryProductionQuotaCountsInto(
+  codes: FactoryProductionQuotaCodes | null | undefined,
+  counts: Record<string, number>,
+): Record<string, number> {
+  for (const key in counts) delete counts[key];
   if (codes === null || codes === undefined || codes.length < 2) return counts;
   for (let i = 0; i + 1 < codes.length; i += 2) {
     const unitBlueprintId = codeToUnitBlueprintId(codes[i]);
@@ -73,24 +78,33 @@ export function decodeFactoryProductionQuotaCounts(
   return counts;
 }
 
-export function decodeFactoryProductionQuotaCountsInto(
-  codes: FactoryProductionQuotaCodes | null | undefined,
-  counts: Record<string, number>,
-): Record<string, number> {
-  for (const key of Object.keys(counts)) delete counts[key];
-  Object.assign(counts, decodeFactoryProductionQuotaCounts(codes));
-  return counts;
+const compareBlueprintIds = (a: string, b: string): number => a.localeCompare(b);
+
+// Scratch for the encode helpers below: the returned encoded arrays are
+// retained by callers (they become snapshot payload), but the sorted-id
+// working set is not, so it is reused across calls.
+const _positiveQuotaIds: string[] = [];
+
+function collectPositiveQuotaIdsSorted(
+  quotas: Readonly<Record<string, number>>,
+): string[] {
+  const ids = _positiveQuotaIds;
+  ids.length = 0;
+  for (const unitBlueprintId in quotas) {
+    const quota = quotas[unitBlueprintId];
+    if (Number.isFinite(quota) && quota > 0) ids.push(unitBlueprintId);
+  }
+  ids.sort(compareBlueprintIds);
+  return ids;
 }
 
 export function encodeFactoryProductionQuotas(quotas: Readonly<Record<string, number>>): number[] | null {
-  const entries = Object.entries(quotas)
-    .filter(([, quota]) => Number.isFinite(quota) && quota > 0)
-    .sort(([a], [b]) => a.localeCompare(b));
-  if (entries.length === 0) return null;
-  const encoded: number[] = new Array(entries.length * 2);
-  for (let i = 0; i < entries.length; i++) {
-    encoded[i * 2] = unitBlueprintIdToCode(entries[i][0]);
-    encoded[i * 2 + 1] = Math.floor(entries[i][1]);
+  const ids = collectPositiveQuotaIdsSorted(quotas);
+  if (ids.length === 0) return null;
+  const encoded: number[] = new Array(ids.length * 2);
+  for (let i = 0; i < ids.length; i++) {
+    encoded[i * 2] = unitBlueprintIdToCode(ids[i]);
+    encoded[i * 2 + 1] = Math.floor(quotas[ids[i]]);
   }
   return encoded;
 }
@@ -99,12 +113,11 @@ export function encodeFactoryProductionQuotaCounts(
   quotas: Readonly<Record<string, number>>,
   counts: Readonly<Record<string, number>>,
 ): number[] | null {
-  const entries = Object.entries(quotas)
-    .filter(([, quota]) => Number.isFinite(quota) && quota > 0)
-    .sort(([a], [b]) => a.localeCompare(b));
-  if (entries.length === 0) return null;
+  const ids = collectPositiveQuotaIdsSorted(quotas);
+  if (ids.length === 0) return null;
   const encoded: number[] = [];
-  for (const [unitBlueprintId] of entries) {
+  for (let i = 0; i < ids.length; i++) {
+    const unitBlueprintId = ids[i];
     const count = Math.max(0, Math.floor(counts[unitBlueprintId] ?? 0));
     if (count <= 0) continue;
     encoded.push(unitBlueprintIdToCode(unitBlueprintId), count);

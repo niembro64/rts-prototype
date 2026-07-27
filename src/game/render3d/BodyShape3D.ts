@@ -26,6 +26,7 @@ import {
 } from '../math/BodyDimensions';
 import {
   createPrimitiveCylinderGeometry,
+  getOrCreate,
   getSharedPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -82,13 +83,11 @@ function getUnitSphere(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
 
 const unitCylinders = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 function getUnitCylinder(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geometry = unitCylinders.get(tier);
-  if (!geometry) {
-    geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 1, 1, 1);
+  return getOrCreate(unitCylinders, tier, () => {
+    const geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 1, 1, 1);
     geometry.rotateZ(-Math.PI / 2);
-    unitCylinders.set(tier, geometry);
-  }
-  return geometry;
+    return geometry;
+  });
 }
 
 // Unit cone — radiusTop=1, radiusBottom=0 so the tip is at −Y. Same
@@ -98,13 +97,11 @@ function getUnitCylinder(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
 // (lengthFrac, radiusFrac, radiusFrac) just like cylinders.
 const unitCones = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 function getUnitCone(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geometry = unitCones.get(tier);
-  if (!geometry) {
-    geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 0, 1, 1);
+  return getOrCreate(unitCones, tier, () => {
+    const geometry = createPrimitiveCylinderGeometry('unitBody', tier, 1, 0, 1, 1);
     geometry.rotateZ(-Math.PI / 2);
-    unitCones.set(tier, geometry);
-  }
-  return geometry;
+    return geometry;
+  });
 }
 
 /** Polygon extrusion height (unit-radius-1). Uses the inscribed-circle

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
+import { writeHexToRgb01Array } from './colorUtils';
 import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
@@ -234,12 +235,18 @@ function createProxyPointBatch(transition: boolean): ProxyPointBatch {
   };
 }
 
+// Per-frame scratch for the hex → 0..1 conversion. A number[] (not a
+// Float32Array) keeps the change-detection comparison in float64, exactly
+// as the former inline math compared.
+const _scratchRgb01: number[] = [0, 0, 0];
+
 function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): void {
   const out = batch.colors;
   const o = slot * 3;
-  const r = ((colorHex >> 16) & 0xff) / 255;
-  const g = ((colorHex >> 8) & 0xff) / 255;
-  const b = (colorHex & 0xff) / 255;
+  writeHexToRgb01Array(colorHex, _scratchRgb01, 0);
+  const r = _scratchRgb01[0];
+  const g = _scratchRgb01[1];
+  const b = _scratchRgb01[2];
   if (out[o] === r && out[o + 1] === g && out[o + 2] === b) return;
   out[o] = r;
   out[o + 1] = g;

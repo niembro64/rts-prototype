@@ -72,6 +72,7 @@ import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourc
 import type { StructureBlueprintId } from '@/types/blueprintIds';
 import {
   createPrimitiveRingGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -143,28 +144,19 @@ const radarDishGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>
 const radarRingGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
 function getRadarDishGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  let geometry = radarDishGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = tier === 'close'
-      ? createRadarDishGeometry(4, 24)
-      : tier === 'mid'
-        ? createRadarDishGeometry(3, 14)
-        : createRadarDishGeometry(1, 6);
-    radarDishGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(radarDishGeomByTier, tier, () => tier === 'close'
+    ? createRadarDishGeometry(4, 24)
+    : tier === 'mid'
+      ? createRadarDishGeometry(3, 14)
+      : createRadarDishGeometry(1, 6));
 }
 
 function getRadarRingGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  let geometry = radarRingGeomByTier.get(tier);
-  if (geometry === undefined) {
-    // A dish rim is a thin visible face, not a pipe. RingGeometry preserves
-    // the exact circular outline without submitting the torus's hidden inner
-    // and outer walls (which used to dominate Radar even at Medium).
-    geometry = createPrimitiveRingGeometry('building', tier, 0.945, 1.055);
-    radarRingGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  // A dish rim is a thin visible face, not a pipe. RingGeometry preserves
+  // the exact circular outline without submitting the torus's hidden inner
+  // and outer walls (which used to dominate Radar even at Medium).
+  return getOrCreate(radarRingGeomByTier, tier, () =>
+    createPrimitiveRingGeometry('building', tier, 0.945, 1.055));
 }
 const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 const radarDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });

@@ -8,11 +8,11 @@ import {
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
 } from './stateSerializerEntities';
 import {
-  PACKED_BINARY_ROW_COUNT_BYTES,
   PackedBinaryReader,
   PackedBinaryWriter,
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
+import { finishGroupedPackedRows } from './flagGroupedPackedRows';
 import {
   MINIMAP_SNAPSHOT_WIRE_STRIDE,
   getMinimapSnapshotWireSource,
@@ -235,24 +235,18 @@ function appendMinimapPackedRow(
   group.count++;
 }
 
-function finishMinimapPackedRows(count: number): Uint8Array {
-  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < _packGroups.length; i++) {
-    estimatedBytes += _packGroups[i].writer.byteLength + 8;
-  }
+function writeMinimapPackedGroupHeader(
+  out: PackedBinaryWriter,
+  group: PackedMinimapGroup,
+): void {
+  out.writeVarUint(group.typeTag);
+  out.writeVarUint(group.playerId);
+  out.writeVarUint(group.flags);
+  out.writeVarUint(group.count);
+}
 
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(_packGroups.length);
-  for (let i = 0; i < _packGroups.length; i++) {
-    const group = _packGroups[i];
-    out.writeVarUint(group.typeTag);
-    out.writeVarUint(group.playerId);
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.count);
-    out.writeBytes(group.writer.finishBytes());
-  }
-  out.setUint32LE(0, count);
-  const packed = out.finishBytes();
+function finishMinimapPackedRows(count: number): Uint8Array {
+  const packed = finishGroupedPackedRows(_packGroups, count, writeMinimapPackedGroupHeader);
   resetMinimapPackScratch();
   return packed;
 }

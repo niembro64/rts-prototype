@@ -1,6 +1,4 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const BUILDING_POSE_INPUT_STRIDE = 8;
 const BUILDING_POSE_OUTPUT_STRIDE = 32;
@@ -8,60 +6,12 @@ const BUILDING_POSE_OUTPUT_STRIDE = 32;
 const GROUP_MATRIX_OFFSET = 0;
 const BODY_MATRIX_OFFSET = 16;
 
-export class BuildingPoseBatch3D {
-  inputStride = BUILDING_POSE_INPUT_STRIDE;
-  outputStride = BUILDING_POSE_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
-
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.buildingScratchEnsure(count);
-      this.inputStride = renderPose.buildingInputStride;
-      this.outputStride = renderPose.buildingOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.buildingInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.buildingOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = BUILDING_POSE_INPUT_STRIDE;
-    this.outputStride = BUILDING_POSE_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
-    );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
+export class BuildingPoseBatch3D extends WasmPoseBatch3D {
+  constructor() {
+    super('building', BUILDING_POSE_INPUT_STRIDE, BUILDING_POSE_OUTPUT_STRIDE);
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.buildingCompute', () => {
-        this.wasm!.renderPose.buildingCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     const output = this.output;
     for (let i = 0; i < count; i++) {

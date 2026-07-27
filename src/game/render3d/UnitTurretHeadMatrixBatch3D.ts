@@ -1,69 +1,20 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 import {
   rotateVectorByQuaternionInto,
   type MutableVector3Tuple,
 } from '../math/quaternionTupleMath';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const TURRET_HEAD_INPUT_STRIDE = 11;
 const TURRET_HEAD_OUTPUT_STRIDE = 16;
 
-export class UnitTurretHeadMatrixBatch3D {
-  inputStride = TURRET_HEAD_INPUT_STRIDE;
-  outputStride = TURRET_HEAD_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
+export class UnitTurretHeadMatrixBatch3D extends WasmPoseBatch3D {
   private readonly fallbackCenter: MutableVector3Tuple = [0, 0, 0];
 
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.turretHeadScratchEnsure(count);
-      this.inputStride = renderPose.turretHeadInputStride;
-      this.outputStride = renderPose.turretHeadOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretHeadInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretHeadOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = TURRET_HEAD_INPUT_STRIDE;
-    this.outputStride = TURRET_HEAD_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
-    );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
+  constructor() {
+    super('turretHead', TURRET_HEAD_INPUT_STRIDE, TURRET_HEAD_OUTPUT_STRIDE);
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.turretHeadCompute', () => {
-        this.wasm!.renderPose.turretHeadCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     const output = this.output;
     for (let i = 0; i < count; i++) {

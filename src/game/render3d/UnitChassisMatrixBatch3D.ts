@@ -1,64 +1,14 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const CHASSIS_PART_INPUT_STRIDE = 15;
 const CHASSIS_PART_OUTPUT_STRIDE = 16;
 
-export class UnitChassisMatrixBatch3D {
-  inputStride = CHASSIS_PART_INPUT_STRIDE;
-  outputStride = CHASSIS_PART_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
-
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.chassisPartScratchEnsure(count);
-      this.inputStride = renderPose.chassisPartInputStride;
-      this.outputStride = renderPose.chassisPartOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.chassisPartInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.chassisPartOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = CHASSIS_PART_INPUT_STRIDE;
-    this.outputStride = CHASSIS_PART_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
-    );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
+export class UnitChassisMatrixBatch3D extends WasmPoseBatch3D {
+  constructor() {
+    super('chassisPart', CHASSIS_PART_INPUT_STRIDE, CHASSIS_PART_OUTPUT_STRIDE);
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.chassisPartCompute', () => {
-        this.wasm!.renderPose.chassisPartCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     const output = this.output;
     for (let i = 0; i < count; i++) {

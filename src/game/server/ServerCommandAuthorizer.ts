@@ -263,18 +263,7 @@ function authorizeLoadTransportCommand(
   ) {
     return null;
   }
-  const transportIds: EntityId[] = [];
-  const seen = _authorizeSeenEntityIds;
-  seen.clear();
-  for (let i = 0; i < command.transportIds.length; i++) {
-    const id = command.transportIds[i];
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const transport = world.getEntity(id);
-    if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) continue;
-    transportIds.push(id);
-  }
-  seen.clear();
+  const transportIds = filterOwnedTransportIds(world, command.transportIds, playerId);
   return transportIds.length > 0 ? { ...command, transportIds } : null;
 }
 
@@ -283,19 +272,28 @@ function authorizeUnloadTransportCommand(
   command: UnloadTransportCommand,
   playerId: PlayerId,
 ): UnloadTransportCommand | null {
-  const transportIds: EntityId[] = [];
+  const transportIds = filterOwnedTransportIds(world, command.transportIds, playerId);
+  return transportIds.length > 0 ? { ...command, transportIds } : null;
+}
+
+function filterOwnedTransportIds(
+  world: WorldState,
+  transportIds: readonly EntityId[],
+  playerId: PlayerId,
+): EntityId[] {
+  const ownedIds: EntityId[] = [];
   const seen = _authorizeSeenEntityIds;
   seen.clear();
-  for (let i = 0; i < command.transportIds.length; i++) {
-    const id = command.transportIds[i];
+  for (let i = 0; i < transportIds.length; i++) {
+    const id = transportIds[i];
     if (seen.has(id)) continue;
     seen.add(id);
     const transport = world.getEntity(id);
     if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) continue;
-    transportIds.push(id);
+    ownedIds.push(id);
   }
   seen.clear();
-  return transportIds.length > 0 ? { ...command, transportIds } : null;
+  return ownedIds;
 }
 
 function authorizeCaptureCommand(

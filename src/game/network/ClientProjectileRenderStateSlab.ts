@@ -1,5 +1,5 @@
 import type { BeamPoint, Entity, EntityId } from '../sim/types';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArray, nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 const INITIAL_PROJECTILE_RENDER_STATE_CAP = 4096;
 
@@ -187,8 +187,7 @@ export class ClientProjectileRenderStateSlab {
 
   private ensureCapacity(required: number): void {
     if (required <= this.views.entityIds.length) return;
-    let nextCapacity = this.views.entityIds.length;
-    while (nextCapacity < required) nextCapacity *= 2;
+    const nextCapacity = nextGeometricCapacity(this.views.entityIds.length, required);
     const views = this.views;
     this.views = {
       entityIds: growTypedArray(views.entityIds, nextCapacity),

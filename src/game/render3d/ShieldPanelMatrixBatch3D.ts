@@ -1,6 +1,3 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 import {
   multiplyQuaternionsInto,
   rotateVectorByQuaternionInto,
@@ -8,68 +5,22 @@ import {
   type MutableVector3Tuple,
 } from '../math/quaternionTupleMath';
 import { writeScaledQuaternionMatrix } from './typedArrayRenderUtils';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const SHIELD_PANEL_INPUT_STRIDE = 24;
 const SHIELD_PANEL_OUTPUT_STRIDE = 16;
 
-export class ShieldPanelMatrixBatch3D {
-  inputStride = SHIELD_PANEL_INPUT_STRIDE;
-  outputStride = SHIELD_PANEL_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
+export class ShieldPanelMatrixBatch3D extends WasmPoseBatch3D {
   private readonly fallbackRootOffset: MutableVector3Tuple = [0, 0, 0];
   private readonly fallbackWorldOffset: MutableVector3Tuple = [0, 0, 0];
   private readonly fallbackRootQ: MutableQuaternionTuple = [0, 0, 0, 1];
   private readonly fallbackWorldQ: MutableQuaternionTuple = [0, 0, 0, 1];
 
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.shieldPanelScratchEnsure(count);
-      this.inputStride = renderPose.shieldPanelInputStride;
-      this.outputStride = renderPose.shieldPanelOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.shieldPanelInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.shieldPanelOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = SHIELD_PANEL_INPUT_STRIDE;
-    this.outputStride = SHIELD_PANEL_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
-    );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
+  constructor() {
+    super('shieldPanel', SHIELD_PANEL_INPUT_STRIDE, SHIELD_PANEL_OUTPUT_STRIDE);
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.shieldPanelCompute', () => {
-        this.wasm!.renderPose.shieldPanelCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     for (let i = 0; i < count; i++) {
       const ib = i * this.inputStride;

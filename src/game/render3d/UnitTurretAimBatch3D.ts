@@ -1,71 +1,23 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import { clampUnit } from '../math';
 import {
   rotateVectorByQuaternionInto,
   type MutableVector3Tuple,
 } from '../math/quaternionTupleMath';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const TURRET_AIM_INPUT_STRIDE = 12;
 const TURRET_AIM_OUTPUT_STRIDE = 2;
 export const TURRET_AIM_MODE_POSE = 0;
 export const TURRET_AIM_MODE_WORLD_DIR = 1;
 
-export class UnitTurretAimBatch3D {
-  inputStride = TURRET_AIM_INPUT_STRIDE;
-  outputStride = TURRET_AIM_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
+export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
   private readonly fallbackRotated: MutableVector3Tuple = [0, 0, 0];
 
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.turretAimScratchEnsure(count);
-      this.inputStride = renderPose.turretAimInputStride;
-      this.outputStride = renderPose.turretAimOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretAimInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretAimOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = TURRET_AIM_INPUT_STRIDE;
-    this.outputStride = TURRET_AIM_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
-    );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
+  constructor() {
+    super('turretAim', TURRET_AIM_INPUT_STRIDE, TURRET_AIM_OUTPUT_STRIDE);
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.turretAimCompute', () => {
-        this.wasm!.renderPose.turretAimCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     const output = this.output;
     for (let i = 0; i < count; i++) {
@@ -106,7 +58,7 @@ export class UnitTurretAimBatch3D {
       }
 
       output[ob] = Math.atan2(-z, x) + hostRotation;
-      output[ob + 1] = Math.asin(y < -1 ? -1 : y > 1 ? 1 : y);
+      output[ob + 1] = Math.asin(clampUnit(y));
     }
   }
 

@@ -11,10 +11,7 @@
 // [0, 1] interval and the model decides how the wrap looks on the mesh.
 
 import * as THREE from 'three';
-import {
-  createRepeatingCanvasTexture,
-  drawWrappedCanvasItem,
-} from './repeatingCanvasTexture';
+import { createRepeatingCanvasTexture } from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
@@ -23,7 +20,7 @@ import {
 } from '../../config';
 import {
   cssRgb,
-  drawCommonShape,
+  drawCommonItemWithWrap,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   matchCanvasLinearMeanToColor,
@@ -82,7 +79,7 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const rng = makeSeededRng(0x1EAF55);
   const items = generateItems(rng);
   for (const item of items) {
-    drawItemWithWrap(ctx, item);
+    drawCommonItemWithWrap(ctx, item, TREE_LEAF_TEXTURE_PIXELS);
   }
 
   // Contrast knob: pull every pixel back toward the base color by
@@ -185,20 +182,4 @@ function generateItems(rng: () => number): Item[] {
   }
   items.sort((a, b) => b.size - a.size);
   return items;
-}
-
-function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
-  drawCommonShape(ctx, item.size, item.shapeKind, item.shapeParam);
-}
-
-function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
-  ctx.fillStyle = `rgba(${item.rgb[0]}, ${item.rgb[1]}, ${item.rgb[2]}, ${item.alpha.toFixed(3)})`;
-  const half = item.size * 0.55 + 2;
-  drawWrappedCanvasItem(
-    ctx,
-    item,
-    TREE_LEAF_TEXTURE_PIXELS,
-    half,
-    drawShape,
-  );
 }

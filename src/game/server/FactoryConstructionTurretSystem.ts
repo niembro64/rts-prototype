@@ -19,8 +19,13 @@ export class FactoryConstructionTurretSystem {
   }
 
   update(_dtSec: number): void {
-    const factories = this.world.getFactoryBuildings().concat(this.world.getFactoryUnits());
-    for (const factory of factories) {
+    this.updateFactories(this.world.getFactoryBuildings());
+    this.updateFactories(this.world.getFactoryUnits());
+  }
+
+  private updateFactories(factories: readonly Entity[]): void {
+    for (let i = 0; i < factories.length; i++) {
+      const factory = factories[i];
       const factoryComp = factory.factory;
       const active = factoryComp !== null
         && factoryComp.isProducing
@@ -47,10 +52,10 @@ export class FactoryConstructionTurretSystem {
   }
 
   reset(): void {
-    const factories = this.world.getFactoryBuildings().concat(this.world.getFactoryUnits());
-    for (const factory of factories) {
-      this.stopProductionTurrets(factory);
-    }
+    const buildings = this.world.getFactoryBuildings();
+    for (let i = 0; i < buildings.length; i++) this.stopProductionTurrets(buildings[i]);
+    const units = this.world.getFactoryUnits();
+    for (let i = 0; i < units.length; i++) this.stopProductionTurrets(units[i]);
   }
 
   private isProductionTurret(turret: Turret): boolean {

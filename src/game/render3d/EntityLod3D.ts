@@ -417,44 +417,14 @@ export class EntityLodState3D {
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
-    const lodMode = getLodMode();
-    if (lodMode === 'high') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'medium') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'low') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'off') {
-      const proxyIds = this.proxyIdsForChannel(channel);
-      this.lastSeenForChannel(channel).set(entity.id, this.frame);
-      proxyIds.add(entity.id);
-      return true;
-    }
-    if (!entityLodEnabled()) {
-      // Proxying is off, but the detail ladder's latched-rung state must
-      // survive — wiping the whole entity here would erase the hysteresis
-      // latch every frame and reintroduce band thrash.
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-
-    const proxyIds = this.proxyIdsForChannel(channel);
-    this.lastSeenForChannel(channel).set(entity.id, this.frame);
+    const gated = this.channelProxyModeGate(channel, entity);
+    if (gated !== null) return gated;
     const useProxy = detailRungForLevel(detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
     )) === DETAIL_RUNG_GLYPH;
-
-    if (useProxy) proxyIds.add(entity.id);
-    else proxyIds.delete(entity.id);
-    return useProxy;
+    return this.applyChannelProxyUse(channel, entity, useProxy);
   }
 
   /**
@@ -469,41 +439,11 @@ export class EntityLodState3D {
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
   ): boolean {
-    const lodMode = getLodMode();
-    if (lodMode === 'high') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'medium') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'low') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-    if (lodMode === 'off') {
-      const proxyIds = this.proxyIdsForChannel(channel);
-      this.lastSeenForChannel(channel).set(entity.id, this.frame);
-      proxyIds.add(entity.id);
-      return true;
-    }
-    if (!entityLodEnabled()) {
-      // Proxying is off, but the detail ladder's latched-rung state must
-      // survive — wiping the whole entity here would erase the hysteresis
-      // latch every frame and reintroduce band thrash.
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
-
-    const proxyIds = this.proxyIdsForChannel(channel);
-    this.lastSeenForChannel(channel).set(entity.id, this.frame);
+    const gated = this.channelProxyModeGate(channel, entity);
+    if (gated !== null) return gated;
     const useProxy =
       this.entityDetailRungForView(view, entity) === DETAIL_RUNG_GLYPH;
-
-    if (useProxy) proxyIds.add(entity.id);
-    else proxyIds.delete(entity.id);
-    return useProxy;
+    return this.applyChannelProxyUse(channel, entity, useProxy);
   }
 
   /**
@@ -521,6 +461,43 @@ export class EntityLodState3D {
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
     );
+  }
+
+  /** Shared explicit-mode gate for the proxy-decision entry points: the
+   *  forced answer for high/medium/low/off/disabled, or null when AUTO
+   *  mode must compute the rung (last-seen frame already recorded). */
+  private channelProxyModeGate(channel: string, entity: Entity): boolean | null {
+    const lodMode = getLodMode();
+    if (lodMode === 'high' || lodMode === 'medium' || lodMode === 'low') {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
+    if (lodMode === 'off') {
+      const proxyIds = this.proxyIdsForChannel(channel);
+      this.lastSeenForChannel(channel).set(entity.id, this.frame);
+      proxyIds.add(entity.id);
+      return true;
+    }
+    if (!entityLodEnabled()) {
+      // Proxying is off, but the detail ladder's latched-rung state must
+      // survive — wiping the whole entity here would erase the hysteresis
+      // latch every frame and reintroduce band thrash.
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
+    this.lastSeenForChannel(channel).set(entity.id, this.frame);
+    return null;
+  }
+
+  private applyChannelProxyUse(
+    channel: string,
+    entity: Entity,
+    useProxy: boolean,
+  ): boolean {
+    const proxyIds = this.proxyIdsForChannel(channel);
+    if (useProxy) proxyIds.add(entity.id);
+    else proxyIds.delete(entity.id);
+    return useProxy;
   }
 
   private deleteChannelEntity(channel: string, entityId: EntityId): void {

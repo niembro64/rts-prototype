@@ -13,7 +13,9 @@ import {
 } from './snapshotQuantization';
 import {
   AUDIO_EVENT_SOURCE_TYPE_CODES,
+  AUDIO_EVENT_SOURCE_TYPES_BY_CODE,
   AUDIO_EVENT_TYPE_CODES,
+  AUDIO_EVENT_TYPES_BY_CODE,
   DEATH_HAS_BASE_Z,
   DEATH_HAS_COLLISION_RADIUS,
   DEATH_HAS_ROTATION,
@@ -48,33 +50,10 @@ import {
   getAudioEventWireFlags,
   getDeathContextWireFlags,
 } from './audioEventWireHelpers';
+import { internStringSlot } from './audioEventWireFormat';
+import { createSimEventDto } from './simEventDto';
 
 const PACKED_AUDIO_EVENTS_VERSION = 2;
-
-const AUDIO_EVENT_TYPES = [
-  'fire',
-  'hit',
-  'death',
-  'laserStart',
-  'laserStop',
-  'shieldStart',
-  'shieldStop',
-  'shieldImpact',
-  'ping',
-  'attackAlert',
-  'projectileExpire',
-  'waterSplash',
-  // Append-only: wire codes are positional.
-  'selfDestructArmed',
-  'selfDestructDisarmed',
-] as const satisfies readonly NetworkServerSnapshotSimEvent['type'][];
-
-const AUDIO_EVENT_SOURCE_TYPES = [
-  'turret',
-  'unit',
-  'building',
-  'system',
-] as const;
 
 export type PackedAudioEventsWire = {
   v: typeof PACKED_AUDIO_EVENTS_VERSION;
@@ -152,7 +131,7 @@ export function packAudioEventsForWire(
     row.push(
       typeCode,
       flags,
-      stringSlot(strings, stringSlots, event.turretBlueprintId),
+      internStringSlot(strings, stringSlots, event.turretBlueprintId),
       quantizeProjectilePosition(event.pos.x),
       quantizeProjectilePosition(event.pos.y),
       quantizeProjectilePosition(event.pos.z),
@@ -162,7 +141,7 @@ export function packAudioEventsForWire(
       row.push(AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0);
     }
     if (event.sourceKey !== null) {
-      row.push(stringSlot(strings, stringSlots, event.sourceKey));
+      row.push(internStringSlot(strings, stringSlots, event.sourceKey));
     }
     if (event.playerId !== null) row.push(event.playerId);
     if (event.entityId !== null) row.push(event.entityId);
@@ -348,34 +327,21 @@ export function unpackAudioEventsFromWire(
 
   for (let rowIndex = 0; rowIndex < packed.e.length; rowIndex++) {
     const row = packed.e[rowIndex];
-    const type = AUDIO_EVENT_TYPES[row[0]];
+    const type = AUDIO_EVENT_TYPES_BY_CODE[row[0]];
     if (type === undefined) continue;
 
     const flags = row[1] ?? 0;
     let cursor = 6;
-    const event: NetworkServerSnapshotSimEvent = {
-      type,
-      turretBlueprintId: (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretBlueprintId'],
-      sourceType: null,
-      sourceKey: null,
-      pos: {
-        x: dequantizeProjectilePosition(row[3] ?? 0),
-        y: dequantizeProjectilePosition(row[4] ?? 0),
-        z: dequantizeProjectilePosition(row[5] ?? 0),
-      },
-      playerId: null,
-      entityId: null,
-      deathContext: null,
-      impactContext: null,
-      waterSplash: null,
-      shieldImpact: null,
-      killerPlayerId: null,
-      victimPlayerId: null,
-      audioOnly: null,
-    };
+    const event = createSimEventDto();
+    event.type = type;
+    event.turretBlueprintId =
+      (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretBlueprintId'];
+    event.pos.x = dequantizeProjectilePosition(row[3] ?? 0);
+    event.pos.y = dequantizeProjectilePosition(row[4] ?? 0);
+    event.pos.z = dequantizeProjectilePosition(row[5] ?? 0);
 
     if ((flags & EVENT_HAS_SOURCE_TYPE) !== 0) {
-      event.sourceType = AUDIO_EVENT_SOURCE_TYPES[row[cursor++]] ?? 'system';
+      event.sourceType = AUDIO_EVENT_SOURCE_TYPES_BY_CODE[row[cursor++]] ?? 'system';
     }
     if ((flags & EVENT_HAS_SOURCE_KEY) !== 0) {
       event.sourceKey = strings[row[cursor++]] ?? '';
@@ -434,19 +400,6 @@ export function isPackedAudioEventsWire(value: unknown): value is PackedAudioEve
   );
 }
 
-function stringSlot(
-  strings: string[],
-  slots: Map<string, number>,
-  value: string,
-): number {
-  const existing = slots.get(value);
-  if (existing !== undefined) return existing;
-  const next = strings.length;
-  strings.push(value);
-  slots.set(value, next);
-  return next;
-}
-
 function appendDeathContextRow(
   context: NonNullable<NetworkServerSnapshotSimEvent['deathContext']>,
   strings: string[],
@@ -474,7 +427,7 @@ function appendDeathContextRow(
   if (context.collisionRadius !== undefined) row.push(quantizeProjectilePosition(context.collisionRadius));
   if (context.baseZ !== undefined) row.push(quantizeProjectilePosition(context.baseZ));
   if (context.unitBlueprintId !== undefined) {
-    row.push(stringSlot(strings, stringSlots, context.unitBlueprintId));
+    row.push(internStringSlot(strings, stringSlots, context.unitBlueprintId));
   }
   if (context.rotation !== undefined) row.push(quantizeRotation(context.rotation));
   if (context.turretPoses !== undefined) {

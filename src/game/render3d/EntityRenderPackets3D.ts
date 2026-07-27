@@ -90,20 +90,19 @@ function entityRenderFlagsFromState(
   return flags;
 }
 
-export class UnitRenderPacket3D {
-  private readonly entities: (Entity | undefined)[] = [];
-  private readonly turrets: (readonly Turret[] | undefined)[] = [];
-  private turretStateViews: ClientRenderTurretStateViews | undefined;
-  private turretHostSlots = new Int32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  private turretStarts = new Uint32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  private turretStateCounts = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+abstract class EntityRenderPacketBase3D {
+  protected readonly entities: (Entity | undefined)[] = [];
+  protected readonly turrets: (readonly Turret[] | undefined)[] = [];
+  protected turretStateViews: ClientRenderTurretStateViews | undefined;
+  protected turretHostSlots = new Int32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  protected turretStarts = new Uint32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  protected turretStateCounts = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   private readonly turretRowsScratch: ClientRenderTurretHostRows = {
     hostSlot: -1,
     start: 0,
     count: 0,
     views: undefined as unknown as ClientRenderTurretStateViews,
   };
-  unitBlueprintIds: (string | undefined)[] = [];
   removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
   ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   ownerIds = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -111,10 +110,103 @@ export class UnitRenderPacket3D {
   y = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   z = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   rotation = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  groundY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  radiusOther = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  progress = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   lodProxyRadius = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   lodProxyGlyph = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  count = 0;
+  removedCount = 0;
+
+  reset(): void {
+    this.count = 0;
+    this.removedCount = 0;
+    this.entities.length = 0;
+    this.turrets.length = 0;
+    this.turretStateViews = undefined;
+  }
+
+  pushRemovedEntityId(id: EntityId): void {
+    const cursor = this.removedCount;
+    this.ensureRemovalCapacity(cursor + 1);
+    this.removedIds[cursor] = id;
+    this.removedCount = cursor + 1;
+  }
+
+  entityAt(row: number): Entity | undefined {
+    return this.entities[row];
+  }
+
+  turretsAt(row: number): readonly Turret[] {
+    return this.turrets[row] ?? EMPTY_TURRETS;
+  }
+
+  turretStateAt(row: number): ClientRenderTurretHostRows | undefined {
+    const views = this.turretStateViews;
+    const hostSlot = this.turretHostSlots[row];
+    if (views === undefined || hostSlot < 0) return undefined;
+    const rows = this.turretRowsScratch;
+    (rows as { hostSlot: number }).hostSlot = hostSlot;
+    (rows as { start: number }).start = this.turretStarts[row];
+    (rows as { count: number }).count = this.turretStateCounts[row];
+    (rows as { views: ClientRenderTurretStateViews }).views = views;
+    return rows;
+  }
+
+  entityIdAt(row: number): EntityId {
+    return this.ids[row] as EntityId;
+  }
+
+  removedEntityIdAt(row: number): EntityId {
+    return this.removedIds[row] as EntityId;
+  }
+
+  ownerIdAt(row: number): PlayerId | undefined {
+    const ownerId = this.ownerIds[row];
+    return ownerId > 0 ? ownerId as PlayerId : undefined;
+  }
+
+  selectedAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_SELECTED) !== 0;
+  }
+
+  buildInProgressAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS) !== 0;
+  }
+
+  bodyMaterializedAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_BODY_MATERIALIZED) !== 0;
+  }
+
+  activePredictionAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_ACTIVE_PREDICTION) !== 0;
+  }
+
+  renderDirtyAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_RENDER_DIRTY) !== 0;
+  }
+
+  lifecycleDirtyAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY) !== 0;
+  }
+
+  lodProxyAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
+  }
+
+  private ensureRemovalCapacity(required: number): void {
+    if (required <= this.removedIds.length) return;
+    let nextCapacity = this.removedIds.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.removedIds = growTypedArray(this.removedIds, nextCapacity);
+  }
+}
+
+export class UnitRenderPacket3D extends EntityRenderPacketBase3D {
+  unitBlueprintIds: (string | undefined)[] = [];
+  groundY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  radiusOther = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalX = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -126,29 +218,12 @@ export class UnitRenderPacket3D {
   orientationZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   orientationW = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   hasFullOrientation = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  progress = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   supportPointOffsetZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   shieldPanelTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  count = 0;
-  removedCount = 0;
 
   reset(): void {
-    this.count = 0;
-    this.removedCount = 0;
-    this.entities.length = 0;
-    this.turrets.length = 0;
-    this.turretStateViews = undefined;
+    super.reset();
     this.unitBlueprintIds.length = 0;
-  }
-
-  pushRemovedEntityId(id: EntityId): void {
-    const cursor = this.removedCount;
-    this.ensureRemovalCapacity(cursor + 1);
-    this.removedIds[cursor] = id;
-    this.removedCount = cursor + 1;
   }
 
   pushEntity(
@@ -293,67 +368,6 @@ export class UnitRenderPacket3D {
     this.count = cursor + 1;
   }
 
-  entityAt(row: number): Entity | undefined {
-    return this.entities[row];
-  }
-
-  turretsAt(row: number): readonly Turret[] {
-    return this.turrets[row] ?? EMPTY_TURRETS;
-  }
-
-  turretStateAt(row: number): ClientRenderTurretHostRows | undefined {
-    const views = this.turretStateViews;
-    const hostSlot = this.turretHostSlots[row];
-    if (views === undefined || hostSlot < 0) return undefined;
-    const rows = this.turretRowsScratch;
-    (rows as { hostSlot: number }).hostSlot = hostSlot;
-    (rows as { start: number }).start = this.turretStarts[row];
-    (rows as { count: number }).count = this.turretStateCounts[row];
-    (rows as { views: ClientRenderTurretStateViews }).views = views;
-    return rows;
-  }
-
-  entityIdAt(row: number): EntityId {
-    return this.ids[row] as EntityId;
-  }
-
-  removedEntityIdAt(row: number): EntityId {
-    return this.removedIds[row] as EntityId;
-  }
-
-  ownerIdAt(row: number): PlayerId | undefined {
-    const ownerId = this.ownerIds[row];
-    return ownerId > 0 ? ownerId as PlayerId : undefined;
-  }
-
-  selectedAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_SELECTED) !== 0;
-  }
-
-  buildInProgressAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS) !== 0;
-  }
-
-  bodyMaterializedAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_BODY_MATERIALIZED) !== 0;
-  }
-
-  activePredictionAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_ACTIVE_PREDICTION) !== 0;
-  }
-
-  renderDirtyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_RENDER_DIRTY) !== 0;
-  }
-
-  lifecycleDirtyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY) !== 0;
-  }
-
-  lodProxyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
-  }
-
   airborneAt(row: number): boolean {
     return (this.flags[row] & UNIT_RENDER_FLAG_AIRBORNE) !== 0;
   }
@@ -397,62 +411,17 @@ export class UnitRenderPacket3D {
     this.turretStarts = growTypedArray(this.turretStarts, nextCapacity);
     this.turretStateCounts = growTypedArray(this.turretStateCounts, nextCapacity);
   }
-
-  private ensureRemovalCapacity(required: number): void {
-    if (required <= this.removedIds.length) return;
-    let nextCapacity = this.removedIds.length;
-    while (nextCapacity < required) nextCapacity *= 2;
-    this.removedIds = growTypedArray(this.removedIds, nextCapacity);
-  }
 }
 
-export class BuildingRenderPacket3D {
-  private readonly entities: (Entity | undefined)[] = [];
-  private readonly turrets: (readonly Turret[] | undefined)[] = [];
-  private turretStateViews: ClientRenderTurretStateViews | undefined;
-  private turretHostSlots = new Int32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  private turretStarts = new Uint32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  private turretStateCounts = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  private readonly turretRowsScratch: ClientRenderTurretHostRows = {
-    hostSlot: -1,
-    start: 0,
-    count: 0,
-    views: undefined as unknown as ClientRenderTurretStateViews,
-  };
+export class BuildingRenderPacket3D extends EntityRenderPacketBase3D {
   buildingBlueprintIds: (string | null | undefined)[] = [];
-  removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
-  ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  ownerIds = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  x = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  y = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  z = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  rotation = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   baseY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   width = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   footprintDepth = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  progress = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  lodProxyRadius = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  lodProxyGlyph = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  count = 0;
-  removedCount = 0;
 
   reset(): void {
-    this.count = 0;
-    this.removedCount = 0;
-    this.entities.length = 0;
-    this.turrets.length = 0;
-    this.turretStateViews = undefined;
+    super.reset();
     this.buildingBlueprintIds.length = 0;
-  }
-
-  pushRemovedEntityId(id: EntityId): void {
-    const cursor = this.removedCount;
-    this.ensureRemovalCapacity(cursor + 1);
-    this.removedIds[cursor] = id;
-    this.removedCount = cursor + 1;
   }
 
   pushEntity(
@@ -579,69 +548,8 @@ export class BuildingRenderPacket3D {
     this.count = cursor + 1;
   }
 
-  entityAt(row: number): Entity | undefined {
-    return this.entities[row];
-  }
-
-  turretsAt(row: number): readonly Turret[] {
-    return this.turrets[row] ?? EMPTY_TURRETS;
-  }
-
-  turretStateAt(row: number): ClientRenderTurretHostRows | undefined {
-    const views = this.turretStateViews;
-    const hostSlot = this.turretHostSlots[row];
-    if (views === undefined || hostSlot < 0) return undefined;
-    const rows = this.turretRowsScratch;
-    (rows as { hostSlot: number }).hostSlot = hostSlot;
-    (rows as { start: number }).start = this.turretStarts[row];
-    (rows as { count: number }).count = this.turretStateCounts[row];
-    (rows as { views: ClientRenderTurretStateViews }).views = views;
-    return rows;
-  }
-
-  entityIdAt(row: number): EntityId {
-    return this.ids[row] as EntityId;
-  }
-
-  removedEntityIdAt(row: number): EntityId {
-    return this.removedIds[row] as EntityId;
-  }
-
-  ownerIdAt(row: number): PlayerId | undefined {
-    const ownerId = this.ownerIds[row];
-    return ownerId > 0 ? ownerId as PlayerId : undefined;
-  }
-
-  selectedAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_SELECTED) !== 0;
-  }
-
-  buildInProgressAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS) !== 0;
-  }
-
-  bodyMaterializedAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_BODY_MATERIALIZED) !== 0;
-  }
-
   shellAt(row: number): boolean {
     return (this.flags[row] & ENTITY_RENDER_FLAG_SHELL) !== 0;
-  }
-
-  activePredictionAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_ACTIVE_PREDICTION) !== 0;
-  }
-
-  renderDirtyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_RENDER_DIRTY) !== 0;
-  }
-
-  lifecycleDirtyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY) !== 0;
-  }
-
-  lodProxyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
   }
 
   private ensureCapacity(required: number): void {
@@ -666,12 +574,5 @@ export class BuildingRenderPacket3D {
     this.turretHostSlots = growTypedArray(this.turretHostSlots, nextCapacity);
     this.turretStarts = growTypedArray(this.turretStarts, nextCapacity);
     this.turretStateCounts = growTypedArray(this.turretStateCounts, nextCapacity);
-  }
-
-  private ensureRemovalCapacity(required: number): void {
-    if (required <= this.removedIds.length) return;
-    let nextCapacity = this.removedIds.length;
-    while (nextCapacity < required) nextCapacity *= 2;
-    this.removedIds = growTypedArray(this.removedIds, nextCapacity);
   }
 }

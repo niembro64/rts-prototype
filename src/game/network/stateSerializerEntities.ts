@@ -1,6 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
+import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
 import {
   ENTITY_SLOT_BUILD_FLAG_COMPLETE,
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
@@ -71,6 +72,11 @@ import {
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
+import {
+  fireStateToWireCode,
+  moveStateToWireCode,
+  trajectoryModeToWireCode,
+} from './unitCombatStateWireCodes';
 import {
   quantizeEntityPosition as qPos,
   quantizeNormal as qNormal,
@@ -278,8 +284,7 @@ export function ensureEntitySnapshotWireSourceCapacity(
   rowCount: number,
 ): void {
   if (rowCount <= source.kinds.length) return;
-  let nextCapacity = Math.max(4, source.kinds.length);
-  while (nextCapacity < rowCount) nextCapacity *= 2;
+  const nextCapacity = nextGeometricCapacity(source.kinds.length, rowCount, 4);
   const kinds = new Uint32Array(nextCapacity);
   const rowIndices = new Int32Array(nextCapacity);
   const typedPlaceholderMarks = new Uint8Array(nextCapacity);
@@ -683,30 +688,6 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.factorySelectedUnitRows.count = 0;
   entityWireSource.waypointRows.count = 0;
   entityWireSource.waypointStrings.length = 0;
-}
-
-function fireStateToWireCode(value: UnitSub['fireState']): number {
-  return value === 'fireAtAll'
-    ? 4
-    : value === 'defend'
-      ? 3
-      : value === 'holdFire'
-        ? 2
-        : value === 'returnFire'
-          ? 1
-          : 0;
-}
-
-function trajectoryModeToWireCode(value: UnitSub['trajectoryMode']): number {
-  return value === 'auto' ? 2 : value === 'high' ? 1 : 0;
-}
-
-function moveStateToWireCode(value: UnitSub['moveState']): number {
-  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
-}
-
-function factoryMoveStateToWireCode(value: string | null | undefined): number {
-  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
 }
 
 function canReferenceSnapshotEntityId(
@@ -1477,7 +1458,7 @@ function appendDirectBuildingEntityWireRow(
   values[base + 45] = factoryQuotaCounts.count;
   values[base + 46] = shouldEmitFactory && factory!.lowPriority === true ? 1 : 0;
   values[base + 47] = shouldEmitFactory && factory!.paused === true ? 1 : 0;
-  values[base + 48] = shouldEmitFactory ? factoryMoveStateToWireCode(factory!.moveState) : 0;
+  values[base + 48] = shouldEmitFactory ? moveStateToWireCode(factory!.moveState) : 0;
   values[base + 49] = shouldEmitFactory && factory!.airIdleState === 'fly' ? 1 : 0;
   appendEntitySnapshotWireSourceRow(
     entityWireSource,

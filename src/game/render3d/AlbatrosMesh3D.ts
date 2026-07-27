@@ -3,6 +3,7 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -34,19 +35,6 @@ const detailSphereGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeomet
 const neckGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 const noseConeGeomByTier = new Map<PrimitiveGeometryTier, THREE.ConeGeometry>();
 const finGeom = new THREE.BoxGeometry(1, 1, 1);
-
-function tierGeom<T extends THREE.BufferGeometry>(
-  cache: Map<PrimitiveGeometryTier, T>,
-  tier: PrimitiveGeometryTier,
-  create: () => T,
-): T {
-  let geometry = cache.get(tier);
-  if (!geometry) {
-    geometry = create();
-    cache.set(tier, geometry);
-  }
-  return geometry;
-}
 
 const canopyMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
 
@@ -93,7 +81,7 @@ function addCylinderBetween(
   const length = Math.hypot(dx, dy, dz);
   if (length <= 0) return;
   const mesh = new THREE.Mesh(
-    tierGeom(neckGeomByTier, geometryTier, () =>
+    getOrCreate(neckGeomByTier, geometryTier, () =>
       createPrimitiveCylinderGeometry('unitDetail', geometryTier)),
     material,
   );
@@ -126,7 +114,7 @@ export function buildAlbatrosChassis(
     -0.80, 0.31, 0, 0.60, 0.31, 0, 0.17, geometryTier,
   );
   // Rounded nose cap; tip reaches past the forward turret mount (x=0.8).
-  const detailSphereGeom = tierGeom(
+  const detailSphereGeom = getOrCreate(
     detailSphereGeomByTier, geometryTier,
     () => createPrimitiveSphereGeometry('unitDetail', geometryTier),
   );
@@ -134,7 +122,7 @@ export function buildAlbatrosChassis(
   // Tapered tail cone, pointing rearward.
   addMesh(
     parent, meshes,
-    tierGeom(noseConeGeomByTier, geometryTier, () =>
+    getOrCreate(noseConeGeomByTier, geometryTier, () =>
       createPrimitiveConeGeometry('unitDetail', geometryTier)),
     primaryMat, entityId, [-0.87, 0.31, 0], [0.15, 0.16, 0.15],
     [0, 0, Math.PI / 2],
@@ -144,7 +132,7 @@ export function buildAlbatrosChassis(
   // Belly panel uses the same body tone as the LOD proxy.
   addMesh(
     parent, meshes,
-    tierGeom(bodyGeomByTier, geometryTier, () =>
+    getOrCreate(bodyGeomByTier, geometryTier, () =>
       createPrimitiveSphereGeometry('unitBody', geometryTier)),
     primaryMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13],
   );

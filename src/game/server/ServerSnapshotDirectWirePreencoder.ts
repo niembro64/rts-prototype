@@ -203,36 +203,45 @@ export class ServerSnapshotDirectWirePreencoder {
     return true;
   }
 
-  tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
-    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
-    if (getSimWasm() === undefined) return undefined;
-
-    this.fullVisibleEntityIds.length = 0;
-    const state = this.materializeWireState(input);
-    let stageStart = performance.now();
+  private encodeDirectWirePayload(
+    state: NetworkServerSnapshot,
+    materializationStages: SnapshotMaterializationStageDurations | undefined,
+  ): SnapshotWirePayload | undefined {
+    const stageStart = performance.now();
     const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
     const encodeMs = performance.now() - stageStart;
-    if (input.materializationStages !== undefined) {
+    if (materializationStages !== undefined) {
       addSnapshotMaterializationStageFromStart(
-        input.materializationStages,
+        materializationStages,
         'wireEncode',
         stageStart,
       );
     }
     if (encoded === null) return undefined;
     return {
+      bytes: encoded.bytes,
+      encodeMs,
+      encoderKind: 'rust',
+      materializationKind: 'direct',
+      rustEntityCount: encoded.rustEntityCount,
+      rawEntityCount: encoded.rawEntityCount,
+      rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
+        ? [...encoded.rawTopLevelKeys]
+        : undefined,
+    };
+  }
+
+  tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
+    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (getSimWasm() === undefined) return undefined;
+
+    this.fullVisibleEntityIds.length = 0;
+    const state = this.materializeWireState(input);
+    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
+    if (wirePayload === undefined) return undefined;
+    return {
       state,
-      wirePayload: {
-        bytes: encoded.bytes,
-        encodeMs,
-        encoderKind: 'rust',
-        materializationKind: 'direct',
-        rustEntityCount: encoded.rustEntityCount,
-        rawEntityCount: encoded.rawEntityCount,
-        rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
-          ? [...encoded.rawTopLevelKeys]
-          : undefined,
-      },
+      wirePayload,
       visibleEntityIds: this.fullVisibleEntityIds,
     };
   }
@@ -246,31 +255,9 @@ export class ServerSnapshotDirectWirePreencoder {
     const state = this.materializeSparseDeltaWireState(input);
     if (state === undefined) return undefined;
 
-    const stageStart = performance.now();
-    const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
-    const encodeMs = performance.now() - stageStart;
-    if (input.materializationStages !== undefined) {
-      addSnapshotMaterializationStageFromStart(
-        input.materializationStages,
-        'wireEncode',
-        stageStart,
-      );
-    }
-    if (encoded === null) return undefined;
-    return {
-      state,
-      wirePayload: {
-        bytes: encoded.bytes,
-        encodeMs,
-        encoderKind: 'rust',
-        materializationKind: 'direct',
-        rustEntityCount: encoded.rustEntityCount,
-        rawEntityCount: encoded.rawEntityCount,
-        rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
-          ? [...encoded.rawTopLevelKeys]
-          : undefined,
-      },
-    };
+    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
+    if (wirePayload === undefined) return undefined;
+    return { state, wirePayload };
   }
 
   tryEncodeRichDelta(
@@ -284,31 +271,12 @@ export class ServerSnapshotDirectWirePreencoder {
     const state = this.materializeRichDeltaWireState(input);
     if (state === undefined) return undefined;
 
-    const stageStart = performance.now();
-    const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
-    const encodeMs = performance.now() - stageStart;
-    if (input.materializationStages !== undefined) {
-      addSnapshotMaterializationStageFromStart(
-        input.materializationStages,
-        'wireEncode',
-        stageStart,
-      );
-    }
-    if (encoded === null) return undefined;
+    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
+    if (wirePayload === undefined) return undefined;
     const includeVisibleBaselineDeltas = input.currentVisibleEntityIds !== undefined;
     return {
       state,
-      wirePayload: {
-        bytes: encoded.bytes,
-        encodeMs,
-        encoderKind: 'rust',
-        materializationKind: 'direct',
-        rustEntityCount: encoded.rustEntityCount,
-        rawEntityCount: encoded.rawEntityCount,
-        rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
-          ? [...encoded.rawTopLevelKeys]
-          : undefined,
-      },
+      wirePayload,
       visibleBaselineAddedIds: includeVisibleBaselineDeltas
         ? this.visibleBaselineAddedIds
         : undefined,

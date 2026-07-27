@@ -35,32 +35,18 @@ import {
   registerEntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { reserveFloat64WireRows, reserveUint32WireRows } from './snapshotWireRows';
+import {
+  fireStateToWireCode,
+  moveStateToWireCode,
+  trajectoryModeToWireCode,
+  unitFireStateFromWireCode,
+} from './unitCombatStateWireCodes';
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
 type WaypointSub = FactorySub['rally'];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
-
-function factoryMoveStateToWireCode(value: FactorySub['moveState'] | null | undefined): number {
-  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
-}
-
-function fireStateToWireCode(value: UnitSub['fireState'] | null | undefined): number {
-  return value === 'fireAtAll'
-    ? 4
-    : value === 'defend'
-      ? 3
-      : value === 'holdFire'
-        ? 2
-        : value === 'returnFire'
-          ? 1
-          : 0;
-}
-
-function trajectoryModeToWireCode(value: UnitSub['trajectoryMode'] | null | undefined): number {
-  return value === 'auto' ? 2 : value === 'high' ? 1 : 0;
-}
 
 function createEmptyUnitSub(): UnitSub {
   return {
@@ -1018,7 +1004,7 @@ function tryAppendDecodedBuildingDetailTypedFullWireRow(
     values[base + 45] = quotaCounts.count;
     values[base + 46] = factory.lowPriority === true ? 1 : 0;
     values[base + 47] = factory.paused === true ? 1 : 0;
-    values[base + 48] = factoryMoveStateToWireCode(factory.moveState);
+    values[base + 48] = moveStateToWireCode(factory.moveState);
     values[base + 49] = factory.airIdleState === 'fly' ? 1 : 0;
   }
   values[base + 34] = building.build.interrupted ? 1 : 0;
@@ -1261,7 +1247,7 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
     values[base + 45] = quotaCounts.count;
     values[base + 46] = factory.lowPriority === true ? 1 : 0;
     values[base + 47] = factory.paused === true ? 1 : 0;
-    values[base + 48] = factoryMoveStateToWireCode(factory.moveState);
+    values[base + 48] = moveStateToWireCode(factory.moveState);
     values[base + 49] = factory.airIdleState === 'fly' ? 1 : 0;
   }
 
@@ -1783,15 +1769,7 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
     const code = row[i++] as number;
-    unit.fireState = code === 4
-      ? 'fireAtAll'
-      : code === 3
-        ? 'defend'
-        : code === 2
-          ? 'holdFire'
-          : code === 1
-            ? 'returnFire'
-            : 'fireAtWill';
+    unit.fireState = unitFireStateFromWireCode(code);
   }
   if ((flags & UNIT_FLAG_CLOAK_STATE_PRESENT) !== 0) {
     const code = row[i++] as number;

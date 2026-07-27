@@ -5,6 +5,7 @@ import type { TurretMesh } from './TurretMesh3D';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -22,21 +23,13 @@ export class CommanderVisualKit3D {
   });
 
   private cylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-    let geometry = this.cylinderGeoms.get(tier);
-    if (!geometry) {
-      geometry = createPrimitiveCylinderGeometry('unitDetail', tier);
-      this.cylinderGeoms.set(tier, geometry);
-    }
-    return geometry;
+    return getOrCreate(this.cylinderGeoms, tier, () =>
+      createPrimitiveCylinderGeometry('unitDetail', tier));
   }
 
   private domeGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
-    let geometry = this.domeGeoms.get(tier);
-    if (!geometry) {
-      geometry = createPrimitiveSphereGeometry('unitDetail', tier);
-      this.domeGeoms.set(tier, geometry);
-    }
-    return geometry;
+    return getOrCreate(this.domeGeoms, tier, () =>
+      createPrimitiveSphereGeometry('unitDetail', tier));
   }
 
   buildKit(primaryMat: THREE.Material, geometryTier: PrimitiveGeometryTier): THREE.Group {

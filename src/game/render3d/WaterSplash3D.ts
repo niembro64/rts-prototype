@@ -20,6 +20,8 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { SPLASH_CONFIG } from '@/splashConfig';
 import type { Vec3 } from '@/types/vec2';
+import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
+import { PRIMITIVE_GEOMETRY_TIERS } from './instancedParticlePool3D';
 import {
   createPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
@@ -28,15 +30,6 @@ import {
 import { disposeMesh } from './threeUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
-
-const VS = `
-attribute float aAlpha;
-varying float vAlpha;
-void main() {
-  vAlpha = aAlpha;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
 
 const FS = `
 uniform vec3 uColor;
@@ -72,6 +65,9 @@ export class WaterSplash3D {
   private droplets: Droplet[] = [];
   private freeSlots: number[] = [];
   private activeDropletCount = 0;
+  // Per-frame tier tallies — instance-level scratch so writeInstances()
+  // does not allocate a counter object every frame.
+  private readonly _tierCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
   constructor(parentWorld: THREE.Group) {
     const cfg = SPLASH_CONFIG;
@@ -79,7 +75,7 @@ export class WaterSplash3D {
     parentWorld.add(this.root);
 
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: VS,
+      vertexShader: INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER,
       fragmentShader: FS,
       uniforms: {
         uColor: {
@@ -264,7 +260,7 @@ export class WaterSplash3D {
 
   update(dtMs: number, view?: RenderViewState3D): void {
     if (this.activeDropletCount === 0) {
-      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
+      this.setPoolCountsZero();
       return;
     }
     const dt = dtMs / 1000;
@@ -288,10 +284,16 @@ export class WaterSplash3D {
       }
     }
     if (this.activeDropletCount === 0) {
-      for (const pool of Object.values(this.pools)) pool.mesh.count = 0;
+      this.setPoolCountsZero();
       return;
     }
     this.writeInstances(view);
+  }
+
+  private setPoolCountsZero(): void {
+    this.pools.close.mesh.count = 0;
+    this.pools.mid.mesh.count = 0;
+    this.pools.far.mesh.count = 0;
   }
 
   private writeInstances(view?: RenderViewState3D): void {
@@ -303,7 +305,10 @@ export class WaterSplash3D {
     const widthFadePerLife = cfg.streak.widthFadePerLife;
     const lengthFadePerLife = cfg.streak.lengthFadePerLife;
     const e = this.scratch.elements;
-    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const counts = this._tierCounts;
+    counts.close = 0;
+    counts.mid = 0;
+    counts.far = 0;
     for (let i = 0; i < this.droplets.length; i++) {
       const d = this.droplets[i];
       if (!d.active) continue;
@@ -352,7 +357,8 @@ export class WaterSplash3D {
       pool.mesh.setMatrixAt(writeIndex, this.scratch);
       pool.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * maxAlpha;
     }
-    for (const tier of ['close', 'mid', 'far'] as const) {
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      const tier = PRIMITIVE_GEOMETRY_TIERS[t];
       const pool = this.pools[tier];
       pool.mesh.count = counts[tier];
       if (counts[tier] > 0) {

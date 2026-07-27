@@ -70,26 +70,11 @@ import {
   type EntitySnapshotWireSource,
 } from '../stateSerializerEntities';
 import { unitBlueprintBarDefaultMoveState } from '../../sim/unitCommandCapabilities';
-
-function unitMoveStateFromWireCode(code: number): 'maneuver' | 'holdPosition' | 'roam' {
-  return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
-}
-
-function unitFireStateFromWireCode(code: number): 'fireAtWill' | 'returnFire' | 'holdFire' | 'defend' | 'fireAtAll' {
-  return code === 4
-    ? 'fireAtAll'
-    : code === 3
-      ? 'defend'
-      : code === 2
-        ? 'holdFire'
-        : code === 1
-          ? 'returnFire'
-          : 'fireAtWill';
-}
-
-function trajectoryModeFromWireCode(code: number): 'low' | 'high' | 'auto' {
-  return code === 2 ? 'auto' : code === 1 ? 'high' : 'low';
-}
+import {
+  trajectoryModeFromWireCode,
+  unitFireStateFromWireCode,
+  unitMoveStateFromWireCode,
+} from '../unitCombatStateWireCodes';
 
 function orientationFromYaw(yaw: number): { x: number; y: number; z: number; w: number } {
   const half = (Number.isFinite(yaw) ? yaw : 0) * 0.5;

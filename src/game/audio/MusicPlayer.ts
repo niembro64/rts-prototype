@@ -176,6 +176,33 @@ class MusicPlayer {
 
   // ---- Note creation helpers (procedural voices) ----
 
+  /** Shared ADSR gain envelope for the procedural note voices. */
+  private applyNoteEnvelope(
+    gainNode: GainNode, gain: number,
+    startTime: number, duration: number, attack: number, release: number,
+  ): void {
+    gainNode.gain.setValueAtTime(0.0001, startTime);
+    gainNode.gain.linearRampToValueAtTime(gain, startTime + attack);
+    gainNode.gain.setValueAtTime(gain, startTime + duration - release);
+    gainNode.gain.linearRampToValueAtTime(0.0001, startTime + duration);
+  }
+
+  /** Shared start/stop + tracked disconnect timer for a note's gain node. */
+  private startNoteAndScheduleCleanup(
+    ctx: AudioContext, osc: OscillatorNode, gainNode: GainNode,
+    startTime: number, duration: number,
+  ): void {
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.01);
+
+    const cleanupDelay = (startTime - ctx.currentTime + duration + 0.1) * 1000;
+    const tid = setTimeout(() => {
+      this.pendingCleanups.delete(tid);
+      try { gainNode.disconnect(); } catch { /* */ }
+    }, Math.max(cleanupDelay, 50));
+    this.pendingCleanups.add(tid);
+  }
+
   private createNoteOsc(
     type: OscillatorType, freq: number, gain: number,
     startTime: number, duration: number, attack = 0.02, release = 0.05,
@@ -187,21 +214,10 @@ class MusicPlayer {
 
     osc.type = type;
     osc.frequency.value = freq;
-    gainNode.gain.setValueAtTime(0.0001, startTime);
-    gainNode.gain.linearRampToValueAtTime(gain, startTime + attack);
-    gainNode.gain.setValueAtTime(gain, startTime + duration - release);
-    gainNode.gain.linearRampToValueAtTime(0.0001, startTime + duration);
+    this.applyNoteEnvelope(gainNode, gain, startTime, duration, attack, release);
 
     osc.connect(gainNode).connect(this.musicGain);
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.01);
-
-    const cleanupDelay = (startTime - this.ctx.currentTime + duration + 0.1) * 1000;
-    const tid = setTimeout(() => {
-      this.pendingCleanups.delete(tid);
-      try { gainNode.disconnect(); } catch { /* */ }
-    }, Math.max(cleanupDelay, 50));
-    this.pendingCleanups.add(tid);
+    this.startNoteAndScheduleCleanup(this.ctx, osc, gainNode, startTime, duration);
   }
 
   private createFilteredNote(
@@ -221,21 +237,10 @@ class MusicPlayer {
     filter.frequency.value = filterFreq;
     filter.Q.value = 1;
 
-    gainNode.gain.setValueAtTime(0.0001, startTime);
-    gainNode.gain.linearRampToValueAtTime(gain, startTime + attack);
-    gainNode.gain.setValueAtTime(gain, startTime + duration - release);
-    gainNode.gain.linearRampToValueAtTime(0.0001, startTime + duration);
+    this.applyNoteEnvelope(gainNode, gain, startTime, duration, attack, release);
 
     osc.connect(filter).connect(gainNode).connect(this.musicGain);
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.01);
-
-    const cleanupDelay = (startTime - this.ctx.currentTime + duration + 0.1) * 1000;
-    const tid = setTimeout(() => {
-      this.pendingCleanups.delete(tid);
-      try { gainNode.disconnect(); } catch { /* */ }
-    }, Math.max(cleanupDelay, 50));
-    this.pendingCleanups.add(tid);
+    this.startNoteAndScheduleCleanup(this.ctx, osc, gainNode, startTime, duration);
   }
 }
 

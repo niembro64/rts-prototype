@@ -21,8 +21,10 @@ import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
+import { makeCylinder } from './BuildingMeshPrimitives3D';
 import {
   createPrimitiveCylinderGeometry,
+  getOrCreate,
   getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
@@ -116,23 +118,14 @@ const baseCylinderGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeomet
 const strawCylinderGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 
 function getBaseCylinderGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  let geometry = baseCylinderGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = tier === 'far'
-      ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
-      : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5);
-    baseCylinderGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(baseCylinderGeomByTier, tier, () => tier === 'far'
+    ? getSharedExtrudedEquilateralTriangleGeometry(0.5, 1).clone()
+    : createPrimitiveCylinderGeometry('building', tier, 0.5, 0.5));
 }
 
 function getStrawCylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-  let geometry = strawCylinderGeomByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = createPrimitiveCylinderGeometry('unitDetail', tier, 0.5, 0.5, 1, 1, true);
-    strawCylinderGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(strawCylinderGeomByTier, tier, () =>
+    createPrimitiveCylinderGeometry('unitDetail', tier, 0.5, 0.5, 1, 1, true));
 }
 
 function getCapGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
@@ -531,21 +524,6 @@ function buildConstructionTowerPiece(
       displaySmoothedRate: 0,
     },
   };
-}
-
-function makeCylinder(
-  material: THREE.Material,
-  radius: number,
-  height: number,
-  x: number,
-  y: number,
-  z: number,
-  geom: THREE.BufferGeometry,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(geom, material);
-  mesh.scale.set(radius * 2, height, radius * 2);
-  mesh.position.set(x, y, z);
-  return mesh;
 }
 
 /** The transparent double-wall "straw": an outer wall at `radius` and an

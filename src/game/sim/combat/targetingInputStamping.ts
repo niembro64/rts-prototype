@@ -859,10 +859,8 @@ function stampCombatTargetingEntityInto(
   const radarRadius = sensorConfig?.contactSight[sensorSourceMedium].aboveWater ?? 0;
   const sonarRadius = sensorConfig?.contactSight[sensorSourceMedium].underwater ?? 0;
   const detectorRadius = sensorConfig?.detectorRadius ?? 0;
-  const detectorRadii = {
-    aboveWater: Math.min(detectorRadius, fullVisionAboveWaterRadius),
-    underwater: Math.min(detectorRadius, fullVisionUnderwaterRadius),
-  };
+  const detectorAboveWaterRadius = Math.min(detectorRadius, fullVisionAboveWaterRadius);
+  const detectorUnderwaterRadius = Math.min(detectorRadius, fullVisionUnderwaterRadius);
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
@@ -873,8 +871,8 @@ function stampCombatTargetingEntityInto(
       fullVisionUnderwaterRadius > 0 ||
       radarRadius > 0 ||
       sonarRadius > 0 ||
-      detectorRadii.aboveWater > 0 ||
-      detectorRadii.underwater > 0
+      detectorAboveWaterRadius > 0 ||
+      detectorUnderwaterRadius > 0
     )
   ) {
     queueCombatTargetingSensorSourceSlot(slot);
@@ -918,7 +916,7 @@ function stampCombatTargetingEntityInto(
     sensorSource?.position.y ?? _stampPos.y,
     fullVisionAboveWaterRadius, fullVisionUnderwaterRadius,
     radarRadius, sonarRadius,
-    detectorRadii.aboveWater, detectorRadii.underwater,
+    detectorAboveWaterRadius, detectorUnderwaterRadius,
     visibilityPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
@@ -1087,6 +1085,13 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
 }
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
+// Reused per shield-panel unit in stampShieldSurfacePool; the callee
+// reads these fields synchronously and never retains the object.
+const _shieldMountOptions: {
+  currentTick: number | undefined;
+  unitGroundZ: number | undefined;
+  surfaceN: { nx: number; ny: number; nz: number } | undefined;
+} = { currentTick: undefined, unitGroundZ: undefined, surfaceN: undefined };
 
 /** Rebuild the single shield surface pool. Runs once per tick, right
  *  after updateShieldState: beam tracing, projectile reflection, and
@@ -1183,20 +1188,17 @@ export function stampShieldSurfacePool(world: WorldState): void {
     const shieldPanelRot = shieldPanelTurret.rotation;
     const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
-    const unitCS = {
-      cos: DMath.cos(unit.transform.rotation),
-      sin: DMath.sin(unit.transform.rotation),
-    };
-    unit.transform.rotCos = unitCS.cos;
-    unit.transform.rotSin = unitCS.sin;
+    const unitRotCos = DMath.cos(unit.transform.rotation);
+    const unitRotSin = DMath.sin(unit.transform.rotation);
+    unit.transform.rotCos = unitRotCos;
+    unit.transform.rotSin = unitRotSin;
+    _shieldMountOptions.currentTick = currentTick;
+    _shieldMountOptions.unitGroundZ = unitGroundZ;
+    _shieldMountOptions.surfaceN = unit.unit.surfaceNormal;
     resolveWeaponWorldMount(
       unit, shieldPanelTurret, shieldPanelTurretIndex,
-      unitCS.cos, unitCS.sin,
-      {
-        currentTick,
-        unitGroundZ,
-        surfaceN: unit.unit.surfaceNormal,
-      },
+      unitRotCos, unitRotSin,
+      _shieldMountOptions,
       _mirrorStampPivot,
     );
 

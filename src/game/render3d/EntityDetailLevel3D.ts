@@ -21,6 +21,7 @@
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
+import { clamp01 } from '../math';
 import type {
   BeamStyle,
   GraphicsConfig,
@@ -72,12 +73,6 @@ function finitePositiveOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value
     : fallback;
-}
-
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
 }
 
 type EffectSpawnScaleConfig = Record<

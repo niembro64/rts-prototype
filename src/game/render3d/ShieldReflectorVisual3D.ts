@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { SHIELD_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity } from '../sim/types';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../sim/blueprints/shieldMaterials';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
 
 // Materials Are Independent Of Shape: the shield surface is ONE material.
 // The turretShieldSphere carries it as a sphere; the turretShieldPanel
@@ -30,34 +34,14 @@ export function resolveShieldSurfaceColorForOwner(playerId: number | undefined):
     : REFLECTIVE_SHIELD_MATERIAL.visual.color;
 }
 
-const SHIELD_SURFACE_VS = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const SHIELD_SURFACE_FS = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
 /** The one shield surface material. Both the sphere renderer and the
  *  flat-panel renderer build their instanced mesh on top of this — same
  *  shader, same blending, same depth/side params — so the two shapes are
  *  visually the same material and only differ in geometry. */
 export function createShieldSurfaceMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    vertexShader: SHIELD_SURFACE_VS,
-    fragmentShader: SHIELD_SURFACE_FS,
+    vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+    fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,

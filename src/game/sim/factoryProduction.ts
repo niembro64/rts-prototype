@@ -91,6 +91,13 @@ export function shiftFactoryProductionQueue(queue: string[]): string | null {
   return unitBlueprintId;
 }
 
+// Per-tick scratch reused across update() calls; consumers of the
+// returned result arrays iterate synchronously and never retain them.
+const _factoriesScratch: Entity[] = [];
+const _spawnedUnitsScratch: Entity[] = [];
+const _completedUnitsScratch: Entity[] = [];
+const _remainingSpawnCapacityByPlayer = new Map<number, number>();
+
 let factoryRows: Entity[] = [];
 let factoryRowShells: Array<Entity | null> = [];
 let factoryRowSelectedUnitBlueprintIds: Array<string | null> = [];
@@ -185,17 +192,25 @@ class FactoryProductionSystem {
     forceAccumulator: ForceAccumulator,
     wind: WindState = STILL_AIR,
   ): FactoryProductionResult {
-    const spawnedUnits: Entity[] = [];
-    const completedUnits: Entity[] = [];
+    const spawnedUnits = _spawnedUnitsScratch;
+    const completedUnits = _completedUnitsScratch;
+    spawnedUnits.length = 0;
+    completedUnits.length = 0;
     // Building factories (fabricator) then mobile unit factories (queens). The
     // per-factory logic below is host-type-agnostic; producer-specific bay
     // placement is delegated to EntityHold. Order is deterministic.
-    const factories = world.getFactoryBuildings().concat(world.getFactoryUnits());
+    const factoryBuildings = world.getFactoryBuildings();
+    const factoryUnits = world.getFactoryUnits();
+    const factories = _factoriesScratch;
+    factories.length = 0;
+    for (let i = 0; i < factoryBuildings.length; i++) factories.push(factoryBuildings[i]);
+    for (let i = 0; i < factoryUnits.length; i++) factories.push(factoryUnits[i]);
     ensureFactoryProductionCapacity(factories.length);
     factoryRows.length = 0;
     factoryRowShells.length = 0;
     factoryRowSelectedUnitBlueprintIds.length = 0;
-    const remainingSpawnCapacityByPlayer = new Map<number, number>();
+    const remainingSpawnCapacityByPlayer = _remainingSpawnCapacityByPlayer;
+    remainingSpawnCapacityByPlayer.clear();
 
     for (const factory of factories) {
       // Factory itself must be complete and owned.

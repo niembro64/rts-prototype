@@ -272,86 +272,76 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateUnitRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showOther = this.showOtherRadius;
-    const showHitbox = this.showHitboxRadius;
-    const showCollision = this.showCollisionRadius;
-    const showShotArming = this.showShotArmingRadius;
-    if (!showOther && !showHitbox && !showCollision && !showShotArming) {
-      if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
-        if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
-        if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
-        if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
-      }
-      m.radiusRingsVisible = false;
-      return;
-    }
+    if (this.hideRadiusRingsIfDisabled(m)) return;
 
     const collider = entity.unit?.radius;
     if (!entity.unit || !collider) return;
 
-    const rings = m.radiusRings ?? (m.radiusRings = {});
     const centerY = getUnitSupportPointOffsetZ(entity.unit);
-
-    this.setUnitRadiusSphere(
-      rings, 'other', showOther, m.group,
-      centerY, entity.unit.radius.other, this.radiusMatOther,
+    this.applyRadiusRings(
+      m, entity, centerY,
+      collider.other, collider.hitbox, collider.collision,
     );
-    this.setUnitRadiusSphere(
-      rings, 'hitbox', showHitbox, m.group,
-      centerY, collider.hitbox, this.radiusMatHitbox,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'collision', showCollision, m.group,
-      centerY, collider.collision, this.radiusMatCollision,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'shotArmingRadius', showShotArming, m.group,
-      centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
-    );
-    m.radiusRingsVisible = true;
   }
 
   updateBuildingRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showOther = this.showOtherRadius;
-    const showHitbox = this.showHitboxRadius;
-    const showCollision = this.showCollisionRadius;
-    const showShotArming = this.showShotArmingRadius;
-    if (!showOther && !showHitbox && !showCollision && !showShotArming) {
-      if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
-        if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
-        if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
-        if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
-      }
-      m.radiusRingsVisible = false;
-      return;
-    }
+    if (this.hideRadiusRingsIfDisabled(m)) return;
     if (!entity.building || !entity.buildingBlueprintId) return;
 
     const config = getBuildingConfig(entity.buildingBlueprintId);
     const collider = config.radius;
-    const rings = m.radiusRings ?? (m.radiusRings = {});
     // A hovering body (the fabricator torus) carries its hitbox/collision/visual
     // volumes up at the torus center, not at the ground-level body midpoint.
     const centerY = entity.building.hoveringType === 'fabricator'
       ? fabricatorTorusHoverHeight()
       : Math.max(0, config.visualHeight * 0.5);
+    this.applyRadiusRings(
+      m, entity, centerY,
+      collider.other, collider.hitbox, collider.collision,
+    );
+  }
+
+  private hideRadiusRingsIfDisabled(m: OverlayEntityMesh): boolean {
+    if (
+      this.showOtherRadius || this.showHitboxRadius ||
+      this.showCollisionRadius || this.showShotArmingRadius
+    ) {
+      return false;
+    }
+    if (m.radiusRingsVisible && m.radiusRings) {
+      if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
+      if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
+      if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
+      if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
+    }
+    m.radiusRingsVisible = false;
+    return true;
+  }
+
+  private applyRadiusRings(
+    m: OverlayEntityMesh,
+    entity: Entity,
+    centerY: number,
+    otherRadius: number,
+    hitboxRadius: number,
+    collisionRadius: number,
+  ): void {
+    const rings = m.radiusRings ?? (m.radiusRings = {});
 
     this.setUnitRadiusSphere(
-      rings, 'other', showOther, m.group,
-      centerY, collider.other, this.radiusMatOther,
+      rings, 'other', this.showOtherRadius, m.group,
+      centerY, otherRadius, this.radiusMatOther,
     );
     this.setUnitRadiusSphere(
-      rings, 'hitbox', showHitbox, m.group,
-      centerY, collider.hitbox, this.radiusMatHitbox,
+      rings, 'hitbox', this.showHitboxRadius, m.group,
+      centerY, hitboxRadius, this.radiusMatHitbox,
     );
     this.setUnitRadiusSphere(
-      rings, 'collision', showCollision, m.group,
-      centerY, collider.collision, this.radiusMatCollision,
+      rings, 'collision', this.showCollisionRadius, m.group,
+      centerY, collisionRadius, this.radiusMatCollision,
     );
     this.setUnitRadiusSphere(
-      rings, 'shotArmingRadius', showShotArming, m.group,
+      rings, 'shotArmingRadius', this.showShotArmingRadius, m.group,
       centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
     );
     m.radiusRingsVisible = true;

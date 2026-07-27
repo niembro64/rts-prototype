@@ -33,16 +33,13 @@ type ClosestEntityOptions = {
 const SEL_SCALE_MOBILE = 1.22;
 const SEL_SCALE_STATIC = 1.15;
 
-function canUseUnit(entity: ReturnType<SelectionEntitySource['getUnits']>[number], playerId?: PlayerId): boolean {
-  if (!entity.unit) return false;
-  if (entity.unit.hp <= 0) return false;
-  if (playerId !== undefined && entity.ownership?.playerId !== playerId) return false;
-  return true;
-}
-
-function canUseBuilding(entity: ReturnType<SelectionEntitySource['getBuildings']>[number], playerId?: PlayerId): boolean {
-  if (!entity.building) return false;
-  if (entity.building.hp <= 0) return false;
+function canUseEntity(
+  entity: ReturnType<SelectionEntitySource['getUnits']>[number],
+  hpComponent: { hp: number } | null | undefined,
+  playerId?: PlayerId,
+): boolean {
+  if (!hpComponent) return false;
+  if (hpComponent.hp <= 0) return false;
   if (playerId !== undefined && entity.ownership?.playerId !== playerId) return false;
   return true;
 }
@@ -57,7 +54,7 @@ export function findClosestSelectableEntityToPoint(
   const { playerId, minUnitRadius = 0 } = options;
 
   for (const entity of entitySource.getUnits()) {
-    if (!canUseUnit(entity, playerId)) continue;
+    if (!canUseEntity(entity, entity.unit, playerId)) continue;
     const dx = entity.transform.x - worldX;
     const dy = entity.transform.y - worldY;
     const radius = Math.max(minUnitRadius, entity.unit!.radius.collision * SEL_SCALE_MOBILE);
@@ -68,7 +65,7 @@ export function findClosestSelectableEntityToPoint(
   }
 
   for (const entity of entitySource.getBuildings()) {
-    if (!canUseBuilding(entity, playerId)) continue;
+    if (!canUseEntity(entity, entity.building, playerId)) continue;
     const dx = Math.abs(worldX - entity.transform.x);
     const dy = Math.abs(worldY - entity.transform.y);
     const halfW = (entity.building!.width / 2) * SEL_SCALE_STATIC;

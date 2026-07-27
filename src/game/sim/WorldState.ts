@@ -103,7 +103,9 @@ export class WorldState {
   private unitSetVersion: number = 0;
   private removedSnapshotEntities: RemovedSnapshotEntity[] = [];
   private snapshotDirtyIds: EntityId[] = [];
-  private snapshotDirtyFieldsById: number[] = [];
+  // Keyed sparsely: entity ids are monotonic and never recycled, so a
+  // dense id-indexed array would grow with every entity ever spawned.
+  private readonly snapshotDirtyFieldsById = new Map<EntityId, number>();
   private pendingDeathCheckIds = new Set<EntityId>();
   private readonly factoryProducedUnitIdsByFactory = new Map<EntityId, Map<string, Set<EntityId>>>();
   private readonly factoryProducedUnitByUnitId = new Map<EntityId, { factoryId: EntityId; unitBlueprintId: string }>();
@@ -373,7 +375,7 @@ export class WorldState {
   }
 
   private markEntityMetadataDead(entity: Entity): void {
-    this.entityMetadata.markEntityDead(entity);
+    this.entityMetadata.markEntityDead(entity, this.tick);
   }
 
   refreshEntitySlotState(entity: Entity, dirtyFields = 0): void {
@@ -580,7 +582,7 @@ export class WorldState {
       });
     }
     this.pendingDeathCheckIds.delete(id);
-    this.snapshotDirtyFieldsById[id] = 0;
+    this.snapshotDirtyFieldsById.delete(id);
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     if (entity !== undefined) entitySlotRegistry.unsetEntity(id);
     this.entities.delete(id);
@@ -627,9 +629,9 @@ export class WorldState {
 
   private enqueueSnapshotDirty(id: EntityId, fields: number): void {
     if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
-    const previousFields = this.snapshotDirtyFieldsById[id] ?? 0;
+    const previousFields = this.snapshotDirtyFieldsById.get(id) ?? 0;
     if (previousFields === 0) this.snapshotDirtyIds.push(id);
-    this.snapshotDirtyFieldsById[id] = previousFields | fields;
+    this.snapshotDirtyFieldsById.set(id, previousFields | fields);
   }
 
   drainPendingDeathCheckIds(out: EntityId[]): void {
@@ -653,7 +655,7 @@ export class WorldState {
     if (outSlots !== undefined) outSlots.length = 0;
     if (entitySlotRegistry.drainDirtySnapshotEntities(outIds, outFields, outSlots)) {
       for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
-        this.snapshotDirtyFieldsById[this.snapshotDirtyIds[i]] = 0;
+        this.snapshotDirtyFieldsById.delete(this.snapshotDirtyIds[i]);
       }
       this.snapshotDirtyIds.length = 0;
       return;
@@ -661,12 +663,12 @@ export class WorldState {
     this.snapshotDirtyIds.sort((a, b) => a - b);
     for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
       const id = this.snapshotDirtyIds[i];
-      const fields = this.snapshotDirtyFieldsById[id] ?? 0;
+      const fields = this.snapshotDirtyFieldsById.get(id) ?? 0;
       if (fields === 0) continue;
       outIds.push(id);
       outFields.push(fields);
       if (outSlots !== undefined) outSlots.push(entitySlotRegistry.getSlot(id));
-      this.snapshotDirtyFieldsById[id] = 0;
+      this.snapshotDirtyFieldsById.delete(id);
     }
     this.snapshotDirtyIds.length = 0;
   }

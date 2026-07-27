@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import beamConfig from '@/beamConfig.json';
+import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 export type BeamVisualConfig = {
@@ -145,14 +146,7 @@ void main() {
 }
 `;
 
-export const BEAM_ENDPOINT_VERTEX_SHADER = `
-attribute float aAlpha;
-varying float vAlpha;
-void main() {
-  vAlpha = aAlpha;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
+export const BEAM_ENDPOINT_VERTEX_SHADER = INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER;
 
 export const createBeamEndpointFragmentShader = (config: BeamVisualConfig): string => `
 varying float vAlpha;

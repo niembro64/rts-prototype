@@ -28,6 +28,15 @@
 
 import * as THREE from 'three';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
+import { uploadPrefixRange } from './instancedBufferUpdate';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
 import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getSmokeTrails, getSmokeSoftEdges } from '@/clientBarConfig';
@@ -121,26 +130,6 @@ export type SmokePuffEmitter = {
   phase?: number;
 };
 
-const SMOKE_VERTEX_SHADER = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const SMOKE_FRAGMENT_SHADER = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
 // The SOFT (non-sphere) variant carries the view-space puff center + radius
 // so the fragment can measure each
 // pixel's normalized distance from the projected center and ease alpha
@@ -227,8 +216,8 @@ export class SmokeTrail3D {
     worldGroup.add(this.root);
 
     this.matSphere = new THREE.ShaderMaterial({
-      vertexShader: SMOKE_VERTEX_SHADER,
-      fragmentShader: SMOKE_FRAGMENT_SHADER,
+      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });
@@ -258,39 +247,22 @@ export class SmokeTrail3D {
     const geom = tier === 'far'
       ? getSharedPrimitiveTetrahedronGeometry(1).clone()
       : createPrimitiveSphereGeometry('smoke', tier);
-    const alphaArr = new Float32Array(maxParticles);
-    const colorArr = new Float32Array(maxParticles * 3);
     // Per-instance attribute buffers. Index i in alphaArr / colorArr
     // / instanceMatrix corresponds to active[i] — the live puff list
     // is kept dense at the front of these buffers via swap-pop, so
     // `mesh.count = active.length` exactly bounds what's drawn.
-    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
-    alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
-    colorAttr.setUsage(THREE.DynamicDrawUsage);
-    geom.setAttribute('aAlpha', alphaAttr);
-    geom.setAttribute('aColor', colorAttr);
-
-    const mesh = new THREE.InstancedMesh(geom, this.activeMaterial(), maxParticles);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.count = 0;
-    // Frustum culling on InstancedMesh uses a bounding sphere derived
-    // from the source geometry — not the per-instance matrices — so a
-    // puff far from the origin would be incorrectly culled. Disable.
-    mesh.frustumCulled = false;
-    // Draw after water, so transparent sorting does not
+    // Render order draws after water, so transparent sorting does not
     // let the water plane blend over puffs that are geometrically above it.
-    mesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects;
-    this.root.add(mesh);
-
     return {
       maxParticles,
       geom,
-      mesh,
-      alphaArr,
-      colorArr,
-      alphaAttr,
-      colorAttr,
+      ...createInstancedColorAlphaPool(
+        this.root,
+        geom,
+        maxParticles,
+        this.activeMaterial(),
+        TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects,
+      ),
       active: [],
       activeByUse: new Map(),
       evictionCursor: 0,
@@ -321,7 +293,8 @@ export class SmokeTrail3D {
     // every advance / emit path so toggling off clears the screen
     // immediately and the renderer does no per-frame work.
     if (!getSmokeTrails()) {
-      for (const pool of Object.values(this.pools)) {
+      for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+        const pool = this.pools[PRIMITIVE_GEOMETRY_TIERS[t]];
         if (pool.active.length === 0) continue;
         pool.active.length = 0;
         pool.activeByUse.clear();
@@ -357,7 +330,9 @@ export class SmokeTrail3D {
     //    pass. Each surviving puff writes matrix + alpha every frame;
     //    color is static after spawn and only moves when swap-pop
     //    compaction changes a puff's slot.
-    for (const pool of Object.values(this.pools)) this.advancePool(pool, dtSec);
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      this.advancePool(this.pools[PRIMITIVE_GEOMETRY_TIERS[t]], dtSec);
+    }
 
     // 2) For each projectile that leaves a trail, sample at its
     //    frame-skip cadence. Then apply a steady-state per-use emission
@@ -454,7 +429,9 @@ export class SmokeTrail3D {
 
     // 3) Push attribute updates to GPU and bound the draw to the
     //    live-puff prefix.
-    for (const pool of Object.values(this.pools)) this.flushPool(pool);
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      this.flushPool(this.pools[PRIMITIVE_GEOMETRY_TIERS[t]]);
+    }
   }
 
   private advancePool(pool: PuffPool, dtSec: number): void {
@@ -560,12 +537,8 @@ export class SmokeTrail3D {
     if (pool.mesh.count !== pool.active.length) pool.mesh.count = pool.active.length;
     if (pool.active.length > 0) {
       const count = pool.active.length;
-      pool.mesh.instanceMatrix.clearUpdateRanges();
-      pool.mesh.instanceMatrix.addUpdateRange(0, count * 16);
-      pool.mesh.instanceMatrix.needsUpdate = true;
-      pool.alphaAttr.clearUpdateRanges();
-      pool.alphaAttr.addUpdateRange(0, count);
-      pool.alphaAttr.needsUpdate = true;
+      uploadPrefixRange(pool.mesh.instanceMatrix, count * 16);
+      uploadPrefixRange(pool.alphaAttr, count);
       if (pool.colorUpdateMax >= pool.colorUpdateMin) {
         pool.colorAttr.clearUpdateRanges();
         pool.colorAttr.addUpdateRange(

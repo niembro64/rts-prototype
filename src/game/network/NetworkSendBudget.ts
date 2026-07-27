@@ -1,5 +1,5 @@
 import type { DataConnection } from 'peerjs';
-import type { NetworkMessage } from './NetworkTypes';
+import { isNetworkLockstepMessage, type NetworkMessage } from './NetworkTypes';
 
 const NONCRITICAL_COALESCE_BYTES = 512 * 1024;
 const NONCRITICAL_FLUSH_BYTES = 256 * 1024;
@@ -92,6 +92,9 @@ function dataChannelClosed(conn: DataConnection): boolean {
 }
 
 function classifyMessage(message: NetworkMessage): NetworkSendClassification {
+  if (isNetworkLockstepMessage(message)) {
+    return { messageClass: 'lockstep', policy: 'critical', coalesceKey: null };
+  }
   switch (message.type) {
     case 'heartbeat':
       return { messageClass: 'heartbeat', policy: 'coalesce', coalesceKey: 'heartbeat' };
@@ -109,18 +112,6 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
       return { messageClass: 'communication', policy: 'command', coalesceKey: null };
     case 'communicationEvent':
       return { messageClass: 'communicationEvent', policy: 'critical', coalesceKey: null };
-    case 'lockstepHello':
-    case 'lockstepReady':
-    case 'lockstepCommand':
-    case 'lockstepCommandFrame':
-    case 'lockstepCommandFrameBatch':
-    case 'lockstepAck':
-    case 'lockstepChecksum':
-    case 'lockstepPause':
-    case 'lockstepResume':
-    case 'lockstepDesync':
-    case 'lockstepResyncRequest':
-      return { messageClass: 'lockstep', policy: 'critical', coalesceKey: null };
     default:
       return { messageClass: 'control', policy: 'critical', coalesceKey: null };
   }

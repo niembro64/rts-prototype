@@ -1107,12 +1107,23 @@ export function setFogShade(enabled: boolean): void {
 }
 
 export function getFogShadePresentationSettings(): FogShadePresentationSettings {
-  return {
-    unseenDarkness: FOG_PRESENTATION.shade.unseenDarknessPercent / 100,
-    radarDarkness: FOG_PRESENTATION.shade.radarDarknessPercent / 100,
-    unseenDesaturation: FOG_PRESENTATION.shade.unseenColorLossPercent / 100,
-    radarDesaturation: FOG_PRESENTATION.shade.radarColorLossPercent / 100,
-  };
+  return writeFogShadePresentationSettings({
+    unseenDarkness: 0,
+    radarDarkness: 0,
+    unseenDesaturation: 0,
+    radarDesaturation: 0,
+  });
+}
+
+/** Allocation-free variant for per-frame readers: fills and returns `out`. */
+export function writeFogShadePresentationSettings(
+  out: FogShadePresentationSettings,
+): FogShadePresentationSettings {
+  out.unseenDarkness = FOG_PRESENTATION.shade.unseenDarknessPercent / 100;
+  out.radarDarkness = FOG_PRESENTATION.shade.radarDarknessPercent / 100;
+  out.unseenDesaturation = FOG_PRESENTATION.shade.unseenColorLossPercent / 100;
+  out.radarDesaturation = FOG_PRESENTATION.shade.radarColorLossPercent / 100;
+  return out;
 }
 
 /** Material-explosion toggle: client-side death fire puff and Debris3D

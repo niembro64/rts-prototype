@@ -175,17 +175,14 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
     case 'fireDGun':
       return sanitizeFireDgunCommand(command, world, tick);
     case 'repair':
-      return sanitizeRepairCommand(command, tick);
+    case 'reclaim':
+    case 'capture':
+    case 'resurrect':
+      return sanitizeCommanderTargetCommand(command, tick);
     case 'repairArea':
       return sanitizeRepairAreaCommand(command, world, tick);
-    case 'reclaim':
-      return sanitizeReclaimCommand(command, tick);
     case 'reclaimArea':
       return sanitizeReclaimAreaCommand(command, world, tick);
-    case 'capture':
-      return sanitizeCaptureCommand(command, tick);
-    case 'resurrect':
-      return sanitizeResurrectCommand(command, tick);
     case 'resurrectArea':
       return sanitizeResurrectAreaCommand(command, world, tick);
     case 'loadTransport':
@@ -405,6 +402,78 @@ function sanitizeAreaCommandFilterFields(
   return {
     filterCategory: filterCategory as AreaCommandFilterCategory | undefined,
     filterBlueprintId: filterBlueprintId as string | undefined,
+  };
+}
+
+// The commander target-command family (repair / reclaim / capture /
+// resurrect) shares one shape — commanderId + targetId + queue fields —
+// and one sanitization; the spread preserves each command's type literal.
+function sanitizeCommanderTargetCommand(
+  command: RepairCommand | ReclaimCommand | CaptureCommand | ResurrectCommand,
+  tick: number,
+): RepairCommand | ReclaimCommand | CaptureCommand | ResurrectCommand | null {
+  if (
+    !isEntityId(command.commanderId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) {
+    return null;
+  }
+  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
+  return queued === null
+    ? null
+    : {
+        ...command,
+        tick,
+        commanderId: command.commanderId,
+        targetId: command.targetId,
+        queue: command.queue,
+        queueFront: queued.queueFront,
+        queueInsertIndex: queued.queueInsertIndex,
+      };
+}
+
+// The commander area-command family (repairArea / resurrectArea /
+// reclaimArea) is identical except for the command type literal and the
+// max-radius constant; sanitize the shared fields once and let each
+// command's thin wrapper re-attach its type literal.
+function sanitizeCommanderAreaCommandFields(
+  command: RepairAreaCommand | ResurrectAreaCommand | ReclaimAreaCommand,
+  world: WorldState,
+  tick: number,
+  maxRadius: number,
+): {
+  tick: number;
+  commanderId: EntityId;
+  targetX: number;
+  targetY: number;
+  targetZ: number | undefined;
+  radius: number;
+  queue: boolean;
+  queueFront: boolean;
+  queueInsertIndex: number | undefined;
+  filterCategory: AreaCommandFilterCategory | undefined;
+  filterBlueprintId: string | undefined;
+} | null {
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
+  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
+  if (queued === null) return null;
+  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
+  if (filter === null) return null;
+  const radius = sanitizeAreaCommandRadius(command.radius, maxRadius);
+  return {
+    tick,
+    commanderId: command.commanderId,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+    radius,
+    queue: command.queue,
+    queueFront: queued.queueFront,
+    queueInsertIndex: queued.queueInsertIndex,
+    filterCategory: filter.filterCategory,
+    filterBlueprintId: filter.filterBlueprintId,
   };
 }
 
@@ -1055,120 +1124,13 @@ function sanitizeFireDgunCommand(
   return sanitized;
 }
 
-function sanitizeRepairCommand(command: RepairCommand, tick: number): RepairCommand | null {
-  if (
-    !isEntityId(command.commanderId) ||
-    !isEntityId(command.targetId) ||
-    typeof command.queue !== 'boolean'
-  ) {
-    return null;
-  }
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : {
-        ...command,
-        tick,
-        commanderId: command.commanderId,
-        targetId: command.targetId,
-        queue: command.queue,
-        queueFront: queued.queueFront,
-        queueInsertIndex: queued.queueInsertIndex,
-      };
-}
-
 function sanitizeRepairAreaCommand(
   command: RepairAreaCommand,
   world: WorldState,
   tick: number,
 ): RepairAreaCommand | null {
-  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
-  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  if (queued === null) return null;
-  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
-  if (filter === null) return null;
-  const radius = sanitizeAreaCommandRadius(command.radius, REPAIR_AREA_MAX_RADIUS);
-  return {
-    type: 'repairArea',
-    tick,
-    commanderId: command.commanderId,
-    targetX: point.x,
-    targetY: point.y,
-    targetZ: point.z,
-    radius,
-    queue: command.queue,
-    queueFront: queued.queueFront,
-    queueInsertIndex: queued.queueInsertIndex,
-    filterCategory: filter.filterCategory,
-    filterBlueprintId: filter.filterBlueprintId,
-  };
-}
-
-function sanitizeReclaimCommand(command: ReclaimCommand, tick: number): ReclaimCommand | null {
-  if (
-    !isEntityId(command.commanderId) ||
-    !isEntityId(command.targetId) ||
-    typeof command.queue !== 'boolean'
-  ) {
-    return null;
-  }
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : {
-        ...command,
-        tick,
-        commanderId: command.commanderId,
-        targetId: command.targetId,
-        queue: command.queue,
-        queueFront: queued.queueFront,
-        queueInsertIndex: queued.queueInsertIndex,
-      };
-}
-
-function sanitizeCaptureCommand(command: CaptureCommand, tick: number): CaptureCommand | null {
-  if (
-    !isEntityId(command.commanderId) ||
-    !isEntityId(command.targetId) ||
-    typeof command.queue !== 'boolean'
-  ) {
-    return null;
-  }
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : {
-        ...command,
-        tick,
-        commanderId: command.commanderId,
-        targetId: command.targetId,
-        queue: command.queue,
-        queueFront: queued.queueFront,
-        queueInsertIndex: queued.queueInsertIndex,
-      };
-}
-
-function sanitizeResurrectCommand(command: ResurrectCommand, tick: number): ResurrectCommand | null {
-  if (
-    !isEntityId(command.commanderId) ||
-    !isEntityId(command.targetId) ||
-    typeof command.queue !== 'boolean'
-  ) {
-    return null;
-  }
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : {
-        ...command,
-        tick,
-        commanderId: command.commanderId,
-        targetId: command.targetId,
-        queue: command.queue,
-        queueFront: queued.queueFront,
-        queueInsertIndex: queued.queueInsertIndex,
-      };
+  const fields = sanitizeCommanderAreaCommandFields(command, world, tick, REPAIR_AREA_MAX_RADIUS);
+  return fields === null ? null : { type: 'repairArea', ...fields };
 }
 
 function sanitizeResurrectAreaCommand(
@@ -1176,27 +1138,8 @@ function sanitizeResurrectAreaCommand(
   world: WorldState,
   tick: number,
 ): ResurrectAreaCommand | null {
-  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
-  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  if (queued === null) return null;
-  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
-  if (filter === null) return null;
-  const radius = sanitizeAreaCommandRadius(command.radius, REPAIR_AREA_MAX_RADIUS);
-  return {
-    type: 'resurrectArea',
-    tick,
-    commanderId: command.commanderId,
-    targetX: point.x,
-    targetY: point.y,
-    targetZ: point.z,
-    radius,
-    queue: command.queue,
-    queueFront: queued.queueFront,
-    queueInsertIndex: queued.queueInsertIndex,
-    filterCategory: filter.filterCategory,
-    filterBlueprintId: filter.filterBlueprintId,
-  };
+  const fields = sanitizeCommanderAreaCommandFields(command, world, tick, REPAIR_AREA_MAX_RADIUS);
+  return fields === null ? null : { type: 'resurrectArea', ...fields };
 }
 
 function sanitizeLoadTransportCommand(
@@ -1272,27 +1215,8 @@ function sanitizeReclaimAreaCommand(
   world: WorldState,
   tick: number,
 ): ReclaimAreaCommand | null {
-  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
-  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  if (queued === null) return null;
-  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
-  if (filter === null) return null;
-  const radius = sanitizeAreaCommandRadius(command.radius, RECLAIM_AREA_MAX_RADIUS);
-  return {
-    type: 'reclaimArea',
-    tick,
-    commanderId: command.commanderId,
-    targetX: point.x,
-    targetY: point.y,
-    targetZ: point.z,
-    radius,
-    queue: command.queue,
-    queueFront: queued.queueFront,
-    queueInsertIndex: queued.queueInsertIndex,
-    filterCategory: filter.filterCategory,
-    filterBlueprintId: filter.filterBlueprintId,
-  };
+  const fields = sanitizeCommanderAreaCommandFields(command, world, tick, RECLAIM_AREA_MAX_RADIUS);
+  return fields === null ? null : { type: 'reclaimArea', ...fields };
 }
 
 function sanitizeMaxTotalUnitsCommand(command: Command, tick: number): Command | null {

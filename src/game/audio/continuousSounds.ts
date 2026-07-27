@@ -168,6 +168,14 @@ export function stopContinuousSound(
   pendingTimeouts.add(timeoutId);
 }
 
+// Cancel any scheduled ramp on `gain` and glide it from its current
+// value to `target` over `rampTime` seconds.
+function rampGainTo(gain: AudioParam, now: number, target: number, rampTime: number): void {
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(gain.value, now);
+  gain.linearRampToValueAtTime(target, now + rampTime);
+}
+
 // Mute or unmute a continuous sound (smooth fade)
 export function setContinuousAudible(
   ctx: AudioContext,
@@ -180,14 +188,9 @@ export function setContinuousAudible(
   const fadeTime = 0.08;
   const now = ctx.currentTime;
 
-  sound.gainNode.gain.cancelScheduledValues(now);
-  sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, now);
-  sound.gainNode.gain.linearRampToValueAtTime(audible ? sound.targetVolume : 0.0001, now + fadeTime);
-
+  rampGainTo(sound.gainNode.gain, now, audible ? sound.targetVolume : 0.0001, fadeTime);
   if (sound.noiseGain) {
-    sound.noiseGain.gain.cancelScheduledValues(now);
-    sound.noiseGain.gain.setValueAtTime(sound.noiseGain.gain.value, now);
-    sound.noiseGain.gain.linearRampToValueAtTime(audible ? sound.noiseTargetVolume : 0.0001, now + fadeTime);
+    rampGainTo(sound.noiseGain.gain, now, audible ? sound.noiseTargetVolume : 0.0001, fadeTime);
   }
 }
 
@@ -208,14 +211,9 @@ export function updateContinuousZoom(
   sound.noiseTargetVolume = newNoiseTarget;
 
   const now = ctx.currentTime;
-  sound.gainNode.gain.cancelScheduledValues(now);
-  sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, now);
-  sound.gainNode.gain.linearRampToValueAtTime(newTarget, now + 0.05);
-
+  rampGainTo(sound.gainNode.gain, now, newTarget, 0.05);
   if (sound.noiseGain) {
-    sound.noiseGain.gain.cancelScheduledValues(now);
-    sound.noiseGain.gain.setValueAtTime(sound.noiseGain.gain.value, now);
-    sound.noiseGain.gain.linearRampToValueAtTime(newNoiseTarget, now + 0.05);
+    rampGainTo(sound.noiseGain.gain, now, newNoiseTarget, 0.05);
   }
 }
 

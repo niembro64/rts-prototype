@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { WIND_PARTICLE_CONFIG } from '@/windParticleConfig';
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
+import { uploadPrefixRange } from './instancedBufferUpdate';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import { disposeMesh } from './threeUtils';
@@ -15,15 +17,6 @@ type WindParticleFieldOptions = {
   waterLevelWorld: number;
   highestTerrainWorld: number;
 };
-
-const PARTICLE_VERTEX_SHADER = `
-attribute float aAlpha;
-varying float vAlpha;
-void main() {
-  vAlpha = aAlpha;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
 
 const PARTICLE_FRAGMENT_SHADER = `
 uniform vec3 uColor;
@@ -87,7 +80,7 @@ export class WindParticleField3D {
     this.geometry = createPrimitiveSphereGeometry('effect', 'far');
     this.geometry.setAttribute('aAlpha', this.alphaAttribute);
     this.material = new THREE.ShaderMaterial({
-      vertexShader: PARTICLE_VERTEX_SHADER,
+      vertexShader: INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER,
       fragmentShader: PARTICLE_FRAGMENT_SHADER,
       uniforms: {
         uColor: { value: new THREE.Color(this.config.colorHex) },
@@ -158,12 +151,8 @@ export class WindParticleField3D {
     }
 
     this.mesh.count = this.config.maxParticles;
-    this.mesh.instanceMatrix.clearUpdateRanges();
-    this.mesh.instanceMatrix.addUpdateRange(0, this.config.maxParticles * 16);
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.alphaAttribute.clearUpdateRanges();
-    this.alphaAttribute.addUpdateRange(0, this.config.maxParticles);
-    this.alphaAttribute.needsUpdate = true;
+    uploadPrefixRange(this.mesh.instanceMatrix, this.config.maxParticles * 16);
+    uploadPrefixRange(this.alphaAttribute, this.config.maxParticles);
   }
 
   destroy(): void {

@@ -2,23 +2,19 @@ import * as THREE from 'three';
 import { PRODUCTION_HOLD_RING_TUBE_RADIUS_FRACTION } from '../sim/productionHoldGeometry';
 import {
   createPrimitiveTorusGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 const productionHoldRingGeomByTier = new Map<PrimitiveGeometryTier, THREE.TorusGeometry>();
 
 function getProductionHoldRingGeom(tier: PrimitiveGeometryTier): THREE.TorusGeometry {
-  let geom = productionHoldRingGeomByTier.get(tier);
-  if (!geom) {
-    geom = createPrimitiveTorusGeometry(
-      'building',
-      tier,
-      1,
-      PRODUCTION_HOLD_RING_TUBE_RADIUS_FRACTION,
-    );
-    productionHoldRingGeomByTier.set(tier, geom);
-  }
-  return geom;
+  return getOrCreate(productionHoldRingGeomByTier, tier, () => createPrimitiveTorusGeometry(
+    'building',
+    tier,
+    1,
+    PRODUCTION_HOLD_RING_TUBE_RADIUS_FRACTION,
+  ));
 }
 
 export type ProductionHoldRingOrientation = 'horizontal' | 'forward';

@@ -7,13 +7,10 @@
  */
 
 import type {
-  CombatFireState,
-  CombatTrajectoryMode,
   Entity,
   PlayerId,
   EntityId,
   FactoryDefaultWaypoint,
-  UnitMoveState,
 } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
@@ -101,6 +98,15 @@ import {
 } from './factoryProductionQueueWire';
 import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
+import {
+  recordSnapshotCorrectionStats,
+  recordSnapshotVelocityCorrectionStats,
+} from './snapshotCorrectionStats';
+import {
+  trajectoryModeFromWireCode,
+  unitFireStateFromWireCode,
+  unitMoveStateFromWireCode,
+} from './unitCombatStateWireCodes';
 import {
   ENTITY_POSITION_WIRE_INV_SCALE,
   NORMAL_WIRE_INV_SCALE,
@@ -246,26 +252,6 @@ const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY;
 
-function unitFireStateFromWireCode(code: number): CombatFireState {
-  return code === 4
-    ? 'fireAtAll'
-    : code === 3
-      ? 'defend'
-      : code === 2
-        ? 'holdFire'
-        : code === 1
-          ? 'returnFire'
-          : 'fireAtWill';
-}
-
-function trajectoryModeFromWireCode(code: number): CombatTrajectoryMode {
-  return code === 2 ? 'auto' : code === 1 ? 'high' : 'low';
-}
-
-function unitMoveStateFromWireCode(code: number): UnitMoveState {
-  return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
-}
-
 function typedEntityWireRowId(
   source: EntitySnapshotWireSource,
   entityIndex: number,
@@ -386,6 +372,12 @@ export class ClientViewState {
   private resourcePylonSignedRates = new IndexedEntityIdMap<ClientResourcePylonSignedRates>();
   private resourcePylonFlowsBySource = new IndexedEntityIdMap<ClientResourcePylonFlow[]>();
   private readonly resourcePylonSourceIds: EntityId[] = [];
+  // Free lists for the per-snapshot rate/flow-entry objects. Consumers
+  // (ConstructionVisualController3D, BuildingResourcePylonAnimator3D) read
+  // these synchronously within a frame and never retain entries across
+  // snapshot applies, so recycling on clear is safe.
+  private readonly resourcePylonRatePool: ClientResourcePylonSignedRates[] = [];
+  private readonly resourcePylonFlowPool: ClientResourcePylonFlow[] = [];
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -933,12 +925,26 @@ export class ClientViewState {
     }
   }
 
-  private applyResourceMovements(
-    movements: readonly NetworkServerSnapshotResourceMovement[] | undefined,
-  ): void {
+  /** Return the pooled rate/flow-entry objects to their free lists and
+   *  empty the per-snapshot resource-pylon maps. */
+  private clearResourcePylonFlows(): void {
+    for (const rates of this.resourcePylonSignedRates.values()) {
+      this.resourcePylonRatePool.push(rates);
+    }
+    for (const flows of this.resourcePylonFlowsBySource.values()) {
+      for (let i = 0; i < flows.length; i++) {
+        this.resourcePylonFlowPool.push(flows[i]);
+      }
+    }
     this.resourcePylonSignedRates.clear();
     this.resourcePylonFlowsBySource.clear();
     this.resourcePylonSourceIds.length = 0;
+  }
+
+  private applyResourceMovements(
+    movements: readonly NetworkServerSnapshotResourceMovement[] | undefined,
+  ): void {
+    this.clearResourcePylonFlows();
     if (movements === undefined) return;
     for (let i = 0; i < movements.length; i++) {
       const movement = movements[i];
@@ -948,7 +954,13 @@ export class ClientViewState {
       if (amount === 0 || !Number.isFinite(amount)) continue;
       let rates = this.resourcePylonSignedRates.get(movement.sourceEntityId);
       if (rates === undefined) {
-        rates = { energy: 0, metal: 0 };
+        rates = this.resourcePylonRatePool.pop();
+        if (rates === undefined) {
+          rates = { energy: 0, metal: 0 };
+        } else {
+          rates.energy = 0;
+          rates.metal = 0;
+        }
         this.resourcePylonSignedRates.set(movement.sourceEntityId, rates);
         this.resourcePylonSourceIds.push(movement.sourceEntityId);
       }
@@ -962,12 +974,21 @@ export class ClientViewState {
         flows = [];
         this.resourcePylonFlowsBySource.set(movement.sourceEntityId, flows);
       }
-      flows.push({
-        targetEntityId: movement.targetEntityId,
-        resource: movement.resource,
-        amountPerSecond: movement.amountPerSecond,
-        direction: movement.direction,
-      });
+      const flow = this.resourcePylonFlowPool.pop();
+      if (flow === undefined) {
+        flows.push({
+          targetEntityId: movement.targetEntityId,
+          resource: movement.resource,
+          amountPerSecond: movement.amountPerSecond,
+          direction: movement.direction,
+        });
+      } else {
+        flow.targetEntityId = movement.targetEntityId;
+        flow.resource = movement.resource;
+        flow.amountPerSecond = movement.amountPerSecond;
+        flow.direction = movement.direction;
+        flows.push(flow);
+      }
     }
   }
 
@@ -1161,22 +1182,13 @@ export class ClientViewState {
         target.y = y;
         target.z = z;
         if (collectCorrectionStats) {
-          const dx = existing.transform.x - x;
-          const dy = existing.transform.y - y;
-          const dz = existing.transform.z - z;
-          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          applyStats.correction.count++;
-          applyStats.correction.totalDistance += distance;
-          if (distance > applyStats.correction.maxDistance) {
-            applyStats.correction.maxDistance = distance;
-          }
-          if (previousTargetAgeMs > 0) {
-            applyStats.correction.targetAgeCount++;
-            applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
-            if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
-              applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
-            }
-          }
+          recordSnapshotCorrectionStats(
+            applyStats,
+            existing.transform.x - x,
+            existing.transform.y - y,
+            existing.transform.z - z,
+            previousTargetAgeMs,
+          );
         }
       }
       if (hasRot) target.rotation = deqRot(values[base + 5]);
@@ -2841,33 +2853,21 @@ export class ClientViewState {
     const netX = deqEntityPos(values[base + 1]);
     const netY = deqEntityPos(values[base + 2]);
     const netZ = deqEntityPos(values[base + 3]);
-    const dx = existing.transform.x - netX;
-    const dy = existing.transform.y - netY;
-    const dz = existing.transform.z - netZ;
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    applyStats.correction.count++;
-    applyStats.correction.totalDistance += distance;
-    if (distance > applyStats.correction.maxDistance) {
-      applyStats.correction.maxDistance = distance;
-    }
-    if (previousTargetAgeMs > 0) {
-      applyStats.correction.targetAgeCount++;
-      applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
-      if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
-        applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
-      }
-    }
+    recordSnapshotCorrectionStats(
+      applyStats,
+      existing.transform.x - netX,
+      existing.transform.y - netY,
+      existing.transform.z - netZ,
+      previousTargetAgeMs,
+    );
     const localUnit = existing.unit;
     if (localUnit !== null && (changedFields & ENTITY_CHANGED_VEL) !== 0) {
-      const dvx = (localUnit.velocityX ?? 0) - deqVel(values[base + 10]);
-      const dvy = (localUnit.velocityY ?? 0) - deqVel(values[base + 11]);
-      const dvz = (localUnit.velocityZ ?? 0) - deqVel(values[base + 12]);
-      const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
-      applyStats.correction.velocityCount++;
-      applyStats.correction.totalVelocityDelta += velocityDelta;
-      if (velocityDelta > applyStats.correction.maxVelocityDelta) {
-        applyStats.correction.maxVelocityDelta = velocityDelta;
-      }
+      recordSnapshotVelocityCorrectionStats(
+        applyStats,
+        (localUnit.velocityX ?? 0) - deqVel(values[base + 10]),
+        (localUnit.velocityY ?? 0) - deqVel(values[base + 11]),
+        (localUnit.velocityZ ?? 0) - deqVel(values[base + 12]),
+      );
     }
   }
 
@@ -3171,34 +3171,22 @@ export class ClientViewState {
           const netX = deqEntityPos(netEntity.pos.x);
           const netY = deqEntityPos(netEntity.pos.y);
           const netZ = deqEntityPos(netEntity.pos.z);
-          const dx = existing.transform.x - netX;
-          const dy = existing.transform.y - netY;
-          const dz = existing.transform.z - netZ;
-          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          applyStats.correction.count++;
-          applyStats.correction.totalDistance += distance;
-          if (distance > applyStats.correction.maxDistance) {
-            applyStats.correction.maxDistance = distance;
-          }
-          if (previousTargetAgeMs > 0) {
-            applyStats.correction.targetAgeCount++;
-            applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
-            if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
-              applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
-            }
-          }
+          recordSnapshotCorrectionStats(
+            applyStats,
+            existing.transform.x - netX,
+            existing.transform.y - netY,
+            existing.transform.z - netZ,
+            previousTargetAgeMs,
+          );
           const netVelocity = netEntity.unit !== null ? netEntity.unit.velocity : null;
           const localUnit = existing.unit;
           if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
-            const dvx = (localUnit.velocityX ?? 0) - deqVel(netVelocity.x);
-            const dvy = (localUnit.velocityY ?? 0) - deqVel(netVelocity.y);
-            const dvz = (localUnit.velocityZ ?? 0) - deqVel(netVelocity.z);
-            const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
-            applyStats.correction.velocityCount++;
-            applyStats.correction.totalVelocityDelta += velocityDelta;
-            if (velocityDelta > applyStats.correction.maxVelocityDelta) {
-              applyStats.correction.maxVelocityDelta = velocityDelta;
-            }
+            recordSnapshotVelocityCorrectionStats(
+              applyStats,
+              (localUnit.velocityX ?? 0) - deqVel(netVelocity.x),
+              (localUnit.velocityY ?? 0) - deqVel(netVelocity.y),
+              (localUnit.velocityZ ?? 0) - deqVel(netVelocity.z),
+            );
           }
         }
 
@@ -4843,9 +4831,7 @@ export class ClientViewState {
     this.entities.clear();
     this.serverTargets.clear();
     this.sprayTargetStore.reset();
-    this.resourcePylonSignedRates.clear();
-    this.resourcePylonFlowsBySource.clear();
-    this.resourcePylonSourceIds.length = 0;
+    this.clearResourcePylonFlows();
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.scanPulses.length = 0;
     this.visionPlayerMask = 0;

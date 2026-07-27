@@ -25,7 +25,7 @@ const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ConstructionTowerResource, { r: n
   metal: RESOURCE_SPRAY_COLORS[1],
 };
 
-type ResourcePylonFlowDescriptor = {
+export type ResourcePylonFlowDescriptor = {
   pylon: ResourcePylonRig;
   group: THREE.Group;
   hostId: EntityId;
@@ -39,7 +39,7 @@ type ResourcePylonFlowDescriptor = {
   channel: number;
 };
 
-type ResourcePylonTaxedArcDescriptor = {
+export type ResourcePylonTaxedArcDescriptor = {
   hostId: EntityId;
   playerId: PlayerId;
   sourcePylon: ResourcePylonRig;
@@ -60,6 +60,24 @@ function pylonTubeFlowKey(
   return `${sourceId}:${targetId}:${channel}:${direction}`;
 }
 
+/** One reusable free-leg scratch per emit-site literal shape. Safe because
+ *  pushTubeFlow copies every field into its pooled destination (colorRGB
+ *  field-by-field; endColorRGB is the stable module-constant reference)
+ *  and never retains the passed object. */
+function createScratchFreeLeg(): PylonTubeFreeLeg {
+  return {
+    sourceId: 0,
+    sourcePlayerId: 1 as PlayerId,
+    target: { id: 0, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+    flow: 'direct',
+    flowRadius: 0,
+    channel: 0,
+    speed: 0,
+    particleRadius: 0,
+    colorRGB: RESOURCE_SPRAY_COLORS[0],
+  };
+}
+
 export class ResourcePylonFlowController3D {
   private sprayTargets: SprayTarget[] = [];
   private sprayTargetPool: SprayTarget[] = [];
@@ -71,6 +89,9 @@ export class ResourcePylonFlowController3D {
   private _arcSourceTipWorld = new THREE.Vector3();
   private _arcSinkRootWorld = new THREE.Vector3();
   private _arcSinkTipWorld = new THREE.Vector3();
+  private readonly _outboundFreeLeg = createScratchFreeLeg();
+  private readonly _crossingFreeLeg = createScratchFreeLeg();
+  private readonly _taxFreeLeg = createScratchFreeLeg();
 
   beginFrame(): void {
     for (let i = 0; i < this.sprayTargets.length; i++) {
@@ -127,26 +148,24 @@ export class ResourcePylonFlowController3D {
 
     let outboundFreeLeg: PylonTubeFreeLeg | undefined;
     if (direction === 'outbound') {
-      outboundFreeLeg = {
-        sourceId: hostId,
-        sourcePlayerId: playerId,
-        target: {
-          id: targetId,
-          pos: {
-            x: worldEndpoint ? worldEndpoint.x : tip.x,
-            y: worldEndpoint ? worldEndpoint.z : tip.z,
-          },
-          z: worldEndpoint ? worldEndpoint.y : tip.y,
-          radius: worldEndpoint ? endpointRadius : pylon.flowRadius,
-        },
-        flow: 'randomOutbound',
-        flowRadius: pylon.flowRadius,
-        coneAngle: worldEndpoint ? pylon.coneAngle : undefined,
-        channel,
-        speed: pylon.sprayTravelSpeed,
-        particleRadius: pylon.sprayParticleRadius,
-        colorRGB: color,
-      };
+      outboundFreeLeg = this._outboundFreeLeg;
+      outboundFreeLeg.sourceId = hostId;
+      outboundFreeLeg.sourcePlayerId = playerId;
+      outboundFreeLeg.target.id = targetId;
+      outboundFreeLeg.target.pos.x = worldEndpoint ? worldEndpoint.x : tip.x;
+      outboundFreeLeg.target.pos.y = worldEndpoint ? worldEndpoint.z : tip.z;
+      outboundFreeLeg.target.z = worldEndpoint ? worldEndpoint.y : tip.y;
+      outboundFreeLeg.target.radius = worldEndpoint ? endpointRadius : pylon.flowRadius;
+      outboundFreeLeg.flow = 'randomOutbound';
+      outboundFreeLeg.flowRadius = pylon.flowRadius;
+      outboundFreeLeg.coneAngle = worldEndpoint ? pylon.coneAngle : undefined;
+      outboundFreeLeg.channel = channel;
+      outboundFreeLeg.speed = pylon.sprayTravelSpeed;
+      outboundFreeLeg.particleRadius = pylon.sprayParticleRadius;
+      outboundFreeLeg.colorRGB = color;
+      outboundFreeLeg.endColorRGB = undefined;
+      outboundFreeLeg.endpointFade = undefined;
+      outboundFreeLeg.pylonTubeHandoffKey = undefined;
     }
 
     this.pushTubeFlow(
@@ -232,6 +251,24 @@ export class ResourcePylonFlowController3D {
         undefined,
         undefined,
       );
+      const crossingLeg = this._crossingFreeLeg;
+      crossingLeg.sourceId = desc.hostId;
+      crossingLeg.sourcePlayerId = desc.playerId;
+      crossingLeg.target.id = desc.hostId;
+      crossingLeg.target.pos.x = this._arcSinkTipWorld.x;
+      crossingLeg.target.pos.y = this._arcSinkTipWorld.z;
+      crossingLeg.target.z = this._arcSinkTipWorld.y;
+      crossingLeg.target.radius = 0;
+      crossingLeg.flow = 'direct';
+      crossingLeg.flowRadius = 1;
+      crossingLeg.coneAngle = undefined;
+      crossingLeg.channel = crossingChannel;
+      crossingLeg.speed = Math.max(desc.sourcePylon.sprayTravelSpeed, desc.sinkPylon.sprayTravelSpeed);
+      crossingLeg.particleRadius = Math.max(desc.sourcePylon.sprayParticleRadius, desc.sinkPylon.sprayParticleRadius);
+      crossingLeg.colorRGB = sourceColor;
+      crossingLeg.endColorRGB = sinkColor;
+      crossingLeg.endpointFade = 'none';
+      crossingLeg.pylonTubeHandoffKey = sinkFlowKey;
       this.pushTubeFlow(
         pylonTubeFlowKey(desc.hostId, desc.hostId, crossingChannel, 'outbound'),
         desc.sourcePylon,
@@ -241,29 +278,29 @@ export class ResourcePylonFlowController3D {
         'rate',
         crossingRate,
         ballSpawnRateForResourceRate(crossingAbs),
-        {
-          sourceId: desc.hostId,
-          sourcePlayerId: desc.playerId,
-          target: {
-            id: desc.hostId,
-            pos: { x: this._arcSinkTipWorld.x, y: this._arcSinkTipWorld.z },
-            z: this._arcSinkTipWorld.y,
-            radius: 0,
-          },
-          flow: 'direct',
-          flowRadius: 1,
-          channel: crossingChannel,
-          speed: Math.max(desc.sourcePylon.sprayTravelSpeed, desc.sinkPylon.sprayTravelSpeed),
-          particleRadius: Math.max(desc.sourcePylon.sprayParticleRadius, desc.sinkPylon.sprayParticleRadius),
-          colorRGB: sourceColor,
-          endColorRGB: sinkColor,
-          endpointFade: 'none',
-          pylonTubeHandoffKey: sinkFlowKey,
-        },
+        crossingLeg,
       );
     }
 
     if (taxAbs > 0 || taxRate > 0.001) {
+      const taxLeg = this._taxFreeLeg;
+      taxLeg.sourceId = desc.hostId;
+      taxLeg.sourcePlayerId = desc.playerId;
+      taxLeg.target.id = desc.hostId;
+      taxLeg.target.pos.x = this._arcSinkTipWorld.x;
+      taxLeg.target.pos.y = this._arcSinkTipWorld.z;
+      taxLeg.target.z = this._arcSinkTipWorld.y;
+      taxLeg.target.radius = desc.sourcePylon.flowRadius;
+      taxLeg.flow = 'randomOutbound';
+      taxLeg.flowRadius = desc.sourcePylon.flowRadius;
+      taxLeg.coneAngle = desc.sourcePylon.coneAngle;
+      taxLeg.channel = taxChannel;
+      taxLeg.speed = desc.sourcePylon.sprayTravelSpeed;
+      taxLeg.particleRadius = desc.sourcePylon.sprayParticleRadius;
+      taxLeg.colorRGB = sourceColor;
+      taxLeg.endColorRGB = undefined;
+      taxLeg.endpointFade = undefined;
+      taxLeg.pylonTubeHandoffKey = undefined;
       this.pushTubeFlow(
         pylonTubeFlowKey(desc.hostId, desc.hostId, taxChannel, 'outbound'),
         desc.sourcePylon,
@@ -273,23 +310,7 @@ export class ResourcePylonFlowController3D {
         'rate',
         taxRate,
         ballSpawnRateForResourceRate(taxAbs),
-        {
-          sourceId: desc.hostId,
-          sourcePlayerId: desc.playerId,
-          target: {
-            id: desc.hostId,
-            pos: { x: this._arcSinkTipWorld.x, y: this._arcSinkTipWorld.z },
-            z: this._arcSinkTipWorld.y,
-            radius: desc.sourcePylon.flowRadius,
-          },
-          flow: 'randomOutbound',
-          flowRadius: desc.sourcePylon.flowRadius,
-          coneAngle: desc.sourcePylon.coneAngle,
-          channel: taxChannel,
-          speed: desc.sourcePylon.sprayTravelSpeed,
-          particleRadius: desc.sourcePylon.sprayParticleRadius,
-          colorRGB: sourceColor,
-        },
+        taxLeg,
       );
     }
   }

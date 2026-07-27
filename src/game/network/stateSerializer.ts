@@ -48,26 +48,41 @@ const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
   winnerId: undefined,
 };
 
-const _snapshotBuf: NetworkServerSnapshot = {
-  tick: 0,
-  entities: _entityBuf,
-  entityDeltaOnly: undefined,
-  projectileDeltaOnly: undefined,
-  minimapEntities: undefined,
-  economy: serializeEconomySnapshot(0, undefined),
-  resourceMovements: undefined,
-  sprayTargets: undefined,
-  audioEvents: undefined,
-  scanPulses: undefined,
-  projectiles: undefined,
-  gameState: undefined,
-  serverMeta: undefined,
-  terrain: undefined,
-  buildability: undefined,
-  removedEntityIds: undefined,
-  visibilityFiltered: undefined,
-  visionPlayerMask: undefined,
-};
+/** Empty NetworkServerSnapshot shell for the pooled/reused snapshot
+ *  builders. Callers own the entities/economy/gameState initializers;
+ *  every other field starts unset. */
+export function createEmptyNetworkServerSnapshot(
+  entities: NetworkServerSnapshot['entities'],
+  economy: NetworkServerSnapshot['economy'],
+  gameState: NetworkServerSnapshot['gameState'],
+): NetworkServerSnapshot {
+  return {
+    tick: 0,
+    entities,
+    entityDeltaOnly: undefined,
+    projectileDeltaOnly: undefined,
+    minimapEntities: undefined,
+    economy,
+    resourceMovements: undefined,
+    sprayTargets: undefined,
+    audioEvents: undefined,
+    scanPulses: undefined,
+    projectiles: undefined,
+    gameState,
+    serverMeta: undefined,
+    terrain: undefined,
+    buildability: undefined,
+    removedEntityIds: undefined,
+    visibilityFiltered: undefined,
+    visionPlayerMask: undefined,
+  };
+}
+
+const _snapshotBuf: NetworkServerSnapshot = createEmptyNetworkServerSnapshot(
+  _entityBuf,
+  serializeEconomySnapshot(0, undefined),
+  undefined,
+);
 
 export type SerializeGameStateOptions = {
   trackingKey: string | number | undefined;

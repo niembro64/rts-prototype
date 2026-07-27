@@ -1245,22 +1245,16 @@ export class Render3DEntities {
 
   private deactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
     if (!this.scopedMeshRetention.markUnitHidden(id)) return;
-    this.disposeWorldParentedOverlays(m);
-    this.unitDetailInstances.clearChassisSlots(m);
-    for (const turret of m.turrets) this.unitDetailInstances.clearTurretSlots(turret);
-    if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
-    this.applyUnitEntityFade(m, 0, null);
-    setObjectVisibleIfChanged(m.group, false);
-    this.detachUnitMeshGroup(m);
-    this.activeLocomotionUnitIds.delete(id);
-    this.barrelSpinState.delete(id);
-    this.turretBeamAimCache.delete(id);
-    this.turretMountCache.delete(id);
+    this.deactivateUnitMesh(id, m);
   }
 
   private deactivateUnitMeshForLod(id: EntityId, m: EntityMesh): void {
     if (m.renderLodProxyActive === true) return;
     m.renderLodProxyActive = true;
+    this.deactivateUnitMesh(id, m);
+  }
+
+  private deactivateUnitMesh(id: EntityId, m: EntityMesh): void {
     this.disposeWorldParentedOverlays(m);
     this.unitDetailInstances.clearChassisSlots(m);
     for (const turret of m.turrets) this.unitDetailInstances.clearTurretSlots(turret);

@@ -43,6 +43,21 @@ export function clamp01(value: number): number {
 }
 
 /**
+ * Clamp a value to [-1, 1] range (e.g. before acos/asin).
+ */
+export function clampUnit(value: number): number {
+  return value < -1 ? -1 : value > 1 ? 1 : value;
+}
+
+/**
+ * Hermite smoothstep of `t` clamped to [0, 1].
+ */
+export function smoothstep01(t: number): number {
+  const x = t < 0 ? 0 : t > 1 ? 1 : t;
+  return x * x * (3 - 2 * x);
+}
+
+/**
  * Absolute wrapped difference between two angles in radians.
  */
 export function angleDeltaAbs(a: number, b: number): number {

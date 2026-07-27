@@ -12,6 +12,15 @@ import { SHIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
 import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
+import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
+import {
   createPrimitiveCircleGeometry,
   createPrimitiveTorusGeometry,
   type PrimitiveGeometryTier,
@@ -31,32 +40,12 @@ type Impact = {
   color: number;
 };
 
-const IMPACT_VS = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const IMPACT_FS = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
 const EMPTY_LINE_PROJECTILES: readonly Entity[] = [];
 
 function makeImpactMaterial(blending: THREE.Blending = THREE.AdditiveBlending): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    vertexShader: IMPACT_VS,
-    fragmentShader: IMPACT_FS,
+    vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+    fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
     transparent: true,
     depthWrite: false,
     depthTest: true,
@@ -82,22 +71,13 @@ class ImpactPool {
     blending: THREE.Blending = THREE.AdditiveBlending,
   ) {
     this.geom = geom;
-    this.alphaArr = new Float32Array(capacity);
-    this.colorArr = new Float32Array(capacity * 3);
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    geom.setAttribute('aAlpha', this.alphaAttr);
-    geom.setAttribute('aColor', this.colorAttr);
-
     this.mat = makeImpactMaterial(blending);
-    this.mesh = new THREE.InstancedMesh(geom, this.mat, capacity);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = renderOrder;
-    parent.add(this.mesh);
+    const pool = createInstancedColorAlphaPool(parent, geom, capacity, this.mat, renderOrder);
+    this.mesh = pool.mesh;
+    this.alphaArr = pool.alphaArr;
+    this.colorArr = pool.colorArr;
+    this.alphaAttr = pool.alphaAttr;
+    this.colorAttr = pool.colorAttr;
   }
 
   write(
@@ -112,17 +92,7 @@ class ImpactPool {
   }
 
   setCount(count: number): void {
-    this.mesh.count = count;
-    if (count <= 0) return;
-    this.mesh.instanceMatrix.clearUpdateRanges();
-    this.mesh.instanceMatrix.addUpdateRange(0, count * 16);
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.alphaAttr.clearUpdateRanges();
-    this.alphaAttr.addUpdateRange(0, count);
-    this.alphaAttr.needsUpdate = true;
-    this.colorAttr.clearUpdateRanges();
-    this.colorAttr.addUpdateRange(0, count * 3);
-    this.colorAttr.needsUpdate = true;
+    uploadColorAlphaMatrixPrefix(this.mesh, this.alphaAttr, this.colorAttr, count);
   }
 
   destroy(): void {
@@ -142,6 +112,10 @@ export class ShieldImpactRenderer3D {
   private continuousTimeMs = 0;
   private visible = true;
   private drawStateClear = true;
+  // Per-frame tier cursors — instance-level scratch so update() does not
+  // allocate counter objects every frame.
+  private readonly _ringCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+  private readonly _coreCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
   private static readonly Z_AXIS = new THREE.Vector3(0, 0, 1);
   private static readonly CONTINUOUS_BEAM_HIT_CAP = 256;
@@ -257,8 +231,10 @@ export class ShieldImpactRenderer3D {
     }
     const cfg = SHIELD_IMPACT_VISUAL;
     this.continuousTimeMs += dtMs;
-    const ringCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
-    const coreCursors: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const ringCursors = this._ringCursors;
+    const coreCursors = this._coreCursors;
+    ringCursors.close = 0; ringCursors.mid = 0; ringCursors.far = 0;
+    coreCursors.close = 0; coreCursors.mid = 0; coreCursors.far = 0;
 
     let i = 0;
     while (i < this.impacts.length) {
@@ -322,11 +298,12 @@ export class ShieldImpactRenderer3D {
     );
 
     const nextDrawStateClear =
-      Object.values(coreCursors).every((count) => count === 0) &&
-      Object.values(ringCursors).every((count) => count === 0) &&
+      coreCursors.close === 0 && coreCursors.mid === 0 && coreCursors.far === 0 &&
+      ringCursors.close === 0 && ringCursors.mid === 0 && ringCursors.far === 0 &&
       this.impacts.length === 0;
     if (!nextDrawStateClear || !this.drawStateClear) {
-      for (const tier of ['close', 'mid', 'far'] as const) {
+      for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+        const tier = PRIMITIVE_GEOMETRY_TIERS[t];
         this.pools[tier].core.setCount(coreCursors[tier]);
         this.pools[tier].ring.setCount(ringCursors[tier]);
       }

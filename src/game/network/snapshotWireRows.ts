@@ -1,3 +1,5 @@
+import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
+
 type WireArray = Float64Array | Uint32Array;
 
 export type Float64WireRows = {
@@ -84,8 +86,11 @@ function ensureWireRows<T extends WireArray>(
   const needed = rowCount * stride;
   if (needed <= values.length) return values;
 
-  let nextRows = Math.max(4, Math.ceil(values.length / Math.max(1, stride)));
-  while (nextRows < rowCount) nextRows *= 2;
+  const nextRows = nextGeometricCapacity(
+    Math.ceil(values.length / Math.max(1, stride)),
+    rowCount,
+    4,
+  );
 
   const next = new (values.constructor as { new(length: number): T })(nextRows * stride);
   next.set(values);

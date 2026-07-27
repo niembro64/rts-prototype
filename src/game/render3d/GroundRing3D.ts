@@ -20,7 +20,15 @@ export class GroundRing3D {
   private readonly batch: GroundLineBatch3D;
   private readonly style: OverlayLineKindStyle;
   private readonly segments: number;
-  private lastKey = '';
+  // NaN so the first set() always rebuilds (NaN === NaN is false).
+  private lastCx = NaN;
+  private lastCy = NaN;
+  private lastCz = NaN;
+  private lastRadius = NaN;
+  private lastR = NaN;
+  private lastG = NaN;
+  private lastB = NaN;
+  private lastA = NaN;
 
   constructor(overlay: OverlayLineSystem, kind: OverlayLineKind, segments = 96) {
     this.segments = Math.max(3, Math.floor(segments));
@@ -47,12 +55,22 @@ export class GroundRing3D {
       this.batch.mesh.visible = false;
       return;
     }
-    const key = `${cx.toFixed(2)}:${cy.toFixed(2)}:${cz.toFixed(2)}:${radius.toFixed(2)}:${r.toFixed(3)}:${g.toFixed(3)}:${b.toFixed(3)}:${a.toFixed(3)}`;
-    if (key === this.lastKey) {
+    if (
+      cx === this.lastCx && cy === this.lastCy && cz === this.lastCz &&
+      radius === this.lastRadius &&
+      r === this.lastR && g === this.lastG && b === this.lastB && a === this.lastA
+    ) {
       this.batch.mesh.visible = true;
       return;
     }
-    this.lastKey = key;
+    this.lastCx = cx;
+    this.lastCy = cy;
+    this.lastCz = cz;
+    this.lastRadius = radius;
+    this.lastR = r;
+    this.lastG = g;
+    this.lastB = b;
+    this.lastA = a;
     this.batch.begin();
     this.batch.pushRing(
       cx, cy, cz, radius, this.segments,

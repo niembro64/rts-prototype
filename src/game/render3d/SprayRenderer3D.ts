@@ -43,6 +43,11 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
+import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
   createPrimitiveSphereGeometry,
@@ -154,6 +159,9 @@ export class SprayRenderer3D {
   // hot per-particle write loop free of re-decoding the same
   // hex → RGB every frame.
   private _teamColorCache = new Map<number, { r: number; g: number; b: number }>();
+  // Per-frame tier tallies returned by writeParticlesToMeshes — reused
+  // across frames (the caller consumes them within the same update()).
+  private readonly _visibleCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
@@ -177,21 +185,7 @@ export class SprayRenderer3D {
     const geom = tier === 'far'
       ? getSharedPrimitiveTetrahedronGeometry(1).clone()
       : createPrimitiveSphereGeometry('effect', tier);
-    const alphaArr = new Float32Array(MAX_PARTICLES);
-    const colorArr = new Float32Array(MAX_PARTICLES * 3);
-    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
-    alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
-    colorAttr.setUsage(THREE.DynamicDrawUsage);
-    geom.setAttribute('aAlpha', alphaAttr);
-    geom.setAttribute('aColor', colorAttr);
-    const mesh = new THREE.InstancedMesh(geom, this.mat, MAX_PARTICLES);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.count = 0;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 5;
-    this.root.add(mesh);
-    return { geom, mesh, alphaArr, colorArr, alphaAttr, colorAttr };
+    return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_PARTICLES, this.mat, 5) };
   }
 
   /** Per-frame update. `dtMs` advances the wobble phase so frame rate
@@ -295,20 +289,10 @@ export class SprayRenderer3D {
 
     // Cap draw to the live prefix — trailing slots (whatever they
     // happen to hold from previous frames) don't render.
-    for (const tier of ['close', 'mid', 'far'] as const) {
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      const tier = PRIMITIVE_GEOMETRY_TIERS[t];
       const pool = this.pools[tier];
-      const visibleCount = visibleCounts[tier];
-      pool.mesh.count = visibleCount;
-      if (visibleCount <= 0) continue;
-      pool.mesh.instanceMatrix.clearUpdateRanges();
-      pool.mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);
-      pool.mesh.instanceMatrix.needsUpdate = true;
-      pool.alphaAttr.clearUpdateRanges();
-      pool.alphaAttr.addUpdateRange(0, visibleCount);
-      pool.alphaAttr.needsUpdate = true;
-      pool.colorAttr.clearUpdateRanges();
-      pool.colorAttr.addUpdateRange(0, visibleCount * 3);
-      pool.colorAttr.needsUpdate = true;
+      uploadColorAlphaMatrixPrefix(pool.mesh, pool.alphaAttr, pool.colorAttr, visibleCounts[tier]);
     }
   }
 
@@ -755,7 +739,10 @@ export class SprayRenderer3D {
 
   private writeParticlesToMeshes(view?: RenderViewState3D): Record<PrimitiveGeometryTier, number> {
     const timeSec = this._time / 1000;
-    const visibleCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const visibleCounts = this._visibleCounts;
+    visibleCounts.close = 0;
+    visibleCounts.mid = 0;
+    visibleCounts.far = 0;
 
     for (let i = 0; i < this.particleCount; i++) {
       const phase = Math.max(0, Math.min(1, this.pAge[i] / this.pLife[i]));

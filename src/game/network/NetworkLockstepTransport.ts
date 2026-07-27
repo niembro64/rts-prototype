@@ -14,7 +14,7 @@ import type {
   NetworkLockstepMessage,
   NetworkMessage,
 } from './NetworkTypes';
-import { LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
+import { isNetworkLockstepMessage, LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 
 const OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK = 900;
@@ -453,25 +453,6 @@ export class NetworkLockstepTransport {
     for (const [key, executeFrame] of this.seenCommandKeyFrames) {
       if (executeFrame < pruneBeforeFrame) this.seenCommandKeyFrames.delete(key);
     }
-  }
-}
-
-function isNetworkLockstepMessage(message: NetworkMessage): message is NetworkLockstepMessage {
-  switch (message.type) {
-    case 'lockstepHello':
-    case 'lockstepReady':
-    case 'lockstepCommand':
-    case 'lockstepCommandFrame':
-    case 'lockstepCommandFrameBatch':
-    case 'lockstepAck':
-    case 'lockstepChecksum':
-    case 'lockstepPause':
-    case 'lockstepResume':
-    case 'lockstepDesync':
-    case 'lockstepResyncRequest':
-      return true;
-    default:
-      return false;
   }
 }
 

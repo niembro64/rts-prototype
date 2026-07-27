@@ -29,6 +29,7 @@ import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveSphereGeometry,
   createPrimitiveTorusGeometry,
+  getOrCreate,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -57,14 +58,9 @@ const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
 const hubGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
 function getHubGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  let geom = hubGeomByTier.get(tier);
-  if (!geom) {
-    geom = tier === 'far'
-      ? getSharedPrimitiveTetrahedronGeometry()
-      : createPrimitiveSphereGeometry('locomotion', tier);
-    hubGeomByTier.set(tier, geom);
-  }
-  return geom;
+  return getOrCreate(hubGeomByTier, tier, () => tier === 'far'
+    ? getSharedPrimitiveTetrahedronGeometry()
+    : createPrimitiveSphereGeometry('locomotion', tier));
 }
 const ringMats = new Map<number, THREE.MeshBasicMaterial>();
 const hubMats = new Map<number, THREE.MeshBasicMaterial>();
@@ -78,14 +74,10 @@ const REARWARD_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   const ratioKey = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
   const key = `${tier}:${ratioKey}`;
-  let geom = ringGeomByTubeRatio.get(key);
-  if (!geom) {
-    // Low uses the same volume-bearing square-tube torus as the other rungs;
-    // the previous flat annulus collapsed fan thickness to zero.
-    geom = createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey);
-    ringGeomByTubeRatio.set(key, geom);
-  }
-  return geom;
+  // Low uses the same volume-bearing square-tube torus as the other rungs;
+  // the previous flat annulus collapsed fan thickness to zero.
+  return getOrCreate(ringGeomByTubeRatio, key, () =>
+    createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey));
 }
 
 function rotorGeomKey(

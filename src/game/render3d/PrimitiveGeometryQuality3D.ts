@@ -492,6 +492,18 @@ function keyOf(parts: readonly unknown[]): string {
   return parts.join(':');
 }
 
+/** Generic get-or-create over a Map cache. Shared by every module that
+ *  memoizes geometries per tier / per key; caches never hold falsy
+ *  values, so the `undefined` check is the canonical miss test. */
+export function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = create();
+    map.set(key, value);
+  }
+  return value;
+}
+
 function quality(role: PrimitiveGeometryRole): PrimitiveRoleQuality {
   return PRIMITIVE_GEOMETRY_QUALITY[role];
 }
@@ -635,24 +647,16 @@ export function getSharedExtrudedEquilateralTriangleGeometry(
   height = 1,
 ): THREE.BufferGeometry {
   const key = keyOf(['equilateral-triangle-prism', radius, height]);
-  let geometry = sharedGeometry.get(key);
-  if (geometry === undefined) {
-    geometry = createExtrudedEquilateralTriangleGeometry(radius, height);
-    sharedGeometry.set(key, geometry);
-  }
-  return geometry;
+  return getOrCreate(sharedGeometry, key, () =>
+    createExtrudedEquilateralTriangleGeometry(radius, height));
 }
 
 export function getSharedPrimitiveTetrahedronGeometry(
   radius = 1,
 ): THREE.TetrahedronGeometry {
   const key = keyOf(['tetrahedron', radius]);
-  let geometry = sharedGeometry.get(key) as THREE.TetrahedronGeometry | undefined;
-  if (geometry === undefined) {
-    geometry = createPrimitiveTetrahedronGeometry(radius);
-    sharedGeometry.set(key, geometry);
-  }
-  return geometry;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveTetrahedronGeometry(radius)) as THREE.TetrahedronGeometry;
 }
 
 export function createPrimitiveConeGeometry(
@@ -764,12 +768,8 @@ export function getSharedPrimitiveSphereGeometry(
   radius = 1,
 ): THREE.SphereGeometry {
   const key = keyOf(['sphere', role, tier, radius]);
-  let geom = sharedGeometry.get(key) as THREE.SphereGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveSphereGeometry(role, tier, radius);
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveSphereGeometry(role, tier, radius)) as THREE.SphereGeometry;
 }
 
 export function getSharedPrimitiveCylinderGeometry(
@@ -791,20 +791,15 @@ export function getSharedPrimitiveCylinderGeometry(
     heightSegments,
     openEnded ? 1 : 0,
   ]);
-  let geom = sharedGeometry.get(key) as THREE.CylinderGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveCylinderGeometry(
-      role,
-      tier,
-      radiusTop,
-      radiusBottom,
-      height,
-      heightSegments,
-      openEnded,
-    );
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () => createPrimitiveCylinderGeometry(
+    role,
+    tier,
+    radiusTop,
+    radiusBottom,
+    height,
+    heightSegments,
+    openEnded,
+  )) as THREE.CylinderGeometry;
 }
 
 export function getSharedPrimitiveConeGeometry(
@@ -816,12 +811,9 @@ export function getSharedPrimitiveConeGeometry(
   openEnded = false,
 ): THREE.ConeGeometry {
   const key = keyOf(['cone', role, tier, radius, height, heightSegments, openEnded ? 1 : 0]);
-  let geom = sharedGeometry.get(key) as THREE.ConeGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveConeGeometry(role, tier, radius, height, heightSegments, openEnded);
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveConeGeometry(role, tier, radius, height, heightSegments, openEnded),
+  ) as THREE.ConeGeometry;
 }
 
 export function getSharedPrimitiveCircleGeometry(
@@ -830,12 +822,8 @@ export function getSharedPrimitiveCircleGeometry(
   radius = 1,
 ): THREE.CircleGeometry {
   const key = keyOf(['circle', role, tier, radius]);
-  let geom = sharedGeometry.get(key) as THREE.CircleGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveCircleGeometry(role, tier, radius);
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveCircleGeometry(role, tier, radius)) as THREE.CircleGeometry;
 }
 
 export function getSharedPrimitiveRingGeometry(
@@ -845,12 +833,8 @@ export function getSharedPrimitiveRingGeometry(
   outerRadius = 1,
 ): THREE.RingGeometry {
   const key = keyOf(['ring', role, tier, innerRadius, outerRadius]);
-  let geom = sharedGeometry.get(key) as THREE.RingGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveRingGeometry(role, tier, innerRadius, outerRadius);
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveRingGeometry(role, tier, innerRadius, outerRadius)) as THREE.RingGeometry;
 }
 
 export function getSharedPrimitiveTorusGeometry(
@@ -860,10 +844,6 @@ export function getSharedPrimitiveTorusGeometry(
   tube = 0.1,
 ): THREE.TorusGeometry {
   const key = keyOf(['torus', role, tier, radius, tube]);
-  let geom = sharedGeometry.get(key) as THREE.TorusGeometry | undefined;
-  if (geom === undefined) {
-    geom = createPrimitiveTorusGeometry(role, tier, radius, tube);
-    sharedGeometry.set(key, geom);
-  }
-  return geom;
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveTorusGeometry(role, tier, radius, tube)) as THREE.TorusGeometry;
 }

@@ -42,6 +42,7 @@ import {
   EVENT_HAS_WATER_SPLASH_CONTEXT,
 } from './audioEventWireFormat';
 import { getDeathContextWireFlags } from './audioEventWireHelpers';
+import { createSimEventDto } from './simEventDto';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
@@ -79,22 +80,7 @@ const directAudioStringSlots = new Map<string, number>();
 const _attackAlertVictimPlayers = new Set<number>();
 
 function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
-  const event: PooledSimEvent = {
-    type: 'fire',
-    turretBlueprintId: '',
-    sourceType: null,
-    sourceKey: null,
-    pos: { x: 0, y: 0, z: 0 },
-    playerId: null,
-    entityId: null,
-    deathContext: null,
-    impactContext: null,
-    waterSplash: null,
-    shieldImpact: null,
-    killerPlayerId: null,
-    victimPlayerId: null,
-    audioOnly: null,
-  } as PooledSimEvent;
+  const event = createSimEventDto() as PooledSimEvent;
   definePooledScratchProperty(event, '_pos', { x: 0, y: 0, z: 0 });
   event.pos = event._pos;
   return event;

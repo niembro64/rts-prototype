@@ -12,6 +12,7 @@ import {
   getBuildingCylinderGeometry,
 } from './BuildingMeshPrimitives3D';
 import {
+  getOrCreate,
   getSharedPrimitiveTetrahedronGeometry,
   preserveGeometryVolume,
   type PrimitiveGeometryTier,
@@ -72,17 +73,15 @@ const solarHingeCapGeometryByTier = new Map<PrimitiveGeometryTier, THREE.BufferG
 
 function getSolarHingeCapGeometry(): THREE.BufferGeometry {
   const tier = getActiveBuildingGeometryTier();
-  let geometry = solarHingeCapGeometryByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = tier === 'close'
+  return getOrCreate(solarHingeCapGeometryByTier, tier, () => {
+    const geometry = tier === 'close'
       ? new THREE.IcosahedronGeometry(1, 1)
       : tier === 'mid'
         ? new THREE.OctahedronGeometry(1)
         : getSharedPrimitiveTetrahedronGeometry(1).clone();
     preserveGeometryVolume(geometry, Math.PI * 4 / 3);
-    solarHingeCapGeometryByTier.set(tier, geometry);
-  }
-  return geometry;
+    return geometry;
+  });
 }
 
 function makeHingeCap(

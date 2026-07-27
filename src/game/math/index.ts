@@ -7,6 +7,8 @@ export {
   normalizeAngle,
   clamp,
   clamp01,
+  clampUnit,
+  smoothstep01,
   angleDeltaAbs,
   lerp,
   lerpAngle,

@@ -7,6 +7,8 @@
 // dev-only PNG download hook were byte-for-byte identical across all four
 // files; they live here now so there is a single source of truth.
 
+import { drawWrappedCanvasItem } from './repeatingCanvasTexture';
+
 export function cssRgb(hex: number): string {
   const r = (hex >> 16) & 0xff;
   const g = (hex >> 8) & 0xff;
@@ -144,6 +146,48 @@ export function drawCommonShape(
       return;
     }
   }
+}
+
+/** Item fields shared by the rock / leaf / trunk generators, whose shape
+ * vocabulary is exactly the drawCommonShape set and whose fill color is a
+ * pre-picked palette rgb + alpha. GroundDetailTexture keeps its own item
+ * drawing (extra circle / rosette shapes, blended fill colors). */
+export type CommonShapeItem = {
+  x: number;
+  y: number;
+  size: number;
+  rotation: number;
+  shapeKind: 'box' | 'tri' | 'hex';
+  shapeParam: number;
+  rgb: readonly [number, number, number];
+  alpha: number;
+};
+
+function drawCommonShapeItem(ctx: CanvasRenderingContext2D, item: CommonShapeItem): void {
+  drawCommonShape(ctx, item.size, item.shapeKind, item.shapeParam);
+}
+
+/** Wrap-draws one palette-colored common-shape item, parameterized by the
+ * generator's canvas size. `verticalStretch` (trunk bark) elongates the item
+ * along its local up axis and widens the wrap bounding extent to match. */
+export function drawCommonItemWithWrap(
+  ctx: CanvasRenderingContext2D,
+  item: CommonShapeItem,
+  texturePixels: number,
+  verticalStretch = 1,
+): void {
+  ctx.fillStyle = `rgba(${item.rgb[0]}, ${item.rgb[1]}, ${item.rgb[2]}, ${item.alpha.toFixed(3)})`;
+  // Padding past the bounding radius keeps anti-aliased edges that spill
+  // past the tile border from showing a seam on the wrapped side.
+  const half = item.size * 0.55 * verticalStretch + 2;
+  drawWrappedCanvasItem(
+    ctx,
+    item,
+    texturePixels,
+    half,
+    drawCommonShapeItem,
+    verticalStretch,
+  );
 }
 
 // Installs a dev-only `window[windowKey]()` that downloads the cached canvas

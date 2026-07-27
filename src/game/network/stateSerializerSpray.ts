@@ -14,6 +14,7 @@ import {
   reserveFloat64WireRows,
   type Float64WireRows,
 } from './snapshotWireRows';
+import { getOrCreateKeyedWireSource } from './stateSerializerMinimap';
 import { getSprayTargetWireFlags } from './sprayTargetWireHelpers';
 
 /** Per-listener pool of pooled NetworkServerSnapshotSprayTarget DTOs
@@ -38,14 +39,19 @@ export function resetSprayPoolForKey(key: string | number | undefined): void {
   if (key !== undefined) sprayWireSourcesByKey.delete(String(key));
 }
 
-function appendSprayWireRow(
+/** Shared spray wire-row body for the DTO and direct-sim writers. The
+ *  target dim is pre-normalized at each call site because the two input
+ *  shapes mark an absent dim differently (DTO: null, sim: undefined);
+ *  every other field reads identically off both shapes. */
+function appendSprayWireRowFields(
   source: SprayTargetWireSource,
-  spray: NetworkServerSnapshotSprayTarget,
+  spray: NetworkServerSnapshotSprayTarget | SprayTarget,
+  targetDimX: number,
+  targetDimY: number,
 ): void {
   const rowIndex = reserveFloat64WireRows(source, 1, SPRAY_TARGET_WIRE_STRIDE);
   const values = source.values;
   const base = rowIndex * SPRAY_TARGET_WIRE_STRIDE;
-  const targetDim = spray.target.dim;
   values[base + 0] = spray.source.id;
   values[base + 1] = spray.source.pos.x;
   values[base + 2] = spray.source.pos.y;
@@ -55,8 +61,8 @@ function appendSprayWireRow(
   values[base + 6] = spray.target.pos.x;
   values[base + 7] = spray.target.pos.y;
   values[base + 8] = spray.target.z ?? 0;
-  values[base + 9] = targetDim !== null ? targetDim.x : 0;
-  values[base + 10] = targetDim !== null ? targetDim.y : 0;
+  values[base + 9] = targetDimX;
+  values[base + 10] = targetDimY;
   values[base + 11] = spray.target.radius ?? 0;
   values[base + 12] = spray.intensity;
   values[base + 13] = spray.speed ?? 0;
@@ -65,31 +71,30 @@ function appendSprayWireRow(
   values[base + 16] = getSprayTargetWireFlags(spray);
 }
 
+function appendSprayWireRow(
+  source: SprayTargetWireSource,
+  spray: NetworkServerSnapshotSprayTarget,
+): void {
+  const targetDim = spray.target.dim;
+  appendSprayWireRowFields(
+    source,
+    spray,
+    targetDim !== null ? targetDim.x : 0,
+    targetDim !== null ? targetDim.y : 0,
+  );
+}
+
 function appendDirectSprayWireRow(
   source: SprayTargetWireSource,
   spray: SprayTarget,
 ): void {
-  const rowIndex = reserveFloat64WireRows(source, 1, SPRAY_TARGET_WIRE_STRIDE);
-  const values = source.values;
-  const base = rowIndex * SPRAY_TARGET_WIRE_STRIDE;
   const targetDim = spray.target.dim;
-  values[base + 0] = spray.source.id;
-  values[base + 1] = spray.source.pos.x;
-  values[base + 2] = spray.source.pos.y;
-  values[base + 3] = spray.source.z ?? 0;
-  values[base + 4] = spray.source.playerId;
-  values[base + 5] = spray.target.id;
-  values[base + 6] = spray.target.pos.x;
-  values[base + 7] = spray.target.pos.y;
-  values[base + 8] = spray.target.z ?? 0;
-  values[base + 9] = targetDim !== undefined ? targetDim.x : 0;
-  values[base + 10] = targetDim !== undefined ? targetDim.y : 0;
-  values[base + 11] = spray.target.radius ?? 0;
-  values[base + 12] = spray.intensity;
-  values[base + 13] = spray.speed ?? 0;
-  values[base + 14] = spray.particleRadius ?? 0;
-  values[base + 15] = spray.ballSpawnRate ?? 0;
-  values[base + 16] = getSprayTargetWireFlags(spray);
+  appendSprayWireRowFields(
+    source,
+    spray,
+    targetDim !== undefined ? targetDim.x : 0,
+    targetDim !== undefined ? targetDim.y : 0,
+  );
 }
 
 export function getSprayTargetWireSource(
@@ -133,13 +138,7 @@ export function serializeSprayTargets(
   const poolKey = resolveSnapshotPoolKey(trackingKey);
   const state = getOrCreateSnapshotPool(sprayPools, poolKey);
   state.index = 0;
-  let wireSource = sprayWireSourcesByKey.get(poolKey);
-  if (wireSource === undefined) {
-    wireSource = createFloat64WireRows();
-    sprayWireSourcesByKey.set(poolKey, wireSource);
-  }
-  wireSource.count = 0;
-  sprayWireSources.set(state.buf, wireSource);
+  const wireSource = getOrCreateKeyedWireSource(sprayWireSourcesByKey, poolKey, state.buf, sprayWireSources);
   if (!sprayTargets || sprayTargets.length === 0) return undefined;
 
   const sprayBuf = state.buf;

@@ -60,6 +60,7 @@ import {
   releaseSimSlot,
   transferSimSlot,
 } from '../lifecycle/sessionSingleton';
+import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
@@ -216,13 +217,7 @@ export class GameServer {
   ): Promise<GameServer> {
     const slotOwner = { constructor: { name: 'GameServer.create' } };
     acquireSimSlot(slotOwner);
-    const report = async (progress: number, phase: string | undefined) => {
-      if (options.onProgress === undefined) return;
-      const clamped = Number.isFinite(progress)
-        ? Math.max(0, Math.min(1, progress))
-        : 0;
-      await options.onProgress(clamped, phase);
-    };
+    const report = createLoadProgressReporter(options.onProgress);
 
     try {
       await report(0, 'Loading simulation core');

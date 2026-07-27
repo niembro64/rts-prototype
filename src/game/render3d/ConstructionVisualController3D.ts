@@ -33,7 +33,10 @@ import type {
   ResourcePylonDirection,
   ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
-import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
+import {
+  ResourcePylonFlowController3D,
+  type ResourcePylonFlowDescriptor,
+} from './ResourcePylonFlowController3D';
 
 type ConstructionTowerSpinRig = {
   towerOrbitParts: ConstructionTowerOrbitPart[];
@@ -65,6 +68,9 @@ export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
   private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private _resourceEndpointWorld = new THREE.Vector3();
+  /** Reused per-emit descriptor scratch — emitResourcePylonFlow reads every
+   *  field synchronously and never retains it. */
+  private _pylonFlowDesc: ResourcePylonFlowDescriptor | null = null;
   private factoryConstructionTargetBySource = new IndexedEntityIdMap<EntityId>();
   /** Counter-spin yaw (the mirrored pylon-orbit phase) per HELD SHELL
    *  id, plus the factory→shell key used to prune an entry when its
@@ -594,7 +600,7 @@ export class ConstructionVisualController3D {
     absRate: number,
     channel: number,
   ): void {
-    this.resourcePylonFlows.emitResourcePylonFlow({
+    const desc = this._pylonFlowDesc ?? {
       pylon,
       group,
       hostId: sourceId,
@@ -606,6 +612,19 @@ export class ConstructionVisualController3D {
       rate,
       absRate,
       channel,
-    });
+    };
+    this._pylonFlowDesc = desc;
+    desc.pylon = pylon;
+    desc.group = group;
+    desc.hostId = sourceId;
+    desc.playerId = sourcePlayerId;
+    desc.targetId = targetId;
+    desc.worldEndpoint = worldEndpoint;
+    desc.endpointRadius = endpointRadius;
+    desc.direction = direction;
+    desc.rate = rate;
+    desc.absRate = absRate;
+    desc.channel = channel;
+    this.resourcePylonFlows.emitResourcePylonFlow(desc);
   }
 }

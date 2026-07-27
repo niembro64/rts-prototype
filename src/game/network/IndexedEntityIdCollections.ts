@@ -1,5 +1,6 @@
 import type { EntityId } from '../sim/types';
 import { canIndexClientEntityId } from './ClientEntityIds';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 
 const INITIAL_MARK_CAPACITY = 1024;
 const MAX_MARK = 0xffffffff;
@@ -55,12 +56,7 @@ export class IndexedEntityIdSet extends Set<EntityId> {
   }
 
   private ensureMarkCapacity(required: number): void {
-    if (this.marks.length >= required) return;
-    let next = this.marks.length > 0 ? this.marks.length : INITIAL_MARK_CAPACITY;
-    while (next < required) next *= 2;
-    const marks = new Uint32Array(next);
-    marks.set(this.marks);
-    this.marks = marks;
+    this.marks = growTypedArrayGeometrically(this.marks, required, INITIAL_MARK_CAPACITY);
   }
 
   private advanceMark(): void {
@@ -101,12 +97,7 @@ export class IndexedEntityIdBooleanMemo {
   }
 
   private ensureStateCapacity(required: number): void {
-    if (this.states.length >= required) return;
-    let next = this.states.length > 0 ? this.states.length : INITIAL_MARK_CAPACITY;
-    while (next < required) next *= 2;
-    const states = new Uint8Array(next);
-    states.set(this.states);
-    this.states = states;
+    this.states = growTypedArrayGeometrically(this.states, required, INITIAL_MARK_CAPACITY);
   }
 }
 

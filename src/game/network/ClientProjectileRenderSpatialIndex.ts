@@ -245,13 +245,12 @@ export class ClientProjectileRenderSpatialIndex {
     minCellY: number,
     maxCellY: number,
   ): boolean {
-    const width = maxCellX - minCellX + 1;
-    const height = maxCellY - minCellY + 1;
-    if (!(width > 0) || !(height > 0)) return true;
-    const cells = width * height;
-    return (
-      !Number.isFinite(cells) ||
-      cells > CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY
+    return shouldQuerySparseGridDirectly(
+      minCellX,
+      maxCellX,
+      minCellY,
+      maxCellY,
+      CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY,
     );
   }
 

@@ -22,6 +22,22 @@ export function growTypedArray<T extends NumericTypedArray>(
 }
 
 /**
+ * Doubling capacity schedule shared by every grow-on-demand buffer: start
+ * from the larger of the current capacity and the configured minimum, then
+ * double until the requirement fits. Callers that grow several parallel
+ * arrays to one capacity use this directly.
+ */
+export function nextGeometricCapacity(
+  currentCapacity: number,
+  requiredCapacity: number,
+  minimumCapacity = 1,
+): number {
+  let next = Math.max(minimumCapacity, currentCapacity);
+  while (next < requiredCapacity) next *= 2;
+  return next;
+}
+
+/**
  * Grow geometrically to amortize repeated capacity increases. Returns the
  * original view when it already satisfies the requested length.
  */
@@ -31,7 +47,8 @@ export function growTypedArrayGeometrically<T extends NumericTypedArray>(
   minimumLength = 1,
 ): T {
   if (source.length >= requiredLength) return source;
-  let nextLength = Math.max(minimumLength, source.length);
-  while (nextLength < requiredLength) nextLength *= 2;
-  return growTypedArray(source, nextLength);
+  return growTypedArray(
+    source,
+    nextGeometricCapacity(source.length, requiredLength, minimumLength),
+  );
 }

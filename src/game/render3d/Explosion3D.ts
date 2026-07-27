@@ -13,6 +13,11 @@ import type { FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
+import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
 import {
   createPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
@@ -64,26 +69,18 @@ class InstancedSpherePool {
     this.geom = tier === 'far'
       ? getSharedPrimitiveTetrahedronGeometry(1).clone()
       : createPrimitiveSphereGeometry('effect', tier);
-    this.alphaArr = new Float32Array(cap);
-    this.colorArr = new Float32Array(cap * 3);
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.geom.setAttribute('aAlpha', this.alphaAttr);
-    this.geom.setAttribute('aColor', this.colorAttr);
     this.mat = new THREE.ShaderMaterial({
       vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
       fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });
-    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, cap);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = renderOrder;
-    parent.add(this.mesh);
+    const pool = createInstancedColorAlphaPool(parent, this.geom, cap, this.mat, renderOrder);
+    this.mesh = pool.mesh;
+    this.alphaArr = pool.alphaArr;
+    this.colorArr = pool.colorArr;
+    this.alphaAttr = pool.alphaAttr;
+    this.colorAttr = pool.colorAttr;
   }
 
   write(
@@ -107,17 +104,7 @@ class InstancedSpherePool {
   }
 
   setCount(n: number): void {
-    this.mesh.count = n;
-    if (n <= 0) return;
-    this.mesh.instanceMatrix.clearUpdateRanges();
-    this.mesh.instanceMatrix.addUpdateRange(0, n * 16);
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.alphaAttr.clearUpdateRanges();
-    this.alphaAttr.addUpdateRange(0, n);
-    this.alphaAttr.needsUpdate = true;
-    this.colorAttr.clearUpdateRanges();
-    this.colorAttr.addUpdateRange(0, n * 3);
-    this.colorAttr.needsUpdate = true;
+    uploadColorAlphaMatrixPrefix(this.mesh, this.alphaAttr, this.colorAttr, n);
   }
 
   prepareWarmupInstance(): void {
@@ -136,6 +123,9 @@ export class Explosion3D {
   private puffPools: Record<PrimitiveGeometryTier, InstancedSpherePool>;
   private puffs: Puff[] = [];
   private puffSpawnsThisFrame = 0;
+  // Per-frame tier tallies — instance-level scratch so update() does not
+  // allocate a counter object every frame.
+  private readonly _tierCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
@@ -255,11 +245,16 @@ export class Explosion3D {
 
   update(dtMs: number, view?: RenderViewState3D): void {
     if (this.puffs.length === 0) {
-      for (const pool of Object.values(this.puffPools)) pool.setCount(0);
+      this.puffPools.close.setCount(0);
+      this.puffPools.mid.setCount(0);
+      this.puffPools.far.setCount(0);
       return;
     }
 
-    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const counts = this._tierCounts;
+    counts.close = 0;
+    counts.mid = 0;
+    counts.far = 0;
 
     let i = 0;
     while (i < this.puffs.length) {
@@ -281,7 +276,8 @@ export class Explosion3D {
       this.puffPools[tier].write(writeIndex, p.px, p.py, p.pz, scale, p.r, p.g, p.b, fade);
       i++;
     }
-    for (const tier of ['close', 'mid', 'far'] as const) {
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      const tier = PRIMITIVE_GEOMETRY_TIERS[t];
       this.puffPools[tier].setCount(counts[tier]);
     }
   }

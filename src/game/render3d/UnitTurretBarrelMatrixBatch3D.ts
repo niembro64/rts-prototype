@@ -1,6 +1,3 @@
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
-import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
-import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 import {
   composeChildOffsetInto,
   multiplyQuaternionsInto,
@@ -8,17 +5,12 @@ import {
   type MutableVector3Tuple,
 } from '../math/quaternionTupleMath';
 import { writeScaledQuaternionMatrix } from './typedArrayRenderUtils';
+import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
 export const TURRET_BARREL_INPUT_STRIDE = 38;
 const TURRET_BARREL_OUTPUT_STRIDE = 16;
 
-export class UnitTurretBarrelMatrixBatch3D {
-  inputStride = TURRET_BARREL_INPUT_STRIDE;
-  outputStride = TURRET_BARREL_OUTPUT_STRIDE;
-
-  private input = new Float32Array(0);
-  private output = new Float32Array(0);
-  private wasm: SimWasm | null = null;
+export class UnitTurretBarrelMatrixBatch3D extends WasmPoseBatch3D {
   private readonly fallbackRootWorldPos: MutableVector3Tuple = [0, 0, 0];
   private readonly fallbackPitchWorldPos: MutableVector3Tuple = [0, 0, 0];
   private readonly fallbackSpinWorldPos: MutableVector3Tuple = [0, 0, 0];
@@ -28,52 +20,15 @@ export class UnitTurretBarrelMatrixBatch3D {
   private readonly fallbackSpinWorldQ: MutableQuaternionTuple = [0, 0, 0, 1];
   private readonly fallbackBarrelWorldQ: MutableQuaternionTuple = [0, 0, 0, 1];
 
-  begin(count: number): Float32Array {
-    const wasm = getSimWasm() ?? null;
-    this.wasm = wasm;
-    if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose.turretBarrelScratchEnsure(count);
-      this.inputStride = renderPose.turretBarrelInputStride;
-      this.outputStride = renderPose.turretBarrelOutputStride;
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretBarrelInputScratchPtr(),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose.turretBarrelOutputScratchPtr(),
-        count * this.outputStride,
-      );
-      return this.input;
-    }
-
-    this.inputStride = TURRET_BARREL_INPUT_STRIDE;
-    this.outputStride = TURRET_BARREL_OUTPUT_STRIDE;
-    this.input = growTypedArrayGeometrically(
-      this.input,
-      count * this.inputStride,
+  constructor() {
+    super(
+      'turretBarrel',
+      TURRET_BARREL_INPUT_STRIDE,
+      TURRET_BARREL_OUTPUT_STRIDE,
     );
-    this.output = growTypedArrayGeometrically(
-      this.output,
-      count * this.outputStride,
-    );
-    return this.input;
   }
 
-  compute(count: number): Float32Array {
-    if (this.wasm !== null) {
-      measureWasmBoundary('renderPose.turretBarrelCompute', () => {
-        this.wasm!.renderPose.turretBarrelCompute(count);
-      });
-      return this.output;
-    }
-    this.computeFallback(count);
-    return this.output;
-  }
-
-  private computeFallback(count: number): void {
+  protected computeFallback(count: number): void {
     const input = this.input;
     for (let i = 0; i < count; i++) {
       const ib = i * this.inputStride;

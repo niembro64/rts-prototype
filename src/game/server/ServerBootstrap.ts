@@ -49,6 +49,7 @@ import {
   DEFAULT_GAME_GENERATION_SEED,
   normalizeGameGenerationSeed,
 } from '../network/gameGenerationSeed';
+import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
 
 export interface BootstrappedServerWorld {
@@ -72,12 +73,7 @@ export class ServerBootstrap {
     providedPhysics: PhysicsEngine3D | undefined = undefined,
     onProgress: BootstrapProgress = () => {},
   ): Promise<BootstrappedServerWorld> {
-    const report = async (progress: number, phase: string | undefined) => {
-      const clamped = Number.isFinite(progress)
-        ? Math.max(0, Math.min(1, progress))
-        : 0;
-      await onProgress(clamped, phase);
-    };
+    const report = createLoadProgressReporter(onProgress);
 
     await report(0, 'Reading map size');
     const playerIds = normalizePlayerIds(config.playerIds);

@@ -17,10 +17,7 @@
 // from the smeared-stripe artifact a flat XZ projection would produce.
 
 import * as THREE from 'three';
-import {
-  createRepeatingCanvasTexture,
-  drawWrappedCanvasItem,
-} from './repeatingCanvasTexture';
+import { createRepeatingCanvasTexture } from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   TERRAIN_ROCK_BASE_COLOR,
@@ -28,7 +25,7 @@ import {
 } from '../../config';
 import {
   cssRgb,
-  drawCommonShape,
+  drawCommonItemWithWrap,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   randIn,
@@ -96,7 +93,7 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const rng = makeSeededRng(0xCAFE52);
   const items = generateItems(rng);
   for (const item of items) {
-    drawItemWithWrap(ctx, item);
+    drawCommonItemWithWrap(ctx, item, ROCK_DETAIL_TEXTURE_PIXELS);
   }
 
   // Sample as-is to match the terrain shader's "raw vec3 = working color"
@@ -179,22 +176,4 @@ function generateItems(rng: () => number): Item[] {
   // Large first → small last so fine pebbles/cracks layer over big slabs.
   items.sort((a, b) => b.size - a.size);
   return items;
-}
-
-function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
-  drawCommonShape(ctx, item.size, item.shapeKind, item.shapeParam);
-}
-
-function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
-  ctx.fillStyle = `rgba(${item.rgb[0]}, ${item.rgb[1]}, ${item.rgb[2]}, ${item.alpha.toFixed(3)})`;
-  // Padding past the bounding radius keeps anti-aliased edges that spill
-  // past the tile border from showing a seam on the wrapped side.
-  const half = item.size * 0.55 + 2;
-  drawWrappedCanvasItem(
-    ctx,
-    item,
-    ROCK_DETAIL_TEXTURE_PIXELS,
-    half,
-    drawShape,
-  );
 }

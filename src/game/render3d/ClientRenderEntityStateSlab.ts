@@ -301,37 +301,32 @@ export class ClientRenderEntityStateSlab {
     const slot = this.getSlot(entity.id);
     if (slot === undefined) return this.refreshEntity(entity);
     const views = this.views;
-    const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
     if (entity.unit !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
-      views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
-      views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
-      views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
-      views.buildEnergyRatio[slot] = buildable !== null
-        ? getResourceFillRatio(buildable, 'energy')
-        : 0;
-      views.buildMetalRatio[slot] = buildable !== null
-        ? getResourceFillRatio(buildable, 'metal')
-        : 0;
-      this.markSlotDirty(slot);
-      return slot;
+      return this.writeBuildStateSlot(entity, slot);
     }
     if (entity.building !== null) {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
-      views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
-      views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
-      views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
-      views.buildEnergyRatio[slot] = buildable !== null
-        ? getResourceFillRatio(buildable, 'energy')
-        : 0;
-      views.buildMetalRatio[slot] = buildable !== null
-        ? getResourceFillRatio(buildable, 'metal')
-        : 0;
-      this.markSlotDirty(slot);
-      return slot;
+      return this.writeBuildStateSlot(entity, slot);
     }
     this.unsetEntity(entity.id);
     return undefined;
+  }
+
+  private writeBuildStateSlot(entity: Entity, slot: number): number {
+    const views = this.views;
+    const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
+    views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
+    views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
+    views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
+    views.buildEnergyRatio[slot] = buildable !== null
+      ? getResourceFillRatio(buildable, 'energy')
+      : 0;
+    views.buildMetalRatio[slot] = buildable !== null
+      ? getResourceFillRatio(buildable, 'metal')
+      : 0;
+    this.markSlotDirty(slot);
+    return slot;
   }
 
   refreshUnit(entity: Entity): number | undefined {

@@ -5,26 +5,14 @@ import {
   type BuildMenuCategory,
 } from '../sim/blueprints/displayRosters';
 import {
+  BUILD_MENU_GRID_SLOT_COMMAND_IDS,
   isBarGridCommandHotkeyPreset,
   isBarLegacyCommandHotkeyPreset,
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from './commandHotkeys';
 
-export const BUILD_MENU_GRID_SLOT_COMMAND_IDS = [
-  'build.slot1',
-  'build.slot2',
-  'build.slot3',
-  'build.slot4',
-  'build.slot5',
-  'build.slot6',
-  'build.slot7',
-  'build.slot8',
-  'build.slot9',
-  'build.slot10',
-  'build.slot11',
-  'build.slot12',
-] as const satisfies readonly CommandHotkeyId[];
+export { BUILD_MENU_GRID_SLOT_COMMAND_IDS };
 
 export const BAR_GRID_COLUMNS = 4;
 export const BAR_GRID_ROWS = 3;

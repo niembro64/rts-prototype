@@ -18,19 +18,50 @@ import {
   type CanonicalServerStateHash,
 } from '../architecture/CanonicalStateHash';
 import { FactoryConstructionTurretSystem } from './FactoryConstructionTurretSystem';
-import type { PhysicsEngine3D } from './PhysicsEngine3D';
+import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { getSimWasm } from '../sim-wasm/init';
+import { getSimWasm, type BodyPoolViews } from '../sim-wasm/init';
 import { applyEntityHoldPose } from '../sim/entityHolds';
 import type { PresentationFrameEvent, SurfaceLiftProbeDebugFrame } from '@/types/game';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
 };
+
+// Deterministic sim path: pinned-pose writes must target the WASM body
+// pool slot when the pool backs this body, else the JS body — same
+// fields, same order, for both the hold and build-in-progress branches.
+function writeBodyPose(
+  bodyPool: BodyPoolViews | undefined,
+  bodySlot: number,
+  body: Body3D,
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  vz: number,
+): void {
+  if (bodyPool !== undefined) {
+    bodyPool.posX[bodySlot] = x;
+    bodyPool.posY[bodySlot] = y;
+    bodyPool.posZ[bodySlot] = z;
+    bodyPool.velX[bodySlot] = vx;
+    bodyPool.velY[bodySlot] = vy;
+    bodyPool.velZ[bodySlot] = vz;
+  } else {
+    body.x = x;
+    body.y = y;
+    body.z = z;
+    body.vx = vx;
+    body.vy = vy;
+    body.vz = vz;
+  }
+}
 
 export class ServerSimulationCore {
   readonly physics: PhysicsEngine3D;
@@ -292,21 +323,7 @@ export class ServerSimulationCore {
         vx = entity.unit?.velocityX ?? 0;
         vy = entity.unit?.velocityY ?? 0;
         vz = entity.unit?.velocityZ ?? 0;
-        if (useBodyPool) {
-          bodyPool.posX[bodySlot] = x;
-          bodyPool.posY[bodySlot] = y;
-          bodyPool.posZ[bodySlot] = z;
-          bodyPool.velX[bodySlot] = vx;
-          bodyPool.velY[bodySlot] = vy;
-          bodyPool.velZ[bodySlot] = vz;
-        } else {
-          body.x = x;
-          body.y = y;
-          body.z = z;
-          body.vx = vx;
-          body.vy = vy;
-          body.vz = vz;
-        }
+        writeBodyPose(useBodyPool ? bodyPool : undefined, bodySlot, body, x, y, z, vx, vy, vz);
         if (entity.transform.rotation !== previousRotation) {
           this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
         }
@@ -315,21 +332,7 @@ export class ServerSimulationCore {
         y = entity.transform.y;
         vx = 0;
         vy = 0;
-        if (useBodyPool) {
-          bodyPool.posX[bodySlot] = x;
-          bodyPool.posY[bodySlot] = y;
-          bodyPool.posZ[bodySlot] = z;
-          bodyPool.velX[bodySlot] = vx;
-          bodyPool.velY[bodySlot] = vy;
-          bodyPool.velZ[bodySlot] = vz;
-        } else {
-          body.x = x;
-          body.y = y;
-          body.z = z;
-          body.vx = vx;
-          body.vy = vy;
-          body.vz = vz;
-        }
+        writeBodyPose(useBodyPool ? bodyPool : undefined, bodySlot, body, x, y, z, vx, vy, vz);
       }
       entity.transform.x = x;
       entity.transform.y = y;

@@ -15,8 +15,9 @@ export {
 } from '../memory/typedArrayGrowth';
 
 // Shared unit sphere used by makeSphere. Every former local copy built
-// its own sphere primitive; this is the one shared
-// instance. Disposed via disposeRenderUtilsGeoms at scene teardown.
+// its own sphere primitive; this is the one shared instance. It is a
+// module-level const shared across battles, so it intentionally lives
+// for the page session and must NOT be disposed at scene teardown.
 const sphereGeom = createPrimitiveSphereGeometry('unitDetail', 'close');
 
 /** A scaled, positioned sphere mesh on the shared unit sphere geometry. */
@@ -33,12 +34,6 @@ export function makeSphere(
   return mesh;
 }
 
-/** Free the shared geometry RenderUtils owns. Safe to call more than
- *  once — disposing a THREE BufferGeometry twice is a no-op. */
-export function disposeRenderUtilsGeoms(): void {
-  sphereGeom.dispose();
-}
-
 export function clamp01(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
@@ -52,11 +47,14 @@ export function getLocomotionMatByCache(
   cache: Map<number, THREE.MeshBasicMaterial>,
   baseColor: number,
   ownerId: PlayerId | undefined,
+  side?: THREE.Side,
 ): THREE.MeshBasicMaterial {
   const color = locomotionPieceColorHex(baseColor, ownerId);
   let mat = cache.get(color);
   if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ color });
+    mat = side === undefined
+      ? new THREE.MeshBasicMaterial({ color })
+      : new THREE.MeshBasicMaterial({ color, side });
     cache.set(color, mat);
   }
   return mat;

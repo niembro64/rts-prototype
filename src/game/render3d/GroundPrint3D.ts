@@ -58,6 +58,7 @@ import {
   markDirtySlot,
   clearDirtySlotSpan,
   uploadDirtySlotSpan,
+  uploadPrefixRange,
 } from './instancedBufferUpdate';
 import { clamp01 } from '../math';
 
@@ -816,9 +817,7 @@ export class GroundPrint3D {
     if (this.marks.length > 0) {
       uploadDirtySlotSpan(this.posAttr, this.posDirty, 12, this.marks.length);
       if (this.colDirty) {
-        this.colAttr.clearUpdateRanges();
-        this.colAttr.addUpdateRange(0, this.marks.length * 16);
-        this.colAttr.needsUpdate = true;
+        uploadPrefixRange(this.colAttr, this.marks.length * 16);
         this.colDirty = false;
       }
       uploadDirtySlotSpan(this.uvAttr, this.uvDirty, 8, this.marks.length);

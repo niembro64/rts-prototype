@@ -4,7 +4,11 @@ import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, PlayerId, EntityId } from '../sim/types';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity } from '../network/NetworkTypes';
+import type {
+  NetworkServerSnapshot,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotMeta,
+} from '../network/NetworkTypes';
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
@@ -278,6 +282,43 @@ export class ServerSnapshotPublisher {
     listener.hasVisibleEntityBaseline = true;
   }
 
+  private buildServerMeta(
+    input: ServerSnapshotPublisherInput,
+    unitCount: number,
+  ): NetworkServerSnapshotMeta {
+    const wind = input.simulation.getWindState();
+    const entityPoolStats = getEntitySnapshotPoolStats();
+    return this.metaBuilder.build({
+      tickAvg: input.tpsAvg,
+      tickLow: input.tpsLow,
+      tickRateHz: input.tickRateHz,
+      snapshotRate: input.maxSnapshotsDisplay,
+      ipAddress: input.ipAddress,
+      allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
+      maxUnits: input.world.maxTotalUnits,
+      unitCount,
+      turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
+      turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
+      forceFieldsVisible: input.world.forceFieldsVisible,
+      shieldsObstructSight: input.world.shieldsObstructSight,
+      shieldReflectionMode: input.world.shieldReflectionMode,
+      fogOfWarEnabled: input.world.fogOfWarEnabled,
+      converterTax: input.world.converterTax,
+      tickMsAvg: input.tickMsAvg,
+      tickMsHi: input.tickMsHi,
+      tickMsInitialized: input.tickMsInitialized,
+      wind,
+      retainedPools: {
+        entitySnapshots: {
+          retained: entityPoolStats.retainedEntries,
+          active: entityPoolStats.activeEntries,
+          warm: entityPoolStats.warmEntries,
+        },
+      },
+      unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
+    });
+  }
+
   emit(input: ServerSnapshotPublisherInput): void {
     const emitBaseStages = createSnapshotMaterializationStageDurations();
     const lifecycleStart = performance.now();
@@ -311,37 +352,7 @@ export class ServerSnapshotPublisher {
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
     let stageStart = performance.now();
-    const wind = input.simulation.getWindState();
-    const entityPoolStats = getEntitySnapshotPoolStats();
-    const serverMeta = this.metaBuilder.build({
-      tickAvg: input.tpsAvg,
-      tickLow: input.tpsLow,
-      tickRateHz: input.tickRateHz,
-      snapshotRate: input.maxSnapshotsDisplay,
-      ipAddress: input.ipAddress,
-      allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
-      maxUnits: input.world.maxTotalUnits,
-      unitCount,
-      turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
-      turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
-      forceFieldsVisible: input.world.forceFieldsVisible,
-      shieldsObstructSight: input.world.shieldsObstructSight,
-      shieldReflectionMode: input.world.shieldReflectionMode,
-      fogOfWarEnabled: input.world.fogOfWarEnabled,
-      converterTax: input.world.converterTax,
-      tickMsAvg: input.tickMsAvg,
-      tickMsHi: input.tickMsHi,
-      tickMsInitialized: input.tickMsInitialized,
-      wind,
-      retainedPools: {
-        entitySnapshots: {
-          retained: entityPoolStats.retainedEntries,
-          active: entityPoolStats.activeEntries,
-          warm: entityPoolStats.warmEntries,
-        },
-      },
-      unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
-    });
+    const serverMeta = this.buildServerMeta(input, unitCount);
     addMaterializationStage(emitBaseStages, 'meta', stageStart);
 
     // Share one SnapshotVisibility per team across the listener loop
@@ -611,36 +622,7 @@ export class ServerSnapshotPublisher {
 
     let stageStart = performance.now();
     const unitCount = input.world.getUnits().length;
-    const entityPoolStats = getEntitySnapshotPoolStats();
-    const serverMeta = this.metaBuilder.build({
-      tickAvg: input.tpsAvg,
-      tickLow: input.tpsLow,
-      tickRateHz: input.tickRateHz,
-      snapshotRate: input.maxSnapshotsDisplay,
-      ipAddress: input.ipAddress,
-      allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
-      maxUnits: input.world.maxTotalUnits,
-      unitCount,
-      turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
-      turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
-      forceFieldsVisible: input.world.forceFieldsVisible,
-      shieldsObstructSight: input.world.shieldsObstructSight,
-      shieldReflectionMode: input.world.shieldReflectionMode,
-      fogOfWarEnabled: input.world.fogOfWarEnabled,
-      converterTax: input.world.converterTax,
-      tickMsAvg: input.tickMsAvg,
-      tickMsHi: input.tickMsHi,
-      tickMsInitialized: input.tickMsInitialized,
-      wind: input.simulation.getWindState(),
-      retainedPools: {
-        entitySnapshots: {
-          retained: entityPoolStats.retainedEntries,
-          active: entityPoolStats.activeEntries,
-          warm: entityPoolStats.warmEntries,
-        },
-      },
-      unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
-    });
+    const serverMeta = this.buildServerMeta(input, unitCount);
     addMaterializationStage(emitBaseStages, 'meta', stageStart);
 
     const visibilityCache = this.visibilityCache;

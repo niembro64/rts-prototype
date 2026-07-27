@@ -51,6 +51,32 @@ export function uploadDirtySlotSpan(
   clearDirtySlotSpan(span);
 }
 
+/** Upload the [0, count) prefix of an attribute's backing array. `count`
+ *  is in array elements (already multiplied by the item size). */
+export function uploadPrefixRange(
+  attribute: THREE.BufferAttribute,
+  count: number,
+): void {
+  attribute.clearUpdateRanges();
+  attribute.addUpdateRange(0, count);
+  attribute.needsUpdate = true;
+}
+
+/** Bound an instanced color+alpha particle pool's draw to `count` slots
+ *  and upload the live prefix of its matrix / alpha / color buffers. */
+export function uploadColorAlphaMatrixPrefix(
+  mesh: THREE.InstancedMesh,
+  alphaAttr: THREE.InstancedBufferAttribute,
+  colorAttr: THREE.InstancedBufferAttribute,
+  count: number,
+): void {
+  mesh.count = count;
+  if (count <= 0) return;
+  uploadPrefixRange(mesh.instanceMatrix, count * 16);
+  uploadPrefixRange(alphaAttr, count);
+  uploadPrefixRange(colorAttr, count * 3);
+}
+
 export function setInstancedMeshCount(
   mesh: THREE.InstancedMesh,
   count: number,

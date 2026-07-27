@@ -1,4 +1,5 @@
 import type { BeamPoint, Entity } from '../../types/sim';
+import { clearBeamPointDto, createBeamPointDto } from './snapshotDtoCopy';
 
 // Lightweight copy of snapshot state used for compatibility materialization,
 // correction diagnostics, and variable-length beam presentation. Owns its data
@@ -221,39 +222,15 @@ export function resizeServerTargetTurrets(target: ServerTarget, count: number): 
   }
 }
 
-function clearBeamPoint(p: BeamPoint): void {
-  p.x = 0; p.y = 0; p.z = 0;
-  p.vx = 0; p.vy = 0; p.vz = 0;
-  p.reflectorEntityId = null;
-  p.reflectorKind = null;
-  p.reflectorPlayerId = null;
-  p.normalX = null;
-  p.normalY = null;
-  p.normalZ = null;
-}
-
 function acquireBeamPoint(): BeamPoint {
   const pooled = _beamPointFreeList.pop();
   if (pooled) return pooled;
-  return {
-    x: 0,
-    y: 0,
-    z: 0,
-    vx: 0,
-    vy: 0,
-    vz: 0,
-    reflectorEntityId: null,
-    reflectorKind: null,
-    reflectorPlayerId: null,
-    normalX: null,
-    normalY: null,
-    normalZ: null,
-  };
+  return createBeamPointDto();
 }
 
 function releaseBeamPoint(point: BeamPoint): void {
   if (_beamPointFreeList.length >= BEAM_POINT_FREE_LIST_WARM_CAPACITY) return;
-  clearBeamPoint(point);
+  clearBeamPointDto(point);
   _beamPointFreeList.push(point);
 }
 

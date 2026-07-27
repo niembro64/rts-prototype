@@ -3,6 +3,7 @@ import {
   SUN_RENDER_CONFIG,
   TERRAIN_SHADOW_RENDER_CONFIG,
 } from '../../config';
+import { clamp } from '../math';
 import { configureSpriteTexture } from './threeUtils';
 
 type SimSunDirection = Readonly<{
@@ -118,10 +119,6 @@ export function installSunLighting(
     disk.renderOrder = -100;
     scene.add(disk);
   }
-}
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
 }
 
 function smoothstep(edge0: number, edge1: number, v: number): number {

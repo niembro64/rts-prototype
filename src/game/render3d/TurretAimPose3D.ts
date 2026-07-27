@@ -1,12 +1,9 @@
 import * as THREE from 'three';
+import { clampUnit } from '../math';
 import type { TurretMesh } from './TurretMesh3D';
 import { setEulerYIfChanged, setEulerZIfChanged } from './threeTransformWriteUtils';
 
 const _aimDir = new THREE.Vector3();
-
-function clampUnit(value: number): number {
-  return value < -1 ? -1 : value > 1 ? 1 : value;
-}
 
 /** Convert the sim turret pose into the local Three.js turret rig pose.
  *  Units and buildings both render their barrel as local +X, while sim

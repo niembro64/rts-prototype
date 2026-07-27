@@ -173,6 +173,24 @@ const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotk
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
 export const BAR_MAP_DRAW_DOUBLE_TAP_MS = 500;
 
+/** The 12 build-menu grid slots in slot order. Single source of truth
+ *  for the grid: COMMAND_HOTKEY_IDS spreads it and the build-menu
+ *  layout consumes it (via buildMenuLayout's re-export). */
+export const BUILD_MENU_GRID_SLOT_COMMAND_IDS = [
+  'build.slot1',
+  'build.slot2',
+  'build.slot3',
+  'build.slot4',
+  'build.slot5',
+  'build.slot6',
+  'build.slot7',
+  'build.slot8',
+  'build.slot9',
+  'build.slot10',
+  'build.slot11',
+  'build.slot12',
+] as const satisfies readonly CommandHotkeyId[];
+
 export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.move',
   'waypoint.fight',
@@ -226,18 +244,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'factory.stopProduction',
   'factory.queueMode',
   'factory.airIdleState',
-  'build.slot1',
-  'build.slot2',
-  'build.slot3',
-  'build.slot4',
-  'build.slot5',
-  'build.slot6',
-  'build.slot7',
-  'build.slot8',
-  'build.slot9',
-  'build.slot10',
-  'build.slot11',
-  'build.slot12',
+  ...BUILD_MENU_GRID_SLOT_COMMAND_IDS,
   'build.spacingIncrease',
   'build.spacingDecrease',
   'build.rotateClockwise',

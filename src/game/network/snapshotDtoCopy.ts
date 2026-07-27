@@ -173,6 +173,40 @@ export function createBeamDto(): NetworkServerSnapshotBeamUpdate {
   };
 }
 
+export type BeamPointDto = NetworkServerSnapshotBeamUpdate['points'][number];
+
+export function createBeamPointDto(): BeamPointDto {
+  return {
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    reflectorEntityId: null,
+    reflectorKind: null,
+    reflectorPlayerId: null,
+    normalX: null,
+    normalY: null,
+    normalZ: null,
+  };
+}
+
+export function clearBeamPointDto(p: BeamPointDto): void {
+  p.x = 0;
+  p.y = 0;
+  p.z = 0;
+  p.vx = 0;
+  p.vy = 0;
+  p.vz = 0;
+  p.reflectorEntityId = null;
+  p.reflectorKind = null;
+  p.reflectorPlayerId = null;
+  p.normalX = null;
+  p.normalY = null;
+  p.normalZ = null;
+}
+
 export function copyBeamInto(
   src: NetworkServerSnapshotBeamUpdate,
   dst: NetworkServerSnapshotBeamUpdate,
@@ -186,20 +220,7 @@ export function copyBeamInto(
     const sp = src.points[i];
     let dp = dstPts[i];
     if (!dp) {
-      dp = {
-        x: 0,
-        y: 0,
-        z: 0,
-        vx: 0,
-        vy: 0,
-        vz: 0,
-        reflectorEntityId: null,
-        reflectorKind: null,
-        reflectorPlayerId: null,
-        normalX: null,
-        normalY: null,
-        normalZ: null,
-      };
+      dp = createBeamPointDto();
       dstPts[i] = dp;
     }
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;

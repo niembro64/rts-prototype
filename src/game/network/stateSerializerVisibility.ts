@@ -1,5 +1,6 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
@@ -101,8 +102,7 @@ function ensureNativeObservationScratch(capacity: number): void {
   ) {
     return;
   }
-  let next = Math.max(8, nativeObservationVisibleIds.length);
-  while (next < capacity) next *= 2;
+  const next = nextGeometricCapacity(nativeObservationVisibleIds.length, capacity, 8);
   nativeObservationVisibleIds = new Int32Array(next);
   nativeObservationVisibleSlots = new Uint32Array(next);
   nativeObservationRadarIds = new Int32Array(next);

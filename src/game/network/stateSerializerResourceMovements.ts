@@ -13,6 +13,7 @@ import {
   reserveFloat64WireRows,
   type Float64WireRows,
 } from './snapshotWireRows';
+import { createResourceMovementDto } from './snapshotDtoCopy';
 
 export const RESOURCE_MOVEMENT_WIRE_STRIDE = 7;
 
@@ -37,14 +38,7 @@ function resourceDirectionCode(
 function getResourceMovementDto(index: number): NetworkServerSnapshotResourceMovement {
   let dto = resourceMovementPool[index];
   if (!dto) {
-    dto = {
-      playerId: 1,
-      sourceEntityId: 0,
-      targetEntityId: null,
-      resource: RESOURCE_KIND_ENERGY,
-      amountPerSecond: 0,
-      direction: RESOURCE_FLOW_INBOUND,
-    };
+    dto = createResourceMovementDto();
     resourceMovementPool[index] = dto;
   }
   return dto;
@@ -56,36 +50,59 @@ export function getResourceMovementWireSource(
   return resourceMovementWireSources.get(movements);
 }
 
-function appendResourceMovementWireRow(
+/** Shared resource-movement wire-row body for the DTO and direct-sim
+ *  writers. The callers pre-normalize the fields whose shapes differ
+ *  (nullable sourceEntityId, string resource/direction on the sim side)
+ *  into the wire scalars written here. */
+function appendResourceMovementWireRowValues(
   source: ResourceMovementWireSource,
-  movement: NetworkServerSnapshotResourceMovement,
+  playerId: number,
+  sourceEntityId: number,
+  targetEntityId: number | null,
+  resource: number,
+  amountPerSecond: number,
+  direction: number,
 ): void {
   const rowIndex = reserveFloat64WireRows(source, 1, RESOURCE_MOVEMENT_WIRE_STRIDE);
   const values = source.values;
   const base = rowIndex * RESOURCE_MOVEMENT_WIRE_STRIDE;
-  values[base + 0] = movement.playerId;
-  values[base + 1] = movement.sourceEntityId;
-  values[base + 2] = movement.targetEntityId ?? 0;
-  values[base + 3] = movement.resource;
-  values[base + 4] = movement.amountPerSecond;
-  values[base + 5] = movement.direction;
-  values[base + 6] = movement.targetEntityId !== null ? 1 : 0;
+  values[base + 0] = playerId;
+  values[base + 1] = sourceEntityId;
+  values[base + 2] = targetEntityId ?? 0;
+  values[base + 3] = resource;
+  values[base + 4] = amountPerSecond;
+  values[base + 5] = direction;
+  values[base + 6] = targetEntityId !== null ? 1 : 0;
+}
+
+function appendResourceMovementWireRow(
+  source: ResourceMovementWireSource,
+  movement: NetworkServerSnapshotResourceMovement,
+): void {
+  appendResourceMovementWireRowValues(
+    source,
+    movement.playerId,
+    movement.sourceEntityId,
+    movement.targetEntityId,
+    movement.resource,
+    movement.amountPerSecond,
+    movement.direction,
+  );
 }
 
 function appendDirectResourceMovementWireRow(
   source: ResourceMovementWireSource,
   movement: ResourceMovement,
 ): void {
-  const rowIndex = reserveFloat64WireRows(source, 1, RESOURCE_MOVEMENT_WIRE_STRIDE);
-  const values = source.values;
-  const base = rowIndex * RESOURCE_MOVEMENT_WIRE_STRIDE;
-  values[base + 0] = movement.playerId;
-  values[base + 1] = movement.sourceEntityId ?? 0;
-  values[base + 2] = movement.targetEntityId ?? 0;
-  values[base + 3] = resourceKindCode(movement.resource);
-  values[base + 4] = movement.amountPerSecond;
-  values[base + 5] = resourceDirectionCode(movement.direction);
-  values[base + 6] = movement.targetEntityId !== null ? 1 : 0;
+  appendResourceMovementWireRowValues(
+    source,
+    movement.playerId,
+    movement.sourceEntityId ?? 0,
+    movement.targetEntityId,
+    resourceKindCode(movement.resource),
+    movement.amountPerSecond,
+    resourceDirectionCode(movement.direction),
+  );
 }
 
 function shouldSendResourceMovement(

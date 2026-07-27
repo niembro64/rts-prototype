@@ -30,6 +30,10 @@ import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { hexToRgb01, locomotionPieceColorFromPrimary } from './colorUtils';
 import { blendHexTowardWhite } from './EntityInstanceColor3D';
 import { disposeMesh } from './threeUtils';
+import {
+  createInstancedColorAlphaPool,
+  PRIMITIVE_GEOMETRY_TIERS,
+} from './instancedParticlePool3D';
 import { getBodyTopY } from '../math/BodyDimensions';
 import {
   type DebrisColorRole,
@@ -224,24 +228,13 @@ class InstancedDebrisPool {
   constructor(parent: THREE.Group, geom: THREE.BufferGeometry, cap: number) {
     this.geom = geom;
     this.cap = cap;
-    this.alphaArr = new Float32Array(cap);
-    this.colorArr = new Float32Array(cap * 3);
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    geom.setAttribute('aAlpha', this.alphaAttr);
-    geom.setAttribute('aColor', this.colorAttr);
     this.mat = makeInstancedLambertMaterial();
-    this.mesh = new THREE.InstancedMesh(geom, this.mat, cap);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    // Frustum culling on InstancedMesh uses the source geometry's
-    // bounding sphere — instances live anywhere on the map, so
-    // disable cull. Same caveat as the chassis + particle pools.
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = 13;
-    parent.add(this.mesh);
+    const pool = createInstancedColorAlphaPool(parent, geom, cap, this.mat, 13);
+    this.mesh = pool.mesh;
+    this.alphaArr = pool.alphaArr;
+    this.colorArr = pool.colorArr;
+    this.alphaAttr = pool.alphaAttr;
+    this.colorAttr = pool.colorAttr;
   }
 
   alloc(): number | null {
@@ -1115,8 +1108,11 @@ export class Debris3D {
   }
 
   private flushPools(): void {
-    for (const tierPools of Object.values(this.pools)) {
-      for (const pool of Object.values(tierPools)) pool.flush();
+    for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
+      const tierPools = this.pools[PRIMITIVE_GEOMETRY_TIERS[t]];
+      tierPools.box.flush();
+      tierPools.cyl.flush();
+      tierPools.sphere.flush();
     }
     this.poolFlushPending = false;
   }

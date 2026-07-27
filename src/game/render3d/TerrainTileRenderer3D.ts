@@ -95,7 +95,7 @@ import {
 } from './SunLighting';
 import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
-import { clamp01 } from '../math';
+import { smoothstep01 } from '../math';
 import {
   createPathfindingDebugGrid,
   ensurePathfindingDebugGrid,
@@ -149,11 +149,6 @@ type TerrainTileRendererUpdateOptions = {
   entityShadows: EntityShadowRenderPacket3D;
   visibleBounds: FootprintBounds;
 };
-
-function smoothstep01(t: number): number {
-  const clamped = clamp01(t);
-  return clamped * clamped * (3 - 2 * clamped);
-}
 
 // Pass an sRGB hex into the terrain shader as a raw vec3. The rest of the
 // terrain shader's color literals (lowGrass, dryGrass, etc.) are written as
@@ -1642,6 +1637,35 @@ export class TerrainTileRenderer3D {
     evicted.geometry.dispose();
   }
 
+  private storeTerrainGeometrySettings(
+    cellsX: number,
+    cellsY: number,
+    cellSize: number,
+    triangleDebug: boolean,
+    wallTriangleDebug: boolean,
+    terrainTextureSmoothing: number,
+    terrainLightSmoothing: number,
+    terrainTextureSmoothAcrossWallBoundary: boolean,
+    terrainLightSmoothAcrossWallBoundary: boolean,
+    terrainSplitWallBoundaryVertices: boolean,
+    waterBoundaryMode: WaterBoundaryMode,
+  ): void {
+    this.gridCellsX = cellsX;
+    this.gridCellsY = cellsY;
+    this.gridCellSize = cellSize;
+    this.terrainTriangleDebug = triangleDebug;
+    this.terrainWallTriangleDebug = wallTriangleDebug;
+    this.terrainTextureSmoothing = terrainTextureSmoothing;
+    this.terrainLightSmoothing = terrainLightSmoothing;
+    this.terrainTextureSmoothAcrossWallBoundary =
+      terrainTextureSmoothAcrossWallBoundary;
+    this.terrainLightSmoothAcrossWallBoundary =
+      terrainLightSmoothAcrossWallBoundary;
+    this.terrainSplitWallBoundaryVertices =
+      terrainSplitWallBoundaryVertices;
+    this.waterBoundaryMode = waterBoundaryMode;
+  }
+
   private rebuildGeometryIfNeeded(
     cellSize: number,
     graphicsConfig: GraphicsConfig,
@@ -1709,39 +1733,37 @@ export class TerrainTileRenderer3D {
 
     const cachedGeometry = this.terrainGeometryCache.get(nextTerrainGeometryKey);
     if (cachedGeometry) {
-      this.gridCellsX = cellsX;
-      this.gridCellsY = cellsY;
-      this.gridCellSize = cellSize;
-      this.terrainTriangleDebug = triangleDebug;
-      this.terrainWallTriangleDebug = wallTriangleDebug;
-      this.terrainTextureSmoothing = terrainTextureSmoothing;
-      this.terrainLightSmoothing = terrainLightSmoothing;
-      this.terrainTextureSmoothAcrossWallBoundary =
-        terrainTextureSmoothAcrossWallBoundary;
-      this.terrainLightSmoothAcrossWallBoundary =
-        terrainLightSmoothAcrossWallBoundary;
-      this.terrainSplitWallBoundaryVertices =
-        terrainSplitWallBoundaryVertices;
-      this.waterBoundaryMode = waterBoundaryMode;
+      this.storeTerrainGeometrySettings(
+        cellsX,
+        cellsY,
+        cellSize,
+        triangleDebug,
+        wallTriangleDebug,
+        terrainTextureSmoothing,
+        terrainLightSmoothing,
+        terrainTextureSmoothAcrossWallBoundary,
+        terrainLightSmoothAcrossWallBoundary,
+        terrainSplitWallBoundaryVertices,
+        waterBoundaryMode,
+      );
       this.useTerrainGeometry(nextTerrainGeometryKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
       return true;
     }
 
-    this.gridCellsX = cellsX;
-    this.gridCellsY = cellsY;
-    this.gridCellSize = cellSize;
-    this.terrainTriangleDebug = triangleDebug;
-    this.terrainWallTriangleDebug = wallTriangleDebug;
-    this.terrainTextureSmoothing = terrainTextureSmoothing;
-    this.terrainLightSmoothing = terrainLightSmoothing;
-    this.terrainTextureSmoothAcrossWallBoundary =
-      terrainTextureSmoothAcrossWallBoundary;
-    this.terrainLightSmoothAcrossWallBoundary =
-      terrainLightSmoothAcrossWallBoundary;
-    this.terrainSplitWallBoundaryVertices =
-      terrainSplitWallBoundaryVertices;
-    this.waterBoundaryMode = waterBoundaryMode;
+    this.storeTerrainGeometrySettings(
+      cellsX,
+      cellsY,
+      cellSize,
+      triangleDebug,
+      wallTriangleDebug,
+      terrainTextureSmoothing,
+      terrainLightSmoothing,
+      terrainTextureSmoothAcrossWallBoundary,
+      terrainLightSmoothAcrossWallBoundary,
+      terrainSplitWallBoundaryVertices,
+      waterBoundaryMode,
+    );
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];

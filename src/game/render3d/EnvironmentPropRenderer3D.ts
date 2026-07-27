@@ -184,7 +184,15 @@ export class EnvironmentPropRenderer3D {
   private ready = false;
   private loaded = false;
   private lastScopeVersion = -1;
-  private lastViewKey = '';
+  // Numeric change-detection state replacing a per-frame template-string key.
+  // lastLodMode = '' never matches a real mode, so it forces a refresh.
+  private lastLodMode = '';
+  private lastHasView = false;
+  private lastCameraX = NaN;
+  private lastCameraY = NaN;
+  private lastCameraZ = NaN;
+  private lastFovYRad = NaN;
+  private lastViewportHeightPx = NaN;
 
   constructor(
     parentWorld: THREE.Group,
@@ -210,12 +218,31 @@ export class EnvironmentPropRenderer3D {
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
     const lodMode = getLodMode();
-    const viewKey = view
-      ? `${lodMode}|${view.cameraX}|${view.cameraY}|${view.cameraZ}|${view.fovYRad}|${view.viewportHeightPx}`
-      : `${lodMode}|close`;
-    if (scopeVersion === this.lastScopeVersion && viewKey === this.lastViewKey) return;
+    const hasView = view !== undefined;
+    if (
+      scopeVersion === this.lastScopeVersion &&
+      lodMode === this.lastLodMode &&
+      hasView === this.lastHasView &&
+      (!view || (
+        view.cameraX === this.lastCameraX &&
+        view.cameraY === this.lastCameraY &&
+        view.cameraZ === this.lastCameraZ &&
+        view.fovYRad === this.lastFovYRad &&
+        view.viewportHeightPx === this.lastViewportHeightPx
+      ))
+    ) {
+      return;
+    }
     this.lastScopeVersion = scopeVersion;
-    this.lastViewKey = viewKey;
+    this.lastLodMode = lodMode;
+    this.lastHasView = hasView;
+    if (view) {
+      this.lastCameraX = view.cameraX;
+      this.lastCameraY = view.cameraY;
+      this.lastCameraZ = view.cameraZ;
+      this.lastFovYRad = view.fovYRad;
+      this.lastViewportHeightPx = view.viewportHeightPx;
+    }
     for (const node of this.nodes) {
       const p = node.placement;
       if (!isRandomEnvironmentAssetUsable(p.assetId)) {
@@ -333,7 +360,7 @@ export class EnvironmentPropRenderer3D {
       for (const asset of loadedAssets) this.assets.set(asset.spec.id, asset);
       this.loaded = true;
       this.lastScopeVersion = -1;
-      this.lastViewKey = '';
+      this.lastLodMode = '';
     } catch (error) {
       console.warn('Failed to load environment asset pack props', error);
     } finally {

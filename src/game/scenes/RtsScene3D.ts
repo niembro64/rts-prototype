@@ -729,17 +729,19 @@ export class RtsScene3D {
     // Process local commands — select/clearSelection apply to ClientViewState,
     // everything else gets forwarded to the server via GameConnection
     this.processLocalCommands();
-    SNAPSHOT_CADENCE_REGRESSION.tickHostScenario({
-      now: performance.now(),
-      currentTick: this.clientViewState.getTick(),
-      localPlayerId: this.localPlayerId,
-      hostPlayerId: this.playerIds[0],
-      mapWidth: this.mapWidth,
-      mapHeight: this.mapHeight,
-      backgroundMode: this.backgroundMode,
-      lobbyPreview: this.lobbyPreview,
-      sendCommand: (command) => this.gameConnection.sendCommand(command),
-    });
+    if (SNAPSHOT_CADENCE_REGRESSION.enabled) {
+      SNAPSHOT_CADENCE_REGRESSION.tickHostScenario({
+        now: performance.now(),
+        currentTick: this.clientViewState.getTick(),
+        localPlayerId: this.localPlayerId,
+        hostPlayerId: this.playerIds[0],
+        mapWidth: this.mapWidth,
+        mapHeight: this.mapHeight,
+        backgroundMode: this.backgroundMode,
+        lobbyPreview: this.lobbyPreview,
+        sendCommand: this.sendCadenceRegressionCommand,
+      });
+    }
 
     if (!this.clientRenderEnabled) {
       // Diagnostic PLAYER CLIENT OFF path. Keep snapshot intake,
@@ -836,6 +838,10 @@ export class RtsScene3D {
       rendererRenderMs,
     });
   }
+
+  private readonly sendCadenceRegressionCommand = (command: Command): void => {
+    this.gameConnection.sendCommand(command);
+  };
 
   private processLocalCommands(): void {
     const commands = this.localCommandQueue.getAll();

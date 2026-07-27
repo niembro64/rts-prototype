@@ -39,6 +39,11 @@ import type { EntityId } from './types';
 import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
 
+// Hoisted determinism-ordering comparators: these sorts run every tick,
+// and an inline arrow would allocate a closure per call.
+const byEntityIdField = (a: { id: number }, b: { id: number }): number => a.id - b.id;
+const byNumberAscending = (a: number, b: number): number => a - b;
+
 type SimEventCallback = ((event: SimEvent) => void) | null;
 type UnitDeathCallback = (
   (deadUnitIds: EntityId[], deathContexts: Map<EntityId, DeathContext> | null) => void
@@ -133,8 +138,8 @@ export class SimulationCombatController {
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
     const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
-    fireResult.projectiles.sort((a, b) => a.id - b.id);
-    fireResult.spawnEvents.sort((a, b) => a.id - b.id);
+    fireResult.projectiles.sort(byEntityIdField);
+    fireResult.spawnEvents.sort(byEntityIdField);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
       registerPackedProjectile(proj);
@@ -178,8 +183,8 @@ export class SimulationCombatController {
     onBuildingDeath: BuildingDeathCallback,
   ): void {
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem, wind);
-    updateResult.orphanedIds.sort((a, b) => a - b);
-    updateResult.despawnEvents.sort((a, b) => a.id - b.id);
+    updateResult.orphanedIds.sort(byNumberAscending);
+    updateResult.despawnEvents.sort(byEntityIdField);
     for (const id of updateResult.orphanedIds) {
       unregisterPackedProjectile(id);
       spatialGrid.removeProjectile(id);
@@ -209,8 +214,8 @@ export class SimulationCombatController {
     // Add submunition / cluster projectiles spawned at explosion points,
     // and mirror their spawn events to the network queue so clients see
     // them the same way they see any freshly-fired round.
-    collisionResult.newProjectiles.sort((a, b) => a.id - b.id);
-    collisionResult.spawnEvents.sort((a, b) => a.id - b.id);
+    collisionResult.newProjectiles.sort(byEntityIdField);
+    collisionResult.spawnEvents.sort(byEntityIdField);
     for (const proj of collisionResult.newProjectiles) {
       this.world.addEntity(proj);
       registerPackedProjectile(proj);
@@ -220,7 +225,7 @@ export class SimulationCombatController {
     }
 
     // Collect projectile despawn events from collisions
-    collisionResult.despawnEvents.sort((a, b) => a.id - b.id);
+    collisionResult.despawnEvents.sort(byEntityIdField);
     for (const event of collisionResult.despawnEvents) {
       unregisterPackedProjectile(event.id);
       spatialGrid.removeProjectile(event.id);
@@ -287,7 +292,7 @@ export class SimulationCombatController {
     const buf = this.deadUnitIdsBuf;
     buf.length = 0;
     for (const id of deadUnitIds) buf.push(id);
-    buf.sort((a, b) => a - b);
+    buf.sort(byNumberAscending);
     for (let i = 0; i < buf.length; i++) {
       const id = buf[i];
       const entity = this.world.getEntity(id);
@@ -318,7 +323,7 @@ export class SimulationCombatController {
     const buf = this.deadBuildingIdsBuf;
     buf.length = 0;
     for (const id of deadBuildingIds) buf.push(id);
-    buf.sort((a, b) => a - b);
+    buf.sort(byNumberAscending);
     for (let i = 0; i < buf.length; i++) {
       const id = buf[i];
       spatialGrid.removeBuilding(id);

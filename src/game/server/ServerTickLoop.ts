@@ -1,3 +1,5 @@
+import { clamp } from '../math';
+
 type ServerTickCallback = (nowMs: number, deltaMs: number) => boolean | void;
 
 type ServerTickLoopFrameStats = {
@@ -26,7 +28,7 @@ const MAX_TIME_SCALE = 20;
 
 function sanitizeTimeScale(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 1;
-  return Math.max(MIN_TIME_SCALE, Math.min(MAX_TIME_SCALE, value));
+  return clamp(value, MIN_TIME_SCALE, MAX_TIME_SCALE);
 }
 
 function catchUpStepLimit(fixedDeltaMs: number, timeScale: number): number {

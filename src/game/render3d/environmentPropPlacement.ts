@@ -1,6 +1,8 @@
 import { LAND_CELL_SIZE } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
+import { clamp } from '../math';
 import { getSpawnPositionForSeat } from '../sim/spawn';
+import { randIn } from './detailTextureHelpers';
 import {
   getSurfaceNormal,
   isFarFromWater,
@@ -145,10 +147,10 @@ function addRandomEnvironmentAssetPlacements(
     const added = tryAddPlacement(context, placements, assetId, x, z, rng, {
       height:
         spec.defaultHeight *
-        randRange(rng, profile.heightScaleMin, profile.heightScaleMax),
+        randIn(rng, profile.heightScaleMin, profile.heightScaleMax),
       radius:
         spec.defaultRadius *
-        randRange(rng, profile.radiusScaleMin, profile.radiusScaleMax),
+        randIn(rng, profile.radiusScaleMin, profile.radiusScaleMax),
       rotation: rng() * Math.PI * 2,
       waterBuffer: profile.waterBuffer,
     });
@@ -306,10 +308,6 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function randRange(rng: () => number, min: number, max: number): number {
-  return min + (max - min) * rng();
-}
-
 function chooseWeightedEnvironmentAssetIdOrNull(
   options: readonly WeightedEnvironmentAssetOption[],
   rng: () => number,
@@ -365,8 +363,4 @@ function isSlopeInRandomEnvironmentAssetZone(slope: number): boolean {
 function isRandomEnvironmentAssetHeightAllowed(height: number): boolean {
   if (!Number.isFinite(RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT)) return true;
   return height <= RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }

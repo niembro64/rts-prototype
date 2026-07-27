@@ -1,17 +1,12 @@
 import * as THREE from 'three';
 import { WATER_RENDER_CONFIG } from '../../config';
+import { clamp01 } from '../math';
 
 type Rgb01 = {
   r: number;
   g: number;
   b: number;
 };
-
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
-}
 
 function hexToLinearRgb(hex: number): Rgb01 {
   const color = new THREE.Color(hex);

@@ -1,3 +1,5 @@
+import { randIn } from './detailTextureHelpers';
+
 export type EnvironmentAssetFormat = 'obj' | 'fbx';
 export type EnvironmentAssetKind = 'tree' | 'grass';
 export type EnvironmentPalette =
@@ -247,7 +249,7 @@ export function getRandomEnvironmentAssetScaleJitter(rng: () => number): number 
   }
   return Math.max(
     0.001,
-    randRange(
+    randIn(
       rng,
       1 - RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS,
       1 + RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS,
@@ -277,10 +279,6 @@ function buildActiveEnvironmentAssets(): EnvironmentAssetSpec[] {
     if (isRandomEnvironmentAssetUsable(spec.id)) assets.push(spec);
   }
   return assets;
-}
-
-function randRange(rng: () => number, min: number, max: number): number {
-  return min + (max - min) * rng();
 }
 
 export function isWoodMaterialForAsset(

@@ -44,3 +44,40 @@ export const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {
   building: 2,
   system: 3,
 };
+
+/** Positional decode table derived from AUDIO_EVENT_TYPE_CODES so the
+ *  encode and decode sides cannot drift apart. */
+export const AUDIO_EVENT_TYPES_BY_CODE: readonly NetworkServerSnapshotSimEvent['type'][] =
+  buildInverseCodeTable(AUDIO_EVENT_TYPE_CODES);
+
+export const AUDIO_EVENT_SOURCE_TYPES_BY_CODE: readonly NonNullable<
+  NetworkServerSnapshotSimEvent['sourceType']
+>[] = buildInverseCodeTable(
+  AUDIO_EVENT_SOURCE_TYPE_CODES as Record<
+    NonNullable<NetworkServerSnapshotSimEvent['sourceType']>,
+    number
+  >,
+);
+
+function buildInverseCodeTable<T extends string>(codes: Record<T, number>): readonly T[] {
+  const byCode: T[] = [];
+  for (const key in codes) {
+    byCode[codes[key]] = key;
+  }
+  return byCode;
+}
+
+/** Intern `value` into the packed-wire string table, reusing an existing
+ *  slot when the same string was already appended this pack. */
+export function internStringSlot(
+  strings: string[],
+  slots: Map<string, number>,
+  value: string,
+): number {
+  const existing = slots.get(value);
+  if (existing !== undefined) return existing;
+  const next = strings.length;
+  strings.push(value);
+  slots.set(value, next);
+  return next;
+}

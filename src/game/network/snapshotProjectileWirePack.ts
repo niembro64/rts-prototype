@@ -47,6 +47,11 @@ import {
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
 import {
+  finishFlagGroupedPackedRows,
+  getOrCreateFlagGroup,
+  type FlagGroupedPackedRowGroup,
+} from './flagGroupedPackedRows';
+import {
   activeFloat64WireValues,
   activeUint32WireValues,
   reserveFloat64WireRows,
@@ -187,13 +192,6 @@ export function isPackedProjectileSnapshotWire(
   );
 }
 
-type SpawnGroup = {
-  flags: number;
-  writer: PackedBinaryWriter;
-  count: number;
-  lastId: number;
-};
-
 function packProjectileSpawns(
   spawns: readonly NetworkServerSnapshotProjectileSpawn[] | undefined,
 ): Uint8Array | undefined {
@@ -205,46 +203,25 @@ function packProjectileSpawns(
     return empty.finishBytes();
   }
 
-  const groups: SpawnGroup[] = [];
-  const groupsByFlags: (SpawnGroup | undefined)[] = [];
+  const groups: FlagGroupedPackedRowGroup[] = [];
+  const groupsByFlags: (FlagGroupedPackedRowGroup | undefined)[] = [];
   const estimatedPerRow = 16;
 
   for (let i = 0; i < spawns.length; i++) {
     const spawn = spawns[i];
     const flags = getProjectileSpawnWireFlags(spawn);
-    let group = groupsByFlags[flags];
-    if (group === undefined) {
-      group = {
-        flags,
-        writer: new PackedBinaryWriter(Math.max(32, spawns.length * estimatedPerRow)),
-        count: 0,
-        lastId: 0,
-      };
-      groupsByFlags[flags] = group;
-      groups.push(group);
-    }
+    const group = getOrCreateFlagGroup(
+      groups,
+      groupsByFlags,
+      flags,
+      Math.max(32, spawns.length * estimatedPerRow),
+    );
     writeSpawnRow(group.writer, spawn, flags, group.lastId);
     group.lastId = spawn.id;
     group.count++;
   }
 
-  const chunks: Uint8Array[] = new Array(groups.length);
-  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < groups.length; i++) {
-    chunks[i] = groups[i].writer.finishBytes();
-    estimatedBytes += chunks[i].byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(groups.length);
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.count);
-    out.writeBytes(chunks[i]);
-  }
-  out.setUint32LE(0, spawns.length);
-  return out.finishBytes();
+  return finishFlagGroupedPackedRows(groups, spawns.length);
 }
 
 function packProjectileSpawnsFromSource(
@@ -254,46 +231,25 @@ function packProjectileSpawnsFromSource(
   if (rows.count === 0) return undefined;
 
   const values = activeFloat64WireValues(rows, PROJECTILE_SPAWN_WIRE_STRIDE);
-  const groups: SpawnGroup[] = [];
-  const groupsByFlags: (SpawnGroup | undefined)[] = [];
+  const groups: FlagGroupedPackedRowGroup[] = [];
+  const groupsByFlags: (FlagGroupedPackedRowGroup | undefined)[] = [];
   const estimatedPerRow = 16;
 
   for (let i = 0; i < rows.count; i++) {
     const base = i * PROJECTILE_SPAWN_WIRE_STRIDE;
     const flags = values[base + 31] ?? 0;
-    let group = groupsByFlags[flags];
-    if (group === undefined) {
-      group = {
-        flags,
-        writer: new PackedBinaryWriter(Math.max(32, rows.count * estimatedPerRow)),
-        count: 0,
-        lastId: 0,
-      };
-      groupsByFlags[flags] = group;
-      groups.push(group);
-    }
+    const group = getOrCreateFlagGroup(
+      groups,
+      groupsByFlags,
+      flags,
+      Math.max(32, rows.count * estimatedPerRow),
+    );
     writeSpawnSourceRow(group.writer, values, base, flags, group.lastId);
     group.lastId = values[base + 0] ?? 0;
     group.count++;
   }
 
-  const chunks: Uint8Array[] = new Array(groups.length);
-  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < groups.length; i++) {
-    chunks[i] = groups[i].writer.finishBytes();
-    estimatedBytes += chunks[i].byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(groups.length);
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.count);
-    out.writeBytes(chunks[i]);
-  }
-  out.setUint32LE(0, rows.count);
-  return out.finishBytes();
+  return finishFlagGroupedPackedRows(groups, rows.count);
 }
 
 function writeSpawnRow(
@@ -609,13 +565,6 @@ export function forEachPackedProjectileDespawn(
   return true;
 }
 
-type MotionGroup = {
-  flags: number;
-  writer: PackedBinaryWriter;
-  count: number;
-  lastId: number;
-};
-
 function packProjectileMotionUpdates(
   updates: readonly NetworkServerSnapshotMotionUpdate[] | undefined,
 ): Uint8Array | undefined {
@@ -627,24 +576,19 @@ function packProjectileMotionUpdates(
     return empty.finishBytes();
   }
 
-  const groups: MotionGroup[] = [];
-  const groupsByFlags: (MotionGroup | undefined)[] = [];
+  const groups: FlagGroupedPackedRowGroup[] = [];
+  const groupsByFlags: (FlagGroupedPackedRowGroup | undefined)[] = [];
   const estimatedPerRow = 12;
 
   for (let i = 0; i < updates.length; i++) {
     const update = updates[i];
     const flags = 0;
-    let group = groupsByFlags[flags];
-    if (group === undefined) {
-      group = {
-        flags,
-        writer: new PackedBinaryWriter(Math.max(32, updates.length * estimatedPerRow)),
-        count: 0,
-        lastId: 0,
-      };
-      groupsByFlags[flags] = group;
-      groups.push(group);
-    }
+    const group = getOrCreateFlagGroup(
+      groups,
+      groupsByFlags,
+      flags,
+      Math.max(32, updates.length * estimatedPerRow),
+    );
     group.writer.writeVarInt(update.id - group.lastId);
     group.lastId = update.id;
     group.writer.writeVarInt(update.pos.x);
@@ -658,23 +602,7 @@ function packProjectileMotionUpdates(
     group.count++;
   }
 
-  const chunks: Uint8Array[] = new Array(groups.length);
-  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < groups.length; i++) {
-    chunks[i] = groups[i].writer.finishBytes();
-    estimatedBytes += chunks[i].byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(groups.length);
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.count);
-    out.writeBytes(chunks[i]);
-  }
-  out.setUint32LE(0, updates.length);
-  return out.finishBytes();
+  return finishFlagGroupedPackedRows(groups, updates.length);
 }
 
 function packProjectileMotionUpdatesFromSource(
@@ -684,24 +612,19 @@ function packProjectileMotionUpdatesFromSource(
   if (rows.count === 0) return undefined;
 
   const values = activeFloat64WireValues(rows, PROJECTILE_MOTION_WIRE_STRIDE);
-  const groups: MotionGroup[] = [];
-  const groupsByFlags: (MotionGroup | undefined)[] = [];
+  const groups: FlagGroupedPackedRowGroup[] = [];
+  const groupsByFlags: (FlagGroupedPackedRowGroup | undefined)[] = [];
   const estimatedPerRow = 12;
 
   for (let i = 0; i < rows.count; i++) {
     const base = i * PROJECTILE_MOTION_WIRE_STRIDE;
     const flags = 0;
-    let group = groupsByFlags[flags];
-    if (group === undefined) {
-      group = {
-        flags,
-        writer: new PackedBinaryWriter(Math.max(32, rows.count * estimatedPerRow)),
-        count: 0,
-        lastId: 0,
-      };
-      groupsByFlags[flags] = group;
-      groups.push(group);
-    }
+    const group = getOrCreateFlagGroup(
+      groups,
+      groupsByFlags,
+      flags,
+      Math.max(32, rows.count * estimatedPerRow),
+    );
     const id = values[base + 0] ?? 0;
     group.writer.writeVarInt(id - group.lastId);
     group.lastId = id;
@@ -716,23 +639,7 @@ function packProjectileMotionUpdatesFromSource(
     group.count++;
   }
 
-  const chunks: Uint8Array[] = new Array(groups.length);
-  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < groups.length; i++) {
-    chunks[i] = groups[i].writer.finishBytes();
-    estimatedBytes += chunks[i].byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(groups.length);
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.count);
-    out.writeBytes(chunks[i]);
-  }
-  out.setUint32LE(0, rows.count);
-  return out.finishBytes();
+  return finishFlagGroupedPackedRows(groups, rows.count);
 }
 
 function unpackProjectileMotionUpdates(

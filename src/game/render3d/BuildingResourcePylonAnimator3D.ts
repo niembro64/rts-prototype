@@ -26,7 +26,11 @@ import {
   type AnimatedBuildingEntry,
 } from './BuildingAnimationLists3D';
 import { BuildingResourcePylonSources3D } from './BuildingResourcePylonSources3D';
-import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
+import type {
+  ResourcePylonFlowController3D,
+  ResourcePylonFlowDescriptor,
+  ResourcePylonTaxedArcDescriptor,
+} from './ResourcePylonFlowController3D';
 
 function extractorInverseBaseProduction(entity: Entity): number {
   if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
@@ -89,6 +93,10 @@ export class BuildingResourcePylonAnimator3D {
   private resourcePylonBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeResourcePylonBuildings: AnimatedBuildingEntry[] = [];
   private activeResourcePylonBuildingIndexById = new IndexedEntityIdMap<number>();
+  /** Reused per-emit descriptor scratches — emitResourcePylonFlow /
+   *  emitTaxedArc read every field synchronously and never retain them. */
+  private _pylonFlowDesc: ResourcePylonFlowDescriptor | null = null;
+  private _taxedArcDesc: ResourcePylonTaxedArcDescriptor | null = null;
 
   constructor(
     clientViewState: ClientViewState,
@@ -300,7 +308,7 @@ export class BuildingResourcePylonAnimator3D {
     }
 
     entry.mesh.group.updateWorldMatrix(true, false);
-    this.resourcePylonFlows.emitResourcePylonFlow({
+    const desc = this._pylonFlowDesc ?? {
       pylon,
       group: entry.mesh.group,
       hostId: entry.id,
@@ -312,7 +320,20 @@ export class BuildingResourcePylonAnimator3D {
       rate: pylon.displaySmoothedRate,
       absRate,
       channel: pylon.channel,
-    });
+    };
+    this._pylonFlowDesc = desc;
+    desc.pylon = pylon;
+    desc.group = entry.mesh.group;
+    desc.hostId = entry.id;
+    desc.playerId = ownership.playerId;
+    desc.targetId = entry.id;
+    desc.worldEndpoint = worldEndpoint;
+    desc.endpointRadius = pylon.flowRadius;
+    desc.direction = pylon.direction;
+    desc.rate = pylon.displaySmoothedRate;
+    desc.absRate = absRate;
+    desc.channel = pylon.channel;
+    this.resourcePylonFlows.emitResourcePylonFlow(desc);
   }
 
   private smoothPylonRate(
@@ -356,7 +377,7 @@ export class BuildingResourcePylonAnimator3D {
       return false;
     }
 
-    this.resourcePylonFlows.emitTaxedArc({
+    const desc = this._taxedArcDesc ?? {
       hostId: entry.id,
       playerId: ownership.playerId,
       sourcePylon,
@@ -366,7 +387,18 @@ export class BuildingResourcePylonAnimator3D {
       sinkRate: sinkPylon.displaySmoothedRate,
       sourceAbsRate: Math.abs(sourceRate),
       sinkAbsRate: Math.abs(sinkRate),
-    });
+    };
+    this._taxedArcDesc = desc;
+    desc.hostId = entry.id;
+    desc.playerId = ownership.playerId;
+    desc.sourcePylon = sourcePylon;
+    desc.sinkPylon = sinkPylon;
+    desc.group = entry.mesh.group;
+    desc.sourceRate = sourcePylon.displaySmoothedRate;
+    desc.sinkRate = sinkPylon.displaySmoothedRate;
+    desc.sourceAbsRate = Math.abs(sourceRate);
+    desc.sinkAbsRate = Math.abs(sinkRate);
+    this.resourcePylonFlows.emitTaxedArc(desc);
     return true;
   }
 

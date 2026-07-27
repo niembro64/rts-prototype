@@ -10,10 +10,23 @@ import { NO_ENTITY_ID } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 import { isAttackEmitter } from './emitterKinds';
 
+/** How long a removed entity's dead metadata tombstone stays queryable,
+ *  in sim ticks. Post-mortem consumers (damage attribution in
+ *  aggression.ts, construction-piece liveness checks) only read a dead
+ *  entry within a tick or two of removal; without a pruning window the
+ *  map would grow by one tombstone per entity ever spawned — dominated
+ *  by projectiles — for the whole match. Tombstones created by
+ *  markSubEntityDead for sub-entities of live hosts are NOT pruned:
+ *  their generation counter must survive dead→alive cycles. */
+const DEAD_META_RETENTION_TICKS = 300;
+
 export class WorldEntityMetadata {
   private readonly metaById = new Map<EntityId, EntityMeta>();
   private readonly entities: Map<EntityId, Entity>;
   private readonly resolveTeamId: (playerId: PlayerId) => number;
+  private readonly pendingForgetIds: EntityId[] = [];
+  private readonly pendingForgetTicks: number[] = [];
+  private pendingForgetHead = 0;
 
   constructor(
     entities: Map<EntityId, Entity>,
@@ -134,14 +147,49 @@ export class WorldEntityMetadata {
     });
   }
 
-  markEntityDead(entity: Entity): void {
+  /** Tombstone a permanently-removed entity and its turret sub-entities.
+   *  Entity ids are never recycled, so once the retention window passes
+   *  these ids can never be re-registered and their tombstones are
+   *  safe to delete outright. */
+  markEntityDead(entity: Entity, tick: number): void {
+    this.pruneForgottenMetadata(tick);
     this.markDead(entity.id);
+    this.queueForget(entity.id, tick);
     const combat = entity.combat;
     if (combat !== null) {
       for (let i = 0; i < combat.turrets.length; i++) {
         this.markDead(combat.turrets[i].id);
+        this.queueForget(combat.turrets[i].id, tick);
       }
     }
+  }
+
+  private queueForget(id: EntityId, tick: number): void {
+    if (id === NO_ENTITY_ID) return;
+    this.pendingForgetIds.push(id);
+    this.pendingForgetTicks.push(tick);
+  }
+
+  private pruneForgottenMetadata(tick: number): void {
+    const expireAtOrBefore = tick - DEAD_META_RETENTION_TICKS;
+    const ids = this.pendingForgetIds;
+    const ticks = this.pendingForgetTicks;
+    let head = this.pendingForgetHead;
+    while (head < ids.length && ticks[head] <= expireAtOrBefore) {
+      const meta = this.metaById.get(ids[head]);
+      if (meta !== undefined && !meta.alive) this.metaById.delete(ids[head]);
+      head++;
+    }
+    if (head >= ids.length) {
+      ids.length = 0;
+      ticks.length = 0;
+      head = 0;
+    } else if (head >= 4096) {
+      ids.splice(0, head);
+      ticks.splice(0, head);
+      head = 0;
+    }
+    this.pendingForgetHead = head;
   }
 
   private upsert(meta: EntityMeta): void {

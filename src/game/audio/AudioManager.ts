@@ -159,6 +159,24 @@ class AudioManager {
     return true;
   }
 
+  /** Shared one-shot dispatch tail: synth lookup, voice budget,
+   *  toolkit, then play at entry speed x speedMultiplier. */
+  private playOneShotEntry(
+    entry: { synth: string; playSpeed: number; volume: number },
+    gain: number,
+    volumeMultiplier: number,
+    speedMultiplier: number = 1,
+  ): void {
+    const fn = SYNTH_DISPATCH[entry.synth];
+    if (!fn) return;
+    if (!this.tryAcquireVoice(entry.synth)) return;
+
+    const tk = this.getToolkit();
+    if (!tk) return;
+
+    fn(tk, entry.playSpeed * speedMultiplier, volumeMultiplier * entry.volume * gain);
+  }
+
   // Generic weapon fire by blueprint ID
   playWeaponFire(turretBlueprintId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
     if (!this.categoryEnabled.fire) return;
@@ -167,15 +185,8 @@ class AudioManager {
     try { entry = getTurretBlueprint(turretBlueprintId).audio?.fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
-    const fn = SYNTH_DISPATCH[entry.synth];
-    if (!fn) return;
-    if (!this.tryAcquireVoice(entry.synth)) return;
-
-    const tk = this.getToolkit();
-    if (!tk) return;
-
     const variation = 0.9 + Math.random() * 0.2;
-    fn(tk, entry.playSpeed * variation, volumeMultiplier * entry.volume * AUDIO.fireGain);
+    this.playOneShotEntry(entry, AUDIO.fireGain, volumeMultiplier, variation);
   }
 
   // Generic hit by shot ID.
@@ -189,14 +200,7 @@ class AudioManager {
     }
     if (!entry || !entry.volume) return;
 
-    const fn = SYNTH_DISPATCH[entry.synth];
-    if (!fn) return;
-    if (!this.tryAcquireVoice(entry.synth)) return;
-
-    const tk = this.getToolkit();
-    if (!tk) return;
-
-    fn(tk, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.hitGain);
+    this.playOneShotEntry(entry, AUDIO.hitGain, volumeMultiplier);
   }
 
   // Death sound based on dying unit blueprint
@@ -207,14 +211,7 @@ class AudioManager {
     try { entry = getUnitBlueprint(unitBlueprintId).deathSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
-    const fn = SYNTH_DISPATCH[entry.synth];
-    if (!fn) return;
-    if (!this.tryAcquireVoice(entry.synth)) return;
-
-    const tk = this.getToolkit();
-    if (!tk) return;
-
-    fn(tk, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.deadGain);
+    this.playOneShotEntry(entry, AUDIO.deadGain, volumeMultiplier);
   }
 
   // ==================== CONTINUOUS SOUNDS ====================

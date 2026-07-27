@@ -19,13 +19,17 @@ import type {
 import type { SnapshotVisibility } from './stateSerializerVisibility';
 import { BEAM_MAX_SEGMENTS } from '../../config';
 import {
-  PROJECTILE_TYPE_UNKNOWN,
   TURRET_BLUEPRINT_CODE_UNKNOWN,
   projectileTypeToCode,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
 } from '../../types/network';
 import { definePooledScratchProperty } from './snapshotPooledScratch';
+import {
+  createBeamDto,
+  createBeamPointDto,
+  createSpawnDto,
+} from './snapshotDtoCopy';
 import {
   createFloat64WireRows,
   createUint32WireRows,
@@ -181,58 +185,15 @@ const projectileWireSources = new WeakMap<object, ProjectileSnapshotWireSource>(
 ]);
 
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
-  return {
-    id: 0,
-    points: [],
-    obstructionT: null,
-    endpointDamageable: null,
-  };
+  return createBeamDto();
 }
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  return {
-    x: 0,
-    y: 0,
-    z: 0,
-    vx: 0,
-    vy: 0,
-    vz: 0,
-    reflectorEntityId: null,
-    reflectorKind: null,
-    reflectorPlayerId: null,
-    normalX: null,
-    normalY: null,
-    normalZ: null,
-  };
+  return createBeamPointDto();
 }
 
 function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
-  const spawn: PooledProjectileSpawn = {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_UNKNOWN,
-    maxLifespan: null,
-    turretBlueprintCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
-    shotBlueprintCode: null,
-    sourceTurretBlueprintCode: null,
-    sourceTurretEntityId: null,
-    playerId: 1,
-    sourceEntityId: 0,
-    sourceHostEntityId: 0,
-    sourceRootEntityId: 0,
-    sourceTeamId: 1,
-    spawnTick: 0,
-    parentShotEntityId: null,
-    turretIndex: 0,
-    barrelIndex: 0,
-    isDGun: null,
-    fromParentDetonation: null,
-    beam: null,
-    targetEntityId: null,
-    homingTurnRate: null,
-  } as PooledProjectileSpawn;
+  const spawn = createSpawnDto() as PooledProjectileSpawn;
   definePooledScratchProperty(spawn, '_pos', { x: 0, y: 0, z: 0 });
   definePooledScratchProperty(spawn, '_velocity', { x: 0, y: 0, z: 0 });
   definePooledScratchProperty(spawn, '_beamStart', { x: 0, y: 0, z: 0 });

@@ -34,6 +34,7 @@ import {
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveCylinderGeometry,
+  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -55,16 +56,11 @@ const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
 const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  let geometry = wheelGeomByTier.get(tier);
-  if (!geometry) {
-    geometry = tier === 'far'
-      // A square-prism tire is cheap, but its cross-section must retain the
-      // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
-      ? new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI))
-      : createPrimitiveCylinderGeometry('locomotion', tier);
-    wheelGeomByTier.set(tier, geometry);
-  }
-  return geometry;
+  return getOrCreate(wheelGeomByTier, tier, () => tier === 'far'
+    // A square-prism tire is cheap, but its cross-section must retain the
+    // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
+    ? new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI))
+    : createPrimitiveCylinderGeometry('locomotion', tier));
 }
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 

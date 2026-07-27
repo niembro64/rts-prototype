@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import {
   getFogShade,
-  getFogShadePresentationSettings,
   getEntityShadows,
   getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
   getEntityHudToggle,
   getSelectionHudMode,
+  writeFogShadePresentationSettings,
 } from '@/clientBarConfig';
 import type { SelectionHudMode } from '@/clientBarConfig';
 import { isAttackEmitter } from '@/game/sim/emitterKinds';
@@ -213,6 +213,44 @@ export class RtsScene3DRenderPhase {
   };
   private readonly getGroundPrintLocomotionMesh = (entityId: EntityId) =>
     this.resources.entityRenderer.getLocomotionMesh(entityId);
+  // Per-frame LOD callbacks hoisted to stable instance closures so the
+  // render phase does not allocate them (and the callees can stay
+  // monomorphic). They read `currentLodView`, which run() assigns from
+  // the frame state before any of them can fire.
+  private readonly isEntityEmissionFarLodRef = (entity: Entity): boolean =>
+    this.entityEmissionUsesFarLod(entity);
+  private readonly isEntityFarLodRef = (entity: Entity): boolean =>
+    this.currentLodView !== null && this.entityUsesFarLod(entity, this.currentLodView);
+  private readonly entityDetailRungRef = (entity: Entity) =>
+    this.entityLod.entityDetailRungForView(this.currentLodView!, entity);
+  private readonly entityLodProxyFadeAlphaRef = (entity: Entity) =>
+    this.entityLod.entityLodProxyFadeAlphaForView(this.currentLodView!, entity);
+  /** Reused argument packet for entityRenderer.update; consumed
+   *  synchronously by the callee every frame. */
+  private readonly entityRendererPacket = {
+    unitRows: this.unitRenderPacket,
+    buildingRows: this.buildingRenderPacket,
+    beamAimProjectiles: [] as readonly Entity[],
+    projectileRenderProjectiles: [] as readonly Entity[],
+    isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
+    entityDetailRung: this.entityDetailRungRef,
+    entityLodProxyFadeAlpha: this.entityLodProxyFadeAlphaRef,
+    scoped: false,
+  };
+  private readonly entityRendererOverlayModes = { reclaimTargets: false };
+  private readonly terrainFogShadeScratch = {
+    unseenDarkness: 0,
+    radarDarkness: 0,
+    unseenDesaturation: 0,
+    radarDesaturation: 0,
+    enabled: false,
+  };
+  private readonly terrainUpdateOptions = {
+    localPlayerId: 0 as PlayerId,
+    fogShade: this.terrainFogShadeScratch,
+    entityShadows: this.entityShadowPacket,
+    visibleBounds: null as unknown as FootprintBounds,
+  };
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
@@ -438,28 +476,22 @@ export class RtsScene3DRenderPhase {
     // Beams own a real Low imposter segment, so they must reach the beam
     // renderer at every distance. Its LOD resolver selects fidelity there.
     const lineProjectiles = projectileLists.line;
+    const rendererPacket = this.entityRendererPacket;
+    rendererPacket.unitRows = entityLists.unitRows;
+    rendererPacket.buildingRows = entityLists.buildingRows;
+    rendererPacket.beamAimProjectiles = lineProjectiles;
+    rendererPacket.projectileRenderProjectiles = projectileLists.traveling;
+    rendererPacket.scoped = this.renderScope.getMode() !== 'all';
+    this.entityRendererOverlayModes.reclaimTargets =
+      (inputManager?.isInReclaimMode() ?? false) ||
+      (inputManager?.isInCaptureMode() ?? false) ||
+      (inputManager?.isInResurrectMode() ?? false) ||
+      (inputManager?.isInResurrectAreaMode() ?? false);
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
-      {
-        unitRows: entityLists.unitRows,
-        buildingRows: entityLists.buildingRows,
-        beamAimProjectiles: lineProjectiles,
-        projectileRenderProjectiles: projectileLists.traveling,
-        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
-        entityDetailRung: (entity) =>
-          this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
-        entityLodProxyFadeAlpha: (entity) =>
-          this.entityLod.entityLodProxyFadeAlphaForView(renderFrameState.view, entity),
-        scoped: this.renderScope.getMode() !== 'all',
-      },
-      {
-        reclaimTargets:
-          (inputManager?.isInReclaimMode() ?? false) ||
-          (inputManager?.isInCaptureMode() ?? false) ||
-          (inputManager?.isInResurrectMode() ?? false) ||
-          (inputManager?.isInResurrectAreaMode() ?? false),
-      },
+      rendererPacket,
+      this.entityRendererOverlayModes,
     );
     airLiftProbeOverlay.update(this.selectionSystem.getSelectedUnits());
     phaseNow = performance.now();
@@ -480,18 +512,15 @@ export class RtsScene3DRenderPhase {
     // the shared BuildGridOverlayShader inside terrainTileRenderer.update().
     // The build-mode hover footprint is a separate, localized signal owned by
     // BuildGhost3D's setTarget path.
+    writeFogShadePresentationSettings(this.terrainFogShadeScratch);
+    this.terrainFogShadeScratch.enabled = fogOfWarEnabled && getFogShade();
+    this.terrainUpdateOptions.localPlayerId = this.getLocalPlayerId();
+    this.terrainUpdateOptions.entityShadows = entityLists.entityShadows;
+    this.terrainUpdateOptions.visibleBounds = this.renderScope.getBounds();
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
-      {
-        localPlayerId: this.getLocalPlayerId(),
-        fogShade: {
-          ...getFogShadePresentationSettings(),
-          enabled: fogOfWarEnabled && getFogShade(),
-        },
-        entityShadows: entityLists.entityShadows,
-        visibleBounds: this.renderScope.getBounds(),
-      },
+      this.terrainUpdateOptions,
     );
     phaseNow = performance.now();
     timings.terrainMs = phaseNow - phaseMark;
@@ -502,9 +531,9 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
-      (entity) => this.entityEmissionUsesFarLod(entity),
+      this.isEntityEmissionFarLodRef,
       renderFrameState.view,
-      (entity) => this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
+      this.entityDetailRungRef,
     );
     phaseNow = performance.now();
     timings.beamMs = phaseNow - phaseMark;
@@ -721,30 +750,49 @@ export class RtsScene3DRenderPhase {
     return count;
   }
 
+  /** Reused options for prepareRenderEntityPackets3D; consumed
+   *  synchronously by ClientViewState. The LOD callbacks read
+   *  `currentLodView`, which run() sets to the same view previously
+   *  captured here per call. */
+  private readonly prepareEntityListOptions = {
+    renderScope: null as unknown as ViewportFootprint,
+    includeBodyHud: false,
+    includeBodyNames: false,
+    includeShields: false,
+    includeEntityShadows: false,
+    includeGroundPrints: false,
+    hoveredEntity: null as Entity | null,
+    scopedUnitsOut: this.scopedUnitsScratch,
+    scopedBuildingsOut: this.scopedBuildingsScratch,
+    selectionHudMode: 'auto' as SelectionHudMode,
+    getEntityHudToggle,
+    lookupPlayerName: null as unknown as (id: PlayerId) => string | null,
+    getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
+    isEntityFarLod: this.isEntityFarLodRef,
+    isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
+  };
+
   private prepareEntityLists(
     options: RenderPhaseEntityListOptions,
     mode: SelectionHudMode,
-    renderView: RenderViewState3D,
+    _renderView: RenderViewState3D,
   ): RenderPhaseEntityLists {
+    const packetOptions = this.prepareEntityListOptions;
+    packetOptions.renderScope = this.renderScope;
+    packetOptions.includeBodyHud = options.includeBodyHud;
+    packetOptions.includeBodyNames = options.includeBodyNames;
+    packetOptions.includeShields = options.includeShields;
+    packetOptions.includeEntityShadows = options.includeEntityShadows;
+    packetOptions.includeGroundPrints = options.includeGroundPrints;
+    packetOptions.hoveredEntity = options.hoveredEntity;
+    packetOptions.selectionHudMode = mode;
+    packetOptions.lookupPlayerName = this.lookupPlayerName;
+    packetOptions.getGroundPrintLocomotionMesh = this.getGroundPrintLocomotionMesh;
+    packetOptions.isEntityFarLod = this.isEntityFarLodRef;
+    packetOptions.isEntityEmissionFarLod = this.isEntityEmissionFarLodRef;
     return this.clientViewState.prepareRenderEntityPackets3D(
       this.renderEntityLists,
-      {
-        renderScope: this.renderScope,
-        includeBodyHud: options.includeBodyHud,
-        includeBodyNames: options.includeBodyNames,
-        includeShields: options.includeShields,
-        includeEntityShadows: options.includeEntityShadows,
-        includeGroundPrints: options.includeGroundPrints,
-        hoveredEntity: options.hoveredEntity,
-        scopedUnitsOut: this.scopedUnitsScratch,
-        scopedBuildingsOut: this.scopedBuildingsScratch,
-        selectionHudMode: mode,
-        getEntityHudToggle,
-        lookupPlayerName: this.lookupPlayerName,
-        getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
-        isEntityFarLod: (entity) => this.entityUsesFarLod(entity, renderView),
-        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
-      },
+      packetOptions,
     );
   }
 
