@@ -80,7 +80,6 @@ import { factoryProductionSystem } from './factoryProduction';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
-import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
@@ -98,6 +97,11 @@ import {
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
+import { createSelfDestructEvent } from './selfDestructEvent';
+import {
+  setTurretShieldPanelsEnabled,
+  setTurretShieldSpheresEnabled,
+} from './turretShieldToggle';
 import { isReclaimableTarget } from './reclaim';
 import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
 
@@ -363,10 +367,10 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       ctx.world.maxTotalUnits = command.maxTotalUnits;
       break;
     case 'setTurretShieldPanelsEnabled':
-      executeSetTurretShieldPanelsEnabledCommand(ctx, command.enabled);
+      setTurretShieldPanelsEnabled(ctx.world, command.enabled);
       break;
     case 'setTurretShieldSpheresEnabled':
-      executeSetTurretShieldSpheresEnabledCommand(ctx, command.enabled);
+      setTurretShieldSpheresEnabled(ctx.world, command.enabled);
       break;
     case 'setForceFieldsVisible':
       ctx.world.forceFieldsVisible = command.enabled;
@@ -395,43 +399,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
       break;
-  }
-}
-
-function executeSetTurretShieldPanelsEnabledCommand(ctx: CommandContext, enabled: boolean): void {
-  if (ctx.world.turretShieldPanelsEnabled === enabled) return;
-  ctx.world.turretShieldPanelsEnabled = enabled;
-  if (enabled) return;
-  for (const unit of ctx.world.getShieldPanelUnits()) {
-    const combat = unit.combat;
-    if (!combat) continue;
-    const turrets = combat.turrets;
-    for (let i = 0; i < turrets.length; i++) {
-      const turret = turrets[i];
-      if (!turret.config.passive) continue;
-      turret.target = null;
-      turret.state = 'idle';
-      resetDisabledTurretJsOnlyFields(turret);
-    }
-    ctx.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
-  }
-}
-
-function executeSetTurretShieldSpheresEnabledCommand(ctx: CommandContext, enabled: boolean): void {
-  if (ctx.world.turretShieldSpheresEnabled === enabled) return;
-  ctx.world.turretShieldSpheresEnabled = enabled;
-  if (enabled) return;
-  for (const unit of ctx.world.getShieldUnits()) {
-    const combat = unit.combat;
-    if (!combat) continue;
-    for (const turret of combat.turrets) {
-      const shot = turret.config.shot;
-      if (shot === null || shot.type !== 'shield') continue;
-      turret.target = null;
-      turret.state = 'idle';
-      resetDisabledTurretJsOnlyFields(turret);
-    }
-    ctx.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
   }
 }
 
@@ -1858,19 +1825,7 @@ function executeSetTowerTargetCommand(
 export const SELF_DESTRUCT_COUNTDOWN_TICKS = 150;
 
 function emitSelfDestructEvent(ctx: CommandContext, entity: Entity, armed: boolean): void {
-  const event: SimEvent = {
-    type: armed ? 'selfDestructArmed' : 'selfDestructDisarmed',
-    turretBlueprintId: '',
-    sourceType: 'system',
-    sourceKey: 'selfDestruct',
-    playerId: entity.ownership !== null ? entity.ownership.playerId : undefined,
-    entityId: entity.id,
-    pos: {
-      x: entity.transform.x,
-      y: entity.transform.y,
-      z: entity.transform.z,
-    },
-  };
+  const event = createSelfDestructEvent(entity, armed);
   if (ctx.onSimEvent !== null) ctx.onSimEvent(event);
   ctx.pendingSimEvents.push(event);
 }

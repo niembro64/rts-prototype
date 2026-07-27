@@ -1,4 +1,5 @@
 import type { BeamPoint, Entity, EntityId } from '../sim/types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 
 const INITIAL_PROJECTILE_RENDER_STATE_CAP = 4096;
 
@@ -19,24 +20,6 @@ export type ClientProjectileRenderStateViews = {
   readonly maxY: Float32Array;
   readonly flags: Uint16Array;
 };
-
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
 
 export class ClientProjectileRenderStateSlab {
   private readonly slotByEntityId = new Map<EntityId, number>();
@@ -208,15 +191,15 @@ export class ClientProjectileRenderStateSlab {
     while (nextCapacity < required) nextCapacity *= 2;
     const views = this.views;
     this.views = {
-      entityIds: growFloat64(views.entityIds, nextCapacity),
-      x: growFloat32(views.x, nextCapacity),
-      y: growFloat32(views.y, nextCapacity),
-      z: growFloat32(views.z, nextCapacity),
-      minX: growFloat32(views.minX, nextCapacity),
-      maxX: growFloat32(views.maxX, nextCapacity),
-      minY: growFloat32(views.minY, nextCapacity),
-      maxY: growFloat32(views.maxY, nextCapacity),
-      flags: growUint16(views.flags, nextCapacity),
+      entityIds: growTypedArray(views.entityIds, nextCapacity),
+      x: growTypedArray(views.x, nextCapacity),
+      y: growTypedArray(views.y, nextCapacity),
+      z: growTypedArray(views.z, nextCapacity),
+      minX: growTypedArray(views.minX, nextCapacity),
+      maxX: growTypedArray(views.maxX, nextCapacity),
+      minY: growTypedArray(views.minY, nextCapacity),
+      maxY: growTypedArray(views.maxY, nextCapacity),
+      flags: growTypedArray(views.flags, nextCapacity),
     };
   }
 }

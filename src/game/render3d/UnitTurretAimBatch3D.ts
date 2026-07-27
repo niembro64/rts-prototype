@@ -1,5 +1,10 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import {
+  rotateVectorByQuaternionInto,
+  type MutableVector3Tuple,
+} from '../math/quaternionTupleMath';
 
 export const TURRET_AIM_INPUT_STRIDE = 12;
 const TURRET_AIM_OUTPUT_STRIDE = 2;
@@ -13,6 +18,7 @@ export class UnitTurretAimBatch3D {
   private input = new Float32Array(0);
   private output = new Float32Array(0);
   private wasm: SimWasm | null = null;
+  private readonly fallbackRotated: MutableVector3Tuple = [0, 0, 0];
 
   begin(count: number): Float32Array {
     const wasm = getSimWasm() ?? null;
@@ -37,10 +43,14 @@ export class UnitTurretAimBatch3D {
 
     this.inputStride = TURRET_AIM_INPUT_STRIDE;
     this.outputStride = TURRET_AIM_OUTPUT_STRIDE;
-    const inputLength = count * this.inputStride;
-    if (this.input.length < inputLength) this.input = new Float32Array(inputLength);
-    const outputLength = count * this.outputStride;
-    if (this.output.length < outputLength) this.output = new Float32Array(outputLength);
+    this.input = growTypedArrayGeometrically(
+      this.input,
+      count * this.inputStride,
+    );
+    this.output = growTypedArrayGeometrically(
+      this.output,
+      count * this.outputStride,
+    );
     return this.input;
   }
 
@@ -80,7 +90,8 @@ export class UnitTurretAimBatch3D {
       let y = sinPitch;
       let z = sinRot * cosPitch;
       if (input[ib + 11] !== 0) {
-        const rotated = this.rotateVec(
+        const rotated = rotateVectorByQuaternionInto(
+          this.fallbackRotated,
           input[ib + 7],
           input[ib + 8],
           input[ib + 9],
@@ -99,22 +110,4 @@ export class UnitTurretAimBatch3D {
     }
   }
 
-  private rotateVec(
-    qx: number,
-    qy: number,
-    qz: number,
-    qw: number,
-    vx: number,
-    vy: number,
-    vz: number,
-  ): [number, number, number] {
-    const tx = 2 * (qy * vz - qz * vy);
-    const ty = 2 * (qz * vx - qx * vz);
-    const tz = 2 * (qx * vy - qy * vx);
-    return [
-      vx + qw * tx + (qy * tz - qz * ty),
-      vy + qw * ty + (qz * tx - qx * tz),
-      vz + qw * tz + (qx * ty - qy * tx),
-    ];
-  }
 }

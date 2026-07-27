@@ -412,6 +412,8 @@ export class BuildGhost3D {
     this.cellBorderMatOk.dispose();
     this.cellBorderMatBad.dispose();
     this.cellBorderMatWarn.dispose();
+    this.metalDepositSurfaceYByCell.clear();
+    this.metalDepositSurfaceYById.clear();
   }
 }
 

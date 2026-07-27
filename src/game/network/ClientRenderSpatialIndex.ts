@@ -6,10 +6,14 @@ import {
   type ClientRenderEntityStateViews,
 } from '../render3d/ClientRenderEntityStateSlab';
 import type { EntityId } from '../sim/types';
-
-const CLIENT_RENDER_CELL_SIZE = 512;
-const CLIENT_RENDER_CELL_KEY_OFFSET = 1 << 20;
-const CLIENT_RENDER_CELL_KEY_STRIDE = CLIENT_RENDER_CELL_KEY_OFFSET * 2 + 1;
+import {
+  cellBoundsIntersect,
+  clientRenderCellCoord,
+  createClientRenderCellBounds,
+  numericClientRenderCellKey,
+  shouldQuerySparseGridDirectly,
+  writeClientRenderCellBounds,
+} from './spatialGridQuery';
 const DEFAULT_MAX_ENTITY_PADDING = 350;
 
 type ClientRenderCellKey = number;
@@ -28,6 +32,7 @@ type ClientRenderSpatialEntry = {
 export class ClientRenderSpatialIndex {
   private readonly buckets = new Map<ClientRenderCellKey, ClientRenderSpatialEntry[]>();
   private readonly entriesById = new IndexedEntityIdMap<ClientRenderSpatialEntry>();
+  private readonly queryCellBounds = createClientRenderCellBounds();
   private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
   clear(): void {
@@ -51,13 +56,13 @@ export class ClientRenderSpatialIndex {
       return;
     }
 
-    const cellX = this.cellCoord(views.x[slot]);
-    const cellY = this.cellCoord(views.y[slot]);
+    const cellX = clientRenderCellCoord(views.x[slot]);
+    const cellY = clientRenderCellCoord(views.y[slot]);
     if (!Number.isFinite(cellX) || !Number.isFinite(cellY)) {
       this.remove(entityId);
       return;
     }
-    const cellKey = this.cellKey(cellX, cellY);
+    const cellKey = numericClientRenderCellKey(cellX, cellY);
     const padding = Math.max(DEFAULT_MAX_ENTITY_PADDING, views.renderScopePadding[slot]);
     let existing = this.entriesById.get(entityId);
     if (existing !== undefined && existing.slot !== slot) {
@@ -121,11 +126,21 @@ export class ClientRenderSpatialIndex {
     outUnitSlots.length = 0;
     outBuildingSlots.length = 0;
 
-    const minCellX = this.cellCoord(bounds.minX);
-    const maxCellX = this.cellCoord(bounds.maxX);
-    const minCellY = this.cellCoord(bounds.minY);
-    const maxCellY = this.cellCoord(bounds.maxY);
-    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
+    const {
+      minCellX,
+      maxCellX,
+      minCellY,
+      maxCellY,
+    } = writeClientRenderCellBounds(this.queryCellBounds, bounds);
+    if (
+      shouldQuerySparseGridDirectly(
+        minCellX,
+        maxCellX,
+        minCellY,
+        maxCellY,
+        this.buckets.size,
+      )
+    ) {
       for (const entry of this.entriesById.values()) {
         if (!this.entryIntersectsCells(entry, minCellX, maxCellX, minCellY, maxCellY)) continue;
         this.pushEntrySlots(entry, outUnitSlots, outBuildingSlots, includeSlot);
@@ -135,7 +150,9 @@ export class ClientRenderSpatialIndex {
 
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-        const bucket = this.buckets.get(this.cellKey(cellX, cellY));
+        const bucket = this.buckets.get(
+          numericClientRenderCellKey(cellX, cellY),
+        );
         if (bucket === undefined) continue;
         for (let i = 0; i < bucket.length; i++) {
           this.pushEntrySlots(bucket[i], outUnitSlots, outBuildingSlots, includeSlot);
@@ -171,19 +188,6 @@ export class ClientRenderSpatialIndex {
     this.maxEntityPadding = next;
   }
 
-  private shouldQueryEntriesDirectly(
-    minCellX: number,
-    maxCellX: number,
-    minCellY: number,
-    maxCellY: number,
-  ): boolean {
-    const width = maxCellX - minCellX + 1;
-    const height = maxCellY - minCellY + 1;
-    if (!(width > 0) || !(height > 0)) return true;
-    const queriedCells = width * height;
-    return !Number.isFinite(queriedCells) || queriedCells > this.buckets.size;
-  }
-
   private pushEntrySlots(
     entry: ClientRenderSpatialEntry,
     outUnitSlots: number[],
@@ -202,22 +206,15 @@ export class ClientRenderSpatialIndex {
     minCellY: number,
     maxCellY: number,
   ): boolean {
-    return (
-      entry.cellX >= minCellX &&
-      entry.cellX <= maxCellX &&
-      entry.cellY >= minCellY &&
-      entry.cellY <= maxCellY
+    return cellBoundsIntersect(
+      entry.cellX,
+      entry.cellX,
+      entry.cellY,
+      entry.cellY,
+      minCellX,
+      maxCellX,
+      minCellY,
+      maxCellY,
     );
-  }
-
-  private cellCoord(value: number): number {
-    return Math.floor(value / CLIENT_RENDER_CELL_SIZE);
-  }
-
-  private cellKey(cellX: number, cellY: number): ClientRenderCellKey {
-    return (
-      (cellX + CLIENT_RENDER_CELL_KEY_OFFSET) *
-      CLIENT_RENDER_CELL_KEY_STRIDE
-    ) + cellY + CLIENT_RENDER_CELL_KEY_OFFSET;
   }
 }

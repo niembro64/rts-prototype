@@ -3,6 +3,7 @@ import {
   solveKinematicIntercept,
   type KinematicInterceptSolution,
 } from '../math';
+import { rayDistanceToMapEdge } from '../math/rayMapBounds';
 import { deterministicMath as DMath } from './deterministicMath';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
@@ -80,24 +81,6 @@ function resolveLaunchDirectionTarget(
     y: factory.transform.y + DMath.sin(yaw) * 128,
     z: null,
   };
-}
-
-function rayDistanceToMapEdge(
-  x: number,
-  y: number,
-  dirX: number,
-  dirY: number,
-  mapWidth: number,
-  mapHeight: number,
-): number {
-  let t = Infinity;
-  if (dirX > 1e-6) t = Math.min(t, (mapWidth - x) / dirX);
-  else if (dirX < -1e-6) t = Math.min(t, -x / dirX);
-
-  if (dirY > 1e-6) t = Math.min(t, (mapHeight - y) / dirY);
-  else if (dirY < -1e-6) t = Math.min(t, -y / dirY);
-
-  return Number.isFinite(t) ? Math.max(0, t) : 0;
 }
 
 function writeTargetAtDistance(

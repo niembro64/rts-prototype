@@ -5,6 +5,10 @@
 // debris remains separate in Debris3D.
 
 import * as THREE from 'three';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
 import type { FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
@@ -42,26 +46,6 @@ type Puff = {
   b: number;
 };
 
-const PARTICLE_VERTEX_SHADER = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const PARTICLE_FRAGMENT_SHADER = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
 function durationMultiplier(radius: number): number {
   return 1 + Math.log2(Math.max(1, radius / DURATION_BASE_RADIUS));
 }
@@ -89,8 +73,8 @@ class InstancedSpherePool {
     this.geom.setAttribute('aAlpha', this.alphaAttr);
     this.geom.setAttribute('aColor', this.colorAttr);
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: PARTICLE_VERTEX_SHADER,
-      fragmentShader: PARTICLE_FRAGMENT_SHADER,
+      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });

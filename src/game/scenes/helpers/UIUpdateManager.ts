@@ -13,6 +13,7 @@ import type {
   WaypointType,
 } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
+import { getMinimapCssColor } from '../../minimapColor';
 import { economyManager } from '../../sim/economy';
 import {
   getRayBlueprint,
@@ -643,17 +644,6 @@ function buildSelectionEntityInfo(
     maxHp: maxHp > 0 ? maxHp : null,
     buildProgress: null,
   };
-}
-
-const _minimapColorCache = new Map<number, string>();
-
-function minimapColor(color: number): string {
-  let cached = _minimapColorCache.get(color);
-  if (!cached) {
-    cached = '#' + color.toString(16).padStart(6, '0');
-    _minimapColorCache.set(color, cached);
-  }
-  return cached;
 }
 
 function writeMinimapEntity(
@@ -1529,7 +1519,7 @@ export function buildMinimapData(
         e.transform.x,
         e.transform.y,
         e.type === 'unit' ? 'unit' : 'building',
-        minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
+        getMinimapCssColor(getPlayerPrimaryColor(e.ownership?.playerId)),
         e.selectable?.selected,
         undefined,
       );

@@ -58,7 +58,7 @@ import {
   markDirtySlot,
   clearDirtySlotSpan,
   uploadDirtySlotSpan,
-} from './DecalBufferUtils';
+} from './instancedBufferUpdate';
 import { clamp01 } from '../math';
 
 // ── World Y layout ──

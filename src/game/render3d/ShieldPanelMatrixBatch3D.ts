@@ -1,5 +1,12 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import {
+  multiplyQuaternionsInto,
+  rotateVectorByQuaternionInto,
+  type MutableQuaternionTuple,
+  type MutableVector3Tuple,
+} from '../math/quaternionTupleMath';
 import { writeScaledQuaternionMatrix } from './typedArrayRenderUtils';
 
 export const SHIELD_PANEL_INPUT_STRIDE = 24;
@@ -12,6 +19,10 @@ export class ShieldPanelMatrixBatch3D {
   private input = new Float32Array(0);
   private output = new Float32Array(0);
   private wasm: SimWasm | null = null;
+  private readonly fallbackRootOffset: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackWorldOffset: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackRootQ: MutableQuaternionTuple = [0, 0, 0, 1];
+  private readonly fallbackWorldQ: MutableQuaternionTuple = [0, 0, 0, 1];
 
   begin(count: number): Float32Array {
     const wasm = getSimWasm() ?? null;
@@ -36,10 +47,14 @@ export class ShieldPanelMatrixBatch3D {
 
     this.inputStride = SHIELD_PANEL_INPUT_STRIDE;
     this.outputStride = SHIELD_PANEL_OUTPUT_STRIDE;
-    const inputLength = count * this.inputStride;
-    if (this.input.length < inputLength) this.input = new Float32Array(inputLength);
-    const outputLength = count * this.outputStride;
-    if (this.output.length < outputLength) this.output = new Float32Array(outputLength);
+    this.input = growTypedArrayGeometrically(
+      this.input,
+      count * this.inputStride,
+    );
+    this.output = growTypedArrayGeometrically(
+      this.output,
+      count * this.outputStride,
+    );
     return this.input;
   }
 
@@ -58,7 +73,8 @@ export class ShieldPanelMatrixBatch3D {
     const input = this.input;
     for (let i = 0; i < count; i++) {
       const ib = i * this.inputStride;
-      const rootOffset = this.rotateVec(
+      const rootOffset = rotateVectorByQuaternionInto(
+        this.fallbackRootOffset,
         input[ib + 10],
         input[ib + 11],
         input[ib + 12],
@@ -70,7 +86,8 @@ export class ShieldPanelMatrixBatch3D {
       const localX = input[ib + 7] + rootOffset[0];
       const localY = input[ib + 8] + rootOffset[1];
       const localZ = input[ib + 9] + rootOffset[2];
-      const worldOffset = this.rotateVec(
+      const worldOffset = rotateVectorByQuaternionInto(
+        this.fallbackWorldOffset,
         input[ib + 3],
         input[ib + 4],
         input[ib + 5],
@@ -79,7 +96,8 @@ export class ShieldPanelMatrixBatch3D {
         localY,
         localZ,
       );
-      const rootQ = this.quatMul(
+      const rootQ = multiplyQuaternionsInto(
+        this.fallbackRootQ,
         input[ib + 3],
         input[ib + 4],
         input[ib + 5],
@@ -89,7 +107,8 @@ export class ShieldPanelMatrixBatch3D {
         input[ib + 12],
         input[ib + 13],
       );
-      const worldQ = this.quatMul(
+      const worldQ = multiplyQuaternionsInto(
+        this.fallbackWorldQ,
         rootQ[0],
         rootQ[1],
         rootQ[2],
@@ -114,43 +133,6 @@ export class ShieldPanelMatrixBatch3D {
         input[ib + 23],
       );
     }
-  }
-
-  private quatMul(
-    ax: number,
-    ay: number,
-    az: number,
-    aw: number,
-    bx: number,
-    by: number,
-    bz: number,
-    bw: number,
-  ): [number, number, number, number] {
-    return [
-      aw * bx + ax * bw + ay * bz - az * by,
-      aw * by - ax * bz + ay * bw + az * bx,
-      aw * bz + ax * by - ay * bx + az * bw,
-      aw * bw - ax * bx - ay * by - az * bz,
-    ];
-  }
-
-  private rotateVec(
-    qx: number,
-    qy: number,
-    qz: number,
-    qw: number,
-    vx: number,
-    vy: number,
-    vz: number,
-  ): [number, number, number] {
-    const tx = 2 * (qy * vz - qz * vy);
-    const ty = 2 * (qz * vx - qx * vz);
-    const tz = 2 * (qx * vy - qy * vx);
-    return [
-      vx + qw * tx + (qy * tz - qz * ty),
-      vy + qw * ty + (qz * tx - qx * tz),
-      vz + qw * tz + (qx * ty - qy * tx),
-    ];
   }
 
 }

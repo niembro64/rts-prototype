@@ -28,12 +28,6 @@ import {
 import {
   AUDIO_EVENT_SOURCE_TYPE_CODES,
   AUDIO_EVENT_TYPE_CODES,
-  DEATH_HAS_BASE_Z,
-  DEATH_HAS_COLLISION_RADIUS,
-  DEATH_HAS_ROTATION,
-  DEATH_HAS_TURRET_POSES,
-  DEATH_HAS_UNIT_TYPE,
-  DEATH_HAS_VISUAL_RADIUS,
   EVENT_AUDIO_ONLY_VALUE,
   EVENT_HAS_AUDIO_ONLY,
   EVENT_HAS_DEATH_CONTEXT,
@@ -47,6 +41,7 @@ import {
   EVENT_HAS_VICTIM_PLAYER_ID,
   EVENT_HAS_WATER_SPLASH_CONTEXT,
 } from './audioEventWireFormat';
+import { getDeathContextWireFlags } from './audioEventWireHelpers';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
@@ -194,13 +189,7 @@ function appendDeathContextWireRow(
   context: NonNullable<NetworkServerSnapshotSimEvent['deathContext']>,
   stringSlots: Map<string, number>,
 ): void {
-  let flags = 0;
-  if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
-  if (context.collisionRadius !== undefined) flags |= DEATH_HAS_COLLISION_RADIUS;
-  if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
-  if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
-  if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
-  if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
+  const flags = getDeathContextWireFlags(context);
 
   const rowIndex = reserveFloat64WireRows(wire.deathContextRows, 1, AUDIO_DEATH_CONTEXT_WIRE_STRIDE);
   const values = wire.deathContextRows.values;

@@ -46,6 +46,7 @@ import {
   growFloat32Array,
   writePositionQuaternion,
 } from './typedArrayRenderUtils';
+import { writeTurretAimInput } from './turretAimInput';
 
 export class UnitTurretPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -491,18 +492,18 @@ export class UnitTurretPose3D {
 
     const base = index * TURRET_AIM_INPUT_STRIDE;
     const input = this.aimInput;
-    input[base] = hostRotation;
-    input[base + 1] = mode;
-    input[base + 2] = aimRotation;
-    input[base + 3] = aimPitch;
-    input[base + 4] = dirX;
-    input[base + 5] = dirY;
-    input[base + 6] = dirZ;
-    input[base + 7] = chassisTiltInverse?.x ?? 0;
-    input[base + 8] = chassisTiltInverse?.y ?? 0;
-    input[base + 9] = chassisTiltInverse?.z ?? 0;
-    input[base + 10] = chassisTiltInverse?.w ?? 1;
-    input[base + 11] = chassisTiltInverse ? 1 : 0;
+    writeTurretAimInput(
+      input,
+      base,
+      hostRotation,
+      mode,
+      aimRotation,
+      aimPitch,
+      dirX,
+      dirY,
+      dirZ,
+      chassisTiltInverse,
+    );
 
     const poseBase = index * 7;
     writePositionQuaternion(

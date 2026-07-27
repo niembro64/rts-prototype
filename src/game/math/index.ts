@@ -18,6 +18,7 @@ export {
 export {
   lineSphereIntersectionT,
   rayBoxIntersectionT,
+  rayBoxIntersectionTWithDelta,
 } from './CollisionHelpers';
 
 export {

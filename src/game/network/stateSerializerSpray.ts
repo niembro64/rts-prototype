@@ -14,6 +14,7 @@ import {
   reserveFloat64WireRows,
   type Float64WireRows,
 } from './snapshotWireRows';
+import { getSprayTargetWireFlags } from './sprayTargetWireHelpers';
 
 /** Per-listener pool of pooled NetworkServerSnapshotSprayTarget DTOs
  *  plus the serializer's outbound buf (FOW-OPT-20, mirrors
@@ -61,16 +62,7 @@ function appendSprayWireRow(
   values[base + 13] = spray.speed ?? 0;
   values[base + 14] = spray.particleRadius ?? 0;
   values[base + 15] = spray.ballSpawnRate ?? 0;
-  let flags = 0;
-  if (spray.type === 'heal') flags |= 0x01;
-  if (spray.source.z !== null) flags |= 0x02;
-  if (spray.target.z !== null) flags |= 0x04;
-  if (spray.target.dim !== null) flags |= 0x08;
-  if (spray.target.radius !== null) flags |= 0x10;
-  if (spray.speed !== null) flags |= 0x20;
-  if (spray.particleRadius !== null) flags |= 0x40;
-  if (spray.ballSpawnRate !== null) flags |= 0x80;
-  values[base + 16] = flags;
+  values[base + 16] = getSprayTargetWireFlags(spray);
 }
 
 function appendDirectSprayWireRow(
@@ -97,16 +89,7 @@ function appendDirectSprayWireRow(
   values[base + 13] = spray.speed ?? 0;
   values[base + 14] = spray.particleRadius ?? 0;
   values[base + 15] = spray.ballSpawnRate ?? 0;
-  let flags = 0;
-  if (spray.type === 'heal') flags |= 0x01;
-  if (spray.source.z !== undefined && spray.source.z !== null) flags |= 0x02;
-  if (spray.target.z !== undefined && spray.target.z !== null) flags |= 0x04;
-  if (targetDim !== undefined) flags |= 0x08;
-  if (spray.target.radius !== undefined && spray.target.radius !== null) flags |= 0x10;
-  if (spray.speed !== undefined && spray.speed !== null) flags |= 0x20;
-  if (spray.particleRadius !== undefined && spray.particleRadius !== null) flags |= 0x40;
-  if (spray.ballSpawnRate !== undefined && spray.ballSpawnRate !== null) flags |= 0x80;
-  values[base + 16] = flags;
+  values[base + 16] = getSprayTargetWireFlags(spray);
 }
 
 export function getSprayTargetWireSource(

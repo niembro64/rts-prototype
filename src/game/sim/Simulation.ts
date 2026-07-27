@@ -85,6 +85,7 @@ import {
   ARRIVAL_RADIUS,
   SimulationArrivalController,
 } from './SimulationArrivalController';
+import { createSelfDestructEvent } from './selfDestructEvent';
 import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import {
@@ -1332,19 +1333,7 @@ export class Simulation {
   }
 
   private emitSelfDestructEvent(entity: Entity, armed: boolean): void {
-    const event: SimEvent = {
-      type: armed ? 'selfDestructArmed' : 'selfDestructDisarmed',
-      turretBlueprintId: '',
-      sourceType: 'system',
-      sourceKey: 'selfDestruct',
-      playerId: entity.ownership !== null ? entity.ownership.playerId : undefined,
-      entityId: entity.id,
-      pos: {
-        x: entity.transform.x,
-        y: entity.transform.y,
-        z: entity.transform.z,
-      },
-    };
+    const event = createSelfDestructEvent(entity, armed);
     if (this.onSimEvent !== null) this.onSimEvent(event);
     this.eventQueues.simEvents.push(event);
   }

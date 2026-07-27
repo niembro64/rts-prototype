@@ -1,6 +1,7 @@
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
 import type { UnitActionPlanCode } from './SimulationUnitActionPlanner';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 
 export const UNIT_ACTION_MOVEMENT_DECISION_THRUST = 0;
 export const UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH = 1;
@@ -119,35 +120,15 @@ export class SimulationUnitActionMovementPlanner {
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
     const next = Math.max(required, this.slots.length * 2, 128);
-    const plans = new Uint8Array(next);
-    plans.set(this.plans);
-    this.plans = plans;
-    const slots = new Uint32Array(next);
-    slots.set(this.slots);
-    this.slots = slots;
-    const targetX = new Float64Array(next);
-    targetX.set(this.targetX);
-    this.targetX = targetX;
-    const targetY = new Float64Array(next);
-    targetY.set(this.targetY);
-    this.targetY = targetY;
-    const threshold = new Float64Array(next);
-    threshold.set(this.threshold);
-    this.threshold = threshold;
-    const finalPoint = new Uint8Array(next);
-    finalPoint.set(this.finalPoint);
-    this.finalPoint = finalPoint;
-    const dx = new Float64Array(next);
-    dx.set(this.dx);
-    this.dx = dx;
-    const dy = new Float64Array(next);
-    dy.set(this.dy);
-    this.dy = dy;
-    const distance = new Float64Array(next);
-    distance.set(this.distance);
-    this.distance = distance;
-    const decision = new Uint8Array(next);
-    decision.set(this.decision);
-    this.decision = decision;
+    this.plans = growTypedArray(this.plans, next);
+    this.slots = growTypedArray(this.slots, next);
+    this.targetX = growTypedArray(this.targetX, next);
+    this.targetY = growTypedArray(this.targetY, next);
+    this.threshold = growTypedArray(this.threshold, next);
+    this.finalPoint = growTypedArray(this.finalPoint, next);
+    this.dx = growTypedArray(this.dx, next);
+    this.dy = growTypedArray(this.dy, next);
+    this.distance = growTypedArray(this.distance, next);
+    this.decision = growTypedArray(this.decision, next);
   }
 }

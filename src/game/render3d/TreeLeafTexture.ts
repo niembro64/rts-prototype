@@ -11,6 +11,10 @@
 // [0, 1] interval and the model decides how the wrap looks on the mesh.
 
 import * as THREE from 'three';
+import {
+  createRepeatingCanvasTexture,
+  drawWrappedCanvasItem,
+} from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
@@ -104,26 +108,21 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     FOREST_SPRUCE2_LEAF_COLOR,
   );
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
   // Tile the texture multiple times per UV unit. Trees come in at a small
   // global scale so individual faces are minified hard; without this, the
   // mipmaps average the shapes into the mean color and you only see the
   // overall hue change. Repeating multiplies the pattern density per face
   // so shapes survive minification.
   const repeat = Math.max(1, TREE_LEAF_TEXTURE_REPEAT);
-  texture.repeat.set(repeat, repeat);
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
   // Tree materials use stock MeshLambertMaterial whose pipeline does the
   // sRGB→linear conversion on sample, so this texture should be tagged sRGB
   // (unlike the terrain detail textures, which feed a custom shader that
   // works in the "raw-vec3-as-linear" convention).
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  texture.needsUpdate = true;
+  const texture = createRepeatingCanvasTexture(
+    canvas,
+    THREE.SRGBColorSpace,
+    repeat,
+  );
   return { canvas, texture };
 }
 
@@ -194,19 +193,12 @@ function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
 
 function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
   ctx.fillStyle = `rgba(${item.rgb[0]}, ${item.rgb[1]}, ${item.rgb[2]}, ${item.alpha.toFixed(3)})`;
-  const S = TREE_LEAF_TEXTURE_PIXELS;
   const half = item.size * 0.55 + 2;
-  for (let oy = -1; oy <= 1; oy++) {
-    for (let ox = -1; ox <= 1; ox++) {
-      const cx = item.x + ox * S;
-      const cy = item.y + oy * S;
-      if (cx + half < 0 || cx - half >= S) continue;
-      if (cy + half < 0 || cy - half >= S) continue;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(item.rotation);
-      drawShape(ctx, item);
-      ctx.restore();
-    }
-  }
+  drawWrappedCanvasItem(
+    ctx,
+    item,
+    TREE_LEAF_TEXTURE_PIXELS,
+    half,
+    drawShape,
+  );
 }

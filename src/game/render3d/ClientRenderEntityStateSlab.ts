@@ -1,4 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
@@ -101,36 +102,6 @@ export type ClientRenderEntityStateViews = {
   readonly unitBlueprintIds: (string | undefined)[];
   readonly buildingBlueprintIds: (string | null | undefined)[];
 };
-
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growInt16(source: Int16Array, nextCapacity: number): Int16Array {
-  const next = new Int16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
 
 function assertNear(label: string, actual: number, expected: number, tolerance = 1e-3): void {
   if (Math.abs(actual - expected) <= tolerance) return;
@@ -832,55 +803,55 @@ export class ClientRenderEntityStateSlab {
     while (nextCapacity < required) nextCapacity *= 2;
     const views = this.views;
     this.views = {
-      kind: growUint8(views.kind, nextCapacity),
-      entityIds: growFloat64(views.entityIds, nextCapacity),
-      ownerIds: growFloat64(views.ownerIds, nextCapacity),
-      x: growFloat32(views.x, nextCapacity),
-      y: growFloat32(views.y, nextCapacity),
-      z: growFloat32(views.z, nextCapacity),
-      rotation: growFloat32(views.rotation, nextCapacity),
-      groundY: growFloat32(views.groundY, nextCapacity),
-      radiusOther: growFloat32(views.radiusOther, nextCapacity),
-      radiusHitbox: growFloat32(views.radiusHitbox, nextCapacity),
-      radiusCollision: growFloat32(views.radiusCollision, nextCapacity),
-      lodProxyRadius: growFloat32(views.lodProxyRadius, nextCapacity),
-      lodProxyGlyph: growUint8(views.lodProxyGlyph, nextCapacity),
-      normalX: growFloat32(views.normalX, nextCapacity),
-      normalY: growFloat32(views.normalY, nextCapacity),
-      normalZ: growFloat32(views.normalZ, nextCapacity),
-      velocityX: growFloat32(views.velocityX, nextCapacity),
-      velocityY: growFloat32(views.velocityY, nextCapacity),
-      yawRate: growFloat32(views.yawRate, nextCapacity),
-      orientationX: growFloat32(views.orientationX, nextCapacity),
-      orientationY: growFloat32(views.orientationY, nextCapacity),
-      orientationZ: growFloat32(views.orientationZ, nextCapacity),
-      orientationW: growFloat32(views.orientationW, nextCapacity),
-      hasFullOrientation: growUint8(views.hasFullOrientation, nextCapacity),
-      bodyOpacity: growFloat32(views.bodyOpacity, nextCapacity),
-      supportPointOffsetZ: growFloat32(views.supportPointOffsetZ, nextCapacity),
-      buildingBaseY: growFloat32(views.buildingBaseY, nextCapacity),
-      buildingWidth: growFloat32(views.buildingWidth, nextCapacity),
-      buildingFootprintDepth: growFloat32(views.buildingFootprintDepth, nextCapacity),
-      buildProgress: growFloat32(views.buildProgress, nextCapacity),
-      bodyHudWidth: growFloat32(views.bodyHudWidth, nextCapacity),
-      hudBarsY: growFloat32(views.hudBarsY, nextCapacity),
-      hudNameY: growFloat32(views.hudNameY, nextCapacity),
-      entityShadowWidth: growFloat32(views.entityShadowWidth, nextCapacity),
-      entityShadowDepth: growFloat32(views.entityShadowDepth, nextCapacity),
-      renderScopePadding: growFloat32(views.renderScopePadding, nextCapacity),
-      hp: growFloat32(views.hp, nextCapacity),
-      maxHp: growFloat32(views.maxHp, nextCapacity),
-      buildEnergyRatio: growFloat32(views.buildEnergyRatio, nextCapacity),
-      buildMetalRatio: growFloat32(views.buildMetalRatio, nextCapacity),
-      groundContactEnabled: growUint8(views.groundContactEnabled, nextCapacity),
-      turretCount: growUint16(views.turretCount, nextCapacity),
-      shieldPanelTurretIndex: growInt16(views.shieldPanelTurretIndex, nextCapacity),
-      flags: growUint16(views.flags, nextCapacity),
+      kind: growTypedArray(views.kind, nextCapacity),
+      entityIds: growTypedArray(views.entityIds, nextCapacity),
+      ownerIds: growTypedArray(views.ownerIds, nextCapacity),
+      x: growTypedArray(views.x, nextCapacity),
+      y: growTypedArray(views.y, nextCapacity),
+      z: growTypedArray(views.z, nextCapacity),
+      rotation: growTypedArray(views.rotation, nextCapacity),
+      groundY: growTypedArray(views.groundY, nextCapacity),
+      radiusOther: growTypedArray(views.radiusOther, nextCapacity),
+      radiusHitbox: growTypedArray(views.radiusHitbox, nextCapacity),
+      radiusCollision: growTypedArray(views.radiusCollision, nextCapacity),
+      lodProxyRadius: growTypedArray(views.lodProxyRadius, nextCapacity),
+      lodProxyGlyph: growTypedArray(views.lodProxyGlyph, nextCapacity),
+      normalX: growTypedArray(views.normalX, nextCapacity),
+      normalY: growTypedArray(views.normalY, nextCapacity),
+      normalZ: growTypedArray(views.normalZ, nextCapacity),
+      velocityX: growTypedArray(views.velocityX, nextCapacity),
+      velocityY: growTypedArray(views.velocityY, nextCapacity),
+      yawRate: growTypedArray(views.yawRate, nextCapacity),
+      orientationX: growTypedArray(views.orientationX, nextCapacity),
+      orientationY: growTypedArray(views.orientationY, nextCapacity),
+      orientationZ: growTypedArray(views.orientationZ, nextCapacity),
+      orientationW: growTypedArray(views.orientationW, nextCapacity),
+      hasFullOrientation: growTypedArray(views.hasFullOrientation, nextCapacity),
+      bodyOpacity: growTypedArray(views.bodyOpacity, nextCapacity),
+      supportPointOffsetZ: growTypedArray(views.supportPointOffsetZ, nextCapacity),
+      buildingBaseY: growTypedArray(views.buildingBaseY, nextCapacity),
+      buildingWidth: growTypedArray(views.buildingWidth, nextCapacity),
+      buildingFootprintDepth: growTypedArray(views.buildingFootprintDepth, nextCapacity),
+      buildProgress: growTypedArray(views.buildProgress, nextCapacity),
+      bodyHudWidth: growTypedArray(views.bodyHudWidth, nextCapacity),
+      hudBarsY: growTypedArray(views.hudBarsY, nextCapacity),
+      hudNameY: growTypedArray(views.hudNameY, nextCapacity),
+      entityShadowWidth: growTypedArray(views.entityShadowWidth, nextCapacity),
+      entityShadowDepth: growTypedArray(views.entityShadowDepth, nextCapacity),
+      renderScopePadding: growTypedArray(views.renderScopePadding, nextCapacity),
+      hp: growTypedArray(views.hp, nextCapacity),
+      maxHp: growTypedArray(views.maxHp, nextCapacity),
+      buildEnergyRatio: growTypedArray(views.buildEnergyRatio, nextCapacity),
+      buildMetalRatio: growTypedArray(views.buildMetalRatio, nextCapacity),
+      groundContactEnabled: growTypedArray(views.groundContactEnabled, nextCapacity),
+      turretCount: growTypedArray(views.turretCount, nextCapacity),
+      shieldPanelTurretIndex: growTypedArray(views.shieldPanelTurretIndex, nextCapacity),
+      flags: growTypedArray(views.flags, nextCapacity),
       unitBlueprintIds: views.unitBlueprintIds,
       buildingBlueprintIds: views.buildingBlueprintIds,
     };
-    this.dirtySlotMarks = growUint8(this.dirtySlotMarks, nextCapacity);
-    this.packetFlagSlotMarks = growUint8(this.packetFlagSlotMarks, nextCapacity);
+    this.dirtySlotMarks = growTypedArray(this.dirtySlotMarks, nextCapacity);
+    this.packetFlagSlotMarks = growTypedArray(this.packetFlagSlotMarks, nextCapacity);
   }
 
   private markSlotDirty(slot: number): void {

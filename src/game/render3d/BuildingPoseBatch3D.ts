@@ -1,5 +1,6 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 
 export const BUILDING_POSE_INPUT_STRIDE = 8;
 const BUILDING_POSE_OUTPUT_STRIDE = 32;
@@ -38,10 +39,14 @@ export class BuildingPoseBatch3D {
 
     this.inputStride = BUILDING_POSE_INPUT_STRIDE;
     this.outputStride = BUILDING_POSE_OUTPUT_STRIDE;
-    const inputLength = count * this.inputStride;
-    if (this.input.length < inputLength) this.input = new Float32Array(inputLength);
-    const outputLength = count * this.outputStride;
-    if (this.output.length < outputLength) this.output = new Float32Array(outputLength);
+    this.input = growTypedArrayGeometrically(
+      this.input,
+      count * this.inputStride,
+    );
+    this.output = growTypedArrayGeometrically(
+      this.output,
+      count * this.outputStride,
+    );
     return this.input;
   }
 

@@ -177,7 +177,13 @@ export class SelectionOverlayRenderer3D {
     this.showShotArmingRadius = getUnitRadiusToggle('shotArmingRadius');
     this.showAnyRange = anyRangeToggleActive();
     this.showAnyUnitRadius = anyUnitRadiusToggleActive();
-    this.selectedCount = this.clientViewState.getSelectedIds().size;
+    const selectedIds = this.clientViewState.getSelectedIds();
+    this.selectedCount = selectedIds.size;
+    for (const entityId of this.supportDiagnosticNextLogAtMs.keys()) {
+      if (!selectedIds.has(entityId)) {
+        this.supportDiagnosticNextLogAtMs.delete(entityId);
+      }
+    }
     const nextRangeStateKey = [
       this.showTrackAcquire,
       this.showTrackRelease,
@@ -541,6 +547,7 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatHitbox.dispose();
     this.radiusMatCollision.dispose();
     this.radiusMatShotArming.dispose();
+    this.supportDiagnosticNextLogAtMs.clear();
   }
 
   private setUnitRadiusSphere(

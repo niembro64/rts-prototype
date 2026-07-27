@@ -35,6 +35,10 @@
 // Zero-intensity sprays (idle commanders) skip entirely.
 
 import * as THREE from 'three';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
@@ -80,26 +84,6 @@ const [HEAL_R, HEAL_G, HEAL_B] = RESOURCE_CONFIG.spray.healRgb01;
  *  MeshBasicMaterial.opacity = 0.85). Heal trails were 0.8 — we use
  *  one global alpha here since the visual difference is tiny. */
 const PARTICLE_ALPHA = RESOURCE_CONFIG.spray.particleAlpha;
-
-const PARTICLE_VERTEX_SHADER = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const PARTICLE_FRAGMENT_SHADER = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
 
 type SprayParticlePool = {
   geom: THREE.BufferGeometry;
@@ -176,8 +160,8 @@ export class SprayRenderer3D {
     parentWorld.add(this.root);
 
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: PARTICLE_VERTEX_SHADER,
-      fragmentShader: PARTICLE_FRAGMENT_SHADER,
+      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });

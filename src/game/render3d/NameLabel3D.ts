@@ -14,6 +14,7 @@
 // handed.
 
 import * as THREE from 'three';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 import type { Entity } from '../sim/types';
 import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
 import {
@@ -126,18 +127,12 @@ export class PieceNameRenderPacket3D {
     let nextCapacity = this.hostIds.length;
     while (nextCapacity < required) nextCapacity *= 2;
     this.hostIds = growFloat64Array(this.hostIds, nextCapacity);
-    this.pieceTags = growUint16(this.pieceTags, nextCapacity);
+    this.pieceTags = growTypedArray(this.pieceTags, nextCapacity);
     this.x = growFloat32Array(this.x, nextCapacity);
     this.y = growFloat32Array(this.y, nextCapacity);
     this.z = growFloat32Array(this.z, nextCapacity);
     this.tones = growUint8Array(this.tones, nextCapacity);
   }
-}
-
-function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
 }
 
 function toneFromPacketCode(code: number): NameLabelTone {

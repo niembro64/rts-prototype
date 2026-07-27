@@ -21,7 +21,7 @@ import {
   copySimEventInto,
   copySpawnInto,
   copySprayInto,
-  copyTurretInto,
+  copyTurretListInto,
   copyMotionInto,
   copyWaypointInto,
   createBeamDto,
@@ -31,7 +31,6 @@ import {
   createSimEventDto,
   createSpawnDto,
   createSprayDto,
-  createTurretDto,
   createMotionDto,
   createWaypointDto,
 } from './snapshotDtoCopy';
@@ -291,18 +290,7 @@ function copyBuildingInto(
   } else {
     dst.solar = null;
   }
-  if (src.turrets) {
-    const turrets = dst.turrets ?? (dst.turrets = []);
-    turrets.length = src.turrets.length;
-    for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyTurretInto(
-        src.turrets[i],
-        turrets[i] ?? createTurretDto(),
-      );
-    }
-  } else {
-    dst.turrets = null;
-  }
+  dst.turrets = copyTurretListInto(src.turrets, dst.turrets);
   if (src.factory) {
     if (!dst.factory) {
       dst.factory = {

@@ -1,5 +1,6 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 
 export const CHASSIS_PART_INPUT_STRIDE = 15;
 const CHASSIS_PART_OUTPUT_STRIDE = 16;
@@ -35,10 +36,14 @@ export class UnitChassisMatrixBatch3D {
 
     this.inputStride = CHASSIS_PART_INPUT_STRIDE;
     this.outputStride = CHASSIS_PART_OUTPUT_STRIDE;
-    const inputLength = count * this.inputStride;
-    if (this.input.length < inputLength) this.input = new Float32Array(inputLength);
-    const outputLength = count * this.outputStride;
-    if (this.output.length < outputLength) this.output = new Float32Array(outputLength);
+    this.input = growTypedArrayGeometrically(
+      this.input,
+      count * this.inputStride,
+    );
+    this.output = growTypedArrayGeometrically(
+      this.output,
+      count * this.outputStride,
+    );
     return this.input;
   }
 

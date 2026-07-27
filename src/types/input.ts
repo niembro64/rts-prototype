@@ -34,18 +34,14 @@ export type RepairEntitySource = {
   arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
-// Entity source for attack target queries
-export type AttackEntitySource = {
+// Entity source for relationship-aware point target queries.
+export type PointTargetEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
   arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
-// Entity source for guard/assist target queries
-export type GuardEntitySource = {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
-};
+export type AttackEntitySource = PointTargetEntitySource;
+export type GuardEntitySource = PointTargetEntitySource;
 
 // Entity source for reclaim target queries

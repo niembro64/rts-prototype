@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { resolveEntityFromSlotOrWorld } from '../sim/entitySlotResolution';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -149,7 +149,7 @@ function appendFullEntityRows(
   if (visibleEntityIds !== undefined) {
     const visibleEntitySlots = visibility.getVisibleEntitySlots();
     for (let i = 0; i < visibleEntityIds.length; i++) {
-      const entity = resolveSnapshotEntityFromVisibleSlot(
+      const entity = resolveEntityFromSlotOrWorld(
         world,
         visibleEntityIds[i],
         visibleEntitySlots !== undefined ? visibleEntitySlots[i] : -1,
@@ -176,18 +176,6 @@ function appendFullEntityRows(
     }
   }
   _entityBuf.length = write;
-}
-
-function resolveSnapshotEntityFromVisibleSlot(
-  world: WorldState,
-  id: EntityId,
-  slot: number,
-): Entity | undefined {
-  if (slot >= 0) {
-    const entity = entitySlotRegistry.resolveSlot(slot);
-    if (entity !== undefined && entity.id === id) return entity;
-  }
-  return world.getEntity(id);
 }
 
 // Serialize the full WorldState to the renderer presentation format.

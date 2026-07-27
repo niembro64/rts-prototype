@@ -17,6 +17,10 @@
 // consistent). Palette is warm browns through deep shadow.
 
 import * as THREE from 'three';
+import {
+  createRepeatingCanvasTexture,
+  drawWrappedCanvasItem,
+} from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_WOOD_COLOR,
@@ -116,21 +120,16 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     FOREST_SPRUCE2_WOOD_COLOR,
   );
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
   // See TreeLeafTexture for the rationale — tile multiple times per UV unit
   // so the bark patterns survive minification on small-scale trees. Trunk
   // benefits from a higher repeat than leaves because the bark look depends
   // on seeing many vertical cracks per trunk height.
   const repeat = Math.max(1, TREE_TRUNK_TEXTURE_REPEAT);
-  texture.repeat.set(repeat, repeat);
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  texture.needsUpdate = true;
+  const texture = createRepeatingCanvasTexture(
+    canvas,
+    THREE.SRGBColorSpace,
+    repeat,
+  );
   return { canvas, texture };
 }
 
@@ -212,25 +211,17 @@ function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
 
 function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
   ctx.fillStyle = `rgba(${item.rgb[0]}, ${item.rgb[1]}, ${item.rgb[2]}, ${item.alpha.toFixed(3)})`;
-  const S = TREE_TRUNK_TEXTURE_PIXELS;
   // Bounding extent after the vertical stretch — be generous so anti-aliased
   // edges don't get clipped on the wrap copies.
   const half = item.size * 0.55 * VERTICAL_STRETCH + 2;
-  for (let oy = -1; oy <= 1; oy++) {
-    for (let ox = -1; ox <= 1; ox++) {
-      const cx = item.x + ox * S;
-      const cy = item.y + oy * S;
-      if (cx + half < 0 || cx - half >= S) continue;
-      if (cy + half < 0 || cy - half >= S) continue;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(item.rotation);
-      // Apply vertical stretch in local frame *after* rotation so the
-      // stretch is along the item's own up axis (consistent with bark's
-      // along-the-grain elongation).
-      ctx.scale(1.0, VERTICAL_STRETCH);
-      drawShape(ctx, item);
-      ctx.restore();
-    }
-  }
+  // Apply vertical stretch in local frame *after* rotation so the stretch is
+  // along the item's own up axis (consistent with bark's grain elongation).
+  drawWrappedCanvasItem(
+    ctx,
+    item,
+    TREE_TRUNK_TEXTURE_PIXELS,
+    half,
+    drawShape,
+    VERTICAL_STRETCH,
+  );
 }

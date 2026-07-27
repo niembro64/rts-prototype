@@ -52,10 +52,20 @@ export function rayBoxIntersectionT(
   minX: number, minY: number, minZ: number,
   maxX: number, maxY: number, maxZ: number,
 ): number | null {
-  const dx = ex - sx;
-  const dy = ey - sy;
-  const dz = ez - sz;
+  return rayBoxIntersectionTWithDelta(
+    sx, sy, sz,
+    ex - sx, ey - sy, ez - sz,
+    minX, minY, minZ,
+    maxX, maxY, maxZ,
+  );
+}
 
+export function rayBoxIntersectionTWithDelta(
+  sx: number, sy: number, sz: number,
+  dx: number, dy: number, dz: number,
+  minX: number, minY: number, minZ: number,
+  maxX: number, maxY: number, maxZ: number,
+): number | null {
   let tmin = 0;
   let tmax = 1;
 

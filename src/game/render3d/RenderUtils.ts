@@ -8,6 +8,11 @@ import * as THREE from 'three';
 import type { PlayerId } from '../sim/types';
 import { locomotionPieceColorHex } from './colorUtils';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+export {
+  growTypedArray as growFloat32Array,
+  growTypedArray as growFloat64Array,
+  growTypedArray as growUint8Array,
+} from '../memory/typedArrayGrowth';
 
 // Shared unit sphere used by makeSphere. Every former local copy built
 // its own sphere primitive; this is the one shared
@@ -32,24 +37,6 @@ export function makeSphere(
  *  once — disposing a THREE BufferGeometry twice is a no-op. */
 export function disposeRenderUtilsGeoms(): void {
   sphereGeom.dispose();
-}
-
-export function growFloat32Array(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-export function growFloat64Array(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-export function growUint8Array(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
 }
 
 export function clamp01(value: number): number {

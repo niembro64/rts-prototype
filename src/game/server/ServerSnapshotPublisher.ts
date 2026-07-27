@@ -55,6 +55,7 @@ import {
   tryAppendBuildingSlabDeltaRowFromState,
   tryAppendUnitSlabDeltaRowFromState,
 } from './snapshotSlabDeltaRows';
+import { resolveEntityFromSlotOrWorld } from '../sim/entitySlotResolution';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
@@ -923,7 +924,7 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < currentVisibleEntityIds.length; i++) {
       const id = currentVisibleEntityIds[i];
       if (previousVisibleEntityIds.has(id)) continue;
-      const entity = this.resolveSnapshotEntityFromSlot(
+      const entity = resolveEntityFromSlotOrWorld(
         world,
         id,
         currentVisibleEntitySlots !== undefined ? currentVisibleEntitySlots[i] : -1,
@@ -948,7 +949,7 @@ export class ServerSnapshotPublisher {
         emittedIds.add(id);
         continue;
       }
-      const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
+      const entity = resolveEntityFromSlotOrWorld(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building')
@@ -962,18 +963,6 @@ export class ServerSnapshotPublisher {
 
     emittedIds.clear();
     return entities;
-  }
-
-  private resolveSnapshotEntityFromSlot(
-    world: WorldState,
-    id: EntityId,
-    slot: number,
-  ): Entity | undefined {
-    if (slot >= 0) {
-      const entity = entitySlotRegistry.resolveSlot(slot);
-      if (entity !== undefined && entity.id === id) return entity;
-    }
-    return world.getEntity(id);
   }
 
   private serializeUnfilteredDirtyPresentationEntities(
@@ -1001,7 +990,7 @@ export class ServerSnapshotPublisher {
         emittedIds.add(id);
         continue;
       }
-      const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
+      const entity = resolveEntityFromSlotOrWorld(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building')

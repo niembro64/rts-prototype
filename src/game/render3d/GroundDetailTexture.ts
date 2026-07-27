@@ -12,6 +12,10 @@
 
 import * as THREE from 'three';
 import {
+  createRepeatingCanvasTexture,
+  drawWrappedCanvasItem,
+} from './repeatingCanvasTexture';
+import {
   FOREST_SPRUCE2_LEAF_COLOR,
   FOREST_SPRUCE2_WOOD_COLOR,
   TERRAIN_GROUND_BASE_COLOR,
@@ -90,20 +94,15 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     drawItemWithWrap(ctx, item);
   }
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
   // LinearSRGBColorSpace means "sample the texel as-is, no conversion". The
   // rest of the terrain shader writes raw vec3 literals (lowGrass, dryGrass,
   // etc.) and treats them as already in working space, so the detail texture
   // must match that convention — otherwise the sampled colors come out
   // noticeably darker than the same color drawn in a PNG viewer.
-  texture.colorSpace = THREE.LinearSRGBColorSpace;
-  texture.anisotropy = 8;
-  texture.needsUpdate = true;
+  const texture = createRepeatingCanvasTexture(
+    canvas,
+    THREE.LinearSRGBColorSpace,
+  );
   return { canvas, texture };
 }
 
@@ -257,22 +256,15 @@ function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
 
 function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
   ctx.fillStyle = computeFillStyle(item);
-  const S = GROUND_DETAIL_TEXTURE_PIXELS;
   // Half the bounding extent (size/2 is the radius for all shapes drawn here).
   // Add a tiny padding so anti-aliased edges that bleed past the boundary
   // appear on the wrapped side too.
   const half = item.size * 0.55 + 2;
-  for (let oy = -1; oy <= 1; oy++) {
-    for (let ox = -1; ox <= 1; ox++) {
-      const cx = item.x + ox * S;
-      const cy = item.y + oy * S;
-      if (cx + half < 0 || cx - half >= S) continue;
-      if (cy + half < 0 || cy - half >= S) continue;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(item.rotation);
-      drawShape(ctx, item);
-      ctx.restore();
-    }
-  }
+  drawWrappedCanvasItem(
+    ctx,
+    item,
+    GROUND_DETAIL_TEXTURE_PIXELS,
+    half,
+    drawShape,
+  );
 }

@@ -12,10 +12,14 @@ import {
   CLIENT_PROJECTILE_RENDER_FLAG_TRAVELING,
   type ClientProjectileRenderStateViews,
 } from './ClientProjectileRenderStateSlab';
-
-const CLIENT_PROJECTILE_RENDER_CELL_SIZE = 512;
-const CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET = 1 << 20;
-const CLIENT_PROJECTILE_RENDER_CELL_KEY_STRIDE = CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET * 2 + 1;
+import {
+  cellBoundsIntersect,
+  clientRenderCellCoord,
+  clientRenderCellKey,
+  createClientRenderCellBounds,
+  shouldQuerySparseGridDirectly,
+  writeClientRenderCellBounds,
+} from './spatialGridQuery';
 const CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY = 256;
 
 type ClientProjectileRenderCellKey = number | string;
@@ -55,6 +59,7 @@ export class ClientProjectileRenderSpatialIndex {
   private readonly entries = new IndexedEntityIdMap<ClientProjectileRenderSpatialEntry>();
   private readonly unbucketedEntries = new Set<ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new IndexedEntityIdSet();
+  private readonly queryCellBounds = createClientRenderCellBounds();
 
   clear(): void {
     this.buckets.clear();
@@ -70,10 +75,10 @@ export class ClientProjectileRenderSpatialIndex {
       return;
     }
 
-    const minCellX = this.cellCoord(views.minX[slot]);
-    const maxCellX = this.cellCoord(views.maxX[slot]);
-    const minCellY = this.cellCoord(views.minY[slot]);
-    const maxCellY = this.cellCoord(views.maxY[slot]);
+    const minCellX = clientRenderCellCoord(views.minX[slot]);
+    const maxCellX = clientRenderCellCoord(views.maxX[slot]);
+    const minCellY = clientRenderCellCoord(views.minY[slot]);
+    const maxCellY = clientRenderCellCoord(views.maxY[slot]);
     if (
       !Number.isFinite(minCellX) ||
       !Number.isFinite(maxCellX) ||
@@ -131,7 +136,7 @@ export class ClientProjectileRenderSpatialIndex {
 
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-        const key = this.cellKey(cellX, cellY);
+        const key = clientRenderCellKey(cellX, cellY);
         const bucket = this.getOrCreateBucket(key);
         const entryCellIndex = entry.cellKeys.length;
         entry.cellKeys.push(key);
@@ -185,17 +190,33 @@ export class ClientProjectileRenderSpatialIndex {
     const seen = this.querySeenIds;
     seen.clear();
 
-    const minCellX = this.cellCoord(bounds.minX);
-    const maxCellX = this.cellCoord(bounds.maxX);
-    const minCellY = this.cellCoord(bounds.minY);
-    const maxCellY = this.cellCoord(bounds.maxY);
-    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
+    const {
+      minCellX,
+      maxCellX,
+      minCellY,
+      maxCellY,
+    } = writeClientRenderCellBounds(this.queryCellBounds, bounds);
+    if (
+      shouldQuerySparseGridDirectly(
+        minCellX,
+        maxCellX,
+        minCellY,
+        maxCellY,
+        this.buckets.size,
+      )
+    ) {
       for (const entry of this.entries.values()) {
         if (
-          entry.maxCellX < minCellX ||
-          entry.minCellX > maxCellX ||
-          entry.maxCellY < minCellY ||
-          entry.minCellY > maxCellY
+          !cellBoundsIntersect(
+            entry.minCellX,
+            entry.maxCellX,
+            entry.minCellY,
+            entry.maxCellY,
+            minCellX,
+            maxCellX,
+            minCellY,
+            maxCellY,
+          )
         ) {
           continue;
         }
@@ -206,7 +227,7 @@ export class ClientProjectileRenderSpatialIndex {
 
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-        const bucket = this.buckets.get(this.cellKey(cellX, cellY));
+        const bucket = this.buckets.get(clientRenderCellKey(cellX, cellY));
         if (bucket === undefined) continue;
         const entries = bucket.entries;
         for (let i = 0; i < entries.length; i++) {
@@ -232,19 +253,6 @@ export class ClientProjectileRenderSpatialIndex {
       !Number.isFinite(cells) ||
       cells > CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY
     );
-  }
-
-  private shouldQueryEntriesDirectly(
-    minCellX: number,
-    maxCellX: number,
-    minCellY: number,
-    maxCellY: number,
-  ): boolean {
-    const width = maxCellX - minCellX + 1;
-    const height = maxCellY - minCellY + 1;
-    if (!(width > 0) || !(height > 0)) return true;
-    const queriedCells = width * height;
-    return !Number.isFinite(queriedCells) || queriedCells > this.buckets.size;
   }
 
   private pushEntryRenderLists(
@@ -276,10 +284,16 @@ export class ClientProjectileRenderSpatialIndex {
     if (this.unbucketedEntries.size === 0) return;
     for (const entry of this.unbucketedEntries) {
       if (
-        entry.maxCellX < minCellX ||
-        entry.minCellX > maxCellX ||
-        entry.maxCellY < minCellY ||
-        entry.minCellY > maxCellY
+        !cellBoundsIntersect(
+          entry.minCellX,
+          entry.maxCellX,
+          entry.minCellY,
+          entry.maxCellY,
+          minCellX,
+          maxCellX,
+          minCellY,
+          maxCellY,
+        )
       ) {
         continue;
       }
@@ -296,22 +310,4 @@ export class ClientProjectileRenderSpatialIndex {
     return bucket;
   }
 
-  private cellCoord(value: number): number {
-    return Math.floor(value / CLIENT_PROJECTILE_RENDER_CELL_SIZE);
-  }
-
-  private cellKey(cellX: number, cellY: number): ClientProjectileRenderCellKey {
-    if (
-      cellX < -CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
-      cellX > CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
-      cellY < -CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
-      cellY > CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET
-    ) {
-      return `${cellX},${cellY}`;
-    }
-    return (
-      (cellX + CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET) *
-      CLIENT_PROJECTILE_RENDER_CELL_KEY_STRIDE
-    ) + cellY + CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET;
-  }
 }

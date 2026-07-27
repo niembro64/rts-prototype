@@ -7,6 +7,12 @@ import {
   entityLodProxyRadius3D,
 } from './EntityLod3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  createDirtySlotSpan as createDirtySpan,
+  markDirtySlot as markDirty,
+  type DirtySlotSpan as DirtySpan,
+  uploadDirtySlotSpan as uploadDirty,
+} from './instancedBufferUpdate';
 
 const ENTITY_LOD_PROXY_CAP = 32768;
 const ENTITY_LOD_PROXY_OPACITY = 1;
@@ -101,11 +107,6 @@ void main() {
 }
 `;
 
-type DirtySpan = {
-  min: number;
-  max: number;
-};
-
 type ProxyPointBatch = {
   points: THREE.Points;
   geometry: THREE.BufferGeometry;
@@ -159,32 +160,6 @@ type EntityLodProxyRenderer3DOptions = {
   readonly world: THREE.Group;
   readonly canvas?: HTMLCanvasElement;
 };
-
-function createDirtySpan(): DirtySpan {
-  return { min: Number.POSITIVE_INFINITY, max: -1 };
-}
-
-function markDirty(span: DirtySpan, slot: number): void {
-  if (slot < span.min) span.min = slot;
-  if (slot > span.max) span.max = slot;
-}
-
-function hasDirty(span: DirtySpan): boolean {
-  return span.max >= span.min;
-}
-
-function uploadDirty(
-  attr: THREE.BufferAttribute,
-  span: DirtySpan,
-  itemSize: number,
-): void {
-  if (!hasDirty(span)) return;
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(span.min * itemSize, (span.max - span.min + 1) * itemSize);
-  attr.needsUpdate = true;
-  span.min = Number.POSITIVE_INFINITY;
-  span.max = -1;
-}
 
 function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({

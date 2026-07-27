@@ -2,6 +2,12 @@ import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { growFloat32Array } from './typedArrayRenderUtils';
+import {
+  multiplyQuaternionsInto,
+  rotateVectorByQuaternionInto,
+  type MutableQuaternionTuple,
+  type MutableVector3Tuple,
+} from '../math/quaternionTupleMath';
 
 const AIRBORNE_EMITTER_INPUT_STRIDE = 24;
 const AIRBORNE_EMITTER_OUTPUT_STRIDE = 6;
@@ -23,6 +29,11 @@ export class AirborneEmitterBatch3D {
   private input = new Float32Array(AIRBORNE_EMITTER_INPUT_STRIDE * 256);
   private output = new Float32Array(AIRBORNE_EMITTER_OUTPUT_STRIDE * 256);
   private readonly emitters: SmokePuffEmitter[] = [];
+  private readonly fallbackGroupWorld: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackChildWorld: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackEmitterWorld: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackExhaustWorld: MutableVector3Tuple = [0, 0, 0];
+  private readonly fallbackChildWorldQ: MutableQuaternionTuple = [0, 0, 0, 1];
   private wasm: SimWasm | null = null;
   private count = 0;
 
@@ -165,13 +176,33 @@ export class AirborneEmitterBatch3D {
       const dirZ = input[ib + 22];
       const speed = input[ib + 23];
 
-      const groupWorld = this.rotateVec(parentQX, parentQY, parentQZ, parentQW, groupX, groupY, groupZ);
-      const childWorld = this.rotateVec(parentQX, parentQY, parentQZ, parentQW, childX, childY, childZ);
-      const childWorldQ = this.quatMul(
+      const groupWorld = rotateVectorByQuaternionInto(
+        this.fallbackGroupWorld,
+        parentQX,
+        parentQY,
+        parentQZ,
+        parentQW,
+        groupX,
+        groupY,
+        groupZ,
+      );
+      const childWorld = rotateVectorByQuaternionInto(
+        this.fallbackChildWorld,
+        parentQX,
+        parentQY,
+        parentQZ,
+        parentQW,
+        childX,
+        childY,
+        childZ,
+      );
+      const childWorldQ = multiplyQuaternionsInto(
+        this.fallbackChildWorldQ,
         parentQX, parentQY, parentQZ, parentQW,
         childQX, childQY, childQZ, childQW,
       );
-      const emitterWorld = this.rotateVec(
+      const emitterWorld = rotateVectorByQuaternionInto(
+        this.fallbackEmitterWorld,
         childWorldQ[0],
         childWorldQ[1],
         childWorldQ[2],
@@ -180,7 +211,8 @@ export class AirborneEmitterBatch3D {
         emitterY,
         emitterZ,
       );
-      const exhaustWorld = this.rotateVec(
+      const exhaustWorld = rotateVectorByQuaternionInto(
+        this.fallbackExhaustWorld,
         childWorldQ[0],
         childWorldQ[1],
         childWorldQ[2],
@@ -197,43 +229,6 @@ export class AirborneEmitterBatch3D {
       output[ob + 4] = exhaustWorld[2] * speed;
       output[ob + 5] = exhaustWorld[1] * speed;
     }
-  }
-
-  private quatMul(
-    ax: number,
-    ay: number,
-    az: number,
-    aw: number,
-    bx: number,
-    by: number,
-    bz: number,
-    bw: number,
-  ): [number, number, number, number] {
-    return [
-      ax * bw + aw * bx + ay * bz - az * by,
-      ay * bw + aw * by + az * bx - ax * bz,
-      az * bw + aw * bz + ax * by - ay * bx,
-      aw * bw - ax * bx - ay * by - az * bz,
-    ];
-  }
-
-  private rotateVec(
-    qx: number,
-    qy: number,
-    qz: number,
-    qw: number,
-    vx: number,
-    vy: number,
-    vz: number,
-  ): [number, number, number] {
-    const tx = 2 * (qy * vz - qz * vy);
-    const ty = 2 * (qz * vx - qx * vz);
-    const tz = 2 * (qx * vy - qy * vx);
-    return [
-      vx + qw * tx + (qy * tz - qz * ty),
-      vy + qw * ty + (qz * tx - qx * tz),
-      vz + qw * tz + (qx * ty - qy * tx),
-    ];
   }
 
   private ensureInputCapacity(count: number): void {

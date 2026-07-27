@@ -3,8 +3,7 @@ import { COLORS } from '@/colorsConfig';
 import type { EntityId } from '../sim/types';
 import { getPlayerPrimaryColor } from '../sim/types';
 import type { NetworkServerSnapshotMinimapEntity } from './NetworkTypes';
-
-const minimapColorCache = new Map<number, string>();
+import { getMinimapCssColor } from '../minimapColor';
 
 type ClientMinimapOverrideStoreOptions = {
   isSelected: (id: EntityId) => boolean;
@@ -51,19 +50,10 @@ export class ClientMinimapOverrideStore {
       dst.radarOnly = radarOnly || undefined;
       dst.color = radarOnly
         ? RADAR_BLIP_COLOR
-        : minimapColor(getPlayerPrimaryColor(src.playerId));
+        : getMinimapCssColor(getPlayerPrimaryColor(src.playerId));
       dst.isSelected = radarOnly ? undefined : this.options.isSelected(src.id) || undefined;
     }
   }
 }
 
 const RADAR_BLIP_COLOR = COLORS.ui.minimap.radarBlip.cssColor;
-
-function minimapColor(color: number): string {
-  let cached = minimapColorCache.get(color);
-  if (!cached) {
-    cached = '#' + color.toString(16).padStart(6, '0');
-    minimapColorCache.set(color, cached);
-  }
-  return cached;
-}

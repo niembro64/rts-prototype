@@ -79,24 +79,6 @@ import {
 import {
   AUDIO_EVENT_SOURCE_TYPE_CODES,
   AUDIO_EVENT_TYPE_CODES,
-  DEATH_HAS_BASE_Z,
-  DEATH_HAS_COLLISION_RADIUS,
-  DEATH_HAS_ROTATION,
-  DEATH_HAS_TURRET_POSES,
-  DEATH_HAS_UNIT_TYPE,
-  DEATH_HAS_VISUAL_RADIUS,
-  EVENT_AUDIO_ONLY_VALUE,
-  EVENT_HAS_AUDIO_ONLY,
-  EVENT_HAS_DEATH_CONTEXT,
-  EVENT_HAS_ENTITY_ID,
-  EVENT_HAS_IMPACT_CONTEXT,
-  EVENT_HAS_KILLER_PLAYER_ID,
-  EVENT_HAS_PLAYER_ID,
-  EVENT_HAS_SHIELD_IMPACT,
-  EVENT_HAS_SOURCE_KEY,
-  EVENT_HAS_SOURCE_TYPE,
-  EVENT_HAS_VICTIM_PLAYER_ID,
-  EVENT_HAS_WATER_SPLASH_CONTEXT,
 } from './audioEventWireFormat';
 import {
   AUDIO_DEATH_CONTEXT_WIRE_STRIDE,
@@ -120,6 +102,11 @@ import {
   quantizeVelocity,
 } from './snapshotQuantization';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
+import {
+  getAudioEventWireFlags,
+  getDeathContextWireFlags,
+} from './audioEventWireHelpers';
+import { getSprayTargetWireFlags } from './sprayTargetWireHelpers';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -1483,16 +1470,7 @@ function packSprayTargetsIntoScratch(
     view[base + 13] = spray.speed ?? 0;
     view[base + 14] = spray.particleRadius ?? 0;
     view[base + 15] = spray.ballSpawnRate ?? 0;
-    let flags = 0;
-    if (spray.type === 'heal') flags |= 0x01;
-    if (spray.source.z !== null) flags |= 0x02;
-    if (spray.target.z !== null) flags |= 0x04;
-    if (spray.target.dim !== null) flags |= 0x08;
-    if (spray.target.radius !== null) flags |= 0x10;
-    if (spray.speed !== null) flags |= 0x20;
-    if (spray.particleRadius !== null) flags |= 0x40;
-    if (spray.ballSpawnRate !== null) flags |= 0x80;
-    view[base + 16] = flags;
+    view[base + 16] = getSprayTargetWireFlags(spray);
   }
 }
 
@@ -1538,13 +1516,7 @@ function packPackedDeathContextsIntoScratch(
     const context = events[i].deathContext;
     if (context === null) continue;
 
-    let flags = 0;
-    if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
-    if (context.collisionRadius !== undefined) flags |= DEATH_HAS_COLLISION_RADIUS;
-    if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
-    if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
-    if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
-    if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
+    const flags = getDeathContextWireFlags(context);
 
     const base = deathIndex * api.deathContextScratchStride;
     view[base + 0] = flags;
@@ -1647,21 +1619,7 @@ function packPackedAudioEventsIntoScratch(
     const shieldImpact = event.shieldImpact;
     const base = i * api.audioEventScratchStride;
 
-    let flags = 0;
-    if (event.sourceType !== null) flags |= EVENT_HAS_SOURCE_TYPE;
-    if (event.sourceKey !== null) flags |= EVENT_HAS_SOURCE_KEY;
-    if (event.playerId !== null) flags |= EVENT_HAS_PLAYER_ID;
-    if (event.entityId !== null) flags |= EVENT_HAS_ENTITY_ID;
-    if (shieldImpact !== null) flags |= EVENT_HAS_SHIELD_IMPACT;
-    if (event.killerPlayerId !== null) flags |= EVENT_HAS_KILLER_PLAYER_ID;
-    if (event.victimPlayerId !== null) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
-    if (event.audioOnly !== null) {
-      flags |= EVENT_HAS_AUDIO_ONLY;
-      if (event.audioOnly) flags |= EVENT_AUDIO_ONLY_VALUE;
-    }
-    if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
-    if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
-    if (event.waterSplash !== null) flags |= EVENT_HAS_WATER_SPLASH_CONTEXT;
+    const flags = getAudioEventWireFlags(event);
 
     view[base + 0] = AUDIO_EVENT_TYPE_CODES[event.type];
     view[base + 1] = quantizeProjectilePosition(event.pos.x);

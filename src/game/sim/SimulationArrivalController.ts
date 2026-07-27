@@ -4,6 +4,7 @@ import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
 import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
 import { entitySlotRegistry } from './EntitySlotRegistry';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 
 /** Distance (world units) at which the movement controller considers a
  * waypoint reached. Path legality and physical clearance remain independent
@@ -248,30 +249,14 @@ export class SimulationArrivalController {
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
     const next = Math.max(required, this.slots.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this.slots);
-    this.slots = slots;
-    const entitySlots = new Int32Array(next);
-    entitySlots.set(this.entitySlots);
-    this.entitySlots = entitySlots;
-    const dx = new Float64Array(next);
-    dx.set(this.dx);
-    this.dx = dx;
-    const dy = new Float64Array(next);
-    dy.set(this.dy);
-    this.dy = dy;
-    const distance = new Float64Array(next);
-    distance.set(this.distance);
-    this.distance = distance;
-    const radiusCollision = new Float64Array(next);
-    radiusCollision.set(this.radiusPush);
-    this.radiusPush = radiusCollision;
-    const speedLimitFactor = new Float64Array(next);
-    speedLimitFactor.set(this.speedLimitFactor);
-    this.speedLimitFactor = speedLimitFactor;
-    const flags = new Uint8Array(next);
-    flags.set(this.flags);
-    this.flags = flags;
+    this.slots = growTypedArray(this.slots, next);
+    this.entitySlots = growTypedArray(this.entitySlots, next);
+    this.dx = growTypedArray(this.dx, next);
+    this.dy = growTypedArray(this.dy, next);
+    this.distance = growTypedArray(this.distance, next);
+    this.radiusPush = growTypedArray(this.radiusPush, next);
+    this.speedLimitFactor = growTypedArray(this.speedLimitFactor, next);
+    this.flags = growTypedArray(this.flags, next);
     this.outX = new Float64Array(next);
     this.outY = new Float64Array(next);
     this.active = new Uint8Array(next);
@@ -280,27 +265,13 @@ export class SimulationArrivalController {
   private ensureCompletionCapacity(required: number): void {
     if (this.completionSlots.length >= required) return;
     const next = Math.max(required, this.completionSlots.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this.completionSlots);
-    this.completionSlots = slots;
-    const dx = new Float64Array(next);
-    dx.set(this.completionDx);
-    this.completionDx = dx;
-    const dy = new Float64Array(next);
-    dy.set(this.completionDy);
-    this.completionDy = dy;
-    const fallbackVx = new Float64Array(next);
-    fallbackVx.set(this.completionFallbackVx);
-    this.completionFallbackVx = fallbackVx;
-    const fallbackVy = new Float64Array(next);
-    fallbackVy.set(this.completionFallbackVy);
-    this.completionFallbackVy = fallbackVy;
-    const flags = new Uint8Array(next);
-    flags.set(this.completionFlags);
-    this.completionFlags = flags;
-    const finalPoint = new Uint8Array(next);
-    finalPoint.set(this.completionFinalPoint);
-    this.completionFinalPoint = finalPoint;
+    this.completionSlots = growTypedArray(this.completionSlots, next);
+    this.completionDx = growTypedArray(this.completionDx, next);
+    this.completionDy = growTypedArray(this.completionDy, next);
+    this.completionFallbackVx = growTypedArray(this.completionFallbackVx, next);
+    this.completionFallbackVy = growTypedArray(this.completionFallbackVy, next);
+    this.completionFlags = growTypedArray(this.completionFlags, next);
+    this.completionFinalPoint = growTypedArray(this.completionFinalPoint, next);
     this.completionDistance = new Float64Array(next);
     this.completionArrived = new Uint8Array(next);
   }

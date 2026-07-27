@@ -35,6 +35,16 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  clearDirtySlotSpan as clearDirtySpan,
+  createDirtySlotSpan as createDirtySpan,
+  markDirtySlot,
+  setInstancedMeshCount as setInstancedCount,
+  type DirtySlotSpan as DirtySpan,
+  uploadDirtySlotSpan as uploadDirtySpan,
+  writeInstancedMatrix as writeInstanceMatrix,
+  writeInstancedMatrixArray as writeInstanceMatrixArray,
+} from './instancedBufferUpdate';
 
 const POLY_CHASSIS_CAP = 4096;
 const CONE_BARREL_CAP = 4096;
@@ -81,176 +91,6 @@ type TierPool = {
   nextSlot: number;
   readonly cap: number;
 };
-
-type DirtySpan = {
-  minSlot: number;
-  maxSlot: number;
-};
-
-function createDirtySpan(): DirtySpan {
-  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
-}
-
-function markDirtySlot(span: DirtySpan, slot: number): void {
-  if (slot < span.minSlot) span.minSlot = slot;
-  if (slot > span.maxSlot) span.maxSlot = slot;
-}
-
-function clearDirtySpan(span: DirtySpan): void {
-  span.minSlot = Number.POSITIVE_INFINITY;
-  span.maxSlot = -1;
-}
-
-function hasDirtySpan(span: DirtySpan): boolean {
-  return span.maxSlot >= span.minSlot;
-}
-
-function uploadDirtySpan(
-  attr: THREE.InstancedBufferAttribute,
-  span: DirtySpan,
-  itemSize: number,
-): void {
-  if (!hasDirtySpan(span)) return;
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(
-    span.minSlot * itemSize,
-    (span.maxSlot - span.minSlot + 1) * itemSize,
-  );
-  attr.needsUpdate = true;
-  clearDirtySpan(span);
-}
-
-function setInstancedCount(mesh: THREE.InstancedMesh, count: number): void {
-  if (mesh.count !== count) mesh.count = count;
-}
-
-function writeInstanceMatrix(
-  mesh: THREE.InstancedMesh,
-  slot: number,
-  matrix: THREE.Matrix4,
-  dirty: DirtySpan,
-): void {
-  const out = mesh.instanceMatrix.array;
-  const src = matrix.elements;
-  const offset = slot * 16;
-  const s0 = Math.fround(src[0]);
-  const s1 = Math.fround(src[1]);
-  const s2 = Math.fround(src[2]);
-  const s3 = Math.fround(src[3]);
-  const s4 = Math.fround(src[4]);
-  const s5 = Math.fround(src[5]);
-  const s6 = Math.fround(src[6]);
-  const s7 = Math.fround(src[7]);
-  const s8 = Math.fround(src[8]);
-  const s9 = Math.fround(src[9]);
-  const s10 = Math.fround(src[10]);
-  const s11 = Math.fround(src[11]);
-  const s12 = Math.fround(src[12]);
-  const s13 = Math.fround(src[13]);
-  const s14 = Math.fround(src[14]);
-  const s15 = Math.fround(src[15]);
-  if (
-    out[offset] === s0 &&
-    out[offset + 1] === s1 &&
-    out[offset + 2] === s2 &&
-    out[offset + 3] === s3 &&
-    out[offset + 4] === s4 &&
-    out[offset + 5] === s5 &&
-    out[offset + 6] === s6 &&
-    out[offset + 7] === s7 &&
-    out[offset + 8] === s8 &&
-    out[offset + 9] === s9 &&
-    out[offset + 10] === s10 &&
-    out[offset + 11] === s11 &&
-    out[offset + 12] === s12 &&
-    out[offset + 13] === s13 &&
-    out[offset + 14] === s14 &&
-    out[offset + 15] === s15
-  ) {
-    return;
-  }
-  out[offset] = s0;
-  out[offset + 1] = s1;
-  out[offset + 2] = s2;
-  out[offset + 3] = s3;
-  out[offset + 4] = s4;
-  out[offset + 5] = s5;
-  out[offset + 6] = s6;
-  out[offset + 7] = s7;
-  out[offset + 8] = s8;
-  out[offset + 9] = s9;
-  out[offset + 10] = s10;
-  out[offset + 11] = s11;
-  out[offset + 12] = s12;
-  out[offset + 13] = s13;
-  out[offset + 14] = s14;
-  out[offset + 15] = s15;
-  markDirtySlot(dirty, slot);
-}
-
-function writeInstanceMatrixArray(
-  mesh: THREE.InstancedMesh,
-  slot: number,
-  matrix: ArrayLike<number>,
-  srcOffset: number,
-  dirty: DirtySpan,
-): void {
-  const out = mesh.instanceMatrix.array;
-  const offset = slot * 16;
-  const s0 = matrix[srcOffset];
-  const s1 = matrix[srcOffset + 1];
-  const s2 = matrix[srcOffset + 2];
-  const s3 = matrix[srcOffset + 3];
-  const s4 = matrix[srcOffset + 4];
-  const s5 = matrix[srcOffset + 5];
-  const s6 = matrix[srcOffset + 6];
-  const s7 = matrix[srcOffset + 7];
-  const s8 = matrix[srcOffset + 8];
-  const s9 = matrix[srcOffset + 9];
-  const s10 = matrix[srcOffset + 10];
-  const s11 = matrix[srcOffset + 11];
-  const s12 = matrix[srcOffset + 12];
-  const s13 = matrix[srcOffset + 13];
-  const s14 = matrix[srcOffset + 14];
-  const s15 = matrix[srcOffset + 15];
-  if (
-    out[offset] === s0 &&
-    out[offset + 1] === s1 &&
-    out[offset + 2] === s2 &&
-    out[offset + 3] === s3 &&
-    out[offset + 4] === s4 &&
-    out[offset + 5] === s5 &&
-    out[offset + 6] === s6 &&
-    out[offset + 7] === s7 &&
-    out[offset + 8] === s8 &&
-    out[offset + 9] === s9 &&
-    out[offset + 10] === s10 &&
-    out[offset + 11] === s11 &&
-    out[offset + 12] === s12 &&
-    out[offset + 13] === s13 &&
-    out[offset + 14] === s14 &&
-    out[offset + 15] === s15
-  ) {
-    return;
-  }
-  out[offset] = s0;
-  out[offset + 1] = s1;
-  out[offset + 2] = s2;
-  out[offset + 3] = s3;
-  out[offset + 4] = s4;
-  out[offset + 5] = s5;
-  out[offset + 6] = s6;
-  out[offset + 7] = s7;
-  out[offset + 8] = s8;
-  out[offset + 9] = s9;
-  out[offset + 10] = s10;
-  out[offset + 11] = s11;
-  out[offset + 12] = s12;
-  out[offset + 13] = s13;
-  out[offset + 14] = s14;
-  out[offset + 15] = s15;
-  markDirtySlot(dirty, slot);
-}
 
 function readInstanceMatrix(
   mesh: THREE.InstancedMesh,

@@ -1,4 +1,5 @@
 import type { Entity, Turret } from '../sim/types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -52,30 +53,6 @@ export type ClientRenderTurretHostRows = {
   readonly count: number;
   readonly views: ClientRenderTurretStateViews;
 };
-
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
 
 function assertNear(label: string, actual: number, expected: number, tolerance = 1e-3): void {
   if (Math.abs(actual - expected) <= tolerance) return;
@@ -343,30 +320,30 @@ export class ClientRenderTurretStateSlab {
     const nextRowCapacity = nextHostCapacity * CLIENT_RENDER_TURRET_MAX_PER_HOST;
     const views = this.views;
     this.views = {
-      hostEntityIds: growFloat64(views.hostEntityIds, nextRowCapacity),
-      turretEntityIds: growFloat64(views.turretEntityIds, nextRowCapacity),
-      flags: growUint16(views.flags, nextRowCapacity),
-      stateCode: growUint8(views.stateCode, nextRowCapacity),
-      rotation: growFloat32(views.rotation, nextRowCapacity),
-      pitch: growFloat32(views.pitch, nextRowCapacity),
-      mountX: growFloat32(views.mountX, nextRowCapacity),
-      mountY: growFloat32(views.mountY, nextRowCapacity),
-      mountZ: growFloat32(views.mountZ, nextRowCapacity),
-      headRadius: growFloat32(views.headRadius, nextRowCapacity),
-      range: growFloat32(views.range, nextRowCapacity),
-      shieldRange: growFloat32(views.shieldRange, nextRowCapacity),
-      barrierOuterRange: growFloat32(views.barrierOuterRange, nextRowCapacity),
-      barrierOriginOffsetZ: growFloat32(views.barrierOriginOffsetZ, nextRowCapacity),
-      barrierAlpha: growFloat32(views.barrierAlpha, nextRowCapacity),
-      barrierShape: growUint8(views.barrierShape, nextRowCapacity),
-      mountLiftY: growFloat32(views.mountLiftY, nextRowCapacity),
-      spinIdle: growFloat32(views.spinIdle, nextRowCapacity),
-      spinAccel: growFloat32(views.spinAccel, nextRowCapacity),
-      spinDecel: growFloat32(views.spinDecel, nextRowCapacity),
-      spinMax: growFloat32(views.spinMax, nextRowCapacity),
-      hostCounts: growUint16(views.hostCounts, nextHostCapacity),
+      hostEntityIds: growTypedArray(views.hostEntityIds, nextRowCapacity),
+      turretEntityIds: growTypedArray(views.turretEntityIds, nextRowCapacity),
+      flags: growTypedArray(views.flags, nextRowCapacity),
+      stateCode: growTypedArray(views.stateCode, nextRowCapacity),
+      rotation: growTypedArray(views.rotation, nextRowCapacity),
+      pitch: growTypedArray(views.pitch, nextRowCapacity),
+      mountX: growTypedArray(views.mountX, nextRowCapacity),
+      mountY: growTypedArray(views.mountY, nextRowCapacity),
+      mountZ: growTypedArray(views.mountZ, nextRowCapacity),
+      headRadius: growTypedArray(views.headRadius, nextRowCapacity),
+      range: growTypedArray(views.range, nextRowCapacity),
+      shieldRange: growTypedArray(views.shieldRange, nextRowCapacity),
+      barrierOuterRange: growTypedArray(views.barrierOuterRange, nextRowCapacity),
+      barrierOriginOffsetZ: growTypedArray(views.barrierOriginOffsetZ, nextRowCapacity),
+      barrierAlpha: growTypedArray(views.barrierAlpha, nextRowCapacity),
+      barrierShape: growTypedArray(views.barrierShape, nextRowCapacity),
+      mountLiftY: growTypedArray(views.mountLiftY, nextRowCapacity),
+      spinIdle: growTypedArray(views.spinIdle, nextRowCapacity),
+      spinAccel: growTypedArray(views.spinAccel, nextRowCapacity),
+      spinDecel: growTypedArray(views.spinDecel, nextRowCapacity),
+      spinMax: growTypedArray(views.spinMax, nextRowCapacity),
+      hostCounts: growTypedArray(views.hostCounts, nextHostCapacity),
     };
-    this.dirtyHostMarks = growUint8(this.dirtyHostMarks, nextHostCapacity);
+    this.dirtyHostMarks = growTypedArray(this.dirtyHostMarks, nextHostCapacity);
   }
 
   private markHostDirty(hostSlot: number): void {

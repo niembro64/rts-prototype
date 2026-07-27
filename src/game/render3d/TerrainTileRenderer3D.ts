@@ -66,14 +66,16 @@ import {
   getTerrainVersion,
   terrainMeshHeightFromSample,
   terrainMeshNormalFromSample,
-  getTerrainBuildabilityGridCell,
-  getTerrainBuildabilityConfigKey,
   getTerrainPerimeterMagnitude,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
 } from '../sim/Terrain';
+import {
+  getTerrainBuildabilityConfigKey,
+  getTerrainBuildabilityGridCell,
+} from '../sim/terrain/terrainBuildability';
 import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
 import { getTerrainMapBoundaryFade } from '../sim/terrain/terrainHeightGenerator';
 import {

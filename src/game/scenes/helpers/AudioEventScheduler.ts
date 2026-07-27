@@ -4,7 +4,10 @@
 // start/stop) are always played immediately.
 
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
-import { createSimEventDto } from '../../network/snapshotDtoCopy';
+import {
+  copySimEventInto,
+  createSimEventDto,
+} from '../../network/simEventDto';
 
 type QueuedAudioEvent = {
   event: NetworkServerSnapshotSimEvent;
@@ -14,50 +17,6 @@ type QueuedAudioEvent = {
 function isContinuousAudioEvent(event: NetworkServerSnapshotSimEvent): boolean {
   return event.type === 'laserStart' || event.type === 'laserStop' ||
     event.type === 'shieldStart' || event.type === 'shieldStop';
-}
-
-function copyQueuedAudioEventInto(
-  src: NetworkServerSnapshotSimEvent,
-  dst: NetworkServerSnapshotSimEvent,
-): NetworkServerSnapshotSimEvent {
-  dst.type = src.type;
-  dst.turretBlueprintId = src.turretBlueprintId;
-  dst.sourceType = src.sourceType;
-  dst.sourceKey = src.sourceKey;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.playerId = src.playerId;
-  dst.entityId = src.entityId;
-  dst.deathContext = src.deathContext;
-  dst.impactContext = src.impactContext;
-  dst.waterSplash = src.waterSplash
-    ? {
-        velocity: { ...src.waterSplash.velocity },
-        mass: src.waterSplash.mass,
-      }
-    : null;
-  if (src.shieldImpact === null) {
-    dst.shieldImpact = null;
-  } else if (dst.shieldImpact === null) {
-    dst.shieldImpact = {
-      normal: {
-        x: src.shieldImpact.normal.x,
-        y: src.shieldImpact.normal.y,
-        z: src.shieldImpact.normal.z,
-      },
-      playerId: src.shieldImpact.playerId,
-    };
-  } else {
-    dst.shieldImpact.normal.x = src.shieldImpact.normal.x;
-    dst.shieldImpact.normal.y = src.shieldImpact.normal.y;
-    dst.shieldImpact.normal.z = src.shieldImpact.normal.z;
-    dst.shieldImpact.playerId = src.shieldImpact.playerId;
-  }
-  dst.killerPlayerId = src.killerPlayerId;
-  dst.victimPlayerId = src.victimPlayerId;
-  dst.audioOnly = src.audioOnly;
-  return dst;
 }
 
 export class AudioEventScheduler {
@@ -72,7 +31,7 @@ export class AudioEventScheduler {
     playAt: number,
   ): QueuedAudioEvent {
     const ownedEvent = this.eventPool.pop() ?? createSimEventDto();
-    copyQueuedAudioEventInto(event, ownedEvent);
+    copySimEventInto(event, ownedEvent);
     const queued = this.queuePool.pop();
     if (queued !== undefined) {
       queued.event = ownedEvent;

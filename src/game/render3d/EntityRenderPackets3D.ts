@@ -1,4 +1,5 @@
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
@@ -53,69 +54,6 @@ const UNIT_RENDER_FLAG_AIRBORNE = CLIENT_RENDER_UNIT_FLAG_AIRBORNE;
 const UNIT_RENDER_FLAG_HAS_SUSPENSION = CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION;
 const ENTITY_RENDER_FLAG_LOD_PROXY = 1 << 9;
 const EMPTY_TURRETS: readonly Turret[] = [];
-
-function growFloat32(
-  source: Float32Array<ArrayBuffer>,
-  nextCapacity: number,
-): Float32Array<ArrayBuffer> {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(
-  source: Float64Array<ArrayBuffer>,
-  nextCapacity: number,
-): Float64Array<ArrayBuffer> {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(
-  source: Uint8Array<ArrayBuffer>,
-  nextCapacity: number,
-): Uint8Array<ArrayBuffer> {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint16(
-  source: Uint16Array<ArrayBuffer>,
-  nextCapacity: number,
-): Uint16Array<ArrayBuffer> {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint32(
-  source: Uint32Array<ArrayBuffer>,
-  nextCapacity: number,
-): Uint32Array<ArrayBuffer> {
-  const next = new Uint32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growInt16(
-  source: Int16Array<ArrayBuffer>,
-  nextCapacity: number,
-): Int16Array<ArrayBuffer> {
-  const next = new Int16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growInt32(
-  source: Int32Array<ArrayBuffer>,
-  nextCapacity: number,
-): Int32Array<ArrayBuffer> {
-  const next = new Int32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
 
 function entityRenderFlags(
   entity: Entity,
@@ -428,43 +366,43 @@ export class UnitRenderPacket3D {
     if (required <= this.ids.length) return;
     let nextCapacity = this.ids.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.ids = growFloat64(this.ids, nextCapacity);
-    this.ownerIds = growFloat64(this.ownerIds, nextCapacity);
-    this.x = growFloat32(this.x, nextCapacity);
-    this.y = growFloat32(this.y, nextCapacity);
-    this.z = growFloat32(this.z, nextCapacity);
-    this.rotation = growFloat32(this.rotation, nextCapacity);
-    this.groundY = growFloat32(this.groundY, nextCapacity);
-    this.radiusOther = growFloat32(this.radiusOther, nextCapacity);
-    this.lodProxyRadius = growFloat32(this.lodProxyRadius, nextCapacity);
-    this.lodProxyGlyph = growUint8(this.lodProxyGlyph, nextCapacity);
-    this.normalX = growFloat32(this.normalX, nextCapacity);
-    this.normalY = growFloat32(this.normalY, nextCapacity);
-    this.normalZ = growFloat32(this.normalZ, nextCapacity);
-    this.velocityX = growFloat32(this.velocityX, nextCapacity);
-    this.velocityY = growFloat32(this.velocityY, nextCapacity);
-    this.yawRate = growFloat32(this.yawRate, nextCapacity);
-    this.orientationX = growFloat32(this.orientationX, nextCapacity);
-    this.orientationY = growFloat32(this.orientationY, nextCapacity);
-    this.orientationZ = growFloat32(this.orientationZ, nextCapacity);
-    this.orientationW = growFloat32(this.orientationW, nextCapacity);
-    this.hasFullOrientation = growUint8(this.hasFullOrientation, nextCapacity);
-    this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
-    this.progress = growFloat32(this.progress, nextCapacity);
-    this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
-    this.turretCount = growUint16(this.turretCount, nextCapacity);
-    this.shieldPanelTurretIndex = growInt16(this.shieldPanelTurretIndex, nextCapacity);
-    this.flags = growUint16(this.flags, nextCapacity);
-    this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);
-    this.turretStarts = growUint32(this.turretStarts, nextCapacity);
-    this.turretStateCounts = growUint16(this.turretStateCounts, nextCapacity);
+    this.ids = growTypedArray(this.ids, nextCapacity);
+    this.ownerIds = growTypedArray(this.ownerIds, nextCapacity);
+    this.x = growTypedArray(this.x, nextCapacity);
+    this.y = growTypedArray(this.y, nextCapacity);
+    this.z = growTypedArray(this.z, nextCapacity);
+    this.rotation = growTypedArray(this.rotation, nextCapacity);
+    this.groundY = growTypedArray(this.groundY, nextCapacity);
+    this.radiusOther = growTypedArray(this.radiusOther, nextCapacity);
+    this.lodProxyRadius = growTypedArray(this.lodProxyRadius, nextCapacity);
+    this.lodProxyGlyph = growTypedArray(this.lodProxyGlyph, nextCapacity);
+    this.normalX = growTypedArray(this.normalX, nextCapacity);
+    this.normalY = growTypedArray(this.normalY, nextCapacity);
+    this.normalZ = growTypedArray(this.normalZ, nextCapacity);
+    this.velocityX = growTypedArray(this.velocityX, nextCapacity);
+    this.velocityY = growTypedArray(this.velocityY, nextCapacity);
+    this.yawRate = growTypedArray(this.yawRate, nextCapacity);
+    this.orientationX = growTypedArray(this.orientationX, nextCapacity);
+    this.orientationY = growTypedArray(this.orientationY, nextCapacity);
+    this.orientationZ = growTypedArray(this.orientationZ, nextCapacity);
+    this.orientationW = growTypedArray(this.orientationW, nextCapacity);
+    this.hasFullOrientation = growTypedArray(this.hasFullOrientation, nextCapacity);
+    this.bodyOpacity = growTypedArray(this.bodyOpacity, nextCapacity);
+    this.progress = growTypedArray(this.progress, nextCapacity);
+    this.supportPointOffsetZ = growTypedArray(this.supportPointOffsetZ, nextCapacity);
+    this.turretCount = growTypedArray(this.turretCount, nextCapacity);
+    this.shieldPanelTurretIndex = growTypedArray(this.shieldPanelTurretIndex, nextCapacity);
+    this.flags = growTypedArray(this.flags, nextCapacity);
+    this.turretHostSlots = growTypedArray(this.turretHostSlots, nextCapacity);
+    this.turretStarts = growTypedArray(this.turretStarts, nextCapacity);
+    this.turretStateCounts = growTypedArray(this.turretStateCounts, nextCapacity);
   }
 
   private ensureRemovalCapacity(required: number): void {
     if (required <= this.removedIds.length) return;
     let nextCapacity = this.removedIds.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.removedIds = growFloat64(this.removedIds, nextCapacity);
+    this.removedIds = growTypedArray(this.removedIds, nextCapacity);
   }
 }
 
@@ -710,30 +648,30 @@ export class BuildingRenderPacket3D {
     if (required <= this.ids.length) return;
     let nextCapacity = this.ids.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.ids = growFloat64(this.ids, nextCapacity);
-    this.ownerIds = growFloat64(this.ownerIds, nextCapacity);
-    this.x = growFloat32(this.x, nextCapacity);
-    this.y = growFloat32(this.y, nextCapacity);
-    this.z = growFloat32(this.z, nextCapacity);
-    this.rotation = growFloat32(this.rotation, nextCapacity);
-    this.baseY = growFloat32(this.baseY, nextCapacity);
-    this.width = growFloat32(this.width, nextCapacity);
-    this.footprintDepth = growFloat32(this.footprintDepth, nextCapacity);
-    this.progress = growFloat32(this.progress, nextCapacity);
-    this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
-    this.lodProxyRadius = growFloat32(this.lodProxyRadius, nextCapacity);
-    this.lodProxyGlyph = growUint8(this.lodProxyGlyph, nextCapacity);
-    this.turretCount = growUint16(this.turretCount, nextCapacity);
-    this.flags = growUint16(this.flags, nextCapacity);
-    this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);
-    this.turretStarts = growUint32(this.turretStarts, nextCapacity);
-    this.turretStateCounts = growUint16(this.turretStateCounts, nextCapacity);
+    this.ids = growTypedArray(this.ids, nextCapacity);
+    this.ownerIds = growTypedArray(this.ownerIds, nextCapacity);
+    this.x = growTypedArray(this.x, nextCapacity);
+    this.y = growTypedArray(this.y, nextCapacity);
+    this.z = growTypedArray(this.z, nextCapacity);
+    this.rotation = growTypedArray(this.rotation, nextCapacity);
+    this.baseY = growTypedArray(this.baseY, nextCapacity);
+    this.width = growTypedArray(this.width, nextCapacity);
+    this.footprintDepth = growTypedArray(this.footprintDepth, nextCapacity);
+    this.progress = growTypedArray(this.progress, nextCapacity);
+    this.bodyOpacity = growTypedArray(this.bodyOpacity, nextCapacity);
+    this.lodProxyRadius = growTypedArray(this.lodProxyRadius, nextCapacity);
+    this.lodProxyGlyph = growTypedArray(this.lodProxyGlyph, nextCapacity);
+    this.turretCount = growTypedArray(this.turretCount, nextCapacity);
+    this.flags = growTypedArray(this.flags, nextCapacity);
+    this.turretHostSlots = growTypedArray(this.turretHostSlots, nextCapacity);
+    this.turretStarts = growTypedArray(this.turretStarts, nextCapacity);
+    this.turretStateCounts = growTypedArray(this.turretStateCounts, nextCapacity);
   }
 
   private ensureRemovalCapacity(required: number): void {
     if (required <= this.removedIds.length) return;
     let nextCapacity = this.removedIds.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.removedIds = growFloat64(this.removedIds, nextCapacity);
+    this.removedIds = growTypedArray(this.removedIds, nextCapacity);
   }
 }

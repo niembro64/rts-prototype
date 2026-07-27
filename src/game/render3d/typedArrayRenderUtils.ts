@@ -1,3 +1,7 @@
+export {
+  growTypedArrayGeometrically as growFloat32Array,
+} from '../memory/typedArrayGrowth';
+
 type Vector3Like = {
   x: number;
   y: number;
@@ -7,18 +11,6 @@ type Vector3Like = {
 type QuaternionLike = Vector3Like & {
   w: number;
 };
-
-export function growFloat32Array(
-  values: Float32Array<ArrayBuffer>,
-  requiredLength: number,
-): Float32Array<ArrayBuffer> {
-  if (values.length >= requiredLength) return values;
-  let nextLength = Math.max(1, values.length);
-  while (nextLength < requiredLength) nextLength *= 2;
-  const expanded = new Float32Array(nextLength);
-  expanded.set(values);
-  return expanded;
-}
 
 export function writePositionQuaternion(
   output: Float32Array,

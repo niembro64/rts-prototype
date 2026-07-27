@@ -1,6 +1,7 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { ARRIVAL_RADIUS } from './SimulationArrivalController';
 import type { Entity } from './types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 
 const STUCK_VEL_THRESHOLD = 5;
 const STUCK_TICK_THRESHOLD = 60;
@@ -105,21 +106,11 @@ export class SimulationStuckReplanController {
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
     const next = Math.max(required, this.slots.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this.slots);
-    this.slots = slots;
-    const ticks = new Int32Array(next);
-    ticks.set(this.ticks);
-    this.ticks = ticks;
-    const settlingDx = new Float64Array(next);
-    settlingDx.set(this.settlingDx);
-    this.settlingDx = settlingDx;
-    const settlingDy = new Float64Array(next);
-    settlingDy.set(this.settlingDy);
-    this.settlingDy = settlingDy;
-    const settlingFlags = new Uint8Array(next);
-    settlingFlags.set(this.settlingFlags);
-    this.settlingFlags = settlingFlags;
+    this.slots = growTypedArray(this.slots, next);
+    this.ticks = growTypedArray(this.ticks, next);
+    this.settlingDx = growTypedArray(this.settlingDx, next);
+    this.settlingDy = growTypedArray(this.settlingDy, next);
+    this.settlingFlags = growTypedArray(this.settlingFlags, next);
     this.outTicks = new Int32Array(next);
     this.outReplan = new Uint8Array(next);
   }

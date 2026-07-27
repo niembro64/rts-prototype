@@ -50,6 +50,7 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
 import { recordEffectiveHostileDamage } from '../aggression';
 import { isAttackEmitter } from '../emitterKinds';
+import { rayBoxIntersectionTWithDelta } from '../../math/CollisionHelpers';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -240,50 +241,6 @@ function lineSphereIntersectionTWithDelta(
   const t2 = (-b + discriminant) * invDenom;
   if (t2 >= 0 && t2 <= 1) return t2;
   return null;
-}
-
-function rayBoxIntersectionTWithDelta(
-  sx: number, sy: number, sz: number,
-  dx: number, dy: number, dz: number,
-  minX: number, minY: number, minZ: number,
-  maxX: number, maxY: number, maxZ: number,
-): number | null {
-  let tmin = 0;
-  let tmax = 1;
-
-  if (Math.abs(dx) > 1e-9) {
-    let t1 = (minX - sx) / dx;
-    let t2 = (maxX - sx) / dx;
-    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-    if (t1 > tmin) tmin = t1;
-    if (t2 < tmax) tmax = t2;
-  } else if (sx < minX || sx > maxX) {
-    return null;
-  }
-  if (tmin > tmax) return null;
-
-  if (Math.abs(dy) > 1e-9) {
-    let t1 = (minY - sy) / dy;
-    let t2 = (maxY - sy) / dy;
-    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-    if (t1 > tmin) tmin = t1;
-    if (t2 < tmax) tmax = t2;
-  } else if (sy < minY || sy > maxY) {
-    return null;
-  }
-  if (tmin > tmax) return null;
-
-  if (Math.abs(dz) > 1e-9) {
-    let t1 = (minZ - sz) / dz;
-    let t2 = (maxZ - sz) / dz;
-    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-    if (t1 > tmin) tmin = t1;
-    if (t2 < tmax) tmax = t2;
-  } else if (sz < minZ || sz > maxZ) {
-    return null;
-  }
-  if (tmin > tmax || tmax < 0) return null;
-  return Math.max(tmin, 0);
 }
 
 let _damageBatchCapacity = 0;

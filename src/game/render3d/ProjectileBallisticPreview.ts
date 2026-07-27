@@ -6,6 +6,7 @@ import {
   type KinematicState3,
 } from '../math';
 import { getTurretWorldMount } from '../math/MountGeometry';
+import { rayDistanceToMapEdge } from '../math/rayMapBounds';
 import type { Entity, ProjectileShot, Turret } from '../sim/types';
 import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
@@ -255,22 +256,4 @@ function canReachAtDistance(
     shot,
     speed,
   );
-}
-
-function rayDistanceToMapEdge(
-  x: number,
-  y: number,
-  dirX: number,
-  dirY: number,
-  mapWidth: number,
-  mapHeight: number,
-): number {
-  let t = Infinity;
-  if (dirX > 1e-6) t = Math.min(t, (mapWidth - x) / dirX);
-  else if (dirX < -1e-6) t = Math.min(t, -x / dirX);
-
-  if (dirY > 1e-6) t = Math.min(t, (mapHeight - y) / dirY);
-  else if (dirY < -1e-6) t = Math.min(t, -y / dirY);
-
-  return Number.isFinite(t) ? Math.max(0, t) : 0;
 }

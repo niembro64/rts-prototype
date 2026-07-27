@@ -7,7 +7,7 @@ import type { CommandQueue, Command } from '../sim/commands';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { PlayerId } from '../sim/types';
-import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
@@ -24,7 +24,6 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
 import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
-import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { trimBuildingActiveStateBuffers } from '../sim/buildingActiveState';
 import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
@@ -64,6 +63,10 @@ import {
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import {
+  setTurretShieldPanelsEnabled,
+  setTurretShieldSpheresEnabled,
+} from '../sim/turretShieldToggle';
 
 import type { GameServerConfig } from '@/types/game';
 
@@ -612,12 +615,12 @@ export class GameServer {
       case 'setTurretShieldPanelsEnabled':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
-        this.setTurretShieldPanelsEnabled(sanitizedCommand.enabled);
+        setTurretShieldPanelsEnabled(this.world, sanitizedCommand.enabled);
         return;
       case 'setTurretShieldSpheresEnabled':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
-        this.setTurretShieldSpheresEnabled(sanitizedCommand.enabled);
+        setTurretShieldSpheresEnabled(this.world, sanitizedCommand.enabled);
         return;
       case 'setForceFieldsVisible':
         if (!canApplyServerControl) return;
@@ -671,44 +674,6 @@ export class GameServer {
 
   getCanonicalStateHash(): CanonicalServerStateHash {
     return this.core.getCanonicalStateHash();
-  }
-
-  private setTurretShieldPanelsEnabled(enabled: boolean): void {
-    if (this.world.turretShieldPanelsEnabled === enabled) return;
-    this.world.turretShieldPanelsEnabled = enabled;
-    if (enabled) return;
-    for (const unit of this.world.getShieldPanelUnits()) {
-      const combat = unit.combat;
-      if (!combat) continue;
-      const turrets = combat.turrets;
-      for (let i = 0; i < turrets.length; i++) {
-        const turret = turrets[i];
-        if (!turret.config.passive) continue;
-        turret.target = null;
-        turret.state = 'idle';
-        resetDisabledTurretJsOnlyFields(turret);
-      }
-      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
-    }
-  }
-
-  private setTurretShieldSpheresEnabled(enabled: boolean): void {
-    if (this.world.turretShieldSpheresEnabled === enabled) return;
-    this.world.turretShieldSpheresEnabled = enabled;
-    if (enabled) return;
-    for (const unit of this.world.getShieldUnits()) {
-      const combat = unit.combat;
-      if (!combat) continue;
-      const turrets = combat.turrets;
-      for (const turret of turrets) {
-        const shot = turret.config.shot;
-        if (shot === null || shot.type !== 'shield') continue;
-        turret.target = null;
-        turret.state = 'idle';
-        resetDisabledTurretJsOnlyFields(turret);
-      }
-      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
-    }
   }
 
   private setShieldReflectionMode(mode: ShieldReflectionMode): void {

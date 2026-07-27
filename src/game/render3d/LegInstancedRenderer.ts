@@ -44,6 +44,12 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  createDirtySlotSpan as createDirtySpan,
+  markDirtySlot,
+  uploadDirtySlotSpan as uploadDirtySpan,
+  writeInstancedMatrix as writeMatrixAt,
+} from './instancedBufferUpdate';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -68,108 +74,6 @@ const DEFRAG_MIN_FREE_FRAC = 0.25;
 /** Callback invoked when defrag relocates a live slot: receives the
  *  new slot index, lets the owner update its stored reference. */
 type SlotRelocator = (newSlot: number) => void;
-
-type DirtySpan = {
-  minSlot: number;
-  maxSlot: number;
-};
-
-function createDirtySpan(): DirtySpan {
-  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
-}
-
-function markDirtySlot(span: DirtySpan, slot: number): void {
-  if (slot < span.minSlot) span.minSlot = slot;
-  if (slot > span.maxSlot) span.maxSlot = slot;
-}
-
-function clearDirtySpan(span: DirtySpan): void {
-  span.minSlot = Number.POSITIVE_INFINITY;
-  span.maxSlot = -1;
-}
-
-function hasDirtySpan(span: DirtySpan): boolean {
-  return span.maxSlot >= span.minSlot;
-}
-
-function uploadDirtySpan(
-  attr: THREE.BufferAttribute,
-  span: DirtySpan,
-  itemSize: number,
-): void {
-  if (!hasDirtySpan(span)) return;
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(
-    span.minSlot * itemSize,
-    (span.maxSlot - span.minSlot + 1) * itemSize,
-  );
-  attr.needsUpdate = true;
-  clearDirtySpan(span);
-}
-
-function writeMatrixAt(
-  mesh: THREE.InstancedMesh,
-  slot: number,
-  matrix: THREE.Matrix4,
-  dirty: DirtySpan,
-): void {
-  const out = mesh.instanceMatrix.array;
-  const src = matrix.elements;
-  const offset = slot * 16;
-  const s0 = Math.fround(src[0]);
-  const s1 = Math.fround(src[1]);
-  const s2 = Math.fround(src[2]);
-  const s3 = Math.fround(src[3]);
-  const s4 = Math.fround(src[4]);
-  const s5 = Math.fround(src[5]);
-  const s6 = Math.fround(src[6]);
-  const s7 = Math.fround(src[7]);
-  const s8 = Math.fround(src[8]);
-  const s9 = Math.fround(src[9]);
-  const s10 = Math.fround(src[10]);
-  const s11 = Math.fround(src[11]);
-  const s12 = Math.fround(src[12]);
-  const s13 = Math.fround(src[13]);
-  const s14 = Math.fround(src[14]);
-  const s15 = Math.fround(src[15]);
-  if (
-    out[offset] === s0 &&
-    out[offset + 1] === s1 &&
-    out[offset + 2] === s2 &&
-    out[offset + 3] === s3 &&
-    out[offset + 4] === s4 &&
-    out[offset + 5] === s5 &&
-    out[offset + 6] === s6 &&
-    out[offset + 7] === s7 &&
-    out[offset + 8] === s8 &&
-    out[offset + 9] === s9 &&
-    out[offset + 10] === s10 &&
-    out[offset + 11] === s11 &&
-    out[offset + 12] === s12 &&
-    out[offset + 13] === s13 &&
-    out[offset + 14] === s14 &&
-    out[offset + 15] === s15
-  ) {
-    return;
-  }
-  out[offset] = s0;
-  out[offset + 1] = s1;
-  out[offset + 2] = s2;
-  out[offset + 3] = s3;
-  out[offset + 4] = s4;
-  out[offset + 5] = s5;
-  out[offset + 6] = s6;
-  out[offset + 7] = s7;
-  out[offset + 8] = s8;
-  out[offset + 9] = s9;
-  out[offset + 10] = s10;
-  out[offset + 11] = s11;
-  out[offset + 12] = s12;
-  out[offset + 13] = s13;
-  out[offset + 14] = s14;
-  out[offset + 15] = s15;
-  markDirtySlot(dirty, slot);
-}
 
 /** Pack live entries down to the bottom of a slot pool. Walks
  *  top-down; for each topmost free slot just shrinks `nextSlot`,

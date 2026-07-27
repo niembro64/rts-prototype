@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret, Unit } from '../sim/types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -42,6 +43,15 @@ import {
   SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER,
   SHIELD_FIELD_SHAPE_SPHERE,
 } from './ShieldFieldShape3D';
+import {
+  clearDirtySlotSpan as clearDirtySpan,
+  createDirtySlotSpan as createDirtySpan,
+  markDirtySlot,
+  setInstancedMeshCount as setInstancedCount,
+  type DirtySlotSpan as DirtySpan,
+  uploadDirtySlotSpan as uploadDirtySpan,
+  writeInstancedMatrix as writeMatrixAt,
+} from './instancedBufferUpdate';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -499,26 +509,26 @@ export class ShieldRenderPacket3D {
     if (required <= this.hostIds.length) return;
     let nextCapacity = this.hostIds.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.hostIds = growFloat64(this.hostIds, nextCapacity);
-    this.turretIndices = growUint16(this.turretIndices, nextCapacity);
-    this.x = growFloat32(this.x, nextCapacity);
-    this.y = growFloat32(this.y, nextCapacity);
-    this.z = growFloat32(this.z, nextCapacity);
-    this.rotation = growFloat32(this.rotation, nextCapacity);
-    this.supportPointOffsetZ = growFloat32(this.supportPointOffsetZ, nextCapacity);
-    this.mountLiftY = growFloat32(this.mountLiftY, nextCapacity);
-    this.localX = growFloat32(this.localX, nextCapacity);
-    this.localY = growFloat32(this.localY, nextCapacity);
-    this.localZ = growFloat32(this.localZ, nextCapacity);
-    this.targetX = growFloat32(this.targetX, nextCapacity);
-    this.targetY = growFloat32(this.targetY, nextCapacity);
-    this.targetZ = growFloat32(this.targetZ, nextCapacity);
-    this.progress = growFloat32(this.progress, nextCapacity);
-    this.outerRange = growFloat32(this.outerRange, nextCapacity);
-    this.originOffsetZ = growFloat32(this.originOffsetZ, nextCapacity);
-    this.barrierAlpha = growFloat32(this.barrierAlpha, nextCapacity);
-    this.color = growUint32(this.color, nextCapacity);
-    this.shape = growUint8(this.shape, nextCapacity);
+    this.hostIds = growTypedArray(this.hostIds, nextCapacity);
+    this.turretIndices = growTypedArray(this.turretIndices, nextCapacity);
+    this.x = growTypedArray(this.x, nextCapacity);
+    this.y = growTypedArray(this.y, nextCapacity);
+    this.z = growTypedArray(this.z, nextCapacity);
+    this.rotation = growTypedArray(this.rotation, nextCapacity);
+    this.supportPointOffsetZ = growTypedArray(this.supportPointOffsetZ, nextCapacity);
+    this.mountLiftY = growTypedArray(this.mountLiftY, nextCapacity);
+    this.localX = growTypedArray(this.localX, nextCapacity);
+    this.localY = growTypedArray(this.localY, nextCapacity);
+    this.localZ = growTypedArray(this.localZ, nextCapacity);
+    this.targetX = growTypedArray(this.targetX, nextCapacity);
+    this.targetY = growTypedArray(this.targetY, nextCapacity);
+    this.targetZ = growTypedArray(this.targetZ, nextCapacity);
+    this.progress = growTypedArray(this.progress, nextCapacity);
+    this.outerRange = growTypedArray(this.outerRange, nextCapacity);
+    this.originOffsetZ = growTypedArray(this.originOffsetZ, nextCapacity);
+    this.barrierAlpha = growTypedArray(this.barrierAlpha, nextCapacity);
+    this.color = growTypedArray(this.color, nextCapacity);
+    this.shape = growTypedArray(this.shape, nextCapacity);
   }
 
   private resolveMountLiftY(unit: Unit): number {
@@ -535,99 +545,10 @@ export class ShieldRenderPacket3D {
   }
 }
 
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
-  const next = new Uint16Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint32(source: Uint32Array, nextCapacity: number): Uint32Array {
-  const next = new Uint32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
 function createVector4ScratchArray(length: number): THREE.Vector4[] {
   const vectors = new Array<THREE.Vector4>(length);
   for (let i = 0; i < length; i++) vectors[i] = new THREE.Vector4();
   return vectors;
-}
-
-type DirtySpan = {
-  minSlot: number;
-  maxSlot: number;
-};
-
-function createDirtySpan(): DirtySpan {
-  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
-}
-
-function markDirtySlot(span: DirtySpan, slot: number): void {
-  if (slot < span.minSlot) span.minSlot = slot;
-  if (slot > span.maxSlot) span.maxSlot = slot;
-}
-
-function clearDirtySpan(span: DirtySpan): void {
-  span.minSlot = Number.POSITIVE_INFINITY;
-  span.maxSlot = -1;
-}
-
-function uploadDirtySpan(
-  attr: THREE.InstancedBufferAttribute,
-  span: DirtySpan,
-  itemSize: number,
-): void {
-  if (span.maxSlot < span.minSlot) return;
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(
-    span.minSlot * itemSize,
-    (span.maxSlot - span.minSlot + 1) * itemSize,
-  );
-  attr.needsUpdate = true;
-  clearDirtySpan(span);
-}
-
-function setInstancedCount(mesh: THREE.InstancedMesh, count: number): void {
-  if (mesh.count !== count) mesh.count = count;
-}
-
-function writeMatrixAt(
-  mesh: THREE.InstancedMesh,
-  slot: number,
-  matrix: THREE.Matrix4,
-  dirty: DirtySpan,
-): void {
-  const out = mesh.instanceMatrix.array;
-  const src = matrix.elements;
-  const offset = slot * 16;
-  let changed = false;
-  for (let i = 0; i < 16; i++) {
-    if (out[offset + i] !== Math.fround(src[i])) {
-      changed = true;
-      break;
-    }
-  }
-  if (!changed) return;
-  for (let i = 0; i < 16; i++) out[offset + i] = Math.fround(src[i]);
-  markDirtySlot(dirty, slot);
 }
 
 function writeAlphaAt(

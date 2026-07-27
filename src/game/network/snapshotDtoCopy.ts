@@ -17,11 +17,14 @@ import type {
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotScanPulse,
-  NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotMotionUpdate,
 } from './NetworkTypes';
+export {
+  copySimEventInto,
+  createSimEventDto,
+} from './simEventDto';
 import {
   PROJECTILE_TYPE_UNKNOWN,
   RESOURCE_FLOW_INBOUND,
@@ -211,63 +214,6 @@ export function copyBeamInto(
   return dst;
 }
 
-export function createSimEventDto(): NetworkServerSnapshotSimEvent {
-  return {
-    type: 'fire',
-    turretBlueprintId: '',
-    sourceType: null,
-    sourceKey: null,
-    pos: { x: 0, y: 0, z: 0 },
-    playerId: null,
-    entityId: null,
-    deathContext: null,
-    impactContext: null,
-    waterSplash: null,
-    shieldImpact: null,
-    killerPlayerId: null,
-    victimPlayerId: null,
-    audioOnly: null,
-  };
-}
-
-export function copySimEventInto(
-  src: NetworkServerSnapshotSimEvent,
-  dst: NetworkServerSnapshotSimEvent,
-): NetworkServerSnapshotSimEvent {
-  dst.type = src.type;
-  dst.turretBlueprintId = src.turretBlueprintId;
-  dst.sourceType = src.sourceType;
-  dst.sourceKey = src.sourceKey;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.playerId = src.playerId;
-  dst.entityId = src.entityId;
-  // deathContext / impactContext are emitted as fresh literals per tick
-  // by the simulation and never reused, so a ref copy is safe and cheap.
-  // shieldImpact's `normal` Vec3 is also a fresh literal but we
-  // spread it defensively because the tiny extra alloc is dwarfed by
-  // the surrounding event-emit work.
-  dst.deathContext = src.deathContext;
-  dst.impactContext = src.impactContext;
-  dst.waterSplash = src.waterSplash
-    ? {
-        velocity: { ...src.waterSplash.velocity },
-        mass: src.waterSplash.mass,
-      }
-    : null;
-  dst.shieldImpact = src.shieldImpact
-    ? {
-        normal: { ...src.shieldImpact.normal },
-        playerId: src.shieldImpact.playerId,
-      }
-    : null;
-  dst.killerPlayerId = src.killerPlayerId;
-  dst.victimPlayerId = src.victimPlayerId;
-  dst.audioOnly = src.audioOnly;
-  return dst;
-}
-
 export function createActionDto(): NetworkServerSnapshotAction {
   return {
     type: 0,
@@ -339,6 +285,19 @@ export function copyTurretInto(
   dst.active = src.active;
   dst.currentShieldRange = src.currentShieldRange;
   return dst;
+}
+
+export function copyTurretListInto(
+  src: readonly NetworkServerSnapshotTurret[] | null | undefined,
+  dst: NetworkServerSnapshotTurret[] | null | undefined,
+): NetworkServerSnapshotTurret[] | null {
+  if (src === null || src === undefined) return null;
+  const out = dst ?? [];
+  out.length = src.length;
+  for (let i = 0; i < src.length; i++) {
+    out[i] = copyTurretInto(src[i], out[i] ?? createTurretDto());
+  }
+  return out;
 }
 
 export function createSprayDto(): NetworkServerSnapshotSprayTarget {
@@ -441,4 +400,3 @@ export function copyScanPulseInto(
   dst.expiresAtTick = src.expiresAtTick;
   return dst;
 }
-

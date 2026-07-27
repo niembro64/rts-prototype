@@ -30,9 +30,8 @@ import {
 } from './snapshotQuantization';
 import {
   copyActionInto,
-  copyTurretInto,
+  copyTurretListInto,
   createActionDto,
-  createTurretDto,
 } from './snapshotDtoCopy';
 
 type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
@@ -670,18 +669,7 @@ export function copyNetworkUnitSnapshotInto(
     dst.actions = null;
   }
 
-  if (src.turrets != null) {
-    const turrets = dst.turrets ?? (dst.turrets = []);
-    turrets.length = src.turrets.length;
-    for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyTurretInto(
-        src.turrets[i],
-        turrets[i] ?? createTurretDto(),
-      );
-    }
-  } else {
-    dst.turrets = null;
-  }
+  dst.turrets = copyTurretListInto(src.turrets, dst.turrets);
 
   return dst;
 }

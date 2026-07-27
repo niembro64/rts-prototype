@@ -53,6 +53,7 @@ import {
   tryAppendBuildingSlabDeltaRowFromState,
   tryAppendUnitSlabDeltaRowFromState,
 } from './snapshotSlabDeltaRows';
+import { resolveEntityFromSlotOrWorld } from '../sim/entitySlotResolution';
 
 const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
@@ -140,18 +141,6 @@ function isSerializedEntityKind(entity: Entity): boolean {
     entity.type === 'unit' ||
     entity.type === 'building'
   );
-}
-
-function resolveSnapshotEntityFromSlot(
-  world: WorldState,
-  id: EntityId,
-  slot: number,
-): Entity | undefined {
-  if (slot >= 0) {
-    const entity = entitySlotRegistry.resolveSlot(slot);
-    if (entity !== undefined && entity.id === id) return entity;
-  }
-  return world.getEntity(id);
 }
 
 export class ServerSnapshotDirectWirePreencoder {
@@ -680,7 +669,7 @@ export class ServerSnapshotDirectWirePreencoder {
       const visibleEntitySlots = input.visibility.getVisibleEntitySlots();
       let entityCount = 0;
       for (let i = 0; i < visibleEntityIds.length; i++) {
-        const entity = resolveSnapshotEntityFromSlot(
+        const entity = resolveEntityFromSlotOrWorld(
           input.world,
           visibleEntityIds[i],
           visibleEntitySlots !== undefined ? visibleEntitySlots[i] : -1,
@@ -734,7 +723,7 @@ export class ServerSnapshotDirectWirePreencoder {
           entityCount++;
           continue;
         }
-        const entity = resolveSnapshotEntityFromSlot(input.world, id, slot);
+        const entity = resolveEntityFromSlotOrWorld(input.world, id, slot);
         if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
         if (!this.writeEntityRow(
           entityCount,
@@ -760,7 +749,7 @@ export class ServerSnapshotDirectWirePreencoder {
         const id = currentVisibleEntityIdList[i];
         if (input.previousVisibleEntityIds.has(id)) continue;
         this.visibleBaselineAddedIds.push(id);
-        const entity = resolveSnapshotEntityFromSlot(
+        const entity = resolveEntityFromSlotOrWorld(
           input.world,
           id,
           currentVisibleEntitySlots !== undefined ? currentVisibleEntitySlots[i] : -1,
@@ -795,7 +784,7 @@ export class ServerSnapshotDirectWirePreencoder {
         entityCount++;
         continue;
       }
-      const entity = resolveSnapshotEntityFromSlot(input.world, id, slot);
+      const entity = resolveEntityFromSlotOrWorld(input.world, id, slot);
       if (!entity || !isSerializedEntityKind(entity)) continue;
       if (!this.writeEntityRow(
         entityCount,

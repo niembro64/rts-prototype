@@ -21,7 +21,6 @@ import { CommandQueue } from '../sim/commands';
 import { Simulation } from '../sim/Simulation';
 import { WorldState } from '../sim/WorldState';
 import {
-  buildTerrainBuildabilityGrid,
   buildTerrainTileMap,
   getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
@@ -31,6 +30,7 @@ import {
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
 } from '../sim/Terrain';
+import { buildTerrainBuildabilityGrid } from '../sim/terrain/terrainBuildability';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
 import {
   spawnInitialBases,

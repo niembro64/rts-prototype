@@ -1,6 +1,7 @@
 import { actionTypeToCode } from '@/types/network';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
+import { growTypedArray } from '../memory/typedArrayGrowth';
 
 const ACTION_TYPE_NONE = 255;
 
@@ -159,26 +160,12 @@ export class SimulationUnitActionPlanner {
   private ensureCapacity(required: number): void {
     if (this.actionTypes.length >= required) return;
     const next = Math.max(required, this.actionTypes.length * 2, 128);
-    const actionTypes = new Uint8Array(next);
-    actionTypes.set(this.actionTypes);
-    this.actionTypes = actionTypes;
-    const flags = new Uint32Array(next);
-    flags.set(this.flags);
-    this.flags = flags;
-    const slots = new Uint32Array(next);
-    slots.set(this.slots);
-    this.slots = slots;
-    const rangeKinds = new Uint8Array(next);
-    rangeKinds.set(this.rangeKinds);
-    this.rangeKinds = rangeKinds;
-    const targetSlots = new Int32Array(next);
-    targetSlots.set(this.targetSlots);
-    this.targetSlots = targetSlots;
-    const rangeParams = new Float64Array(next);
-    rangeParams.set(this.rangeParams);
-    this.rangeParams = rangeParams;
-    const plans = new Uint8Array(next);
-    plans.set(this.plans);
-    this.plans = plans;
+    this.actionTypes = growTypedArray(this.actionTypes, next);
+    this.flags = growTypedArray(this.flags, next);
+    this.slots = growTypedArray(this.slots, next);
+    this.rangeKinds = growTypedArray(this.rangeKinds, next);
+    this.targetSlots = growTypedArray(this.targetSlots, next);
+    this.rangeParams = growTypedArray(this.rangeParams, next);
+    this.plans = growTypedArray(this.plans, next);
   }
 }

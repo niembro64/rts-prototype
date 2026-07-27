@@ -130,6 +130,8 @@ export class CommanderVisualKit3D {
     this.boxGeom.dispose();
     for (const geometry of this.cylinderGeoms.values()) geometry.dispose();
     for (const geometry of this.domeGeoms.values()) geometry.dispose();
+    this.cylinderGeoms.clear();
+    this.domeGeoms.clear();
     this.lensMat.dispose();
   }
 }

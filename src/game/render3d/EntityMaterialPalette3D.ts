@@ -51,6 +51,8 @@ export class EntityMaterialPalette3D {
     this.barrelMat.dispose();
     for (const mat of this.primaryMats.values()) mat.dispose();
     for (const mat of this.turretAccentMats.values()) mat.dispose();
+    this.primaryMats.clear();
+    this.turretAccentMats.clear();
     this.neutralMat.dispose();
   }
 }
