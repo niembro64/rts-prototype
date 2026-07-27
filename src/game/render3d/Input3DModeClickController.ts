@@ -406,7 +406,12 @@ export class Input3DModeClickController {
     kind: Input3DAreaDragKind,
     button: 0 | 2,
   ): boolean {
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    // Build placement resolves the terrain bed: water is never a build
+    // surface, and a water-plane hit is parallax-shifted off the seabed
+    // cell the cursor actually points at.
+    const world = kind === 'buildLine' || kind === 'buildMexArea'
+      ? this.config.picker.raycastTerrainBed(e.clientX, e.clientY)
+      : this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return false;
     const resolvedKind = kind === 'buildLine'
       ? resolveBuildDragKind(e)
@@ -436,7 +441,9 @@ export class Input3DModeClickController {
     // pressing Alt mid-drag flips line -> grid fill (and Alt+Ctrl -> the
     // hollow box) with immediate preview feedback.
     if (isBuildShapeDragKind(drag.kind)) drag.kind = resolveBuildDragKind(e);
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    const world = isBuildShapeDragKind(drag.kind) || drag.kind === 'buildMexArea'
+      ? this.config.picker.raycastTerrainBed(e.clientX, e.clientY)
+      : this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     drag.current = { x: world.x, y: world.y, z: world.z };
   }
@@ -1137,7 +1144,7 @@ export class Input3DModeClickController {
   }
 
   private updateBuildPreview(e: MouseEvent, buildingBlueprintId: BuildingBlueprintId): void {
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    const world = this.config.picker.raycastTerrainBed(e.clientX, e.clientY);
     if (world) {
       const builder = this.config.getSelectedBuilder();
       if (!entityCanBuild(builder, buildingBlueprintId)) {
@@ -1197,7 +1204,7 @@ export class Input3DModeClickController {
       this.config.mode.exitBuildMode();
       return;
     }
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    const world = this.config.picker.raycastTerrainBed(e.clientX, e.clientY);
     if (!world) return;
     const buildingBlueprintId = this.config.mode.buildingBlueprintId;
     if (buildingBlueprintId === null) return;
