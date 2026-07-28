@@ -16,6 +16,14 @@ type WindParticleFieldOptions = {
 /** Wrap the gust-noise drift before f32 uniform precision degrades it. */
 const GUST_DRIFT_WRAP_MULTIPLIER = 1024;
 
+/** Smallest lattice window span. The active span is this times a power of
+ *  two, chosen with hysteresis so it always covers the follow volume. */
+const LATTICE_SPAN_BASE = 512;
+/** Horizontal wind offsets wrap at this fixed span. It is a power-of-two
+ *  multiple of every possible lattice span, so a wrap subtracts an exact
+ *  multiple of the active span and never moves a streak. */
+const LATTICE_SPAN_MAX = 65536;
+
 // Wind is rendered as a small number of legible, gust-grouped,
 // velocity-stretched streaks living in a zoom-proportional volume around
 // the camera. Each instance is a billboarded ribbon built in the vertex
@@ -28,8 +36,10 @@ const GUST_DRIFT_WRAP_MULTIPLIER = 1024;
 const WIND_STREAK_VERTEX_SHADER = `
 attribute vec3 aSeedFrac;   // static per-instance position fractions in [0,1)
 attribute vec2 aRand;       // x: length jitter pick, y: gust phase pick
-uniform vec3 uFieldMin;     // world-space minimum corner of the follow volume
-uniform vec3 uFieldSize;    // world-space extents of the follow volume
+uniform vec2 uWinMin;       // world-space min corner of the lattice window (x, z)
+uniform float uLatticeSpan; // power-of-two window span (world units)
+uniform float uBandMin;     // air band bottom (world y)
+uniform float uBandSize;    // air band height
 uniform vec3 uWindOffset;   // accumulated wind displacement, pre-wrapped per axis
 uniform vec3 uWindDir;      // shared normalized wind direction (three coords)
 uniform float uStreakLen;   // authored world length (speed-proportional)
@@ -61,8 +71,18 @@ void main() {
   float t = position.x;     // 0 = tail, 1 = leading tip
   float side = position.y;  // -1 / +1 ribbon edge
 
-  vec3 wrapped = mod(aSeedFrac * uFieldSize + uWindOffset, uFieldSize);
-  vec3 center = uFieldMin + wrapped;
+  // World-anchored positions: each streak lives at a fixed world point
+  // (seed * span + wind offset) folded into the lattice window around the
+  // camera. Camera pan/zoom/orbit only moves the window, so every camera
+  // command leaves the streaks stationary in the world; the offset is
+  // wrapped CPU-side by exact multiples of the span, so wraps are
+  // invisible. The vertical band is static per match, so y wraps on it
+  // directly.
+  vec2 xz = uWinMin + mod(
+    aSeedFrac.xz * uLatticeSpan + uWindOffset.xz - uWinMin,
+    vec2(uLatticeSpan));
+  float y = uBandMin + mod(aSeedFrac.y * uBandSize + uWindOffset.y, uBandSize);
+  vec3 center = vec3(xz.x, y, xz.y);
 
   vec3 toCamera = cameraPosition - center;
   float viewDist = length(toCamera);
@@ -127,8 +147,10 @@ export class WindParticleField3D {
   private readonly mesh: THREE.Mesh;
   private readonly uniforms: {
     uColor: { value: THREE.Color };
-    uFieldMin: { value: THREE.Vector3 };
-    uFieldSize: { value: THREE.Vector3 };
+    uWinMin: { value: THREE.Vector2 };
+    uLatticeSpan: { value: number };
+    uBandMin: { value: number };
+    uBandSize: { value: number };
     uWindOffset: { value: THREE.Vector3 };
     uWindDir: { value: THREE.Vector3 };
     uStreakLen: { value: number };
@@ -147,6 +169,9 @@ export class WindParticleField3D {
   private offsetZ = 0;
   private gustDriftX = 0;
   private gustDriftZ = 0;
+  /** Active lattice window span (power-of-two multiple of the base),
+   *  switched with hysteresis so zoom rarely rebins the lattice. */
+  private latticeSpan = LATTICE_SPAN_BASE;
   private rngState = 0x7f4a7c15;
 
   constructor(parentWorld: THREE.Group, options: WindParticleFieldOptions) {
@@ -201,8 +226,10 @@ export class WindParticleField3D {
 
     this.uniforms = {
       uColor: { value: new THREE.Color(this.config.colorHex) },
-      uFieldMin: { value: new THREE.Vector3() },
-      uFieldSize: { value: new THREE.Vector3(1, 1, 1) },
+      uWinMin: { value: new THREE.Vector2() },
+      uLatticeSpan: { value: LATTICE_SPAN_BASE },
+      uBandMin: { value: this.lowerPlaneWorld },
+      uBandSize: { value: this.upperPlaneWorld - this.lowerPlaneWorld },
       uWindOffset: { value: new THREE.Vector3() },
       uWindDir: { value: new THREE.Vector3(1, 0, 0) },
       uStreakLen: { value: 1 },
@@ -257,7 +284,9 @@ export class WindParticleField3D {
 
     // Zoom-proportional follow volume: anchored a little ahead of the
     // camera along its view direction so pitched cameras get the field
-    // where they are looking, clamped onto the map.
+    // where they are looking, clamped onto the map. The volume only sizes
+    // the lattice window and the fades — streak positions are anchored to
+    // the world, never to this volume.
     const viewScale = Math.min(
       this.config.maxViewScaleWorld,
       Math.max(this.config.minViewScaleWorld, view.cameraY - this.lowerPlaneWorld),
@@ -274,14 +303,25 @@ export class WindParticleField3D {
     const maxX = Math.min(this.mapWidth, minX + 2 * range);
     const minZ = Math.max(0, Math.min(anchorZ - range, this.mapHeight - 2 * range));
     const maxZ = Math.min(this.mapHeight, minZ + 2 * range);
-    const sizeX = Math.max(1, maxX - minX);
     const sizeY = this.upperPlaneWorld - this.lowerPlaneWorld;
-    const sizeZ = Math.max(1, maxZ - minZ);
+
+    // Lattice span: the smallest power-of-two multiple of the base that
+    // covers the follow volume, with hysteresis so a zoom gesture rarely
+    // rebins the lattice (a rebin repositions streaks once).
+    const maxDim = Math.max(1, maxX - minX, maxZ - minZ);
+    let neededSpan = LATTICE_SPAN_BASE;
+    while (neededSpan < maxDim && neededSpan < LATTICE_SPAN_MAX) neededSpan *= 2;
+    if (neededSpan > this.latticeSpan || maxDim < this.latticeSpan * 0.45) {
+      this.latticeSpan = neededSpan;
+    }
+    const span = this.latticeSpan;
+    const winMinX = (minX + maxX) * 0.5 - span * 0.5;
+    const winMinZ = (minZ + maxZ) * 0.5 - span * 0.5;
 
     const dtSec = Math.max(0, finiteOrZero(dtMs)) / 1000;
-    this.offsetX = wrapPositive(this.offsetX + vx * dtSec, sizeX);
+    this.offsetX = wrapPositive(this.offsetX + vx * dtSec, LATTICE_SPAN_MAX);
     this.offsetY = wrapPositive(this.offsetY + vy * dtSec, sizeY);
-    this.offsetZ = wrapPositive(this.offsetZ + vz * dtSec, sizeZ);
+    this.offsetZ = wrapPositive(this.offsetZ + vz * dtSec, LATTICE_SPAN_MAX);
     // The gust field drifts with the horizontal wind so bands sweep
     // across the map the way real gust fronts do (sim x -> three x,
     // sim y -> three z).
@@ -289,8 +329,9 @@ export class WindParticleField3D {
     this.gustDriftX = wrapPositive(this.gustDriftX - vx * dtSec, gustWrap);
     this.gustDriftZ = wrapPositive(this.gustDriftZ - vz * dtSec, gustWrap);
 
-    this.uniforms.uFieldMin.value.set(minX, this.lowerPlaneWorld, minZ);
-    this.uniforms.uFieldSize.value.set(sizeX, sizeY, sizeZ);
+    this.uniforms.uWinMin.value.set(winMinX, winMinZ);
+    this.uniforms.uLatticeSpan.value = span;
+    this.uniforms.uBandSize.value = sizeY;
     this.uniforms.uWindOffset.value.set(this.offsetX, this.offsetY, this.offsetZ);
     this.uniforms.uWindDir.value.set(vx / speed, vy / speed, vz / speed);
     this.uniforms.uStreakLen.value = speed * this.config.streakSecondsOfTravel;
@@ -300,8 +341,10 @@ export class WindParticleField3D {
       (view.viewportHeightPx * 0.5) / Math.tan(Math.max(1e-4, view.fovYRad * 0.5));
     this.uniforms.uMinLenPerDepth.value = this.config.minScreenLengthPx / focalPx;
 
+    // The far fade reaches most of the lattice window, so medium-far air
+    // stays populated; only the outermost ring fades out.
     const nearFade = viewScale * this.config.nearFadeFraction;
-    const farReach = range * 2.2;
+    const farReach = span * 0.75;
     this.uniforms.uFadeDists.value.set(
       nearFade * 0.5,
       nearFade,
