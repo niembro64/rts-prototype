@@ -36,6 +36,7 @@ uniform float uLifeRange;
 uniform float uFadeFraction;
 uniform float uAlpha;
 uniform float uRadius;
+uniform float uGroundBias;
 varying float vAlpha;
 void main() {
   float life = uLifeMin + uLifeRange * aLifeFrac.x;
@@ -45,7 +46,12 @@ void main() {
     : min(1.0, min(lifeT / uFadeFraction, (1.0 - lifeT) / uFadeFraction));
   vAlpha = uAlpha * max(fade, 0.0);
   vec3 wrapped = mod(aSeedFrac * uFieldSize + uWindOffset, uFieldSize);
-  vec3 world = uFieldMin + wrapped;
+  // Bias the height distribution toward the ground (uGroundBias >= 1;
+  // 1 = uniform): wind reads strongest near the terrain, and a low camera
+  // sits inside the densest layer. Applied after the wrap so vertical
+  // drift cannot homogenize the distribution over time.
+  float groundFrac = pow(wrapped.y / max(uFieldSize.y, 1.0e-6), uGroundBias);
+  vec3 world = uFieldMin + vec3(wrapped.x, groundFrac * uFieldSize.y, wrapped.z);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world + position * uRadius, 1.0);
 }
 `;
@@ -86,7 +92,12 @@ export class WindParticleField3D {
     uFadeFraction: { value: number };
     uAlpha: { value: number };
     uRadius: { value: number };
+    uGroundBias: { value: number };
   };
+  /** Constant on-screen particle target, clamped to the authored rails:
+   *  the same count fills whatever field the camera footprint spans, so
+   *  a low camera sits in a dense field and a map view spreads it thin. */
+  private readonly activeCount: number;
   /** Accumulated wind displacement, kept wrapped into the current field
    *  span each frame so f32 uniform precision never degrades. */
   private offsetX = 0;
@@ -153,7 +164,12 @@ export class WindParticleField3D {
       uFadeFraction: { value: this.config.fadeFraction },
       uAlpha: { value: this.config.alpha },
       uRadius: { value: this.config.radiusWorld },
+      uGroundBias: { value: this.config.groundHeightBias },
     };
+    this.activeCount = Math.max(
+      this.config.minParticles,
+      Math.min(this.config.maxParticles, this.config.targetParticlesInView),
+    );
     this.material = new THREE.ShaderMaterial({
       vertexShader: WIND_PARTICLE_VERTEX_SHADER,
       fragmentShader: WIND_PARTICLE_FRAGMENT_SHADER,
@@ -213,16 +229,7 @@ export class WindParticleField3D {
     this.uniforms.uFieldSize.value.set(sizeX, sizeY, sizeZ);
     this.uniforms.uWindOffset.value.set(this.offsetX, this.offsetY, this.offsetZ);
     this.uniforms.uTime.value = this.timeSeconds;
-    // Constant apparent density: the drawn count scales with the camera-
-    // following field's footprint, so zooming in never packs the full
-    // particle budget into a small viewport, and the authored floor keeps
-    // the wind readable at every zoom. Drawing a prefix of the seed array
-    // is a uniform spatial subset because the seeds are i.i.d. uniform.
-    const targetCount = Math.floor(sizeX * sizeZ * this.config.particlesPerWorldArea);
-    this.geometry.instanceCount = Math.max(
-      this.config.minParticles,
-      Math.min(this.config.maxParticles, targetCount),
-    );
+    this.geometry.instanceCount = this.activeCount;
   }
 
   destroy(): void {

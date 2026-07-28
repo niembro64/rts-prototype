@@ -5,7 +5,8 @@ type WindParticleConfig = {
   speedMultiplier: number;
   maxParticles: number;
   minParticles: number;
-  particlesPerWorldArea: number;
+  targetParticlesInView: number;
+  groundHeightBias: number;
   colorHex: string;
   alpha: number;
   radiusWorld: number;
@@ -28,7 +29,14 @@ assertPositiveInteger(config.minParticles, 'windConfig.particles.minParticles');
 if (config.minParticles > config.maxParticles) {
   throw new Error('windConfig.particles.minParticles must not exceed maxParticles');
 }
-assertPositive(config.particlesPerWorldArea, 'windConfig.particles.particlesPerWorldArea');
+assertPositiveInteger(
+  config.targetParticlesInView,
+  'windConfig.particles.targetParticlesInView',
+);
+assertPositive(config.groundHeightBias, 'windConfig.particles.groundHeightBias');
+if (config.groundHeightBias < 1) {
+  throw new Error('windConfig.particles.groundHeightBias must be >= 1 (1 = uniform)');
+}
 assertCssHex(config.colorHex, 'windConfig.particles.colorHex');
 assertUnitInterval(config.alpha, 'windConfig.particles.alpha');
 assertPositive(config.radiusWorld, 'windConfig.particles.radiusWorld');
