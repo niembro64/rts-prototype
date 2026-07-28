@@ -239,7 +239,6 @@ export function bootstrapRtsScene3DRenderers(
   const windParticleFieldRenderer = new WindParticleField3D(threeApp.world, {
     mapWidth,
     mapHeight,
-    renderScope,
     waterLevelWorld: WATER_LEVEL,
     highestTerrainWorld:
       getTerrainMeshMaximumHeight(mapWidth, mapHeight) ?? TERRAIN_MAX_RENDER_Y,
