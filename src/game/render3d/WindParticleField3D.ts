@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WIND_PARTICLE_CONFIG } from '@/windParticleConfig';
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import type { RenderViewState3D } from './RenderFrameState3D';
 import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
@@ -94,10 +95,6 @@ export class WindParticleField3D {
     uRadius: { value: number };
     uGroundBias: { value: number };
   };
-  /** Constant on-screen particle target, clamped to the authored rails:
-   *  the same count fills whatever field the camera footprint spans, so
-   *  a low camera sits in a dense field and a map view spreads it thin. */
-  private readonly activeCount: number;
   /** Accumulated wind displacement, kept wrapped into the current field
    *  span each frame so f32 uniform precision never degrades. */
   private offsetX = 0;
@@ -166,10 +163,6 @@ export class WindParticleField3D {
       uRadius: { value: this.config.radiusWorld },
       uGroundBias: { value: this.config.groundHeightBias },
     };
-    this.activeCount = Math.max(
-      this.config.minParticles,
-      Math.min(this.config.maxParticles, this.config.targetParticlesInView),
-    );
     this.material = new THREE.ShaderMaterial({
       vertexShader: WIND_PARTICLE_VERTEX_SHADER,
       fragmentShader: WIND_PARTICLE_FRAGMENT_SHADER,
@@ -186,7 +179,11 @@ export class WindParticleField3D {
     parentWorld.add(this.mesh);
   }
 
-  update(wind: WindState | undefined, dtMs: number): void {
+  update(
+    wind: WindState | undefined,
+    dtMs: number,
+    view: RenderViewState3D | null = null,
+  ): void {
     if (!this.config.enabled || !wind) {
       this.geometry.instanceCount = 0;
       return;
@@ -203,10 +200,10 @@ export class WindParticleField3D {
     }
 
     const bounds = this.renderScope.getBounds(this.config.fieldPaddingWorld);
-    const minX = Math.max(0, bounds.minX);
-    const maxX = Math.min(this.mapWidth, bounds.maxX);
-    const minZ = Math.max(0, bounds.minY);
-    const maxZ = Math.min(this.mapHeight, bounds.maxY);
+    let minX = Math.max(0, bounds.minX);
+    let maxX = Math.min(this.mapWidth, bounds.maxX);
+    let minZ = Math.max(0, bounds.minY);
+    let maxZ = Math.min(this.mapHeight, bounds.maxY);
     if (
       !Number.isFinite(minX) || !Number.isFinite(maxX) ||
       !Number.isFinite(minZ) || !Number.isFinite(maxZ) ||
@@ -214,6 +211,21 @@ export class WindParticleField3D {
     ) {
       this.geometry.instanceCount = 0;
       return;
+    }
+    // Horizon views raycast an enormous footprint; particles smeared across
+    // it are sub-pixel and the near-camera air goes empty. Clamp the field
+    // to a visibility window around the camera's ground position (window
+    // center clamped inside the footprint so a forward-looking camera still
+    // fills its near field).
+    const range = this.config.visibilityRangeWorld;
+    if (view !== null) {
+      // three(x, z) is sim(x, y): the footprint axes below.
+      const centerX = clampWindowCenter(view.cameraX, minX, maxX, range);
+      const centerZ = clampWindowCenter(view.cameraZ, minZ, maxZ, range);
+      minX = Math.max(minX, centerX - range);
+      maxX = Math.min(maxX, centerX + range);
+      minZ = Math.max(minZ, centerZ - range);
+      maxZ = Math.min(maxZ, centerZ + range);
     }
     const sizeX = maxX - minX;
     const sizeY = this.upperPlaneWorld - this.lowerPlaneWorld;
@@ -229,7 +241,18 @@ export class WindParticleField3D {
     this.uniforms.uFieldSize.value.set(sizeX, sizeY, sizeZ);
     this.uniforms.uWindOffset.value.set(this.offsetX, this.offsetY, this.offsetZ);
     this.uniforms.uTime.value = this.timeSeconds;
-    this.geometry.instanceCount = this.activeCount;
+    // Uniform volumetric density with a budget rail: the drawn count tracks
+    // the visible air volume at the authored density, so a close camera gets
+    // a dense-but-bounded mist instead of the whole budget in a phone booth,
+    // while any battle-scale or map-scale view saturates the budget — the
+    // full-field drizzle. Drawing a prefix of the i.i.d. seed array is a
+    // uniform spatial subset.
+    const volumeMillions = (sizeX * sizeY * sizeZ) / 1.0e6;
+    const target = Math.floor(volumeMillions * this.config.particlesPerMillionWorldVolume);
+    this.geometry.instanceCount = Math.max(
+      this.config.minParticles,
+      Math.min(this.config.maxParticles, target),
+    );
   }
 
   destroy(): void {
@@ -250,6 +273,14 @@ export class WindParticleField3D {
 
 function finiteOrZero(value: number): number {
   return Number.isFinite(value) ? value : 0;
+}
+
+/** Center of a visibility window inside [min, max]: the anchor clamped so
+ *  the window stays within the span when it fits, or the span's middle
+ *  when the span is narrower than the window. */
+function clampWindowCenter(anchor: number, min: number, max: number, range: number): number {
+  if (max - min <= range * 2) return (min + max) * 0.5;
+  return Math.min(max - range, Math.max(min + range, anchor));
 }
 
 /** Wrap `value` into [0, span). The GLSL-side mod() keeps the sum of a
