@@ -50,7 +50,6 @@ import {
 } from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
-  createPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -181,10 +180,10 @@ export class SprayRenderer3D {
     };
   }
 
-  private createPool(tier: PrimitiveGeometryTier): SprayParticlePool {
-    const geom = tier === 'far'
-      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
-      : createPrimitiveSphereGeometry('effect', tier);
+  private createPool(_tier: PrimitiveGeometryTier): SprayParticlePool {
+    // Spray balls are tetrahedra at every tier — at their size the
+    // silhouette reads identically and the fill cost drops to 4 triangles.
+    const geom = getSharedPrimitiveTetrahedronGeometry(1).clone();
     return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_PARTICLES, this.mat, 5) };
   }
 

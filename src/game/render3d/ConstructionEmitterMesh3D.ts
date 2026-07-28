@@ -26,8 +26,7 @@ import {
   createPrimitiveCylinderGeometry,
   getOrCreate,
   getSharedExtrudedEquilateralTriangleGeometry,
-  getSharedPrimitiveSphereGeometry,
-  getSharedPrimitiveTetrahedronGeometry,
+  getSharedPrimitiveVertexDownTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
@@ -128,10 +127,10 @@ function getStrawCylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeomet
     createPrimitiveCylinderGeometry('unitDetail', tier, 0.5, 0.5, 1, 1, true));
 }
 
-function getCapGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  return tier === 'far'
-    ? getSharedPrimitiveTetrahedronGeometry()
-    : getSharedPrimitiveSphereGeometry('unitDetail', tier);
+// The pylon head is a tetrahedron at every detail tier: one vertex points
+// straight down into the tube bore, the opposite face meets the world.
+function getCapGeometry(_tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  return getSharedPrimitiveVertexDownTetrahedronGeometry();
 }
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 

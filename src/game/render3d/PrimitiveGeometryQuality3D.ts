@@ -659,6 +659,30 @@ export function getSharedPrimitiveTetrahedronGeometry(
     createPrimitiveTetrahedronGeometry(radius)) as THREE.TetrahedronGeometry;
 }
 
+/** Tetrahedron rotated so one vertex points along local -Y (straight down)
+ * and the opposite face lies flat on top. The resource-pylon head uses this
+ * so its tip stabs down into the pylon tube while the face meets the sky. */
+export function createPrimitiveVertexDownTetrahedronGeometry(
+  radius = 1,
+): THREE.BufferGeometry {
+  const geometry = createPrimitiveTetrahedronGeometry(radius);
+  const downVertex = new THREE.Vector3(1, -1, -1).normalize();
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(
+    downVertex,
+    new THREE.Vector3(0, -1, 0),
+  );
+  geometry.applyQuaternion(quaternion);
+  return geometry;
+}
+
+export function getSharedPrimitiveVertexDownTetrahedronGeometry(
+  radius = 1,
+): THREE.BufferGeometry {
+  const key = keyOf(['tetrahedron-vertex-down', radius]);
+  return getOrCreate(sharedGeometry, key, () =>
+    createPrimitiveVertexDownTetrahedronGeometry(radius));
+}
+
 export function createPrimitiveConeGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',

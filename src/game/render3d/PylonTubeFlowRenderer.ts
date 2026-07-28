@@ -26,7 +26,6 @@ import {
 } from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
-  createPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -118,10 +117,10 @@ export class PylonTubeFlowRenderer {
     };
   }
 
-  private createPool(tier: PrimitiveGeometryTier): TubeBeadPool {
-    const geom = tier === 'far'
-      ? getSharedPrimitiveTetrahedronGeometry(1).clone()
-      : createPrimitiveSphereGeometry('effect', tier);
+  private createPool(_tier: PrimitiveGeometryTier): TubeBeadPool {
+    // Tube beads are tetrahedra at every tier — at bead size the
+    // silhouette reads identically and the fill cost drops to 4 triangles.
+    const geom = getSharedPrimitiveTetrahedronGeometry(1).clone();
     return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_BEADS, this.mat, 6) };
   }
 

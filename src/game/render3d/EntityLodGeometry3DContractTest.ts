@@ -801,9 +801,11 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
     countsByTurret.set(turretId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
   const metalPylon = countsByTurret.get('turretResourcePylonConstructionMetal');
+  // base + hazard band + straw outer/inner + 4-triangle tetrahedron cap
+  // (the pylon head is a vertex-down tetrahedron at every tier).
   assertContract(
-    metalPylon?.close === 284 && metalPylon.mid === 116 && metalPylon.far === 32,
-    `construction pylon expected 284/116/32, got ${JSON.stringify(metalPylon)}`,
+    metalPylon?.close === 148 && metalPylon.mid === 84 && metalPylon.far === 32,
+    `construction pylon expected 148/84/32, got ${JSON.stringify(metalPylon)}`,
   );
   closeHead.dispose();
   closeBarrel.dispose();
