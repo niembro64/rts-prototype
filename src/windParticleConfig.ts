@@ -4,6 +4,8 @@ type WindParticleConfig = {
   enabled: boolean;
   speedMultiplier: number;
   maxParticles: number;
+  minParticles: number;
+  particlesPerWorldArea: number;
   colorHex: string;
   alpha: number;
   radiusWorld: number;
@@ -22,6 +24,11 @@ const config = rawWindConfig.particles as WindParticleConfig;
 assertBoolean(config.enabled, 'windConfig.particles.enabled');
 assertPositive(config.speedMultiplier, 'windConfig.particles.speedMultiplier');
 assertPositiveInteger(config.maxParticles, 'windConfig.particles.maxParticles');
+assertPositiveInteger(config.minParticles, 'windConfig.particles.minParticles');
+if (config.minParticles > config.maxParticles) {
+  throw new Error('windConfig.particles.minParticles must not exceed maxParticles');
+}
+assertPositive(config.particlesPerWorldArea, 'windConfig.particles.particlesPerWorldArea');
 assertCssHex(config.colorHex, 'windConfig.particles.colorHex');
 assertUnitInterval(config.alpha, 'windConfig.particles.alpha');
 assertPositive(config.radiusWorld, 'windConfig.particles.radiusWorld');

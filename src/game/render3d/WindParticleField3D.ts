@@ -213,7 +213,16 @@ export class WindParticleField3D {
     this.uniforms.uFieldSize.value.set(sizeX, sizeY, sizeZ);
     this.uniforms.uWindOffset.value.set(this.offsetX, this.offsetY, this.offsetZ);
     this.uniforms.uTime.value = this.timeSeconds;
-    this.geometry.instanceCount = this.config.maxParticles;
+    // Constant apparent density: the drawn count scales with the camera-
+    // following field's footprint, so zooming in never packs the full
+    // particle budget into a small viewport, and the authored floor keeps
+    // the wind readable at every zoom. Drawing a prefix of the seed array
+    // is a uniform spatial subset because the seeds are i.i.d. uniform.
+    const targetCount = Math.floor(sizeX * sizeZ * this.config.particlesPerWorldArea);
+    this.geometry.instanceCount = Math.max(
+      this.config.minParticles,
+      Math.min(this.config.maxParticles, targetCount),
+    );
   }
 
   destroy(): void {

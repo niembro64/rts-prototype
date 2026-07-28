@@ -33,7 +33,9 @@
   "particles": {
     "enabled": true,
     "speedMultiplier": 40,
-    "maxParticles": 19200,
+    "maxParticles": 4096,
+    "minParticles": 64,
+    "particlesPerWorldArea": 0.00017,
     "colorHex": "#d9f2ff",
     "alpha": 0.16,
     "radiusWorld": 1.25,
