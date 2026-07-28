@@ -432,7 +432,7 @@ export class RtsScene3DRenderPhase {
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     const forceFieldsVisible = serverMeta?.forceFieldsVisible ?? true;
-    windParticleFieldRenderer.update(serverMeta?.wind, effectDtMs, renderFrameState.view);
+    windParticleFieldRenderer.update(serverMeta?.wind, effectDtMs);
     // Keep every overlay line's screen-pixel width correct for the current
     // canvas size (one shared material drives all of them).
     const overlaySize = this.threeApp.renderer.getSize(this._overlayResolution);

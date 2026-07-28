@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { WIND_PARTICLE_CONFIG } from '@/windParticleConfig';
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import type { RenderViewState3D } from './RenderFrameState3D';
 import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
@@ -37,7 +36,6 @@ uniform float uLifeRange;
 uniform float uFadeFraction;
 uniform float uAlpha;
 uniform float uRadius;
-uniform float uGroundBias;
 varying float vAlpha;
 void main() {
   float life = uLifeMin + uLifeRange * aLifeFrac.x;
@@ -47,12 +45,7 @@ void main() {
     : min(1.0, min(lifeT / uFadeFraction, (1.0 - lifeT) / uFadeFraction));
   vAlpha = uAlpha * max(fade, 0.0);
   vec3 wrapped = mod(aSeedFrac * uFieldSize + uWindOffset, uFieldSize);
-  // Bias the height distribution toward the ground (uGroundBias >= 1;
-  // 1 = uniform): wind reads strongest near the terrain, and a low camera
-  // sits inside the densest layer. Applied after the wrap so vertical
-  // drift cannot homogenize the distribution over time.
-  float groundFrac = pow(wrapped.y / max(uFieldSize.y, 1.0e-6), uGroundBias);
-  vec3 world = uFieldMin + vec3(wrapped.x, groundFrac * uFieldSize.y, wrapped.z);
+  vec3 world = uFieldMin + wrapped;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world + position * uRadius, 1.0);
 }
 `;
@@ -93,7 +86,6 @@ export class WindParticleField3D {
     uFadeFraction: { value: number };
     uAlpha: { value: number };
     uRadius: { value: number };
-    uGroundBias: { value: number };
   };
   /** Accumulated wind displacement, kept wrapped into the current field
    *  span each frame so f32 uniform precision never degrades. */
@@ -161,7 +153,6 @@ export class WindParticleField3D {
       uFadeFraction: { value: this.config.fadeFraction },
       uAlpha: { value: this.config.alpha },
       uRadius: { value: this.config.radiusWorld },
-      uGroundBias: { value: this.config.groundHeightBias },
     };
     this.material = new THREE.ShaderMaterial({
       vertexShader: WIND_PARTICLE_VERTEX_SHADER,
@@ -179,11 +170,7 @@ export class WindParticleField3D {
     parentWorld.add(this.mesh);
   }
 
-  update(
-    wind: WindState | undefined,
-    dtMs: number,
-    view: RenderViewState3D | null = null,
-  ): void {
+  update(wind: WindState | undefined, dtMs: number): void {
     if (!this.config.enabled || !wind) {
       this.geometry.instanceCount = 0;
       return;
@@ -200,10 +187,10 @@ export class WindParticleField3D {
     }
 
     const bounds = this.renderScope.getBounds(this.config.fieldPaddingWorld);
-    let minX = Math.max(0, bounds.minX);
-    let maxX = Math.min(this.mapWidth, bounds.maxX);
-    let minZ = Math.max(0, bounds.minY);
-    let maxZ = Math.min(this.mapHeight, bounds.maxY);
+    const minX = Math.max(0, bounds.minX);
+    const maxX = Math.min(this.mapWidth, bounds.maxX);
+    const minZ = Math.max(0, bounds.minY);
+    const maxZ = Math.min(this.mapHeight, bounds.maxY);
     if (
       !Number.isFinite(minX) || !Number.isFinite(maxX) ||
       !Number.isFinite(minZ) || !Number.isFinite(maxZ) ||
@@ -211,21 +198,6 @@ export class WindParticleField3D {
     ) {
       this.geometry.instanceCount = 0;
       return;
-    }
-    // Horizon views raycast an enormous footprint; particles smeared across
-    // it are sub-pixel and the near-camera air goes empty. Clamp the field
-    // to a visibility window around the camera's ground position (window
-    // center clamped inside the footprint so a forward-looking camera still
-    // fills its near field).
-    const range = this.config.visibilityRangeWorld;
-    if (view !== null) {
-      // three(x, z) is sim(x, y): the footprint axes below.
-      const centerX = clampWindowCenter(view.cameraX, minX, maxX, range);
-      const centerZ = clampWindowCenter(view.cameraZ, minZ, maxZ, range);
-      minX = Math.max(minX, centerX - range);
-      maxX = Math.min(maxX, centerX + range);
-      minZ = Math.max(minZ, centerZ - range);
-      maxZ = Math.min(maxZ, centerZ + range);
     }
     const sizeX = maxX - minX;
     const sizeY = this.upperPlaneWorld - this.lowerPlaneWorld;
@@ -241,18 +213,7 @@ export class WindParticleField3D {
     this.uniforms.uFieldSize.value.set(sizeX, sizeY, sizeZ);
     this.uniforms.uWindOffset.value.set(this.offsetX, this.offsetY, this.offsetZ);
     this.uniforms.uTime.value = this.timeSeconds;
-    // Uniform volumetric density with a budget rail: the drawn count tracks
-    // the visible air volume at the authored density, so a close camera gets
-    // a dense-but-bounded mist instead of the whole budget in a phone booth,
-    // while any battle-scale or map-scale view saturates the budget — the
-    // full-field drizzle. Drawing a prefix of the i.i.d. seed array is a
-    // uniform spatial subset.
-    const volumeMillions = (sizeX * sizeY * sizeZ) / 1.0e6;
-    const target = Math.floor(volumeMillions * this.config.particlesPerMillionWorldVolume);
-    this.geometry.instanceCount = Math.max(
-      this.config.minParticles,
-      Math.min(this.config.maxParticles, target),
-    );
+    this.geometry.instanceCount = this.config.maxParticles;
   }
 
   destroy(): void {
@@ -275,13 +236,6 @@ function finiteOrZero(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Center of a visibility window inside [min, max]: the anchor clamped so
- *  the window stays within the span when it fits, or the span's middle
- *  when the span is narrower than the window. */
-function clampWindowCenter(anchor: number, min: number, max: number, range: number): number {
-  if (max - min <= range * 2) return (min + max) * 0.5;
-  return Math.min(max - range, Math.max(min + range, anchor));
-}
 
 /** Wrap `value` into [0, span). The GLSL-side mod() keeps the sum of a
  *  seed offset (< span) and this wrapped offset inside the field. */
