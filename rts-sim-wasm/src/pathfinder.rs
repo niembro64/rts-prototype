@@ -867,6 +867,16 @@ pub(crate) fn pathfinder_allows_exposed_case(traversal: PathfinderTraversal) -> 
     traversal.allow_ground || traversal.allow_air
 }
 
+/// Mirror of the exposed case for water-containing squares: a body that can
+/// occupy the water medium passes, and so does an airborne body — it overflies
+/// the water surface exactly as it overflies exposed terrain. Waypoints there
+/// still resolve to the terrain bed; the water plane never becomes a command
+/// surface.
+#[inline]
+pub(crate) fn pathfinder_allows_water_case(traversal: PathfinderTraversal) -> bool {
+    traversal.allow_water || traversal.allow_air
+}
+
 /// Validate a raw world point against the same binary medium permissions as
 /// its containing cell. A point below the water plane exercises the water
 /// case; a point on or above it exercises the exposed ground/air case.
@@ -882,7 +892,7 @@ pub(crate) fn pathfinder_position_is_in_navigation_domain(
     }
     let point_is_water = pathfinder_sample_terrain(x, y).0 < TERRAIN_WATER_LEVEL;
     if point_is_water {
-        traversal.allow_water
+        pathfinder_allows_water_case(traversal)
     } else {
         pathfinder_allows_exposed_case(traversal)
     }
@@ -903,8 +913,8 @@ pub(crate) fn pathfinder_is_cell_passable(
     // Every medium present in the square must be valid. A mixed shoreline
     // square therefore intersects its exposed and water permissions instead
     // of receiving a special shoreline class or buffer.
-    let passable_by_medium =
-        (!has_exposed || allows_exposed) && (!has_water || traversal.allow_water);
+    let passable_by_medium = (!has_exposed || allows_exposed)
+        && (!has_water || pathfinder_allows_water_case(traversal));
     if !passable_by_medium {
         return false;
     }
@@ -2671,9 +2681,11 @@ mod tests {
             ..dry_only
         }
         .derived();
+        // Airborne traversal overflies both surface media: water squares are
+        // as routable as exposed terrain, without granting the water medium.
         assert!(pathfinder_is_cell_passable(&state, 0, air_only));
-        assert!(!pathfinder_is_cell_passable(&state, 1, air_only));
-        assert!(!pathfinder_is_cell_passable(&state, 2, air_only));
+        assert!(pathfinder_is_cell_passable(&state, 1, air_only));
+        assert!(pathfinder_is_cell_passable(&state, 2, air_only));
 
         let air_and_water = PathfinderTraversal {
             allow_water: true,
