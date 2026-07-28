@@ -18,6 +18,7 @@ import type { ClientResourcePylonFlow, ClientViewState } from '../network/Client
 import { halfLifeBlend } from '../math/halfLife';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
@@ -225,7 +226,7 @@ export class ConstructionVisualController3D {
       }
       this._resourceEndpointWorld.set(
         target.transform.x,
-        target.transform.z + halfHeight,
+        getBuildingCombatCenterZ(target) + halfHeight,
         target.transform.y,
       );
       this.emitPylonResourceSprays(
@@ -583,7 +584,10 @@ export class ConstructionVisualController3D {
       halfHeight = entity.unit.radius.other;
       radius = entity.unit.radius.other;
     }
-    out.set(entity.transform.x, entity.transform.z + halfHeight, entity.transform.y);
+    // Spray endpoints land on the combat box top — for a hovering
+    // building that is the floating body, not the ground-anchored
+    // transform.z span.
+    out.set(entity.transform.x, getBuildingCombatCenterZ(entity) + halfHeight, entity.transform.y);
     return Math.max(1, radius);
   }
 

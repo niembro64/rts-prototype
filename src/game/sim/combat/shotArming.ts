@@ -1,5 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity } from '../types';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getBuildingConfig } from '../buildConfigs';
 import { deriveShotArmingRadius } from '../shotArmingRadius';
 
@@ -76,12 +77,16 @@ export function updateProjectileArming(
     return true;
   }
 
+  // The arming sphere is centered on the host's combat box, not its
+  // transform: a hovering building's transform.z sits at the ground
+  // while its body (and the emitting mounts) float above it.
+  const hostZ = getBuildingCombatCenterZ(host);
   const prevDx = previousX - host.transform.x;
   const prevDy = previousY - host.transform.y;
-  const prevDz = previousZ - host.transform.z;
+  const prevDz = previousZ - hostZ;
   const currDx = currentX - host.transform.x;
   const currDy = currentY - host.transform.y;
-  const currDz = currentZ - host.transform.z;
+  const currDz = currentZ - hostZ;
   const clearanceRadius = getShotArmingClearanceRadius(
     armingRadius,
     projectileHitboxRadius,

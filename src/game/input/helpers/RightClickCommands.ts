@@ -22,6 +22,7 @@ import type {
 import { findAttackTargetAt, isAttackableEnemyTarget } from './AttackTargetHelper';
 import type { AttackEntitySource } from './AttackTargetHelper';
 import { isPlainQueueAppend, unitHasQueuedDuplicateOrder } from './duplicateOrderGuard';
+import { getBuildingCombatCenterZ } from '../../sim/buildingAnchors';
 import { findGuardTargetAt, isGuardableFriendlyTarget } from './GuardTargetHelper';
 import type { GuardEntitySource } from './GuardTargetHelper';
 import { getPathLength, assignUnitsToTargets } from './PathDistribution';
@@ -92,7 +93,9 @@ export function buildAttackCommandForTarget(
       entityIds: selectedUnitIds(targetableUnits),
       targetX: target.transform.x,
       targetY: target.transform.y,
-      targetZ: target.transform.z,
+      // Aim at the combat box, not transform.z: a hovering building's
+      // body (and hitbox) floats above its ground-anchored transform.
+      targetZ: getBuildingCombatCenterZ(target),
       queue,
       queueFront,
       queueInsertIndex,

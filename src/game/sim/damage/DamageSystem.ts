@@ -1574,7 +1574,15 @@ export class DamageSystem {
         if (hp[slot] <= 0) continue;
         const bCenterX = posX[slot];
         const bCenterY = posY[slot];
-        const bCenterZ = posZ[slot];
+        // The entity-state slab's z column carries transform.z (the
+        // ground-centered box the renderer derives the mesh base from).
+        // The combat box of a hovering building sits at its floating
+        // body instead — the same center the spatial-grid broadphase
+        // that produced these candidate slots already uses.
+        const buildingEntity = this.world.getEntity(buildingId);
+        const bCenterZ = buildingEntity !== undefined
+          ? getBuildingCombatCenterZ(buildingEntity)
+          : posZ[slot];
         const bHalfX = aabbHx[slot];
         const bHalfY = aabbHy[slot];
         const bHalfZ = aabbHz[slot];

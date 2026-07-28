@@ -8,6 +8,7 @@ import { getTurretWorldMount } from '../../math';
 import type { MountBodyOrientation } from '../../math/MountGeometry';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import {
   ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
   entitySlotRegistry,
@@ -472,12 +473,16 @@ export function updateProjectileSourceClearance(
     clearOfHost = dx * dx + dy * dy + dz * dz > clearance * clearance;
   } else if (source.building !== null) {
     const b = source.building;
+    // Clearance is measured against the combat box: a hovering
+    // building's box floats at its body, not at transform.z's
+    // ground-centered span.
+    const centerZ = getBuildingCombatCenterZ(source);
     const minX = source.transform.x - b.width / 2 - clearancePad;
     const maxX = source.transform.x + b.width / 2 + clearancePad;
     const minY = source.transform.y - b.height / 2 - clearancePad;
     const maxY = source.transform.y + b.height / 2 + clearancePad;
-    const minZ = source.transform.z - b.depth / 2 - clearancePad;
-    const maxZ = source.transform.z + b.depth / 2 + clearancePad;
+    const minZ = centerZ - b.depth / 2 - clearancePad;
+    const maxZ = centerZ + b.depth / 2 + clearancePad;
     clearOfHost =
       pointX < minX || pointX > maxX ||
       pointY < minY || pointY > maxY ||
