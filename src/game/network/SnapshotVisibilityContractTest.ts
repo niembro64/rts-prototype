@@ -14,6 +14,10 @@ import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
 import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
 import { WATER_LEVEL } from '../sim/Terrain';
+import {
+  getEntityFullVisionRadius,
+  getEntityRadarRadius,
+} from '../sim/sensorCoverage';
 import { getSimWasm } from '../sim-wasm/init';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -220,6 +224,105 @@ export function runSnapshotVisibilityContractTest(): void {
   );
   assertContract(!legacyRadar.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be on radar list');
   assertContract(!legacyRadar.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be on radar list');
+
+  spatialGrid.clear();
+  getSimWasm()?.combatTargeting.clear();
+  const activeStateWorld = new WorldState(6105, 6000, 6000);
+  activeStateWorld.playerCount = 2;
+  activeStateWorld.fogOfWarEnabled = true;
+  const closedRadar = createOpenedStructure(
+    activeStateWorld,
+    1000,
+    1000,
+    1 as PlayerId,
+    'buildingRadar',
+  );
+  closedRadar.transform.z = WATER_LEVEL + 100;
+  assertContract(
+    closedRadar.building !== null && closedRadar.building.activeState !== null,
+    'radar fixture must expose the shared powered active state',
+  );
+  closedRadar.building.activeState.open = false;
+  const radarSensor = closedRadar.combat?.utilityMounts.find(
+    (mount) => mount.kind === 'sensor',
+  );
+  assertContract(
+    radarSensor?.kind === 'sensor',
+    'radar fixture must hydrate its lightweight sensor mount',
+  );
+  radarSensor.sensors.fullSight.aboveWater.aboveWater = 500;
+  radarSensor.sensors.contactSight.aboveWater.aboveWater = 1800;
+  const closedFullSightEnemy = createUnit(
+    activeStateWorld,
+    1250,
+    1000,
+    2 as PlayerId,
+  );
+  const closedRadarAnnulusEnemy = createUnit(
+    activeStateWorld,
+    2200,
+    1000,
+    2 as PlayerId,
+  );
+  assertContract(
+    getEntityFullVisionRadius(closedRadar, 'aboveWater') === 500,
+    'closed completed building must retain passive full sight',
+  );
+  assertContract(
+    getEntityRadarRadius(closedRadar) === 0,
+    'closed completed building must disable powered radar contact',
+  );
+  const closedLegacyVisibility = SnapshotVisibility.forRecipient(
+    activeStateWorld,
+    1 as PlayerId,
+  );
+  const closedLegacyVisible = sorted(closedLegacyVisibility.getVisibleEntityIds());
+  const closedLegacyContacts = sorted(closedLegacyVisibility.getRadarEntityIds());
+  assertContract(
+    closedLegacyVisible.includes(closedFullSightEnemy.id),
+    'closed building passive sight must still reveal nearby enemies',
+  );
+  assertContract(
+    !closedLegacyContacts.includes(closedRadarAnnulusEnemy.id),
+    'closed building must not provide its powered radar annulus',
+  );
+  stampCombatTargetingPool(activeStateWorld);
+  const closedNativeVisibility = SnapshotVisibility.forRecipient(
+    activeStateWorld,
+    1 as PlayerId,
+  );
+  assertSameIds(
+    closedNativeVisibility.getVisibleEntityIds(),
+    closedLegacyVisible,
+    'native closed-building sight must match the source walk',
+  );
+  assertSameIds(
+    closedNativeVisibility.getRadarEntityIds(),
+    closedLegacyContacts,
+    'native closed-building contacts must match the source walk',
+  );
+
+  getSimWasm()?.combatTargeting.clear();
+  closedRadar.building.activeState.open = true;
+  const openLegacyVisibility = SnapshotVisibility.forRecipient(
+    activeStateWorld,
+    1 as PlayerId,
+  );
+  const openLegacyContacts = sorted(openLegacyVisibility.getRadarEntityIds());
+  assertContract(
+    openLegacyContacts.includes(closedRadarAnnulusEnemy.id),
+    'opening a sensor building must restore its powered radar annulus',
+  );
+  stampCombatTargetingPool(activeStateWorld);
+  const openNativeVisibility = SnapshotVisibility.forRecipient(
+    activeStateWorld,
+    1 as PlayerId,
+  );
+  assertSameIds(
+    openNativeVisibility.getRadarEntityIds(),
+    openLegacyContacts,
+    'native reopened-building contacts must match the source walk',
+  );
 
   spatialGrid.clear();
   getSimWasm()?.combatTargeting.clear();

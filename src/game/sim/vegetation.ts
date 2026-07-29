@@ -31,9 +31,7 @@ import {
   vegetationAssetScale,
   type VegetationAssetSpec,
 } from '@/vegetationAssets';
-import type { MetalDeposit } from '@/metalDepositConfig';
 import { getSimWasm } from '../sim-wasm/init';
-import { getSpawnPositionForSeat } from './spawn';
 import type { EntityId } from './types';
 
 /** BAR's `featureID + Game.maxUnits` convention. Entity ids are
@@ -73,14 +71,12 @@ export type VegetationReclaimTick = {
   completed: boolean;
 };
 
-const VEGETATION_KIND_ROW_STRIDE = 20;
+const VEGETATION_KIND_ROW_STRIDE = 19;
 const VEGETATION_ASSET_ROW_STRIDE = 4;
-const VEGETATION_DEPOSIT_ROW_STRIDE = 3;
-const VEGETATION_SPAWN_ROW_STRIDE = 2;
 const VEGETATION_PROP_OUTPUT_STRIDE = 10;
 const VEGETATION_PROP_STATE_STRIDE = 6;
 const VEGETATION_RECLAIM_TICK_STRIDE = 5;
-const VEGETATION_MEDIUM_CODE = { land: 0, water: 1 } as const;
+const VEGETATION_MEDIUM_CODE = { land: 0, waterline: 1 } as const;
 
 const _propStateOut = new Float64Array(VEGETATION_PROP_STATE_STRIDE);
 const _reclaimTickOut = new Float64Array(VEGETATION_RECLAIM_TICK_STRIDE);
@@ -129,9 +125,8 @@ function vegetationGenerationKey(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
-  depositCount: number,
 ): string {
-  return `${mapWidth}x${mapHeight}:${playerCount}:${depositCount}`;
+  return `${mapWidth}x${mapHeight}:${playerCount}`;
 }
 
 /**
@@ -147,10 +142,9 @@ export function ensureVegetationGenerated(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
-  metalDeposits: ReadonlyArray<MetalDeposit>,
 ): readonly VegetationProp[] {
   const players = Math.max(1, Math.floor(playerCount));
-  const key = vegetationGenerationKey(mapWidth, mapHeight, players, metalDeposits.length);
+  const key = vegetationGenerationKey(mapWidth, mapHeight, players);
   // Dropping the terrain mesh also drops the prop store (placement was
   // sampled from that mesh), so an emptied store means the mirror is
   // stale rather than that this is a repeat call.
@@ -166,7 +160,7 @@ export function ensureVegetationGenerated(
     }
     return installedProps;
   }
-  installedProps = generateVegetation(mapWidth, mapHeight, players, metalDeposits);
+  installedProps = generateVegetation(mapWidth, mapHeight);
   installedKey = key;
   return installedProps;
 }
@@ -194,8 +188,9 @@ export function getLiveVegetationPropByTargetId(
 
 /**
  * Lay out every vegetation prop for one map. Deterministic: the same
- * `(mapWidth, mapHeight, playerCount, metalDeposits)` always produces
- * the same props in the same order, so the host and every client can
+ * `(mapWidth, mapHeight, config)` always produces the same candidate
+ * stream; the installed terrain alone decides which candidates qualify,
+ * so the host and every client can
  * call this independently instead of networking the layout — exactly
  * how `generateMetalDeposits` works.
  *
@@ -206,17 +201,13 @@ export function getLiveVegetationPropByTargetId(
 function generateVegetation(
   mapWidth: number,
   mapHeight: number,
-  playerCount: number,
-  metalDeposits: ReadonlyArray<MetalDeposit>,
 ): VegetationProp[] {
   const sim = requireSimWasm('generateVegetation');
   const placement = VEGETATION_PLACEMENT_CONFIG;
-  const players = Math.max(1, Math.floor(playerCount));
   const { kindRows, assetRows, assetSpecs } = packVegetationConfigRows();
   const count = sim.vegetationGenerate(
     mapWidth,
     mapHeight,
-    players,
     placement.seed,
     placement.areaScaleMin,
     placement.areaScaleMax,
@@ -224,13 +215,9 @@ function generateVegetation(
     placement.defaultMapHeight,
     placement.maxAttemptsPerTarget,
     placement.edgeClearance,
-    placement.metalDepositClearance,
-    playerStartClearance(mapWidth, mapHeight),
     placement.assetScaleJitter,
     kindRows,
     assetRows,
-    packVegetationDepositRows(metalDeposits),
-    packVegetationSpawnRows(players, mapWidth, mapHeight),
   );
   if (count === 0) return [];
 
@@ -397,14 +384,6 @@ export function getVegetationStateHash(): number {
   return getSimWasm()?.vegetationStateHash() ?? 0;
 }
 
-function playerStartClearance(mapWidth: number, mapHeight: number): number {
-  const placement = VEGETATION_PLACEMENT_CONFIG;
-  return Math.max(
-    placement.playerStartClearanceMin,
-    Math.min(mapWidth, mapHeight) * placement.playerStartClearanceMapFraction,
-  );
-}
-
 function packVegetationConfigRows(): {
   kindRows: Float64Array;
   assetRows: Float64Array;
@@ -426,23 +405,22 @@ function packVegetationConfigRows(): {
     kindRows[base] = config.targetCount;
     kindRows[base + 1] = VEGETATION_MEDIUM_CODE[config.medium];
     kindRows[base + 2] = config.waterBuffer;
-    kindRows[base + 3] = config.minWaterDepth;
-    kindRows[base + 4] = config.maxWaterDepth;
-    kindRows[base + 5] = config.minSlope;
-    kindRows[base + 6] = config.maxSlope;
-    kindRows[base + 7] = config.maxTerrainHeight;
-    kindRows[base + 8] = config.heightScaleMin;
-    kindRows[base + 9] = config.heightScaleMax;
-    kindRows[base + 10] = config.radiusScaleMin;
-    kindRows[base + 11] = config.radiusScaleMax;
-    kindRows[base + 12] = config.slopeSinkRadiusFraction;
-    kindRows[base + 13] = config.slopeSinkMaxHeightFraction;
-    kindRows[base + 14] = assetRowStart;
-    kindRows[base + 15] = options.length;
-    kindRows[base + 16] = config.reclaim.hp;
-    kindRows[base + 17] = config.reclaim.reclaimTime;
-    kindRows[base + 18] = config.reclaim.energy;
-    kindRows[base + 19] = config.reclaim.metal;
+    kindRows[base + 3] = config.waterlineRangeFraction;
+    kindRows[base + 4] = config.minSlope;
+    kindRows[base + 5] = config.maxSlope;
+    kindRows[base + 6] = config.maxTerrainHeight;
+    kindRows[base + 7] = config.heightScaleMin;
+    kindRows[base + 8] = config.heightScaleMax;
+    kindRows[base + 9] = config.radiusScaleMin;
+    kindRows[base + 10] = config.radiusScaleMax;
+    kindRows[base + 11] = config.slopeSinkRadiusFraction;
+    kindRows[base + 12] = config.slopeSinkMaxHeightFraction;
+    kindRows[base + 13] = assetRowStart;
+    kindRows[base + 14] = options.length;
+    kindRows[base + 15] = config.reclaim.hp;
+    kindRows[base + 16] = config.reclaim.reclaimTime;
+    kindRows[base + 17] = config.reclaim.energy;
+    kindRows[base + 18] = config.reclaim.metal;
   }
 
   const assetRows = new Float64Array(flatAssets.length * VEGETATION_ASSET_ROW_STRIDE);
@@ -455,35 +433,6 @@ function packVegetationConfigRows(): {
     assetRows[base + 3] = vegetationAssetScale(spec);
   }
   return { kindRows, assetRows, assetSpecs };
-}
-
-function packVegetationDepositRows(
-  metalDeposits: ReadonlyArray<MetalDeposit>,
-): Float64Array {
-  const rows = new Float64Array(metalDeposits.length * VEGETATION_DEPOSIT_ROW_STRIDE);
-  for (let i = 0; i < metalDeposits.length; i++) {
-    const deposit = metalDeposits[i];
-    const base = i * VEGETATION_DEPOSIT_ROW_STRIDE;
-    rows[base] = deposit.x;
-    rows[base + 1] = deposit.y;
-    rows[base + 2] = deposit.flatPadRadius;
-  }
-  return rows;
-}
-
-function packVegetationSpawnRows(
-  playerCount: number,
-  mapWidth: number,
-  mapHeight: number,
-): Float64Array {
-  const rows = new Float64Array(playerCount * VEGETATION_SPAWN_ROW_STRIDE);
-  for (let seat = 0; seat < playerCount; seat++) {
-    const spawn = getSpawnPositionForSeat(seat, playerCount, mapWidth, mapHeight);
-    const base = seat * VEGETATION_SPAWN_ROW_STRIDE;
-    rows[base] = spawn.x;
-    rows[base + 1] = spawn.y;
-  }
-  return rows;
 }
 
 /** Convenience for UI/debug: the asset spec behind a generated prop. */

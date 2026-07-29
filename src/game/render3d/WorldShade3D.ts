@@ -532,8 +532,15 @@ void main() {
   ): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
-        const aboveWaterRadius = sensors.fullSight[sourceMedium].aboveWater;
+      forEachEntityTurretSensorSource(entity, ({
+        position,
+        sourceMedium,
+        sensors,
+        operational,
+      }) => {
+        const aboveWaterRadius = operational.fullSight
+          ? sensors.fullSight[sourceMedium].aboveWater
+          : 0;
         if (aboveWaterRadius > 0) {
           this.pushCircleRegion(
             position.x,
@@ -546,7 +553,9 @@ void main() {
             0,
           );
         }
-        const underwaterRadius = sensors.fullSight[sourceMedium].underwater;
+        const underwaterRadius = operational.fullSight
+          ? sensors.fullSight[sourceMedium].underwater
+          : 0;
         if (underwaterRadius > 0) {
           this.pushCircleRegion(
             position.x,
@@ -559,7 +568,9 @@ void main() {
             0,
           );
         }
-        const radarRadius = sensors.contactSight[sourceMedium].aboveWater;
+        const radarRadius = operational.contactSight
+          ? sensors.contactSight[sourceMedium].aboveWater
+          : 0;
         if (radarRadius > 0) {
           this.pushCircleRegion(
             position.x,
@@ -572,7 +583,9 @@ void main() {
             0,
           );
         }
-        const sonarRadius = sensors.contactSight[sourceMedium].underwater;
+        const sonarRadius = operational.contactSight
+          ? sensors.contactSight[sourceMedium].underwater
+          : 0;
         if (sonarRadius > 0) {
           this.pushCircleRegion(
             position.x,

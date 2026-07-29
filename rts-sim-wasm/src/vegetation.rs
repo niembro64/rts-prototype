@@ -32,27 +32,21 @@ use wasm_bindgen::prelude::*;
 
 /// Packed per-kind placement rule row. Field order is a wire contract
 /// shared with `packVegetationKindRows` in src/game/sim/vegetation.ts.
-///   0 targetCount            1 medium (0 land, 1 water)
-///   2 waterBuffer            3 minWaterDepth
-///   4 maxWaterDepth          5 minSlope
-///   6 maxSlope               7 maxTerrainHeight
-///   8 heightScaleMin         9 heightScaleMax
-///  10 radiusScaleMin        11 radiusScaleMax
-///  12 slopeSinkRadiusFrac   13 slopeSinkMaxHeightFrac
-///  14 assetRowStart         15 assetRowCount
-///  16 reclaimHp             17 reclaimTime
-///  18 reclaimEnergy         19 reclaimMetal
-pub(crate) const VEGETATION_KIND_ROW_STRIDE: usize = 20;
+///   0 targetCount            1 medium (0 land, 1 waterline)
+///   2 waterBuffer            3 waterlineRangeFraction
+///   4 minSlope               5 maxSlope
+///   6 maxTerrainHeight       7 heightScaleMin
+///   8 heightScaleMax         9 radiusScaleMin
+///  10 radiusScaleMax        11 slopeSinkRadiusFrac
+///  12 slopeSinkMaxHeightFrac
+///  13 assetRowStart         14 assetRowCount
+///  15 reclaimHp             16 reclaimTime
+///  17 reclaimEnergy         18 reclaimMetal
+pub(crate) const VEGETATION_KIND_ROW_STRIDE: usize = 19;
 
 /// Packed asset option row: 0 weight, 1 defaultHeight, 2 defaultRadius,
 /// 3 assetScale (the renderer's per-asset scale multiplier).
 pub(crate) const VEGETATION_ASSET_ROW_STRIDE: usize = 4;
-
-/// Packed metal-deposit exclusion row: 0 x, 1 y, 2 flatPadRadius.
-pub(crate) const VEGETATION_DEPOSIT_ROW_STRIDE: usize = 3;
-
-/// Packed player-start exclusion row: 0 x, 1 y.
-pub(crate) const VEGETATION_SPAWN_ROW_STRIDE: usize = 2;
 
 /// Packed generated prop row read back by TS/the renderer:
 ///   0 kind    1 assetSlot    2 x    3 y    4 z (base)
@@ -82,7 +76,10 @@ const VEGETATION_WATER_CLEARANCE_SAMPLES: usize = 8;
 /// asset pick, x, y, height scale, radius scale, rotation, scale jitter.
 const VEGETATION_DRAWS_PER_ATTEMPT: usize = 7;
 
-const VEGETATION_MEDIUM_WATER: f64 = 1.0;
+const VEGETATION_MEDIUM_WATERLINE: f64 = 1.0;
+/// Canonical main terrain flat. Terrain detail, grass shading, and the
+/// authored height bars all use the zero-height plane as this reference.
+const VEGETATION_MAIN_TERRAIN_FLAT_Y: f64 = 0.0;
 
 #[derive(Clone, Copy)]
 pub(crate) struct VegetationProp {
@@ -262,7 +259,11 @@ impl Mulberry32 {
 fn vegetation_hash_seed(values: &[f64]) -> u32 {
     let mut h: u32 = 2166136261;
     for value in values {
-        let scalar = if value.is_finite() { value.floor() as i64 } else { 0 };
+        let scalar = if value.is_finite() {
+            value.floor() as i64
+        } else {
+            0
+        };
         h = (h ^ (scalar as u32)).wrapping_mul(16777619);
     }
     h
@@ -272,6 +273,10 @@ fn vegetation_hash_seed(values: &[f64]) -> u32 {
 #[inline]
 fn vegetation_slope_from_normal_up(normal_up: f64) -> f64 {
     (1.0 - normal_up.abs().clamp(0.0, 1.0)).clamp(0.0, 1.0)
+}
+
+fn vegetation_slope_in_band(slope: f64, min_slope: f64, max_slope: f64) -> bool {
+    slope.is_finite() && slope >= min_slope && slope <= max_slope
 }
 
 /// Lowers a prop's root by the terrain drop across its base footprint
@@ -326,10 +331,9 @@ fn vegetation_far_from_water(x: f64, y: f64, buffer: f64) -> bool {
 
 struct VegetationKindRules {
     target_count: usize,
-    is_water: bool,
+    uses_waterline_band: bool,
     water_buffer: f64,
-    min_water_depth: f64,
-    max_water_depth: f64,
+    waterline_range_fraction: f64,
     min_slope: f64,
     max_slope: f64,
     max_terrain_height: f64,
@@ -351,26 +355,62 @@ fn vegetation_read_kind_rules(rows: &[f64], index: usize) -> VegetationKindRules
     let base = index * VEGETATION_KIND_ROW_STRIDE;
     VegetationKindRules {
         target_count: rows[base].max(0.0) as usize,
-        is_water: rows[base + 1] == VEGETATION_MEDIUM_WATER,
+        uses_waterline_band: rows[base + 1] == VEGETATION_MEDIUM_WATERLINE,
         water_buffer: rows[base + 2],
-        min_water_depth: rows[base + 3],
-        max_water_depth: rows[base + 4],
-        min_slope: rows[base + 5],
-        max_slope: rows[base + 6],
-        max_terrain_height: rows[base + 7],
-        height_scale_min: rows[base + 8],
-        height_scale_max: rows[base + 9],
-        radius_scale_min: rows[base + 10],
-        radius_scale_max: rows[base + 11],
-        slope_sink_radius_fraction: rows[base + 12],
-        slope_sink_max_height_fraction: rows[base + 13],
-        asset_row_start: rows[base + 14].max(0.0) as usize,
-        asset_row_count: rows[base + 15].max(0.0) as usize,
-        reclaim_hp: rows[base + 16],
-        reclaim_time: rows[base + 17],
-        reclaim_energy: rows[base + 18],
-        reclaim_metal: rows[base + 19],
+        waterline_range_fraction: rows[base + 3],
+        min_slope: rows[base + 4],
+        max_slope: rows[base + 5],
+        max_terrain_height: rows[base + 6],
+        height_scale_min: rows[base + 7],
+        height_scale_max: rows[base + 8],
+        radius_scale_min: rows[base + 9],
+        radius_scale_max: rows[base + 10],
+        slope_sink_radius_fraction: rows[base + 11],
+        slope_sink_max_height_fraction: rows[base + 12],
+        asset_row_start: rows[base + 13].max(0.0) as usize,
+        asset_row_count: rows[base + 14].max(0.0) as usize,
+        reclaim_hp: rows[base + 15],
+        reclaim_time: rows[base + 16],
+        reclaim_energy: rows[base + 17],
+        reclaim_metal: rows[base + 18],
     }
+}
+
+/// A waterline fraction travels toward a different terrain reference on
+/// each side: the canonical main flat above and the seabed below. At 0.5,
+/// the resulting shoreline slice reaches exactly halfway to both.
+fn vegetation_waterline_elevation_band(range_fraction: f64) -> (f64, f64) {
+    let fraction = range_fraction.clamp(0.0, 1.0);
+    let below_range = (TERRAIN_WATER_LEVEL - TERRAIN_TILE_FLOOR_Y).max(0.0) * fraction;
+    let above_range = (VEGETATION_MAIN_TERRAIN_FLAT_Y - TERRAIN_WATER_LEVEL).max(0.0) * fraction;
+    (
+        TERRAIN_WATER_LEVEL - below_range,
+        TERRAIN_WATER_LEVEL + above_range,
+    )
+}
+
+fn vegetation_bed_in_waterline_band(bed: f64, range_fraction: f64) -> bool {
+    if !bed.is_finite() {
+        return false;
+    }
+    let (minimum, maximum) = vegetation_waterline_elevation_band(range_fraction);
+    bed >= minimum && bed <= maximum
+}
+
+/// Uniform horizontal candidate sampling. Terrain/medium/slope tests are
+/// rejection filters only; there are no deposit, spawn, quadrant, ring, or
+/// other gameplay-region weights.
+fn vegetation_random_xy(rng: &mut Mulberry32, map_width: f64, map_height: f64) -> (f64, f64) {
+    (rng.next_f64() * map_width, rng.next_f64() * map_height)
+}
+
+fn vegetation_kind_seed(
+    map_width: f64,
+    map_height: f64,
+    config_seed: f64,
+    kind_index: usize,
+) -> u32 {
+    vegetation_hash_seed(&[map_width, map_height, config_seed, kind_index as f64])
 }
 
 /// Weighted asset pick over one kind's slice of the asset table.
@@ -403,38 +443,6 @@ fn vegetation_pick_asset_slot(
     fallback
 }
 
-fn vegetation_clear_of_exclusions(
-    x: f64,
-    y: f64,
-    radius: f64,
-    deposit_rows: &[f64],
-    deposit_clearance: f64,
-    spawn_rows: &[f64],
-    spawn_clearance: f64,
-) -> bool {
-    let deposit_count = deposit_rows.len() / VEGETATION_DEPOSIT_ROW_STRIDE;
-    for i in 0..deposit_count {
-        let base = i * VEGETATION_DEPOSIT_ROW_STRIDE;
-        let clearance = deposit_rows[base + 2] + deposit_clearance + radius;
-        let dx = x - deposit_rows[base];
-        let dy = y - deposit_rows[base + 1];
-        if dx * dx + dy * dy < clearance * clearance {
-            return false;
-        }
-    }
-    let spawn_count = spawn_rows.len() / VEGETATION_SPAWN_ROW_STRIDE;
-    let spawn_reach = spawn_clearance + radius;
-    for i in 0..spawn_count {
-        let base = i * VEGETATION_SPAWN_ROW_STRIDE;
-        let dx = x - spawn_rows[base];
-        let dy = y - spawn_rows[base + 1];
-        if dx * dx + dy * dy < spawn_reach * spawn_reach {
-            return false;
-        }
-    }
-    true
-}
-
 /// Drop every prop and clear the removal log. Called at match teardown
 /// and before a fresh generation pass.
 #[wasm_bindgen]
@@ -443,7 +451,7 @@ pub fn vegetation_clear() {
 }
 
 /// Lay out every vegetation kind for one map. Deterministic for a given
-/// (map size, player count, seed, config, deposit/spawn exclusion set)
+/// (map size, seed, config, installed terrain)
 /// — every peer runs this and gets a bit-identical prop list, so the
 /// layout never has to travel on the wire.
 ///
@@ -453,7 +461,6 @@ pub fn vegetation_clear() {
 pub fn vegetation_generate(
     map_width: f64,
     map_height: f64,
-    player_count: f64,
     config_seed: f64,
     area_scale_min: f64,
     area_scale_max: f64,
@@ -461,13 +468,9 @@ pub fn vegetation_generate(
     default_map_height: f64,
     max_attempts_per_target: f64,
     edge_clearance: f64,
-    deposit_clearance: f64,
-    spawn_clearance: f64,
     asset_scale_jitter: f64,
     kind_rows: &[f64],
     asset_rows: &[f64],
-    deposit_rows: &[f64],
-    spawn_rows: &[f64],
 ) -> u32 {
     let store = vegetation_store();
     store.clear();
@@ -483,15 +486,6 @@ pub fn vegetation_generate(
     let max_attempts_per_target = max_attempts_per_target.max(1.0) as usize;
 
     let kind_count = kind_rows.len() / VEGETATION_KIND_ROW_STRIDE;
-    let deposit_count = (deposit_rows.len() / VEGETATION_DEPOSIT_ROW_STRIDE) as f64;
-    let mut rng = Mulberry32::new(vegetation_hash_seed(&[
-        map_width,
-        map_height,
-        player_count,
-        deposit_count,
-        config_seed,
-    ]));
-
     let mut normal = [0.0f64; 3];
     for kind_index in 0..kind_count {
         let rules = vegetation_read_kind_rules(kind_rows, kind_index);
@@ -499,6 +493,15 @@ pub fn vegetation_generate(
         if target_count == 0 || rules.asset_row_count == 0 {
             continue;
         }
+        // Each kind owns an independent stream. Retuning tree density or
+        // eligibility therefore cannot push grass/seaweed into a different
+        // pseudo-region by advancing one shared generator.
+        let mut rng = Mulberry32::new(vegetation_kind_seed(
+            map_width,
+            map_height,
+            config_seed,
+            kind_index,
+        ));
         let max_attempts = target_count.saturating_mul(max_attempts_per_target);
         let mut placed = 0usize;
         let mut attempt = 0usize;
@@ -508,8 +511,7 @@ pub fn vegetation_generate(
             // an early reject cannot shift the stream for later attempts.
             debug_assert_eq!(VEGETATION_DRAWS_PER_ATTEMPT, 7);
             let asset_roll = rng.next_f64();
-            let x = rng.next_f64() * map_width;
-            let y = rng.next_f64() * map_height;
+            let (x, y) = vegetation_random_xy(&mut rng, map_width, map_height);
             let height_scale = rng.range(rules.height_scale_min, rules.height_scale_max);
             let radius_scale = rng.range(rules.radius_scale_min, rules.radius_scale_max);
             let rotation = rng.next_f64() * std::f64::consts::TAU;
@@ -550,11 +552,8 @@ pub fn vegetation_generate(
             if !bed.is_finite() {
                 continue;
             }
-            if rules.is_water {
-                // Depth is measured from the water surface down to the
-                // seabed, so 0 is the waterline itself.
-                let depth = TERRAIN_WATER_LEVEL - bed;
-                if depth < rules.min_water_depth || depth > rules.max_water_depth {
+            if rules.uses_waterline_band {
+                if !vegetation_bed_in_waterline_band(bed, rules.waterline_range_fraction) {
                     continue;
                 }
             } else {
@@ -570,19 +569,7 @@ pub fn vegetation_generate(
                 continue;
             }
             let slope = vegetation_slope_from_normal_up(normal[2]);
-            if slope < rules.min_slope || slope > rules.max_slope {
-                continue;
-            }
-
-            if !vegetation_clear_of_exclusions(
-                x,
-                y,
-                radius,
-                deposit_rows,
-                deposit_clearance,
-                spawn_rows,
-                spawn_clearance,
-            ) {
+            if !vegetation_slope_in_band(slope, rules.min_slope, rules.max_slope) {
                 continue;
             }
 
@@ -667,7 +654,11 @@ pub fn vegetation_prop_state(index: u32, out: &mut [f64]) -> u32 {
     out[2] = prop.max_hp;
     out[3] = prop.energy_left;
     out[4] = prop.metal_left;
-    out[5] = if prop.max_hp > 0.0 { prop.hp / prop.max_hp } else { 0.0 };
+    out[5] = if prop.max_hp > 0.0 {
+        prop.hp / prop.max_hp
+    } else {
+        0.0
+    };
     1
 }
 
@@ -760,9 +751,9 @@ pub fn vegetation_raycast(
         if kind_mask != 0 && (kind_mask & (1u32 << prop.kind)) == 0 {
             return;
         }
-        if let Some(t) = vegetation_ray_cylinder_t(
-            origin_x, origin_y, origin_z, dx, dy, dz, max_distance, prop,
-        ) {
+        if let Some(t) =
+            vegetation_ray_cylinder_t(origin_x, origin_y, origin_z, dx, dy, dz, max_distance, prop)
+        {
             if t < best_t {
                 best_t = t;
                 best_index = index;
@@ -879,7 +870,9 @@ pub fn vegetation_apply_reclaim_tick(
             return 0;
         }
         let fraction = hp_removed / prop.max_hp;
-        let energy_gained = (prop.energy_total * fraction).min(prop.energy_left).max(0.0);
+        let energy_gained = (prop.energy_total * fraction)
+            .min(prop.energy_left)
+            .max(0.0);
         let metal_gained = (prop.metal_total * fraction).min(prop.metal_left).max(0.0);
 
         prop.hp -= hp_removed;
@@ -950,4 +943,62 @@ pub fn vegetation_state_hash() -> u32 {
         h = (h ^ ((prop.energy_left * 1024.0).round() as i64 as u32)).wrapping_mul(16777619);
     }
     h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waterline_band_uses_midpoints_to_main_flat_and_seabed() {
+        let (underwater_cutoff, above_water_cutoff) = vegetation_waterline_elevation_band(0.5);
+        assert!((underwater_cutoff - (-360.0)).abs() < 1.0e-9);
+        assert!((above_water_cutoff - (-60.0)).abs() < 1.0e-9);
+        assert!(vegetation_bed_in_waterline_band(underwater_cutoff, 0.5));
+        assert!(vegetation_bed_in_waterline_band(TERRAIN_WATER_LEVEL, 0.5));
+        assert!(vegetation_bed_in_waterline_band(above_water_cutoff, 0.5));
+        assert!(!vegetation_bed_in_waterline_band(
+            underwater_cutoff - 0.001,
+            0.5
+        ));
+        assert!(!vegetation_bed_in_waterline_band(
+            above_water_cutoff + 0.001,
+            0.5
+        ));
+    }
+
+    #[test]
+    fn authored_land_vegetation_slope_band_is_inclusive() {
+        assert!(!vegetation_slope_in_band(0.099_999, 0.1, 0.3));
+        assert!(vegetation_slope_in_band(0.1, 0.1, 0.3));
+        assert!(vegetation_slope_in_band(0.2, 0.1, 0.3));
+        assert!(vegetation_slope_in_band(0.3, 0.1, 0.3));
+        assert!(!vegetation_slope_in_band(0.300_001, 0.1, 0.3));
+    }
+
+    #[test]
+    fn horizontal_candidates_are_uniform_across_the_map() {
+        const SIDE_BINS: usize = 4;
+        const SAMPLES: usize = 80_000;
+        let mut bins = [0usize; SIDE_BINS * SIDE_BINS];
+        let mut rng = Mulberry32::new(vegetation_kind_seed(10_600.0, 10_600.0, 2_147_483_647.0, 2));
+        for _ in 0..SAMPLES {
+            let _asset_roll = rng.next_f64();
+            let (x, y) = vegetation_random_xy(&mut rng, 10_600.0, 10_600.0);
+            for _ in 0..4 {
+                let _ = rng.next_f64();
+            }
+            let bx = ((x / 10_600.0) * SIDE_BINS as f64).floor() as usize;
+            let by = ((y / 10_600.0) * SIDE_BINS as f64).floor() as usize;
+            bins[by.min(SIDE_BINS - 1) * SIDE_BINS + bx.min(SIDE_BINS - 1)] += 1;
+        }
+        let expected = SAMPLES / bins.len();
+        let tolerance = expected * 6 / 100;
+        for count in bins {
+            assert!(
+                count.abs_diff(expected) <= tolerance,
+                "uniform candidate bin count {count} drifted beyond {expected} +/- {tolerance}",
+            );
+        }
+    }
 }

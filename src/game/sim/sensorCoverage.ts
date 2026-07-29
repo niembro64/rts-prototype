@@ -11,7 +11,7 @@ import type {
   Turret,
 } from './types';
 import type { Vec3 } from '../../types/vec2';
-import { isBuildBlockingActivation } from './buildableHelpers';
+import { isEntityActive } from './buildableHelpers';
 import { getBuildingBlueprint, TURRET_BLUEPRINTS } from './blueprints';
 import { resolveWeaponWorldMount } from './combat/combatUtils';
 import { WATER_LEVEL } from './Terrain';
@@ -35,12 +35,39 @@ export function getEntitySensorMedium(entity: Entity): SensorMedium {
     getSensorMediumAtZ(entity.transform.z);
 }
 
-function canEntityProvideOperationalSensorCoverage(entity: Entity): boolean {
-  if (entity.unit) return entity.unit.hp > 0;
-  if (!entity.building || entity.building.hp <= 0) return false;
-  if (isBuildBlockingActivation(entity.buildable)) return false;
+export type SensorOperationalChannels = Readonly<{
+  fullSight: boolean;
+  contactSight: boolean;
+  detector: boolean;
+}>;
+
+const ALL_SENSOR_CHANNELS_OPERATIONAL: SensorOperationalChannels = {
+  fullSight: true,
+  contactSight: true,
+  detector: true,
+};
+const PASSIVE_SIGHT_ONLY_OPERATIONAL: SensorOperationalChannels = {
+  fullSight: true,
+  contactSight: false,
+  detector: false,
+};
+
+/** Completion and health gate the sensor mount as a whole. A completed
+ * building's ordinary sight is passive host awareness and remains available
+ * while its powered/fortified state is closed; radar, sonar, and detector
+ * channels are the switchable electronics. */
+function getEntityOperationalSensorChannels(
+  entity: Entity,
+): SensorOperationalChannels | null {
+  if (!isEntityActive(entity)) return null;
+  if (entity.unit !== null) {
+    return entity.unit.hp > 0 ? ALL_SENSOR_CHANNELS_OPERATIONAL : null;
+  }
+  if (entity.building === null || entity.building.hp <= 0) return null;
   const activeState = entity.building.activeState;
-  return activeState === null || activeState.open !== false;
+  return activeState !== null && activeState.open === false
+    ? PASSIVE_SIGHT_ONLY_OPERATIONAL
+    : ALL_SENSOR_CHANNELS_OPERATIONAL;
 }
 
 function targetRadius(
@@ -67,6 +94,7 @@ export type TurretSensorSource = {
   position: Vec3;
   sourceMedium: SensorMedium;
   sensors: SensorCapabilityConfig;
+  operational: SensorOperationalChannels;
 };
 
 const _sourcePosition: Vec3 = { x: 0, y: 0, z: 0 };
@@ -76,6 +104,7 @@ const _source: TurretSensorSource = {
   position: _sourcePosition,
   sourceMedium: 'aboveWater',
   sensors: null as unknown as SensorCapabilityConfig,
+  operational: ALL_SENSOR_CHANNELS_OPERATIONAL,
 };
 
 /** Visits each operational mounted turret that authors at least one sensor
@@ -84,7 +113,8 @@ export function forEachEntityTurretSensorSource(
   entity: Entity,
   visit: (source: TurretSensorSource) => void,
 ): void {
-  if (!canEntityProvideOperationalSensorCoverage(entity)) return;
+  const operational = getEntityOperationalSensorChannels(entity);
+  if (operational === null) return;
   const turrets = entity.combat?.turrets;
   if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
@@ -96,6 +126,7 @@ export function forEachEntityTurretSensorSource(
     _source.turretIndex = i;
     _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
     _source.sensors = sensors;
+    _source.operational = operational;
     visit(_source);
   }
   for (const mount of entity.combat?.utilityMounts ?? []) {
@@ -110,6 +141,7 @@ export function forEachEntityTurretSensorSource(
     _source.turretIndex = mount.mountIndex;
     _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
     _source.sensors = mount.sensors;
+    _source.operational = operational;
     visit(_source);
   }
 }
@@ -124,8 +156,10 @@ export function getEntityPrimaryTurretSensorSource(
   position: Vec3;
   sourceMedium: SensorMedium;
   sensors: SensorCapabilityConfig;
+  operational: SensorOperationalChannels;
 } | null {
-  if (!canEntityProvideOperationalSensorCoverage(entity)) return null;
+  const operational = getEntityOperationalSensorChannels(entity);
+  if (operational === null) return null;
   const turrets = entity.combat?.turrets;
   if (!turrets) return null;
   for (let i = 0; i < turrets.length; i++) {
@@ -136,6 +170,7 @@ export function getEntityPrimaryTurretSensorSource(
       position: out,
       sourceMedium: getSensorMediumAtZ(out.z),
       sensors,
+      operational,
     };
   }
   for (const mount of entity.combat?.utilityMounts ?? []) {
@@ -145,6 +180,7 @@ export function getEntityPrimaryTurretSensorSource(
       position: out,
       sourceMedium: getSensorMediumAtZ(out.z),
       sensors: mount.sensors,
+      operational,
     };
   }
   return null;
@@ -216,6 +252,7 @@ function getMaximumEntityTurretRadius(
 ): number {
   let max = 0;
   forEachEntityTurretSensorSource(entity, (source) => {
+    if (!source.operational[tier]) return;
     max = Math.max(
       max,
       targetRadius(source.sensors[tier], source.sourceMedium, targetMedium),
@@ -279,6 +316,7 @@ export function canEntityProvideCloakDetection(entity: Entity): boolean {
 export function getEntityCloakDetectionRadius(entity: Entity): number {
   let max = 0;
   forEachEntityTurretSensorSource(entity, (source) => {
+    if (!source.operational.detector) return;
     max = Math.max(max, source.sensors.detectorRadius);
   });
   return max;
@@ -289,6 +327,7 @@ export function getEntityCloakDetectionTargetRadii(
 ): SensorMediumTargetRadii {
   const radii = { ...ZERO_SENSOR_TARGET_RADII };
   forEachEntityTurretSensorSource(entity, (source) => {
+    if (!source.operational.detector || !source.operational.fullSight) return;
     const detector = source.sensors.detectorRadius;
     if (detector <= 0) return;
     const fullSight = source.sensors.fullSight[source.sourceMedium];

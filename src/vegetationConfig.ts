@@ -23,7 +23,7 @@
 // solar lands at 700 energy over 750/35 = 21.4 s. Grass is a tenth of
 // a tree in both value and duration — a quick nibble rather than a
 // deposit. Seaweed pays slightly better per second than grass because
-// only water-capable builders can reach it.
+// its waterline elevation band makes it a less ubiquitous field.
 //
 // DETERMINISM. Every prop is a reclaimable resource now, so placement
 // is simulation state, not decoration. The layout kernel lives in
@@ -35,9 +35,9 @@
 import rawConfig from './vegetationConfig.json';
 
 /** Placement medium for a vegetation kind. `land` props sit on dry
- *  ground above the waterline; `water` props sit on the seabed inside
- *  an authored depth band below it. */
-export type VegetationMedium = 'land' | 'water';
+ *  ground above the waterline; `waterline` props root in the shoreline
+ *  elevation slice derived from the main flat, waterline, and seabed. */
+export type VegetationMedium = 'land' | 'waterline';
 
 /** Wire/array order. The Rust kernel, the renderer, and every packed
  *  row below index kinds by this ordinal, so the order is a contract —
@@ -66,10 +66,11 @@ export type VegetationKindConfig = {
   medium: VegetationMedium;
   /** `land` only: world-unit clearance the prop keeps from any water. */
   waterBuffer: number;
-  /** `water` only: inclusive depth band below the water surface, in
-   *  world units. 0 is the waterline itself. */
-  minWaterDepth: number;
-  maxWaterDepth: number;
+  /** `waterline` only: fraction traveled from the waterline toward each
+   *  side's terrain reference. At 0.5, the upper cutoff is halfway to
+   *  the main 0-height flat and the lower cutoff is halfway to the
+   *  seabed. */
+  waterlineRangeFraction: number;
   /** Terrain-shader slope metric: 0 is flat, 1 is vertical. */
   minSlope: number;
   maxSlope: number;
@@ -95,9 +96,6 @@ export type VegetationPlacementConfig = {
   areaScaleMax: number;
   maxAttemptsPerTarget: number;
   edgeClearance: number;
-  metalDepositClearance: number;
-  playerStartClearanceMin: number;
-  playerStartClearanceMapFraction: number;
   /** Adds +/- this fraction to each placed prop's resolved scale. */
   assetScaleJitter: number;
 };
@@ -171,8 +169,8 @@ function validVegetationConfig(): void {
   }
   for (const kind of VEGETATION_KIND_IDS) {
     const config = getVegetationKindConfig(kind);
-    if (config.medium !== 'land' && config.medium !== 'water') {
-      throw new Error(`vegetationConfig.json "${kind}".medium must be "land" or "water"`);
+    if (config.medium !== 'land' && config.medium !== 'waterline') {
+      throw new Error(`vegetationConfig.json "${kind}".medium must be "land" or "waterline"`);
     }
     if (config.targetCount < 0) {
       throw new Error(`vegetationConfig.json "${kind}".targetCount must be >= 0`);
@@ -182,12 +180,20 @@ function validVegetationConfig(): void {
         `vegetationConfig.json "${kind}" slope band must satisfy 0 <= minSlope <= maxSlope <= 1`,
       );
     }
-    if (config.medium === 'water') {
-      if (config.minWaterDepth < 0 || config.maxWaterDepth <= config.minWaterDepth) {
+    if (config.medium === 'waterline') {
+      if (
+        !Number.isFinite(config.waterlineRangeFraction) ||
+        config.waterlineRangeFraction <= 0 ||
+        config.waterlineRangeFraction > 1
+      ) {
         throw new Error(
-          `vegetationConfig.json "${kind}" must author 0 <= minWaterDepth < maxWaterDepth`,
+          `vegetationConfig.json "${kind}".waterlineRangeFraction must satisfy 0 < fraction <= 1`,
         );
       }
+    } else if (config.waterlineRangeFraction !== 0) {
+      throw new Error(
+        `vegetationConfig.json "${kind}".waterlineRangeFraction must be 0 for land vegetation`,
+      );
     }
     if (config.heightScaleMin <= 0 || config.heightScaleMax < config.heightScaleMin) {
       throw new Error(

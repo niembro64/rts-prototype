@@ -1,6 +1,12 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingBlueprintId, FactoryDefaultWaypoint, Turret } from '../../sim/types';
+import type {
+  Entity,
+  BuildingBlueprintId,
+  FactoryDefaultWaypoint,
+  Turret,
+  UtilityMountCapability,
+} from '../../sim/types';
 import {
   isMetalExtractorBlueprintId,
 } from '../../../types/buildingTypes';
@@ -226,6 +232,17 @@ function createTurretsFromNetwork(
   }
 }
 
+function createUnitUtilityMountsFromBlueprint(
+  unitBlueprintId: string,
+  unitBodyRadius: number,
+): UtilityMountCapability[] {
+  try {
+    return createUnitRuntimeUtilityMounts(unitBlueprintId, unitBodyRadius);
+  } catch {
+    return [];
+  }
+}
+
 function createUnitTurretsFromWire(
   unitBlueprintId: string,
   unitBodyRadius: number,
@@ -292,8 +309,14 @@ export function refreshUnitTurretsFromNetwork(
   const existingCombat = entity.combat;
   const previous = existingCombat !== null ? existingCombat.turrets : undefined;
   const turrets = createTurretsFromNetwork(unitBlueprintId, unitBodyRadius, netTurrets);
+  const utilityMounts = createUnitUtilityMountsFromBlueprint(
+    unitBlueprintId,
+    unitBodyRadius,
+  );
   if (!turrets) {
-    entity.combat = null;
+    entity.combat = utilityMounts.length > 0
+      ? createCombatComponent([], utilityMounts)
+      : null;
     return;
   }
 
@@ -306,12 +329,9 @@ export function refreshUnitTurretsFromNetwork(
     ? {
       ...entity.combat,
       turrets,
-      utilityMounts: createUnitRuntimeUtilityMounts(unitBlueprintId, unitBodyRadius),
+      utilityMounts,
     }
-    : createCombatComponent(
-      turrets,
-      createUnitRuntimeUtilityMounts(unitBlueprintId, unitBodyRadius),
-    );
+    : createCombatComponent(turrets, utilityMounts);
 }
 
 export function refreshBuildingTurretsFromNetwork(
@@ -495,10 +515,14 @@ function createUnitFromNetwork(
   };
 
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.other, unitTurrets);
-  if (turrets) {
+  const utilityMounts = createUnitUtilityMountsFromBlueprint(
+    unitBlueprintId,
+    entity.unit!.radius.other,
+  );
+  if (turrets || utilityMounts.length > 0) {
     const combat = createCombatComponent(
-      turrets,
-      createUnitRuntimeUtilityMounts(unitBlueprintId, entity.unit!.radius.other),
+      turrets ?? [],
+      utilityMounts,
     );
     combat.fireState = readNetworkCombatFireState(u, unitBlueprintId);
     combat.fireEnabled = combat.fireState !== 'holdFire';
@@ -535,10 +559,11 @@ function createUnitFromNetwork(
     };
   }
   if (unitBlueprint !== undefined) {
-    const spawnMount = unitBlueprint.turrets.find((m) => m.producedBlueprintId != null);
-    if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+    const producedUnitBlueprintId =
+      unitBlueprint.factoryProducedUnitBlueprintId ?? null;
+    if (producedUnitBlueprintId !== null) {
       entity.factory = {
-        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        selectedUnitBlueprintId: producedUnitBlueprintId,
         lowPriority: false,
         carrierSpawnEnabled: u?.carrierSpawnEnabled !== false,
         moveState: 'maneuver',
@@ -702,6 +727,10 @@ function createUnitFromTypedFullWireRow(
     entity.unit!.actionHash = computeUnitActionHash(entity.unit!.actions);
   }
 
+  const utilityMounts = createUnitUtilityMountsFromBlueprint(
+    unitBlueprintId,
+    entity.unit!.radius.other,
+  );
   if (values[base + 43] !== 0) {
     const turrets = createUnitTurretsFromWire(
       unitBlueprintId,
@@ -713,7 +742,7 @@ function createUnitFromTypedFullWireRow(
     if (turrets === undefined) return null;
     const combat = createCombatComponent(
       turrets,
-      createUnitRuntimeUtilityMounts(unitBlueprintId, entity.unit!.radius.other),
+      utilityMounts,
     );
     const fireState = values[base + 51] !== 0
       ? unitFireStateFromWireCode(values[base + 52] | 0)
@@ -724,6 +753,8 @@ function createUnitFromTypedFullWireRow(
       ? trajectoryModeFromWireCode(values[base + 58] | 0)
       : 'auto';
     entity.combat = combat;
+  } else if (utilityMounts.length > 0) {
+    entity.combat = createCombatComponent([], utilityMounts);
   }
 
   try {
@@ -753,10 +784,11 @@ function createUnitFromTypedFullWireRow(
     };
   }
   if (unitBlueprint !== undefined) {
-    const spawnMount = unitBlueprint.turrets.find((m) => m.producedBlueprintId != null);
-    if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+    const producedUnitBlueprintId =
+      unitBlueprint.factoryProducedUnitBlueprintId ?? null;
+    if (producedUnitBlueprintId !== null) {
       entity.factory = {
-        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        selectedUnitBlueprintId: producedUnitBlueprintId,
         lowPriority: false,
         carrierSpawnEnabled: values[base + 64] !== 0 ? values[base + 65] !== 0 : true,
         moveState: 'maneuver',
@@ -1023,6 +1055,7 @@ function createBuildingFromTypedFullWireRow(
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
   }
 
+  const utilityMounts = createBuildingRuntimeUtilityMounts(buildingBlueprintId);
   if (values[base + 22] !== 0) {
     const turrets = createBuildingTurretsFromWire(
       buildingBlueprintId,
@@ -1033,8 +1066,10 @@ function createBuildingFromTypedFullWireRow(
     if (turrets === undefined) return null;
     entity.combat = createCombatComponent(
       turrets,
-      createBuildingRuntimeUtilityMounts(buildingBlueprintId),
+      utilityMounts,
     );
+  } else if (utilityMounts.length > 0) {
+    entity.combat = createCombatComponent([], utilityMounts);
   }
   if (values[base + 24] !== 0) {
     const factoryRows = source.factorySelectedUnitRows.values;

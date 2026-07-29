@@ -54,6 +54,9 @@ const MODULAR_MTL = MODULAR_ROOT + '/Materials_Modular_Terrain.mtl';
 
 /** Applied after each asset's own scale. */
 export const VEGETATION_ASSET_GLOBAL_SCALE = 2.2;
+/** Seaweed keeps one uniform 70% size multiplier across every frond so
+ *  presentation and its simulation selection/reclaim volume stay aligned. */
+export const SEAWEED_ASSET_SCALE = 0.07;
 
 const VEGETATION_ASSETS: readonly VegetationAssetSpec[] = [
   {
@@ -149,8 +152,9 @@ const VEGETATION_ASSETS: readonly VegetationAssetSpec[] = [
   },
 
   // Seaweed reuses the grass clump geometry and grass palette at a taller,
-  // narrower scale. Water placement and frond proportions sell "underwater"
-  // without inventing a second color language for the same blade geometry.
+  // narrower profile, uniformly reduced to 70% of its previous world size.
+  // Waterline placement and frond proportions sell "shore growth" without
+  // inventing a second color language for the same blade geometry.
   {
     id: 'seaweedFrond1',
     kind: 'seaweed',
@@ -161,7 +165,7 @@ const VEGETATION_ASSETS: readonly VegetationAssetSpec[] = [
     defaultRadius: 34,
     palette: 'modular',
     use: true,
-    scale: 0.1,
+    scale: SEAWEED_ASSET_SCALE,
     frequency: 1,
   },
   {
@@ -174,7 +178,7 @@ const VEGETATION_ASSETS: readonly VegetationAssetSpec[] = [
     defaultRadius: 38,
     palette: 'modular',
     use: true,
-    scale: 0.1,
+    scale: SEAWEED_ASSET_SCALE,
     frequency: 1,
   },
   {
@@ -187,7 +191,7 @@ const VEGETATION_ASSETS: readonly VegetationAssetSpec[] = [
     defaultRadius: 40,
     palette: 'modular',
     use: true,
-    scale: 0.1,
+    scale: SEAWEED_ASSET_SCALE,
     frequency: 1,
   },
 ];

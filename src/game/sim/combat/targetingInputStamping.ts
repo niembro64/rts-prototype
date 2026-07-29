@@ -864,13 +864,22 @@ function stampCombatTargetingEntityInto(
   const sensorSource = getEntityPrimaryTurretSensorSource(entity, _sensorSourcePos);
   const sensorSourceMedium = sensorSource?.sourceMedium ?? 'aboveWater';
   const sensorConfig = sensorSource?.sensors;
-  const fullVisionAboveWaterRadius =
-    sensorConfig?.fullSight[sensorSourceMedium].aboveWater ?? 0;
-  const fullVisionUnderwaterRadius =
-    sensorConfig?.fullSight[sensorSourceMedium].underwater ?? 0;
-  const radarRadius = sensorConfig?.contactSight[sensorSourceMedium].aboveWater ?? 0;
-  const sonarRadius = sensorConfig?.contactSight[sensorSourceMedium].underwater ?? 0;
-  const detectorRadius = sensorConfig?.detectorRadius ?? 0;
+  const operational = sensorSource?.operational;
+  const fullVisionAboveWaterRadius = operational?.fullSight === true
+    ? sensorConfig?.fullSight[sensorSourceMedium].aboveWater ?? 0
+    : 0;
+  const fullVisionUnderwaterRadius = operational?.fullSight === true
+    ? sensorConfig?.fullSight[sensorSourceMedium].underwater ?? 0
+    : 0;
+  const radarRadius = operational?.contactSight === true
+    ? sensorConfig?.contactSight[sensorSourceMedium].aboveWater ?? 0
+    : 0;
+  const sonarRadius = operational?.contactSight === true
+    ? sensorConfig?.contactSight[sensorSourceMedium].underwater ?? 0
+    : 0;
+  const detectorRadius = operational?.detector === true
+    ? sensorConfig?.detectorRadius ?? 0
+    : 0;
   const detectorAboveWaterRadius = Math.min(detectorRadius, fullVisionAboveWaterRadius);
   const detectorUnderwaterRadius = Math.min(detectorRadius, fullVisionUnderwaterRadius);
   const visibilityPadding = getEntityVisibilityPadding(entity);

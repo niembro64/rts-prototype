@@ -2001,17 +2001,22 @@
       </p>
       <p>
         <strong>Seaweed</strong> is this project&rsquo;s addition beyond the
-        BAR fallback: a water kind that roots on the seabed inside an
-        authored depth band below the waterline, putting an energy field
-        where only water-capable builders can work it. Grass and seaweed
-        stay one blade-vegetation presentation family; where a prop grows
-        and how tall its fronds are carries the aquatic read, not a second
-        material source of truth.
+        BAR fallback: a waterline kind whose roots are sampled uniformly
+        inside one shoreline elevation slice. Its authored range fraction is
+        evaluated against a different terrain reference on each side; at
+        <code>0.5</code>, the upper boundary is halfway from the water surface
+        to the main zero-height terrain flat and the lower boundary is halfway
+        from the water surface to the seabed. This follows the complete water
+        edge without spilling across the main flats or deep basin. Grass and
+        seaweed stay one blade-vegetation presentation family, with seaweed
+        uniformly scaled to 70% of its former size; placement and frond
+        proportions carry the aquatic read, not a second material source of
+        truth.
       </p>
       <ul class="rule-list">
         <li>A prop is <em>not</em> an entity. Thousands of them must stay out of the entity map, the spatial grid, the snapshot serializer, and the slot registry, so vegetation owns a dedicated lightweight store &mdash; the same reason BAR keeps features separate from units.</li>
         <li>Orders still address props through the ordinary numeric target id, above <code>VEGETATION_TARGET_ID_BASE</code>. That is BAR&rsquo;s <code>featureID + Game.maxUnits</code> convention: one Reclaim command spans both stores and no command, action, or wire shape grows a second target field.</li>
-        <li>Placement is <strong>simulation state</strong>, not decoration. The layout kernel lives in the Rust sim crate and samples the installed authoritative terrain mesh, so identical map inputs produce a bit-identical prop list on every peer and the layout never crosses the wire &mdash; the same contract metal deposits already have. Live prop state folds into the canonical state hash: a peer whose forest diverged has desynced.</li>
+        <li>Placement is <strong>simulation state</strong>, not decoration. The layout kernel lives in the Rust sim crate and samples uniform horizontal candidates against the installed authoritative terrain mesh, so eligibility comes only from the authored edge, medium/elevation, height, and slope rules &mdash; never metal-deposit rings, player starts, quadrants, or other gameplay regions. Identical map inputs produce a bit-identical prop list on every peer and the layout never crosses the wire. Live prop state folds into the canonical state hash: a peer whose forest diverged has desynced.</li>
         <li>Reclaim is gradual and proportional. A prop&rsquo;s HP is its work pool; build power drains it at <code>maxHp &times; rate / reclaimTime</code> per second and the payout tracks the HP removed, so consuming a prop takes <code>reclaimTime / rate</code> seconds and yields exactly its authored energy. Several builders may work one prop at once; each tick claims only its own share.</li>
         <li>Reclaim uses the same one outward, team-coloured work spray as construction and repair. There is no separate harvest visual.</li>
         <li>A prop&rsquo;s authored model dimensions are gameplay data now &mdash; they are its selection volume and its reclaim reach &mdash; so the asset table is shared by the simulation and the renderer rather than owned by the renderer.</li>

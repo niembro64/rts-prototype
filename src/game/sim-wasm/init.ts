@@ -1613,7 +1613,6 @@ export interface SimWasm {
   readonly vegetationGenerate: (
     mapWidth: number,
     mapHeight: number,
-    playerCount: number,
     configSeed: number,
     areaScaleMin: number,
     areaScaleMax: number,
@@ -1621,13 +1620,9 @@ export interface SimWasm {
     defaultMapHeight: number,
     maxAttemptsPerTarget: number,
     edgeClearance: number,
-    depositClearance: number,
-    spawnClearance: number,
     assetScaleJitter: number,
     kindRows: Float64Array,
     assetRows: Float64Array,
-    depositRows: Float64Array,
-    spawnRows: Float64Array,
   ) => number;
   readonly vegetationCount: () => number;
   readonly vegetationReadProps: (outRows: Float64Array) => number;

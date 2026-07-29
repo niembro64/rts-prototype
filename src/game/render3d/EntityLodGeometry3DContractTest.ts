@@ -84,10 +84,19 @@ import {
 } from './EntityLodVisualState3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import {
+  SEAWEED_ASSET_SCALE,
+  getVegetationAssetOptions,
+} from '@/vegetationAssets';
+import {
+  VEGETATION_PLACEMENT_CONFIG,
+  getVegetationKindConfig,
+} from '@/vegetationConfig';
+import {
   buildEnvironmentGrassLodGeometry,
   createEnvironmentLowTreeCrownGeometry,
   environmentLodFlatMaterialSpec,
   environmentPropVisibleAtDetailRung,
+  environmentPropUsesGrassPresentation,
 } from './EnvironmentPropRenderer3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
@@ -1245,7 +1254,47 @@ function runEnvironmentLodMaterialContracts(): void {
   assertContract(
     !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
       environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
-    'trees and grass disappear at OFF/GLYPH but remain visible at LOW',
+    'trees, grass, and seaweed disappear at OFF/GLYPH but remain visible at LOW',
+  );
+  assertContract(
+    environmentPropUsesGrassPresentation('grass') &&
+      environmentPropUsesGrassPresentation('seaweed') &&
+      !environmentPropUsesGrassPresentation('tree'),
+    'grass and seaweed share the blade LOD/material path while trees retain trunk/crown LOD',
+  );
+  const grassAssets = getVegetationAssetOptions('grass');
+  const seaweedAssets = getVegetationAssetOptions('seaweed');
+  assertContract(
+    grassAssets.length > 0 &&
+      seaweedAssets.length > 0 &&
+      [...grassAssets, ...seaweedAssets].every((asset) => asset.palette === 'modular'),
+    'grass and seaweed share the modular blade palette instead of separate visual palettes',
+  );
+  assertContract(
+    SEAWEED_ASSET_SCALE === 0.07 &&
+      seaweedAssets.every((asset) => asset.scale === SEAWEED_ASSET_SCALE),
+    'every seaweed frond is uniformly scaled to 70% of its previous world size',
+  );
+  const treePlacement = getVegetationKindConfig('tree');
+  const grassPlacement = getVegetationKindConfig('grass');
+  const seaweedPlacement = getVegetationKindConfig('seaweed');
+  assertContract(
+    treePlacement.minSlope === 0.1 &&
+      treePlacement.maxSlope === 0.3 &&
+      grassPlacement.minSlope === 0.1 &&
+      grassPlacement.maxSlope === 0.3,
+    'tree and grass eligibility uses the authored inclusive 0.1–0.3 slope band',
+  );
+  assertContract(
+    seaweedPlacement.medium === 'waterline' &&
+      seaweedPlacement.waterlineRangeFraction === 0.5,
+    'seaweed spans halfway from water to the main flat and halfway to the seabed',
+  );
+  assertContract(
+    !('metalDepositClearance' in VEGETATION_PLACEMENT_CONFIG) &&
+      !('playerStartClearanceMin' in VEGETATION_PLACEMENT_CONFIG) &&
+      !('playerStartClearanceMapFraction' in VEGETATION_PLACEMENT_CONFIG),
+    'vegetation placement has no deposit- or player-region exclusions',
   );
   const wood = environmentLodFlatMaterialSpec('wood');
   const foliage = environmentLodFlatMaterialSpec('foliage');
@@ -1315,7 +1364,7 @@ function runEnvironmentLodMaterialContracts(): void {
   );
   assertContract(
     lowGrass.getAttribute('position').count === 6,
-    'Low grass retains two representative authored leaf triangles',
+    'Low grass/seaweed retains two representative authored leaf triangles without a stem',
   );
   const mediumPositions = mediumGrass.getAttribute('position');
   const mediumBaseCenter = new THREE.Vector3(

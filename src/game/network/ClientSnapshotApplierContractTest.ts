@@ -28,10 +28,13 @@ import { EntityShadowRenderPacket3D } from '../render3d/EntityShadowRenderPacket
 import { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import type { PlayerId } from '../sim/types';
-import type { WorldState } from '../sim/WorldState';
+import { WorldState } from '../sim/WorldState';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import { refreshUnitActionHash } from '../sim/unitActions';
 import { createBuildable } from '../sim/buildableHelpers';
+import { getEntityFullVisionRadius } from '../sim/sensorCoverage';
+import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
+import { WATER_LEVEL } from '../sim/Terrain';
 import { setQuatFromYaw } from '../math/Quaternion';
 import {
   appendEntitySnapshotWireRowDirect,
@@ -587,6 +590,47 @@ function assertHudContains(view: ClientViewState, id: number, expected: boolean)
       ? 'damaged unit must remain in the HUD cache across sparse rows'
       : 'fully-healed unit must leave the HUD cache after HP row',
   );
+}
+
+export function runTypedSensorHydrationContractTest(): void {
+  const sensorWorld = new WorldState(9201, 2048, 2048);
+  const extractorSource = sensorWorld.createBuilding(
+    256,
+    256,
+    80,
+    80,
+    80,
+    1 as PlayerId,
+  );
+  extractorSource.id = 9503;
+  extractorSource.transform.z = WATER_LEVEL + 100;
+  applyBuildingBlueprintRuntime(extractorSource, 'buildingExtractor');
+  const typedExtractorRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedExtractorRows);
+  const serializedExtractor = serializeEntitySnapshot(
+    extractorSource,
+    undefined,
+    sensorWorld,
+  );
+  if (serializedExtractor !== null) {
+    typedExtractorRows.push(serializedExtractor);
+  }
+  const typedExtractorSource = getEntitySnapshotWireSource(typedExtractorRows);
+  assertContract(
+    typedExtractorSource !== undefined && typedExtractorSource.count === 1,
+    'sensor-only extractor fixture must expose a typed full wire row',
+  );
+  const extractorView = new ClientViewState();
+  extractorView.applyNetworkState(snapshot(1, typedExtractorRows));
+  const hydratedExtractor = extractorView.getEntity(extractorSource.id);
+  assertContract(
+    hydratedExtractor?.combat?.turrets.length === 0 &&
+      hydratedExtractor.combat.utilityMounts.some((mount) => mount.kind === 'sensor') &&
+      getEntityFullVisionRadius(hydratedExtractor, 'aboveWater') > 0,
+    'typed full hydration must reconstruct utility-only sensor mounts and their sight',
+  );
+  resetEntitySnapshotPool();
 }
 
 export function runClientSnapshotApplierContractTest(): void {
@@ -2526,4 +2570,5 @@ export function runClientSnapshotApplierContractTest(): void {
   // perturbing the legacy hot-motion assertions above.
   runShieldFarLodRenderPacketContractTest();
   runTypedShieldRangePresentationContractTest();
+  runTypedSensorHydrationContractTest();
 }

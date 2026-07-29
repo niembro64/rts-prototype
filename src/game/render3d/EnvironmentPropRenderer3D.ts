@@ -8,7 +8,6 @@ import { getLodMode } from '@/clientBarConfig';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 import { getTreeLeafTexture } from './TreeLeafTexture';
 import { getTreeTrunkTexture } from './TreeTrunkTexture';
-import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
 import {
   ACTIVE_VEGETATION_ASSETS,
@@ -165,7 +164,6 @@ type EnvironmentPropRenderer3DOptions = {
   mapWidth: number;
   mapHeight: number;
   playerCount: number;
-  metalDeposits: ReadonlyArray<MetalDeposit>;
   renderScope: ViewportFootprint;
   worldShade: WorldShade3D;
   isTerrainSettled: () => boolean;
@@ -320,7 +318,6 @@ export class EnvironmentPropRenderer3D {
       this.options.mapWidth,
       this.options.mapHeight,
       this.options.playerCount,
-      this.options.metalDeposits,
     );
     // Props consumed before the renderer came up are already in the log;
     // start the cursor at its end and simply never build nodes for them.
@@ -670,7 +667,7 @@ export class EnvironmentPropRenderer3D {
     sourceName: string,
   ): THREE.MeshLambertMaterial | null {
     if (environmentPropUsesGrassPresentation(spec.kind)) {
-      // Land grass and submerged seaweed deliberately share one leaf-color
+      // Land grass and waterline seaweed deliberately share one leaf-color
       // material and no texture map. Medium/far already use this same
       // canonical foliage color, so changing LOD cannot change their palette.
       return this.sharedMaterial(

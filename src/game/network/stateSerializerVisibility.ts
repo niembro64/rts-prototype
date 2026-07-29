@@ -888,7 +888,8 @@ export class SnapshotVisibility {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
       forEachEntityTurretSensorSource(entity, (turretSource) => {
-        const { position, sourceMedium, sensors } = turretSource;
+        const { position, sourceMedium, sensors, operational } = turretSource;
+        if (!operational.fullSight) return;
         for (const targetMedium of ['aboveWater', 'underwater'] as const) {
           const radius = sensors.fullSight[sourceMedium][targetMedium];
           if (radius <= 0) continue;
@@ -940,9 +941,11 @@ export class SnapshotVisibility {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
       forEachEntityTurretSensorSource(entity, (turretSource) => {
-        const { position, sourceMedium, sensors } = turretSource;
+        const { position, sourceMedium, sensors, operational } = turretSource;
         for (const targetMedium of ['aboveWater', 'underwater'] as const) {
-          const contactRadius = sensors.contactSight[sourceMedium][targetMedium];
+          const contactRadius = operational.contactSight
+            ? sensors.contactSight[sourceMedium][targetMedium]
+            : 0;
           if (contactRadius > 0) {
             this.addSource(
               targetMedium === 'aboveWater' ? this.radarSources : this.sonarSources,
@@ -954,10 +957,12 @@ export class SnapshotVisibility {
               targetMedium,
             );
           }
-          const detectorRadius = Math.min(
-            sensors.detectorRadius,
-            sensors.fullSight[sourceMedium][targetMedium],
-          );
+          const detectorRadius = operational.detector && operational.fullSight
+            ? Math.min(
+              sensors.detectorRadius,
+              sensors.fullSight[sourceMedium][targetMedium],
+            )
+            : 0;
           if (detectorRadius <= 0) continue;
           this.addSource(
             this.detectorSources,

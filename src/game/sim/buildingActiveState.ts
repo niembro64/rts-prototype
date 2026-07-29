@@ -1,8 +1,9 @@
 // Shared active/fortified state for economy and utility buildings. ON
 // (open) = normal operation + normal damage; OFF (closed) = disabled
-// operation + 10× damage resistance. A single `open` flag drives both
-// outcomes simultaneously — production/sensors/conversion gate on it and
-// so does the fortify/pose — so they can never disagree. See "Producer
+// operation + 10× damage resistance. A single `open` flag drives production,
+// powered contact sensors (radar/sonar/detector), conversion, and the
+// fortify/pose. Ordinary local sight remains passive on a completed host.
+// See "Producer
 // Buildings Are ON/OFF" in budget_design_philosophy.html.
 //
 // Lifecycle:
@@ -41,8 +42,9 @@ export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
 /** Which building blueprints use the active-state fortify mechanic.
  *  Producer buildings (solar/wind/extractor) gate resource income on
- *  state.open; radar/sonar gate sensor coverage on state.open; converter
- *  gates the energy↔metal swap on state.open. Every active-state structure fortifies
+ *  state.open; radar/sonar gate powered contact coverage on state.open while
+ *  ordinary sight remains available; converter gates the energy↔metal swap
+ *  on state.open. Every active-state structure fortifies
  *  identically while OFF (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
 export function buildingBlueprintHasActiveState(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,

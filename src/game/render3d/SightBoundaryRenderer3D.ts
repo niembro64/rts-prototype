@@ -139,7 +139,13 @@ export class SightBoundaryRenderer3D {
   private collectSightFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
+      forEachEntityTurretSensorSource(entity, ({
+        position,
+        sourceMedium,
+        sensors,
+        operational,
+      }) => {
+        if (!operational.fullSight) return;
         this.pushSource(
           position.x,
           position.y,
@@ -156,7 +162,13 @@ export class SightBoundaryRenderer3D {
   private collectRadarFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      forEachEntityTurretSensorSource(entity, ({ position, sourceMedium, sensors }) => {
+      forEachEntityTurretSensorSource(entity, ({
+        position,
+        sourceMedium,
+        sensors,
+        operational,
+      }) => {
+        if (!operational.contactSight) return;
         const radarRadius = sensors.contactSight[sourceMedium].aboveWater;
         if (radarRadius > 0) {
           this.pushSource(position.x, position.y, radarRadius, renderScope);

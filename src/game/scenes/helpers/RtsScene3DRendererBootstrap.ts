@@ -141,7 +141,6 @@ export function bootstrapRtsScene3DRenderers(
       mapWidth,
       mapHeight,
       playerCount,
-      metalDeposits,
       renderScope,
       worldShade,
       // Vegetation placement samples terrain height, slope, and water
