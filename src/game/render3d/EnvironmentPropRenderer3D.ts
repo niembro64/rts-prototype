@@ -41,13 +41,13 @@ import {
 type EnvironmentPropNode = {
   prop: VegetationProp;
   root: THREE.Group;
-  lods: Record<PrimitiveGeometryTier, THREE.Group>;
+  lods: Record<PrimitiveGeometryTier, THREE.Object3D>;
   detailRung: DetailRung;
 };
 
 type LoadedEnvironmentAsset = {
   spec: VegetationAssetSpec;
-  templates: Record<PrimitiveGeometryTier, THREE.Group>;
+  templates: Record<PrimitiveGeometryTier, THREE.Object3D>;
   unitHeight: number;
 };
 
@@ -178,8 +178,67 @@ type ConsoleWithFbxWarningFilter = Console & {
 
 installKnownFbxMaterialWarningFilter();
 
+/** Scratch for StaticPropContainer's world-matrix change test. */
+const STATIC_PROP_PREVIOUS_WORLD = new THREE.Matrix4();
+
+/** Container for the vegetation subtree, which is static: a prop's transform is
+ *  written once when it is built and never changes again.
+ *
+ *  three.js walks the ENTIRE scene graph every frame from
+ *  `WebGLRenderer.render` -> `scene.updateMatrixWorld()`, and the recursion into
+ *  children is unconditional — `matrixAutoUpdate` only skips composing a node's
+ *  local matrix, and because `Scene.matrixAutoUpdate` defaults to true the root
+ *  sets `matrixWorldNeedsUpdate` every frame, which passes `force = true` all
+ *  the way down and makes every node redo `multiplyMatrices` regardless.
+ *
+ *  Vegetation is ~94% of this game's scene graph (~79k of 84k Object3Ds on a
+ *  default map), so that walk dominated the client: measured in the running
+ *  game, `scene.updateMatrixWorld()` alone cost 11.5ms of a 16.7ms frame, and a
+ *  CPU profile attributed 52% of non-idle main-thread time to updateMatrixWorld
+ *  plus 12% to multiplyMatrices.
+ *
+ *  This container keeps the standard behaviour for itself but only descends
+ *  into its children when something actually changed: an ancestor moved (which
+ *  arrives as `force`), or props were added. Prop world matrices are correct
+ *  after that one pass and stay correct, so the steady-state cost of ~79k
+ *  static nodes drops to a single node visit. */
+class StaticPropContainer extends THREE.Group {
+  /** Set when props are added, so the next update refreshes their world
+   *  matrices exactly once. */
+  public childMatricesDirty = true;
+
+  public override updateMatrixWorld(force?: boolean): void {
+    if (this.matrixAutoUpdate) this.updateMatrix();
+    let worldChanged = false;
+    if (this.matrixWorldNeedsUpdate || force === true) {
+      // `force` arrives every single frame — Scene.matrixAutoUpdate is true, so
+      // the root recomposes and flags itself dirty on each pass — but it only
+      // means "an ancestor was re-evaluated", not "an ancestor moved". Compare
+      // the recomputed world matrix against the previous one so the children
+      // are walked only when this container genuinely moved. Sixteen float
+      // compares against ~79k node visits is a trade worth making every time.
+      STATIC_PROP_PREVIOUS_WORLD.copy(this.matrixWorld);
+      if (this.parent === null) {
+        this.matrixWorld.copy(this.matrix);
+      } else {
+        this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+      }
+      this.matrixWorldNeedsUpdate = false;
+      worldChanged = !STATIC_PROP_PREVIOUS_WORLD.equals(this.matrixWorld);
+    }
+    if (!worldChanged && !this.childMatricesDirty) return;
+    for (const child of this.children) child.updateMatrixWorld(true);
+    this.childMatricesDirty = false;
+  }
+}
+
 export class EnvironmentPropRenderer3D {
-  private readonly root = new THREE.Group();
+  private readonly root = (() => {
+    const group = new StaticPropContainer();
+    group.updateMatrix();
+    group.matrixAutoUpdate = false;
+    return group;
+  })();
   private readonly options: EnvironmentPropRenderer3DOptions;
   private readonly renderScope: ViewportFootprint;
   private readonly worldShade: WorldShade3D;
@@ -504,6 +563,11 @@ export class EnvironmentPropRenderer3D {
     };
     asset.templates.mid = this.makeEnvironmentLodTemplate(asset, 'mid');
     asset.templates.far = this.makeEnvironmentLodTemplate(asset, 'far');
+    // After the mid/far tiers are derived from the close tier, drop the
+    // wrapper groups every prop would otherwise clone.
+    asset.templates.close = flattenPropTemplate(asset.templates.close);
+    asset.templates.mid = flattenPropTemplate(asset.templates.mid);
+    asset.templates.far = flattenPropTemplate(asset.templates.far);
     return asset;
   }
 
@@ -744,6 +808,26 @@ export class EnvironmentPropRenderer3D {
       root.scale.setScalar(scale);
       root.userData.vegetationProp = true;
       root.userData.assetId = prop.assetId;
+      // Vegetation never moves: a prop's transform is written once, here, and
+      // `update()` afterwards only toggles LOD `visible` flags. Compose each
+      // local matrix now and take the whole subtree off three.js's per-frame
+      // matrix recomputation.
+      //
+      // This is the single biggest cost in the client. Vegetation is ~94% of
+      // the scene graph (79k of 84k Object3Ds on a default map), and
+      // `scene.updateMatrixWorld()` walks every node every frame: a CPU
+      // profile of the running game put updateMatrixWorld at 51% and
+      // multiplyMatrices at 13% of all non-idle main-thread time. With
+      // matrixAutoUpdate off, both the compose and the parent multiply are
+      // skipped for these nodes.
+      //
+      // matrixWorldNeedsUpdate forces one world-matrix pass so the parked
+      // matrices start correct; if an ancestor ever moves, three.js still
+      // propagates `force` down to these children, so they stay correct.
+      root.traverse((object) => {
+        object.updateMatrix();
+        object.matrixAutoUpdate = false;
+      });
       this.root.add(root);
       const node: EnvironmentPropNode = {
         prop,
@@ -754,12 +838,49 @@ export class EnvironmentPropRenderer3D {
       this.nodes.push(node);
       this.nodesByPropIndex.set(prop.index, node);
     }
+    // New props need one world-matrix pass; after that the subtree is static.
+    this.root.childMatricesDirty = true;
   }
 }
 
 /** Scratch for the removal-log drain. Sized well past the few props a
  *  frame can plausibly consume; the drain loops if it ever fills. */
 const _removedPropScratch = new Uint32Array(64);
+
+/** Collapses a prop LOD template whose entire subtree is a single mesh down to
+ *  just that mesh, baking the wrapper transforms into it.
+ *
+ *  Templates arrive as `Group -> loaded source root -> Mesh`, and every prop
+ *  clones all three LOD templates, so each prop cost 10 Object3Ds to draw at
+ *  most one mesh. three.js walks the whole scene graph every frame
+ *  (`scene.updateMatrixWorld`), and vegetation is ~94% of that graph, so those
+ *  wrapper nodes dominated frame time: a CPU profile of the running game put
+ *  updateMatrixWorld at 52%, multiplyMatrices at 12% and projectObject at 10%
+ *  of all non-idle main-thread work. Flattening takes a prop from 10 nodes to
+ *  4 (root + one mesh per LOD).
+ *
+ *  Geometry and material are reused untouched and the baked matrix reproduces
+ *  the same world transform, so this is invisible in the render. Templates
+ *  that legitimately hold several meshes are left alone. */
+function flattenPropTemplate(template: THREE.Object3D): THREE.Object3D {
+  template.updateMatrixWorld(true);
+  const meshes: THREE.Mesh[] = [];
+  template.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.isMesh) meshes.push(mesh);
+  });
+  if (meshes.length !== 1) return template;
+  const source = meshes[0];
+  const flat = new THREE.Mesh(source.geometry, source.material);
+  flat.name = template.name;
+  flat.castShadow = false;
+  flat.receiveShadow = false;
+  flat.userData = { ...template.userData, ...source.userData };
+  // matrixWorld here is relative to the (unparented) template root, so it is
+  // exactly the transform the flattened mesh must carry in its place.
+  flat.applyMatrix4(source.matrixWorld);
+  return flat;
+}
 
 function collectEnvironmentGrassBladeTriangles(
   highTemplate: THREE.Object3D,
