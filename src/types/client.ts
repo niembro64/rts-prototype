@@ -113,6 +113,7 @@ export type ClientBarConfig = {
    *  Default off — scorches accumulate fast in long fights and the
    *  player typically wants the live battlefield, not its history. */
   readonly burnMarks: BooleanSetting;
+  readonly windParticles: BooleanSetting;
   /** Wheel, tread, and footstep prints drawn by GroundPrint3D from
    *  unit movement. Default on — these decay quickly and read as
    *  part of the unit silhouettes' motion. */

@@ -86,9 +86,12 @@ void main() {
   float gust = valueNoise((center.xz + uGustDrift) * uGust.x + aRand.y * 7.31);
   float visibility = smoothstep(uGust.y - 0.18, uGust.y + 0.18, gust);
 
-  // Never let a particle collapse into sub-pixel shimmer: enforce a
-  // minimum projected size that grows with view distance.
-  float radius = max(uRadius, uMinSizePerDepth * viewDist);
+  // A particle whose projected size falls below the threshold fades out
+  // instead of being size-clamped: a screen-locked size makes particles
+  // zoom at a different rate than the world, which reads as drift.
+  float projected = uRadius / max(uMinSizePerDepth * viewDist, 1.0e-6);
+  float sizeFade = smoothstep(0.5, 1.0, projected);
+  float radius = uRadius;
 
   // Static per-particle yaw so the shared tetrahedron doesn't read as
   // stamped copies of one orientation.
@@ -102,7 +105,7 @@ void main() {
 
   float nearFade = smoothstep(uFadeDists.x, uFadeDists.y, viewDist);
   float farFade = 1.0 - smoothstep(uFadeDists.z, uFadeDists.w, viewDist);
-  vAlpha = uAlpha * visibility * nearFade * farFade;
+  vAlpha = uAlpha * visibility * sizeFade * nearFade * farFade;
 
   gl_Position = projectionMatrix * modelViewMatrix
     * vec4(center + rotated * radius, 1.0);

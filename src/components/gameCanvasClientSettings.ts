@@ -25,6 +25,7 @@ import {
   getPathingDebugUnit,
   getPathingDebugMode,
   getBurnMarks,
+  getWindParticles,
   getLodMode,
   getLegsRadiusToggle,
   getLegsReachToggle,
@@ -66,6 +67,7 @@ import {
   setPathingDebugUnit,
   setPathingDebugMode,
   setBurnMarks,
+  setWindParticles,
   setLodMode,
   setLegsRadiusToggle,
   setLegsReachToggle,
@@ -136,6 +138,7 @@ export function useGameCanvasClientSettings({
   const masterVolume = ref<MasterVolumePercent>(getMasterVolume());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
+  const windParticles = ref<boolean>(getWindParticles());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
@@ -225,6 +228,7 @@ export function useGameCanvasClientSettings({
     masterVolume.value = getMasterVolume();
     audioSmoothing.value = getAudioSmoothing();
     burnMarks.value = getBurnMarks();
+    windParticles.value = getWindParticles();
     locomotionMarks.value = getLocomotionMarks();
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
@@ -414,6 +418,12 @@ export function useGameCanvasClientSettings({
     burnMarks.value = newValue;
   }
 
+  function toggleWindParticles(): void {
+    const newValue = !windParticles.value;
+    setWindParticles(newValue);
+    windParticles.value = newValue;
+  }
+
   function toggleLocomotionMarks(): void {
     const newValue = !locomotionMarks.value;
     setLocomotionMarks(newValue);
@@ -600,6 +610,8 @@ export function useGameCanvasClientSettings({
     audioSmoothing.value = cd.audioSmoothing.default;
     setBurnMarks(cd.burnMarks.default);
     burnMarks.value = cd.burnMarks.default;
+    setWindParticles(cd.windParticles.default);
+    windParticles.value = cd.windParticles.default;
     setLocomotionMarks(cd.locomotionMarks.default);
     locomotionMarks.value = cd.locomotionMarks.default;
     setSmokeTrails(cd.smokeTrails.default);
@@ -697,6 +709,7 @@ export function useGameCanvasClientSettings({
     masterVolume,
     audioSmoothing,
     burnMarks,
+    windParticles,
     locomotionMarks,
     smokeTrails,
     smokeSoftEdges,
@@ -764,6 +777,7 @@ export function useGameCanvasClientSettings({
     toggleAllUnitRadii,
     toggleAudioSmoothing,
     toggleBurnMarks,
+    toggleWindParticles,
     toggleLocomotionMarks,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,

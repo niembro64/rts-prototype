@@ -3,89 +3,240 @@
     "demoDefault": "padded",
     "realDefault": "padded",
     "options": [
-      { "value": "window", "label": "WIN" },
-      { "value": "padded", "label": "PAD" },
-      { "value": "all", "label": "ALL" }
+      {
+        "value": "window",
+        "label": "WIN"
+      },
+      {
+        "value": "padded",
+        "label": "PAD"
+      },
+      {
+        "value": "all",
+        "label": "ALL"
+      }
     ]
   },
   "audio": {
     "demoDefault": "padded",
     "realDefault": "padded",
     "options": [
-      { "value": "window", "label": "WIN" },
-      { "value": "padded", "label": "PAD" },
-      { "value": "all", "label": "ALL" }
+      {
+        "value": "window",
+        "label": "WIN"
+      },
+      {
+        "value": "padded",
+        "label": "PAD"
+      },
+      {
+        "value": "all",
+        "label": "ALL"
+      }
     ]
   },
   "masterVolume": {
     "demoDefault": 100,
     "realDefault": 100,
     "options": [
-      { "value": 0, "label": "0" },
-      { "value": 25, "label": "25" },
-      { "value": 50, "label": "50" },
-      { "value": 75, "label": "75" },
-      { "value": 100, "label": "100" }
+      {
+        "value": 0,
+        "label": "0"
+      },
+      {
+        "value": 25,
+        "label": "25"
+      },
+      {
+        "value": 50,
+        "label": "50"
+      },
+      {
+        "value": 75,
+        "label": "75"
+      },
+      {
+        "value": 100,
+        "label": "100"
+      }
     ]
   },
-  "audioSmoothing": { "demoDefault": true, "realDefault": true },
-  "burnMarks": { "demoDefault": false, "realDefault": false },
-  "locomotionMarks": { "demoDefault": true, "realDefault": true },
-  "smokeTrails": { "demoDefault": true, "realDefault": true },
-  "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
-  "entityShadows": { "demoDefault": true, "realDefault": true },
-  "materialExplosions": { "demoDefault": true, "realDefault": true },
-  "triangleDebug": { "demoDefault": false, "realDefault": false },
-  "waterTriangleDebug": { "demoDefault": false, "realDefault": false },
-  "wallTriangleDebug": { "demoDefault": false, "realDefault": false },
-  "buildGridDebug": { "demoDefault": false, "realDefault": false },
-  "airLiftProbeDebug": { "demoDefault": false, "realDefault": false },
-  "zoomPointsDebug": { "demoDefault": false, "realDefault": false },
-  "metalMap": { "demoDefault": false, "realDefault": false },
-  "elevationMap": { "demoDefault": false, "realDefault": false },
-  "pathingMap": { "demoDefault": false, "realDefault": false },
-  "pathingDebugUnit": { "demoDefault": "unitJackal", "realDefault": "unitJackal" },
-  "pathingDebugMode": { "demoDefault": "none", "realDefault": "none" },
-  "sightBoundary": { "demoDefault": false, "realDefault": false },
-  "radarBoundary": { "demoDefault": false, "realDefault": false },
+  "audioSmoothing": {
+    "demoDefault": true,
+    "realDefault": true
+  },
+  "burnMarks": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "windParticles": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "locomotionMarks": {
+    "demoDefault": true,
+    "realDefault": true
+  },
+  "smokeTrails": {
+    "demoDefault": true,
+    "realDefault": true
+  },
+  "smokeSoftEdges": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "entityShadows": {
+    "demoDefault": true,
+    "realDefault": true
+  },
+  "materialExplosions": {
+    "demoDefault": true,
+    "realDefault": true
+  },
+  "triangleDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "waterTriangleDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "wallTriangleDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "buildGridDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "airLiftProbeDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "zoomPointsDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "metalMap": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "elevationMap": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "pathingMap": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "pathingDebugUnit": {
+    "demoDefault": "unitJackal",
+    "realDefault": "unitJackal"
+  },
+  "pathingDebugMode": {
+    "demoDefault": "none",
+    "realDefault": "none"
+  },
+  "sightBoundary": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "radarBoundary": {
+    "demoDefault": false,
+    "realDefault": false
+  },
   "unitGroundNormalEma": {
     "demoDefault": "fast",
     "realDefault": "fast",
     "options": [
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "mid", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
+      {
+        "value": "snap",
+        "label": "SNAP"
+      },
+      {
+        "value": "fast",
+        "label": "FAST"
+      },
+      {
+        "value": "mid",
+        "label": "MED"
+      },
+      {
+        "value": "slow",
+        "label": "SLOW"
+      }
     ]
   },
-  "legsRadius": { "demoDefault": false, "realDefault": false },
-  "legsReach": { "demoDefault": false, "realDefault": false },
+  "legsRadius": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "legsReach": {
+    "demoDefault": false,
+    "realDefault": false
+  },
   "cameraSmooth": {
     "demoDefault": "fast",
     "realDefault": "fast",
     "options": [
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "mid", "label": "MID" },
-      { "value": "slow", "label": "SLOW" }
+      {
+        "value": "snap",
+        "label": "SNAP"
+      },
+      {
+        "value": "fast",
+        "label": "FAST"
+      },
+      {
+        "value": "mid",
+        "label": "MID"
+      },
+      {
+        "value": "slow",
+        "label": "SLOW"
+      }
     ]
   },
   "cameraFollow": {
     "demoDefault": "free",
     "realDefault": "free",
     "options": [
-      { "value": "free", "label": "FREE" },
-      { "value": "follow", "label": "FOLLOW" },
-      { "value": "follow-behind", "label": "BEHIND" }
+      {
+        "value": "free",
+        "label": "FREE"
+      },
+      {
+        "value": "follow",
+        "label": "FOLLOW"
+      },
+      {
+        "value": "follow-behind",
+        "label": "BEHIND"
+      }
     ]
   },
   "cameraFov": {
     "options": [
-      { "value": 10, "label": "10" },
-      { "value": 30, "label": "30" },
-      { "value": 45, "label": "45" },
-      { "value": 60, "label": "60" },
-      { "value": 120, "label": "120" }
+      {
+        "value": 10,
+        "label": "10"
+      },
+      {
+        "value": 30,
+        "label": "30"
+      },
+      {
+        "value": 45,
+        "label": "45"
+      },
+      {
+        "value": 60,
+        "label": "60"
+      },
+      {
+        "value": 120,
+        "label": "120"
+      }
     ]
   },
   "telemetryBudgets": {
@@ -98,12 +249,24 @@
     "demoDefault": "floating-square",
     "realDefault": "floating-square",
     "options": [
-      { "value": "infinity", "label": "INF" },
-      { "value": "floating-square", "label": "SQUARE" },
-      { "value": "floating-square-sea", "label": "SEA" }
+      {
+        "value": "infinity",
+        "label": "INF"
+      },
+      {
+        "value": "floating-square",
+        "label": "SQUARE"
+      },
+      {
+        "value": "floating-square-sea",
+        "label": "SEA"
+      }
     ]
   },
-  "dragPan": { "demoDefault": true, "realDefault": true },
+  "dragPan": {
+    "demoDefault": true,
+    "realDefault": true
+  },
   "sounds": {
     "demoDefault": {
       "fire": false,
@@ -122,65 +285,162 @@
       "music": false
     }
   },
-  "rangeToggles": { "demoDefault": false, "realDefault": false },
-  "projRangeToggles": { "demoDefault": false, "realDefault": false },
-  "unitRadiusToggles": { "demoDefault": false, "realDefault": false },
+  "rangeToggles": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "projRangeToggles": {
+    "demoDefault": false,
+    "realDefault": false
+  },
+  "unitRadiusToggles": {
+    "demoDefault": false,
+    "realDefault": false
+  },
   "lobbyVisible": {
-    "demoDefault": { "mobile": true, "desktop": true },
-    "realDefault": { "mobile": true, "desktop": true }
+    "demoDefault": {
+      "mobile": true,
+      "desktop": true
+    },
+    "realDefault": {
+      "mobile": true,
+      "desktop": true
+    }
   },
   "waypointDetail": {
     "demoDefault": "simple",
     "realDefault": "simple",
     "options": [
-      { "value": "simple", "label": "SIMPLE" },
-      { "value": "detailed", "label": "DETAILED" }
+      {
+        "value": "simple",
+        "label": "SIMPLE"
+      },
+      {
+        "value": "detailed",
+        "label": "DETAILED"
+      }
     ]
   },
   "entityHud": {
     "demoDefault": {
-      "unit": { "name": false, "healthBar": true, "buildBars": true },
-      "tower": { "name": false, "healthBar": true, "buildBars": true },
-      "building": { "name": false, "healthBar": true, "buildBars": true },
-      "turret": { "name": false, "healthBar": false, "buildBars": false },
-      "shot": { "name": false, "healthBar": false, "buildBars": false }
+      "unit": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "tower": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "building": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "turret": {
+        "name": false,
+        "healthBar": false,
+        "buildBars": false
+      },
+      "shot": {
+        "name": false,
+        "healthBar": false,
+        "buildBars": false
+      }
     },
     "realDefault": {
-      "unit": { "name": false, "healthBar": true, "buildBars": true },
-      "tower": { "name": false, "healthBar": true, "buildBars": true },
-      "building": { "name": false, "healthBar": true, "buildBars": true },
-      "turret": { "name": false, "healthBar": false, "buildBars": false },
-      "shot": { "name": false, "healthBar": false, "buildBars": false }
+      "unit": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "tower": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "building": {
+        "name": false,
+        "healthBar": true,
+        "buildBars": true
+      },
+      "turret": {
+        "name": false,
+        "healthBar": false,
+        "buildBars": false
+      },
+      "shot": {
+        "name": false,
+        "healthBar": false,
+        "buildBars": false
+      }
     }
   },
   "selectionHudMode": {
     "demoDefault": "whenNotFull",
     "realDefault": "whenNotFull",
     "options": [
-      { "value": "always", "label": "ALL" },
-      { "value": "never", "label": "OFF" },
-      { "value": "whenNotFull", "label": "DMG" }
+      {
+        "value": "always",
+        "label": "ALL"
+      },
+      {
+        "value": "never",
+        "label": "OFF"
+      },
+      {
+        "value": "whenNotFull",
+        "label": "DMG"
+      }
     ]
   },
-
-  "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
-  "entityHudTypes": ["unit", "tower", "building", "turret", "shot"],
-  "entityHudElements": ["name", "healthBar", "buildBars"],
+  "soundCategories": [
+    "fire",
+    "hit",
+    "dead",
+    "beam",
+    "field",
+    "music"
+  ],
+  "entityHudTypes": [
+    "unit",
+    "tower",
+    "building",
+    "turret",
+    "shot"
+  ],
+  "entityHudElements": [
+    "name",
+    "healthBar",
+    "buildBars"
+  ],
   "rangeTypes": [
-    "trackAcquire", "trackRelease",
-    "engageAcquire", "engageRelease",
-    "engageMinAcquire", "engageMinRelease",
+    "trackAcquire",
+    "trackRelease",
+    "engageAcquire",
+    "engageRelease",
+    "engageMinAcquire",
+    "engageMinRelease",
     "build"
   ],
-  "projRangeTypes": ["collision", "explosion"],
-  "unitRadiusTypes": ["other", "hitbox", "collision", "shotArmingRadius"],
-
+  "projRangeTypes": [
+    "collision",
+    "explosion"
+  ],
+  "unitRadiusTypes": [
+    "other",
+    "hitbox",
+    "collision",
+    "shotArmingRadius"
+  ],
   "storageKeySuffixes": {
     "renderMode": "render-mode",
     "audioScope": "audio-scope",
     "masterVolume": "master-volume",
     "audioSmoothing": "audio-smoothing",
     "burnMarks": "burn-marks-v2",
+    "windParticles": "wind-particles",
     "locomotionMarks": "locomotion-marks",
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",

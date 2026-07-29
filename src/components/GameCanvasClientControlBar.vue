@@ -617,6 +617,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleBurnMarks"
         >BURN</BarButton>
         <BarButton
+          :active="model.windParticles"
+          title="Draw ambient wind particles drifting with the authoritative wind"
+          @click="model.toggleWindParticles"
+        >WIND</BarButton>
+        <BarButton
           :active="model.locomotionMarks"
           title="Draw wheel, tread, and footstep prints from unit movement"
           @click="model.toggleLocomotionMarks"

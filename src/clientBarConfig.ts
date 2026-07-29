@@ -65,6 +65,7 @@ type ClientDefaults = {
   readonly masterVolume: MasterVolumePercent;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
+  readonly windParticles: boolean;
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
@@ -138,6 +139,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     masterVolume: pickDefault(clientBarConfig.masterVolume, mode) as MasterVolumePercent,
     audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
     burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
+    windParticles: pickDefault(clientBarConfig.windParticles, mode),
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
@@ -219,6 +221,7 @@ export const CLIENT_CONFIG = {
   },
   audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
+  windParticles: { default: DEMO_CLIENT_DEFAULTS.windParticles },
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
@@ -301,6 +304,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     masterVolume: { ...CLIENT_CONFIG.masterVolume, default: defaults.masterVolume },
     audioSmoothing: { default: defaults.audioSmoothing },
     burnMarks: { default: defaults.burnMarks },
+    windParticles: { default: defaults.windParticles },
     locomotionMarks: { default: defaults.locomotionMarks },
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
@@ -362,6 +366,7 @@ type ClientStorageKeyName =
   | 'masterVolume'
   | 'audioSmoothing'
   | 'burnMarks'
+  | 'windParticles'
   | 'locomotionMarks'
   | 'smokeTrails'
   | 'smokeSoftEdges'
@@ -406,6 +411,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'masterVolume',
   'audioSmoothing',
   'burnMarks',
+  'windParticles',
   'locomotionMarks',
   'smokeTrails',
   'smokeSoftEdges',
@@ -501,6 +507,7 @@ let currentAudioScope: AudioScope = _cd.audio.default;
 let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
+let currentWindParticles: boolean = _cd.windParticles.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
@@ -583,6 +590,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentMasterVolume = cd.masterVolume.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
   currentBurnMarks = cd.burnMarks.default;
+  currentWindParticles = cd.windParticles.default;
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
@@ -655,6 +663,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
+  }
+  const storedWindParticles = readPersisted(keys.windParticles);
+  if (storedWindParticles !== null) {
+    currentWindParticles = storedWindParticles === 'true';
   }
   const storedLocomotionMarks = readPersisted(keys.locomotionMarks);
   if (storedLocomotionMarks !== null) {
@@ -1045,6 +1057,17 @@ export function getBurnMarks(): boolean {
 export function setBurnMarks(enabled: boolean): void {
   currentBurnMarks = enabled;
   persist(activeStorageKeys().burnMarks, String(enabled));
+}
+
+/** Wind-particle toggle: the ambient drifting tetrahedra showing the
+ *  authoritative wind direction. Client presentation only. Default off. */
+export function getWindParticles(): boolean {
+  return currentWindParticles;
+}
+
+export function setWindParticles(enabled: boolean): void {
+  currentWindParticles = enabled;
+  persist(activeStorageKeys().windParticles, String(enabled));
 }
 
 /** Locomotion-mark toggle: wheel, tread, and footstep prints from

@@ -1103,6 +1103,7 @@ const {
   masterVolume,
   audioSmoothing,
   burnMarks,
+  windParticles,
   locomotionMarks,
   smokeTrails,
   smokeSoftEdges,
@@ -1168,6 +1169,7 @@ const {
   toggleAllUnitRadii,
   toggleAudioSmoothing,
   toggleBurnMarks,
+  toggleWindParticles,
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
@@ -1990,6 +1992,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   projectileDeltaSnapshotApplyHiMs: projectileDeltaSnapshotApplyHiMs.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
+  windParticles: windParticles.value,
   locomotionMarks: locomotionMarks.value,
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
@@ -2044,6 +2047,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   refreshCommandHotkeys,
   toggleAudioSmoothing,
   toggleBurnMarks,
+  toggleWindParticles,
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
@@ -2193,6 +2197,7 @@ watchEffect(() => {
   m.projectileDeltaSnapshotApplyHiMs = projectileDeltaSnapshotApplyHiMs.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
+  m.windParticles = windParticles.value;
   m.locomotionMarks = locomotionMarks.value;
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;

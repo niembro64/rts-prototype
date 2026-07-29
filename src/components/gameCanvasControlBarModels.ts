@@ -210,6 +210,7 @@ export type GameCanvasClientControlBarModel = {
   readonly projectileDeltaSnapshotApplyHiMs: number;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
+  readonly windParticles: boolean;
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
@@ -264,6 +265,7 @@ export type GameCanvasClientControlBarModel = {
   refreshCommandHotkeys(): void;
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;
+  toggleWindParticles(): void;
   toggleLocomotionMarks(): void;
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
