@@ -1,7 +1,6 @@
 {
   "turretGunLight": {
     "turretBlueprintId": "turretGunLight",
-    "requiresFullSight": true,
     "name": "Light Gun",
     "cooldown": {
       "duration": 600,
@@ -44,45 +43,53 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaLight",
-    "turretRange": {
-      "range": 200,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 200,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
-    "requiresFullSight": true,
     "name": "Burst Gun",
     "cooldown": {
       "duration": 500,
@@ -136,45 +143,53 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaMedium",
-    "turretRange": {
-      "range": 230,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 230,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretCannon": {
     "turretBlueprintId": "turretCannon",
-    "requiresFullSight": true,
     "name": "Cannon",
     "cooldown": {
       "duration": 2400,
@@ -217,43 +232,52 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy",
-    "turretRange": {
-      "range": 1000,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.5,
-          "release": 0.45
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 1000,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.5,
+            "release": 0.45
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretMortarSlow": {
@@ -300,43 +324,52 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarMedium",
-    "turretRange": {
-      "range": 1000,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.5,
-          "release": 0.45
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 1000,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.5,
+            "release": 0.45
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretMortarDrop": {
@@ -383,40 +416,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarMedium",
-    "turretRange": {
-      "range": 650,
-      "rangeVolume": "turret-range-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 650,
+        "rangeVolume": "turret-range-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretMortarFast": {
@@ -471,48 +513,56 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarMedium",
-    "turretRange": {
-      "range": 2000,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.5,
-          "release": 0.45
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 2000,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.5,
+            "release": 0.45
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
-    "requiresFullSight": true,
     "name": "Gatling Gun",
     "cooldown": {
       "duration": 180,
@@ -566,40 +616,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaMedium",
-    "turretRange": {
-      "range": 300,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 300,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretDisruptor": {
@@ -640,40 +699,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaDisruptor",
-    "turretRange": {
-      "range": 150,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 150,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretShieldPanel": {
@@ -712,48 +780,56 @@
     "kind": "attack",
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldPanel",
-    "turretRange": {
-      "range": 400,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": {
-          "acquire": 1.1,
-          "release": 1.2
+    "targeting": {
+      "engagement": {
+        "range": 400,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": {
+            "acquire": 1.1,
+            "release": 1.2
+          }
         }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretBeam": {
     "turretBlueprintId": "turretBeam",
-    "requiresFullSight": true,
     "name": "Beam Emitter",
     "cooldown": null,
     "launchForce": 0,
@@ -791,45 +867,53 @@
     "kind": "attack",
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMedium",
-    "turretRange": {
-      "range": 250,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 250,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretBeamMini": {
     "turretBlueprintId": "turretBeamMini",
-    "requiresFullSight": true,
     "name": "Mini Beam",
     "cooldown": null,
     "launchForce": 0,
@@ -867,45 +951,53 @@
     "kind": "attack",
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMini",
-    "turretRange": {
-      "range": 180,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 180,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretBeamMega": {
     "turretBlueprintId": "turretBeamMega",
-    "requiresFullSight": true,
     "name": "Mega Beam",
     "cooldown": null,
     "launchForce": 0,
@@ -943,40 +1035,49 @@
     "kind": "attack",
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamHeavy",
-    "turretRange": {
-      "range": 350,
-      "rangeVolume": "turret-range-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 350,
+        "rangeVolume": "turret-range-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretShieldSphere": {
@@ -1027,40 +1128,49 @@
     "kind": "attack",
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldSphere",
-    "turretRange": {
-      "range": 700,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 700,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretShieldSphereSmall": {
@@ -1111,45 +1221,53 @@
     "kind": "attack",
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldSphereSmall",
-    "turretRange": {
-      "range": 540,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 540,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretBeamLong": {
     "turretBlueprintId": "turretBeamLong",
-    "requiresFullSight": true,
     "name": "Long Beam",
     "cooldown": null,
     "launchForce": 0,
@@ -1187,45 +1305,53 @@
     "kind": "attack",
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMega",
-    "turretRange": {
-      "range": 350,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 350,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretCannonLong": {
     "turretBlueprintId": "turretCannonLong",
-    "requiresFullSight": true,
     "name": "Long Cannon",
     "cooldown": {
       "duration": 1700,
@@ -1268,48 +1394,56 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy",
-    "turretRange": {
-      "range": 1500,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.5,
-          "release": 0.45
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 1500,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.5,
+            "release": 0.45
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretAlbatrosSiegeCannon": {
     "turretBlueprintId": "turretAlbatrosSiegeCannon",
-    "requiresFullSight": true,
     "name": "Albatros Siege Cannon",
     "cooldown": {
       "duration": 1900,
@@ -1352,43 +1486,52 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy",
-    "turretRange": {
-      "range": 1200,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.28,
-          "release": 0.24
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 1200,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.28,
+            "release": 0.24
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
     }
   },
   "turretRocketSlow": {
@@ -1443,43 +1586,52 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketLight",
-    "turretRange": {
-      "range": 800,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": {
-          "acquire": 0.6,
-          "release": 0.55
-        },
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 800,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.6,
+            "release": 0.55
+          },
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretTorpedo": {
@@ -1526,40 +1678,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotTorpedo",
-    "turretRange": {
-      "range": 900,
-      "rangeVolume": "turret-range-top-water-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 900,
+        "rangeVolume": "turret-range-top-water-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretRocketFast": {
@@ -1614,40 +1775,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMissileFast",
-    "turretRange": {
-      "range": 430,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 430,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretAntiAir": {
@@ -1702,40 +1872,49 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMissileLong",
-    "turretRange": {
-      "range": 1200,
-      "rangeVolume": "turret-range-top-and-bottom-unbounded",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 1200,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretSpawnBuildingsAndTowers": {
@@ -1782,40 +1961,49 @@
     "kind": "spawn",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretSpawnUnits": {
@@ -1862,40 +2050,49 @@
     "kind": "spawn",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretResourcePylonConstructionMetal": {
@@ -1958,40 +2155,49 @@
     "kind": "resourcePylon",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretResourcePylonConstructionEnergy": {
@@ -2054,40 +2260,49 @@
     "kind": "resourcePylon",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretResourcePylonExtractionMetal": {
@@ -2132,40 +2347,49 @@
     "kind": "resourcePylon",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretResourcePylonExtractionEnergy": {
@@ -2210,80 +2434,97 @@
     "kind": "resourcePylon",
     "emissionKind": null,
     "emissionBlueprintId": null,
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     }
   },
   "turretSensorUnitJackal": {
     "turretBlueprintId": "turretSensorUnitJackal",
-    "requiresFullSight": false,
     "name": "Jackal Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2319,42 +2560,50 @@
   },
   "turretSensorUnitLynx": {
     "turretBlueprintId": "turretSensorUnitLynx",
-    "requiresFullSight": false,
     "name": "Lynx Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2390,42 +2639,50 @@
   },
   "turretSensorUnitDaddy": {
     "turretBlueprintId": "turretSensorUnitDaddy",
-    "requiresFullSight": false,
     "name": "Daddy Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2461,42 +2718,50 @@
   },
   "turretSensorUnitBadger": {
     "turretBlueprintId": "turretSensorUnitBadger",
-    "requiresFullSight": false,
     "name": "Badger Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2532,42 +2797,50 @@
   },
   "turretSensorUnitMongoose": {
     "turretBlueprintId": "turretSensorUnitMongoose",
-    "requiresFullSight": false,
     "name": "Mongoose Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2603,42 +2876,50 @@
   },
   "turretSensorUnitTick": {
     "turretBlueprintId": "turretSensorUnitTick",
-    "requiresFullSight": false,
     "name": "Tick Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2674,42 +2955,50 @@
   },
   "turretSensorUnitMammoth": {
     "turretBlueprintId": "turretSensorUnitMammoth",
-    "requiresFullSight": false,
     "name": "Mammoth Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2745,42 +3034,50 @@
   },
   "turretSensorUnitFormik": {
     "turretBlueprintId": "turretSensorUnitFormik",
-    "requiresFullSight": false,
     "name": "Formik Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2816,42 +3113,50 @@
   },
   "turretSensorUnitWidow": {
     "turretBlueprintId": "turretSensorUnitWidow",
-    "requiresFullSight": false,
     "name": "Widow Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2887,42 +3192,50 @@
   },
   "turretSensorUnitHippo": {
     "turretBlueprintId": "turretSensorUnitHippo",
-    "requiresFullSight": false,
     "name": "Hippo Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -2958,42 +3271,50 @@
   },
   "turretSensorUnitSeaTurtle": {
     "turretBlueprintId": "turretSensorUnitSeaTurtle",
-    "requiresFullSight": false,
     "name": "Sea Turtle Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3029,42 +3350,50 @@
   },
   "turretSensorUnitOrca": {
     "turretBlueprintId": "turretSensorUnitOrca",
-    "requiresFullSight": false,
     "name": "Orca Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1350,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1350,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1350
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1350
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3100,42 +3429,50 @@
   },
   "turretSensorUnitTarantula": {
     "turretBlueprintId": "turretSensorUnitTarantula",
-    "requiresFullSight": false,
     "name": "Tarantula Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3171,42 +3508,50 @@
   },
   "turretSensorUnitLoris": {
     "turretBlueprintId": "turretSensorUnitLoris",
-    "requiresFullSight": false,
     "name": "Loris Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3242,42 +3587,50 @@
   },
   "turretSensorUnitBee": {
     "turretBlueprintId": "turretSensorUnitBee",
-    "requiresFullSight": false,
     "name": "Bee Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3313,42 +3666,50 @@
   },
   "turretSensorUnitDragonfly": {
     "turretBlueprintId": "turretSensorUnitDragonfly",
-    "requiresFullSight": false,
     "name": "Dragonfly Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3384,42 +3745,50 @@
   },
   "turretSensorUnitConstructionDrone": {
     "turretBlueprintId": "turretSensorUnitConstructionDrone",
-    "requiresFullSight": false,
     "name": "Construction Drone Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3455,42 +3824,50 @@
   },
   "turretSensorUnitEagle": {
     "turretBlueprintId": "turretSensorUnitEagle",
-    "requiresFullSight": false,
     "name": "Eagle Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3526,42 +3903,50 @@
   },
   "turretSensorUnitDuck": {
     "turretBlueprintId": "turretSensorUnitDuck",
-    "requiresFullSight": false,
     "name": "Duck Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3597,42 +3982,50 @@
   },
   "turretSensorUnitAlbatros": {
     "turretBlueprintId": "turretSensorUnitAlbatros",
-    "requiresFullSight": false,
     "name": "Albatross Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1700,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1700,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1700
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1700
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3668,42 +4061,50 @@
   },
   "turretSensorUnitQueenBee": {
     "turretBlueprintId": "turretSensorUnitQueenBee",
-    "requiresFullSight": false,
     "name": "Queen Bee Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1700,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1700,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1700
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1700
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3739,42 +4140,50 @@
   },
   "turretSensorUnitQueenTick": {
     "turretBlueprintId": "turretSensorUnitQueenTick",
-    "requiresFullSight": false,
     "name": "Queen Tick Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1700,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1700,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1700
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1700
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3810,42 +4219,50 @@
   },
   "turretSensorUnitTransport": {
     "turretBlueprintId": "turretSensorUnitTransport",
-    "requiresFullSight": false,
     "name": "Transport Drone Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3881,42 +4298,50 @@
   },
   "turretSensorUnitCommander": {
     "turretBlueprintId": "turretSensorUnitCommander",
-    "requiresFullSight": false,
     "name": "Commander Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1600,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1600,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1600
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1600
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 600
-      }
+          "detectorRadius": 600
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -3952,42 +4377,50 @@
   },
   "turretSensorBuildingSolar": {
     "turretBlueprintId": "turretSensorBuildingSolar",
-    "requiresFullSight": false,
     "name": "Solar Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4023,42 +4456,50 @@
   },
   "turretSensorBuildingWind": {
     "turretBlueprintId": "turretSensorBuildingWind",
-    "requiresFullSight": false,
     "name": "Wind Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4094,42 +4535,50 @@
   },
   "turretSensorBuildingExtractor": {
     "turretBlueprintId": "turretSensorBuildingExtractor",
-    "requiresFullSight": false,
     "name": "Extractor Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4165,42 +4614,50 @@
   },
   "turretSensorBuildingExtractorT2": {
     "turretBlueprintId": "turretSensorBuildingExtractorT2",
-    "requiresFullSight": false,
     "name": "Advanced Extractor Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4236,42 +4693,50 @@
   },
   "turretSensorBuildingRadar": {
     "turretBlueprintId": "turretSensorBuildingRadar",
-    "requiresFullSight": false,
     "name": "Radar Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 4200,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 4200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4307,42 +4772,50 @@
   },
   "turretSensorBuildingResourceConverter": {
     "turretBlueprintId": "turretSensorBuildingResourceConverter",
-    "requiresFullSight": false,
     "name": "Converter Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4378,42 +4851,50 @@
   },
   "turretSensorBuildingSonar": {
     "turretBlueprintId": "turretSensorBuildingSonar",
-    "requiresFullSight": false,
     "name": "Sonar Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 4200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 4200
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4449,42 +4930,50 @@
   },
   "turretSensorBuildingFabricator": {
     "turretBlueprintId": "turretSensorBuildingFabricator",
-    "requiresFullSight": false,
     "name": "Fabricator Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4520,42 +5009,50 @@
   },
   "turretSensorBuildingBeamMega": {
     "turretBlueprintId": "turretSensorBuildingBeamMega",
-    "requiresFullSight": false,
     "name": "Beam Tower Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4591,42 +5088,50 @@
   },
   "turretSensorBuildingCannon": {
     "turretBlueprintId": "turretSensorBuildingCannon",
-    "requiresFullSight": false,
     "name": "Cannon Tower Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,
@@ -4662,42 +5167,50 @@
   },
   "turretSensorBuildingAntiAir": {
     "turretBlueprintId": "turretSensorBuildingAntiAir",
-    "requiresFullSight": false,
     "name": "Anti-Air Tower Sensors",
-    "turretRange": {
-      "range": 0,
-      "rangeVolume": "turret-range-sphere",
-      "rangeMultiplierOverrides": {
-        "engageRangeMax": {
-          "acquire": 0.95,
-          "release": 1
-        },
-        "engageRangeMin": null,
-        "trackingRange": null
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
       },
-      "sensors": {
-        "fullSight": {
-          "aboveWater": {
-            "aboveWater": 1200,
-            "underwater": 0
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 1200
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 1200
-          }
-        },
-        "contactSight": {
-          "aboveWater": {
-            "aboveWater": 0,
-            "underwater": 0
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
           },
-          "underwater": {
-            "aboveWater": 0,
-            "underwater": 0
-          }
-        },
-        "detectorRadius": 0
-      }
+          "detectorRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
     },
     "cooldown": null,
     "launchForce": 0,

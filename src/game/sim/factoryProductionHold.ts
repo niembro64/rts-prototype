@@ -6,7 +6,6 @@ import {
   fabricatorTorusHoverHeight,
   getUnitBlueprint,
 } from './blueprints';
-import { TURRET_BLUEPRINTS } from './blueprints/turrets';
 import type { Entity } from './types';
 import type { EntityHoldSpec } from './entityHolds';
 import { productionHoldRingRadiusForUnitRadius } from './productionHoldGeometry';
@@ -68,22 +67,16 @@ function productionHoldLocalOffset(factory: Entity, producedUnitBlueprintId: str
   const hostUnit = factory.unit;
   if (hostUnit === null) return { x: 0, y: 0, slotIndex: 0, hostAnchored: false };
   const hostBp = getUnitBlueprint(hostUnit.unitBlueprintId);
-  const mountIndex = hostBp.turrets.findIndex((mount) =>
-    mount.producedBlueprintId === producedUnitBlueprintId);
-  if (mountIndex < 0) return { x: 0, y: 0, slotIndex: 0, hostAnchored: false };
-  const mount = hostBp.turrets[mountIndex];
-  const hostAnchored = mount.productionHoldAnchor === 'host';
-  const runtimeMount = factory.combat?.turrets[mountIndex]?.mount;
-  if (runtimeMount !== undefined) {
-    return { x: runtimeMount.x, y: runtimeMount.y, slotIndex: mountIndex, hostAnchored };
+  if (hostBp.factoryProducedUnitBlueprintId !== producedUnitBlueprintId) {
+    return { x: 0, y: 0, slotIndex: 0, hostAnchored: false };
   }
-  const blueprintMount = mount.mount;
+  const point = hostBp.workEmitter?.points[0] ?? { x: 0, y: 0, z: 0 };
   const radius = hostUnit.radius.other;
   return {
-    x: blueprintMount.x * radius,
-    y: blueprintMount.y * radius,
-    slotIndex: mountIndex,
-    hostAnchored,
+    x: point.x * radius,
+    y: point.y * radius,
+    slotIndex: 0,
+    hostAnchored: true,
   };
 }
 
@@ -127,24 +120,11 @@ export function getFactoryProductionPylonVisual(
   producedUnitBlueprintId: string | null,
   turretIndex: number,
 ): FactoryProductionPylonVisual | null {
-  if (factory.unit === null || producedUnitBlueprintId === null) return null;
-  const hostBp = getUnitBlueprint(factory.unit.unitBlueprintId);
-  let pylonOrdinal = 0;
-  for (let i = 0; i < hostBp.turrets.length; i++) {
-    const mount = hostBp.turrets[i];
-    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-    if (turretBlueprint?.resourcePylon?.role !== 'construction') continue;
-    if (i === turretIndex) {
-      const visual = getFactoryProductionHoldVisual(factory, producedUnitBlueprintId);
-      if (visual === null) return null;
-      const side = pylonOrdinal === 0 ? -1 : 1;
-      return {
-        localOffsetX: visual.localOffsetX,
-        localOffsetY: visual.localOffsetY + visual.ringRadius * side,
-        localBaseZ: visual.localBaseZ,
-      };
-    }
-    pylonOrdinal++;
-  }
+  void factory;
+  void producedUnitBlueprintId;
+  void turretIndex;
+  // Construction pylons no longer exist. Retain the compatibility query for
+  // callers compiled against the old render helper; it intentionally yields
+  // no visual.
   return null;
 }

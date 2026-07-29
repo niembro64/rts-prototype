@@ -233,7 +233,9 @@ pub fn unit_water_damage_step_pool(dt_sec: f64) -> u32 {
 
 #[wasm_bindgen]
 pub fn unit_water_damaged_entity_slots_ptr() -> *const u32 {
-    unit_force_runtime_table().water_damaged_entity_slots.as_ptr()
+    unit_force_runtime_table()
+        .water_damaged_entity_slots
+        .as_ptr()
 }
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
@@ -340,9 +342,7 @@ const UNIT_ATTITUDE_MIN_RADIUS: f64 = 1.0;
 const UNIT_ATTITUDE_SLEEP_EPSILON_SQ: f64 = 1e-12;
 
 #[inline]
-fn unit_force_full_medium_surface_lift(
-    proposed_force: f64,
-) -> f64 {
+fn unit_force_full_medium_surface_lift(proposed_force: f64) -> f64 {
     // Probes aggregate direct authored forces. Surface response is deliberately
     // deterministic: the config fixes randomization and EMA to zero.
     if proposed_force.is_finite() && proposed_force > 0.0 {
@@ -788,13 +788,37 @@ fn unit_force_attitude_step(
     let critical_damping = 2.0 * k.sqrt();
     let damping = critical_damping.max(medium_angular_damping.max(0.0));
     let (relative_x, next_omega_x, _) = compute_damped_rotation(
-        -axis_angle[0], omega[0], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+        -axis_angle[0],
+        omega[0],
+        0.0,
+        k,
+        damping,
+        dt_sec,
+        0,
+        0.0,
+        0.0,
     );
     let (relative_y, next_omega_y, _) = compute_damped_rotation(
-        -axis_angle[1], omega[1], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+        -axis_angle[1],
+        omega[1],
+        0.0,
+        k,
+        damping,
+        dt_sec,
+        0,
+        0.0,
+        0.0,
     );
     let (relative_z, next_omega_z, _) = compute_damped_rotation(
-        -axis_angle[2], omega[2], 0.0, k, damping, dt_sec, 0, 0.0, 0.0,
+        -axis_angle[2],
+        omega[2],
+        0.0,
+        k,
+        damping,
+        dt_sec,
+        0,
+        0.0,
+        0.0,
     );
     let next_axis_angle = [-relative_x, -relative_y, -relative_z];
     let previous_omega = omega;
@@ -933,10 +957,10 @@ pub fn unit_force_step_batch(
                     profile_flags = profile.flags[code];
                     rows[base + UF_ROW_GROUND_MAX_PROPULSIVE_FORCE] =
                         profile.values[pbase + UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE];
-                    rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND] =
-                        profile.values[pbase + UF_PROFILE_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND];
-                    rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER] =
-                        profile.values[pbase + UF_PROFILE_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER];
+                    rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND] = profile
+                        .values[pbase + UF_PROFILE_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND];
+                    rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER] = profile
+                        .values[pbase + UF_PROFILE_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER];
                     rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT] =
                         profile.values[pbase + UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT];
                     rows[base + UF_ROW_AIR_LINEAR_DAMPING_RATE] =
@@ -945,10 +969,12 @@ pub fn unit_force_step_batch(
                         profile.values[pbase + UF_PROFILE_WATER_MAX_PROPULSIVE_FORCE];
                     rows[base + UF_ROW_WATER_LINEAR_DAMPING_RATE] =
                         profile.values[pbase + UF_PROFILE_WATER_LINEAR_DAMPING_RATE];
-                    rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND] =
-                        profile.values[pbase + UF_PROFILE_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND];
+                    rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND] = profile
+                        .values
+                        [pbase + UF_PROFILE_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND];
                     rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER] =
-                        profile.values[pbase + UF_PROFILE_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER];
+                        profile.values[pbase
+                            + UF_PROFILE_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER];
                     rows[base + UF_ROW_AIR_MAX_PROPULSIVE_FORCE] =
                         profile.values[pbase + UF_PROFILE_AIR_MAX_PROPULSIVE_FORCE];
                     air_angular_damping_rate =
@@ -971,8 +997,8 @@ pub fn unit_force_step_batch(
         }
 
         let has_thrust = flag & UF_FLAG_HAS_THRUST != 0;
-        let cruise_when_uncommanded =
-            profile_flags & UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED != 0 || flag & UF_FLAG_IS_FLYING != 0;
+        let cruise_when_uncommanded = profile_flags & UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED != 0
+            || flag & UF_FLAG_IS_FLYING != 0;
         let medium_lift_enabled = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
@@ -1016,12 +1042,9 @@ pub fn unit_force_step_batch(
         } else {
             0.0
         };
-        let ground_max_propulsive_force =
-            rows[base + UF_ROW_GROUND_MAX_PROPULSIVE_FORCE].max(0.0);
-        let air_max_propulsive_force =
-            rows[base + UF_ROW_AIR_MAX_PROPULSIVE_FORCE].max(0.0);
-        let water_max_propulsive_force =
-            rows[base + UF_ROW_WATER_MAX_PROPULSIVE_FORCE].max(0.0);
+        let ground_max_propulsive_force = rows[base + UF_ROW_GROUND_MAX_PROPULSIVE_FORCE].max(0.0);
+        let air_max_propulsive_force = rows[base + UF_ROW_AIR_MAX_PROPULSIVE_FORCE].max(0.0);
+        let water_max_propulsive_force = rows[base + UF_ROW_WATER_MAX_PROPULSIVE_FORCE].max(0.0);
 
         let dir_x = rows[base + UF_ROW_DIR_X];
         let dir_y = rows[base + UF_ROW_DIR_Y];
@@ -1045,36 +1068,36 @@ pub fn unit_force_step_batch(
         } else {
             (0.0, 0.0)
         };
-        let (drive_dir_x, drive_dir_y, has_drive_dir, drive_thrust_scale) = if has_thrust && thrust_input_mag > 0.0 {
-            if propulsion_body_forward {
-                (
-                    forward_x,
-                    forward_y,
-                    true,
-                    unit_force_body_forward_throttle(
-                        requested_dir_x,
-                        requested_dir_y,
+        let (drive_dir_x, drive_dir_y, has_drive_dir, drive_thrust_scale) =
+            if has_thrust && thrust_input_mag > 0.0 {
+                if propulsion_body_forward {
+                    (
                         forward_x,
                         forward_y,
-                        thrust_scale,
-                    ),
-                )
+                        true,
+                        unit_force_body_forward_throttle(
+                            requested_dir_x,
+                            requested_dir_y,
+                            forward_x,
+                            forward_y,
+                            thrust_scale,
+                        ),
+                    )
+                } else {
+                    (requested_dir_x, requested_dir_y, true, thrust_scale)
+                }
             } else {
-                (requested_dir_x, requested_dir_y, true, thrust_scale)
-            }
-        } else {
-            (0.0, 0.0, false, 0.0)
-        };
+                (0.0, 0.0, false, 0.0)
+            };
 
         let mut thrust_force_x = 0.0;
         let mut thrust_force_y = 0.0;
         let mut thrust_force_z = 0.0;
         let ground_z = rows[base + UF_ROW_GROUND_Z];
-        let computed_ground_contact =
-            is_in_locomotion_contact(
-                ground_z - (p.pos_z[slot] - p.ground_offset[slot]),
-                p.radius[slot],
-            );
+        let computed_ground_contact = is_in_locomotion_contact(
+            ground_z - (p.pos_z[slot] - p.ground_offset[slot]),
+            p.radius[slot],
+        );
         let ground_contact = flag & UF_FLAG_ON_GROUND != 0 || computed_ground_contact;
         if let Some(runtime_slot) = runtime_slot {
             runtime.ground_contact[runtime_slot] = if ground_contact { 1 } else { 0 };
@@ -1112,7 +1135,8 @@ pub fn unit_force_step_batch(
                 air_has_target_dir = true;
             }
 
-            let proposed_force = if flag & UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE != 0
+            let proposed_force = if flag & UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE
+                != 0
                 && rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].is_finite()
             {
                 rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].max(0.0)
@@ -1128,8 +1152,10 @@ pub fn unit_force_step_batch(
                     false,
                     surface_lift_minimum_distance_world,
                 );
-                rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND].max(0.0) * ground_response
-                    + rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER].max(0.0) * water_response
+                rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND].max(0.0)
+                    * ground_response
+                    + rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_WATER].max(0.0)
+                        * water_response
             };
             let full_medium_surface_lift = unit_force_full_medium_surface_lift(proposed_force);
             if medium_lift_enabled && full_medium_surface_lift > 0.0 {
@@ -1144,13 +1170,14 @@ pub fn unit_force_step_batch(
                     air_max_propulsive_force,
                     air_fraction,
                 ) * air_thrust_scale;
-                let (air_drive_dir_x, air_drive_dir_y) = if cruise_when_uncommanded || propulsion_body_forward {
-                    // Aircraft-style locomotion: engine thrust follows the nose, while
-                    // the requested movement direction is only the yaw target below.
-                    (forward_x, forward_y)
-                } else {
-                    (air_target_dir_x, air_target_dir_y)
-                };
+                let (air_drive_dir_x, air_drive_dir_y) =
+                    if cruise_when_uncommanded || propulsion_body_forward {
+                        // Aircraft-style locomotion: engine thrust follows the nose, while
+                        // the requested movement direction is only the yaw target below.
+                        (forward_x, forward_y)
+                    } else {
+                        (air_target_dir_x, air_target_dir_y)
+                    };
                 let (tx, ty, tz) = unit_force_planar_drive_direction_for_contact(
                     ground_contact,
                     air_drive_dir_x,
@@ -1205,17 +1232,19 @@ pub fn unit_force_step_batch(
             let inverse_lift_force_from_ground_surface =
                 rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_FORCE_FROM_GROUND];
             if medium_lift_enabled && inverse_lift_force_from_ground_surface > 0.0 {
-                let proposed_force = if flag & UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE != 0
-                    && rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].is_finite()
-                {
-                    rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].max(0.0)
-                } else {
-                    inverse_lift_force_from_ground_surface.max(0.0)
-                        * unit_force_surface_lift_inverse_distance_response(
-                            p.pos_z[slot] - ground_z,
-                            surface_lift_minimum_distance_world,
-                        )
-                };
+                let proposed_force =
+                    if flag & UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE != 0
+                        && rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE]
+                            .is_finite()
+                    {
+                        rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].max(0.0)
+                    } else {
+                        inverse_lift_force_from_ground_surface.max(0.0)
+                            * unit_force_surface_lift_inverse_distance_response(
+                                p.pos_z[slot] - ground_z,
+                                surface_lift_minimum_distance_world,
+                            )
+                    };
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(proposed_force);
                 if full_medium_surface_lift > 0.0 {
                     thrust_force_z += unit_force_occupancy_weighted_positive_value(
@@ -1228,8 +1257,11 @@ pub fn unit_force_step_batch(
             let proportional_lift_force_from_water_surface =
                 rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER];
             if medium_lift_enabled && proportional_lift_force_from_water_surface > 0.0 {
-                let proposed_force = if flag & UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE != 0
-                    && rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE].is_finite()
+                let proposed_force = if flag
+                    & UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE
+                    != 0
+                    && rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE]
+                        .is_finite()
                 {
                     rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE].max(0.0)
                 } else if ground_z < TERRAIN_WATER_LEVEL {
@@ -1297,8 +1329,8 @@ pub fn unit_force_step_batch(
                 thrust_force_y + external_fy,
                 thrust_force_z + external_fz,
             );
-            let contact_force_limit = normal_load
-                * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
+            let contact_force_limit =
+                normal_load * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             let available_ground_force = ground_max_propulsive_force.min(contact_force_limit);
             if let Some(runtime_slot) = runtime_slot {
                 runtime.available_ground_force[runtime_slot] = available_ground_force;
@@ -1490,9 +1522,18 @@ mod tests {
             unit_force_surface_lift_inverse_distance_response(f64::NAN, 0.5),
             minimum_response,
         );
-        assert_near(unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL + 10.0), 0.0);
-        assert_near(unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL), 0.0);
-        assert_near(unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL - 10.0), 10.0);
+        assert_near(
+            unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL + 10.0),
+            0.0,
+        );
+        assert_near(
+            unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL),
+            0.0,
+        );
+        assert_near(
+            unit_force_water_surface_depth_world(TERRAIN_WATER_LEVEL - 10.0),
+            10.0,
+        );
         assert_near(unit_force_water_surface_depth_world(f64::NAN), 0.0);
     }
 
@@ -1604,14 +1645,26 @@ mod tests {
     #[test]
     fn fluid_drive_uses_the_supported_slope_tangent_at_a_shoreline() {
         let slope_normal_z = 3.0_f64.sqrt() * 0.5;
-        let (airborne_x, airborne_y, airborne_z) =
-            unit_force_planar_drive_direction_for_contact(false, 1.0, 0.0, -0.5, 0.0, slope_normal_z);
+        let (airborne_x, airborne_y, airborne_z) = unit_force_planar_drive_direction_for_contact(
+            false,
+            1.0,
+            0.0,
+            -0.5,
+            0.0,
+            slope_normal_z,
+        );
         assert_near(airborne_x, 1.0);
         assert_near(airborne_y, 0.0);
         assert_near(airborne_z, 0.0);
 
-        let (contact_x, contact_y, contact_z) =
-            unit_force_planar_drive_direction_for_contact(true, 1.0, 0.0, -0.5, 0.0, slope_normal_z);
+        let (contact_x, contact_y, contact_z) = unit_force_planar_drive_direction_for_contact(
+            true,
+            1.0,
+            0.0,
+            -0.5,
+            0.0,
+            slope_normal_z,
+        );
         assert_near(contact_x, slope_normal_z);
         assert_near(contact_y, 0.0);
         assert_near(contact_z, 0.5);
@@ -1619,10 +1672,22 @@ mod tests {
 
     #[test]
     fn body_forward_drive_allows_arrival_control_to_reverse_brake() {
-        assert_near(unit_force_body_forward_throttle(1.0, 0.0, 1.0, 0.0, 1.0), 1.0);
-        assert_near(unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 1.0), -1.0);
-        assert_near(unit_force_body_forward_throttle(0.0, 1.0, 1.0, 0.0, 1.0), 0.0);
-        assert_near(unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 0.4), -0.4);
+        assert_near(
+            unit_force_body_forward_throttle(1.0, 0.0, 1.0, 0.0, 1.0),
+            1.0,
+        );
+        assert_near(
+            unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 1.0),
+            -1.0,
+        );
+        assert_near(
+            unit_force_body_forward_throttle(0.0, 1.0, 1.0, 0.0, 1.0),
+            0.0,
+        );
+        assert_near(
+            unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 0.4),
+            -0.4,
+        );
     }
 
     #[test]

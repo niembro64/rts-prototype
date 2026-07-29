@@ -4,6 +4,7 @@ type TestMount = {
   mountId: unknown;
   turretBlueprintId: string;
   controlMode: unknown;
+  slavedToMountId?: unknown;
 };
 
 function assertThrows(name: string, fn: () => void, pattern: RegExp): void {
@@ -29,9 +30,16 @@ function assertDoesNotThrow(name: string, mounts: readonly TestMount[]): void {
 }
 
 assertDoesNotThrow('mixed-control-modes', [
-  { mountId: 'mainGun', turretBlueprintId: 'turretGunLight', controlMode: 'host' },
+  { mountId: 'mainGun', turretBlueprintId: 'turretGunLight', controlMode: 'hostPreferred' },
+  { mountId: 'hostOnlyGun', turretBlueprintId: 'turretGunLight', controlMode: 'hostOnly' },
   { mountId: 'pointDefense', turretBlueprintId: 'turretGunLight', controlMode: 'autonomous' },
   { mountId: 'special', turretBlueprintId: 'turretDisruptor', controlMode: 'manual' },
+  {
+    mountId: 'wingGun',
+    turretBlueprintId: 'turretGunLight',
+    controlMode: 'slaved',
+    slavedToMountId: 'mainGun',
+  },
 ]);
 
 assertThrows(
@@ -45,10 +53,55 @@ assertThrows(
 assertThrows(
   'duplicate-mount-id',
   () => validateTurretMountContracts('unit blueprint', 'duplicate-mount-id', [
-    { mountId: 'gun', turretBlueprintId: 'turretGunLight', controlMode: 'host' },
-    { mountId: 'gun', turretBlueprintId: 'turretGunBurst', controlMode: 'host' },
+    { mountId: 'gun', turretBlueprintId: 'turretGunLight', controlMode: 'hostPreferred' },
+    { mountId: 'gun', turretBlueprintId: 'turretGunBurst', controlMode: 'hostPreferred' },
   ]),
   /duplicate mountId/,
+);
+
+assertThrows(
+  'unknown-slaved-mount',
+  () => validateTurretMountContracts('unit blueprint', 'unknown-slaved-mount', [
+    {
+      mountId: 'wingGun',
+      turretBlueprintId: 'turretGunLight',
+      controlMode: 'slaved',
+      slavedToMountId: 'missingGun',
+    },
+  ]),
+  /unknown slavedToMountId/,
+);
+
+assertThrows(
+  'self-slaved-mount',
+  () => validateTurretMountContracts('unit blueprint', 'self-slaved-mount', [
+    {
+      mountId: 'wingGun',
+      turretBlueprintId: 'turretGunLight',
+      controlMode: 'slaved',
+      slavedToMountId: 'wingGun',
+    },
+  ]),
+  /slaved mounts require a different non-empty slavedToMountId/,
+);
+
+assertThrows(
+  'cyclic-slaved-mounts',
+  () => validateTurretMountContracts('unit blueprint', 'cyclic-slaved-mounts', [
+    {
+      mountId: 'leftGun',
+      turretBlueprintId: 'turretGunLight',
+      controlMode: 'slaved',
+      slavedToMountId: 'rightGun',
+    },
+    {
+      mountId: 'rightGun',
+      turretBlueprintId: 'turretGunLight',
+      controlMode: 'slaved',
+      slavedToMountId: 'leftGun',
+    },
+  ]),
+  /slaved mount cycle/,
 );
 
 console.log('turretMountContractValidation passed');

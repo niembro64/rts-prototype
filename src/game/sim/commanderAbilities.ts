@@ -2,16 +2,15 @@ import type { WorldState } from './WorldState';
 import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
 import { getBuilderConstructionRate } from './hostCapabilities';
-import { updateWeaponWorldKinematics } from './combat/combatUtils';
-import { getUnitGroundZ } from './unitGeometry';
 import { getTransformCosSin } from '../math';
+import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
 import { economyManager } from './economy';
 import { isCapturableTarget } from './capture';
 import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildInProgress } from './buildableHelpers';
 import { setUnitActions } from './unitActions';
-import { ballSpawnRateForResourceRate } from '@/resourceConfig';
+import { ballSpawnRateForWorkRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
@@ -19,25 +18,47 @@ import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
-const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
+const _workEmitterWorld = { x: 0, y: 0, z: 0 };
 const _reclaimTickOut = new Float64Array(5);
 const REPAIR_RATE_PAIR_KEY_STRIDE = 67_108_864;
-
-// Init "spawn beam": a brief, fast, dense team-colored zap from a spawn
-// turret's host to the entity it just brought into existence. Reads as a laser
-// (fast + dense particles) vs the lazier continuous construction balls.
-// NOTE: the spray wire format carries only speed/particleRadius/ballSpawnRate/
-// intensity (+ heal flag); colorRGB/flow/fade do not survive serialization, so
-// the zap renders in the source player's team color (resolveSprayColor).
-const SPAWN_BEAM_SOURCE_Z_BUMP = 8;
-const SPAWN_BEAM_PARTICLE_SPEED = 700;
-const SPAWN_BEAM_PARTICLE_RADIUS = 1.3;
-const SPAWN_BEAM_BALL_SPAWN_RATE = 80;
 
 type CompletedBuilding = CommanderAbilitiesResult['completedBuildings'][number];
 
 function repairRatePairKey(sourceId: EntityId, targetId: EntityId): number {
   return sourceId * REPAIR_RATE_PAIR_KEY_STRIDE + targetId;
+}
+
+function getWorkEmitterSpec(entity: Entity) {
+  if (entity.unit !== null) {
+    return getUnitBlueprint(entity.unit.unitBlueprintId).workEmitter ?? null;
+  }
+  if (entity.buildingBlueprintId !== null) {
+    return getBuildingBlueprint(entity.buildingBlueprintId).workEmitter ?? null;
+  }
+  return null;
+}
+
+function writeWorkEmitterWorldPosition(
+  source: Entity,
+  pointIndex: number,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  const spec = getWorkEmitterSpec(source);
+  const point = spec?.points[pointIndex] ?? spec?.points[0];
+  if (point === undefined) {
+    out.x = source.transform.x;
+    out.y = source.transform.y;
+    out.z = source.transform.z;
+    return out;
+  }
+  const scale = source.unit?.radius.other ?? 1;
+  const localX = point.x * scale;
+  const localY = point.y * scale;
+  const { cos, sin } = getTransformCosSin(source.transform);
+  out.x = source.transform.x + localX * cos - localY * sin;
+  out.y = source.transform.y + localX * sin + localY * cos;
+  out.z = source.transform.z + point.z * scale;
+  return out;
 }
 
 // Commander abilities system - handles build queue (ONE target at a time)
@@ -54,7 +75,6 @@ class CommanderAbilitiesSystem {
     resurrectedUnits: this.resurrectedUnits,
     resurrectedBuildings: this.resurrectedBuildings,
   };
-  private readonly repairEnergyRates = new Map<number, number>();
   private readonly captureProgressByPair = new Map<number, { playerId: PlayerId; progress: number }>();
   private readonly activeCaptureKeys = new Set<number>();
 
@@ -65,7 +85,6 @@ class CommanderAbilitiesSystem {
     this.resurrectedUnits.length = 0;
     this.resurrectedBuildings.length = 0;
     this.activeCaptureKeys.clear();
-    this.rebuildRepairEnergyRateIndex(world);
 
     // Walk every builder (commanders + plain construction units). `commander`
     // below is "the acting builder"; reclaim + build/heal sprays apply to all
@@ -75,47 +94,10 @@ class CommanderAbilitiesSystem {
       if (!commander.unit || commander.unit.hp <= 0) continue;
 
       const playerId = commander.ownership.playerId;
-      const commanderX = commander.transform.x;
-      const commanderY = commander.transform.y;
-      let commanderSprayX = commanderX;
-      let commanderSprayY = commanderY;
-      let commanderSprayZ = commander.transform.z;
-      const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
-      // The construction spray originates at the host's construction emitter —
-      // the construction pylon(s) on builders.
-      let constructionEmitterIndex = -1;
-      if (commanderTurrets !== null) {
-        for (let i = 0; i < commanderTurrets.length; i++) {
-          if (commanderTurrets[i].config.constructionEmitter !== null) {
-            constructionEmitterIndex = i;
-            break;
-          }
-        }
-      }
-      if (constructionEmitterIndex >= 0 && commanderTurrets !== null) {
-        const { cos, sin } = getTransformCosSin(commander.transform);
-        const mount = updateWeaponWorldKinematics(
-          commander,
-          commanderTurrets[constructionEmitterIndex],
-          constructionEmitterIndex,
-          cos,
-          sin,
-          {
-            currentTick: world.getTick(),
-            dtMs,
-            unitGroundZ: getUnitGroundZ(commander),
-            // Read the smoothed normal off the commander unit instead
-            // of the position cache; updateUnitGroundNormal EMAs raw → smoothed
-            // each tick so the construction emitter mount doesn't snap
-            // on triangle crossings.
-            surfaceN: commander.unit.surfaceNormal,
-          },
-          _constructionEmitterMount,
-        );
-        commanderSprayX = mount.x;
-        commanderSprayY = mount.y;
-        commanderSprayZ = mount.z;
-      }
+      const workOrigin = writeWorkEmitterWorldPosition(commander, 0, _workEmitterWorld);
+      const commanderSprayX = workOrigin.x;
+      const commanderSprayY = workOrigin.y;
+      const commanderSprayZ = workOrigin.z;
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);
@@ -168,104 +150,54 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      // Build sprays for buildables are emitted render-side (per-pylon
-      // colored sprays driven by buildable.paid deltas in
-      // updateBuilderConstructionEmitter), so the sim only ships heal
-      // sprays — there is no renderer counterpart for those.
-      const currentTargetHp = currentTarget.unit ?? currentTarget.building;
-      if (currentTargetHp && currentTargetHp.hp < currentTargetHp.maxHp) {
-        // Healing a damaged entity - energy/progress handled by shared system
-        // Check if fully healed
-        if (currentTargetHp.hp >= currentTargetHp.maxHp) {
-          this.pushCompletedBuilding(commander.id, currentTarget.id);
-        }
-
-        const intensity = currentTargetHp.hp < currentTargetHp.maxHp ? 1 : 0;
-        const repairEnergyRatePerSecond =
-          this.repairEnergyRates.get(repairRatePairKey(commander.id, currentTarget.id)) ?? 0;
-        const spray = this.acquireSprayTarget();
-        spray.source.id = commander.id;
-        spray.source.pos.x = commanderSprayX;
-        spray.source.pos.y = commanderSprayY;
-        spray.source.z = commanderSprayZ;
-        spray.source.playerId = playerId;
-        spray.target.id = currentTarget.id;
-        spray.target.pos.x = currentTarget.transform.x;
-        spray.target.pos.y = currentTarget.transform.y;
-        spray.target.z = currentTarget.transform.z;
-        spray.target.radius = currentTarget.unit !== null
-          ? currentTarget.unit.radius.hitbox
-          : currentTarget.building?.targetRadius ?? 20;
-        spray.type = 'heal';
-        spray.intensity = Math.max(0.1, intensity);
-        spray.channel = 0;
-        spray.flow = 'direct';
-        spray.flowRadius = 0;
-        spray.ballSpawnRate = ballSpawnRateForResourceRate(repairEnergyRatePerSecond);
-      }
     }
 
     for (const key of this.captureProgressByPair.keys()) {
       if (!this.activeCaptureKeys.has(key)) this.captureProgressByPair.delete(key);
     }
 
-    this.emitSpawnBeamSprays(world);
+    this.emitWorkSprays(world);
 
     return this.result;
   }
 
-  // Emit the brief init beam for each freshly-created entity (registered via
-  // world.registerSpawnBeam at the build/produce/launch creation sites). The
-  // beam zaps from the spawning host to the new shell for a handful of ticks.
-  private emitSpawnBeamSprays(world: WorldState): void {
-    const beams = world.spawnBeams;
-    if (beams.length === 0) return;
-    const tick = world.getTick();
-    for (let i = 0; i < beams.length; i++) {
-      const beam = beams[i];
-      if (beam.untilTick <= tick) continue;
-      const source = world.getEntity(beam.sourceId);
-      const target = world.getEntity(beam.targetId);
-      if (source === undefined || target === undefined || source.ownership === null) continue;
-      const spray = this.acquireSprayTarget();
-      spray.source.id = source.id;
-      spray.source.pos.x = source.transform.x;
-      spray.source.pos.y = source.transform.y;
-      spray.source.z = source.transform.z + SPAWN_BEAM_SOURCE_Z_BUMP;
-      spray.source.playerId = source.ownership.playerId;
-      spray.target.id = target.id;
-      spray.target.pos.x = target.transform.x;
-      spray.target.pos.y = target.transform.y;
-      spray.target.z = target.transform.z;
-      spray.type = 'build';
-      spray.intensity = 1;
-      spray.channel = 0;
-      spray.flow = 'direct';
-      spray.flowRadius = 0;
-      spray.speed = SPAWN_BEAM_PARTICLE_SPEED;
-      spray.particleRadius = SPAWN_BEAM_PARTICLE_RADIUS;
-      spray.ballSpawnRate = SPAWN_BEAM_BALL_SPAWN_RATE;
-    }
-  }
-
-  private rebuildRepairEnergyRateIndex(world: WorldState): void {
-    this.repairEnergyRates.clear();
-    const movements = world.resourceMovements;
+  private emitWorkSprays(world: WorldState): void {
+    const movements = world.workMovements;
     for (let i = 0; i < movements.length; i++) {
       const movement = movements[i];
-      const sourceId = movement.sourceEntityId;
-      const targetId = movement.targetEntityId;
-      if (
-        sourceId === null ||
-        targetId === null ||
-        movement.resource !== 'energy' ||
-        movement.direction !== 'outbound' ||
-        movement.reason !== 'repair'
-      ) {
-        continue;
+      const source = world.getEntity(movement.sourceEntityId);
+      const target = world.getEntity(movement.targetEntityId);
+      if (source === undefined || target === undefined || source.ownership === null) continue;
+      const spec = getWorkEmitterSpec(source);
+      const pointCount = Math.max(1, spec?.points.length ?? 0);
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
+        const origin = writeWorkEmitterWorldPosition(source, pointIndex, _workEmitterWorld);
+        const spray = this.acquireSprayTarget();
+        spray.source.id = source.id;
+        spray.source.pos.x = origin.x;
+        spray.source.pos.y = origin.y;
+        spray.source.z = origin.z;
+        spray.source.playerId = source.ownership.playerId;
+        spray.target.id = target.id;
+        spray.target.pos.x = target.transform.x;
+        spray.target.pos.y = target.transform.y;
+        spray.target.z = target.transform.z;
+        spray.target.radius = target.unit !== null
+          ? target.unit.radius.hitbox
+          : target.building?.targetRadius ?? 20;
+        // Construction and repair deliberately share one outward, team-color
+        // visual vocabulary. Operation remains in the work ledger for debug.
+        spray.type = 'build';
+        spray.intensity = 1;
+        spray.channel = pointIndex;
+        spray.flow = 'direct';
+        spray.flowRadius = 0;
+        spray.speed = spec?.particleTravelSpeed;
+        spray.particleRadius = spec?.particleRadius;
+        spray.ballSpawnRate = ballSpawnRateForWorkRate(
+          movement.amountPerSecond / pointCount,
+        );
       }
-      const key = repairRatePairKey(sourceId, targetId);
-      this.repairEnergyRates.set(key, (this.repairEnergyRates.get(key) ?? 0) + movement.amountPerSecond);
     }
   }
 

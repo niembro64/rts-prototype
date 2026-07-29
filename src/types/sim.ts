@@ -7,6 +7,7 @@ import type {
   TurretAimStyle,
   TurretCooldownConfig,
   TurretEmitterKind,
+  TurretIntelRequirement,
   TurretMountControlMode,
   TurretRadiusConfig,
   TurretRangeVolume,
@@ -329,11 +330,44 @@ export type Unit = {
 // commander shell has hp before its turrets are functional, a future
 // transport unit would have hp without turrets, etc. CombatComponent
 // owns ONLY combat-specific bookkeeping.
+export type MountedCapabilityBase = {
+  /** Stable authored attachment identity. It does not allocate an entity id
+   *  unless the capability is independently targetable (attack turrets do). */
+  mountId: string;
+  /** Index in the host blueprint's attachment list. */
+  mountIndex: number;
+  /** Chassis-local attachment pivot in world units. */
+  mount: Vec3;
+  worldPos: Vec3;
+  worldPosTick: number;
+};
+
+export type SensorMountCapability = MountedCapabilityBase & {
+  kind: 'sensor';
+  rangeVolume: TurretRangeVolume;
+  sensors: SensorCapabilityConfig;
+};
+
+export type ResourceFlowMountCapability = MountedCapabilityBase & {
+  kind: 'resourceFlow';
+  resource: ResourcePylonConfig['resource'];
+  role: 'extraction';
+  radius: number;
+};
+
+/** Lightweight non-combat attachments. These deliberately carry no target,
+ * aim, cooldown, burst, or firing FSM state. */
+export type UtilityMountCapability =
+  | SensorMountCapability
+  | ResourceFlowMountCapability;
+
 export type CombatComponent = {
   /** Runtime turret instances mounted on this entity. Built once at
    *  spawn from the host blueprint's `turrets[]` and persisted across
    *  the entity's lifetime. */
   turrets: Turret[];
+  /** Mounted utility capabilities kept out of the attack-turret FSM. */
+  utilityMounts: UtilityMountCapability[];
   /** Legacy player-controlled fire permission mirror. False is hard
    *  hold-fire for older snapshot consumers. */
   fireEnabled: boolean;
@@ -365,9 +399,13 @@ export type CombatComponent = {
   nextCombatProbeTick: number;
 };
 
-export function createCombatComponent(turrets: Turret[]): CombatComponent {
+export function createCombatComponent(
+  turrets: Turret[],
+  utilityMounts: UtilityMountCapability[] = [],
+): CombatComponent {
   return {
     turrets,
+    utilityMounts,
     fireEnabled: true,
     fireState: 'fireAtWill',
     trajectoryMode: 'auto',
@@ -433,12 +471,24 @@ export type TurretConfig = {
   /** Authoritative effect family. It survives blueprint compilation and
    *  dispatches the emitter executor. */
   kind: TurretEmitterKind;
-  /** All lock-on and observation distances owned by this turret. */
-  turretRange: {
-    range: number;
-    rangeVolume: TurretRangeVolume;
-    rangeOverrides: TurretRangeOverrides;
-    sensors: SensorCapabilityConfig;
+  /** The turret owns three distinct spatial facts. Engagement controls
+   * target legality, observation contributes contacts to team intelligence,
+   * and effect controls the emitted shot/ray/field reach. */
+  targeting: {
+    engagement: {
+      range: number;
+      rangeVolume: TurretRangeVolume;
+      rangeOverrides: TurretRangeOverrides;
+    };
+    observation: {
+      rangeVolume: TurretRangeVolume;
+      sensors: SensorCapabilityConfig;
+    };
+    effect: {
+      range: number;
+      rangeVolume: TurretRangeVolume;
+    };
+    requiredIntel: TurretIntelRequirement;
   };
   cooldown: TurretCooldownConfig | null;
   launchForce: number;
@@ -467,11 +517,6 @@ export type TurretConfig = {
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
   verticalLauncher: boolean;
-  /** When true this turret may only lock an enemy the player/team sees with
-   *  full sight, never a radar-only contact. Direct beams and precision line
-   *  weapons set it; artillery / missiles authored for radar fire leave it
-   *  false. See TurretBlueprint.requiresFullSight. */
-  requiresFullSight: boolean;
   /** Initial-spawn pitch in radians applied once at turret creation.
    *  See TurretBlueprint.idlePitch. */
   idlePitch: number;
@@ -491,6 +536,8 @@ export type TurretConfig = {
   /** Per-mount task source. Host consumes compatible host intents,
    *  autonomous runs a kind-specific policy, and manual waits for an ability. */
   controlMode: TurretMountControlMode;
+  /** Stable sibling mount identity copied by a slaved targeting policy. */
+  slavedToMountId: string | null;
   /** Unit-mount authored fight/patrol stop gate. If true, this turret must
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
@@ -561,7 +608,7 @@ export type ShotSource = {
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
-export type TurretEntityTaskOperation = 'attack' | 'construct' | 'repair';
+export type TurretEntityTaskOperation = 'attack';
 
 export type TurretEntityTask = {
   kind: 'entity';
@@ -577,19 +624,7 @@ export type TurretPointTask = {
   z: number;
 };
 
-export type TurretSpawnTask = {
-  kind: 'spawn';
-  blueprintKind: 'structure' | 'unit';
-  blueprintId: string;
-  completion: 'nanoframe' | 'complete';
-  placement:
-    | { kind: 'point'; x: number; y: number; z: number; rotation: number }
-    | { kind: 'hostHold' };
-  /** Filled by the authoritative spawn executor after identity creation. */
-  producedEntityId: EntityId | null;
-};
-
-export type TurretTask = TurretEntityTask | TurretPointTask | TurretSpawnTask;
+export type TurretTask = TurretEntityTask | TurretPointTask;
 
 // Runtime turret instance (per-weapon state on a unit).
 // Full 3D aiming: `rotation` is yaw (horizontal heading, around z),
@@ -929,7 +964,7 @@ export type Buildable = {
 
 /** Builder component. Gives a unit the ability to construct
  *  **buildings** (and assist/repair them) anywhere within `buildRange`.
- *  The host visualizes the work through its construction-pylon mounts.
+ *  The host visualizes realized work through its authored work emitter.
  *
  *  Builder ≠ factory: buildings come from builders, units come from
  *  factories. Currently mounted on commanders; the planned construction

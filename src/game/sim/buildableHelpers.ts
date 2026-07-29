@@ -42,12 +42,12 @@ export function getResourceFillRatio(b: Buildable, kind: ResourceKind): number {
   return Math.min(1, Math.max(0, b.paid[kind] / req));
 }
 
-/** Average fill across the construction resources. Drives HP during
- *  construction and the shell's overall completion fraction. */
+/** Coupled construction progress. Both resources must fund the same work
+ *  step, so the less-complete lane is authoritative. */
 export function getBuildFraction(b: Buildable): number {
-  let sum = 0;
-  for (const k of RESOURCE_KINDS) sum += getResourceFillRatio(b, k);
-  return sum / RESOURCE_KINDS.length;
+  let fraction = 1;
+  for (const k of RESOURCE_KINDS) fraction = Math.min(fraction, getResourceFillRatio(b, k));
+  return fraction;
 }
 
 function getPieceFillRatio(
@@ -60,9 +60,9 @@ function getPieceFillRatio(
 }
 
 function getPieceBuildFraction(piece: Buildable['pieces'][number]): number {
-  let sum = 0;
-  for (const k of RESOURCE_KINDS) sum += getPieceFillRatio(piece, k);
-  return sum / RESOURCE_KINDS.length;
+  let fraction = 1;
+  for (const k of RESOURCE_KINDS) fraction = Math.min(fraction, getPieceFillRatio(piece, k));
+  return fraction;
 }
 
 function getConstructionPieceRecord(

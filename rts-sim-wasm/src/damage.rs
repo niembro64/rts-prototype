@@ -2111,6 +2111,91 @@ pub fn economy_apply_equal_consumer_debits(
     1
 }
 
+/// Fund construction as one coupled work step. Every consumer proposes a
+/// progress increment from its build-power cap; the whole player batch is
+/// scaled by whichever stockpile (metal or energy) is limiting. No row can
+/// spend one resource without also advancing the same construction step.
+#[wasm_bindgen]
+pub fn construction_apply_coupled_consumer_debits(
+    paid_energy: &[f64],
+    paid_metal: &[f64],
+    required_energy: &[f64],
+    required_metal: &[f64],
+    caps: &[f64],
+    count: u32,
+    energy_stockpile_curr: f64,
+    metal_stockpile_curr: f64,
+    out_spent_energy: &mut [f64],
+    out_spent_metal: &mut [f64],
+    out_totals: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if n > paid_energy.len()
+        || n > paid_metal.len()
+        || n > required_energy.len()
+        || n > required_metal.len()
+        || n > caps.len()
+        || n > out_spent_energy.len()
+        || n > out_spent_metal.len()
+        || out_totals.len() < 4
+    {
+        return 0;
+    }
+
+    let energy_stockpile = economy_normalized_amount(energy_stockpile_curr);
+    let metal_stockpile = economy_normalized_amount(metal_stockpile_curr);
+    let mut desired_energy_total = 0.0;
+    let mut desired_metal_total = 0.0;
+
+    for i in 0..n {
+        let req_e = economy_normalized_amount(required_energy[i]);
+        let req_m = economy_normalized_amount(required_metal[i]);
+        let paid_e = economy_normalized_amount(paid_energy[i]).min(req_e);
+        let paid_m = economy_normalized_amount(paid_metal[i]).min(req_m);
+        let build_work = req_e.max(req_m);
+        let progress = construction_build_fraction(paid_e, paid_m, req_e, req_m);
+        let progress_step = if build_work > 0.0 {
+            economy_normalized_cap(caps[i]) / build_work
+        } else {
+            0.0
+        };
+        let target_progress = (progress + progress_step).min(1.0);
+        let desired_e = (target_progress * req_e - paid_e).max(0.0);
+        let desired_m = (target_progress * req_m - paid_m).max(0.0);
+        out_spent_energy[i] = desired_e;
+        out_spent_metal[i] = desired_m;
+        desired_energy_total += desired_e;
+        desired_metal_total += desired_m;
+    }
+
+    let mut scale: f64 = 1.0;
+    if desired_energy_total > 0.0 {
+        scale = scale.min(energy_stockpile / desired_energy_total);
+    }
+    if desired_metal_total > 0.0 {
+        scale = scale.min(metal_stockpile / desired_metal_total);
+    }
+    if !scale.is_finite() {
+        scale = 0.0;
+    }
+    scale = scale.max(0.0).min(1.0);
+
+    let mut spent_energy_total = 0.0;
+    let mut spent_metal_total = 0.0;
+    for i in 0..n {
+        out_spent_energy[i] *= scale;
+        out_spent_metal[i] *= scale;
+        spent_energy_total += out_spent_energy[i];
+        spent_metal_total += out_spent_metal[i];
+    }
+
+    out_totals[0] = spent_energy_total;
+    out_totals[1] = spent_metal_total;
+    out_totals[2] = (energy_stockpile - spent_energy_total).max(0.0);
+    out_totals[3] = (metal_stockpile - spent_metal_total).max(0.0);
+    1
+}
+
 #[inline]
 pub(crate) fn construction_resource_fill_ratio(paid: f64, required: f64) -> f64 {
     if required <= 0.0 {
@@ -2127,9 +2212,8 @@ pub(crate) fn construction_build_fraction(
     required_energy: f64,
     required_metal: f64,
 ) -> f64 {
-    (construction_resource_fill_ratio(paid_energy, required_energy)
-        + construction_resource_fill_ratio(paid_metal, required_metal))
-        * 0.5
+    construction_resource_fill_ratio(paid_energy, required_energy)
+        .min(construction_resource_fill_ratio(paid_metal, required_metal))
 }
 
 #[inline]
@@ -2281,7 +2365,7 @@ pub fn construction_apply_consumer_spends(
     spend_metal: &[f64],
     caps: &[f64],
     count: u32,
-    heal_cost_per_hp: f64,
+    _heal_cost_per_hp: f64,
     out_build_progress: &mut [f64],
     out_energy_rate_fraction: &mut [f64],
     out_metal_rate_fraction: &mut [f64],
@@ -2343,12 +2427,12 @@ pub fn construction_apply_consumer_spends(
                 out_changed_mask[i] = changed;
             }
             CONSTRUCTION_CONSUMER_HEAL_CODE => {
-                let spend_e = economy_normalized_amount(spend_energy[i]);
-                if spend_e <= 0.0 || heal_cost_per_hp <= 0.0 || !heal_cost_per_hp.is_finite() {
+                let heal_amount = economy_normalized_amount(caps[i]);
+                if heal_amount <= 0.0 {
                     continue;
                 }
 
-                let next_hp = js_min(hp[i] + spend_e / heal_cost_per_hp, max_hp[i]);
+                let next_hp = js_min(hp[i] + heal_amount, max_hp[i]);
                 if next_hp != hp[i] {
                     hp[i] = next_hp;
                     out_changed_mask[i] = CONSTRUCTION_CONSUMER_CHANGED_HP_CODE;

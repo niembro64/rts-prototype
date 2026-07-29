@@ -38,6 +38,7 @@ import __wbg_init, {
   economy_credit_stockpile,
   economy_debit_stockpile,
   economy_apply_equal_consumer_debits,
+  construction_apply_coupled_consumer_debits,
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
   damage_area_overlap_batch,
@@ -677,6 +678,19 @@ export interface SimWasm {
     participantCount: number,
     stockpileCurr: number,
     outSpent: Float64Array,
+    outTotals: Float64Array,
+  ) => number;
+  readonly constructionApplyCoupledConsumerDebits: (
+    paidEnergy: Float64Array,
+    paidMetal: Float64Array,
+    requiredEnergy: Float64Array,
+    requiredMetal: Float64Array,
+    caps: Float64Array,
+    count: number,
+    energyStockpileCurr: number,
+    metalStockpileCurr: number,
+    outSpentEnergy: Float64Array,
+    outSpentMetal: Float64Array,
     outTotals: Float64Array,
   ) => number;
   readonly constructionApplyConsumerSpends: (
@@ -2280,6 +2294,8 @@ export const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY = 1 << 14;
 export const CT_TURRET_CFG_REQUIRES_FULL_SIGHT = 1 << 15;
 /** Air-only projectiles may not acquire a target fully submerged in water. */
 export const CT_TURRET_CFG_REQUIRES_AIR_TARGET = 1 << 16;
+/** Host-only and slaved mounts never independently auto-acquire. */
+export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
@@ -2491,6 +2507,7 @@ export interface CombatTargetingApi {
     lockonReciprocalMode: number,
     taskTargetId: number,
     taskPointActive: number,
+    slavedToMountIndex: number,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
    *  masks for `entitySlot`. Reads slab FSM target/state + angular/
@@ -4091,6 +4108,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyCreditStockpile: economy_credit_stockpile,
         economyDebitStockpile: economy_debit_stockpile,
         economyApplyEqualConsumerDebits: economy_apply_equal_consumer_debits,
+        constructionApplyCoupledConsumerDebits: construction_apply_coupled_consumer_debits,
         constructionReconcileAndGrowPieces: construction_reconcile_and_grow_pieces,
         constructionApplyConsumerSpends: construction_apply_consumer_spends,
         economyApplyIncomeCredits: economy_apply_income_credits,
@@ -4694,6 +4712,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runGuardFollowContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
+        const { runSimulationGameOverContractTest } = await import('../sim/SimulationGameOverContractTest');
+        runSimulationGameOverContractTest();
         const { runSimulationUnitActionPlannerContractTest } = await import('../sim/SimulationUnitActionPlannerContractTest');
         runSimulationUnitActionPlannerContractTest();
         const { runEntityCacheManagerContractTest } = await import('../sim/EntityCacheManagerContractTest');

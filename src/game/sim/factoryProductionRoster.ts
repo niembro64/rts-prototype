@@ -12,10 +12,9 @@ export function getStructureFactoryAllowedUnitBlueprintIds(
   return BUILDING_BLUEPRINTS[buildingBlueprintId]?.allowedUnitBlueprintIds ?? EMPTY_FACTORY_UNIT_ROSTER;
 }
 
-/** Mobile-factory (queen/carrier) rosters derive from the unit
- *  blueprint's spawn mounts — a unit blueprint carries no authored
- *  factory block (see WorldUnitFactory). Memoized per blueprint id so
- *  the per-tick production gate stays allocation-free. */
+/** Mobile-factory (queen/carrier) rosters derive from the unit host's
+ *  factoryProducedUnitBlueprintId. Memoized per blueprint id so the per-tick
+ *  production gate stays allocation-free. */
 const UNIT_FACTORY_ROSTER_BY_BLUEPRINT = new Map<string, readonly UnitBlueprintId[]>();
 
 function getUnitFactoryAllowedUnitBlueprintIds(unitBlueprintId: string): readonly UnitBlueprintId[] {
@@ -24,11 +23,8 @@ function getUnitFactoryAllowedUnitBlueprintIds(unitBlueprintId: string): readonl
     const produced: UnitBlueprintId[] = [];
     try {
       const blueprint = getUnitBlueprint(unitBlueprintId);
-      for (const mount of blueprint.turrets) {
-        if (mount.producedBlueprintId !== null && mount.producedBlueprintId !== undefined) {
-          produced.push(mount.producedBlueprintId as UnitBlueprintId);
-        }
-      }
+      const producedUnitBlueprintId = blueprint.factoryProducedUnitBlueprintId ?? null;
+      if (producedUnitBlueprintId !== null) produced.push(producedUnitBlueprintId);
     } catch {
       // Unknown blueprint id: empty roster.
     }

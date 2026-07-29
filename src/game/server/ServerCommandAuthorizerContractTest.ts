@@ -102,7 +102,7 @@ export function runServerCommandAuthorizerContractTest(): void {
         config: {
           kind: 'attack',
           passive: false,
-          turretRange: { range: 160 },
+          targeting: { engagement: { range: 160 } },
           shot: { type: 'plasma' },
         },
       },
@@ -121,7 +121,7 @@ export function runServerCommandAuthorizerContractTest(): void {
         config: {
           kind: 'attack',
           passive: false,
-          turretRange: { range: 240 },
+          targeting: { engagement: { range: 240 } },
           shot: { type: 'rocket' },
         },
       },

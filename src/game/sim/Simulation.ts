@@ -75,7 +75,10 @@ import {
   hasQueuedActionIntents,
 } from './unitActionIntents';
 import { SimulationEventQueues } from './SimulationEventQueues';
-import { resolveCommanderGameOverWinner } from './SimulationGameOver';
+import {
+  markDefeatedPlayerEntitiesForDestruction,
+  resolveCommanderGameOverWinner,
+} from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 import { SimulationCombatController } from './SimulationCombatController';
@@ -548,11 +551,18 @@ export class Simulation {
     // those candidates instead of walking every unit/building.
     this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
 
+    // Check for game over (commander death)
+    const victoryDeclared = this.checkGameOver();
+
+    // Victory marks every defeated entity for ordinary death cleanup. Run the
+    // shared pass again so their explosions happen on the victory tick and
+    // contribute forces before the accumulator is finalized.
+    if (victoryDeclared) {
+      this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
+    }
+
     // Finalize force accumulator (sums all contributions)
     this.forceAccumulator.finalize();
-
-    // Check for game over (commander death)
-    this.checkGameOver();
 
     this.world.incrementTick();
   }
@@ -578,15 +588,17 @@ export class Simulation {
   }
 
   // Check for game over - last commander standing wins
-  private checkGameOver(): void {
-    if (this.gameOverWinnerId !== null) return; // Already over
+  private checkGameOver(): boolean {
+    if (this.gameOverWinnerId !== null) return false; // Already over
     const winnerId = resolveCommanderGameOverWinner(this.world, this.playerIds);
-    if (winnerId === null) return;
+    if (winnerId === null) return false;
 
     this.gameOverWinnerId = winnerId;
+    markDefeatedPlayerEntitiesForDestruction(this.world, winnerId);
     this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
     const onGameOver = this.onGameOver;
     if (onGameOver !== null) onGameOver(winnerId);
+    return true;
   }
 
   /** Hard validity: the plan belongs to this exact action and the unit can

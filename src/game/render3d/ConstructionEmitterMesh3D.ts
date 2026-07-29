@@ -1,9 +1,7 @@
-// Construction emitter rig: the pair of resource pylons + build-spray
-// sources that visually communicate "energy/metal flowing
-// out to a construction site". Mounted on the construction-pylon turrets and
-// shared verbatim across hosts — commanders, fabricators, and the future
-// construction aircraft all render through this same rig with only the
-// visualVariant (small/large) and rate-source differing.
+// Legacy construction-emitter compatibility geometry plus the reusable
+// resource-pylon mesh primitive. Live builders and factories do not mount
+// this two-resource rig; they emit one team-color work spray from their
+// host-authored workEmitter points.
 //
 // Pairing with capability components:
 //   - Builder unit (commander, aircraft) → emitter rate inferred from

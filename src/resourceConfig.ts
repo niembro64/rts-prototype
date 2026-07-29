@@ -1,6 +1,6 @@
-// Global resource-ball configuration. This is renderer-only tuning
-// (resource balls are off-wire / anonymous — see budget_design_philosophy.html
-// "Resource Movement Flows Through Pylons"), so there is no Rust side.
+// Renderer-only tuning for the optional economy-flow overlay and the separate
+// team-color work spray. Accounting remains in the simulation ledgers; these
+// anonymous particles are presentation only.
 //
 // The headline knob is `ballsPerResourcePerSecond`: resource balls are
 // generated from the ABSOLUTE resource transfer rate, not from any per-unit
@@ -85,11 +85,20 @@ const defaultBallsPerResourcePerSecond = posNum(
   'ballsPerResourcePerSecond',
   rawConfig.ballsPerResourcePerSecond,
 );
+const workParticlesPerBuildPowerSecond = posNum(
+  'workParticlesPerBuildPowerSecond',
+  rawConfig.workParticlesPerBuildPowerSecond,
+);
 
 export const RESOURCE_CONFIG = {
   /** balls/second spawned per (resource/second) of transfer. The single
    *  global resource-ball density across every pylon. */
   ballsPerResourcePerSecond: defaultBallsPerResourcePerSecond,
+  /** Team-colored build particles per realized build-power unit. */
+  workParticlesPerBuildPowerSecond,
+  /** Optional economy-flow overlay. Disabled in the normal battlefield view;
+   * localized machine animation remains the default economy language. */
+  worldPylonFlowsEnabled: rawConfig.worldPylonFlowsEnabled === true,
   metalExtractor: {
     rotorRadPerSecPerMetalRate: posNum(
       'metalExtractor.rotorRadPerSecPerMetalRate',
@@ -106,12 +115,12 @@ export const RESOURCE_CONFIG = {
       rawConfig.metalExtractor.rotorPotentialRadPerSec,
     ),
   },
-  /** Resource-ball spray-cone half-angles (radians). Every pylon aims a
+  /** Legacy/optional resource-ball spray-cone half-angles (radians). Every pylon aims a
    *  ray from its tip at a lock-on spot and disperses its resource balls
    *  inside a cone of this half-angle around that ray (see
-   *  budget_design_philosophy.html "Resource Movement Flows Through
-   *  Pylons"). Construction emitters spray a tight cone at the build
-   *  site; each economy building can tune its own cone at its environment
+   *  budget_design_philosophy.html resource-presentation contract). Legacy
+   *  construction rigs keep their tight cone; each economy building can tune
+   *  its own cone at its environment
    *  source. */
   cone: {
     constructionHalfAngleRad: posNum('cone.constructionHalfAngleRad', rawConfig.cone.constructionHalfAngleRad),
@@ -193,4 +202,10 @@ export const PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD =
 export function ballSpawnRateForResourceRate(resourceRatePerSecond: number): number {
   if (!Number.isFinite(resourceRatePerSecond) || resourceRatePerSecond <= 0) return 0;
   return resourceRatePerSecond * RESOURCE_CONFIG.ballsPerResourcePerSecond;
+}
+
+/** Convert realized construction/repair work into one visual stream. */
+export function ballSpawnRateForWorkRate(workRatePerSecond: number): number {
+  if (!Number.isFinite(workRatePerSecond) || workRatePerSecond <= 0) return 0;
+  return workRatePerSecond * RESOURCE_CONFIG.workParticlesPerBuildPowerSecond;
 }

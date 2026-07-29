@@ -20,18 +20,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitJackal",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 1.2
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretGunLight",
+        "sensorTurretBlueprintId": "turretSensorUnitJackal",
         "mount": {
           "x": 0,
           "y": 0,
@@ -39,7 +29,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "gunLight",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -136,18 +126,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitLynx",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 1.3
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretGunBurst",
+        "sensorTurretBlueprintId": "turretSensorUnitLynx",
         "mount": {
           "x": 0,
           "y": 0,
@@ -155,7 +135,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "gunBurst",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -251,18 +231,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitDaddy",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 4.5
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitDaddy",
         "mount": {
           "x": 0,
           "y": 0,
@@ -270,7 +240,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beamMini",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       },
       {
         "turretBlueprintId": "turretShieldSphereSmall",
@@ -403,18 +373,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitBadger",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 1.4
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretRocketSlow",
+        "sensorTurretBlueprintId": "turretSensorUnitBadger",
         "mount": {
           "x": 0,
           "y": 0,
@@ -422,7 +382,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "rocketSlow",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -518,18 +478,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitMongoose",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 1.2
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretMortarSlow",
+        "sensorTurretBlueprintId": "turretSensorUnitMongoose",
         "mount": {
           "x": 0,
           "y": 0,
@@ -537,7 +487,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "mortarSlow",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -635,18 +585,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitTick",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0.8
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitTick",
         "mount": {
           "x": 0,
           "y": 0,
@@ -654,7 +594,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beamMini",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -780,18 +720,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitMammoth",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 1.5
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretCannon",
+        "sensorTurretBlueprintId": "turretSensorUnitMammoth",
         "mount": {
           "x": 0,
           "y": 0,
@@ -799,7 +729,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "cannon",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -895,18 +825,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitFormik",
-        "mount": {
-          "x": -0.85,
-          "y": 0,
-          "z": 3.3
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretMortarFast",
+        "sensorTurretBlueprintId": "turretSensorUnitFormik",
         "mount": {
           "x": -0.85,
           "y": 0,
@@ -914,7 +834,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "mortarFast",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -1066,18 +986,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitWidow",
-        "mount": {
-          "x": -0.286827201635,
-          "y": 0.813172798365,
-          "z": 2.8
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -0.286827201635,
           "y": 0.813172798365,
@@ -1093,6 +1003,7 @@
       },
       {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.913172798365,
           "y": 0.813172798365,
@@ -1108,6 +1019,7 @@
       },
       {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.913172798365,
           "y": -0.813172798365,
@@ -1123,6 +1035,7 @@
       },
       {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -0.286827201635,
           "y": -0.813172798365,
@@ -1138,6 +1051,7 @@
       },
       {
         "turretBlueprintId": "turretBeamMega",
+        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.1,
           "y": 0,
@@ -1149,7 +1063,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beamMega",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       },
       {
         "turretBlueprintId": "turretShieldSphere",
@@ -1302,18 +1216,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitHippo",
-        "mount": {
-          "x": 0.2,
-          "y": 0,
-          "z": 1.8
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretGatling",
+        "sensorTurretBlueprintId": "turretSensorUnitHippo",
         "mount": {
           "x": 0.2,
           "y": 0,
@@ -1321,7 +1225,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "gatling",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -1416,18 +1320,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitSeaTurtle",
-        "mount": {
-          "x": 0.1,
-          "y": 0,
-          "z": 1.35
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretGunBurst",
+        "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
         "mount": {
           "x": 0.1,
           "y": 0,
@@ -1435,7 +1329,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "gunBurst",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -1572,18 +1466,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitOrca",
-        "mount": {
-          "x": 0.48,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretTorpedo",
+        "sensorTurretBlueprintId": "turretSensorUnitOrca",
         "mount": {
           "x": 0.48,
           "y": 0,
@@ -1591,7 +1475,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "torpedo",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -1722,18 +1606,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitTarantula",
-        "mount": {
-          "x": -0.65,
-          "y": 0,
-          "z": 2.5
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeam",
+        "sensorTurretBlueprintId": "turretSensorUnitTarantula",
         "mount": {
           "x": -0.65,
           "y": 0,
@@ -1741,7 +1615,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beam",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -1999,18 +1873,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitBee",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitBee",
         "mount": {
           "x": 0,
           "y": 0,
@@ -2018,7 +1882,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beamMini",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -2114,18 +1978,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitDragonfly",
-        "mount": {
-          "x": 1.5,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretMortarDrop",
+        "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
           "x": 1.5,
           "y": 0,
@@ -2133,10 +1987,11 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "mortarDrop",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       },
       {
         "turretBlueprintId": "turretGunLight",
+        "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
           "x": -4.7,
           "y": 0,
@@ -2253,67 +2108,42 @@
       "energy": 280,
       "metal": 240
     },
+    "constructionRate": 35,
+    "allowedBuildBlueprintIds": [
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingRadar",
+      "buildingSonar",
+      "buildingResourceConverter",
+      "towerFabricator",
+      "towerCannon",
+      "towerBeamMega",
+      "towerAntiAir"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0.65
+        }
+      ],
+      "particleTravelSpeed": 160,
+      "particleRadius": 1.3
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitConstructionDrone",
         "mount": {
-          "x": -0.35,
+          "x": 0.92,
           "y": 0,
           "z": 0
         },
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -0.35,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "constructionRate": 35,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": 0.35,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "constructionRate": 35,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "allowedBuildBlueprintIds": [
-          "buildingSolar",
-          "buildingWind",
-          "buildingExtractor",
-          "buildingExtractorT2",
-          "buildingRadar",
-          "buildingSonar",
-          "buildingResourceConverter",
-          "towerFabricator",
-          "towerCannon",
-          "towerBeamMega",
-          "towerAntiAir"
-        ],
-        "requiredEngagedForFightStop": false,
-        "mountId": "spawnBuildingsAndTowers",
-        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -2425,18 +2255,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitEagle",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretRocketFast",
+        "sensorTurretBlueprintId": "turretSensorUnitEagle",
         "mount": {
           "x": 0,
           "y": 0,
@@ -2444,7 +2264,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "rocketFast",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -2555,18 +2375,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitDuck",
-        "mount": {
-          "x": 0.56,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamMega",
+        "sensorTurretBlueprintId": "turretSensorUnitDuck",
         "mount": {
           "x": 0.56,
           "y": 0,
@@ -2574,7 +2384,7 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beamMega",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
@@ -2692,18 +2502,8 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitAlbatros",
-        "mount": {
-          "x": 0.8,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": 0.8,
           "y": 0,
@@ -2711,10 +2511,11 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "albatrosSiegeCannon1",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": 0,
           "y": 0,
@@ -2726,6 +2527,7 @@
       },
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": -0.8,
           "y": 0,
@@ -2848,6 +2650,19 @@
       "energy": 14000,
       "metal": 14000
     },
+    "constructionRate": 120,
+    "factoryProducedUnitBlueprintId": "unitBee",
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0.92,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "particleTravelSpeed": 180,
+      "particleRadius": 1.5
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitQueenBee",
@@ -2859,45 +2674,6 @@
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretSpawnUnits",
-        "mount": {
-          "x": 0.92,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "producedBlueprintId": "unitBee",
-        "productionHoldAnchor": "host",
-        "mountId": "spawnUnits",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -0.2,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "requiredEngagedForFightStop": false,
-        "constructionRate": 120,
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": -0.5,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "requiredEngagedForFightStop": false,
-        "constructionRate": 120,
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -3004,6 +2780,19 @@
       "energy": 15000,
       "metal": 15000
     },
+    "constructionRate": 30,
+    "factoryProducedUnitBlueprintId": "unitTick",
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0.96,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "particleTravelSpeed": 180,
+      "particleRadius": 1.5
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitQueenTick",
@@ -3015,45 +2804,6 @@
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretSpawnUnits",
-        "mount": {
-          "x": 0.96,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": false,
-        "producedBlueprintId": "unitTick",
-        "productionHoldAnchor": "host",
-        "mountId": "spawnUnits",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -0.2,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "requiredEngagedForFightStop": false,
-        "constructionRate": 30,
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": -0.5,
-          "y": 0,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "requiredEngagedForFightStop": false,
-        "constructionRate": 30,
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -3299,20 +3049,33 @@
       "energy": 2500,
       "metal": 2500
     },
+    "constructionRate": 50,
+    "allowedBuildBlueprintIds": [
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingRadar",
+      "buildingSonar",
+      "buildingResourceConverter",
+      "towerFabricator",
+      "towerCannon",
+      "towerAntiAir"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": -0.42,
+          "y": 0,
+          "z": 2.28
+        }
+      ],
+      "particleTravelSpeed": 180,
+      "particleRadius": 1.5
+    },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitCommander",
-        "mount": {
-          "x": 0.36,
-          "y": -0.42,
-          "z": 1
-        },
-        "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeam",
+        "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
           "x": 0.36,
           "y": -0.42,
@@ -3320,10 +3083,11 @@
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beam",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       },
       {
         "turretBlueprintId": "turretDisruptor",
+        "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
           "x": 0.36,
           "y": 0.42,
@@ -3332,54 +3096,6 @@
         "requiredEngagedForFightStop": false,
         "mountId": "disruptor",
         "controlMode": "manual"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -0.42,
-          "y": -0.28,
-          "z": 2.28
-        },
-        "visualVariant": "small",
-        "constructionRate": 50,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": -0.42,
-          "y": 0.28,
-          "z": 2.28
-        },
-        "visualVariant": "small",
-        "constructionRate": 50,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
-        "mount": {
-          "x": -0.42,
-          "y": 0,
-          "z": 2.28
-        },
-        "allowedBuildBlueprintIds": [
-          "buildingSolar",
-          "buildingWind",
-          "buildingExtractor",
-          "buildingRadar",
-          "buildingSonar",
-          "buildingResourceConverter",
-          "towerFabricator",
-          "towerCannon",
-          "towerAntiAir"
-        ],
-        "requiredEngagedForFightStop": false,
-        "mountId": "spawnBuildingsAndTowers",
-        "controlMode": "host"
       }
     ],
     "bodyShape": {
@@ -3527,6 +3243,26 @@
       "energy": 1100,
       "metal": 1100
     },
+    "constructionRate": 45,
+    "allowedBuildBlueprintIds": [
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingResourceConverter",
+      "buildingSonar",
+      "towerFabricator",
+      "towerTorpedo"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": -0.1,
+          "y": 0,
+          "z": 0.45
+        }
+      ],
+      "particleTravelSpeed": 160,
+      "particleRadius": 1.3
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitOrca",
@@ -3538,51 +3274,6 @@
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -0.1,
-          "y": -0.3,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "constructionRate": 45,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": -0.1,
-          "y": 0.3,
-          "z": 0
-        },
-        "visualVariant": "small",
-        "constructionRate": 45,
-        "requiredEngagedForFightStop": false,
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
-        "mount": {
-          "x": 0.42,
-          "y": 0,
-          "z": 0
-        },
-        "allowedBuildBlueprintIds": [
-          "buildingExtractor",
-          "buildingExtractorT2",
-          "buildingResourceConverter",
-          "buildingSonar",
-          "towerFabricator",
-          "towerTorpedo"
-        ],
-        "requiredEngagedForFightStop": false,
-        "mountId": "spawnBuildingsAndTowers",
-        "controlMode": "host"
       }
     ],
     "bodyShape": {

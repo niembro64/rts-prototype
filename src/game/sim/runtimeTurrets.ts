@@ -11,21 +11,36 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // turret.mount is always a Vec3 in world units relative to the host
 // transform. Unit & building hosts share the same combat code.
 
-import { isProjectileShot, type Turret, type TurretConfig, type BuildingBlueprintId } from './types';
+import {
+  isProjectileShot,
+  type Turret,
+  type TurretConfig,
+  type BuildingBlueprintId,
+  type UtilityMountCapability,
+} from './types';
 import type { BuildingTurretMount } from '../../types/blueprints';
+import type { TurretMountControlMode } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, getBuildingBlueprint, SHOT_BLUEPRINTS } from './blueprints';
+import {
+  getUnitBlueprint,
+  getBuildingBlueprint,
+  getTurretBlueprint,
+  SHOT_BLUEPRINTS,
+} from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
+import { cloneSensorCapabilityConfig } from './sensorConfig';
 
 function makeRuntimeTurret(
   turretBlueprintId: string,
   mountId: string,
   mount: { x: number; y: number; z: number },
-  controlMode: 'host' | 'autonomous' | 'manual',
+  controlMode: TurretMountControlMode,
   requiredEngagedForFightStop: boolean,
+  sensorTurretBlueprintId: string | null,
+  slavedToMountId: string | null,
   identity: {
     id: EntityId;
     parentId: EntityId;
@@ -35,6 +50,20 @@ function makeRuntimeTurret(
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretBlueprintId);
+  if (sensorTurretBlueprintId !== null) {
+    const sensorBlueprint = getTurretBlueprint(sensorTurretBlueprintId);
+    if (sensorBlueprint.kind !== 'sensor') {
+      throw new Error(
+        `Invalid mounted sensor ${sensorTurretBlueprintId}: expected a sensor turret blueprint`,
+      );
+    }
+    turretConfig.targeting.observation = {
+      rangeVolume: sensorBlueprint.targeting.observation.rangeVolume,
+      sensors: cloneSensorCapabilityConfig(
+        sensorBlueprint.targeting.observation.sensors,
+      ),
+    };
+  }
   const ranges = computeTurretRanges(turretConfig);
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
@@ -43,6 +72,7 @@ function makeRuntimeTurret(
   const config = {
     ...turretConfig,
     controlMode,
+    slavedToMountId,
     requiredEngagedForFightStop,
     visualVariant: visualVariant ?? turretConfig.visualVariant,
   };
@@ -138,6 +168,7 @@ export function createUnitRuntimeTurrets(
   const turrets: Turret[] = [];
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
+    if (getTurretBlueprint(mount.turretBlueprintId).kind !== 'attack') continue;
     const localMount = createRuntimeTurretMount(mount, radius);
     const identity = allocateEntityId !== null
       ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: i }
@@ -148,6 +179,8 @@ export function createUnitRuntimeTurrets(
       localMount,
       mount.controlMode,
       mount.requiredEngagedForFightStop,
+      mount.sensorTurretBlueprintId ?? null,
+      mount.slavedToMountId ?? null,
       identity,
       mount.visualVariant,
     ));
@@ -171,6 +204,7 @@ export function createBuildingRuntimeTurrets(
   const turrets: Turret[] = [];
   for (let i = 0; i < mounts.length; i++) {
     const m = mounts[i];
+    if (getTurretBlueprint(m.turretBlueprintId).kind !== 'attack') continue;
     const identity = allocateEntityId !== null
       ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: i }
       : anonymousTurretBlueprintIdentity(i);
@@ -180,9 +214,90 @@ export function createBuildingRuntimeTurrets(
       { x: m.mount.x, y: m.mount.y, z: m.mount.z },
       m.controlMode,
       false,
+      m.sensorTurretBlueprintId ?? null,
+      m.slavedToMountId ?? null,
       identity,
       m.visualVariant,
     ));
   }
   return turrets;
+}
+
+function makeUtilityMount(
+  mountId: string,
+  mountIndex: number,
+  mount: { x: number; y: number; z: number },
+  turretBlueprintId: string,
+): UtilityMountCapability | null {
+  const blueprint = getTurretBlueprint(turretBlueprintId);
+  const base = {
+    mountId,
+    mountIndex,
+    mount: { ...mount },
+    worldPos: { x: 0, y: 0, z: 0 },
+    worldPosTick: -1,
+  };
+  if (blueprint.kind === 'sensor') {
+    return {
+      ...base,
+      kind: 'sensor',
+      rangeVolume: blueprint.targeting.observation.rangeVolume,
+      sensors: cloneSensorCapabilityConfig(
+        blueprint.targeting.observation.sensors,
+      ),
+    };
+  }
+  if (
+    blueprint.kind === 'resourcePylon' &&
+    blueprint.resourcePylon?.role === 'extraction'
+  ) {
+    return {
+      ...base,
+      kind: 'resourceFlow',
+      resource: blueprint.resourcePylon.resource,
+      role: 'extraction',
+      radius: blueprint.resourcePylon.radius,
+    };
+  }
+  // Spawn turrets and construction resource pylons are legacy wire/catalog
+  // entries only. Production and construction are host capabilities and must
+  // never materialize as runtime attachments.
+  return null;
+}
+
+export function createUnitRuntimeUtilityMounts(
+  unitBlueprintId: string,
+  radius: number,
+): UtilityMountCapability[] {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
+  const mounts: UtilityMountCapability[] = [];
+  for (let i = 0; i < blueprint.turrets.length; i++) {
+    const authored = blueprint.turrets[i];
+    const capability = makeUtilityMount(
+      authored.mountId,
+      i,
+      createRuntimeTurretMount(authored, radius),
+      authored.turretBlueprintId,
+    );
+    if (capability !== null) mounts.push(capability);
+  }
+  return mounts;
+}
+
+export function createBuildingRuntimeUtilityMounts(
+  buildingBlueprintId: BuildingBlueprintId,
+): UtilityMountCapability[] {
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
+  const mounts: UtilityMountCapability[] = [];
+  for (let i = 0; i < blueprint.turrets.length; i++) {
+    const authored = blueprint.turrets[i];
+    const capability = makeUtilityMount(
+      authored.mountId,
+      i,
+      authored.mount,
+      authored.turretBlueprintId,
+    );
+    if (capability !== null) mounts.push(capability);
+  }
+  return mounts;
 }

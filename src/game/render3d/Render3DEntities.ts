@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
 import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
+import { RESOURCE_CONFIG } from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap, IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
@@ -155,6 +156,9 @@ const _invTiltQuat = new THREE.Quaternion();
 // mount.z + radius.other scaled by SHIELD_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
+
+const NO_PYLON_SPRAYS: readonly SprayTarget[] = [];
+const NO_PYLON_TUBE_FLOWS: readonly PylonTubeFlow[] = [];
 
 export class Render3DEntities {
   private world: THREE.Group;
@@ -1297,11 +1301,15 @@ export class Render3DEntities {
   }
 
   getResourcePylonSprayTargets(): readonly SprayTarget[] {
-    return this.resourcePylonFlows.getSprayTargets();
+    return RESOURCE_CONFIG.worldPylonFlowsEnabled
+      ? this.resourcePylonFlows.getSprayTargets()
+      : NO_PYLON_SPRAYS;
   }
 
   getPylonTubeFlows(): readonly PylonTubeFlow[] {
-    return this.resourcePylonFlows.getTubeFlows();
+    return RESOURCE_CONFIG.worldPylonFlowsEnabled
+      ? this.resourcePylonFlows.getTubeFlows()
+      : NO_PYLON_TUBE_FLOWS;
   }
 
   getHoverSmokeEmitters(): readonly SmokePuffEmitter[] {

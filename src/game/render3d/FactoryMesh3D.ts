@@ -16,24 +16,22 @@ import {
   disposeProductionHoldRingGeom,
 } from './ProductionHoldRing3D';
 
-/** Factory chassis: the team-colored hovering torus body only. The
- *  factory's construction emitter (towers + sprays) is NOT created here —
- *  it rides on the factory's construction-pylon turrets like any other
- *  turret-mounted emitter, built by the standard TurretMesh3D path. */
+/** Factory chassis: the team-colored hovering torus body. Realized
+ *  construction work emits from the factory's host-authored work point. */
 export function buildFactoryMesh(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
   // The fabricator is a hovering TORUS, not a body shell — render bodyless and
-  // hang the ring (+ its under-slung spawn / construction pylons) in the air.
+  // hang the ring in the air.
   const primary = new THREE.Mesh(getBuildingCylinderGeometry(), primaryMat);
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint('towerFabricator');
 
   // Hovering torus body: a flat (horizontal) team-colored ring at the spawn
   // height, sized to the footprint. The unit shell is held in its center while
-  // the down-pointing pylons finish it.
+  // the factory applies build power.
   const torus = buildProductionHoldRingMesh(
     fabricatorTorusRingRadius(width, depth),
     primaryMat,

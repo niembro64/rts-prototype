@@ -178,11 +178,7 @@ impl PathfinderTraversal {
         if self.water_waypoint_hold {
             // A destination must both be actively reachable and remain held after
             // commanded water thrust ends. Passive Coulomb grip supplies the hold.
-            let hold_normal = self
-                .static_friction_coefficient
-                .max(0.0)
-                .atan()
-                .cos();
+            let hold_normal = self.static_friction_coefficient.max(0.0).atan().cos();
             water_required = water_required.max(hold_normal);
         }
         pathfinder_required_normal_z(water_required as f32)
@@ -239,7 +235,9 @@ impl PathfinderCostProfile {
             } else {
                 0.0
             },
-            static_friction_coefficient: if static_friction_coefficient.is_finite() && static_friction_coefficient > 0.0 {
+            static_friction_coefficient: if static_friction_coefficient.is_finite()
+                && static_friction_coefficient > 0.0
+            {
                 static_friction_coefficient
             } else {
                 0.0
@@ -305,8 +303,9 @@ impl PathfinderState {
                 allow_ground: true,
                 allow_water: false,
                 allow_air: false,
-                            wet_contact_required_normal_z: 0.0,
-            }.derived(),
+                wet_contact_required_normal_z: 0.0,
+            }
+            .derived(),
             terrain_only_key: u64::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
@@ -460,10 +459,7 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
 }
 
 #[inline]
-pub(crate) fn pathfinder_sample_cell_terrain(
-    gx: i32,
-    gy: i32,
-) -> (bool, bool, f32, f32, [f32; 8]) {
+pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f32, f32, [f32; 8]) {
     let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
     let x0 = gx as f64 * cs;
     let y0 = gy as f64 * cs;
@@ -645,13 +641,12 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         } else {
             u16::MAX
         };
-        state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
-            || state.terrain_edge_blocked[idx] != 0
-        {
-            0
-        } else {
-            u16::MAX
-        };
+        state.water_clearance[idx] =
+            if state.terrain_submerged[idx] == 0 || state.terrain_edge_blocked[idx] != 0 {
+                0
+            } else {
+                u16::MAX
+            };
     }
     pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
     pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
@@ -832,8 +827,9 @@ pub fn pathfinder_bake_traversability_grid(
         allow_ground: move_allow_ground,
         allow_water: move_allow_water,
         allow_air: move_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     let waypoint_traversal = PathfinderTraversal {
         min_ground_normal_z,
         safe_ground_accel: safe_drive_accel,
@@ -844,8 +840,9 @@ pub fn pathfinder_bake_traversability_grid(
         allow_ground: waypoint_allow_ground,
         allow_water: waypoint_allow_water,
         allow_air: waypoint_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     let previous_clearance = state.cur_required_clearance;
     state.cur_required_clearance = if move_allow_air && waypoint_allow_air {
         0
@@ -853,10 +850,16 @@ pub fn pathfinder_bake_traversability_grid(
         pathfinder_hard_clearance_cells_for_radius(unit_radius)
     };
     for idx in 0..state.n {
-        waypoint_out[idx] =
-            if pathfinder_is_cell_passable(state, idx, waypoint_traversal) { 1 } else { 0 };
-        move_out[idx] =
-            if pathfinder_is_cell_passable(state, idx, move_traversal) { 1 } else { 0 };
+        waypoint_out[idx] = if pathfinder_is_cell_passable(state, idx, waypoint_traversal) {
+            1
+        } else {
+            0
+        };
+        move_out[idx] = if pathfinder_is_cell_passable(state, idx, move_traversal) {
+            1
+        } else {
+            0
+        };
     }
     state.cur_required_clearance = previous_clearance;
     1
@@ -887,7 +890,13 @@ pub(crate) fn pathfinder_position_is_in_navigation_domain(
     y: f64,
     traversal: PathfinderTraversal,
 ) -> bool {
-    if !x.is_finite() || !y.is_finite() || x < 0.0 || y < 0.0 || x >= state.map_width || y >= state.map_height {
+    if !x.is_finite()
+        || !y.is_finite()
+        || x < 0.0
+        || y < 0.0
+        || x >= state.map_width
+        || y >= state.map_height
+    {
         return false;
     }
     let point_is_water = pathfinder_sample_terrain(x, y).0 < TERRAIN_WATER_LEVEL;
@@ -913,8 +922,8 @@ pub(crate) fn pathfinder_is_cell_passable(
     // Every medium present in the square must be valid. A mixed shoreline
     // square therefore intersects its exposed and water permissions instead
     // of receiving a special shoreline class or buffer.
-    let passable_by_medium = (!has_exposed || allows_exposed)
-        && (!has_water || pathfinder_allows_water_case(traversal));
+    let passable_by_medium =
+        (!has_exposed || allows_exposed) && (!has_water || pathfinder_allows_water_case(traversal));
     if !passable_by_medium {
         return false;
     }
@@ -946,7 +955,11 @@ pub(crate) fn pathfinder_is_cell_passable(
 
 #[inline]
 fn pathfinder_cell_water_case_scale(state: &PathfinderState, idx: usize) -> f64 {
-    if state.terrain_water[idx] == 0 { 0.0 } else { 1.0 }
+    if state.terrain_water[idx] == 0 {
+        0.0
+    } else {
+        1.0
+    }
 }
 
 #[inline]
@@ -1073,11 +1086,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     if out.len() < PROFILE_LEN {
         return 0;
     }
-    if !physics_mass.is_finite()
-        || physics_mass <= 0.0
-        || !gravity.is_finite()
-        || gravity <= 0.0
-    {
+    if !physics_mass.is_finite() || physics_mass <= 0.0 || !gravity.is_finite() || gravity <= 0.0 {
         return 0;
     }
 
@@ -1108,8 +1117,12 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     let safe_drive_accel = safe_ground_force * 1_000_000.0 / physics_mass;
     let safe_water_drive_accel = safe_water_force * 1_000_000.0 / physics_mass;
     let radians_to_degrees = 180.0 / core::f64::consts::PI;
-    let (max_ground_slope_deg, min_ground_normal_z, drive_limited_slope_deg,
-        traction_limited_slope_deg) = if allow_ground {
+    let (
+        max_ground_slope_deg,
+        min_ground_normal_z,
+        drive_limited_slope_deg,
+        traction_limited_slope_deg,
+    ) = if allow_ground {
         let drive_limit = (safe_drive_accel / gravity).clamp(0.0, 1.0).asin();
         let traction_limit = safe_mu.atan();
         let max_slope = drive_limit.min(traction_limit);
@@ -1146,8 +1159,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     } else {
         0.0
     };
-    let flat_water_contact_accel =
-        flat_water_contact_force * 1_000_000.0 / physics_mass;
+    let flat_water_contact_accel = flat_water_contact_force * 1_000_000.0 / physics_mass;
     out[..PROFILE_LEN].copy_from_slice(&[
         max_ground_slope_deg,
         min_ground_normal_z,
@@ -1221,10 +1233,8 @@ pub(crate) fn pathfinder_can_step_height_delta(
     // fluid-supported water cell reports zero and therefore ignores lakebed
     // angle; a bed-supported cell must satisfy the same force balance as the
     // runtime contact actuator.
-    let from_required_normal_z =
-        pathfinder_required_cell_normal_z(state, from_idx, traversal);
-    let to_required_normal_z =
-        pathfinder_required_cell_normal_z(state, to_idx, traversal);
+    let from_required_normal_z = pathfinder_required_cell_normal_z(state, from_idx, traversal);
+    let to_required_normal_z = pathfinder_required_cell_normal_z(state, to_idx, traversal);
     if state.terrain_normal_z[from_idx] < from_required_normal_z
         || state.terrain_normal_z[to_idx] < to_required_normal_z
     {
@@ -1405,20 +1415,16 @@ pub(crate) fn pathfinder_edge_cost(
         if lateral_hold_accel >= total_tangent_budget {
             return f32::MAX;
         }
-        let longitudinal_budget =
-            (total_tangent_budget * total_tangent_budget
-                - lateral_hold_accel * lateral_hold_accel)
-                .max(0.0)
-                .sqrt();
-        let remaining_accel =
-            (longitudinal_budget - GRAVITY * uphill_sine).max(1.0e-9);
+        let longitudinal_budget = (total_tangent_budget * total_tangent_budget
+            - lateral_hold_accel * lateral_hold_accel)
+            .max(0.0)
+            .sqrt();
+        let remaining_accel = (longitudinal_budget - GRAVITY * uphill_sine).max(1.0e-9);
         let flat_safe_accel = cost_profile
             .safe_drive_accel
             .min(GRAVITY * cost_profile.static_friction_coefficient)
             + safe_water_accel;
-        let acceleration_time_scale = (flat_safe_accel / remaining_accel)
-            .sqrt()
-            .max(1.0);
+        let acceleration_time_scale = (flat_safe_accel / remaining_accel).sqrt().max(1.0);
         travel_cost = surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE * acceleration_time_scale;
     }
 
@@ -1871,8 +1877,9 @@ pub fn pathfinder_find_path(
         allow_ground: move_allow_ground,
         allow_water: move_allow_water,
         allow_air: move_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     let waypoint_traversal = PathfinderTraversal {
         min_ground_normal_z,
         safe_ground_accel: safe_drive_accel,
@@ -1883,8 +1890,9 @@ pub fn pathfinder_find_path(
         allow_ground: waypoint_allow_ground,
         allow_water: waypoint_allow_water,
         allow_air: waypoint_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     state.cur_waypoint_traversal = waypoint_traversal;
     // Per-query traversal params. The current cell must be physically
     // move-valid, even when it is outside the intentional waypoint domain.
@@ -1941,8 +1949,7 @@ pub fn pathfinder_find_path(
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
-    let start_is_waypoint_valid =
-        pathfinder_is_cell_passable(state, start_idx, waypoint_traversal);
+    let start_is_waypoint_valid = pathfinder_is_cell_passable(state, start_idx, waypoint_traversal);
     if waypoint_traversal.allow_air || waypoint_traversal.allow_water || !start_is_waypoint_valid {
         if !pathfinder_position_is_in_navigation_domain(state, goal_x, goal_y, waypoint_traversal)
             || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
@@ -1966,7 +1973,13 @@ pub fn pathfinder_find_path(
         if state.cc_labels[ggy_idx] != start_label
             || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
         {
-            match pathfinder_find_nearest_in_component(state, ggx, ggy, start_label, waypoint_traversal) {
+            match pathfinder_find_nearest_in_component(
+                state,
+                ggx,
+                ggy,
+                start_label,
+                waypoint_traversal,
+            ) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -2183,8 +2196,9 @@ pub fn pathfinder_validate_path(
         allow_ground: move_allow_ground,
         allow_water: move_allow_water,
         allow_air: move_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     let waypoint_traversal = PathfinderTraversal {
         min_ground_normal_z,
         safe_ground_accel: safe_drive_accel,
@@ -2195,8 +2209,9 @@ pub fn pathfinder_validate_path(
         allow_ground: waypoint_allow_ground,
         allow_water: waypoint_allow_water,
         allow_air: waypoint_allow_air,
-            wet_contact_required_normal_z: 0.0,
-    }.derived();
+        wet_contact_required_normal_z: 0.0,
+    }
+    .derived();
     state.cur_waypoint_traversal = waypoint_traversal;
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_required_clearance = if traversal.allow_air {
@@ -2290,8 +2305,9 @@ mod tests {
             allow_ground: true,
             allow_water: false,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived()
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived()
     }
 
     fn ground_cost_profile(flat_drive_accel: f64) -> PathfinderCostProfile {
@@ -2312,12 +2328,8 @@ mod tests {
         // The upper-right rectangle lies inside this right triangle's AABB,
         // but entirely outside the triangle itself. It represents the flat
         // build squares that used to inherit a diagonal cliff's normal.
-        let sample: TerrainTriangleSample = (
-            1.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            10.0, 0.0, 0.0,
-            0.0, 10.0, 0.0,
-        );
+        let sample: TerrainTriangleSample =
+            (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0, 0.0);
         assert!(!terrain_triangle_touches_rect(sample, 8.0, 8.0, 9.0, 9.0));
         assert!(terrain_triangle_touches_rect(sample, 1.0, 1.0, 2.0, 2.0));
     }
@@ -2338,15 +2350,13 @@ mod tests {
             10.0,
             TERRAIN_WATER_LEVEL + 10.0,
         );
-        let (dry_min, dry_max) =
-            terrain_triangle_rect_height_range(sample, 4.0, 4.0, 5.0, 5.0)
-                .expect("dry rectangle overlaps the triangle");
+        let (dry_min, dry_max) = terrain_triangle_rect_height_range(sample, 4.0, 4.0, 5.0, 5.0)
+            .expect("dry rectangle overlaps the triangle");
         assert!(dry_min >= TERRAIN_WATER_LEVEL);
         assert!(dry_max >= dry_min);
 
-        let (mixed_min, mixed_max) =
-            terrain_triangle_rect_height_range(sample, 0.0, 0.0, 5.0, 5.0)
-                .expect("mixed rectangle overlaps the triangle");
+        let (mixed_min, mixed_max) = terrain_triangle_rect_height_range(sample, 0.0, 0.0, 5.0, 5.0)
+            .expect("mixed rectangle overlaps the triangle");
         assert!(mixed_min < TERRAIN_WATER_LEVEL);
         assert!(mixed_max >= TERRAIN_WATER_LEVEL);
     }
@@ -2356,13 +2366,21 @@ mod tests {
         let mut out = [0.0; 12];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                1_000.0, 0.0, 0.5, 1_000_000.0, GRAVITY, 0.85,
-                true, false, false, false, &mut out,
+                1_000.0,
+                0.0,
+                0.5,
+                1_000_000.0,
+                GRAVITY,
+                0.85,
+                true,
+                false,
+                false,
+                false,
+                &mut out,
             ),
             1,
         );
-        let expected_grip_slope =
-            (0.5_f64 * 0.85).atan() * 180.0 / core::f64::consts::PI;
+        let expected_grip_slope = (0.5_f64 * 0.85).atan() * 180.0 / core::f64::consts::PI;
         assert!((out[0] - expected_grip_slope).abs() < 1e-9);
         assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
         assert!((out[4] - expected_grip_slope).abs() < 1e-9);
@@ -2376,8 +2394,17 @@ mod tests {
         let mut out = [0.0_f64; 12];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                0.0, 1.0, 0.0, 1_000_000.0, GRAVITY, 0.85,
-                false, true, true, false, &mut out,
+                0.0,
+                1.0,
+                0.0,
+                1_000_000.0,
+                GRAVITY,
+                0.85,
+                false,
+                true,
+                true,
+                false,
+                &mut out,
             ),
             1,
         );
@@ -2390,8 +2417,7 @@ mod tests {
         let mut out = [0.0_f64; 12];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                0.0, 3.0, 1.0, 10_000.0, 100.0, 0.85,
-                true, true, false, false, &mut out,
+                0.0, 3.0, 1.0, 10_000.0, 100.0, 0.85, true, true, false, false, &mut out,
             ),
             1,
         );
@@ -2406,8 +2432,7 @@ mod tests {
         for (mass, out) in [(1_000.0, &mut light), (10_000.0, &mut heavy)] {
             assert_eq!(
                 pathfinder_compute_locomotion_climb_profile(
-                    0.5, 0.4, 1.0, mass, 300.0, 0.85,
-                    true, true, false, false, out,
+                    0.5, 0.4, 1.0, mass, 300.0, 0.85, true, true, false, false, out,
                 ),
                 1,
             );
@@ -2421,8 +2446,7 @@ mod tests {
         let mut out = [0.0_f64; 12];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                0.2, 0.8, 1.0, 10_000.0, 100.0, 0.85,
-                true, true, false, false, &mut out,
+                0.2, 0.8, 1.0, 10_000.0, 100.0, 0.85, true, true, false, false, &mut out,
             ),
             1,
         );
@@ -2437,8 +2461,7 @@ mod tests {
         let mut out = [0.0_f64; 12];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
-                0.2, 0.8, 1.0, 10_000.0, 100.0, 0.85,
-                true, true, false, true, &mut out,
+                0.2, 0.8, 1.0, 10_000.0, 100.0, 0.85, true, true, false, true, &mut out,
             ),
             1,
         );
@@ -2463,7 +2486,8 @@ mod tests {
             allow_water: true,
             allow_air: false,
             wet_contact_required_normal_z: 0.0,
-        }.derived();
+        }
+        .derived();
         assert!(pathfinder_is_cell_passable(&state, 0, move_traversal));
 
         let waypoint_traversal = PathfinderTraversal {
@@ -2520,8 +2544,9 @@ mod tests {
             allow_ground: true,
             allow_water: false,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived();
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
         assert!(
             !pathfinder_can_step_height_delta(&state, 0, 1, traversal),
             "downhill is not a valid route when the unit cannot stop on the face"
@@ -2546,8 +2571,9 @@ mod tests {
             allow_ground: true,
             allow_water: false,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived();
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
         assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
     }
@@ -2597,8 +2623,9 @@ mod tests {
             allow_ground: true,
             allow_water: true,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived();
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
         let profile = ground_cost_profile(GRAVITY);
         assert!(
             (pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile) - 1.0).abs() < 1.0e-6
@@ -2618,8 +2645,9 @@ mod tests {
             allow_ground: false,
             allow_water: true,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived();
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
         // Every cell touches water, but only cells 1..=6 have enough water
         // volume to occupy. This models a sloped shoreline cell at index 0.
         state.terrain_water.fill(1);
@@ -2713,8 +2741,9 @@ mod tests {
             allow_ground: true,
             allow_water: true,
             allow_air: false,
-                    wet_contact_required_normal_z: 0.0,
-        }.derived();
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
         assert!(
             !pathfinder_is_cell_passable(&state, 0, traversal),
             "mixed square must retain the failing dry slope case"

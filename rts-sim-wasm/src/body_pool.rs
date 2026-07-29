@@ -295,10 +295,7 @@ pub(crate) const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
 pub(crate) const ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST: u8 = 1 << 2;
 
 #[inline]
-pub(crate) fn arrival_horizontal_drive_accel(
-    max_propulsive_force: f64,
-    physics_mass: f64,
-) -> f64 {
+pub(crate) fn arrival_horizontal_drive_accel(max_propulsive_force: f64, physics_mass: f64) -> f64 {
     if !physics_mass.is_finite() || physics_mass <= 0.0 {
         return 0.0;
     }
@@ -330,10 +327,7 @@ pub(crate) fn compute_arrival_control_thrust(
         return (dx * inv_distance, dy * inv_distance, 1);
     }
 
-    let max_accel = arrival_horizontal_drive_accel(
-        max_propulsive_force,
-        physics_mass,
-    );
+    let max_accel = arrival_horizontal_drive_accel(max_propulsive_force, physics_mass);
     if max_accel <= min_accel || !max_accel.is_finite() {
         return (dx * inv_distance, dy * inv_distance, 1);
     }
@@ -415,26 +409,17 @@ fn unit_effective_max_propulsive_force(
 }
 
 #[wasm_bindgen]
-pub fn unit_effective_drive_acceleration(
-    body_slot: u32,
-) -> f64 {
+pub fn unit_effective_drive_acceleration(body_slot: u32) -> f64 {
     let p = pool();
     let es = entity_state();
     let profile = unit_force_profile_table();
     let runtime = unit_force_runtime_table();
-    let Some((max_propulsive_force, physics_mass)) = unit_effective_max_propulsive_force(
-        p,
-        es,
-        profile,
-        runtime,
-        body_slot as usize,
-    ) else {
+    let Some((max_propulsive_force, physics_mass)) =
+        unit_effective_max_propulsive_force(p, es, profile, runtime, body_slot as usize)
+    else {
         return 0.0;
     };
-    arrival_horizontal_drive_accel(
-        max_propulsive_force,
-        physics_mass,
-    )
+    arrival_horizontal_drive_accel(max_propulsive_force, physics_mass)
 }
 
 #[wasm_bindgen]
@@ -472,14 +457,9 @@ pub fn arrival_control_step_batch(
     let mut active_count = 0_u32;
     for i in 0..count {
         let slot = slots[i] as usize;
-        let (mut max_propulsive_force, physics_mass) = unit_effective_max_propulsive_force(
-            p,
-            es,
-            profile,
-            runtime,
-            slot,
-        )
-        .unwrap_or((0.0, 0.0));
+        let (mut max_propulsive_force, physics_mass) =
+            unit_effective_max_propulsive_force(p, es, profile, runtime, slot)
+                .unwrap_or((0.0, 0.0));
         max_propulsive_force *= drive_scale[i].max(0.0);
         let (thrust_x, thrust_y, active) = compute_arrival_control_thrust(
             dx[i],

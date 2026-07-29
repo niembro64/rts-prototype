@@ -286,7 +286,16 @@ function buildCombatSummarySection(
       stat('Sustained damage', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'none'),
       stat('Longest fire range', longestRange > 0 ? fmt(longestRange) : 'none'),
       stat('Manual weapons', fmt(turrets.filter((turret) => isManualEmitterConfig(turret.config)).length)),
-      stat('Host-directed weapons', fmt(turrets.filter((turret) => turret.config.controlMode === 'host').length)),
+      stat(
+        'Host-directed weapons',
+        fmt(
+          turrets.filter(
+            (turret) =>
+              turret.config.controlMode === 'hostPreferred' ||
+              turret.config.controlMode === 'hostOnly',
+          ).length,
+        ),
+      ),
     ],
   };
 }

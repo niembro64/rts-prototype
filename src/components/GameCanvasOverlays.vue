@@ -71,7 +71,7 @@ function handleCameraTutorialDone(): void {
           Return to Lobby
         </button>
         <button class="dismiss-btn" @click="emit('dismissGameOver')">
-          Continue Watching
+          Continue Playing
         </button>
       </div>
     </div>

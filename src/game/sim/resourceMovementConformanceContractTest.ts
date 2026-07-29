@@ -188,15 +188,23 @@ export function runResourceMovementConformanceContractTest(): void {
   assertContract(constructionMovements.length >= 2, 'construction funding must publish resource movements');
   assertContract(
     constructionMovements.every((movement) => movement.direction === 'outbound'),
-    'construction funding must publish outbound movements from builder/factory pylons',
+    'construction funding must publish outbound accounting movements',
   );
   assertContract(
     constructionMovements.every((movement) => movement.sourceEntityId === builder.id),
-    'builder construction spend must preserve the builder host pylon',
+    'builder construction spend must preserve the builder host',
   );
   assertContract(
     constructionMovements.every((movement) => movement.targetEntityId === buildTarget.id),
     'builder construction spend must preserve the build target endpoint',
+  );
+  assertContract(
+    buildWorld.workMovements.some((movement) =>
+      movement.operation === 'construct' &&
+      movement.sourceEntityId === builder.id &&
+      movement.targetEntityId === buildTarget.id &&
+      movement.amountPerSecond > 0),
+    'realized construction must publish one host-to-target work movement',
   );
 
   economyManager.reset();
@@ -237,6 +245,14 @@ export function runResourceMovementConformanceContractTest(): void {
     economyManager.getEconomy(playerId)?.stockpile.curr === repairEnergyBefore &&
       economyManager.getEconomy(playerId)?.metal.stockpile.curr === repairMetalBefore,
     'BAR repair must consume neither energy nor metal',
+  );
+  assertContract(
+    repairWorld.workMovements.some((movement) =>
+      movement.operation === 'repair' &&
+      movement.sourceEntityId === commander.id &&
+      movement.targetEntityId === damaged.id &&
+      movement.amountPerSecond > 0),
+    'BAR repair must publish realized work for the unified spray',
   );
 
   const damagedStructure = createCompletedOpenBuilding(

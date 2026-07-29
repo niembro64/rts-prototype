@@ -29,7 +29,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'name',
   'emissionKind',
   'emissionBlueprintId',
-  'turretRange',
+  'targeting',
   'cooldown',
   'launchForce',
   'addTurretVelocityToEmissionLaunch',
@@ -155,6 +155,20 @@ function buildTurretBlueprints(): Record<TurretBlueprintId, TurretBlueprint> {
 
 export const TURRET_BLUEPRINTS = buildTurretBlueprints();
 
+/** Stable wire/catalog ids retained for old recordings and inclusion masks.
+ * They are not runtime capabilities: production and nanoframe creation live
+ * on the host, and construction uses the host's workEmitter. */
+export const LEGACY_UNMOUNTED_TURRET_BLUEPRINT_IDS = Object.freeze([
+  'turretSpawnBuildingsAndTowers',
+  'turretSpawnUnits',
+  'turretResourcePylonConstructionMetal',
+  'turretResourcePylonConstructionEnergy',
+] as const);
+
+export function isLegacyUnmountedTurretBlueprintId(id: string): boolean {
+  return (LEGACY_UNMOUNTED_TURRET_BLUEPRINT_IDS as readonly string[]).includes(id);
+}
+
 
 export function getTurretBlueprint(id: string): TurretBlueprint {
   if (!isTurretBlueprintId(id)) throw new Error(`Unknown weapon blueprint: ${id}`);
@@ -190,7 +204,32 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     );
   }
   validateTurretCooldown(label, blueprint.cooldown);
-  validateSensorCapabilityConfig(`${label}.turretRange.sensors`, blueprint.turretRange.sensors);
+  validateSensorCapabilityConfig(
+    `${label}.targeting.observation.sensors`,
+    blueprint.targeting.observation.sensors,
+  );
+  if (
+    blueprint.targeting.effect.rangeSource === 'explicit' &&
+    (
+      blueprint.targeting.effect.range === undefined ||
+      blueprint.targeting.effect.rangeVolume === undefined
+    )
+  ) {
+    throw new Error(
+      `Invalid ${label}.targeting.effect: explicit rangeSource requires range and rangeVolume`,
+    );
+  }
+  if (
+    blueprint.targeting.effect.rangeSource === 'engagement' &&
+    (
+      blueprint.targeting.effect.range !== undefined ||
+      blueprint.targeting.effect.rangeVolume !== undefined
+    )
+  ) {
+    throw new Error(
+      `Invalid ${label}.targeting.effect: engagement rangeSource must not duplicate range or rangeVolume`,
+    );
+  }
   validateTurretSubmunitions(`${label}.submunitions`, blueprint.submunitions);
   if (typeof blueprint.addTurretVelocityToEmissionLaunch !== 'boolean') {
     throw new Error(`Invalid ${label}.addTurretVelocityToEmissionLaunch: expected boolean`);

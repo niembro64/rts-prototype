@@ -282,9 +282,9 @@ export class ShieldRenderPacket3D {
         const originZ = unitEntity.transform.z - unit.supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
-        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.turretRange.range;
-        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.turretRange.range;
-        targetZ = originZ + pitchSin * turret.config.turretRange.range;
+        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
+        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
+        targetZ = originZ + pitchSin * turret.config.targeting.effect.range;
       }
       if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, Math.max(300, barrier.outerRange))) continue;
       const cursor = this.count;
@@ -351,9 +351,9 @@ export class ShieldRenderPacket3D {
         const originZ = hostZ - supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
-        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.turretRange.range;
-        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.turretRange.range;
-        targetZ = originZ + pitchSin * turret.config.turretRange.range;
+        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
+        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
+        targetZ = originZ + pitchSin * turret.config.targeting.effect.range;
       }
       if (!scope.inScope(hostX, hostY, Math.max(300, barrier.outerRange))) continue;
       this.pushRow({

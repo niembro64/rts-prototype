@@ -105,7 +105,7 @@ export function isWeaponAimedForFire(weapon: Turret): boolean {
 }
 
 export function isShieldSubmunitionTurret(weapon: Turret): boolean {
-  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions !== undefined;
+  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions !== null;
 }
 
 export function isLiveHomingTarget(entity: Entity): boolean {

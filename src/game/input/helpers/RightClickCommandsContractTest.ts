@@ -429,7 +429,7 @@ function combatant(
           config: {
             kind: 'attack',
             passive: false,
-            turretRange: { range: 160 },
+            targeting: { engagement: { range: 160 } },
             shot: { type: 'plasma' },
           },
         },

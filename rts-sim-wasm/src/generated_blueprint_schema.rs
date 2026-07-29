@@ -45,6 +45,8 @@ pub type ConstructionEmitterSize = String;
 
 pub type ConstructionEmitterVisualSpec = BlueprintJsonValue;
 
+pub type WorkEmitterSpec = BlueprintJsonValue;
+
 pub type ResourceCost = BlueprintJsonValue;
 
 pub type UnitSuspensionConfig = BlueprintJsonValue;
@@ -73,11 +75,43 @@ pub struct SensorCapabilityConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TurretRangeConfig {
+pub struct TurretEngagementEnvelope {
     pub range: f64,
     pub rangeVolume: TurretRangeVolume,
     pub rangeMultiplierOverrides: BlueprintJsonValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretObservationEnvelope {
+    pub rangeVolume: TurretRangeVolume,
     pub sensors: SensorCapabilityConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretEffectRangeSource {
+    Engagement,
+    Explicit,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretEffectEnvelope {
+    pub rangeSource: TurretEffectRangeSource,
+    pub range: Option<f64>,
+    pub rangeVolume: Option<TurretRangeVolume>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretIntelRequirement {
+    ContactSight,
+    FullSight,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretTargetingConfig {
+    pub engagement: TurretEngagementEnvelope,
+    pub observation: TurretObservationEnvelope,
+    pub effect: TurretEffectEnvelope,
+    pub requiredIntel: TurretIntelRequirement,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -524,9 +558,11 @@ pub enum TurretEmitterKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TurretMountControlMode {
-    Host,
+    HostPreferred,
+    HostOnly,
     Autonomous,
     Manual,
+    Slaved,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -591,7 +627,7 @@ pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub name: String,
     pub kind: TurretEmitterKind,
-    pub turretRange: TurretRangeConfig,
+    pub targeting: TurretTargetingConfig,
     pub cooldown: Option<TurretCooldownConfig>,
     pub color: f64,
     pub turretTurnAccel: f64,
@@ -611,7 +647,6 @@ pub struct TurretBlueprint {
     pub headOnly: bool,
     pub aimStyle: TurretAimStyle,
     pub verticalLauncher: bool,
-    pub requiresFullSight: Option<bool>,
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,
@@ -645,9 +680,11 @@ pub struct UnitTurretMountZResolver {
 pub struct TurretMount {
     pub mountId: String,
     pub turretBlueprintId: String,
+    pub sensorTurretBlueprintId: Option<String>,
     pub mount: MountOffset,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
+    pub slavedToMountId: Option<String>,
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
@@ -661,9 +698,11 @@ pub struct TurretMount {
 pub struct BuildingTurretMount {
     pub mountId: String,
     pub turretBlueprintId: String,
+    pub sensorTurretBlueprintId: Option<String>,
     pub mount: MountOffset,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
+    pub slavedToMountId: Option<String>,
     pub visualVariant: Option<String>,
 }
 
@@ -1110,6 +1149,10 @@ pub struct UnitBlueprint {
     pub unitLocomotion: UnitLocomotionBlueprint,
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,
+    pub constructionRate: Option<f64>,
+    pub allowedBuildBlueprintIds: Option<Vec<String>>,
+    pub factoryProducedUnitBlueprintId: Option<String>,
+    pub workEmitter: Option<BlueprintJsonValue>,
     pub dgun: Option<UnitDgunConfig>,
     pub deathSound: Option<BlueprintJsonValue>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,

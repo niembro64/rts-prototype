@@ -125,7 +125,7 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
       shot !== null &&
       shot !== undefined &&
       shot.type !== 'shield' &&
-      config.turretRange.range > 10
+      config.targeting.engagement.range > 10
     ) {
       return true;
     }

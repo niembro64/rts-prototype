@@ -16,12 +16,18 @@ import {
   updateTargetingAndFiringState,
   updateTurretRotation,
 } from './combat';
-import { getProjectileLaunchSpeed, resolveWeaponWorldMount } from './combat/combatUtils';
+import {
+  getProjectileLaunchSpeed,
+  isShieldSubmunitionTurret,
+  resolveWeaponWorldMount,
+} from './combat/combatUtils';
+import { turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
 import { resetProjectileBuffers } from './combat/projectileSystem';
 import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
 } from './combat/targetingInputStamping';
+import { isAttackEmitter, isPassiveShieldFieldConfig } from './emitterKinds';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { getUnitGroundZ } from './unitGeometry';
 import { WATER_LEVEL } from './Terrain';
@@ -276,6 +282,22 @@ function assertBeamSpawnAimsAtTargetOrigin(): void {
   if (daddy.combat === null) {
     throw new Error('[turret host integration] beam source must be armed');
   }
+  const shieldField = daddy.combat.turrets.find(
+    (turret) => turret.config.shot?.type === 'shield',
+  );
+  assertContract(shieldField !== undefined, 'Daddy must mount its passive shield field');
+  assertContract(
+    isPassiveShieldFieldConfig(shieldField.config) && !isAttackEmitter(shieldField),
+    'persistent shield field must not enter attack-turret acquisition',
+  );
+  assertContract(
+    !isShieldSubmunitionTurret(shieldField),
+    'ordinary shield field must not be classified as a submunition shield turret',
+  );
+  assertContract(
+    turretIgnoresForceMaterialSightObstruction(shieldField),
+    'ordinary shield field must retain the non-offensive force-material exemption',
+  );
 
   daddy.combat.priorityTargetId = target.id;
   daddy.combat.priorityTargetPoint = null;
@@ -412,7 +434,7 @@ function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
 
   const { turret, turretIndex } = getFirstAttackTurret(source);
   assertContract(
-    turret.config.turretRange.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
+    turret.config.targeting.engagement.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
     'Orca torpedo turret must use the authored water-ceiling range volume',
   );
   turret.config.requiresNonObstructedLineOfSight = false;
@@ -460,16 +482,11 @@ function assertSeaTurtleTargetMediumEligibility(
     throw new Error('[turret host integration] Sea Turtle source must be armed');
   }
 
-  const sensorTurret = source.combat.turrets.find(
-    (candidate) => candidate.config.kind === 'sensor',
-  );
-  assertContract(sensorTurret !== undefined, 'Sea Turtle must mount a sensor turret');
-  // This contract isolates the weapon's physical-volume medium gate. Give
-  // its dedicated sensor an explicit A→W lane so center-based visibility
-  // does not independently hide the underwater-center target.
-  sensorTurret.config.turretRange.sensors.fullSight.aboveWater.underwater = 900;
-
   const { turret, turretIndex } = getFirstAttackTurret(source);
+  // This contract isolates the weapon's physical-volume medium gate. Give
+  // the weapon-composed sensor an explicit A→W lane so center-based
+  // visibility does not independently hide the underwater-center target.
+  turret.config.targeting.observation.sensors.fullSight.aboveWater.underwater = 900;
   turret.config.requiresNonObstructedLineOfSight = false;
   if (manualTarget) {
     source.combat.priorityTargetId = target.id;

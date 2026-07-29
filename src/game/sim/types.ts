@@ -42,6 +42,10 @@ export type {
   
   ShieldBarrierConfig,
   CombatComponent,
+  MountedCapabilityBase,
+  SensorMountCapability,
+  ResourceFlowMountCapability,
+  UtilityMountCapability,
   ProjectileShot,
   BeamRay,
   LaserRay,
@@ -70,7 +74,6 @@ export type {
   TurretEntityTask,
   TurretEntityTaskOperation,
   TurretPointTask,
-  TurretSpawnTask,
   ProjectileType,
   ShotSource,
   BeamReflectorKind,

@@ -33,7 +33,10 @@ import { SHOT_BLUEPRINTS } from './shots';
 import { RAY_BLUEPRINTS } from './rays';
 import { SHIELD_BLUEPRINTS } from './shields';
 import { getShieldMaterial } from './shieldMaterials';
-import { TURRET_BLUEPRINTS } from './turrets';
+import {
+  isLegacyUnmountedTurretBlueprintId,
+  TURRET_BLUEPRINTS,
+} from './turrets';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import { getShotLocomotionPreset } from '../shotLocomotion';
@@ -347,7 +350,7 @@ function assertFiniteRangeMultiplier(
 
 function validateTurretRangeMultipliers(
   turretBlueprintId: string,
-  ranges: TurretBlueprint['turretRange']['rangeMultiplierOverrides'],
+  ranges: TurretBlueprint['targeting']['engagement']['rangeMultiplierOverrides'],
 ): void {
   const max = ranges.engageRangeMax;
   const min = ranges.engageRangeMin;
@@ -416,6 +419,37 @@ function validateTurretRangeMultipliers(
       );
     }
   }
+}
+
+function resolveTurretEffectEnvelope(
+  turretBlueprintId: string,
+  turretBlueprint: TurretBlueprint,
+): {
+  range: number;
+  rangeVolume: TurretBlueprint['targeting']['engagement']['rangeVolume'];
+} {
+  const engagement = turretBlueprint.targeting.engagement;
+  const effect = turretBlueprint.targeting.effect;
+  if (effect.rangeSource === 'engagement') {
+    return {
+      range: engagement.range,
+      rangeVolume: engagement.rangeVolume,
+    };
+  }
+  if (
+    effect.range === undefined ||
+    effect.rangeVolume === undefined ||
+    !Number.isFinite(effect.range) ||
+    effect.range < 0
+  ) {
+    throw new Error(
+      `Invalid turret ${turretBlueprintId}: explicit effect envelope requires a finite non-negative range and rangeVolume`,
+    );
+  }
+  return {
+    range: effect.range,
+    rangeVolume: effect.rangeVolume,
+  };
 }
 
 function validateTurretAimStyle(
@@ -616,7 +650,10 @@ function buildEmissionConfig(
   }
   const shieldBlueprint = SHIELD_BLUEPRINTS[id as keyof typeof SHIELD_BLUEPRINTS];
   if (!shieldBlueprint) throw new Error(`Unknown shield in turret ${turretBlueprintId}: ${id}`);
-  return buildShieldConfig(shieldBlueprint, turretBlueprint.turretRange.range);
+  return buildShieldConfig(
+    shieldBlueprint,
+    resolveTurretEffectEnvelope(turretBlueprintId, turretBlueprint).range,
+  );
 }
 
 export function buildProjectileShotConfig(
@@ -637,7 +674,11 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     throw new Error(`Unknown turret blueprint: ${turretBlueprintId}`);
   validateTurretRangeMultipliers(
     turretBlueprintId,
-    turretBlueprint.turretRange.rangeMultiplierOverrides,
+    turretBlueprint.targeting.engagement.rangeMultiplierOverrides,
+  );
+  const effectEnvelope = resolveTurretEffectEnvelope(
+    turretBlueprintId,
+    turretBlueprint,
   );
   // `radius.other: null` is the explicit "draw no body sphere" signal —
   // the turret renders no head sphere (and barrels, which scale off it,
@@ -678,14 +719,21 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
   const config: TurretConfig = {
     turretBlueprintId: turretBlueprint.turretBlueprintId,
     kind: turretBlueprint.kind,
-    // Optional in the schema; default to radar-fire-eligible (false) so the
-    // runtime field is always an explicit boolean (Explicit Absence).
-    requiresFullSight: turretBlueprint.requiresFullSight === true,
-    turretRange: {
-      range: turretBlueprint.turretRange.range,
-      rangeVolume: turretBlueprint.turretRange.rangeVolume,
-      rangeOverrides: turretBlueprint.turretRange.rangeMultiplierOverrides,
-      sensors: cloneSensorCapabilityConfig(turretBlueprint.turretRange.sensors),
+    targeting: {
+      engagement: {
+        range: turretBlueprint.targeting.engagement.range,
+        rangeVolume: turretBlueprint.targeting.engagement.rangeVolume,
+        rangeOverrides:
+          turretBlueprint.targeting.engagement.rangeMultiplierOverrides,
+      },
+      observation: {
+        rangeVolume: turretBlueprint.targeting.observation.rangeVolume,
+        sensors: cloneSensorCapabilityConfig(
+          turretBlueprint.targeting.observation.sensors,
+        ),
+      },
+      effect: effectEnvelope,
+      requiredIntel: turretBlueprint.targeting.requiredIntel,
     },
     cooldown: turretBlueprint.cooldown,
     launchForce: turretBlueprint.launchForce,
@@ -718,6 +766,7 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // config uses autonomous as a harmless default; runtime materialization
     // always overwrites it from the authored mount.
     controlMode: 'autonomous',
+    slavedToMountId: null,
     // Unit mounts opt into fight/patrol halt gating individually. Building
     // mounts never participate in unit movement halt checks.
     requiredEngagedForFightStop: false,
@@ -801,10 +850,24 @@ export function buildAllTurretConfigs(): Record<TurretBlueprintId, TurretConfig>
 // validation.
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   for (let i = 0; i < bp.turrets.length; i++) {
-    const turretBlueprintId = bp.turrets[i].turretBlueprintId;
+    const mount = bp.turrets[i];
+    const turretBlueprintId = mount.turretBlueprintId;
     if (!TURRET_BLUEPRINTS[turretBlueprintId]) {
       throw new Error(
         `Invalid turret reference for ${bp.unitBlueprintId}[${i}]: unknown turretBlueprintId "${turretBlueprintId}"`,
+      );
+    }
+    if (isLegacyUnmountedTurretBlueprintId(turretBlueprintId)) {
+      throw new Error(
+        `Invalid turret reference for ${bp.unitBlueprintId}[${i}]: legacy host capability "${turretBlueprintId}" cannot be mounted`,
+      );
+    }
+    if (
+      mount.sensorTurretBlueprintId !== undefined &&
+      TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId]?.kind !== 'sensor'
+    ) {
+      throw new Error(
+        `Invalid mounted sensor reference for ${bp.unitBlueprintId}[${i}]: sensorTurretBlueprintId "${mount.sensorTurretBlueprintId}" must reference a sensor turret blueprint`,
       );
     }
   }
@@ -822,40 +885,88 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
     );
   }
   for (let i = 0; i < turrets.length; i++) {
-    const turretBlueprintId = turrets[i].turretBlueprintId;
+    const mount = turrets[i];
+    const turretBlueprintId = mount.turretBlueprintId;
     const turretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
     if (!turretBlueprint) {
       throw new Error(
         `Invalid building turret reference for ${bp.buildingBlueprintId}[${i}]: unknown turretBlueprintId "${turretBlueprintId}"`,
       );
     }
+    if (isLegacyUnmountedTurretBlueprintId(turretBlueprintId)) {
+      throw new Error(
+        `Invalid building turret reference for ${bp.buildingBlueprintId}[${i}]: legacy host capability "${turretBlueprintId}" cannot be mounted`,
+      );
+    }
+    if (
+      mount.sensorTurretBlueprintId !== undefined &&
+      TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId]?.kind !== 'sensor'
+    ) {
+      throw new Error(
+        `Invalid mounted sensor reference for ${bp.buildingBlueprintId}[${i}]: sensorTurretBlueprintId "${mount.sensorTurretBlueprintId}" must reference a sensor turret blueprint`,
+      );
+    }
   }
 }
 
-function validateSingleActiveSensorSource(
+function mountedSensorBlueprints(
+  mount: { turretBlueprintId: string; sensorTurretBlueprintId?: string },
+): TurretBlueprint[] {
+  const sensors: TurretBlueprint[] = [];
+  const primary = TURRET_BLUEPRINTS[mount.turretBlueprintId as TurretBlueprintId];
+  if (
+    primary &&
+    hasAnySensorRadius(primary.targeting.observation.sensors)
+  ) {
+    sensors.push(primary);
+  }
+  if (mount.sensorTurretBlueprintId !== undefined) {
+    const composed =
+      TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId as TurretBlueprintId];
+    if (
+      composed &&
+      hasAnySensorRadius(composed.targeting.observation.sensors)
+    ) {
+      sensors.push(composed);
+    }
+  }
+  return sensors;
+}
+
+function validateActiveSensorSources(
   hostLabel: string,
   hostId: string,
-  mounts: ReadonlyArray<{ turretBlueprintId: string }>,
+  mounts: ReadonlyArray<{ turretBlueprintId: string; sensorTurretBlueprintId?: string }>,
 ): void {
   let activeSourceCount = 0;
   for (const mount of mounts) {
-    const turret = TURRET_BLUEPRINTS[mount.turretBlueprintId as TurretBlueprintId];
-    if (turret && hasAnySensorRadius(turret.turretRange.sensors)) activeSourceCount++;
+    activeSourceCount += mountedSensorBlueprints(mount).length;
   }
-  if (activeSourceCount !== 1) {
+  if (activeSourceCount < 1) {
     throw new Error(
-      `Invalid ${hostLabel} ${hostId}: current native host visibility requires exactly one mounted turret with nonzero sensor coverage; found ${activeSourceCount}`,
+      `Invalid ${hostLabel} ${hostId}: every host requires at least one mounted sensor source`,
     );
   }
 }
 
-const TURRET_MOUNT_CONTROL_MODES = new Set(['host', 'autonomous', 'manual']);
+const TURRET_MOUNT_CONTROL_MODES = new Set([
+  'hostPreferred',
+  'hostOnly',
+  'autonomous',
+  'manual',
+  'slaved',
+]);
 
 /** Validate the stable identity and task source of every mounted emitter. */
 export function validateTurretMountContracts(
   hostLabel: string,
   hostId: string,
-  mounts: ReadonlyArray<{ mountId: unknown; turretBlueprintId: string; controlMode: unknown }>,
+  mounts: ReadonlyArray<{
+    mountId: unknown;
+    turretBlueprintId: string;
+    controlMode: unknown;
+    slavedToMountId?: unknown;
+  }>,
 ): void {
   const mountIds = new Set<string>();
   for (let i = 0; i < mounts.length; i++) {
@@ -874,6 +985,48 @@ export function validateTurretMountContracts(
         `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: unknown controlMode "${String(mount.controlMode)}"`,
       );
     }
+    if (mount.controlMode === 'slaved') {
+      if (
+        typeof mount.slavedToMountId !== 'string' ||
+        mount.slavedToMountId.length === 0 ||
+        mount.slavedToMountId === mount.mountId
+      ) {
+        throw new Error(
+          `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: slaved mounts require a different non-empty slavedToMountId`,
+        );
+      }
+    } else if (mount.slavedToMountId !== undefined) {
+      throw new Error(
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: slavedToMountId is only valid for controlMode "slaved"`,
+      );
+    }
+  }
+  for (let i = 0; i < mounts.length; i++) {
+    const mount = mounts[i];
+    if (mount.controlMode !== 'slaved') continue;
+    if (!mountIds.has(mount.slavedToMountId as string)) {
+      throw new Error(
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: unknown slavedToMountId "${String(mount.slavedToMountId)}"`,
+      );
+    }
+  }
+  const mountById = new Map(
+    mounts.map((mount) => [mount.mountId as string, mount] as const),
+  );
+  for (const mount of mounts) {
+    if (mount.controlMode !== 'slaved') continue;
+    const visited = new Set<string>();
+    let cursor: typeof mount | undefined = mount;
+    while (cursor?.controlMode === 'slaved') {
+      const cursorId = cursor.mountId as string;
+      if (visited.has(cursorId)) {
+        throw new Error(
+          `Invalid ${hostLabel} ${hostId}: slaved mount cycle includes "${cursorId}"`,
+        );
+      }
+      visited.add(cursorId);
+      cursor = mountById.get(cursor.slavedToMountId as string);
+    }
   }
 }
 
@@ -886,9 +1039,9 @@ function isPlayerAttackTurretBlueprint(turretBlueprintId: string): boolean {
 }
 
 /**
- * Every armed unit/building has one BAR-style bridge from host combat intent to
- * a weapon. Additional weapons remain autonomous or manual so a host attack
- * order never collapses a multi-turret assembly into one shared lock.
+ * Every armed unit/building has at least one BAR-style bridge from host combat
+ * intent to a weapon. Additional weapons may also consume that intent,
+ * independently acquire, wait for manual fire, or slave to a sibling.
  */
 export function validateSingleHostAttackMountContract(
   hostLabel: string,
@@ -905,11 +1058,16 @@ export function validateSingleHostAttackMountContract(
     const mount = mounts[i];
     if (!isPlayerAttackTurretBlueprint(mount.turretBlueprintId)) continue;
     weaponCount++;
-    if (mount.controlMode === 'host') hostWeaponCount++;
+    if (
+      mount.controlMode === 'hostPreferred' ||
+      mount.controlMode === 'hostOnly'
+    ) {
+      hostWeaponCount++;
+    }
   }
-  if (weaponCount > 0 && hostWeaponCount !== 1) {
+  if (weaponCount > 0 && hostWeaponCount < 1) {
     throw new Error(
-      `Invalid ${hostLabel} ${hostId}: armed hosts require exactly one host-controlled attack mount; found ${hostWeaponCount} among ${weaponCount} weapons`,
+      `Invalid ${hostLabel} ${hostId}: armed hosts require at least one host-directed attack mount`,
     );
   }
 }
@@ -917,7 +1075,7 @@ export function validateSingleHostAttackMountContract(
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateTurretMountContracts('unit blueprint', bp.unitBlueprintId, bp.turrets);
   validateSingleHostAttackMountContract('unit blueprint', bp.unitBlueprintId, bp.turrets);
-  validateSingleActiveSensorSource('unit blueprint', bp.unitBlueprintId, bp.turrets);
+  validateActiveSensorSources('unit blueprint', bp.unitBlueprintId, bp.turrets);
 }
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   validateTurretMountContracts('building blueprint', bp.buildingBlueprintId, bp.turrets);
@@ -926,7 +1084,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
     bp.buildingBlueprintId,
     bp.turrets,
   );
-  validateSingleActiveSensorSource('building blueprint', bp.buildingBlueprintId, bp.turrets);
+  validateActiveSensorSources('building blueprint', bp.buildingBlueprintId, bp.turrets);
 }
 
 // Cross-blueprint lock-on inclusion validation. Each level-1 named

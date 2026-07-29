@@ -4,7 +4,7 @@ import type { SoundEntry } from './audio';
 import type { RayBlueprintId, ShieldBlueprintId, ShieldMaterialId, ShotBlueprintId, StructureBlueprintId, TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
 import type { TurretRangeOverrides } from './combatTypes';
 import type { BarrelShape } from './config';
-import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
+import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec, WorkEmitterSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
 import type { EntityId, PlayerId } from './entityTypes';
 import type { UnitSuspensionConfig } from './unitLocomotionTypes';
@@ -27,11 +27,32 @@ export type SensorCapabilityConfig = {
   detectorRadius: number;
 };
 
-export type TurretRangeConfig = {
+export type TurretEngagementEnvelope = {
   range: number;
   rangeVolume: TurretRangeVolume;
   rangeMultiplierOverrides: TurretRangeOverrides;
+};
+
+export type TurretObservationEnvelope = {
+  rangeVolume: TurretRangeVolume;
   sensors: SensorCapabilityConfig;
+};
+
+export type TurretEffectRangeSource = 'engagement' | 'explicit';
+
+export type TurretEffectEnvelope = {
+  rangeSource: TurretEffectRangeSource;
+  range?: number;
+  rangeVolume?: TurretRangeVolume;
+};
+
+export type TurretIntelRequirement = 'contactSight' | 'fullSight';
+
+export type TurretTargetingConfig = {
+  engagement: TurretEngagementEnvelope;
+  observation: TurretObservationEnvelope;
+  effect: TurretEffectEnvelope;
+  requiredIntel: TurretIntelRequirement;
 };
 
 export type ProjectileShotKind = 'plasma' | 'rocket' | 'missile';
@@ -335,7 +356,7 @@ export type LockOnInclusionObject = {
 
 export type TurretEmitterKind = 'attack' | 'spawn' | 'resourcePylon' | 'sensor';
 
-export type TurretMountControlMode = 'host' | 'autonomous' | 'manual';
+export type TurretMountControlMode = 'hostPreferred' | 'hostOnly' | 'autonomous' | 'manual' | 'slaved';
 
 export type SpawnProducedKind = 'buildings' | 'units';
 
@@ -380,7 +401,7 @@ export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
   name: string;
   kind: TurretEmitterKind;
-  turretRange: TurretRangeConfig;
+  targeting: TurretTargetingConfig;
   cooldown: TurretCooldownConfig | null;
   color: number;
   turretTurnAccel: number;
@@ -400,7 +421,6 @@ export type TurretBlueprint = {
   headOnly: boolean;
   aimStyle: TurretAimStyle;
   verticalLauncher: boolean;
-  requiresFullSight?: boolean;
   idlePitch: number;
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
@@ -431,9 +451,11 @@ export type UnitTurretMountZResolver = {
 export type TurretMount = {
   mountId: string;
   turretBlueprintId: TurretBlueprintId;
+  sensorTurretBlueprintId?: TurretBlueprintId;
   mount: MountOffset;
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
+  slavedToMountId?: string;
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   visualVariant?: ConstructionEmitterSize;
@@ -446,9 +468,11 @@ export type TurretMount = {
 export type BuildingTurretMount = {
   mountId: string;
   turretBlueprintId: TurretBlueprintId;
+  sensorTurretBlueprintId?: TurretBlueprintId;
   mount: MountOffset;
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
+  slavedToMountId?: string;
   visualVariant?: ConstructionEmitterSize;
 };
 
@@ -820,6 +844,10 @@ export type UnitBlueprint = {
   unitLocomotion: UnitLocomotionBlueprint;
   suspension: UnitSuspensionConfig | null;
   builder: UnitBuilderConfig | null;
+  constructionRate?: number | null;
+  allowedBuildBlueprintIds?: StructureBlueprintId[] | null;
+  factoryProducedUnitBlueprintId?: UnitBlueprintId | null;
+  workEmitter?: WorkEmitterSpec | null;
   dgun: UnitDgunConfig | null;
   deathSound: SoundEntry | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];

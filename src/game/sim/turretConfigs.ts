@@ -25,10 +25,10 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
 //                 to be aware of enemies beyond its fire range
 //
 // The blueprint authors all of these as multipliers of the turret's
-// own `range` so doubling `range` doubles every shell at once.
+// engagement range so doubling that range doubles every shell at once.
 export function computeTurretRanges(config: TurretConfig): TurretRanges {
-  const baseRange = config.turretRange.range;
-  const m = config.turretRange.rangeOverrides;
+  const baseRange = config.targeting.engagement.range;
+  const m = config.targeting.engagement.rangeOverrides;
   const fireMax = makeHysteresisRange(
     baseRange * m.engageRangeMax.acquire,
     baseRange * m.engageRangeMax.release,
@@ -57,21 +57,28 @@ export function getTurretConfig(id: string): TurretConfig {
   if (!config) {
     throw new Error(`Unknown turret config: ${id}`);
   }
-  const rangeOverrides = config.turretRange.rangeOverrides;
+  const rangeOverrides = config.targeting.engagement.rangeOverrides;
   return {
     ...config,
-    turretRange: {
-      ...config.turretRange,
-      rangeOverrides: {
-        engageRangeMax: { ...rangeOverrides.engageRangeMax },
-        engageRangeMin: rangeOverrides.engageRangeMin
-          ? { ...rangeOverrides.engageRangeMin }
-          : null,
-        trackingRange: rangeOverrides.trackingRange
-          ? { ...rangeOverrides.trackingRange }
-          : null,
+    targeting: {
+      ...config.targeting,
+      engagement: {
+        ...config.targeting.engagement,
+        rangeOverrides: {
+          engageRangeMax: { ...rangeOverrides.engageRangeMax },
+          engageRangeMin: rangeOverrides.engageRangeMin
+            ? { ...rangeOverrides.engageRangeMin }
+            : null,
+          trackingRange: rangeOverrides.trackingRange
+            ? { ...rangeOverrides.trackingRange }
+            : null,
+        },
       },
-      sensors: cloneSensorCapabilityConfig(config.turretRange.sensors),
+      observation: {
+        ...config.targeting.observation,
+        sensors: cloneSensorCapabilityConfig(config.targeting.observation.sensors),
+      },
+      effect: { ...config.targeting.effect },
     },
   };
 }

@@ -6,7 +6,11 @@ import {
 } from './emitterTasks';
 
 function isHostCombatEmitter(emitter: Turret): boolean {
-  return emitter.config.kind === 'attack' && emitter.config.controlMode === 'host';
+  return emitter.config.kind === 'attack' &&
+    (
+      emitter.config.controlMode === 'hostPreferred' ||
+      emitter.config.controlMode === 'hostOnly'
+    );
 }
 
 /** Project the host's attack lane onto compatible host-controlled mounts.
@@ -40,6 +44,57 @@ export function synchronizeHostCombatEmitterTasks(host: Entity): boolean {
     ) {
       if (clearEmitterTask(emitter)) changed = true;
     }
+  }
+
+  // Slaved mounts mirror a named sibling after host intent has been
+  // projected. A master's independently acquired target is mirrored on the
+  // following tick; explicit host/manual tasks mirror immediately.
+  for (let i = 0; i < combat.turrets.length; i++) {
+    const emitter = combat.turrets[i];
+    if (
+      emitter.config.kind !== 'attack' ||
+      emitter.config.controlMode !== 'slaved' ||
+      emitter.config.slavedToMountId === null
+    ) {
+      continue;
+    }
+    const master = combat.turrets.find(
+      (candidate) => candidate.mountId === emitter.config.slavedToMountId,
+    );
+    if (master === undefined || master === emitter) {
+      if (clearEmitterTask(emitter)) changed = true;
+      continue;
+    }
+    if (master.task?.kind === 'entity') {
+      if (
+        assignEmitterEntityTask(
+          emitter,
+          master.task.operation,
+          master.task.targetId,
+        )
+      ) {
+        changed = true;
+      }
+      continue;
+    }
+    if (master.task?.kind === 'point') {
+      if (
+        assignEmitterPointTask(emitter, {
+          operation: master.task.operation,
+          x: master.task.x,
+          y: master.task.y,
+          z: master.task.z,
+        })
+      ) {
+        changed = true;
+      }
+      continue;
+    }
+    if (master.target !== null) {
+      if (assignEmitterEntityTask(emitter, 'attack', master.target)) changed = true;
+      continue;
+    }
+    if (clearEmitterTask(emitter)) changed = true;
   }
   return changed;
 }

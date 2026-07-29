@@ -1,10 +1,8 @@
 /** Shared construction visuals.
  *
  * These constants are for construction hardware, not shell bars:
- * commander construction turret, fabricator construction towers, and
- * any future build-emitter art should use this file so the hazard
- * language cannot drift between unit-mounted and building-mounted
- * construction pieces.
+ * These constants remain for legacy emitter geometry and construction-piece
+ * hazard art. Live builders and factories emit work from host-authored points.
  */
 import constructionVisualConfig from './constructionVisualConfig.json';
 import { COLORS, readRgbTuple } from './colorsConfig';

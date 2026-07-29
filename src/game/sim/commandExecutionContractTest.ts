@@ -799,7 +799,7 @@ export function runCommandExecutionContractTest(): void {
         config: {
           kind: 'attack',
           passive: false,
-          turretRange: { range: 240 },
+          targeting: { engagement: { range: 240 } },
           shot: { type: 'rocket' },
         },
       },
@@ -878,7 +878,7 @@ export function runCommandExecutionContractTest(): void {
         config: {
           kind: 'attack',
           passive: false,
-          turretRange: { range: 180 },
+          targeting: { engagement: { range: 180 } },
           shot: { type: 'plasma' },
         },
       },

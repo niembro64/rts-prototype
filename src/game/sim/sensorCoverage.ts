@@ -4,7 +4,12 @@ import type {
   SensorMediumRadiusMatrix,
   SensorMediumTargetRadii,
 } from '../../types/blueprints';
-import type { BuildingBlueprintId, Entity, Turret } from './types';
+import type {
+  BuildingBlueprintId,
+  Entity,
+  SensorMountCapability,
+  Turret,
+} from './types';
 import type { Vec3 } from '../../types/vec2';
 import { isBuildBlockingActivation } from './buildableHelpers';
 import { getBuildingBlueprint, TURRET_BLUEPRINTS } from './blueprints';
@@ -48,7 +53,7 @@ function targetRadius(
 
 function resolveTurretSensorPosition(
   entity: Entity,
-  turret: Turret,
+  turret: Turret | SensorMountCapability,
   turretIndex: number,
   out: Vec3,
 ): Vec3 {
@@ -57,7 +62,7 @@ function resolveTurretSensorPosition(
 }
 
 export type TurretSensorSource = {
-  turret: Turret;
+  mount: Turret | SensorMountCapability;
   turretIndex: number;
   position: Vec3;
   sourceMedium: SensorMedium;
@@ -66,7 +71,7 @@ export type TurretSensorSource = {
 
 const _sourcePosition: Vec3 = { x: 0, y: 0, z: 0 };
 const _source: TurretSensorSource = {
-  turret: null as unknown as Turret,
+  mount: null as unknown as Turret,
   turretIndex: -1,
   position: _sourcePosition,
   sourceMedium: 'aboveWater',
@@ -84,13 +89,27 @@ export function forEachEntityTurretSensorSource(
   if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    const sensors = turret.config.turretRange.sensors;
+    const sensors = turret.config.targeting.observation.sensors;
     if (!hasAnySensorRadius(sensors)) continue;
     resolveTurretSensorPosition(entity, turret, i, _sourcePosition);
-    _source.turret = turret;
+    _source.mount = turret;
     _source.turretIndex = i;
     _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
     _source.sensors = sensors;
+    visit(_source);
+  }
+  for (const mount of entity.combat?.utilityMounts ?? []) {
+    if (mount.kind !== 'sensor' || !hasAnySensorRadius(mount.sensors)) continue;
+    resolveTurretSensorPosition(
+      entity,
+      mount,
+      mount.mountIndex,
+      _sourcePosition,
+    );
+    _source.mount = mount;
+    _source.turretIndex = mount.mountIndex;
+    _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
+    _source.sensors = mount.sensors;
     visit(_source);
   }
 }
@@ -110,13 +129,22 @@ export function getEntityPrimaryTurretSensorSource(
   const turrets = entity.combat?.turrets;
   if (!turrets) return null;
   for (let i = 0; i < turrets.length; i++) {
-    const sensors = turrets[i].config.turretRange.sensors;
+    const sensors = turrets[i].config.targeting.observation.sensors;
     if (!hasAnySensorRadius(sensors)) continue;
     resolveTurretSensorPosition(entity, turrets[i], i, out);
     return {
       position: out,
       sourceMedium: getSensorMediumAtZ(out.z),
       sensors,
+    };
+  }
+  for (const mount of entity.combat?.utilityMounts ?? []) {
+    if (mount.kind !== 'sensor' || !hasAnySensorRadius(mount.sensors)) continue;
+    resolveTurretSensorPosition(entity, mount, mount.mountIndex, out);
+    return {
+      position: out,
+      sourceMedium: getSensorMediumAtZ(out.z),
+      sensors: mount.sensors,
     };
   }
   return null;
@@ -130,8 +158,8 @@ function getBuildingAuthoredSensors(
   const sensors: SensorCapabilityConfig[] = [];
   for (const mount of blueprint.turrets) {
     const turret = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-    if (turret && hasAnySensorRadius(turret.turretRange.sensors)) {
-      sensors.push(turret.turretRange.sensors);
+    if (turret && hasAnySensorRadius(turret.targeting.observation.sensors)) {
+      sensors.push(turret.targeting.observation.sensors);
     }
   }
   return sensors;

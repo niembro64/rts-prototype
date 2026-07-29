@@ -7112,8 +7112,8 @@ mod sim_kernel_tests {
         // change this flat-terrain route.
         pathfinder_rebuild_terrain_mask_and_cc(10_001);
         let count = pathfinder_find_path(
-            210.0, 210.0, 320.0, 210.0, 0.0, false, 0.0, true, false, false, true, false,
-            false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
+            210.0, 210.0, 320.0, 210.0, 0.0, false, 0.0, true, false, false, true, false, false,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7133,8 +7133,8 @@ mod sim_kernel_tests {
         // toward the goal; an invalid start now remains stranded.
         pathfinder_rebuild_terrain_mask_and_cc(10_002);
         let count = pathfinder_find_path(
-            30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, true, false, false, true, false,
-            false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
+            30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, true, false, false, true, false, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7152,26 +7152,8 @@ mod sim_kernel_tests {
 
         pathfinder_rebuild_terrain_mask_and_cc(10_003);
         let count = pathfinder_find_path(
-            160.0,
-            210.0,
-            240.0,
-            210.0,
-            0.5,
-            false,
-            0.0,
-            true,
-            false,
-            false,
-            true,
-            false,
-            false,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            false,
+            160.0, 210.0, 240.0, 210.0, 0.5, false, 0.0, true, false, false, true, false, false,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7286,8 +7268,8 @@ mod sim_kernel_tests {
         pathfinder_rebuild_terrain_mask_and_cc(10_031);
 
         let ground_only_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, false,
+            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         let ground_only_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
@@ -7389,8 +7371,8 @@ mod sim_kernel_tests {
         );
 
         let recovered_land_count = pathfinder_find_path(
-            150.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, false,
+            150.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert!(recovered_land_count >= 1);
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
@@ -7407,11 +7389,14 @@ mod sim_kernel_tests {
         );
 
         let stranded_water_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, false,
+            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(stranded_water_count, 1);
-        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_UNREACHABLE);
+        assert_eq!(
+            pathfinder_last_result_status(),
+            PATHFINDER_RESULT_UNREACHABLE
+        );
         let stranded_water_waypoints = unsafe {
             std::slice::from_raw_parts(
                 pathfinder_waypoints_ptr(),
@@ -7425,8 +7410,8 @@ mod sim_kernel_tests {
         // still fails because its exposed case is invalid for a water-only
         // unit, so the click snaps back to the wet cell.
         let shore_goal_count = pathfinder_find_path(
-            170.0, 90.0, 190.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, false,
+            170.0, 90.0, 190.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(shore_goal_count, 1);
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
@@ -7457,8 +7442,8 @@ mod sim_kernel_tests {
         );
 
         let amphibious_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, true, false, true, true, false, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, false,
+            70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, true, false, true, true, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(amphibious_count, 1);
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
@@ -7607,8 +7592,8 @@ mod sim_kernel_tests {
         pathfinder_rebuild_terrain_mask_and_cc(10_004);
 
         let count = pathfinder_find_path(
-            90.0, 50.0, 110.0, 50.0, 0.0, false, 0.0, true, false, false, true, false,
-            false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
+            90.0, 50.0, 110.0, 50.0, 0.0, false, 0.0, true, false, false, true, false, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7655,26 +7640,8 @@ mod sim_kernel_tests {
         assert_eq!(move_valid[low_flat], 1);
 
         let count = pathfinder_find_path(
-            110.0,
-            50.0,
-            90.0,
-            50.0,
-            0.5,
-            false,
-            0.0,
-            true,
-            false,
-            false,
-            true,
-            false,
-            false,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            false,
+            110.0, 50.0, 90.0, 50.0, 0.5, false, 0.0, true, false, false, true, false, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7819,26 +7786,8 @@ mod sim_kernel_tests {
         assert_eq!(move_valid[steep_cell], 0);
 
         let count = pathfinder_find_path(
-            100.0,
-            50.0,
-            50.0,
-            50.0,
-            0.5,
-            false,
-            0.0,
-            true,
-            false,
-            false,
-            true,
-            false,
-            false,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            false,
+            100.0, 50.0, 50.0, 50.0, 0.5, false, 0.0, true, false, false, true, false, false, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
@@ -7907,7 +7856,7 @@ mod sim_kernel_tests {
                 FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE,
             ],
         );
-        assert!((progress[2] - 0.525).abs() < 1.0e-9);
+        assert!((progress[2] - 0.25).abs() < 1.0e-9);
     }
 
     #[test]
@@ -8030,6 +7979,62 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn construction_coupled_debits_scale_both_resources_by_the_limiting_stockpile() {
+        let paid_energy = [0.0, 0.0];
+        let paid_metal = [0.0, 0.0];
+        let required_energy = [100.0, 20.0];
+        let required_metal = [50.0, 100.0];
+        let caps = [20.0, 20.0];
+        let mut spent_energy = [99.0; 2];
+        let mut spent_metal = [99.0; 2];
+        let mut totals = [99.0; 4];
+
+        assert_eq!(
+            construction_apply_coupled_consumer_debits(
+                &paid_energy,
+                &paid_metal,
+                &required_energy,
+                &required_metal,
+                &caps,
+                2,
+                100.0,
+                10.0,
+                &mut spent_energy,
+                &mut spent_metal,
+                &mut totals,
+            ),
+            1
+        );
+        assert!((spent_energy[0] - 20.0 / 3.0).abs() < 1e-12);
+        assert!((spent_energy[1] - 4.0 / 3.0).abs() < 1e-12);
+        assert!((spent_metal[0] - 10.0 / 3.0).abs() < 1e-12);
+        assert!((spent_metal[1] - 20.0 / 3.0).abs() < 1e-12);
+        assert!((totals[0] - 8.0).abs() < 1e-12);
+        assert!((totals[1] - 10.0).abs() < 1e-12);
+        assert!((totals[2] - 92.0).abs() < 1e-12);
+        assert_eq!(totals[3], 0.0);
+
+        assert_eq!(
+            construction_apply_coupled_consumer_debits(
+                &paid_energy,
+                &paid_metal,
+                &required_energy,
+                &required_metal,
+                &caps,
+                2,
+                0.0,
+                100.0,
+                &mut spent_energy,
+                &mut spent_metal,
+                &mut totals,
+            ),
+            1
+        );
+        assert_eq!(spent_energy, [0.0; 2]);
+        assert_eq!(spent_metal, [0.0; 2]);
+    }
+
+    #[test]
     pub(crate) fn construction_apply_consumer_spends_updates_paid_hp_and_progress() {
         let consumer_types = [
             CONSTRUCTION_CONSUMER_BUILD_CODE,
@@ -8076,7 +8081,7 @@ mod sim_kernel_tests {
         assert_eq!(paid_energy, [15.0, 0.0, 20.0, 5.0]);
         assert_eq!(paid_metal, [3.0, 0.0, 5.0, 5.0]);
         assert_eq!(hp, [0.0, 10.0, 0.0, 0.0]);
-        assert!((build_progress[0] - 0.525).abs() < 1e-12);
+        assert!((build_progress[0] - 0.3).abs() < 1e-12);
         assert_eq!(build_progress[1], 0.0);
         assert_eq!(build_progress[2], 1.0);
         assert_eq!(energy_rate_fraction, [0.5, 0.0, 0.0, 0.0]);
@@ -8158,10 +8163,10 @@ mod sim_kernel_tests {
         assert_eq!(complete, [1, 0, 0]);
         assert_eq!(active, [1, 1, 0]);
         assert_eq!(hp[0], 10.0);
-        assert!((hp[1] - 15.0).abs() < 1e-12);
+        assert!((hp[1] - 10.0).abs() < 1e-12);
         assert_eq!(hp[2], 5.0);
         assert_eq!(progress[0], 1.0);
-        assert_eq!(progress[1], 0.75);
+        assert_eq!(progress[1], 0.5);
         assert_eq!(progress[2], 0.0);
 
         let mut short = [0.0; 2];
@@ -8736,8 +8741,19 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn intermediate_waypoints_use_normalized_thrust() {
         let (x, y, active) = compute_arrival_control_thrust(
-            3.0, 4.0, 5.0, 100.0, 0.0, 10.0, 100.0, 1_000_000.0,
-            0, 1.0 / 30.0, 20.0, 0.22, 0.001,
+            3.0,
+            4.0,
+            5.0,
+            100.0,
+            0.0,
+            10.0,
+            100.0,
+            1_000_000.0,
+            0,
+            1.0 / 30.0,
+            20.0,
+            0.22,
+            0.001,
         );
         assert_eq!(active, 1);
         assert!((x - 0.6).abs() < 1e-12);
@@ -8857,6 +8873,7 @@ mod lock_on_inclusion_tests {
         turret_mask: u32,
         shot_mask: u32,
         reciprocal_mode: u8,
+        slaved_to_mount_index: i32,
     }
 
     impl Default for TurretSpec {
@@ -8874,6 +8891,7 @@ mod lock_on_inclusion_tests {
                 turret_mask: 0,
                 shot_mask: 0,
                 reciprocal_mode: CT_LOCK_ON_RECIPROCAL_IGNORE,
+                slaved_to_mount_index: -1,
             }
         }
     }
@@ -9354,6 +9372,7 @@ mod lock_on_inclusion_tests {
             spec.reciprocal_mode,
             task_target_id,
             0,
+            spec.slaved_to_mount_index,
         );
         // set_turret no longer takes the slab-owned FSM tuple; tests
         // that need a non-fresh starting state write the slab directly,
@@ -11263,6 +11282,221 @@ mod lock_on_inclusion_tests {
             read_turret_lock(1).0,
             202,
             "a sibling that rejects the host task must auto-acquire independently",
+        );
+    }
+
+    #[test]
+    pub(crate) fn slaved_mount_inherits_master_target_but_runs_its_own_gates() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            3,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                flags: 0,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            1,
+            TurretSpec {
+                flags: CT_TURRET_CFG_NO_AUTO_ACQUIRE,
+                slaved_to_mount_index: 0,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            2,
+            TurretSpec {
+                flags: CT_TURRET_CFG_NO_AUTO_ACQUIRE,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_BUILDINGS,
+                slaved_to_mount_index: 0,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (_, _, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_AUTO);
+        assert_eq!(
+            read_turret_lock(1).0,
+            201,
+            "compatible slave must inherit the master's selected entity"
+        );
+        assert_eq!(
+            read_turret_lock(2),
+            (-1, CT_TURRET_STATE_IDLE),
+            "slave intent must still pass the slave mount's own lock-on gates"
+        );
+    }
+
+    #[test]
+    pub(crate) fn host_only_mount_has_no_autonomous_fallback() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(201);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_CONTROLLED | CT_TURRET_CFG_NO_AUTO_ACQUIRE,
+                unit_mask: 1 << BODY_UNIT_CODE_B,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            30.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+
+        let (target_id, state, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_AUTO);
+        assert_eq!(target_id, -1);
+        assert_eq!(
+            state, CT_TURRET_STATE_IDLE,
+            "hostOnly must idle when its host task is ineligible, even when an eligible fallback exists"
+        );
+    }
+
+    #[test]
+    pub(crate) fn full_sight_weapon_can_engage_from_allied_sensor_intelligence() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            100.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_entity(
+            2,
+            301,
+            PLAYER_1,
+            90.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+            0,
+            -1,
+        );
+        {
+            let pool = combat_targeting_pool();
+            // The weapon host cannot see the target itself. The allied scout
+            // supplies the full-sight bit to the same team view mask.
+            pool.entity_full_vision_above_water_radius[SOURCE_SLOT as usize] = 10.0;
+            pool.entity_full_vision_underwater_radius[SOURCE_SLOT as usize] = 10.0;
+            pool.entity_radar_radius[SOURCE_SLOT as usize] = 0.0;
+            pool.entity_sonar_radius[SOURCE_SLOT as usize] = 0.0;
+            pool.entity_full_vision_above_water_radius[2] = 30.0;
+            pool.entity_full_vision_underwater_radius[2] = 30.0;
+        }
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 201);
+        assert_ne!(
+            state, CT_TURRET_STATE_IDLE,
+            "engagement range and local observation range are independent; allied full sight may authorize the shot"
+        );
+    }
+
+    #[test]
+    pub(crate) fn radar_contact_authorizes_contact_weapon_but_not_full_sight_weapon() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            100.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        {
+            let pool = combat_targeting_pool();
+            pool.entity_full_vision_underwater_radius[SOURCE_SLOT as usize] = 10.0;
+            pool.entity_sonar_radius[SOURCE_SLOT as usize] = 120.0;
+        }
+        let contact_lock = run_schedule_tick(1);
+        assert_eq!(
+            contact_lock.0, 201,
+            "contactSight weapons may fire from the team's radar/sonar-quality contact"
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            100.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        {
+            let pool = combat_targeting_pool();
+            pool.entity_full_vision_underwater_radius[SOURCE_SLOT as usize] = 10.0;
+            pool.entity_sonar_radius[SOURCE_SLOT as usize] = 120.0;
+        }
+        let full_sight_lock = run_schedule_tick(1);
+        assert_eq!(full_sight_lock.0, -1);
+        assert_eq!(
+            full_sight_lock.1, CT_TURRET_STATE_IDLE,
+            "fullSight weapons must not promote a radar/sonar contact into visual identification"
         );
     }
 }

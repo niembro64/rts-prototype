@@ -50,7 +50,7 @@ export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean 
  *  submunitions must obey the same obstruction rule as every other
  *  attacking turret. */
 export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): boolean {
-  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === undefined;
+  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === null;
 }
 
 type ShieldClearanceOptions = {

@@ -96,6 +96,14 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
           `Invalid unit blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
         );
       }
+      if (mount.sensorTurretBlueprintId !== undefined) {
+        const sensorBlueprint = TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId];
+        if (!sensorBlueprint || sensorBlueprint.kind !== 'sensor') {
+          throw new Error(
+            `Invalid unit blueprint ${id}: sensorTurretBlueprintId "${mount.sensorTurretBlueprintId}" must reference a sensor turret blueprint`,
+          );
+        }
+      }
       if (typeof mount.requiredEngagedForFightStop !== 'boolean') {
         throw new Error(
           `Invalid unit blueprint ${id}: turret mount ${mount.turretBlueprintId} must define a boolean requiredEngagedForFightStop`,
@@ -114,31 +122,6 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
 }
 
 export const UNIT_BLUEPRINTS = buildUnitBlueprints();
-
-// Queen unit factories use the same production-ring contract as the static
-// fabricator, but hover/flying turret mounts must remain on the roll axis for
-// sim/render banking correctness. The real mounts stay axis-compliant here;
-// production-ring pylon placement is a visual override derived from the same
-// hold geometry.
-for (const bp of Object.values(UNIT_BLUEPRINTS)) {
-  const spawnMount = bp.turrets.find((mount) => mount.producedBlueprintId !== undefined);
-  if (spawnMount === undefined || spawnMount.producedBlueprintId === undefined) continue;
-  if (UNIT_BLUEPRINTS[spawnMount.producedBlueprintId] === undefined) continue;
-  const centerX = Number.isFinite(spawnMount.mount.x) ? spawnMount.mount.x : 0;
-  const centerY = 0;
-  const centerZ = 0;
-  spawnMount.mount.x = centerX;
-  spawnMount.mount.y = centerY;
-  spawnMount.mount.z = centerZ;
-
-  for (const mount of bp.turrets) {
-    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-    if (turretBlueprint?.resourcePylon?.role !== 'construction') continue;
-    mount.mount.x = centerX;
-    mount.mount.y = centerY;
-    mount.mount.z = centerZ;
-  }
-}
 
 function validateUnitSupportSurface(
   unitBlueprintId: string,
@@ -161,54 +144,88 @@ function validateUnitSupportSurface(
   }
 }
 
-function validateUnitWorkEmitterMounts(bp: UnitBlueprint): void {
-  let hasConstructionRate = false;
+function validateUnitWorkCapability(bp: UnitBlueprint): void {
+  const constructionRate = bp.constructionRate ?? null;
+  const roster = bp.allowedBuildBlueprintIds ?? null;
+  const producedUnitBlueprintId = bp.factoryProducedUnitBlueprintId ?? null;
+  const workEmitter = bp.workEmitter ?? null;
 
-  for (const mount of bp.turrets) {
-    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-    if (mount.allowedBuildBlueprintIds !== undefined) {
-      if (turretBlueprint.spawn?.producedKind !== 'buildings') {
-        throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds belongs on a building spawn turret mount`,
-        );
-      }
-      if (!Array.isArray(mount.allowedBuildBlueprintIds) || mount.allowedBuildBlueprintIds.length === 0) {
-        throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: spawn turret allowedBuildBlueprintIds must not be empty`,
-        );
-      }
-      for (const id of mount.allowedBuildBlueprintIds) {
-        if (!isStructureBlueprintId(id)) {
-          throw new Error(
-            `Invalid builder config for ${bp.unitBlueprintId}: unknown allowedBuildBlueprintId "${id}"`,
-          );
-        }
-      }
+  if (constructionRate !== null && (!Number.isFinite(constructionRate) || constructionRate <= 0)) {
+    throw new Error(
+      `Invalid work config for ${bp.unitBlueprintId}: constructionRate must be positive`,
+    );
+  }
+  if (roster !== null) {
+    if (!Array.isArray(roster) || roster.length === 0) {
+      throw new Error(
+        `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds must not be empty`,
+      );
     }
-    if (mount.constructionRate !== undefined) {
-      if (turretBlueprint.resourcePylon?.role !== 'construction') {
+    const seen = new Set<string>();
+    for (const id of roster) {
+      if (!isStructureBlueprintId(id)) {
         throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: constructionRate belongs on a construction-pylon turret mount`,
+          `Invalid builder config for ${bp.unitBlueprintId}: unknown allowedBuildBlueprintId "${id}"`,
         );
       }
-      if (!Number.isFinite(mount.constructionRate) || mount.constructionRate <= 0) {
+      if (seen.has(id)) {
         throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: construction-pylon constructionRate must be positive`,
+          `Invalid builder config for ${bp.unitBlueprintId}: duplicate allowedBuildBlueprintId "${id}"`,
         );
       }
-      hasConstructionRate = true;
+      seen.add(id);
     }
   }
+  if (
+    producedUnitBlueprintId !== null &&
+    UNIT_BLUEPRINTS[producedUnitBlueprintId] === undefined
+  ) {
+    throw new Error(
+      `Invalid factory config for ${bp.unitBlueprintId}: unknown factoryProducedUnitBlueprintId "${producedUnitBlueprintId}"`,
+    );
+  }
+  if (constructionRate !== null) {
+    if (
+      workEmitter === null ||
+      workEmitter.points.length === 0 ||
+      !Number.isFinite(workEmitter.particleTravelSpeed) ||
+      workEmitter.particleTravelSpeed <= 0 ||
+      !Number.isFinite(workEmitter.particleRadius) ||
+      workEmitter.particleRadius <= 0
+    ) {
+      throw new Error(
+        `Invalid work config for ${bp.unitBlueprintId}: construction hosts must author a valid workEmitter`,
+      );
+    }
+    for (const point of workEmitter.points) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+        throw new Error(
+          `Invalid work config for ${bp.unitBlueprintId}: workEmitter points must be finite`,
+        );
+      }
+    }
+  } else if (workEmitter !== null) {
+    throw new Error(
+      `Invalid work config for ${bp.unitBlueprintId}: workEmitter requires constructionRate`,
+    );
+  }
 
-  if (bp.builder === null) return;
+  if (bp.builder === null) {
+    if (roster !== null) {
+      throw new Error(
+        `Invalid builder config for ${bp.unitBlueprintId}: only builders may author allowedBuildBlueprintIds`,
+      );
+    }
+    return;
+  }
   if (!Number.isFinite(bp.builder.buildRange) || bp.builder.buildRange <= 0) {
     throw new Error(
       `Invalid builder config for ${bp.unitBlueprintId}: buildRange must be positive`,
     );
   }
-  if (!hasConstructionRate) {
+  if (constructionRate === null || roster === null) {
     throw new Error(
-      `Invalid constructor config for ${bp.unitBlueprintId}: constructor units must author constructionRate on a construction-pylon mount`,
+      `Invalid constructor config for ${bp.unitBlueprintId}: builders must author constructionRate and allowedBuildBlueprintIds on the host`,
     );
   }
 }
@@ -226,7 +243,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
-  validateUnitWorkEmitterMounts(bp);
+  validateUnitWorkCapability(bp);
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(
@@ -304,12 +321,10 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
           );
         }
       }
-      if (
-        Math.hypot(
-          leg.attachmentPoint.xUnitRadiusRatio,
-          leg.attachmentPoint.yUnitRadiusRatio,
-        ) <= 1e-6
-      ) {
+      const attachLengthSq =
+        leg.attachmentPoint.xUnitRadiusRatio * leg.attachmentPoint.xUnitRadiusRatio +
+        leg.attachmentPoint.yUnitRadiusRatio * leg.attachmentPoint.yUnitRadiusRatio;
+      if (attachLengthSq <= 1e-12) {
         throw new Error(
           `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: attachment must be offset from the unit center`,
         );

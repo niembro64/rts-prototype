@@ -137,7 +137,7 @@ function maxWeaponRange(entity: Entity): number | null {
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
     if (!isAttackEmitter(turret) || turret.config.shot === null) continue;
-    range = Math.max(range, turret.config.turretRange.range);
+    range = Math.max(range, turret.config.targeting.engagement.range);
   }
   return range > 0 ? range : null;
 }
@@ -1341,7 +1341,7 @@ function buildUnitStatsWeaponInfo(config: TurretConfig): UnitStatsWeaponInfo {
     kind,
     emission,
     count: 1,
-    range: config.turretRange.range,
+    range: config.targeting.engagement.range,
     cooldownMs,
     volleyDamage,
     dps,

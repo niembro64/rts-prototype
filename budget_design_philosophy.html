@@ -1947,14 +1947,13 @@
       <ul class="rule-list">
         <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, its own <strong>locomotion</strong> &mdash; the movement profile and rig (wheels, treads, legs, or hover) that produces and applies its movement forces, authored <em>inline as part of the unit</em> rather than as a separate piece &mdash; mounted turrets with stable mount IDs and control modes, host-owned intent/workflows, and composition slots. A unit that has a turret contract is built and exists with its authored turrets present; there is no finished weapon host with empty turret mounts.</li>
         <li><code>building</code> owns an <em>immobile</em> host body: footprint, mass, health, static infrastructure, host-owned intent/workflows, and its mounted turret set. Fabricators, radar and sonar stations, resource producers, and defensive emplacements are all buildings. A legacy blueprint ID may still contain the word <code>tower</code>, but that is content identity, not a separate runtime family.</li>
-        <li><code>turret</code> is a standardized mounted emitter &mdash; <em>any</em> mounted emitter, not only a weapon. Every unit and building mounts at least one. Every turret owns its own nested <code>turretRange</code>, containing the lock-on <code>range</code>, <code>rangeVolume</code>, hysteresis multipliers, and full-sight/contact-sight/detector radii. It falls into one of four emitter families by its <code>kind</code>:
+        <li><code>turret</code> is a standardized mounted combat or sensor emitter. Every unit and building mounts at least one. Every turret owns its own nested <code>turretRange</code>, containing the lock-on <code>range</code>, <code>rangeVolume</code>, hysteresis multipliers, and full-sight/contact-sight/detector radii. It falls into one of three emitter families by its <code>kind</code>:
           <ul>
             <li><strong>combat</strong> (<code>kind: attack</code>) &mdash; emits a travelling munition or a sustained line, named by a single by-id reference declared by two fields, <code>emissionKind</code> (<code>shot</code> or <code>ray</code>) and <code>emissionBlueprintId</code> (the id of the emission blueprint in the namespace that kind selects). It carries firing pattern (burst and spread) and no inline emission payload &mdash; the emission is named by id, never copied in &mdash; so the same combat turret blueprint drops onto any host unchanged.</li>
-            <li><strong>spawn</strong> (<code>kind: spawn</code>) &mdash; brings an entity into existence: it creates the nanoframe of a building or unit (or an instant unit for queens), then a brief init beam marks the act. Spawn turrets do not target enemies and fire no munition.</li>
-            <li><strong>resource-pylon</strong> (<code>kind: resourcePylon</code>) &mdash; moves exactly one resource in one role: a <em>construction</em> pylon pours metal or energy outward into a build target (and auto-continues nearby work when its host is idle); an <em>extraction</em> pylon pulls metal or energy inward from the world. Pylons are non-combat cosmetic/economy emitters: they spin and spray resource balls but fire no weapon.</li>
+            <li><strong>resource-pylon</strong> (<code>kind: resourcePylon</code>) &mdash; provides an optional economy-overlay origin for one resource. It is never the source of construction authority and never replaces localized economy animation.</li>
             <li><strong>sensor</strong> (<code>kind: sensor</code>) &mdash; emits nothing physical and acquires no combat target. It exists to give a host an explicit turret origin for sight, radar, sonar, or cloak detection. A zero in a lane means that turret does not provide that capability.</li>
           </ul>
-          A turret is addressable and lockable through its own <code>EntityId</code>, but it is never a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It does not own task provenance; <code>host</code>, <code>autonomous</code>, or <code>manual</code> is set per mount. Emitter capabilities never change the host&rsquo;s entity family: a static host remains a building whether its turrets sense, construct, spawn, or attack.</li>
+          A turret is addressable and lockable through its own <code>EntityId</code>, but it is never a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It does not own task provenance; <code>host</code>, <code>autonomous</code>, or <code>manual</code> is set per mount. Emitter capabilities never change the host&rsquo;s entity family.</li>
         <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt, rocket, or missile that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code>, <code>rocket</code>, and <code>missile</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
         <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
       </ul>
@@ -2314,7 +2313,7 @@
       <h3>Host intent is not turret lock-on</h3>
       <p>
         Units and buildings carry host-owned intent chosen by the player, AI, or command system:
-        attack an enemy, guard an ally, construct or repair an entity, spawn a product, move, or
+        attack an enemy, guard an ally, construct or repair an entity, produce a product, move, or
         run a queued workflow. Intent is not stored as one overloaded target ID. A single adapter
         projects it into typed per-mount tasks, and each task may use the same opaque entity-ID
         representation without confusing friendly work with hostile fire.
@@ -2322,9 +2321,8 @@
       <p>
         A mount accepts a task only when its emitter kind supports the operation and its control
         mode permits that source. Attack tasks then pass team-aware relationship, entity-family,
-        visibility, range, line-of-sight, and shot-compatibility gates. Construction and repair
-        tasks require a construction resource pylon. Spawn tasks require a spawn emitter and may
-        exist before the produced entity ID does; the task gains that ID at creation. This is why
+        visibility, range, line-of-sight, and shot-compatibility gates. Construction, repair, and
+        production remain host workflows and never become mount tasks. This is why
         a bare &ldquo;lock-on ID&rdquo; cannot be the complete command model even though entity tasks share
         one ID representation.
       </p>
@@ -2396,8 +2394,7 @@
         candidates; the entity-family inclusions admit whole kinds &mdash; units, buildings,
         turrets, or shots; level-1 inclusions, when present, narrow a surviving family
         to specific authored names; range, line-of-sight, and scoring then pick the best lock from
-        the survivors. A construction turret that should lock only onto friendly entities includes
-        <code>friendly_entities</code>. A fighting turret that should only attack hostile targets
+        the survivors. Host-owned construction does not enter lock-on at all. A fighting turret that should only attack hostile targets
         includes <code>enemy_entities</code>. A normal weapon turret that should ignore turret
         mounts simply leaves <code>turrets</code> off its family list. Because lock-on is off by
         default, targeting a <em>specific piece</em> is just a narrow inclusion object: a
@@ -2591,7 +2588,7 @@
         &ldquo;real&rdquo; entity. It <em>is</em> the real entity, alive from the first frame in an
         under-construction state, carrying the <code>EntityId</code> it will keep for its whole
         life. Health, completion fraction, and buildability ramp up; the id never changes. A
-        construction turret locks onto that id like any other target, the player can select it and
+        builder workflow targets that id directly, the player can select it and
         queue commands on it, and those selections and orders survive completion because nothing is
         swapped underneath them. There is no separate &ldquo;build shell&rdquo; id pointing at a
         &ldquo;product&rdquo; id &mdash; one continuous identity from nanoframe to finished
@@ -2611,8 +2608,9 @@
       <p>
         A finished unit or building must therefore have its authored turret set present. Interrupting
         construction leaves an incomplete host, not a coherent finished body with empty turret mounts.
-        Every host has at least one turret; a null-emission sensor turret is the minimum valid mount
-        for a host that does not attack, construct, produce, or exchange resources.
+        Every host has at least one mounted capability. Attack turrets are
+        materialized as targetable sub-entities; sensor-only and extraction-flow
+        mounts are lightweight attachments with no firing state machine.
       </p>
 
       <h3>Shots carry immutable source provenance</h3>
@@ -2664,35 +2662,58 @@
       <h2>Buildings Are Static Turret Hosts</h2>
       <p>
         A <code>building</code> is the immobile peer of a <code>unit</code>. It has a body,
-        footprint, mass, health, host intent, and at least one mounted turret, but no locomotion.
+        footprint, mass, health, host intent, and at least one mounted capability, but no locomotion.
         There is no separate tower entity type, blueprint catalog, lock-on family, selection type,
         or targeting pool. The former defensive towers and fabricator are ordinary building
-        blueprints whose mounted turret capabilities make them attack or produce.
+        blueprints whose mounted capabilities make them attack, observe, or exchange resources.
       </p>
       <p>
         Static infrastructure and turret behavior compose on the same host. A solar collector can
-        mount extraction and sensor turrets; a radar station mounts a sensor-only turret; a
-        fabricator mounts sensor, spawn, and construction-pylon turrets; a defensive emplacement
-        mounts sensor and attack turrets. Capability checks decide which commands and systems apply.
+        mount lightweight extraction-flow and sensor attachments; a radar station mounts a sensor;
+        a fabricator owns production/build power and mounts a sensor; a defensive emplacement
+        composes its sensor profile onto its attacking turret. Capability checks decide which
+        commands and systems apply.
         A building never changes family because a turret is added or removed from its design.
       </p>
       <h3>Mount control and typed tasks</h3>
       <p>
         Every mount has a stable <code>mountId</code> and a mount-owned
-        <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or
-        <code>manual</code>. Host-controlled mounts consume only compatible typed tasks: attack
-        entity, attack point, construct, repair, or spawn. Autonomous mounts run their emitter-kind
-        policy, manual mounts wait for their named ability, and sensor mounts emit no task. A combat
-        mount that rejects host attack intent falls back independently without clearing a sibling
-        mount that accepted it.
+        <code>controlMode</code> of <code>hostPreferred</code>,
+        <code>hostOnly</code>, <code>autonomous</code>, <code>manual</code>, or
+        <code>slaved</code>. <code>hostPreferred</code> consumes a compatible
+        host attack target before its own lock and may fall back autonomously;
+        <code>hostOnly</code> never falls back; <code>autonomous</code> ignores
+        host locks; <code>manual</code> waits for explicit ability fire; and
+        <code>slaved</code> follows a named sibling&rsquo;s target intent while
+        re-running its own legality, range, intelligence, line-of-sight,
+        ballistic, and shield gates. Build, repair, and production are host
+        workflows rather than turret tasks.
       </p>
-      <h3>Spawn and construct remain separate</h3>
+      <h3>One owner, three spatial envelopes</h3>
       <p>
-        Spawn creates permanent entity identity. Construct transfers resources and work into an
-        already-existing incomplete entity. Build and factory production are host workflows that
-        compose <code>spawn &rarr; construct</code>; neither operation implies the other. The host
-        owns rosters, queues, placement, resource authorization, and workflow order. The named
-        emitter owns task acceptance and the physical effect.
+        An attacking turret owns an <code>engagement</code> envelope for
+        target legality, an <code>observation</code> envelope for its
+        contribution to team intelligence, and an <code>effect</code>
+        envelope for actual ray, projectile, or field reach. Effect inherits
+        engagement unless explicitly authored otherwise. Observation never
+        caps engagement: allied full sight may let a precision beam engage
+        beyond its own sensor radius, and allied radar/contact sight may let a
+        radar-capable weapon do the same. Required intelligence never expands
+        engagement range.
+      </p>
+      <p>
+        Persistent shield spheres are passive mounted equipment and do not
+        enter attack acquisition. Directional shield panels remain attacking
+        mounts because selecting and aiming at the incoming threat is their
+        defining behavior.
+      </p>
+      <h3>Identity creation is not a spawn turret</h3>
+      <p>
+        A build or production workflow creates the product&rsquo;s permanent identity as a
+        nanoframe, then applies construction work to that same incomplete entity. Identity
+        allocation is an internal lifecycle step, not a mounted capability, aim participant,
+        beam, or visible &ldquo;spawn&rdquo; effect. The host owns rosters, queues, placement,
+        resource authorization, work rate, and workflow order.
       </p>
     </section>
 
@@ -2827,59 +2848,53 @@
     </section>
 
     <section>
-      <h2>Resource Movement Flows Through Pylons</h2>
+      <h2>Resource Accounting and Work Presentation Are Separate</h2>
       <p>
-        The general gameplay shape is simple: <strong>buildings build units, units build
-        buildings</strong>, and both do that work through their turrets. The economy that fuels
-        those turrets &mdash; production, consumption, conversion, construction payment, repair
-        drain, future ammo costs &mdash; is its own shared abstraction: the
-        <em>resource pylon</em>. Every entity that adds to a resource pool, draws from one, or
-        moves resource between pools carries one pylon per affected resource, and that pylon is
-        the single source of truth for both the simulation accounting and the on-screen
-        visualization at that point on the host.
+        The resource-movement ledger is the source of truth for accounting, UI, replay, and
+        diagnostics. It records typed metal and energy movement with amount, direction, source,
+        target, and reason. Presentation is a consumer of that ledger, not a mandatory physical
+        reconstruction of every accounting entry.
       </p>
       <p>
-        There must be no resource movement that bypasses this contract. The sim does not have a
-        parallel "production" path that nudges the player&rsquo;s stockpile directly while
-        construction payments go through one helper and converter ticks go through another; the
-        renderer does not have a special-case "factory sparkle," "solar trickle," or
-        "converter glow" that lives outside the pylon rig. One channel in the sim, one rig in the
-        renderer, every resource movement.
+        Economy buildings should communicate their role through localized authored motion
+        &mdash; turbine rotation, collector articulation, extractor activity, converter state
+        &mdash; while a pylon-ball view may exist as an optional economy/debug overlay. Normal
+        battlefield rendering does not require every ledger entry to create world-space balls.
       </p>
 
-      <h3>Hard invariant: resources are visible only as pylon balls</h3>
+      <h3>Hard invariant: construction and repair show build power</h3>
       <p>
-        Every resource flow must be represented as resource balls moving through a host-mounted
-        resource pylon. This is not only a rendering preference; it is the contract that keeps
-        economy accounting, host identity, target identity, and visual language aligned. If a
-        resource is produced, consumed, converted, refunded, reclaimed, repaired, spent as upkeep,
-        paid as construction cost, or spent as a future ammo/ability cost, the player must be able
-        to follow that movement through the correct resource pylon on the host entity.
+        Builders and factories own one build-power capability and one or more authored work-emitter
+        points. Construction and repair emit the same outward, team-coloured particle stream.
+        Particle density follows <em>realized work</em>: construction progress or restored HP
+        converted through the target&rsquo;s original build duration. It never follows independent
+        metal and energy rates.
       </p>
       <ul class="rule-list">
         <li>
-          When a host <strong>uses</strong> a resource, balls are born at the host/root side, travel
-          up the matching pylon tube, leave the pylon tip, and move toward the thing being funded,
-          consumed, charged, repaired, built, fired, or converted.
+          Construction consumes metal and energy as one coupled work step. If either resource is
+          unavailable, that step scales down or stalls and neither lane may advance by itself.
         </li>
         <li>
-          When a host <strong>gets</strong> a resource, balls come from the world/source side, enter
-          the matching pylon tip, travel down the tube, and disappear into the host/root side.
+          Repair of a completed entity consumes no metal or energy. It is limited only by build
+          power and the target&rsquo;s original construction duration.
         </li>
         <li>
-          A host that touches both energy and metal must expose two independent pylons. A
-          combined "economy effect," shared glow, ring, meter, sparkle, particle cloud, or
-          building-specific animation is not allowed to carry resource-flow meaning unless it is
-          built from those pylon balls.
+          Applying Repair to an incomplete entity is construction: it consumes coupled resources
+          and advances the nanoframe instead of entering the free-repair path.
         </li>
         <li>
-          Any code path that changes a stockpile without publishing the corresponding pylon flow is
-          a correctness bug. Any renderer path that visualizes resource movement without consuming
-          the shared pylon-flow data is also a correctness bug, even if the accounting is correct.
+          Metal and energy remain separate accounting records and UI facts, but they do not create
+          separate construction sprays, emitter rigs, or doubled particle streams.
         </li>
       </ul>
 
-      <h3>What a pylon is</h3>
+      <h3>Optional pylon overlay contract</h3>
+      <p>
+        When the optional economy overlay is enabled, its pylons retain the conduit rules below.
+        Those rules describe the overlay faithfully; they do not require pylons on builders or
+        factories and do not make pylon balls the normal view&rsquo;s sole economy indicator.
+      </p>
       <ul class="rule-list">
         <li>
           A pylon is tagged with exactly one resource type: <strong>energy</strong> or
@@ -2892,8 +2907,7 @@
           discrete coloured spheres that visibly flow either INTO the pylon head or OUT of it. Their
           <strong>density</strong> &mdash; how many are in flight per second &mdash; encodes the
           magnitude of the resource rate, and their <strong>direction</strong> encodes which way the
-          resource is moving. There is no separate bar or readout beside them; the moving balls are
-          the whole indicator.
+          resource is moving within the optional overlay.
         </li>
         <li>
           A pylon&rsquo;s direction encodes the local physical flow of the resource at the
@@ -2903,16 +2917,15 @@
           the sun, an extractor pulling metal from the deposit beneath it, a converter&rsquo;s metal
           tip catching the metal its energy tip just made. <strong>Outbound balls</strong> mean the
           resource first rises <em>up</em> the tube from the pool and the tip then projects it into
-          the world &mdash; a construction turret sending energy and metal to a build site, a
-          converter&rsquo;s energy tip ejecting the energy it is consuming. Down the tube is always
+          the world &mdash; for example a converter&rsquo;s energy tip ejecting the energy it is
+          consuming. Down the tube is always
           gaining and up the tube is always spending, so the net effect on the player&rsquo;s
           stockpile is recovered from the host&rsquo;s role plus this single direction; it is not
           encoded by some second orthogonal field on the pylon.
         </li>
         <li>
-          A pylon that has a discrete target &mdash; a construction-emitter pylon spraying a
-          build site &mdash; aims its ball flow at that target. A pylon that interacts with
-          "the pool" or "the environment" as a whole &mdash; solar, wind, extractor, converter
+          A pylon that has a discrete economy target aims its ball flow at that target. A pylon
+          that interacts with "the pool" or "the environment" as a whole &mdash; solar, wind, extractor, converter
           &mdash; uses random world-space directions for the inbound or outbound balls. The
           absence of a target is a real configuration of the contract, not a missing field.
         </li>
@@ -2923,12 +2936,12 @@
         A pylon is not a point; it is a <em>conduit</em> with two ends and a tube between them. The
         <strong>root</strong> is the bottom, where the pylon taps the player&rsquo;s shared resource
         pool. The <strong>head</strong> &mdash; the <em>tip</em> &mdash; is the top, where the pylon
-        meets the physical world: the sky, the wind, a metal deposit, a build site. The
+        meets the physical world: the sky, the wind, a metal deposit, or another economy endpoint. The
         <strong>tube</strong> is the visible shaft the resource balls travel along between the two.
         Inbound and outbound, defined above at the tip, are simply the two ends of one journey:
         <strong>balls travelling down the tube mean the host is gaining that resource</strong>
         (production, reclaim, conversion output), and <strong>balls travelling up the tube mean the
-        host is spending it</strong> (construction, repair, conversion input, upkeep).
+        host is spending it</strong> (conversion input, upkeep, or another overlaid economy debit).
       </p>
       <p>
         The tip conserves. It is a pass-through, never a spawn and never a sink:
@@ -2943,11 +2956,9 @@
         accounted for before and after the tip.
       </p>
       <p>
-        Because the moving stream carries both direction (which way along the tube) and magnitude
-        (how densely the balls flow), <strong>the flowing balls are the entire resource
-        indicator</strong>: the standalone resource-usage indicators this replaces are retired, and
-        no separate magnitude bar stands beside them. A pylon either shows its balls in motion or,
-        when nothing is flowing, shows nothing at all.
+        Within the optional overlay, the moving stream carries both direction (which way along the
+        tube) and magnitude (how densely the balls flow). In normal play, localized machine
+        animation and the economy UI remain the primary indicators.
       </p>
 
       <h3>Rate gates a ball&rsquo;s birth, not its flight</h3>
@@ -3016,8 +3027,8 @@
 
       <h3>Who carries which pylons</h3>
       <p>
-        Every host that affects a resource pool must mount the pylons that match what it does.
-        These are not optional decorations.
+        Economy hosts may author pylon origins for the optional overlay. Builders and factories do
+        not mount construction pylons.
       </p>
       <ul class="rule-list">
         <li>
@@ -3035,12 +3046,10 @@
           deposit cells beneath it, into the tip, and down the tube; rate scales with deposit coverage.
         </li>
         <li>
-          <strong>Construction turret</strong> (on commanders, fabricators, future construction
-          aircraft) &mdash; one energy pylon and one metal pylon, both outbound: balls rise up each
-          tube from the pool, leave the tip, and fly onto the build target &mdash; ideally onto the
-          host assembly currently under construction, rather than a separate turret sub-piece. Ball
-          density on each tube matches
-          the per-resource throughput the builder or factory is actually paying this tick.
+          <strong>Builders and factories</strong> &mdash; no construction pylons. They show one
+          team-coloured work stream from host-authored emitter points to the entity being built or
+          repaired. Metal and energy payment remains available to the ledger/overlay without
+          becoming two battlefield sprays.
         </li>
         <li>
           <strong>Resource converter</strong> &mdash; one energy pylon and one metal pylon running
@@ -3052,11 +3061,9 @@
           in opposing modes, and the same rig reversed would be a future metal&rarr;energy converter.
         </li>
         <li>
-          Any new building, unit, or host-mounted turret behavior that touches a resource pool
-          gets pylons for the
-          resources it touches. Upkeep mechanics, ammo-cost weapons that bill energy on fire,
-          reclaim that returns metal, repair that drains energy &mdash; all of them surface
-          through pylons. There is no "small enough to skip" exception.
+          Any new economy mechanic publishes the same typed resource-movement record. It may add a
+          localized animation or optional overlay origin when that improves legibility; it does not
+          automatically add a permanent battlefield pylon.
         </li>
       </ul>
 
@@ -3084,7 +3091,7 @@
       <h3>One channel in the sim, one rig in the renderer</h3>
       <p>
         On the simulation side, every per-tick stockpile delta &mdash; production loops, build
-        payments, repair drains, converter ticks, reclaim recovery, anything &mdash; flows
+        payments, converter ticks, reclaim recovery, anything &mdash; is recorded
         through a single <em>resource-movement</em> channel whose payload identifies the
         resource, the magnitude per second, the direction (inbound or outbound at the source
         pylon), the source entity, and, when applicable, the target entity. The accounting
@@ -3093,11 +3100,10 @@
         building-type-specific bypass that adjusts a player&rsquo;s pool outside that channel.
       </p>
       <p>
-        On the renderer side, every pylon is the same rig type configured by resource +
+        On the renderer side, every optional overlay pylon is the same rig type configured by resource +
         direction + rate + optional target, driven by the same channel the sim publishes.
         The pylon mesh and the resource-ball emission pipeline are shape-
-        and host-agnostic: a building&rsquo;s pylon and a unit-mounted construction-turret pylon
-        render through one code path. Production-rate indicators, build-emitter rigs, and
+        and host-agnostic. Production-rate indicators and
         converter visuals all collapse into this one rig. When a new feature is tempted to add
         another resource-flow indicator, the answer is to render it as a pylon, not to invent
         a parallel visual.
@@ -3367,7 +3373,7 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>
         <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and the canonical scope smooths discrete zoom and snaps continuous movement without canceling an in-flight zoom. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera commits any collision lift into ordinary camera state, carries no pre-collision height or downward recovery memory, and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>
-        <li>Keep unit, building, turret, shot, and ray definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong>; a building is the single immobile host family. Every unit and building mounts at least one turret. Make the turret a standardized, addressable mounted emitter with one authoritative effect family: <code>attack</code>, <code>spawn</code>, <code>resourcePylon</code>, or <code>sensor</code>. Every turret blueprint directly owns one nested <code>turretRange</code> object containing lock-on range/volume/hysteresis and sensor matrices. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life.</li>
+        <li>Keep unit, building, turret, shot, and ray definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong>; a building is the single immobile host family. Every unit and building mounts at least one turret. Make the turret a standardized, addressable mounted emitter with one authoritative effect family: <code>attack</code>, optional economy-overlay <code>resourcePylon</code>, or <code>sensor</code>. Construction, repair, and production belong to the host. Every turret blueprint directly owns one nested <code>turretRange</code> object containing lock-on range/volume/hysteresis and sensor matrices. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>
         <li>Name body geometry by physical role, not by ad-hoc size: every physical body carries three radii &mdash; <code>radiusVisual</code> (drawn size), <code>radiusHitbox</code> (the damage-receiving hurtbox), and <code>radiusCollision</code> (body-vs-body no-overlap contact) &mdash; with the same three names meaning the same things on units, buildings, and shots. A mounted turret may expose an addressable aim/selection volume for lock-on and line targeting, but that volume is a mount target on the host rather than an independent body. Keep the death explosion&rsquo;s own radius separate from this trio, and keep the word &ldquo;push&rdquo; reserved for a future sustained push-field capability rather than this hard-contact radius.</li>
@@ -3375,15 +3381,15 @@
         <li>Do not let turrets live, die, detach, or build separately from their host. A turret has no independent cost, mass, health, or death explosion; killing the host kills the whole mounted assembly. A unit&rsquo;s locomotion likewise has no health of its own &mdash; it is part of the body, so the only way to stop a unit moving is to kill it. Construction creates the host assembly as one product with its authored turret set, not body first and turrets later.</li>
         <li>Make shots destructible bodies: every shot carries a tiny health pool and detonates the instant it reaches zero, running its normal explosion/splash/submunition path. Contact with the ground, another shot, or any solid body forces that health to zero on the spot. Emit every physical shot from its turret center in an inert state; it becomes contact-active only after its complete hitbox clears the host-centered authored <code>radius.shotArmingRadius</code> (<strong>ARM</strong>) sphere. Once armed it collides with everything, including the host that fired it. Small-but-real shot health is what lets a point-defense turret shoot incoming munitions out of the air.</li>
         <li>Give every addressable live instance &mdash; unit, building, mounted turret, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, mounted turrets store <code>parent_id</code>, <code>root_host_id</code>, and mount index. A unit&rsquo;s locomotion is not on that list &mdash; it is part of the unit body, not a separately addressable instance. Assign ids by addressability, not independent bodyhood: a mounted turret can be locked onto and can attribute emissions without carrying its own health; a ray sustained by a live turret attributes through its emitter instead of minting its own id; and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
-        <li>Keep host intent separate from per-mount tasks and live turret lock-on. A host may carry attack, guard, repair, construct, or spawn intent. One adapter projects that intent into compatible typed mount tasks; each emitter then validates relationship, family, range, and effect-specific gates. Friendly construct/repair IDs and hostile attack IDs use the same opaque ID representation without sharing behavior.</li>
+        <li>Keep host workflows separate from per-mount combat tasks and live turret lock-on. A host may carry attack, guard, repair, construct, or production intent. Only compatible combat intent is projected into mount tasks; construction/repair/production stay on the host.</li>
         <li>Give every mount a stable <code>mountId</code> and a required <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or <code>manual</code>. The choice lives on the unit or building mount, not the reusable turret blueprint. Host attack tasks are evaluated per mount: compatible mounts retain the task lock, incompatible mounts acquire an autonomous fallback, and autonomous/manual siblings are never overwritten. Fight-move and patrol halt logic remains the separate mount flag <code>requiredEngagedForFightStop</code> and applies only to attack emitters.</li>
-        <li>Keep spawning and constructing separate. Spawn creates the permanent product ID and may produce a nanoframe or a complete entity. Construct and repair transfer resources/work into an existing ID. Build and factory production are host-owned workflows that compose the two; spawn-only and construct-only hosts remain valid capabilities.</li>
+        <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
         <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team. The turret&rsquo;s mounted world origin selects the source medium; the target body center selects the target medium. Full sight identifies and also supplies contact-level location, radar/sonar-only coverage locates targets only through its authored matrix lane, detectors uncloak within an active full-sight lane, and weapon fire consumes those tiers through explicit targeting requirements. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
-        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
+        <li>Route every stockpile change through one typed resource-movement ledger carrying <code>(resource, amount, direction, source, optional target, reason)</code>. Keep that accounting/UI/debug truth independent from presentation. The normal battlefield view uses localized economy animation; a conserved pylon-ball view is an optional overlay. Builders and factories instead emit one team-coloured work stream whose density follows realized construction or repair work. Construction pays metal and energy as one coupled step; completed-entity repair pays neither.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, an owned-buffer renderer path for an older per-object path, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>

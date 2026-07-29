@@ -330,10 +330,19 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        // Fully-autonomous turrets ignore the host's priority point
-        // entirely. They keep their existing FSM state and run their own
-        // independent acquisition.
-        if (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 {
+        // Host-directed mounts consume the host point. A slaved mount also
+        // consumes it when its named master is consuming the point; this
+        // keeps the sibling relationship authoritative without pretending
+        // that every slaved mount is host-directed.
+        let slave_follows_priority_point = match pool.turret_slaved_to_mount_index[idx] {
+            master_idx if master_idx >= 0 && (master_idx as usize) < count => {
+                let master_global_idx =
+                    combat_targeting_turret_global_idx(entity_slot, master_idx as u32);
+                pool.turret_task_point_active[master_global_idx] != 0
+            }
+            _ => false,
+        };
+        if (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 && !slave_follows_priority_point {
             continue;
         }
         // System-disabled weapons have already been reset by the TS
@@ -641,6 +650,8 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
     aim_y: &[f64],
     aim_z: &[f64],
     resolve_aim_from_slab: bool,
+    apply_only_turret_idx: Option<usize>,
+    require_host_controlled: bool,
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -695,6 +706,9 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
     }
 
     for turret_idx in 0..count {
+        if apply_only_turret_idx.is_some_and(|only| only != turret_idx) {
+            continue;
+        }
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
         let flags = pool.turret_config_flags[idx];
 
@@ -704,7 +718,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
         // Fully-autonomous turrets ignore the host's priority target
         // entirely. They keep their existing FSM state and run their own
         // independent acquisition.
-        if (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 {
+        if require_host_controlled && (flags & CT_TURRET_CFG_HOST_CONTROLLED) == 0 {
             continue;
         }
         if combat_targeting_weapon_system_disabled(
@@ -855,6 +869,8 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         aim_y,
         aim_z,
         false,
+        None,
+        true,
     );
 }
 
@@ -891,6 +907,13 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
         let flags = pool.turret_config_flags[idx];
 
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if (flags & CT_TURRET_CFG_NO_AUTO_ACQUIRE) != 0
+            && pool.turret_task_target_id[idx] < 0
+            && pool.turret_task_point_active[idx] == 0
+        {
+            combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
             continue;
         }
         if combat_targeting_weapon_system_disabled(

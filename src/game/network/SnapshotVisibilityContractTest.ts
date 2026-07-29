@@ -77,7 +77,7 @@ export function runSnapshotVisibilityContractTest(): void {
   const observer = createUnit(world, 512, 512, 1 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'observer must have a unit component');
     entity.transform.z = WATER_LEVEL + 100;
-    const sensors = entity.combat!.turrets[0].config.turretRange.sensors;
+    const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
     sensors.fullSight.aboveWater.aboveWater = 1200;
     sensors.fullSight.aboveWater.underwater = 0;
     sensors.contactSight.aboveWater.aboveWater = 3000;
@@ -420,7 +420,7 @@ export function runSnapshotVisibilityContractTest(): void {
     (entity) => {
       assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
       entity.transform.z = WATER_LEVEL + 100;
-      entity.combat!.turrets[0].config.turretRange.sensors.fullSight.aboveWater.underwater = 900;
+      entity.combat!.turrets[0].config.targeting.observation.sensors.fullSight.aboveWater.underwater = 900;
     },
   );
   const aboveCrossMediumWaterTarget = createUnit(
@@ -440,7 +440,7 @@ export function runSnapshotVisibilityContractTest(): void {
     (entity) => {
       assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
       entity.transform.z = WATER_LEVEL - 100;
-      entity.combat!.turrets[0].config.turretRange.sensors.fullSight.underwater.aboveWater = 900;
+      entity.combat!.turrets[0].config.targeting.observation.sensors.fullSight.underwater.aboveWater = 900;
     },
   );
   const underwaterCrossMediumAboveTarget = createUnit(

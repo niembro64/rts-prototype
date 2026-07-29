@@ -81,6 +81,7 @@ import {
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
   CT_TURRET_CFG_REQUIRES_AIR_TARGET,
+  CT_TURRET_CFG_NO_AUTO_ACQUIRE,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
@@ -689,14 +690,25 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
     f |= CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
-  if (turret.config.controlMode === 'host') f |= CT_TURRET_CFG_HOST_CONTROLLED;
+  if (
+    turret.config.controlMode === 'hostPreferred' ||
+    turret.config.controlMode === 'hostOnly'
+  ) {
+    f |= CT_TURRET_CFG_HOST_CONTROLLED;
+  }
+  if (
+    turret.config.controlMode === 'hostOnly' ||
+    turret.config.controlMode === 'slaved'
+  ) {
+    f |= CT_TURRET_CFG_NO_AUTO_ACQUIRE;
+  }
   if (turret.config.requiredEngagedForFightStop) {
     f |= CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP;
   }
-  if (turret.config.requiresFullSight === true) {
+  if (turret.config.targeting.requiredIntel === 'fullSight') {
     f |= CT_TURRET_CFG_REQUIRES_FULL_SIGHT;
   }
-  switch (turret.config.turretRange.rangeVolume) {
+  switch (turret.config.targeting.engagement.rangeVolume) {
     case 'turret-range-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED;
       break;
@@ -1037,6 +1049,9 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnRequiresTargetLockedOntoSelfMode,
       getEmitterAttackTaskTargetId(t),
       hasEmitterAttackPointTask(t) ? 1 : 0,
+      t.config.slavedToMountId === null
+        ? -1
+        : turrets.findIndex((candidate) => candidate.mountId === t.config.slavedToMountId),
     );
   }
   return slot;

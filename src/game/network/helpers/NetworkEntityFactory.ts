@@ -27,7 +27,9 @@ import { COST_MULTIPLIER, REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../../con
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
+  createBuildingRuntimeUtilityMounts,
   createUnitRuntimeTurrets,
+  createUnitRuntimeUtilityMounts,
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 import { initializeConstructionPieceHealth } from '../../sim/constructionLifecycle';
@@ -301,8 +303,15 @@ export function refreshUnitTurretsFromNetwork(
     }
   }
   entity.combat = entity.combat
-    ? { ...entity.combat, turrets }
-    : createCombatComponent(turrets);
+    ? {
+      ...entity.combat,
+      turrets,
+      utilityMounts: createUnitRuntimeUtilityMounts(unitBlueprintId, unitBodyRadius),
+    }
+    : createCombatComponent(
+      turrets,
+      createUnitRuntimeUtilityMounts(unitBlueprintId, unitBodyRadius),
+    );
 }
 
 export function refreshBuildingTurretsFromNetwork(
@@ -318,7 +327,8 @@ export function refreshBuildingTurretsFromNetwork(
     return;
   }
 
-  if (turrets.length === 0) {
+  const utilityMounts = createBuildingRuntimeUtilityMounts(buildingBlueprintId);
+  if (turrets.length === 0 && utilityMounts.length === 0) {
     entity.combat = null;
     return;
   }
@@ -337,8 +347,8 @@ export function refreshBuildingTurretsFromNetwork(
   }
 
   entity.combat = entity.combat
-    ? { ...entity.combat, turrets }
-    : createCombatComponent(turrets);
+    ? { ...entity.combat, turrets, utilityMounts }
+    : createCombatComponent(turrets, utilityMounts);
 }
 
 /**
@@ -486,7 +496,10 @@ function createUnitFromNetwork(
 
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.other, unitTurrets);
   if (turrets) {
-    const combat = createCombatComponent(turrets);
+    const combat = createCombatComponent(
+      turrets,
+      createUnitRuntimeUtilityMounts(unitBlueprintId, entity.unit!.radius.other),
+    );
     combat.fireState = readNetworkCombatFireState(u, unitBlueprintId);
     combat.fireEnabled = combat.fireState !== 'holdFire';
     combat.trajectoryMode = u?.trajectoryMode ?? 'auto';
@@ -698,7 +711,10 @@ function createUnitFromTypedFullWireRow(
       values[base + 44] | 0,
     );
     if (turrets === undefined) return null;
-    const combat = createCombatComponent(turrets);
+    const combat = createCombatComponent(
+      turrets,
+      createUnitRuntimeUtilityMounts(unitBlueprintId, entity.unit!.radius.other),
+    );
     const fireState = values[base + 51] !== 0
       ? unitFireStateFromWireCode(values[base + 52] | 0)
       : 'fireAtWill';
@@ -1015,7 +1031,10 @@ function createBuildingFromTypedFullWireRow(
       values[base + 23] | 0,
     );
     if (turrets === undefined) return null;
-    entity.combat = createCombatComponent(turrets);
+    entity.combat = createCombatComponent(
+      turrets,
+      createBuildingRuntimeUtilityMounts(buildingBlueprintId),
+    );
   }
   if (values[base + 24] !== 0) {
     const factoryRows = source.factorySelectedUnitRows.values;

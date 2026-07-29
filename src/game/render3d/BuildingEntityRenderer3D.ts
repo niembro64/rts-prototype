@@ -1109,12 +1109,9 @@ export class BuildingEntityRenderer3D {
       const visible = bodyVisible;
       this.setTurretRootVisible(turretMesh, visible);
       if (!visible) continue;
-      // Construction emitters have no head sphere, no barrels, and
-      // don't pitch barrels. The root still consumes the authoritative
-      // turret yaw stream (pinned to 0 for factory pylons — see
-      // FactoryConstructionTurretSystem); the visible pylon motion is the
-      // resource-rate orbit applied inside the rig by
-      // ConstructionVisualController3D.
+      // Legacy construction-emitter geometry has no head sphere or barrels.
+      // No live builder/factory mounts it; this branch only preserves stable
+      // rendering for old captured fixtures.
       if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
         // Building construction pylons (the fabricator's) stand fused to
         // the TOP of the torus ring, pointing straight up — the rig stays

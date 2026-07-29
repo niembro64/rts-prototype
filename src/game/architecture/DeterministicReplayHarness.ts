@@ -334,7 +334,7 @@ const CASES: readonly DeterministicReplayCase[] = [
         'mobile-factory queen',
       );
       if (queen.factory === null) {
-        throw new Error('[deterministic replay] queen did not derive a factory from its spawn turret');
+        throw new Error('[deterministic replay] queen did not derive its host-owned factory capability');
       }
       const bees = core.world
         .getUnits()

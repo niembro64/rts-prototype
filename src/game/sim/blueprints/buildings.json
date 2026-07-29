@@ -493,6 +493,17 @@
     "energyProduction": null,
     "metalProduction": null,
     "constructionRate": 100,
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 274
+        }
+      ],
+      "particleTravelSpeed": 200,
+      "particleRadius": 1.7
+    },
     "conversionRate": null,
     "allowedUnitBlueprintIds": [
       "unitJackal",
@@ -541,38 +552,6 @@
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionMetal",
-        "mount": {
-          "x": -110,
-          "y": 0,
-          "z": 274
-        },
-        "visualVariant": "large",
-        "mountId": "resourcePylonConstructionMetal",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
-        "mount": {
-          "x": 110,
-          "y": 0,
-          "z": 274
-        },
-        "visualVariant": "large",
-        "mountId": "resourcePylonConstructionEnergy",
-        "controlMode": "host"
-      },
-      {
-        "turretBlueprintId": "turretSpawnUnits",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 274
-        },
-        "mountId": "spawnUnits",
-        "controlMode": "host"
       }
     ],
     "base": {
@@ -629,24 +608,15 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorBuildingBeamMega",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 114
-        },
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretBeamLong",
+        "sensorTurretBlueprintId": "turretSensorBuildingBeamMega",
         "mount": {
           "x": 0,
           "y": 0,
           "z": 114
         },
         "mountId": "beamLong",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "base": {
@@ -703,24 +673,15 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorBuildingCannon",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 60
-        },
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretCannonLong",
+        "sensorTurretBlueprintId": "turretSensorBuildingCannon",
         "mount": {
           "x": 0,
           "y": 0,
           "z": 60
         },
         "mountId": "cannonLong",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "base": {
@@ -777,24 +738,15 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorBuildingAntiAir",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 66
-        },
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretAntiAir",
+        "sensorTurretBlueprintId": "turretSensorBuildingAntiAir",
         "mount": {
           "x": 0,
           "y": 0,
           "z": 66
         },
         "mountId": "antiAir",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "base": {
@@ -851,24 +803,15 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorBuildingSonar",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 45
-        },
-        "mountId": "sensor",
-        "controlMode": "autonomous"
-      },
-      {
         "turretBlueprintId": "turretTorpedo",
+        "sensorTurretBlueprintId": "turretSensorBuildingSonar",
         "mount": {
           "x": 0,
           "y": 0,
           "z": 45
         },
         "mountId": "torpedo",
-        "controlMode": "host"
+        "controlMode": "hostPreferred"
       }
     ],
     "base": {

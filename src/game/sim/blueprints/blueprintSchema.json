@@ -113,6 +113,16 @@
         "rustType": "BlueprintJsonValue"
       }
     },
+    "WorkEmitterSpec": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": {
+          "module": "./constructionTypes",
+          "name": "WorkEmitterSpec"
+        },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
     "ResourceCost": {
       "type": "object",
       "x-codegen": {
@@ -205,13 +215,12 @@
       },
       "additionalProperties": false
     },
-    "TurretRangeConfig": {
+    "TurretEngagementEnvelope": {
       "type": "object",
       "required": [
         "range",
         "rangeVolume",
-        "rangeMultiplierOverrides",
-        "sensors"
+        "rangeMultiplierOverrides"
       ],
       "properties": {
         "range": {
@@ -222,9 +231,76 @@
         },
         "rangeMultiplierOverrides": {
           "$ref": "#/$defs/TurretRangeOverrides"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretObservationEnvelope": {
+      "type": "object",
+      "required": [
+        "rangeVolume",
+        "sensors"
+      ],
+      "properties": {
+        "rangeVolume": {
+          "$ref": "#/$defs/TurretRangeVolume"
         },
         "sensors": {
           "$ref": "#/$defs/SensorCapabilityConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretEffectRangeSource": {
+      "enum": [
+        "engagement",
+        "explicit"
+      ]
+    },
+    "TurretEffectEnvelope": {
+      "type": "object",
+      "required": [
+        "rangeSource"
+      ],
+      "properties": {
+        "rangeSource": {
+          "$ref": "#/$defs/TurretEffectRangeSource"
+        },
+        "range": {
+          "type": "number"
+        },
+        "rangeVolume": {
+          "$ref": "#/$defs/TurretRangeVolume"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretIntelRequirement": {
+      "enum": [
+        "contactSight",
+        "fullSight"
+      ]
+    },
+    "TurretTargetingConfig": {
+      "type": "object",
+      "required": [
+        "engagement",
+        "observation",
+        "effect",
+        "requiredIntel"
+      ],
+      "properties": {
+        "engagement": {
+          "$ref": "#/$defs/TurretEngagementEnvelope"
+        },
+        "observation": {
+          "$ref": "#/$defs/TurretObservationEnvelope"
+        },
+        "effect": {
+          "$ref": "#/$defs/TurretEffectEnvelope"
+        },
+        "requiredIntel": {
+          "$ref": "#/$defs/TurretIntelRequirement"
         }
       },
       "additionalProperties": false
@@ -1378,9 +1454,11 @@
     },
     "TurretMountControlMode": {
       "enum": [
-        "host",
+        "hostPreferred",
+        "hostOnly",
         "autonomous",
-        "manual"
+        "manual",
+        "slaved"
       ]
     },
     "SpawnProducedKind": {
@@ -1527,7 +1605,7 @@
         "kind",
         "emissionKind",
         "emissionBlueprintId",
-        "turretRange",
+        "targeting",
         "cooldown",
         "color",
         "turretTurnAccel",
@@ -1567,8 +1645,8 @@
         "kind": {
           "$ref": "#/$defs/TurretEmitterKind"
         },
-        "turretRange": {
-          "$ref": "#/$defs/TurretRangeConfig"
+        "targeting": {
+          "$ref": "#/$defs/TurretTargetingConfig"
         },
         "cooldown": {
           "oneOf": [
@@ -1663,9 +1741,6 @@
           "$ref": "#/$defs/TurretAimStyle"
         },
         "verticalLauncher": {
-          "type": "boolean"
-        },
-        "requiresFullSight": {
           "type": "boolean"
         },
         "idlePitch": {
@@ -1826,6 +1901,9 @@
         "turretBlueprintId": {
           "$ref": "#/$defs/TurretBlueprintId"
         },
+        "sensorTurretBlueprintId": {
+          "$ref": "#/$defs/TurretBlueprintId"
+        },
         "mount": {
           "$ref": "#/$defs/MountOffset"
         },
@@ -1837,6 +1915,10 @@
         },
         "controlMode": {
           "$ref": "#/$defs/TurretMountControlMode"
+        },
+        "slavedToMountId": {
+          "type": "string",
+          "minLength": 1
         },
         "requiredEngagedForFightStop": {
           "type": "boolean"
@@ -1884,6 +1966,9 @@
         "turretBlueprintId": {
           "$ref": "#/$defs/TurretBlueprintId"
         },
+        "sensorTurretBlueprintId": {
+          "$ref": "#/$defs/TurretBlueprintId"
+        },
         "mount": {
           "$ref": "#/$defs/MountOffset"
         },
@@ -1895,6 +1980,10 @@
         },
         "controlMode": {
           "$ref": "#/$defs/TurretMountControlMode"
+        },
+        "slavedToMountId": {
+          "type": "string",
+          "minLength": 1
         },
         "visualVariant": {
           "$ref": "#/$defs/ConstructionEmitterSize"
@@ -3274,6 +3363,49 @@
           "oneOf": [
             {
               "$ref": "#/$defs/UnitBuilderConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "constructionRate": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowedBuildBlueprintIds": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/StructureBlueprintId"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "factoryProducedUnitBlueprintId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UnitBlueprintId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workEmitter": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/WorkEmitterSpec"
             },
             {
               "type": "null"

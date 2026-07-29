@@ -1,5 +1,7 @@
 {
   "ballsPerResourcePerSecond": 0.5,
+  "workParticlesPerBuildPowerSecond": 0.35,
+  "worldPylonFlowsEnabled": false,
   "metalExtractor": {
     "rotorRadPerSecPerMetalRate": 0.048,
     "rotorSpinMultiplier": 1.0,

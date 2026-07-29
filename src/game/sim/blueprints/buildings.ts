@@ -20,6 +20,7 @@ import type {
   EntityBaseLedger,
   EntityHudBlueprint,
   LockOnInclusionObject,
+  WorkEmitterSpec,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
 import { assertExplicitFields } from './jsonValidation';
@@ -63,13 +64,15 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   placementGridHeight: number | null;
   base: EntityBaseLedger;
   hp: number;
-  /** Authored per-resource build cost. BUILDING_CONFIGS applies
-   *  COST_MULTIPLIER. Each construction bar fills independently from the
-   *  owner's stockpile. */
+  /** Authored construction cost. BUILDING_CONFIGS applies COST_MULTIPLIER.
+   *  Metal and energy are paid together for each realized work step. */
   cost: ResourceCost;
   energyProduction: number | null;
   metalProduction: number | null;
   constructionRate: number | null;
+  /** Host-owned build-power origin. This is presentation geometry, not a
+   *  turret, weapon, or resource-transfer lane. */
+  workEmitter?: WorkEmitterSpec | null;
   /** Source-resource throughput (units per second) for a resource
    *  converter. Each tick, a completed converter consumes this much of
    *  whichever resource is in surplus (metal vs energy) and pays out
@@ -77,8 +80,7 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
    *  any non-converter building. */
   conversionRate: number | null;
   /** Unit production roster for static factories. This is BAR-style
-   *  `buildoptions` data for unit-producing buildings/towers: null for
-   *  non-factories, non-empty for any host that mounts a unit spawn turret. */
+   *  `buildoptions` data owned directly by the factory host. */
   allowedUnitBlueprintIds: readonly UnitBlueprintId[] | null;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
@@ -328,14 +330,6 @@ function validateFabricatorTorusTargetRadius(
   }
 }
 
-function buildingBlueprintHasUnitSpawnTurret(blueprint: BuildingBlueprint): boolean {
-  for (const mount of blueprint.turrets) {
-    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-    if (turretBlueprint?.spawn?.producedKind === 'units') return true;
-  }
-  return false;
-}
-
 function validateDedicatedContactSensor(
   id: string,
   blueprint: BuildingBlueprint,
@@ -347,7 +341,8 @@ function validateDedicatedContactSensor(
   if (sensorMount === undefined) {
     throw new Error(`Invalid building blueprint ${id}: missing dedicated sensor turret`);
   }
-  const sensors = TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].turretRange.sensors;
+  const sensors =
+    TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].targeting.observation.sensors;
   if (getMaximumSensorMatrixRadius(sensors.fullSight) !== 0) {
     throw new Error(
       `Invalid building blueprint ${id}: dedicated contact sensors must not grant full sight`,
@@ -384,12 +379,12 @@ function validateFactoryUnitRoster(
   id: string,
   blueprint: BuildingBlueprint,
 ): void {
-  const hasUnitSpawnTurret = buildingBlueprintHasUnitSpawnTurret(blueprint);
   const roster = blueprint.allowedUnitBlueprintIds;
-  if (!hasUnitSpawnTurret) {
+  const isFactory = blueprint.constructionRate !== null;
+  if (!isFactory) {
     if (roster !== null) {
       throw new Error(
-        `Invalid building blueprint ${id}: allowedUnitBlueprintIds must be null without a unit spawn turret`,
+        `Invalid building blueprint ${id}: allowedUnitBlueprintIds must be null on non-factories`,
       );
     }
     return;
@@ -536,29 +531,4 @@ export function fabricatorTorusRingRadius(width: number, depth: number): number 
 
 export function fabricatorTorusOuterRadius(width: number, depth: number): number {
   return productionHoldRingOuterRadius(fabricatorTorusRingRadius(width, depth));
-}
-
-// Finalize the fabricator's turret mounts from the torus geometry: the spawn
-// turret sits at the ring center (where the unit materializes), and the two
-// construction pylons anchor there too — their rigs stand at the authored
-// emitter offset INSIDE the ring and visually orbit that center while the
-// fabricator spends resources (see ConstructionVisualController3D tower
-// spin). Mutating loaded blueprint data at import time mirrors
-// normalizeEntityBaseLedgerFromAliases.
-{
-  const fabricator = BUILDING_BLUEPRINTS.towerFabricator;
-  if (fabricator) {
-    const hover = fabricatorTorusHoverHeight();
-    for (const mount of fabricator.turrets) {
-      const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
-      if (
-        turretBlueprint.spawn != null ||
-        turretBlueprint.resourcePylon?.role === 'construction'
-      ) {
-        mount.mount.x = 0;
-        mount.mount.y = 0;
-        mount.mount.z = hover;
-      }
-    }
-  }
 }

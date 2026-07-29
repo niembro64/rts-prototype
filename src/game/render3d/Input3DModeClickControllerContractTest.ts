@@ -76,7 +76,7 @@ function makeUnit(id: number, playerId: number): Entity {
           config: {
             kind: 'attack',
             passive: false,
-            turretRange: { range: 160 },
+            targeting: { engagement: { range: 160 } },
             shot: { type: 'plasma' },
           },
         },

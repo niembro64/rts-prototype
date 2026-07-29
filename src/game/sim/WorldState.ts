@@ -80,17 +80,15 @@ export type RemovedSnapshotEntity = {
   type: 'unit' | 'building';
 };
 
-// One pending init "spawn beam": the spawn turret on `sourceId` zaps the
-// just-created `targetId` until `untilTick`. Presentation-only (see
-// WorldState.spawnBeams) — never serialized.
-export type SpawnBeamRegistration = {
-  targetId: EntityId;
-  sourceId: EntityId;
-  untilTick: number;
+/** Realized builder contribution for this tick. This transient presentation
+ *  ledger is deliberately separate from resource movements: repair is free,
+ *  and construction particles communicate work rather than payment lanes. */
+export type WorkMovement = {
+  sourceEntityId: EntityId;
+  targetEntityId: EntityId;
+  operation: 'construct' | 'repair';
+  amountPerSecond: number;
 };
-
-// How long an init spawn-beam stays visible. 30 Hz sim → ~0.27s.
-export const SPAWN_BEAM_DURATION_TICKS = 8;
 
 // World state holds all entities and game state
 export class WorldState {
@@ -125,14 +123,8 @@ export class WorldState {
   private maxVisibilityPadding: number = 0;
   private readonly rng: SeededRNG;
 
-  // Transient, presentation-only init "spawn beam" registrations: a spawn
-  // turret on `sourceId` briefly zaps the freshly-created `targetId` into
-  // existence (the visible act of a spawn turret bringing an entity into
-  // being). NOT serialized — purely a render channel, so it never touches the
-  // lockstep checksum. The spray pass emits + skips expired entries; register
-  // prunes in place so the list stays bounded even on peers that never run the
-  // spray pass.
-  public readonly spawnBeams: SpawnBeamRegistration[] = [];
+  public readonly workMovements: WorkMovement[] = [];
+  private readonly workMovementPool: WorkMovement[] = [];
 
   // Current player being controlled
   public activePlayerId: PlayerId = 1;
@@ -393,18 +385,33 @@ export class WorldState {
     return this.tick;
   }
 
-  // Register an init spawn-beam (presentation-only). Prunes expired entries in
-  // place first so the list stays bounded regardless of whether the spray pass
-  // runs on this peer.
-  registerSpawnBeam(targetId: EntityId, sourceId: EntityId): void {
-    if (sourceId === NO_ENTITY_ID) return;
-    let write = 0;
-    for (let read = 0; read < this.spawnBeams.length; read++) {
-      const beam = this.spawnBeams[read];
-      if (beam.untilTick > this.tick) this.spawnBeams[write++] = beam;
+  beginWorkMovementTick(): void {
+    this.workMovements.length = 0;
+  }
+
+  recordWorkMovement(
+    sourceEntityId: EntityId,
+    targetEntityId: EntityId,
+    operation: WorkMovement['operation'],
+    amountPerSecond: number,
+  ): void {
+    if (
+      sourceEntityId === NO_ENTITY_ID ||
+      !Number.isFinite(amountPerSecond) ||
+      amountPerSecond <= 0
+    ) return;
+    const index = this.workMovements.length;
+    let movement = this.workMovementPool[index];
+    if (movement === undefined) {
+      movement = { sourceEntityId, targetEntityId, operation, amountPerSecond };
+      this.workMovementPool[index] = movement;
+    } else {
+      movement.sourceEntityId = sourceEntityId;
+      movement.targetEntityId = targetEntityId;
+      movement.operation = operation;
+      movement.amountPerSecond = amountPerSecond;
     }
-    this.spawnBeams.length = write;
-    this.spawnBeams.push({ targetId, sourceId, untilTick: this.tick + SPAWN_BEAM_DURATION_TICKS });
+    this.workMovements.push(movement);
   }
 
   recordFactoryProducedUnit(factoryId: EntityId, unit: Entity): void {

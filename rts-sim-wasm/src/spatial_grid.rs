@@ -1900,7 +1900,8 @@ pub fn projectile_hitbox_sweep_batch(
                             let turret_entity_id = targeting.turret_entity_id[idx];
                             if turret_entity_id < 0
                                 || targeting.turret_world_pos_tick[idx] != current_tick
-                                || (targeting.turret_config_flags[idx] & CT_TURRET_CFG_NON_ATTACK_EMITTER)
+                                || (targeting.turret_config_flags[idx]
+                                    & CT_TURRET_CFG_NON_ATTACK_EMITTER)
                                     != 0
                                 || entity_id_in_slice(row_excludes, turret_entity_id)
                             {
@@ -2503,7 +2504,6 @@ pub fn spatial_query_enemy_units_and_projectiles_in_radius(
     state.nearby_cells = nearby;
     (2 + n_units + n_projectiles) as u32
 }
-
 
 // ===================== Result buffer access =====================
 

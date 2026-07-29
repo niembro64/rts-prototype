@@ -33,7 +33,7 @@ function host(id: number, x: number, y: number, priorityTargetId: number | null 
           config: {
             kind: 'attack',
             passive: false,
-            turretRange: { range: 100 },
+            targeting: { engagement: { range: 100 } },
             shot: { type: 'projectile' },
           },
         },

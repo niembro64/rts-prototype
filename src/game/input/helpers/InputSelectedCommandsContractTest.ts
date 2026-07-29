@@ -159,7 +159,7 @@ function targetCommandEntity(
           config: {
             kind: 'attack',
             passive,
-            turretRange: { range: 160 },
+            targeting: { engagement: { range: 160 } },
             shot: shotType === null ? null : { type: shotType },
           },
         },

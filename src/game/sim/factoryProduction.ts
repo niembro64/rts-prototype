@@ -33,11 +33,6 @@ import type { WindState } from './wind';
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
-import {
-  assignEmitterSpawnTask,
-  completeEmitterSpawnTask,
-  findSpawnEmitter,
-} from './emitterTasks';
 import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHolds';
 import {
   createFactoryProductionHoldSpec,
@@ -400,17 +395,7 @@ class FactoryProductionSystem {
     unitBlueprintId: string,
   ): SpawnedFactoryProduct | null {
     if (!factory.ownership) return null;
-    const spawnEmitter = findSpawnEmitter(factory, 'unit');
-    if (spawnEmitter === null || spawnEmitter.config.controlMode !== 'host') return null;
-    const producesNanoframe = spawnEmitter.config.spawn?.producesNanoframe === true;
-    if (!assignEmitterSpawnTask(spawnEmitter, {
-      blueprintKind: 'unit',
-      blueprintId: unitBlueprintId,
-      completion: producesNanoframe ? 'nanoframe' : 'complete',
-      placement: { kind: 'hostHold' },
-    })) {
-      return null;
-    }
+    const producesNanoframe = true;
     const bp = getUnitBlueprint(unitBlueprintId);
     // Allocate the shell's sub-entity ids (locomotion + turrets) up
     // front, exactly like spawned commanders and pre-placed buildings.
@@ -436,11 +421,7 @@ class FactoryProductionSystem {
     updateFactoryProductionHoldLaunchPose(world, factory, unit);
     if (producesNanoframe) initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
-    completeEmitterSpawnTask(spawnEmitter, unit.id);
     world.recordFactoryProducedUnit(factory.id, unit);
-    // The factory's spawn turret brought this shell into existence — flash a
-    // brief init beam from the factory to it.
-    world.registerSpawnBeam(unit.id, factory.id);
     return { entity: unit, requiresConstruction: producesNanoframe };
   }
 

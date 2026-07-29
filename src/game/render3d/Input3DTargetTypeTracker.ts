@@ -190,7 +190,7 @@ function maxTargetTypeRange(entity: Entity): number {
       config.shot === undefined ||
       config.shot.type === 'shield'
     ) continue;
-    range = Math.max(range, config.turretRange.range);
+    range = Math.max(range, config.targeting.engagement.range);
   }
   return range;
 }

@@ -6,7 +6,10 @@ import {
 } from './buildingActiveState';
 import { cloneBuildingSupportSurface } from './buildingSupportSurface';
 import { getBuildingConfig } from './buildConfigs';
-import { createBuildingRuntimeTurrets } from './runtimeTurrets';
+import {
+  createBuildingRuntimeTurrets,
+  createBuildingRuntimeUtilityMounts,
+} from './runtimeTurrets';
 
 type ApplyBuildingBlueprintRuntimeOptions = {
   allocateEntityId?: (() => EntityId) | null;
@@ -42,7 +45,8 @@ export function applyBuildingBlueprintRuntime(
     entity.id,
     options.allocateEntityId ?? null,
   );
-  entity.combat = buildingTurrets.length > 0
-    ? createCombatComponent(buildingTurrets)
+  const utilityMounts = createBuildingRuntimeUtilityMounts(buildingBlueprintId);
+  entity.combat = buildingTurrets.length > 0 || utilityMounts.length > 0
+    ? createCombatComponent(buildingTurrets, utilityMounts)
     : null;
 }

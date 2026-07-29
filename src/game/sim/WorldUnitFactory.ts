@@ -19,7 +19,10 @@ import type { WorldSupportSurface } from './supportSurface';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { PATH_REQUEST_NONE } from './SimulationPathPlanScheduler';
 import { cloneUnitLocomotion } from './unitLocomotion';
-import { createUnitRuntimeTurrets } from './runtimeTurrets';
+import {
+  createUnitRuntimeTurrets,
+  createUnitRuntimeUtilityMounts,
+} from './runtimeTurrets';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
 import { createTransportComponentForUnitBlueprint } from './transports';
@@ -154,13 +157,16 @@ export function createUnitFromBlueprintEntity(
   });
 
   entity.unit!.suspension = null;
-  entity.combat = createCombatComponent(createUnitRuntimeTurrets(
-    unitBlueprintId,
-    bp.radius.other,
-    entity.id,
-    entity.id,
-    allocateSubEntityIds ? context.generateEntityId : null,
-  ));
+  entity.combat = createCombatComponent(
+    createUnitRuntimeTurrets(
+      unitBlueprintId,
+      bp.radius.other,
+      entity.id,
+      entity.id,
+      allocateSubEntityIds ? context.generateEntityId : null,
+    ),
+    createUnitRuntimeUtilityMounts(unitBlueprintId, bp.radius.other),
+  );
   entity.unit!.moveState = unitBlueprintBarDefaultMoveState(unitBlueprintId);
   const defaultFireState = unitBlueprintBarDefaultFireState(unitBlueprintId);
   entity.combat.fireState = defaultFireState;
@@ -178,15 +184,12 @@ export function createUnitFromBlueprintEntity(
     };
   }
 
-  // A unit whose spawn turret declares a produced unit is a mobile factory. The
-  // production system resolves that mount through the generic EntityHold
-  // relation while the shell is being built. Queens build their bees / ticks
-  // this way. The factory is derived from the turret — there is no authored
-  // factory block on the unit blueprint.
-  const spawnMount = bp.turrets.find((m) => m.producedBlueprintId != null);
-  if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+  // A unit with a host-owned production product is a mobile factory. Queens
+  // build their bees/ticks this way; no spawn turret participates.
+  const producedUnitBlueprintId = bp.factoryProducedUnitBlueprintId ?? null;
+  if (producedUnitBlueprintId !== null) {
       entity.factory = {
-        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        selectedUnitBlueprintId: producedUnitBlueprintId,
         lowPriority: false,
         carrierSpawnEnabled: true,
         moveState: 'maneuver',
@@ -205,8 +208,8 @@ export function createUnitFromBlueprintEntity(
       rallyZ: null,
       rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       guardTargetId: null,
-      // A queen is a continuous spawn-turret producer:
-      // it builds its bee/tick from spawn, funded over time, with no player
+      // A queen is a continuous producer: it creates a nanoframe and builds
+      // its bee/tick over time, with no player
       // queue command -- unlike a fabricator, which a player toggles on.
       isProducing: true,
       energyRateFraction: 0,

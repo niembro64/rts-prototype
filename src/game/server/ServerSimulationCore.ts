@@ -17,7 +17,6 @@ import {
   hashCanonicalServerState,
   type CanonicalServerStateHash,
 } from '../architecture/CanonicalStateHash';
-import { FactoryConstructionTurretSystem } from './FactoryConstructionTurretSystem';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
@@ -76,7 +75,6 @@ export class ServerSimulationCore {
   readonly terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   private readonly unitForceSystem: UnitForceSystem;
-  private readonly factoryConstructionTurretSystem: FactoryConstructionTurretSystem;
   private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
   private isGameOver = false;
@@ -100,7 +98,6 @@ export class ServerSimulationCore {
     this.onGameOver = options.onGameOver;
 
     this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
-    this.factoryConstructionTurretSystem = new FactoryConstructionTurretSystem(this.world);
     this.setupSimulationCallbacks();
   }
 
@@ -112,7 +109,6 @@ export class ServerSimulationCore {
     const dtSec = dtMs / 1000;
     this.repairInvalidEntityPoses();
     this.simulation.update(dtMs);
-    this.factoryConstructionTurretSystem.update(dtSec);
     this.unitForceSystem.applyForces(dtSec);
     this.physics.step(dtSec, this.simulation.getWindState());
     this.repairInvalidEntityPoses();
@@ -158,7 +154,6 @@ export class ServerSimulationCore {
   resetSessionState(): void {
     this.unitForceSystem.setSurfaceLiftProbeDebugEntityIds([]);
     this.simulation.resetSessionState();
-    this.factoryConstructionTurretSystem.reset();
   }
 
   detachSimulationCallbacks(): void {

@@ -1,10 +1,7 @@
 // Energy distribution system - extracted from Simulation.ts
-// Distributes construction resources (energy / metal)
-// independently among each player's active consumers. Each in-progress
-// Buildable carries its own `paid` accumulator and
-// fills toward `required`; the bar that gets less
-// stockpile fills slower than the others, exactly the user-facing
-// independent-bar intent.
+// Distributes construction work among each player's active consumers.
+// Metal and energy fund one coupled progress step: if either stockpile cannot
+// support the step, both payments and build progress scale down together.
 
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
@@ -16,9 +13,7 @@ import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } fr
 import { isBuildTargetInRange } from './builderRange';
 import { getBuilderConstructionRate } from './hostCapabilities';
 import { resolveGuardServiceTarget } from './guard';
-import { assignHostConstructionTask, clearHostConstructionTasks } from './emitterConstructionTasks';
 import {
-  getRemainingResource,
   getTotalRemainingCost,
   isEntityActive,
   isBuildInProgress,
@@ -31,7 +26,7 @@ import { COST_MULTIPLIER } from '../../config';
 export type { EnergyBuffers,  } from '@/types/ui';
 import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 
-// Construction-pylon auto-assist: pick the nearest friendly nanoframe that an
+// Build-power auto-assist: pick the nearest friendly nanoframe that an
 // idle builder can already reach (never move to it). Pure read — mutates no
 // builder state, so it can't disturb a real build order. Deterministic:
 // nearest by squared distance, ties broken by ascending entity id.
@@ -43,34 +38,8 @@ const _factoryAssistRateById = new Map<EntityId, number>();
 const _factoryByShellId = new Map<EntityId, EntityId>();
 const _autoAssistedBuilderIds = new Set<EntityId>();
 const _guardHealedTargetIds = new Set<EntityId>();
-const _activeConstructionHostIds = new Set<EntityId>();
 const _energyConsumerPool: EnergyConsumer[] = [];
 const _consumerIndexArrayPool: number[][] = [];
-
-function assignActiveConstructionTask(
-  world: WorldState,
-  host: Entity,
-  targetId: EntityId,
-  operation: 'construct' | 'repair',
-): void {
-  _activeConstructionHostIds.add(host.id);
-  assignHostConstructionTask(world, host, targetId, operation);
-}
-
-function clearInactiveConstructionTasks(
-  world: WorldState,
-  builders: readonly Entity[],
-  factories: readonly Entity[],
-): void {
-  for (let i = 0; i < builders.length; i++) {
-    const host = builders[i];
-    if (!_activeConstructionHostIds.has(host.id)) clearHostConstructionTasks(world, host);
-  }
-  for (let i = 0; i < factories.length; i++) {
-    const host = factories[i];
-    if (!_activeConstructionHostIds.has(host.id)) clearHostConstructionTasks(world, host);
-  }
-}
 
 function releaseEnergyConsumerRows(buffers: EnergyBuffers): void {
   const consumers = buffers.consumers;
@@ -143,14 +112,11 @@ function addEnergyConsumer(
   buffers.buildingConsumerIds.add(entity.id);
 }
 
-// A mobile unit factory (queen) has no building config; its per-tick build
-// rate is the value authored on its construction-pylon mount, read fresh each
-// tick so nothing is stored on the hashed/wired Factory component.
+// A mobile unit factory (queen) owns its build power directly.
 function factoryUnitConstructionRate(entity: Entity): number {
   if (entity.unit === null) return Infinity;
   const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
-  const pylon = bp.turrets.find((m) => m.constructionRate != null);
-  return pylon === undefined ? Infinity : pylon.constructionRate ?? Infinity;
+  return bp.constructionRate ?? Infinity;
 }
 
 function findAutoAssistTarget(builder: Entity, candidates: readonly Entity[]): Entity | null {
@@ -237,8 +203,6 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
 }
 
 const DEFAULT_CONSUMER_DEBIT_CAPACITY = 32;
-let consumerEnergyRemaining = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
-let consumerMetalRemaining = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerCaps = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerEnergySpent = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerMetalSpent = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
@@ -251,10 +215,11 @@ let consumerHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerInitialHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerMaxHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerBuildProgress = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerPreviousBuildProgress = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerEnergyRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerMetalRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 let consumerChangedMask = new Uint8Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
-const consumerDebitTotals = new Float64Array(2);
+const consumerCoupledDebitTotals = new Float64Array(4);
 const CONSTRUCTION_CONSUMER_BUILD_CODE = 1;
 const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE = 1;
 const _freeRepairRemainingByTarget = new Map<EntityId, number>();
@@ -262,9 +227,7 @@ const _freeRepairRemainingByTarget = new Map<EntityId, number>();
 export function trimEnergyDistributionBuffers(
   maxRetained = DEFAULT_CONSUMER_DEBIT_CAPACITY,
 ): void {
-  if (consumerEnergyRemaining.length <= maxRetained) return;
-  consumerEnergyRemaining = new Float64Array(maxRetained);
-  consumerMetalRemaining = new Float64Array(maxRetained);
+  if (consumerCaps.length <= maxRetained) return;
   consumerCaps = new Float64Array(maxRetained);
   consumerEnergySpent = new Float64Array(maxRetained);
   consumerMetalSpent = new Float64Array(maxRetained);
@@ -277,18 +240,17 @@ export function trimEnergyDistributionBuffers(
   consumerInitialHp = new Float64Array(maxRetained);
   consumerMaxHp = new Float64Array(maxRetained);
   consumerBuildProgress = new Float64Array(maxRetained);
+  consumerPreviousBuildProgress = new Float64Array(maxRetained);
   consumerEnergyRateFraction = new Float64Array(maxRetained);
   consumerMetalRateFraction = new Float64Array(maxRetained);
   consumerChangedMask = new Uint8Array(maxRetained);
 }
 
 function ensureConsumerDebitCapacity(count: number): void {
-  if (count <= consumerEnergyRemaining.length) return;
-  let nextCapacity = consumerEnergyRemaining.length;
+  if (count <= consumerCaps.length) return;
+  let nextCapacity = consumerCaps.length;
   while (nextCapacity < count) nextCapacity *= 2;
 
-  consumerEnergyRemaining = new Float64Array(nextCapacity);
-  consumerMetalRemaining = new Float64Array(nextCapacity);
   consumerCaps = new Float64Array(nextCapacity);
   consumerEnergySpent = new Float64Array(nextCapacity);
   consumerMetalSpent = new Float64Array(nextCapacity);
@@ -301,6 +263,7 @@ function ensureConsumerDebitCapacity(count: number): void {
   consumerInitialHp = new Float64Array(nextCapacity);
   consumerMaxHp = new Float64Array(nextCapacity);
   consumerBuildProgress = new Float64Array(nextCapacity);
+  consumerPreviousBuildProgress = new Float64Array(nextCapacity);
   consumerEnergyRateFraction = new Float64Array(nextCapacity);
   consumerMetalRateFraction = new Float64Array(nextCapacity);
   consumerChangedMask = new Uint8Array(nextCapacity);
@@ -405,30 +368,97 @@ function recordResourceSpendForConsumer(
   }
 }
 
-function applyConsumerDebitLane(
+function applyCoupledConstructionDebits(
   sim: SimWasm,
-  remaining: Float64Array,
-  caps: Float64Array,
   count: number,
-  participantCount: number,
-  stockpileCurr: number,
-  outSpent: Float64Array,
-): { totalSpent: number; nextStockpile: number } {
-  if (sim.economyApplyEqualConsumerDebits(
-    remaining,
-    caps,
+  energyStockpile: number,
+  metalStockpile: number,
+): {
+  totalEnergySpent: number;
+  totalMetalSpent: number;
+  nextEnergyStockpile: number;
+  nextMetalStockpile: number;
+} {
+  if (sim.constructionApplyCoupledConsumerDebits(
+    consumerPaidEnergy,
+    consumerPaidMetal,
+    consumerRequiredEnergy,
+    consumerRequiredMetal,
+    consumerCaps,
     count,
-    participantCount,
-    stockpileCurr,
-    outSpent,
-    consumerDebitTotals,
+    energyStockpile,
+    metalStockpile,
+    consumerEnergySpent,
+    consumerMetalSpent,
+    consumerCoupledDebitTotals,
   ) === 0) {
-    throw new Error('distributeEnergy: economy_apply_equal_consumer_debits rejected its buffers');
+    throw new Error('distributeEnergy: construction_apply_coupled_consumer_debits rejected its buffers');
   }
   return {
-    totalSpent: consumerDebitTotals[0],
-    nextStockpile: consumerDebitTotals[1],
+    totalEnergySpent: consumerCoupledDebitTotals[0],
+    totalMetalSpent: consumerCoupledDebitTotals[1],
+    nextEnergyStockpile: consumerCoupledDebitTotals[2],
+    nextMetalStockpile: consumerCoupledDebitTotals[3],
   };
+}
+
+function constructionBuildFraction(
+  paidEnergy: number,
+  paidMetal: number,
+  requiredEnergy: number,
+  requiredMetal: number,
+): number {
+  const energy = requiredEnergy <= 0
+    ? 1
+    : Math.max(0, Math.min(1, paidEnergy / requiredEnergy));
+  const metal = requiredMetal <= 0
+    ? 1
+    : Math.max(0, Math.min(1, paidMetal / requiredMetal));
+  return Math.min(energy, metal);
+}
+
+function recordWorkForConsumer(
+  world: WorldState,
+  buffers: EnergyBuffers,
+  consumer: EnergyConsumer,
+  operation: 'construct' | 'repair',
+  workAmount: number,
+  dtSec: number,
+): void {
+  if (workAmount <= 0 || dtSec <= 0) return;
+  if (consumer.sourceEntityId !== null) {
+    world.recordWorkMovement(
+      consumer.sourceEntityId,
+      consumer.entity.id,
+      operation,
+      workAmount / dtSec,
+    );
+    return;
+  }
+  const targetId = consumer.sourceBreakdownTargetId;
+  if (targetId === null) return;
+  const head = buffers.constructionSourceHeadByTarget.get(targetId);
+  const totalCap = consumer.maxResourcePerTick;
+  if (head === undefined || totalCap <= 0) return;
+  let remaining = workAmount;
+  let index = head;
+  while (index !== -1 && remaining > 0) {
+    const source = buffers.constructionSources[index];
+    const nextIndex = source.nextIndex;
+    const share = nextIndex === -1
+      ? remaining
+      : Math.min(remaining, workAmount * (source.maxResourcePerTick / totalCap));
+    if (share > 0) {
+      world.recordWorkMovement(
+        source.sourceEntityId,
+        consumer.entity.id,
+        operation,
+        share / dtSec,
+      );
+      remaining -= share;
+    }
+    index = nextIndex;
+  }
 }
 
 function applyConsumerSpendResults(sim: SimWasm, count: number): void {
@@ -454,13 +484,7 @@ function applyConsumerSpendResults(sim: SimWasm, count: number): void {
   }
 }
 
-/** Match local construction duration: construction fills its energy/metal
- * lanes in parallel, so max(required energy, required metal) is the target's
- * effective build work. BAR repair scales build power by maxHP/buildTime and
- * charges no resources. */
-function repairHpCapForBuilder(builder: Entity, target: Entity, dtSec: number): number {
-  const hpState = target.unit ?? target.building;
-  if (hpState === null || dtSec <= 0) return 0;
+function getTargetBuildWork(target: Entity): number {
   const originalRequired = target.buildable?.required;
   let buildWork = originalRequired === undefined
     ? 0
@@ -472,10 +496,26 @@ function repairHpCapForBuilder(builder: Entity, target: Entity, dtSec: number): 
     const cost = getBuildingConfig(target.buildingBlueprintId).cost;
     buildWork = Math.max(cost.energy, cost.metal);
   }
-  if (!Number.isFinite(buildWork) || buildWork <= 0) {
+  return Number.isFinite(buildWork) ? Math.max(0, buildWork) : 0;
+}
+
+/** BAR repair scales build power by maxHP/build work and charges no
+ * resources. */
+function repairHpCapForBuilder(builder: Entity, target: Entity, dtSec: number): number {
+  const hpState = target.unit ?? target.building;
+  if (hpState === null || dtSec <= 0) return 0;
+  const buildWork = getTargetBuildWork(target);
+  if (buildWork <= 0) {
     return getBuilderConstructionRate(builder) * dtSec;
   }
   return getBuilderConstructionRate(builder) * dtSec * hpState.maxHp / buildWork;
+}
+
+function repairWorkForHp(target: Entity, hpAmount: number): number {
+  const hpState = target.unit ?? target.building;
+  if (hpState === null || hpState.maxHp <= 0) return hpAmount;
+  const buildWork = getTargetBuildWork(target);
+  return buildWork > 0 ? hpAmount * buildWork / hpState.maxHp : hpAmount;
 }
 
 // Distribute resources to active consumers (one player at a time).
@@ -488,6 +528,7 @@ function repairHpCapForBuilder(builder: Entity, target: Entity, dtSec: number): 
 //               the target's original construction duration.
 export function distributeEnergy(world: WorldState, dtMs: number, buffers: EnergyBuffers): void {
   const dtSec = dtMs / 1000;
+  world.beginWorkMovementTick();
   releaseEnergyConsumerRows(buffers);
   const consumers = buffers.consumers;
   const byPlayer = buffers.consumersByPlayer;
@@ -504,7 +545,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   autoAssistedBuilderIds.clear();
   const guardHealedTargetIds = _guardHealedTargetIds;
   guardHealedTargetIds.clear();
-  _activeConstructionHostIds.clear();
 
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
@@ -575,7 +615,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           factory.currentShellId !== null &&
           isBuildTargetInRange(entity, svc.target)
         ) {
-          assignActiveConstructionTask(world, entity, factory.currentShellId, 'construct');
           factoryAssistRateById.set(
             svc.target.id,
             (factoryAssistRateById.get(svc.target.id) ?? 0) + builderRate,
@@ -591,7 +630,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
     let sweepAssist = false;
     if (targetId === NO_ENTITY_ID) {
-      // Idle builder with no order: its construction pylons auto-continue the
+      // Idle builder with no order: its build power auto-continues the
       // nearest friendly nanoframe already in build range (no movement). A
       // builder whose head order is fight/patrol services the same way as it
       // sweeps past (BAR patrol-assist); updateUnits holds it in place while
@@ -608,7 +647,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
-    assignActiveConstructionTask(world, entity, targetId, 'construct');
     if (sweepAssist) sweepServicingBuilderIds.add(entity.id);
     buildTargets.add(targetId);
     const rate = builderRate;
@@ -637,13 +675,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         shell.ownership.playerId === ownership.playerId &&
         isBuildInProgress(shell.buildable)
       ) {
-        assignActiveConstructionTask(world, entity, shell.id, 'construct');
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
-          // Building factory (fabricator): rate from its building config —
-          // verbatim original. Mobile unit factory (queen): rate authored on its
-          // construction-pylon mount, read on the fly so the Factory component
-          // (hashed + wired) is left untouched. assistRate adds guarding builders.
+          // Building and mobile factories own their construction rate directly;
+          // assistRate adds guarding builders.
           const assistRate = factoryAssistRateById.get(entity.id) ?? 0;
           let capRate: number;
           let sourceRate: number;
@@ -722,7 +757,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const commanderRateCap = getBuilderConstructionRate(commander) * dtSec;
 
     if (isBuildInProgress(target.buildable)) {
-      assignActiveConstructionTask(world, commander, target.id, 'construct');
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
@@ -755,7 +789,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     ) continue;
     const builderRateCap = getBuilderConstructionRate(entity) * dtSec;
     if (isBuildInProgress(target.buildable)) {
-      assignActiveConstructionTask(world, entity, target.id, 'construct');
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
@@ -774,7 +807,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     } else {
       const hpState = target.unit ?? target.building;
       if (hpState === null || hpState.hp <= 0 || hpState.hp >= hpState.maxHp) continue;
-      assignActiveConstructionTask(world, entity, target.id, 'repair');
       const hpToHeal = hpState.maxHp - hpState.hp;
       const remaining = hpToHeal;
       if (remaining > 0) {
@@ -810,7 +842,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!isBuildTargetInRange(entity, target)) continue;
     const remaining = hpState.maxHp - hpState.hp;
     if (remaining <= 0) continue;
-    assignActiveConstructionTask(world, entity, target.id, 'repair');
     guardHealedTargetIds.add(target.id);
     addEnergyConsumer(
       buffers,
@@ -846,7 +877,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (target === null || target.unit === null) continue;
       const remaining = target.unit.maxHp - target.unit.hp;
       if (remaining <= 0) continue;
-      assignActiveConstructionTask(world, entity, target.id, 'repair');
       guardHealedTargetIds.add(target.id);
       if (sweepHeal) sweepServicingBuilderIds.add(entity.id);
       addEnergyConsumer(
@@ -862,7 +892,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
   }
 
-  clearInactiveConstructionTasks(world, world.getBuilderUnits(), factoryEntities);
 
   // BAR repair consumes no metal or energy. Apply each builder's repair work
   // directly before the construction debit lanes; multiple builders stack,
@@ -879,17 +908,22 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (hpGain > 0) {
       hpState.hp = Math.min(hpState.maxHp, hpState.hp + hpGain);
       world.markSnapshotDirty(consumer.entity.id, ENTITY_CHANGED_HP);
+      recordWorkForConsumer(
+        world,
+        buffers,
+        consumer,
+        'repair',
+        repairWorkForHp(consumer.entity, hpGain),
+        dtSec,
+      );
     }
     _freeRepairRemainingByTarget.set(consumer.entity.id, Math.max(0, remaining - hpGain));
   }
 
-  // ── Per-player resource distribution ──
-  // Each construction resource flows independently. A consumer with
-  // remaining > 0 in resource X pulls a share of player.X.stockpile.
-  // The same construction-rate cap applies to energy and metal
-  // lanes, so no resource bar can burst to full just because it is not
-  // energy. When stockpile of one resource runs dry, that bar pauses
-  // while the others keep filling — exactly the independent-bar UX.
+  // ── Per-player coupled construction distribution ──
+  // Every build-power step has one metal cost and one energy cost. The player
+  // batch scales uniformly against the limiting stockpile, so neither
+  // resource can be paid without the same construction step being realized.
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('distributeEnergy: sim-wasm is not initialized');
@@ -898,12 +932,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   for (const [playerId, indices] of byPlayer) {
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
-
-    let buildCount = 0;
-    for (const idx of indices) {
-      if (consumers[idx].type === 'build') buildCount++;
-    }
-    const totalEnergyConsumers = buildCount;
 
     ensureConsumerDebitCapacity(indices.length);
     for (let i = 0; i < indices.length; i++) {
@@ -916,11 +944,17 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         consumerPaidMetal[i] = buildable === null ? 0 : buildable.paid.metal;
         consumerRequiredEnergy[i] = buildable === null ? 0 : buildable.required.energy;
         consumerRequiredMetal[i] = buildable === null ? 0 : buildable.required.metal;
+        consumerPreviousBuildProgress[i] = buildable === null
+          ? 0
+          : constructionBuildFraction(
+              buildable.paid.energy,
+              buildable.paid.metal,
+              buildable.required.energy,
+              buildable.required.metal,
+            );
         consumerHp[i] = 0;
         consumerInitialHp[i] = 0;
         consumerMaxHp[i] = 0;
-        consumerEnergyRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'energy');
-        consumerMetalRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'metal');
       } else {
         // Heal entries never enter consumersByPlayer; retain a defensive
         // zero-row fallback if a malformed buffer is supplied.
@@ -929,35 +963,21 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         consumerPaidMetal[i] = 0;
         consumerRequiredEnergy[i] = 0;
         consumerRequiredMetal[i] = 0;
+        consumerPreviousBuildProgress[i] = 0;
         consumerHp[i] = 0;
         consumerInitialHp[i] = consumerHp[i];
         consumerMaxHp[i] = 0;
-        consumerEnergyRemaining[i] = 0;
-        consumerMetalRemaining[i] = 0;
       }
     }
 
-    const energyDebit = applyConsumerDebitLane(
+    const coupledDebit = applyCoupledConstructionDebits(
       sim,
-      consumerEnergyRemaining,
-      consumerCaps,
       indices.length,
-      totalEnergyConsumers,
       economy.stockpile.curr,
-      consumerEnergySpent,
-    );
-    economy.stockpile.curr = energyDebit.nextStockpile;
-
-    const metalDebit = applyConsumerDebitLane(
-      sim,
-      consumerMetalRemaining,
-      consumerCaps,
-      indices.length,
-      buildCount,
       economy.metal.stockpile.curr,
-      consumerMetalSpent,
     );
-    economy.metal.stockpile.curr = metalDebit.nextStockpile;
+    economy.stockpile.curr = coupledDebit.nextEnergyStockpile;
+    economy.metal.stockpile.curr = coupledDebit.nextMetalStockpile;
 
     applyConsumerSpendResults(sim, indices.length);
 
@@ -970,6 +990,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         const spendT = consumerMetalSpent[i];
         recordResourceSpendForConsumer(world, buffers, c, 'energy', spendE, dtSec);
         recordResourceSpendForConsumer(world, buffers, c, 'metal', spendT, dtSec);
+        const buildWork = Math.max(buildable.required.energy, buildable.required.metal);
+        const realizedWork = Math.max(
+          0,
+          consumerBuildProgress[i] - consumerPreviousBuildProgress[i],
+        ) * buildWork;
+        recordWorkForConsumer(world, buffers, c, 'construct', realizedWork, dtSec);
         if ((consumerChangedMask[i] & CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE) !== 0) {
           buildable.paid.energy = consumerPaidEnergy[i];
           buildable.paid.metal = consumerPaidMetal[i];
@@ -993,8 +1019,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
 
     if (dtSec > 0) {
-      economyManager.recordExpenditure(playerId, energyDebit.totalSpent / dtSec);
-      economyManager.recordMetalExpenditure(playerId, metalDebit.totalSpent / dtSec);
+      economyManager.recordExpenditure(playerId, coupledDebit.totalEnergySpent / dtSec);
+      economyManager.recordMetalExpenditure(playerId, coupledDebit.totalMetalSpent / dtSec);
     }
   }
 }
