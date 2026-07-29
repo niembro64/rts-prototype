@@ -402,6 +402,17 @@
         model for unseen areas is live-only: the optional shade is disabled automatically when
         battle-level fog is off.
       </p>
+      <p>
+        Fog presentation consumes the same mounted sensor sources, source-medium row, target-medium
+        column, allied ownership, completion state, and powered-channel state as authoritative
+        visibility. A completed building keeps its ordinary local sight while fortified or switched
+        off; only powered contact electronics such as radar, sonar, and detection go offline.
+        Therefore an owned completed extractor always clears the terrain shade around its authored
+        sight mount even while its economy production is closed. Entity models are discrete
+        intelligence results rather than fragments of the terrain shade: allied and fully sighted
+        entities draw normally, contact-only enemies are generic minimap contacts, and hidden
+        enemies are absent.
+      </p>
 
       <h3>Sight, radar, sonar, and contacts are separate information tiers</h3>
       <p>
@@ -478,6 +489,8 @@
         <li>Radar- and sonar-only contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). They are not full entities in the recipient&rsquo;s main snapshot.</li>
         <li>Weapon range, tracking range, unit sight, radar range, sonar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
         <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
+        <li>Construction-incomplete and destroyed hosts provide no sensor channels. A completed active-state building always provides passive full sight; its contact and detector channels require the powered/open state.</li>
+        <li>Terrain shade, environment-prop shade, sensor boundaries, snapshot filtering, and targeting consume the same operational mounted sources. Presentation may soften an edge, but it may not invent another coverage footprint.</li>
       </ul>
 
       <h3>Visible units render and update identically</h3>
@@ -1968,6 +1981,41 @@
         (<code>shots.json</code>, <code>rays.json</code>) so the two
         contracts cannot bleed into one another.
       </p>
+
+      <h3>Vegetation is a reclaimable energy deposit, not decoration</h3>
+      <p>
+        Trees, grass, and seaweed are an atomic gameplay piece:
+        <code>vegetation</code>. Beyond All Reason models trees as engine
+        features any constructor can reclaim for energy
+        (<code>features/enginetrees_override.lua</code>:
+        <code>reclaimable</code>, energy-only yield,
+        <code>reclaimTime</code>, and a <code>damage</code> work pool;
+        <code>gamedata/modrules.lua</code> sets gradual reclaim, no cost to
+        the reclaimer, and multiple simultaneous reclaimers). We inherit
+        that whole contract and only re-express the numbers in this
+        economy, in <code>vegetationConfig.json</code>. Reclaim is a default
+        constructor capability, so a plain right-click on a prop with
+        builders selected harvests it &mdash; no mode, no modifier &mdash;
+        and Reclaim mode, area reclaim, and constructor Patrol all reach
+        props exactly as they reach units, buildings, and wrecks.
+      </p>
+      <p>
+        <strong>Seaweed</strong> is this project&rsquo;s addition beyond the
+        BAR fallback: a water kind that roots on the seabed inside an
+        authored depth band below the waterline, putting an energy field
+        where only water-capable builders can work it. Grass and seaweed
+        stay one blade-vegetation presentation family; where a prop grows
+        and how tall its fronds are carries the aquatic read, not a second
+        material source of truth.
+      </p>
+      <ul class="rule-list">
+        <li>A prop is <em>not</em> an entity. Thousands of them must stay out of the entity map, the spatial grid, the snapshot serializer, and the slot registry, so vegetation owns a dedicated lightweight store &mdash; the same reason BAR keeps features separate from units.</li>
+        <li>Orders still address props through the ordinary numeric target id, above <code>VEGETATION_TARGET_ID_BASE</code>. That is BAR&rsquo;s <code>featureID + Game.maxUnits</code> convention: one Reclaim command spans both stores and no command, action, or wire shape grows a second target field.</li>
+        <li>Placement is <strong>simulation state</strong>, not decoration. The layout kernel lives in the Rust sim crate and samples the installed authoritative terrain mesh, so identical map inputs produce a bit-identical prop list on every peer and the layout never crosses the wire &mdash; the same contract metal deposits already have. Live prop state folds into the canonical state hash: a peer whose forest diverged has desynced.</li>
+        <li>Reclaim is gradual and proportional. A prop&rsquo;s HP is its work pool; build power drains it at <code>maxHp &times; rate / reclaimTime</code> per second and the payout tracks the HP removed, so consuming a prop takes <code>reclaimTime / rate</code> seconds and yields exactly its authored energy. Several builders may work one prop at once; each tick claims only its own share.</li>
+        <li>Reclaim uses the same one outward, team-coloured work spray as construction and repair. There is no separate harvest visual.</li>
+        <li>A prop&rsquo;s authored model dimensions are gameplay data now &mdash; they are its selection volume and its reclaim reach &mdash; so the asset table is shared by the simulation and the renderer rather than owned by the renderer.</li>
+      </ul>
 
       <h3>Unit locomotion is part of the unit, not a separate piece</h3>
       <p>
