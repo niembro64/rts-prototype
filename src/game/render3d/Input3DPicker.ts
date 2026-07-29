@@ -6,6 +6,12 @@ import type { ThreeApp } from './ThreeApp';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
 import { Input3DBoxSelection } from './Input3DBoxSelection';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
+import { raycastVegetation, vegetationTargetIdForIndex } from '../sim/vegetation';
+
+/** Pick reach for vegetation, in world units. Long enough to cross the
+ *  map from any camera altitude the orbit camera allows, so a prop is
+ *  never unclickable just because the camera pulled back. */
+const VEGETATION_PICK_MAX_DISTANCE = 1e6;
 
 /** Enlarge the pick volume past the drawn body so clicks near an edge
  *  still land — BAR enlarges selection volumes by a similar factor. */
@@ -123,6 +129,38 @@ export class Input3DPicker {
     for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
 
     return bestId;
+  }
+
+  /** Pick the nearest vegetation prop under the cursor. Props are not
+   *  entities, so they have their own store and their own ray test —
+   *  but the model is the same one `raycastEntity` uses: a world-space
+   *  selection volume around the body itself, evaluated in the sim's
+   *  own coordinates. Returns the prop's reclaim target id, or null.
+   *
+   *  Three.js world maps to sim coords as THREE(x, z_altitude, y), so
+   *  the ray is transposed on the way in. */
+  raycastVegetation(clientX: number, clientY: number): EntityId | null {
+    const rect = this.canvasRect();
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return null;
+    }
+    this.castRay(clientX, clientY);
+    const ray = this.raycaster.ray;
+    const index = raycastVegetation(
+      ray.origin.x,
+      ray.origin.z,
+      ray.origin.y,
+      ray.direction.x,
+      ray.direction.z,
+      ray.direction.y,
+      VEGETATION_PICK_MAX_DISTANCE,
+    );
+    return index < 0 ? null : vegetationTargetIdForIndex(index);
   }
 
   selectEntitiesInScreenRect(

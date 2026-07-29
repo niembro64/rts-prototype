@@ -15,6 +15,7 @@ import {
   getMapSize,
 } from '../../config';
 import { generateMetalDeposits } from '../../metalDepositConfig';
+import { ensureVegetationGenerated } from '../sim/vegetation';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { GameServerConfig } from '@/types/game';
 import { CommandQueue } from '../sim/commands';
@@ -145,6 +146,12 @@ export class ServerBootstrap {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
+    // Trees, grass, and seaweed are reclaimable energy deposits, so their
+    // layout is simulation state. It is derived deterministically from the
+    // installed terrain mesh plus (map size, player count, deposits) — the
+    // renderer calls the same idempotent front door and gets this exact
+    // list rather than laying out a second, private forest.
+    ensureVegetationGenerated(mapWidth, mapHeight, playerIds.length, deposits);
     physics.setGroundLookup(
       (x, y) => world.getTerrainBedZ(x, y),
       (x, y) => world.getCachedTerrainBedNormal(x, y),
@@ -319,6 +326,12 @@ export class ServerBootstrap {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
+    // Trees, grass, and seaweed are reclaimable energy deposits, so their
+    // layout is simulation state. It is derived deterministically from the
+    // installed terrain mesh plus (map size, player count, deposits) — the
+    // renderer calls the same idempotent front door and gets this exact
+    // list rather than laying out a second, private forest.
+    ensureVegetationGenerated(mapWidth, mapHeight, playerIds.length, deposits);
     // Wire the terrain bed into physics so solid ground contacts remain
     // independent of the air/water medium occupying the same XY.
     physics.setGroundLookup(

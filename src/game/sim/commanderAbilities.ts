@@ -6,7 +6,15 @@ import { getTransformCosSin } from '../math';
 import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
 import { economyManager } from './economy';
 import { isCapturableTarget } from './capture';
-import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
+import {
+  getReclaimResourceValue,
+  isReclaimableTarget,
+  isReclaimTargetInBuildRange,
+  resolveReclaimTarget,
+  RECLAIM_REFUND_FRACTION,
+  type ReclaimTarget,
+} from './reclaim';
+import { applyVegetationReclaimTick } from './vegetation';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildInProgress } from './buildableHelpers';
 import { setUnitActions } from './unitActions';
@@ -99,20 +107,30 @@ class CommanderAbilitiesSystem {
       const commanderSprayY = workOrigin.y;
       const commanderSprayZ = workOrigin.z;
 
-      // Get current target from queue (only work on ONE thing at a time)
-      const currentTarget = this.getCurrentTarget(world, commander);
-      if (!currentTarget) continue;
-      const currentAction = commander.unit.actions[0];
+      const queuedAction = commander.unit.actions[0];
 
-      // Energy spending is handled by the shared energy distribution system.
-      // Commander building progress is advanced there.
-
-      if (currentAction !== undefined && currentAction.type === 'reclaim') {
-        if (this.reclaimTarget(world, playerId, commander, currentTarget, dtMs)) {
-          this.pushCompletedBuilding(commander.id, currentTarget.id);
+      // Reclaim resolves its own target: BAR's one Reclaim command spans
+      // units, buildings, and world features, and features live outside
+      // the entity map.
+      if (queuedAction !== undefined && queuedAction.type === 'reclaim') {
+        const reclaimTarget = resolveReclaimTarget(world, queuedAction.targetId);
+        if (
+          reclaimTarget !== null &&
+          isReclaimTargetInBuildRange(commander, reclaimTarget) &&
+          this.reclaimTarget(world, playerId, commander, reclaimTarget, dtMs)
+        ) {
+          this.pushCompletedBuilding(commander.id, reclaimTarget.id);
         }
         continue;
       }
+
+      // Get current target from queue (only work on ONE thing at a time)
+      const currentTarget = this.getCurrentTarget(world, commander);
+      if (!currentTarget) continue;
+      const currentAction = queuedAction;
+
+      // Energy spending is handled by the shared energy distribution system.
+      // Commander building progress is advanced there.
 
       if (currentAction !== undefined && currentAction.type === 'capture' && commander.commander !== null) {
         if (
@@ -166,8 +184,13 @@ class CommanderAbilitiesSystem {
     for (let i = 0; i < movements.length; i++) {
       const movement = movements[i];
       const source = world.getEntity(movement.sourceEntityId);
-      const target = world.getEntity(movement.targetEntityId);
-      if (source === undefined || target === undefined || source.ownership === null) continue;
+      if (source === undefined || source.ownership === null) continue;
+      // A movement either names an entity (read its live transform, so
+      // the spray tracks a target that is still moving) or carries its
+      // own world point for work targets outside the entity map.
+      const point = movement.targetPoint;
+      const target = point === null ? world.getEntity(movement.targetEntityId) : undefined;
+      if (point === null && target === undefined) continue;
       const spec = getWorkEmitterSpec(source);
       const pointCount = Math.max(1, spec?.points.length ?? 0);
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
@@ -178,13 +201,15 @@ class CommanderAbilitiesSystem {
         spray.source.pos.y = origin.y;
         spray.source.z = origin.z;
         spray.source.playerId = source.ownership.playerId;
-        spray.target.id = target.id;
-        spray.target.pos.x = target.transform.x;
-        spray.target.pos.y = target.transform.y;
-        spray.target.z = target.transform.z;
-        spray.target.radius = target.unit !== null
-          ? target.unit.radius.hitbox
-          : target.building?.targetRadius ?? 20;
+        spray.target.id = movement.targetEntityId;
+        spray.target.pos.x = point !== null ? point.x : target!.transform.x;
+        spray.target.pos.y = point !== null ? point.y : target!.transform.y;
+        spray.target.z = point !== null ? point.z : target!.transform.z;
+        spray.target.radius = point !== null
+          ? point.radius
+          : target!.unit !== null
+            ? target!.unit.radius.hitbox
+            : target!.building?.targetRadius ?? 20;
         // Construction and repair deliberately share one outward, team-color
         // visual vocabulary. Operation remains in the work ledger for debug.
         spray.type = 'build';
@@ -269,11 +294,11 @@ class CommanderAbilitiesSystem {
     // Get the first action
     const currentAction = actions[0];
 
-    // Only process build/repair/reclaim/resurrection actions
+    // Only process build/repair/capture/resurrection actions. Reclaim is
+    // resolved by the caller because its targets span two stores.
     if (
       currentAction.type !== 'build' &&
       currentAction.type !== 'repair' &&
-      currentAction.type !== 'reclaim' &&
       currentAction.type !== 'capture' &&
       currentAction.type !== 'resurrect'
     ) {
@@ -286,12 +311,6 @@ class CommanderAbilitiesSystem {
 
     const target = world.getEntity(targetId);
     if (!target) return null;
-
-    if (currentAction.type === 'reclaim') {
-      return isReclaimableTarget(target) && isBuildTargetInRange(commander, target)
-        ? target
-        : null;
-    }
 
     if (currentAction.type === 'capture') {
       const playerId = commander.ownership?.playerId;
@@ -338,10 +357,64 @@ class CommanderAbilitiesSystem {
     world: WorldState,
     playerId: PlayerId,
     commander: Entity,
+    target: ReclaimTarget,
+    dtMs: number,
+  ): boolean {
+    if (!commander.builder) return false;
+    return target.kind === 'vegetation'
+      ? this.reclaimVegetation(world, playerId, commander, target, dtMs)
+      : this.reclaimEntity(world, playerId, commander, target.entity, dtMs);
+  }
+
+  /**
+   * BAR gradual feature reclaim. The prop's work pool drains at
+   * `maxHp * buildPower / reclaimTime` per second and pays out energy
+   * strictly in proportion, so a builder consumes a tree in
+   * `reclaimTime / buildPower` seconds and banks its full authored
+   * yield. Several builders may work one prop at once — BAR's
+   * `multiReclaim` — because each tick only claims its own share.
+   */
+  private reclaimVegetation(
+    world: WorldState,
+    playerId: PlayerId,
+    commander: Entity,
+    target: Extract<ReclaimTarget, { kind: 'vegetation' }>,
+    dtMs: number,
+  ): boolean {
+    const dtSec = dtMs / 1000;
+    const buildPower = getBuilderConstructionRate(commander);
+    const tick = applyVegetationReclaimTick(target.prop.index, buildPower, dtSec);
+    if (tick === null) return false;
+
+    const refund = { energy: tick.energy, metal: tick.metal };
+    economyManager.addStockpile(
+      world,
+      playerId,
+      refund,
+      commander.id,
+      target.id,
+      'reclaim',
+      dtSec > 0 ? { energy: refund.energy / dtSec, metal: refund.metal / dtSec } : null,
+    );
+    // Reclaim shares the one outward work spray with build and repair;
+    // the prop is not an entity, so the movement carries its own point.
+    world.recordWorkMovement(commander.id, target.id, 'reclaim', buildPower, {
+      x: target.x,
+      y: target.y,
+      z: target.z,
+      radius: target.radius,
+    });
+    return tick.completed;
+  }
+
+  private reclaimEntity(
+    world: WorldState,
+    playerId: PlayerId,
+    commander: Entity,
     target: Entity,
     dtMs: number,
   ): boolean {
-    if (!commander.builder || !isReclaimableTarget(target)) return false;
+    if (!isReclaimableTarget(target)) return false;
     const hpState = target.unit ?? target.building;
     if (!hpState || hpState.hp <= 0) return false;
 
@@ -349,7 +422,7 @@ class CommanderAbilitiesSystem {
     const dtSec = dtMs / 1000;
     const sim = getSimWasm();
     if (sim === undefined) {
-      throw new Error('CommanderAbilitiesSystem.reclaimTarget: sim-wasm is not initialized');
+      throw new Error('CommanderAbilitiesSystem.reclaimEntity: sim-wasm is not initialized');
     }
     if (sim.commanderApplyReclaimTick(
       hpState.hp,
@@ -361,7 +434,7 @@ class CommanderAbilitiesSystem {
       RECLAIM_REFUND_FRACTION,
       _reclaimTickOut,
     ) === 0) {
-      throw new Error('CommanderAbilitiesSystem.reclaimTarget: commander_apply_reclaim_tick rejected its output buffer');
+      throw new Error('CommanderAbilitiesSystem.reclaimEntity: commander_apply_reclaim_tick rejected its output buffer');
     }
 
     const hpRemoved = _reclaimTickOut[1];

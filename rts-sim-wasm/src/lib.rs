@@ -324,6 +324,9 @@ pub(crate) use deposits::*;
 mod terrain;
 #[allow(unused_imports)]
 pub(crate) use terrain::*;
+mod vegetation;
+#[allow(unused_imports)]
+pub(crate) use vegetation::*;
 mod spatial_grid;
 #[allow(unused_imports)]
 pub(crate) use spatial_grid::*;

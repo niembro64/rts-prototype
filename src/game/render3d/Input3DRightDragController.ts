@@ -11,6 +11,7 @@ import {
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
   buildReclaimCommandForTarget,
+  buildReclaimCommandForTargetId,
   buildRepairOrGuardCommandAt,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
@@ -220,6 +221,42 @@ export class Input3DRightDragController {
         if (unitGuardCmd !== null) this.config.commandQueue.enqueue(unitGuardCmd);
         for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
         return;
+      }
+    }
+
+    // No entity under the cursor: a tree, grass clump, or seaweed frond
+    // is the next candidate. BAR's default command over a reclaimable
+    // feature with a constructor selected is Reclaim, so a plain
+    // right-click on vegetation harvests it — no mode, no modifier.
+    if (!preserveFormationMove && entityHit === null) {
+      const vegetationHitId = this.config.picker.raycastVegetation(e.clientX, e.clientY);
+      if (vegetationHitId !== null) {
+        let issued = false;
+        for (let i = 0; i < selectedUnits.length; i++) {
+          const reclaimer = selectedUnits[i];
+          if (reclaimer.builder === null || getBuilderConstructionRate(reclaimer) <= 0) continue;
+          const reclaimCmd = buildReclaimCommandForTargetId(
+            vegetationHitId,
+            reclaimer,
+            tick,
+            queueMode.queue,
+            queueMode.queueFront,
+            queueMode.queueInsertIndex,
+          );
+          if (reclaimCmd !== null) {
+            this.config.commandQueue.enqueue(reclaimCmd);
+            issued = true;
+          }
+        }
+        if (issued) {
+          debugLog(
+            GAME_DIAGNOSTICS.commandPlans,
+            '[click] reclaim-vegetation: prop target #%d, builder(s) reclaiming',
+            vegetationHitId,
+          );
+          this.config.applyCursor('reclaim');
+          return;
+        }
       }
     }
 

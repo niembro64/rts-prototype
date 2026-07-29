@@ -9,6 +9,7 @@ import { resolveEntityHoldPose } from '../sim/entityHolds';
 import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetTerrainStateForDeterministicReplay } from '../sim/Terrain';
+import { clearVegetation } from '../sim/vegetation';
 import { getSimWasm } from '../sim-wasm/init';
 import type { GameServerConfig } from '@/types/game';
 import type { Command } from '../sim/commands';
@@ -780,6 +781,10 @@ export function resetReusableSimulationStateForDeterministicReplay(): void {
   trimEnergyDistributionBuffers();
   trimEntitySnapshotPool();
   resetTerrainStateForDeterministicReplay();
+  // Vegetation is generated from the terrain mesh, so it must be dropped
+  // alongside it — a stale forest would carry consumed props (and their
+  // spent energy) into the replayed match.
+  clearVegetation();
   const sim = getSimWasm();
   if (sim !== undefined) {
     sim.combatTargeting.clear();

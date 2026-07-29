@@ -2,7 +2,11 @@ import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import { isBuildInProgress } from './buildableHelpers';
 import { isBuildTargetInRange } from './builderRange';
 import { isCapturableTarget } from './capture';
-import { isReclaimableTarget } from './reclaim';
+import {
+  isReclaimTargetIdAlive,
+  isReclaimTargetInBuildRange,
+  resolveReclaimTarget,
+} from './reclaim';
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport } from './transports';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
@@ -67,8 +71,13 @@ export class SimulationActionQueueMaintenance {
       }
 
       const targetId = action.type === 'build' ? action.buildingId : action.targetId;
-      const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
-      if (!target || !isBuildTargetInRange(entity, target)) return;
+      if (action.type === 'reclaim') {
+        const reclaimTarget = resolveReclaimTarget(this.world, targetId);
+        if (reclaimTarget === null || !isReclaimTargetInBuildRange(entity, reclaimTarget)) return;
+      } else {
+        const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
+        if (!target || !isBuildTargetInRange(entity, target)) return;
+      }
 
       if (i > 0) {
         spliceUnitActions(unit, 0, i);
@@ -113,6 +122,13 @@ export class SimulationActionQueueMaintenance {
     }
 
     const targetId = getUnitActionTargetId(action);
+
+    // Reclaim spans two stores: an id above the vegetation base names a
+    // prop, which never enters the entity map.
+    if (action.type === 'reclaim') {
+      return !isReclaimTargetIdAlive(this.world, targetId);
+    }
+
     const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
     if (!target) return true;
 
@@ -126,10 +142,6 @@ export class SimulationActionQueueMaintenance {
 
     if (action.type === 'guard') {
       return !this.isAliveAttackTarget(target);
-    }
-
-    if (action.type === 'reclaim') {
-      return !isReclaimableTarget(target);
     }
 
     if (action.type === 'capture') {

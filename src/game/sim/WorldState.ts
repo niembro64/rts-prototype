@@ -86,8 +86,20 @@ export type RemovedSnapshotEntity = {
 export type WorkMovement = {
   sourceEntityId: EntityId;
   targetEntityId: EntityId;
-  operation: 'construct' | 'repair';
+  operation: 'construct' | 'repair' | 'reclaim';
   amountPerSecond: number;
+  /** World point for work targets that are not entities (vegetation
+   *  props, which live in their own store). Null for entity targets —
+   *  those read the live transform instead so the spray tracks a target
+   *  that is still moving. */
+  targetPoint: WorkMovementPoint | null;
+};
+
+export type WorkMovementPoint = {
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
 };
 
 // World state holds all entities and game state
@@ -394,6 +406,7 @@ export class WorldState {
     targetEntityId: EntityId,
     operation: WorkMovement['operation'],
     amountPerSecond: number,
+    targetPoint: WorkMovementPoint | null = null,
   ): void {
     if (
       sourceEntityId === NO_ENTITY_ID ||
@@ -403,13 +416,34 @@ export class WorldState {
     const index = this.workMovements.length;
     let movement = this.workMovementPool[index];
     if (movement === undefined) {
-      movement = { sourceEntityId, targetEntityId, operation, amountPerSecond };
+      movement = {
+        sourceEntityId,
+        targetEntityId,
+        operation,
+        amountPerSecond,
+        targetPoint: null,
+      };
       this.workMovementPool[index] = movement;
     } else {
       movement.sourceEntityId = sourceEntityId;
       movement.targetEntityId = targetEntityId;
       movement.operation = operation;
       movement.amountPerSecond = amountPerSecond;
+    }
+    if (targetPoint === null) {
+      movement.targetPoint = null;
+    } else if (movement.targetPoint === null) {
+      movement.targetPoint = {
+        x: targetPoint.x,
+        y: targetPoint.y,
+        z: targetPoint.z,
+        radius: targetPoint.radius,
+      };
+    } else {
+      movement.targetPoint.x = targetPoint.x;
+      movement.targetPoint.y = targetPoint.y;
+      movement.targetPoint.z = targetPoint.z;
+      movement.targetPoint.radius = targetPoint.radius;
     }
     this.workMovements.push(movement);
   }

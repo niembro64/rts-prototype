@@ -58,6 +58,7 @@ export {
   buildRepairCommandForTarget,
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
+  buildReclaimCommandForTargetId,
   buildCaptureCommandForTarget,
   buildResurrectAreaCommand,
   buildResurrectCommandForTarget,

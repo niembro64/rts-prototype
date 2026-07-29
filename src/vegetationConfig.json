@@ -1,0 +1,83 @@
+{
+  "placement": {
+    "seed": 2147483647,
+    "defaultMapWidth": 10600,
+    "defaultMapHeight": 10600,
+    "areaScaleMin": 0.35,
+    "areaScaleMax": 2.4,
+    "maxAttemptsPerTarget": 80,
+    "edgeClearance": 180,
+    "metalDepositClearance": 260,
+    "playerStartClearanceMin": 850,
+    "playerStartClearanceMapFraction": 0.075,
+    "assetScaleJitter": 0.05
+  },
+  "kinds": {
+    "tree": {
+      "targetCount": 1000,
+      "medium": "land",
+      "waterBuffer": 130,
+      "minWaterDepth": 0,
+      "maxWaterDepth": 0,
+      "minSlope": 0,
+      "maxSlope": 0.3,
+      "maxTerrainHeight": 100,
+      "heightScaleMin": 0.78,
+      "heightScaleMax": 1.22,
+      "radiusScaleMin": 0.85,
+      "radiusScaleMax": 1.2,
+      "slopeSinkRadiusFraction": 0.35,
+      "slopeSinkMaxHeightFraction": 0.12,
+      "reclaim": {
+        "energy": 700,
+        "metal": 0,
+        "reclaimTime": 750,
+        "hp": 250
+      }
+    },
+    "grass": {
+      "targetCount": 3000,
+      "medium": "land",
+      "waterBuffer": 55,
+      "minWaterDepth": 0,
+      "maxWaterDepth": 0,
+      "minSlope": 0,
+      "maxSlope": 0.3,
+      "maxTerrainHeight": 100,
+      "heightScaleMin": 0.55,
+      "heightScaleMax": 1.35,
+      "radiusScaleMin": 0.65,
+      "radiusScaleMax": 1.25,
+      "slopeSinkRadiusFraction": 0,
+      "slopeSinkMaxHeightFraction": 0,
+      "reclaim": {
+        "energy": 70,
+        "metal": 0,
+        "reclaimTime": 75,
+        "hp": 25
+      }
+    },
+    "seaweed": {
+      "targetCount": 1400,
+      "medium": "water",
+      "waterBuffer": 0,
+      "minWaterDepth": 0,
+      "maxWaterDepth": 220,
+      "minSlope": 0,
+      "maxSlope": 0.45,
+      "maxTerrainHeight": 0,
+      "heightScaleMin": 0.7,
+      "heightScaleMax": 1.7,
+      "radiusScaleMin": 0.6,
+      "radiusScaleMax": 1.3,
+      "slopeSinkRadiusFraction": 0,
+      "slopeSinkMaxHeightFraction": 0,
+      "reclaim": {
+        "energy": 140,
+        "metal": 0,
+        "reclaimTime": 120,
+        "hp": 40
+      }
+    }
+  }
+}

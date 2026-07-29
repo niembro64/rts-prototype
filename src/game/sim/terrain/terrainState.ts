@@ -38,6 +38,7 @@ export function resetTerrainStateForDeterministicReplay(): void {
   const sim = getSimWasm();
   if (sim !== undefined) {
     sim.terrainClear();
+    sim.vegetationClear();
   }
 }
 
@@ -45,10 +46,13 @@ export function invalidateTerrainConfig(): void {
   authoritativeTerrainTileMap = null;
   terrainVersion++;
   // Drop the WASM-side mesh too so a stale install doesn't outlive
-  // the JS state.
+  // the JS state. Vegetation was laid out by sampling that mesh, so it
+  // goes with it — `ensureVegetationGenerated` notices the emptied store
+  // and rebuilds against the new terrain.
   const sim = getSimWasm();
   if (sim !== undefined) {
     sim.terrainClear();
+    sim.vegetationClear();
   }
 }
 
@@ -207,6 +211,7 @@ export function setAuthoritativeTerrainTileMap(map: TerrainTileMap | null): void
       installMeshIntoSim(map);
     } else {
       sim.terrainClear();
+      sim.vegetationClear();
     }
   }
 }

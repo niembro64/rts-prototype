@@ -4,7 +4,7 @@
 // Keeping these renderer-agnostic (no dispatch channel, no event
 // object) — callers enqueue the returned command themselves.
 
-import type { Entity, WaypointType } from '../../sim/types';
+import type { Entity, EntityId, WaypointType } from '../../sim/types';
 import type {
   CaptureCommand,
   GuardCommand,
@@ -177,13 +177,38 @@ export function buildReclaimCommandForTarget(
   queueFront = false,
   queueInsertIndex?: number,
 ): ReclaimCommand | null {
-  if (!isCommandCapableBuilder(commander)) return null;
-  if (commander.id === target?.id || !isReclaimableTarget(target)) return null;
+  if (commander === null || commander.id === target?.id || !isReclaimableTarget(target)) {
+    return null;
+  }
+  return buildReclaimCommandForTargetId(
+    target.id,
+    commander,
+    tick,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  );
+}
+
+/** Reclaim by target id. Vegetation props are addressed the same way
+ *  BAR addresses features from a unit order — by an id above the entity
+ *  range — so the one Reclaim command covers both stores and the client
+ *  never needs a second command shape. */
+export function buildReclaimCommandForTargetId(
+  targetId: EntityId | null,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+  queueFront = false,
+  queueInsertIndex?: number,
+): ReclaimCommand | null {
+  if (targetId === null || !isCommandCapableBuilder(commander)) return null;
+  if (commander.id === targetId) return null;
   return {
     type: 'reclaim',
     tick,
     commanderId: commander.id,
-    targetId: target.id,
+    targetId,
     queue,
     queueFront,
     queueInsertIndex,

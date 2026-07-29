@@ -14,6 +14,7 @@ import {
   buildLoadTransportCommandForTarget,
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
+  buildReclaimCommandForTargetId,
   buildRepairAreaCommand,
   buildRepairCommandForTarget,
   buildResurrectAreaCommand,
@@ -1624,16 +1625,32 @@ export class Input3DModeClickController {
       : null;
     const queueMode = this.resolveClickQueueMode(e);
 
+    // An entity under the cursor wins; otherwise fall through to the
+    // vegetation store, so clicking a tree in Reclaim mode reclaims that
+    // tree rather than opening an area order around it.
+    const vegetationHitId = entityHit === null
+      ? this.config.picker.raycastVegetation(e.clientX, e.clientY)
+      : null;
+
     let issuedTargetReclaim = false;
     for (let i = 0; i < builders.length; i++) {
-      const meshReclaimCmd = buildReclaimCommandForTarget(
-        entityHit,
-        builders[i],
-        tick,
-        queueMode.queue,
-        queueMode.queueFront,
-        queueMode.queueInsertIndex,
-      );
+      const meshReclaimCmd = entityHit !== null
+        ? buildReclaimCommandForTarget(
+          entityHit,
+          builders[i],
+          tick,
+          queueMode.queue,
+          queueMode.queueFront,
+          queueMode.queueInsertIndex,
+        )
+        : buildReclaimCommandForTargetId(
+          vegetationHitId,
+          builders[i],
+          tick,
+          queueMode.queue,
+          queueMode.queueFront,
+          queueMode.queueInsertIndex,
+        );
       if (meshReclaimCmd) {
         this.config.commandQueue.enqueue(meshReclaimCmd);
         issuedTargetReclaim = true;

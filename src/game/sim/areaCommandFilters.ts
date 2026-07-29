@@ -14,9 +14,10 @@
 
 import type { AreaCommandFilterCategory } from './commands';
 import type { Entity } from './types';
+import type { VegetationProp } from './vegetation';
 
 export const AREA_COMMAND_FILTER_CATEGORIES: readonly AreaCommandFilterCategory[] =
-  ['unit', 'building', 'wreck'];
+  ['unit', 'building', 'wreck', 'vegetation'];
 
 export function isAreaCommandFilterCategory(value: unknown): value is AreaCommandFilterCategory {
   return typeof value === 'string' &&
@@ -29,6 +30,15 @@ export function areaCommandFilterCategoryOf(entity: Entity): AreaCommandFilterCa
   if (entity.wreck !== null) return 'wreck';
   if (entity.unit !== null) return 'unit';
   return 'building';
+}
+
+/** True when a filter category can only ever match an entity target.
+ *  `vegetation` props live in their own store, so an entity scan must
+ *  skip that category outright rather than testing each entity. */
+export function isEntityAreaCommandFilterCategory(
+  category: AreaCommandFilterCategory | undefined,
+): boolean {
+  return category !== 'vegetation';
 }
 
 /** Blueprint identity used by the same-type (Alt) filter. Wrecks match
@@ -69,6 +79,33 @@ export function resolveAreaCommandTargetFilter(
     return blueprintId !== null ? { filterBlueprintId: blueprintId } : {};
   }
   return {};
+}
+
+/** Same as `resolveAreaCommandTargetFilter` for a hovered vegetation
+ *  prop. BAR's Ctrl/Alt split maps cleanly: Ctrl keeps the whole
+ *  feature category, Alt narrows to the hovered prop's own kind — the
+ *  vegetation analogue of matching one featureDefId. */
+export function resolveVegetationAreaCommandTargetFilter(
+  hovered: VegetationProp,
+  ctrlHeld: boolean,
+  altHeld: boolean,
+): AreaCommandTargetFilter {
+  if (ctrlHeld) return { filterCategory: 'vegetation' };
+  if (altHeld) return { filterBlueprintId: hovered.kind };
+  return {};
+}
+
+/** True when a vegetation prop passes the optional area-command filter
+ *  fields. Props are their own category, so any entity-shaped category
+ *  filter excludes them and vice versa. */
+export function vegetationAreaTargetMatchesCommandFilter(
+  prop: VegetationProp,
+  filterCategory: AreaCommandFilterCategory | undefined,
+  filterBlueprintId: string | undefined,
+): boolean {
+  if (filterCategory !== undefined && filterCategory !== 'vegetation') return false;
+  if (filterBlueprintId !== undefined && filterBlueprintId !== prop.kind) return false;
+  return true;
 }
 
 /** True when `target` passes the optional area-command filter fields.

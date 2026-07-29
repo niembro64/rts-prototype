@@ -365,7 +365,7 @@ export type RepairCommand = BaseCommand & {
  *  (cmd_area_commands_filter.lua). BAR distinguishes units from
  *  features (wrecks); ours adds buildings since our area commands
  *  can target them too. */
-export type AreaCommandFilterCategory = 'unit' | 'building' | 'wreck';
+export type AreaCommandFilterCategory = 'unit' | 'building' | 'wreck' | 'vegetation';
 
 /** Optional BAR cmd_area_commands_filter parity fields shared by the
  *  area repair/reclaim/resurrect commands. Both derive from the entity

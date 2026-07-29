@@ -89,8 +89,18 @@ import {
   SimulationArrivalController,
 } from './SimulationArrivalController';
 import { createSelfDestructEvent } from './selfDestructEvent';
-import { isBuildTargetInRange } from './builderRange';
-import { isReclaimableTarget } from './reclaim';
+import { isBuildRadiusTargetInRange, isBuildTargetInRange } from './builderRange';
+import {
+  isReclaimableTarget,
+  makeEntityReclaimTarget,
+  makeVegetationReclaimTarget,
+  type ReclaimTarget,
+} from './reclaim';
+import {
+  getLiveVegetationPropByTargetId,
+  getVegetationProp,
+  queryVegetationInCircle,
+} from './vegetation';
 import {
   SimulationFlyingLoiterController,
 } from './SimulationFlyingLoiterController';
@@ -108,6 +118,7 @@ import {
   UNIT_ACTION_FLAG_GUARD_SERVICE,
   UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
   UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
+  UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
   UNIT_ACTION_FLAG_TARGET_PRESENT,
   UNIT_ACTION_FLAG_TRANSPORT_EMPTY,
   UNIT_ACTION_RANGE_KIND_BUILD,
@@ -181,6 +192,17 @@ type FormationRouteMetadata = {
 // of each movement pass; planless units drive an interim straight
 // line toward the action point and stale-but-usable chase plans keep
 // steering until their replacement is funded.
+
+/** Broadphase slack for the patrol auto-reclaim vegetation sweep. The
+ *  circle query tests prop CENTERS, while the build-range test that
+ *  follows measures to a prop's surface, so the sweep is widened by the
+ *  largest plausible prop radius and then filtered exactly. */
+const PATROL_RECLAIM_VEGETATION_RADIUS_PADDING = 200;
+
+/** Scratch for that sweep. One builder is considered at a time inside a
+ *  single-threaded tick, and the padded build-range disc bounds how many
+ *  props can land in it. */
+const _patrolVegetationQueryScratch = new Uint32Array(256);
 
 /** Action types the plan scheduler will serve — every dispatch case that
  *  resolves an active movement target. Hold/wait-style actions never
@@ -1138,11 +1160,25 @@ export class Simulation {
     unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
   }
 
-  private findPatrolReclaimTarget(builder: Entity): Entity | null {
+  /** BAR constructor Patrol picks up nearby reclaim on its own — including
+   *  world features, which is how a patrolling con clears trees along its
+   *  route. Vegetation therefore competes with hostile entities for the
+   *  nearest-target slot, tie-broken by target id so every peer picks the
+   *  same prop. */
+  private findPatrolReclaimTarget(builder: Entity): ReclaimTarget | null {
     const playerId = builder.ownership?.playerId;
     if (playerId === undefined) return null;
-    let best: Entity | null = null;
+    let best: ReclaimTarget | null = null;
     let bestDistanceSq = Number.POSITIVE_INFINITY;
+    const offer = (candidate: ReclaimTarget, distanceSq: number): void => {
+      if (
+        distanceSq < bestDistanceSq ||
+        (distanceSq === bestDistanceSq && (best === null || candidate.id < best.id))
+      ) {
+        best = candidate;
+        bestDistanceSq = distanceSq;
+      }
+    };
     const consider = (target: Entity): void => {
       if (!isReclaimableTarget(target) || target.id === builder.id) return;
       const targetPlayerId = target.ownership?.playerId;
@@ -1153,19 +1189,30 @@ export class Simulation {
       if (!isBuildTargetInRange(builder, target)) return;
       const dx = target.transform.x - builder.transform.x;
       const dy = target.transform.y - builder.transform.y;
-      const distanceSq = dx * dx + dy * dy;
-      if (
-        distanceSq < bestDistanceSq ||
-        (distanceSq === bestDistanceSq && (best === null || target.id < best.id))
-      ) {
-        best = target;
-        bestDistanceSq = distanceSq;
-      }
+      offer(makeEntityReclaimTarget(target), dx * dx + dy * dy);
     };
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) consider(units[i]);
     const buildings = this.world.getBuildings();
     for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
+
+    const buildRange = builder.builder?.buildRange ?? 0;
+    if (buildRange > 0) {
+      const found = queryVegetationInCircle(
+        builder.transform.x,
+        builder.transform.y,
+        buildRange + PATROL_RECLAIM_VEGETATION_RADIUS_PADDING,
+        _patrolVegetationQueryScratch,
+      );
+      for (let i = 0; i < found; i++) {
+        const prop = getVegetationProp(_patrolVegetationQueryScratch[i]);
+        if (prop === undefined) continue;
+        if (!isBuildRadiusTargetInRange(builder, prop.x, prop.y, prop.radius)) continue;
+        const dx = prop.x - builder.transform.x;
+        const dy = prop.y - builder.transform.y;
+        offer(makeVegetationReclaimTarget(prop), dx * dx + dy * dy);
+      }
+    }
     return best;
   }
 
@@ -1489,7 +1536,9 @@ export class Simulation {
       ) {
         const reclaimTarget = this.findPatrolReclaimTarget(entity);
         if (reclaimTarget !== null) {
-          const targetPoint = getEntityTargetPoint(reclaimTarget);
+          const targetPoint = reclaimTarget.kind === 'entity'
+            ? getEntityTargetPoint(reclaimTarget.entity)
+            : reclaimTarget;
           unshiftUnitAction(unit, {
             type: 'reclaim',
             x: targetPoint.x,
@@ -1542,9 +1591,30 @@ export class Simulation {
           ? currentAction.buildingId
           : currentAction.targetId;
         if (targetId !== undefined) {
-          rangeKind = UNIT_ACTION_RANGE_KIND_BUILD;
-          rangeTargetSlot = entitySlotRegistry.getSlot(targetId);
-          rangeParam = entity.builder !== null ? entity.builder.buildRange : 0;
+          const vegetationProp = currentAction.type === 'reclaim'
+            ? getLiveVegetationPropByTargetId(targetId)
+            : undefined;
+          if (vegetationProp !== undefined) {
+            // Vegetation has no entity slot for the native range pass to
+            // read, but a prop never moves: resolve the surface-to-surface
+            // build-range test here and hand the batch the same flag it
+            // would have produced.
+            if (
+              entity.builder !== null &&
+              isBuildRadiusTargetInRange(
+                entity,
+                vegetationProp.x,
+                vegetationProp.y,
+                vegetationProp.radius,
+              )
+            ) {
+              flags |= UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE;
+            }
+          } else {
+            rangeKind = UNIT_ACTION_RANGE_KIND_BUILD;
+            rangeTargetSlot = entitySlotRegistry.getSlot(targetId);
+            rangeParam = entity.builder !== null ? entity.builder.buildRange : 0;
+          }
         }
       } else if (currentAction.type === 'attack') {
         if (currentAction.targetId !== undefined) {

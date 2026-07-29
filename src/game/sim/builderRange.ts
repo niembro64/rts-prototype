@@ -9,12 +9,16 @@ function getBuildRange(entity: Entity): number {
   return entity.builder !== null ? entity.builder.buildRange : 0;
 }
 
-function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
+function requireSimWasm(context: string) {
   const sim = getSimWasm();
   if (sim === undefined) {
-    throw new Error('getBuildTargetHorizontalDistance: sim-wasm is not initialized');
+    throw new Error(`${context}: sim-wasm is not initialized`);
   }
+  return sim;
+}
 
+function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
+  const sim = requireSimWasm('getBuildTargetHorizontalDistance');
   const building = target.building;
   const unit = target.unit;
   const targetKind = building !== null
@@ -38,4 +42,28 @@ export function isBuildTargetInRange(builder: Entity, target: Entity): boolean {
   const range = getBuildRange(builder);
   if (range <= 0) return false;
   return getBuildTargetHorizontalDistance(builder, target) <= range;
+}
+
+/** Build-range test against a world point with a circular footprint —
+ *  the same surface-to-surface measure entity targets get, for work
+ *  targets that are not entities (vegetation props). */
+export function isBuildRadiusTargetInRange(
+  builder: Entity,
+  x: number,
+  y: number,
+  radius: number,
+): boolean {
+  const range = getBuildRange(builder);
+  if (range <= 0) return false;
+  const sim = requireSimWasm('isBuildRadiusTargetInRange');
+  return sim.buildTargetHorizontalDistance(
+    builder.transform.x,
+    builder.transform.y,
+    x,
+    y,
+    BUILD_TARGET_KIND_UNIT,
+    0,
+    0,
+    radius,
+  ) <= range;
 }

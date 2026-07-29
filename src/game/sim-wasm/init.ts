@@ -167,6 +167,17 @@ import __wbg_init, {
   metal_deposit_count_resource_candidates,
   metal_deposit_grow_resource_cells,
   terrain_sample_map_boundary_fades,
+  vegetation_clear,
+  vegetation_generate,
+  vegetation_count,
+  vegetation_read_props,
+  vegetation_prop_state,
+  vegetation_query_circle,
+  vegetation_raycast,
+  vegetation_apply_reclaim_tick,
+  vegetation_removed_count,
+  vegetation_read_removed,
+  vegetation_state_hash,
   terrain_install_mesh,
   terrain_clear,
   terrain_is_installed,
@@ -1592,6 +1603,62 @@ export interface SimWasm {
     pointsXy: Float64Array,
     outFades: Float64Array,
   ) => number;
+  /** Vegetation — trees, grass, and seaweed as reclaimable energy
+   *  deposits. Rust owns deterministic placement, the prop store, the
+   *  BAR gradual-reclaim arithmetic, and the removal log; TS owns
+   *  config validation, asset identity, and command plumbing. Every
+   *  peer runs `vegetationGenerate` with the same inputs and gets a
+   *  bit-identical prop list, so the layout never crosses the wire. */
+  readonly vegetationClear: () => void;
+  readonly vegetationGenerate: (
+    mapWidth: number,
+    mapHeight: number,
+    playerCount: number,
+    configSeed: number,
+    areaScaleMin: number,
+    areaScaleMax: number,
+    defaultMapWidth: number,
+    defaultMapHeight: number,
+    maxAttemptsPerTarget: number,
+    edgeClearance: number,
+    depositClearance: number,
+    spawnClearance: number,
+    assetScaleJitter: number,
+    kindRows: Float64Array,
+    assetRows: Float64Array,
+    depositRows: Float64Array,
+    spawnRows: Float64Array,
+  ) => number;
+  readonly vegetationCount: () => number;
+  readonly vegetationReadProps: (outRows: Float64Array) => number;
+  readonly vegetationPropState: (index: number, out: Float64Array) => number;
+  readonly vegetationQueryCircle: (
+    x: number,
+    y: number,
+    radius: number,
+    kindMask: number,
+    outIndices: Uint32Array,
+  ) => number;
+  readonly vegetationRaycast: (
+    originX: number,
+    originY: number,
+    originZ: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    maxDistance: number,
+    kindMask: number,
+    out: Float64Array,
+  ) => number;
+  readonly vegetationApplyReclaimTick: (
+    index: number,
+    buildPower: number,
+    dtSec: number,
+    out: Float64Array,
+  ) => number;
+  readonly vegetationRemovedCount: () => number;
+  readonly vegetationReadRemoved: (from: number, out: Uint32Array) => number;
+  readonly vegetationStateHash: () => number;
   readonly metalDepositCountResourceCandidates: (radiusCells: number) => number;
   readonly metalDepositGrowResourceCells: (
     originGx: number,
@@ -4180,6 +4247,17 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         metalDepositCountResourceCandidates: metal_deposit_count_resource_candidates,
         metalDepositGrowResourceCells: metal_deposit_grow_resource_cells,
         terrainSampleMapBoundaryFades: terrain_sample_map_boundary_fades,
+        vegetationClear: vegetation_clear,
+        vegetationGenerate: vegetation_generate,
+        vegetationCount: vegetation_count,
+        vegetationReadProps: vegetation_read_props,
+        vegetationPropState: vegetation_prop_state,
+        vegetationQueryCircle: vegetation_query_circle,
+        vegetationRaycast: vegetation_raycast,
+        vegetationApplyReclaimTick: vegetation_apply_reclaim_tick,
+        vegetationRemovedCount: vegetation_removed_count,
+        vegetationReadRemoved: vegetation_read_removed,
+        vegetationStateHash: vegetation_state_hash,
         terrainInstallMesh: terrain_install_mesh,
         terrainClear: terrain_clear,
         terrainIsInstalled: terrain_is_installed,

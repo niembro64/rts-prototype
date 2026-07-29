@@ -11,17 +11,18 @@ import { getTreeTrunkTexture } from './TreeTrunkTexture';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
 import {
-  ACTIVE_ENVIRONMENT_ASSETS,
-  type EnvironmentAssetSpec,
-  isRandomEnvironmentAssetUsable,
-  isWoodMaterialForAsset,
-  logActiveEnvironmentAssets,
-} from './environmentPropAssets';
+  ACTIVE_VEGETATION_ASSETS,
+  isWoodVegetationMaterial,
+  logActiveVegetationAssets,
+  type VegetationAssetSpec,
+} from '@/vegetationAssets';
+import type { VegetationKindId } from '@/vegetationConfig';
 import {
-  SCOPE_PADDING_EXTRA,
-  generateEnvironmentPlacements,
-  type EnvironmentPlacement,
-} from './environmentPropPlacement';
+  ensureVegetationGenerated,
+  getVegetationRemovedCount,
+  readVegetationRemoved,
+  type VegetationProp,
+} from '../sim/vegetation';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
@@ -39,17 +40,22 @@ import {
 } from './PrimitiveGeometryQuality3D';
 
 type EnvironmentPropNode = {
-  placement: EnvironmentPlacement;
+  prop: VegetationProp;
   root: THREE.Group;
   lods: Record<PrimitiveGeometryTier, THREE.Group>;
   detailRung: DetailRung;
 };
 
 type LoadedEnvironmentAsset = {
-  spec: EnvironmentAssetSpec;
+  spec: VegetationAssetSpec;
   templates: Record<PrimitiveGeometryTier, THREE.Group>;
   unitHeight: number;
 };
+
+/** World-unit slack added to a prop's radius for the render-scope test,
+ *  so a prop whose center just left the scope but whose canopy still
+ *  overlaps it keeps drawing. */
+const SCOPE_PADDING_EXTRA = 120;
 
 export type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
 
@@ -87,8 +93,18 @@ export function environmentPropVisibleAtDetailRung(rung: DetailRung): boolean {
   return rung !== DETAIL_RUNG_GLYPH;
 }
 
-/** Builds one flat triangle in the authored direction of each High grass leaf.
- * Low retains two representative leaves from that same authored set. */
+/** Grass and seaweed are one blade-vegetation presentation family. Keeping
+ * this classification explicit prevents a non-tree kind from accidentally
+ * acquiring the synthetic trunk/crown used by reduced-detail trees. */
+export function environmentPropUsesGrassPresentation(
+  kind: VegetationKindId,
+): boolean {
+  return kind === 'grass' || kind === 'seaweed';
+}
+
+/** Builds one flat triangle in the authored direction of each High grass or
+ * seaweed leaf. Low retains two representative leaves from that same authored
+ * set. There is deliberately no central stem primitive at either tier. */
 export function buildEnvironmentGrassLodGeometry(
   highTemplate: THREE.Object3D,
   tier: EnvironmentGrassLodTier,
@@ -152,7 +168,6 @@ type EnvironmentPropRenderer3DOptions = {
   metalDeposits: ReadonlyArray<MetalDeposit>;
   renderScope: ViewportFootprint;
   worldShade: WorldShade3D;
-  sampleTerrainHeight: (x: number, z: number) => number;
   isTerrainSettled: () => boolean;
 };
 
@@ -170,8 +185,13 @@ export class EnvironmentPropRenderer3D {
   private readonly options: EnvironmentPropRenderer3DOptions;
   private readonly renderScope: ViewportFootprint;
   private readonly worldShade: WorldShade3D;
-  private placements: EnvironmentPlacement[] = [];
+  private props: readonly VegetationProp[] = [];
   private readonly nodes: EnvironmentPropNode[] = [];
+  /** Node per prop index, so a reclaimed prop is found in O(1) when the
+   *  removal log names it. Sparse: disabled assets create no node. */
+  private readonly nodesByPropIndex = new Map<number, EnvironmentPropNode>();
+  /** Cursor into the sim's append-only removal log. */
+  private removedCursor = 0;
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
   private readonly mtlCache = new Map<
     string,
@@ -203,7 +223,7 @@ export class EnvironmentPropRenderer3D {
     this.worldShade = options.worldShade;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
-    logActiveEnvironmentAssets();
+    logActiveVegetationAssets();
     // Asset IO can overlap terrain startup. Only placement and node creation
     // wait for the authoritative terrain below.
     void this.loadAssets();
@@ -216,6 +236,7 @@ export class EnvironmentPropRenderer3D {
   update(view?: RenderViewState3D): void {
     this.initializeAfterTerrainSettles();
     if (!this.loaded || this.nodes.length === 0) return;
+    this.dropReclaimedProps();
     const scopeVersion = this.renderScope.getVersion();
     const lodMode = getLodMode();
     const hasView = view !== undefined;
@@ -244,14 +265,12 @@ export class EnvironmentPropRenderer3D {
       this.lastViewportHeightPx = view.viewportHeightPx;
     }
     for (const node of this.nodes) {
-      const p = node.placement;
-      if (!isRandomEnvironmentAssetUsable(p.assetId)) {
-        node.root.visible = false;
-        continue;
-      }
+      const p = node.prop;
+      // Sim coords are (x, y) horizontal with z up; three.js is (x, z)
+      // horizontal with y up.
       const inScope = this.renderScope.inScope(
         p.x,
-        p.z,
+        p.y,
         p.radius + SCOPE_PADDING_EXTRA,
       );
       if (!inScope) {
@@ -262,8 +281,8 @@ export class EnvironmentPropRenderer3D {
         ? detailRungForViewPosition(
             view,
             p.x,
-            p.z,
-            p.y + p.height * 0.5,
+            p.y,
+            p.z + p.height * 0.5,
             Math.max(p.radius, p.height * 0.5),
             node.detailRung,
           )
@@ -293,15 +312,55 @@ export class EnvironmentPropRenderer3D {
       return;
     }
     this.initializationStarted = true;
-    this.placements = generateEnvironmentPlacements({
-      mapWidth: this.options.mapWidth,
-      mapHeight: this.options.mapHeight,
-      playerCount: this.options.playerCount,
-      metalDeposits: this.options.metalDeposits,
-      sampleTerrainHeight: this.options.sampleTerrainHeight,
-    });
-    logEnvironmentPlacementCounts(this.placements, this.options);
+    // Props are reclaimable energy deposits, so the layout belongs to the
+    // simulation. This is the same idempotent front door the server
+    // bootstrap uses: whichever runs first generates, and both end up
+    // drawing/working the identical list.
+    this.props = ensureVegetationGenerated(
+      this.options.mapWidth,
+      this.options.mapHeight,
+      this.options.playerCount,
+      this.options.metalDeposits,
+    );
+    // Props consumed before the renderer came up are already in the log;
+    // start the cursor at its end and simply never build nodes for them.
+    this.removedCursor = getVegetationRemovedCount();
+    logVegetationPropCounts(this.props, this.options);
     this.finishInitializationIfReady();
+  }
+
+  /** Drain the sim's removal log and delete the nodes for props that have
+   *  been fully reclaimed. The log is append-only and sparse — a few
+   *  entries per second at most — so this stays a cursor read rather than
+   *  a per-frame diff over thousands of props. */
+  private dropReclaimedProps(): void {
+    const total = getVegetationRemovedCount();
+    if (total <= this.removedCursor) return;
+    while (this.removedCursor < total) {
+      const read = readVegetationRemoved(this.removedCursor, _removedPropScratch);
+      if (read === 0) break;
+      for (let i = 0; i < read; i++) {
+        this.removeNodeForProp(_removedPropScratch[i]);
+      }
+      this.removedCursor += read;
+    }
+    // Node removal changes what is drawn independently of camera/scope, so
+    // force the next visibility pass instead of letting the change gate
+    // short-circuit it.
+    this.lastScopeVersion = -1;
+  }
+
+  private removeNodeForProp(propIndex: number): void {
+    const node = this.nodesByPropIndex.get(propIndex);
+    if (node === undefined) return;
+    this.nodesByPropIndex.delete(propIndex);
+    const at = this.nodes.indexOf(node);
+    if (at >= 0) this.nodes.splice(at, 1);
+    this.root.remove(node.root);
+    // Geometry and materials are shared with the asset templates and the
+    // material cache, which `destroy` owns; only the cloned scene graph
+    // goes away here.
+    node.root.clear();
   }
 
   private finishInitializationIfReady(): void {
@@ -333,6 +392,7 @@ export class EnvironmentPropRenderer3D {
     for (const material of this.materialCache.values()) material.dispose();
     this.materialCache.clear();
     this.nodes.length = 0;
+    this.nodesByPropIndex.clear();
     this.assets.clear();
     this.root.clear();
     this.root.parent?.remove(this.root);
@@ -340,9 +400,9 @@ export class EnvironmentPropRenderer3D {
 
   private async loadAssets(): Promise<void> {
     try {
-      const loadPromises = new Array<Promise<LoadedEnvironmentAsset>>(ACTIVE_ENVIRONMENT_ASSETS.length);
-      for (let i = 0; i < ACTIVE_ENVIRONMENT_ASSETS.length; i++) {
-        loadPromises[i] = this.loadAsset(ACTIVE_ENVIRONMENT_ASSETS[i]);
+      const loadPromises = new Array<Promise<LoadedEnvironmentAsset>>(ACTIVE_VEGETATION_ASSETS.length);
+      for (let i = 0; i < ACTIVE_VEGETATION_ASSETS.length; i++) {
+        loadPromises[i] = this.loadAsset(ACTIVE_VEGETATION_ASSETS[i]);
       }
       const loadedAssets = await Promise.all(loadPromises);
       if (this.destroyed) {
@@ -370,7 +430,7 @@ export class EnvironmentPropRenderer3D {
   }
 
   private async loadAsset(
-    spec: EnvironmentAssetSpec,
+    spec: VegetationAssetSpec,
   ): Promise<LoadedEnvironmentAsset> {
     const loaderObject =
       spec.format === 'fbx'
@@ -379,7 +439,7 @@ export class EnvironmentPropRenderer3D {
     return this.normalizeAsset(spec, loaderObject);
   }
 
-  private async loadObj(spec: EnvironmentAssetSpec): Promise<THREE.Group> {
+  private async loadObj(spec: VegetationAssetSpec): Promise<THREE.Group> {
     const loader = new OBJLoader();
     if (spec.materialPath) {
       const materials = await this.loadMtl(spec.materialPath);
@@ -407,7 +467,7 @@ export class EnvironmentPropRenderer3D {
   }
 
   private normalizeAsset(
-    spec: EnvironmentAssetSpec,
+    spec: VegetationAssetSpec,
     source: THREE.Group,
   ): LoadedEnvironmentAsset {
     source.traverse((obj) => {
@@ -454,7 +514,7 @@ export class EnvironmentPropRenderer3D {
     asset: LoadedEnvironmentAsset,
     tier: 'mid' | 'far',
   ): THREE.Group {
-    return asset.spec.kind === 'grass'
+    return environmentPropUsesGrassPresentation(asset.spec.kind)
       ? this.makeGrassLodTemplate(asset, tier)
       : this.makeTreeLodTemplate(asset, tier);
   }
@@ -572,7 +632,7 @@ export class EnvironmentPropRenderer3D {
   }
 
   private materialForAsset(
-    spec: EnvironmentAssetSpec,
+    spec: VegetationAssetSpec,
     source: THREE.Material | THREE.Material[],
   ): THREE.Material | THREE.Material[] {
     if (Array.isArray(source)) {
@@ -606,21 +666,19 @@ export class EnvironmentPropRenderer3D {
   }
 
   private materialForSelectedRandomAsset(
-    spec: EnvironmentAssetSpec,
+    spec: VegetationAssetSpec,
     sourceName: string,
   ): THREE.MeshLambertMaterial | null {
-    if (!isRandomEnvironmentAssetUsable(spec.id)) return null;
-    if (spec.kind === 'grass') {
-      // Grass props deliberately keep the plain leaf-color material with no
-      // texture map. The user-facing distinction: grass clumps blend into
-      // the ground green carpet uniformly, while tree foliage carries the
-      // tree-leaf texture's per-fragment color variation.
+    if (environmentPropUsesGrassPresentation(spec.kind)) {
+      // Land grass and submerged seaweed deliberately share one leaf-color
+      // material and no texture map. Medium/far already use this same
+      // canonical foliage color, so changing LOD cannot change their palette.
       return this.sharedMaterial(
         'randomEnvironment.forestSpruce2.grass-leaves',
         FOREST_SPRUCE2_LEAF_COLOR,
       );
     }
-    const isWood = isWoodMaterialForAsset(spec, sourceName);
+    const isWood = isWoodVegetationMaterial(spec, sourceName);
     if (isWood) {
       return this.sharedMaterial(
         'randomEnvironment.forestSpruce2.tree-trunk',
@@ -668,12 +726,11 @@ export class EnvironmentPropRenderer3D {
   }
 
   private buildNodes(): void {
-    for (const placement of this.placements) {
-      if (!isRandomEnvironmentAssetUsable(placement.assetId)) continue;
-      const asset = this.assets.get(placement.assetId);
+    for (const prop of this.props) {
+      const asset = this.assets.get(prop.assetId);
       if (!asset) continue;
       const root = new THREE.Group();
-      root.name = `environment-prop-${placement.assetId}`;
+      root.name = `vegetation-${prop.kind}-${prop.assetId}`;
       const lods = {
         close: asset.templates.close.clone(true),
         mid: asset.templates.mid.clone(true),
@@ -683,22 +740,29 @@ export class EnvironmentPropRenderer3D {
       lods.mid.visible = false;
       lods.far.visible = false;
       root.add(lods.close, lods.mid, lods.far);
-      const scale = placement.height / asset.unitHeight;
-      root.position.set(placement.x, placement.y, placement.z);
-      root.rotation.y = placement.rotation;
+      const scale = prop.height / asset.unitHeight;
+      // Sim (x, y, z) with z up maps to three.js (x, z, y) with y up.
+      root.position.set(prop.x, prop.z, prop.y);
+      root.rotation.y = prop.rotation;
       root.scale.setScalar(scale);
-      root.userData.environmentProp = true;
-      root.userData.assetId = placement.assetId;
+      root.userData.vegetationProp = true;
+      root.userData.assetId = prop.assetId;
       this.root.add(root);
-      this.nodes.push({
-        placement,
+      const node: EnvironmentPropNode = {
+        prop,
         root,
         lods,
         detailRung: DETAIL_RUNG_CLOSE,
-      });
+      };
+      this.nodes.push(node);
+      this.nodesByPropIndex.set(prop.index, node);
     }
   }
 }
+
+/** Scratch for the removal-log drain. Sized well past the few props a
+ *  frame can plausibly consume; the drain loops if it ever fills. */
+const _removedPropScratch = new Uint32Array(64);
 
 function collectEnvironmentGrassBladeTriangles(
   highTemplate: THREE.Object3D,
@@ -918,21 +982,22 @@ function publicAssetUrl(path: string): string {
   return `${normalizedBase}${encodedPath}`;
 }
 
-function logEnvironmentPlacementCounts(
-  placements: readonly EnvironmentPlacement[],
+function logVegetationPropCounts(
+  props: readonly VegetationProp[],
   options: EnvironmentPropRenderer3DOptions,
 ): void {
   if (!import.meta.env.DEV) return;
   const counts = new Map<string, number>();
-  for (const placement of placements) {
-    counts.set(placement.assetId, (counts.get(placement.assetId) ?? 0) + 1);
+  for (const prop of props) {
+    const key = `${prop.kind}/${prop.assetId}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const parts = Array.from(counts.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([assetId, count]) => `${assetId}: ${count}`);
+    .map(([key, count]) => `${key}: ${count}`);
   console.info(
-    '[EnvironmentPropRenderer3D] generated placements (' +
-      placements.length +
+    '[vegetation] props (' +
+      props.length +
       `, map ${options.mapWidth}x${options.mapHeight}, players ${options.playerCount}` +
       '): ' +
       (parts.length > 0 ? parts.join(', ') : 'none'),

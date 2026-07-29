@@ -1,4 +1,5 @@
 import { economyManager } from '../sim/economy';
+import { getVegetationStateHash } from '../sim/vegetation';
 import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { Entity, PlayerId } from '../sim/types';
 import type { Body3D } from '../server/PhysicsEngine3D';
@@ -104,6 +105,11 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       alliesByPlayer: serializeAllies(world.alliesByPlayer),
       scanPulses: toCanonicalValue(world.scanPulses),
       metalDeposits: toCanonicalValue(world.metalDeposits),
+      // Trees, grass, and seaweed are a contested energy supply now, so a
+      // peer whose forest diverged has desynced. The kernel hashes live
+      // props (index + quantized remaining work) rather than the whole
+      // immutable layout, which is already implied by the map inputs.
+      vegetation: getVegetationStateHash(),
       resourceMovements: toCanonicalValue(world.resourceMovements),
     },
     simulation: {

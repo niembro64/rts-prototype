@@ -102,8 +102,19 @@ import {
   setTurretShieldPanelsEnabled,
   setTurretShieldSpheresEnabled,
 } from './turretShieldToggle';
-import { isReclaimableTarget } from './reclaim';
-import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
+import {
+  isReclaimableTarget,
+  makeEntityReclaimTarget,
+  makeVegetationReclaimTarget,
+  resolveReclaimTarget,
+  type ReclaimTarget,
+} from './reclaim';
+import {
+  areaTargetMatchesCommandFilter,
+  isEntityAreaCommandFilterCategory,
+  vegetationAreaTargetMatchesCommandFilter,
+} from './areaCommandFilters';
+import { getVegetationProp, queryVegetationInCircle } from './vegetation';
 
 const MAX_FACTORY_PRODUCTION_QUOTA = 64;
 const BAR_UNLOAD_AREA_MIN_RADIUS = 64;
@@ -1911,7 +1922,10 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
 
 function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  const target = ctx.world.getEntity(command.targetId);
+  // One Reclaim command covers units, buildings, and vegetation props —
+  // BAR's constructors work the same way, and the target id space tells
+  // the two stores apart.
+  const target = resolveReclaimTarget(ctx.world, command.targetId);
   enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command), commandQueueInsertIndex(command));
 }
 
@@ -2148,12 +2162,12 @@ function compareAreaTargets(a: AreaTarget, b: AreaTarget): number {
   return a.distanceSq - b.distanceSq || a.entity.id - b.entity.id;
 }
 
-function enqueueAreaTargetActionsInOrder(
-  targets: readonly Entity[],
+function enqueueAreaTargetActionsInOrder<T>(
+  targets: readonly T[],
   queue: boolean,
   queueFront: boolean,
   queueInsertIndex: number | undefined,
-  enqueue: (target: Entity, queue: boolean, queueFront: boolean, queueInsertIndex?: number) => void,
+  enqueue: (target: T, queue: boolean, queueFront: boolean, queueInsertIndex?: number) => void,
 ): void {
   if (targets.length === 0) return;
   if (queueFront) {
@@ -2334,32 +2348,93 @@ function findReclaimAreaTargets(
   radius: number,
   filterCategory: AreaCommandFilterCategory | undefined,
   filterBlueprintId: string | undefined,
-): Entity[] {
+): ReclaimTarget[] {
   const radiusSq = radius * radius;
-  const targets: AreaTarget[] = [];
+  const targets: ReclaimAreaTarget[] = [];
 
-  const buildings = ctx.world.getBuildings();
-  for (let i = 0; i < buildings.length; i++) {
-    const target = buildings[i];
-    if (target.id === commander.id || !isReclaimableTarget(target)) continue;
-    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
-    const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq) continue;
-    targets.push({ entity: target, distanceSq: distSq });
+  if (isEntityAreaCommandFilterCategory(filterCategory)) {
+    const buildings = ctx.world.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const target = buildings[i];
+      if (target.id === commander.id || !isReclaimableTarget(target)) continue;
+      if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
+      const distSq = entityAreaDistanceSq(target, x, y);
+      if (distSq > radiusSq) continue;
+      targets.push({ target: makeEntityReclaimTarget(target), distanceSq: distSq });
+    }
+
+    const units = ctx.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const target = units[i];
+      if (target.id === commander.id || !isReclaimableTarget(target)) continue;
+      if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
+      const distSq = entityAreaDistanceSq(target, x, y);
+      if (distSq > radiusSq) continue;
+      targets.push({ target: makeEntityReclaimTarget(target), distanceSq: distSq });
+    }
   }
 
-  const units = ctx.world.getUnits();
-  for (let i = 0; i < units.length; i++) {
-    const target = units[i];
-    if (target.id === commander.id || !isReclaimableTarget(target)) continue;
-    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
-    const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq) continue;
-    targets.push({ entity: target, distanceSq: distSq });
-  }
+  // Vegetation lives in its own store, so area reclaim sweeps it through
+  // the prop broadphase rather than the entity lists. The kernel returns
+  // live props by ascending index, which keeps the fan-out identical on
+  // every peer before the distance sort re-orders it.
+  appendVegetationAreaReclaimTargets(
+    targets,
+    x,
+    y,
+    radius,
+    filterCategory,
+    filterBlueprintId,
+  );
 
-  targets.sort(compareAreaTargets);
-  return sortedAreaTargetEntities(targets);
+  targets.sort(compareReclaimAreaTargets);
+  const out = new Array<ReclaimTarget>(targets.length);
+  for (let i = 0; i < targets.length; i++) out[i] = targets[i].target;
+  return out;
+}
+
+type ReclaimAreaTarget = {
+  target: ReclaimTarget;
+  distanceSq: number;
+};
+
+function compareReclaimAreaTargets(a: ReclaimAreaTarget, b: ReclaimAreaTarget): number {
+  return a.distanceSq - b.distanceSq || a.target.id - b.target.id;
+}
+
+/** Scratch for the vegetation area query. Area reclaim is bounded by
+ *  RECLAIM_AREA_MAX_RADIUS, and the command executor is single-threaded,
+ *  so one grown buffer serves every call. */
+let _vegetationAreaQueryScratch = new Uint32Array(512);
+
+function appendVegetationAreaReclaimTargets(
+  out: ReclaimAreaTarget[],
+  x: number,
+  y: number,
+  radius: number,
+  filterCategory: AreaCommandFilterCategory | undefined,
+  filterBlueprintId: string | undefined,
+): void {
+  let found = queryVegetationInCircle(x, y, radius, _vegetationAreaQueryScratch);
+  if (found === _vegetationAreaQueryScratch.length) {
+    // The query truncates at the buffer edge; grow once and retry so a
+    // dense forest cannot silently drop props from the order.
+    _vegetationAreaQueryScratch = new Uint32Array(_vegetationAreaQueryScratch.length * 4);
+    found = queryVegetationInCircle(x, y, radius, _vegetationAreaQueryScratch);
+  }
+  for (let i = 0; i < found; i++) {
+    const prop = getVegetationProp(_vegetationAreaQueryScratch[i]);
+    if (prop === undefined) continue;
+    if (!vegetationAreaTargetMatchesCommandFilter(prop, filterCategory, filterBlueprintId)) {
+      continue;
+    }
+    const dx = prop.x - x;
+    const dy = prop.y - y;
+    out.push({
+      target: makeVegetationReclaimTarget(prop),
+      distanceSq: dx * dx + dy * dy,
+    });
+  }
 }
 
 function findResurrectAreaTargets(
@@ -2431,7 +2506,7 @@ function enqueueRepairAction(
 function enqueueReclaimAction(
   ctx: CommandContext,
   commander: Entity | undefined,
-  target: Entity | undefined,
+  target: ReclaimTarget | null,
   queue: boolean,
   queueFront: boolean,
   queueInsertIndex?: number,
@@ -2443,10 +2518,14 @@ function enqueueReclaimAction(
     commander.unit === null ||
     commander.builder === null
   ) return;
-  if (target !== undefined && commander.id === target.id) return;
-  if (!isReclaimableTarget(target)) return;
+  if (target === null || commander.id === target.id) return;
 
-  const targetPoint = getEntityTargetPoint(target);
+  // Entity targets keep using the entity's own target point (a damaged
+  // aircraft's altitude tracks the entity); vegetation carries its own
+  // world point, already lifted to the prop's mid-height.
+  const targetPoint = target.kind === 'entity'
+    ? getEntityTargetPoint(target.entity)
+    : target;
   const action: UnitAction = {
     type: 'reclaim',
     x: targetPoint.x,
