@@ -6,14 +6,10 @@ type WindParticleConfig = {
   maxParticles: number;
   colorHex: string;
   alpha: number;
-  /** Streak tail alpha as a fraction of the tip alpha (bright tip → dim tail). */
-  tailAlphaFraction: number;
-  streakWidthWorld: number;
-  /** Streak length = wind speed (world/s, after speedMultiplier) × this. */
-  streakSecondsOfTravel: number;
-  /** Minimum projected streak length so far streaks never collapse into
+  radiusWorld: number;
+  /** Minimum projected particle size so far particles never collapse into
    *  sub-pixel shimmer. */
-  minScreenLengthPx: number;
+  minScreenSizePx: number;
   lowerPlaneDistanceAboveWaterLevelWorld: number;
   upperPlaneDistanceAboveHighestTerrainWorld: number;
   /** Follow-volume half-extent = viewScale × this. */
@@ -37,10 +33,8 @@ assertPositive(config.speedMultiplier, 'windConfig.particles.speedMultiplier');
 assertPositiveInteger(config.maxParticles, 'windConfig.particles.maxParticles');
 assertCssHex(config.colorHex, 'windConfig.particles.colorHex');
 assertUnitInterval(config.alpha, 'windConfig.particles.alpha');
-assertUnitInterval(config.tailAlphaFraction, 'windConfig.particles.tailAlphaFraction');
-assertPositive(config.streakWidthWorld, 'windConfig.particles.streakWidthWorld');
-assertPositive(config.streakSecondsOfTravel, 'windConfig.particles.streakSecondsOfTravel');
-assertPositive(config.minScreenLengthPx, 'windConfig.particles.minScreenLengthPx');
+assertPositive(config.radiusWorld, 'windConfig.particles.radiusWorld');
+assertPositive(config.minScreenSizePx, 'windConfig.particles.minScreenSizePx');
 assertNonNegative(
   config.lowerPlaneDistanceAboveWaterLevelWorld,
   'windConfig.particles.lowerPlaneDistanceAboveWaterLevelWorld',
