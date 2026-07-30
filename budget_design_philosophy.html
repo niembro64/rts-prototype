@@ -2768,6 +2768,37 @@
         beam, or visible &ldquo;spawn&rdquo; effect. The host owns rosters, queues, placement,
         resource authorization, work rate, and workflow order.
       </p>
+      <h3>Construction hosts carry restrained hazard markings</h3>
+      <p>
+        Every unit or building with a positive <code>constructionRate</code> carries one
+        permanent yellow-and-black construction marking. The marking identifies build power
+        without replacing the host&rsquo;s team colour or turning the whole silhouette into a
+        warning sign. Placement is authored once in
+        <code>constructionVisualConfig.json</code>: the Commander uses a small dorsal collar,
+        the Construction Drone a tail-boom sleeve, the Construction Submarine its rear propeller
+        guard&rsquo;s mirrored side plates, both Queens a neck collar, and the Fabricator four
+        chamfered clamp boxes mounted at cardinal points on its ring perimeter. Each box is sunk
+        into the torus surface, carries a striped tangent face, and has a small raised top latch;
+        a zero-thickness or visibly floating Fabricator marking is invalid.
+        Its geometry must also simplify visibly and monotonically with building LOD: High uses the
+        chamfered housing, top latch, and paired corner fasteners; Medium uses a plain box and the
+        top latch; Low retains only the mounted box and its essential striped identity face.
+      </p>
+      <p>
+        Every yellow/black boundary is a linear stripe at exactly 45 degrees in physical surface
+        coordinates. Sleeves are open-ended, and circular hardware uses mounted boxes with
+        tangent striped faces:
+        coloured radial caps, ring sectors, wedges, and sunburst patterns are forbidden because
+        they do not read as construction hazard tape. The browser and native renderer generate
+        the same clipped stripe polygons rather than approximating the rule with unrelated
+        shaders or renderer-specific geometry.
+      </p>
+      <p>
+        Both colours remain legible at close, mid, and far geometry tiers, and the marking follows
+        the host through visibility, nanoframe, completion, and death-fade presentation. Coverage is
+        capability-derived and exact: the set of marking profiles must equal the set of blueprints
+        with positive construction rate, with one profile per host and no decorative extras.
+      </p>
       <p>
         <strong>Fabricator production has one non-negotiable spatial invariant:</strong> from
         the instant a unit nanoframe exists until construction completes, it is frozen at the
@@ -3446,6 +3477,7 @@
         <li>Keep host workflows separate from per-mount combat tasks and live turret lock-on. A host may carry attack, guard, repair, construct, or production intent. Only compatible combat intent is projected into mount tasks; construction/repair/production stay on the host.</li>
         <li>Give every mount a stable <code>mountId</code> and a required <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or <code>manual</code>. The choice lives on the unit or building mount, not the reusable turret blueprint. Host attack tasks are evaluated per mount: compatible mounts retain the task lock, incompatible mounts acquire an autonomous fallback, and autonomous/manual siblings are never overwritten. Fight-move and patrol halt logic remains the separate mount flag <code>requiredEngagedForFightStop</code> and applies only to attack emitters.</li>
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
+        <li>Give every positive-<code>constructionRate</code> host exactly one restrained yellow-and-black construction marking authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
         <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team. The turret&rsquo;s mounted world origin selects the source medium; the target body center selects the target medium. Full sight identifies and also supplies contact-level location, radar/sonar-only coverage locates targets only through its authored matrix lane, detectors uncloak within an active full-sight lane, and weapon fire consumes those tiers through explicit targeting requirements. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>

@@ -33,7 +33,6 @@ import {
   disposeSolarCollectorGeoms,
   type SolarRig,
 } from './SolarCollectorMesh3D';
-import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { buildWindTurbineMesh, type WindTurbineRig } from './WindTurbineMesh3D';
 import {
   buildMetalExtractorMesh,
@@ -85,6 +84,8 @@ export type BuildingShapeType = BuildingRenderProfile;
 
 export type BuildingDetailRole =
   | 'static'
+  | 'constructionHostBody'
+  | 'constructionMarking'
   | 'solarLeaf'
   | 'solarPanel'
   | 'solarTeamAccent'
@@ -172,36 +173,6 @@ const radarSweepMat = new THREE.MeshBasicMaterial({
   opacity: 0.28,
   depthWrite: false,
 });
-
-function shaderRgb(rgb: readonly [number, number, number]): string {
-  return `vec3(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-}
-
-const CONSTRUCTION_HAZARD_YELLOW_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.yellowRgb);
-const CONSTRUCTION_HAZARD_BLACK_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.blackRgb);
-
-const hazardStripeMat = new THREE.ShaderMaterial({
-  vertexShader: `
-varying vec3 vLocal;
-void main() {
-  vLocal = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`,
-  fragmentShader: `
-varying vec3 vLocal;
-void main() {
-  float diagonal = fract((vLocal.x + vLocal.y * 0.72 + vLocal.z * 0.28) * 3.25);
-  vec3 yellow = ${CONSTRUCTION_HAZARD_YELLOW_GLSL};
-  vec3 black = ${CONSTRUCTION_HAZARD_BLACK_GLSL};
-  gl_FragColor = vec4(diagonal < 0.5 ? yellow : black, 1.0);
-}
-`,
-});
-
-export function getConstructionHazardMaterial(): THREE.Material {
-  return hazardStripeMat;
-}
 
 /** Build a type-specific building mesh set. `width` and `depth` are the
  *  building's footprint in world units (from `entity.building.width/height`);
@@ -626,7 +597,6 @@ export function disposeBuildingGeoms(): void {
   radarDarkMat.dispose();
   radarDishMat.dispose();
   radarSweepMat.dispose();
-  hazardStripeMat.dispose();
   converterPlatformGeom.dispose();
   converterFrameMat.dispose();
   converterDarkMat.dispose();

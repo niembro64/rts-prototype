@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   getBuildingBlueprint,
@@ -15,6 +16,10 @@ import {
   buildProductionHoldRingMesh,
   disposeProductionHoldRingGeom,
 } from './ProductionHoldRing3D';
+import {
+  buildConstructionHostMarking,
+  disposeConstructionHostMarkingGeometries,
+} from './ConstructionHostMarking3D';
 
 /** Factory chassis: the team-colored hovering torus body. Realized
  *  construction work emits from the factory's host-authored work point. */
@@ -39,7 +44,25 @@ export function buildFactoryMesh(
     getActiveBuildingGeometryTier(),
   );
   torus.position.y = fabricatorTorusHoverHeight();
-  details.push(detail(torus, 'medium', undefined, 'static'));
+  details.push(detail(torus, 'medium', undefined, 'constructionHostBody'));
+
+  const markingProfile = getConstructionHostMarkingProfile('towerFabricator');
+  if (markingProfile === null || markingProfile.kind !== 'ringBoxes') {
+    throw new Error('towerFabricator requires perimeter-mounted construction clamp boxes');
+  }
+  const marking = buildConstructionHostMarking(
+    markingProfile,
+    fabricatorTorusRingRadius(width, depth),
+    getActiveBuildingGeometryTier(),
+  );
+  marking.position.y += fabricatorTorusHoverHeight();
+  marking.updateMatrix();
+  for (const child of [...marking.children]) {
+    if (!(child instanceof THREE.Mesh)) continue;
+    marking.remove(child);
+    child.applyMatrix4(marking.matrix);
+    details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+  }
 
   // The forming-unit ghost orbs that used to sit at the ground-level build
   // bay are retired: the real unit shell is held at the torus center during
@@ -58,4 +81,5 @@ export function buildFactoryMesh(
 export function disposeFactoryMeshGeoms(): void {
   disposeProductionHoldRingGeom();
   disposeConstructionEmitterGeoms();
+  disposeConstructionHostMarkingGeometries();
 }

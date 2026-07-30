@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { getConstructionHazardMaterial } from './BuildingShape3D';
 import type { TurretMesh } from './TurretMesh3D';
 import {
   createPrimitiveCylinderGeometry,
@@ -34,7 +33,6 @@ export class CommanderVisualKit3D {
 
   buildKit(primaryMat: THREE.Material, geometryTier: PrimitiveGeometryTier): THREE.Group {
     const kit = new THREE.Group();
-    const hazardMat = getConstructionHazardMaterial();
     const addBox = (
       material: THREE.Material,
       x: number, y: number, z: number,
@@ -59,7 +57,6 @@ export class CommanderVisualKit3D {
     addBox(primaryMat, -0.08, 1.12, 0, 1.04, 0.14, 0.76);
     addBox(primaryMat, 0.44, 1.22, 0, 0.28, 0.12, 0.58);
     addBox(this.lensMat, 0.64, 1.27, 0, 0.08, 0.11, 0.46);
-    addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
     addCylinder(primaryMat, 0.34, 1.29, -0.42, 0.24, 0.16, 0.24);
     addCylinder(primaryMat, 0.34, 1.29, 0.42, 0.24, 0.16, 0.24);
     addBox(primaryMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);

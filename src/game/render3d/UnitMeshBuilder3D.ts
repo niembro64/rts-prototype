@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
 import type { UnitBodyShape } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
@@ -25,6 +26,7 @@ import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3
 import { setVector3IfChanged } from './threeTransformWriteUtils';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
+import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
@@ -212,6 +214,18 @@ export class UnitMeshBuilder3D {
         if (obj instanceof THREE.Mesh && obj.material === primaryMat) chassisMeshes.push(obj);
       });
       chassis.add(commanderKit);
+    }
+
+    const markingProfile = blueprint === undefined
+      ? null
+      : getConstructionHostMarkingProfile(blueprint.unitBlueprintId);
+    if (markingProfile !== null) {
+      const marking = buildConstructionHostMarking(markingProfile, radius, geometryTier);
+      marking.userData.entityId = entity.id;
+      marking.traverse((obj) => {
+        obj.userData.entityId = entity.id;
+      });
+      chassis.add(marking);
     }
 
     const turretMeshes = this.buildTurrets(

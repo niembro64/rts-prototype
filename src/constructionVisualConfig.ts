@@ -7,6 +7,308 @@
 import constructionVisualConfig from './constructionVisualConfig.json';
 import { COLORS, readRgbTuple } from './colorsConfig';
 
+export type ConstructionHostMarkingAxis = 'up' | 'forward' | 'lateral';
+
+export type ConstructionHostMarkingCenter = Readonly<{
+  forward: number;
+  up: number;
+  lateral: number;
+}>;
+
+export type ConstructionHostSleeveMarking = Readonly<{
+  kind: 'sleeve';
+  center: ConstructionHostMarkingCenter;
+  axis: ConstructionHostMarkingAxis;
+  radius: number;
+  length: number;
+  stripeCount: number;
+}>;
+
+export type ConstructionHostPanelMarking = Readonly<{
+  kind: 'panel';
+  center: ConstructionHostMarkingCenter;
+  axis: ConstructionHostMarkingAxis;
+  width: number;
+  height: number;
+  stripeCount: number;
+  mirrored: boolean;
+}>;
+
+export type ConstructionHostRingBoxLod = Readonly<{
+  chamferedHousing: boolean;
+  topLatch: boolean;
+  cornerFasteners: boolean;
+}>;
+
+export type ConstructionHostRingBoxesMarking = Readonly<{
+  kind: 'ringBoxes';
+  center: ConstructionHostMarkingCenter;
+  axis: ConstructionHostMarkingAxis;
+  ringRadius: number;
+  tubeRadius: number;
+  boxCount: number;
+  boxWidth: number;
+  boxHeight: number;
+  boxDepth: number;
+  mountInset: number;
+  cornerChamfer: number;
+  faceWidth: number;
+  faceHeight: number;
+  faceLift: number;
+  latchWidth: number;
+  latchHeight: number;
+  latchDepth: number;
+  lod: Readonly<{
+    high: ConstructionHostRingBoxLod;
+    medium: ConstructionHostRingBoxLod;
+    low: ConstructionHostRingBoxLod;
+  }>;
+  stripeCount: number;
+}>;
+
+export type ConstructionHostMarkingProfile =
+  | ConstructionHostSleeveMarking
+  | ConstructionHostPanelMarking
+  | ConstructionHostRingBoxesMarking;
+
+function finiteNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} must be finite`);
+  }
+  return value;
+}
+
+function positiveNumber(value: unknown, label: string): number {
+  const number = finiteNumber(value, label);
+  if (number <= 0) throw new Error(`${label} must be positive`);
+  return number;
+}
+
+function positiveEvenInteger(value: unknown, label: string): number {
+  const number = positiveNumber(value, label);
+  if (!Number.isInteger(number) || number < 4 || number % 2 !== 0) {
+    throw new Error(`${label} must be an even integer of at least four`);
+  }
+  return number;
+}
+
+function markingAxis(value: unknown, label: string): ConstructionHostMarkingAxis {
+  if (value !== 'up' && value !== 'forward' && value !== 'lateral') {
+    throw new Error(`${label} must be "up", "forward", or "lateral"`);
+  }
+  return value;
+}
+
+function booleanValue(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`${label} must be boolean`);
+  }
+  return value;
+}
+
+function markingCenter(value: unknown, label: string): ConstructionHostMarkingCenter {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${label} must be an object`);
+  }
+  const raw = value as Record<string, unknown>;
+  return Object.freeze({
+    forward: finiteNumber(raw.forward, `${label}.forward`),
+    up: finiteNumber(raw.up, `${label}.up`),
+    lateral: finiteNumber(raw.lateral, `${label}.lateral`),
+  });
+}
+
+function ringBoxLod(value: unknown, label: string): ConstructionHostRingBoxLod {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${label} must be an object`);
+  }
+  const raw = value as Record<string, unknown>;
+  return Object.freeze({
+    chamferedHousing: booleanValue(
+      raw.chamferedHousing,
+      `${label}.chamferedHousing`,
+    ),
+    topLatch: booleanValue(raw.topLatch, `${label}.topLatch`),
+    cornerFasteners: booleanValue(
+      raw.cornerFasteners,
+      `${label}.cornerFasteners`,
+    ),
+  });
+}
+
+function markingProfile(
+  entityId: string,
+  value: unknown,
+): ConstructionHostMarkingProfile {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`constructionVisualConfig.hostMarkings.${entityId} must be an object`);
+  }
+  const raw = value as Record<string, unknown>;
+  const label = `constructionVisualConfig.hostMarkings.${entityId}`;
+  const center = markingCenter(raw.center, `${label}.center`);
+  const axis = markingAxis(raw.axis, `${label}.axis`);
+  const stripeCount = positiveEvenInteger(raw.stripeCount, `${label}.stripeCount`);
+  if (raw.kind === 'sleeve') {
+    return Object.freeze({
+      kind: 'sleeve',
+      center,
+      axis,
+      radius: positiveNumber(raw.radius, `${label}.radius`),
+      length: positiveNumber(raw.length, `${label}.length`),
+      stripeCount,
+    });
+  }
+  if (raw.kind === 'panel') {
+    const mirrored = booleanValue(raw.mirrored, `${label}.mirrored`);
+    const normalOffset = axis === 'forward'
+      ? center.forward
+      : axis === 'up' ? center.up : center.lateral;
+    if (mirrored && normalOffset === 0) {
+      throw new Error(`${label}.mirrored requires a non-zero center offset on its normal axis`);
+    }
+    return Object.freeze({
+      kind: 'panel',
+      center,
+      axis,
+      width: positiveNumber(raw.width, `${label}.width`),
+      height: positiveNumber(raw.height, `${label}.height`),
+      stripeCount,
+      mirrored,
+    });
+  }
+  if (raw.kind === 'ringBoxes') {
+    const boxCount = positiveNumber(raw.boxCount, `${label}.boxCount`);
+    if (!Number.isInteger(boxCount)) {
+      throw new Error(`${label}.boxCount must be an integer`);
+    }
+    const tubeRadius = positiveNumber(raw.tubeRadius, `${label}.tubeRadius`);
+    const boxWidth = positiveNumber(raw.boxWidth, `${label}.boxWidth`);
+    const boxHeight = positiveNumber(raw.boxHeight, `${label}.boxHeight`);
+    const boxDepth = positiveNumber(raw.boxDepth, `${label}.boxDepth`);
+    const mountInset = positiveNumber(raw.mountInset, `${label}.mountInset`);
+    const cornerChamfer = positiveNumber(raw.cornerChamfer, `${label}.cornerChamfer`);
+    const faceWidth = positiveNumber(raw.faceWidth, `${label}.faceWidth`);
+    const faceHeight = positiveNumber(raw.faceHeight, `${label}.faceHeight`);
+    const latchWidth = positiveNumber(raw.latchWidth, `${label}.latchWidth`);
+    const latchHeight = positiveNumber(raw.latchHeight, `${label}.latchHeight`);
+    const latchDepth = positiveNumber(raw.latchDepth, `${label}.latchDepth`);
+    if (typeof raw.lod !== 'object' || raw.lod === null) {
+      throw new Error(`${label}.lod must be an object`);
+    }
+    const rawLod = raw.lod as Record<string, unknown>;
+    const lod = Object.freeze({
+      high: ringBoxLod(rawLod.high, `${label}.lod.high`),
+      medium: ringBoxLod(rawLod.medium, `${label}.lod.medium`),
+      low: ringBoxLod(rawLod.low, `${label}.lod.low`),
+    });
+    if (
+      !lod.high.chamferedHousing ||
+      !lod.high.topLatch ||
+      !lod.high.cornerFasteners ||
+      lod.medium.chamferedHousing ||
+      !lod.medium.topLatch ||
+      lod.medium.cornerFasteners ||
+      lod.low.chamferedHousing ||
+      lod.low.topLatch ||
+      lod.low.cornerFasteners
+    ) {
+      throw new Error(
+        `${label}.lod must strictly reduce high(chamfers+latch+fasteners) ` +
+        'to medium(latch) to low(housing only)',
+      );
+    }
+    if (boxHeight > tubeRadius * 2) {
+      throw new Error(`${label}.boxHeight must fit on the host ring tube`);
+    }
+    if (mountInset >= boxDepth) {
+      throw new Error(`${label}.mountInset must be smaller than boxDepth`);
+    }
+    if (cornerChamfer * 2 >= Math.min(boxWidth, boxHeight)) {
+      throw new Error(`${label}.cornerChamfer must leave flat housing edges`);
+    }
+    if (
+      faceWidth > boxWidth - cornerChamfer * 2 ||
+      faceHeight > boxHeight - cornerChamfer * 2
+    ) {
+      throw new Error(`${label} striped face must fit inside the chamfered housing`);
+    }
+    if (
+      latchWidth > boxWidth ||
+      latchHeight >= boxHeight ||
+      latchDepth > boxDepth
+    ) {
+      throw new Error(`${label} top latch must fit the housing`);
+    }
+    return Object.freeze({
+      kind: 'ringBoxes',
+      center,
+      axis,
+      ringRadius: positiveNumber(raw.ringRadius, `${label}.ringRadius`),
+      tubeRadius,
+      boxCount,
+      boxWidth,
+      boxHeight,
+      boxDepth,
+      mountInset,
+      cornerChamfer,
+      faceWidth,
+      faceHeight,
+      faceLift: positiveNumber(raw.faceLift, `${label}.faceLift`),
+      latchWidth,
+      latchHeight,
+      latchDepth,
+      lod,
+      stripeCount,
+    });
+  }
+  throw new Error(`${label}.kind must be "sleeve", "panel", or "ringBoxes"`);
+}
+
+const rawHostMarkings = constructionVisualConfig.hostMarkings as Record<string, unknown>;
+
+const stripeAngleDeg = finiteNumber(
+  constructionVisualConfig.hostMarkingStyle.stripeAngleDeg,
+  'constructionVisualConfig.hostMarkingStyle.stripeAngleDeg',
+);
+if (stripeAngleDeg !== 45) {
+  throw new Error(
+    `constructionVisualConfig.hostMarkingStyle.stripeAngleDeg must be exactly 45, got ${stripeAngleDeg}`,
+  );
+}
+
+/** One construction-hazard grammar for both renderers. Stripe boundaries are
+ * generated in physical surface coordinates at exactly 45 degrees. Cylinders
+ * remain open-ended and circular hardware receives perimeter-mounted boxes
+ * with striped tangent faces, so the colors can never form radial wedges or a
+ * sunburst. */
+export const CONSTRUCTION_HAZARD_MARKING_STYLE = Object.freeze({
+  stripeAngleDeg: 45 as const,
+  pylonStripeCount: positiveEvenInteger(
+    constructionVisualConfig.hostMarkingStyle.pylonStripeCount,
+    'constructionVisualConfig.hostMarkingStyle.pylonStripeCount',
+  ),
+});
+
+/** Permanent yellow/black identity markings for every host that owns build
+ * power. Unit dimensions are in body-radius units. The Fabricator torus uses
+ * its live ring radius as the unit scale, so the same authored clamp-box
+ * profile drives the browser and native renderer without restating placement
+ * numbers. */
+export const CONSTRUCTION_HOST_MARKING_PROFILES: Readonly<
+  Record<string, ConstructionHostMarkingProfile>
+> = Object.freeze(Object.fromEntries(
+  Object.entries(rawHostMarkings).map(([entityId, value]) => [
+    entityId,
+    markingProfile(entityId, value),
+  ]),
+));
+
+export function getConstructionHostMarkingProfile(
+  entityId: string,
+): ConstructionHostMarkingProfile | null {
+  return CONSTRUCTION_HOST_MARKING_PROFILES[entityId] ?? null;
+}
+
 /** Standard construction hazard stripe palette. These are the same
  * yellow/black colors originally used by the commander's construction
  * turret material. Keep RGB and hex forms together so shader materials

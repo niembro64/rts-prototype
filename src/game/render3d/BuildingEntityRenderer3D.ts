@@ -103,6 +103,12 @@ function buildingDetailVisibleAtLevel(
   shapeType: BuildingShapeType,
   level: number,
 ): boolean {
+  if (
+    detailMesh.role === 'constructionHostBody' ||
+    detailMesh.role === 'constructionMarking'
+  ) {
+    return true;
+  }
   const tower = isTowerShapeType(shapeType);
   if (detailMesh.role === 'tinyTrim' || detailMesh.role === 'solarTeamAccent') {
     return visualFeatureVisibleAtDetail(

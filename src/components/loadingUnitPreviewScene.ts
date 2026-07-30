@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
 import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
 import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -72,6 +73,7 @@ import {
 import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
+import { buildConstructionHostMarking } from '@/game/render3d/ConstructionHostMarking3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -542,6 +544,10 @@ function buildPreviewUnitModel(
 
   const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
   buildPreviewBody(liftGroup, blueprint, materials.primary, geometryTier);
+  const markingProfile = getConstructionHostMarkingProfile(unitBlueprintId);
+  if (markingProfile !== null) {
+    liftGroup.add(buildConstructionHostMarking(markingProfile, radius, geometryTier));
+  }
   buildPreviewProductionRing(liftGroup, productionRing, materials.primary, geometryTier);
   buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials, productionRing, geometryTier);
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials, geometryTier);

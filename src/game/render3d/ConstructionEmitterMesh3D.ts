@@ -17,9 +17,10 @@ import type { ConstructionEmitterSize } from '@/types/blueprints';
 import type { TurretConfig } from '../sim/types';
 import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
-import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
+import { CONSTRUCTION_HAZARD_MARKING_STYLE } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import { makeCylinder } from './BuildingMeshPrimitives3D';
+import { buildConstructionHazardSleeve } from './ConstructionHostMarking3D';
 import {
   createPrimitiveCylinderGeometry,
   getOrCreate,
@@ -151,32 +152,6 @@ const strawInnerMat = new THREE.MeshLambertMaterial({
   opacity: 0.3,
   depthWrite: false,
   side: THREE.DoubleSide,
-});
-
-function shaderRgb(rgb: readonly [number, number, number]): string {
-  return `vec3(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-}
-
-const CONSTRUCTION_HAZARD_YELLOW_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.yellowRgb);
-const CONSTRUCTION_HAZARD_BLACK_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.blackRgb);
-
-const constructionBandMat = new THREE.ShaderMaterial({
-  vertexShader: `
-varying vec3 vLocal;
-void main() {
-  vLocal = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`,
-  fragmentShader: `
-varying vec3 vLocal;
-void main() {
-  float diagonal = fract((vLocal.x * 0.8 + vLocal.y * 1.15 + vLocal.z * 0.45) * 4.4);
-  vec3 yellow = ${CONSTRUCTION_HAZARD_YELLOW_GLSL};
-  vec3 black = ${CONSTRUCTION_HAZARD_BLACK_GLSL};
-  gl_FragColor = vec4(diagonal < 0.5 ? yellow : black, 1.0);
-}
-`,
 });
 
 const CONSTRUCTION_RESOURCE_COLORS = {
@@ -351,7 +326,6 @@ export function disposeConstructionEmitterGeoms(): void {
   frameMat.dispose();
   strawOuterMat.dispose();
   strawInnerMat.dispose();
-  constructionBandMat.dispose();
   energyCapMat.dispose();
   metalCapMat.dispose();
 }
@@ -434,7 +408,7 @@ function buildConstructionTowerPiece(
   z: number,
   geometryTier: PrimitiveGeometryTier,
 ): {
-  staticMeshes: THREE.Mesh[];
+  staticMeshes: THREE.Object3D[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
   rig: ResourcePylonRig;
 } {
@@ -456,14 +430,16 @@ function buildConstructionTowerPiece(
     z,
     getBaseCylinderGeom(geometryTier),
   );
-  const constructionBand = makeCylinder(
-    constructionBandMat,
+  const constructionBand = buildConstructionHazardSleeve(
     bandRadius,
     bandHeight,
+    CONSTRUCTION_HAZARD_MARKING_STYLE.pylonStripeCount,
+    geometryTier,
+  );
+  constructionBand.position.set(
     x,
     pylonBaseY + baseHeight + bandHeight / 2,
     z,
-    getBaseCylinderGeom(geometryTier),
   );
   const [strawOuter, strawInner] = makeStrawWalls(
     innerPylonRadius,

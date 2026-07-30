@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import {
+  CONSTRUCTION_HAZARD_MARKING_STYLE,
+  CONSTRUCTION_HOST_MARKING_PROFILES,
+} from '@/constructionVisualConfig';
+import {
   FOREST_SPRUCE2_LEAF_COLOR,
   FOREST_SPRUCE2_WOOD_COLOR,
 } from '@/config';
@@ -98,6 +102,11 @@ import {
   environmentPropVisibleAtDetailRung,
   environmentPropUsesGrassPresentation,
 } from './EnvironmentPropRenderer3D';
+import {
+  buildConstructionHazardSleeve,
+  buildConstructionHostMarking,
+  buildLinearHazardStripePolygons,
+} from './ConstructionHostMarking3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
 const DETAIL_LEVELS = [
@@ -1389,6 +1398,200 @@ function runEnvironmentLodMaterialContracts(): void {
   });
 }
 
+export function runConstructionHostMarkingContracts(): void {
+  assertContract(
+    CONSTRUCTION_HAZARD_MARKING_STYLE.stripeAngleDeg === 45,
+    'construction hazard bands use the one exact 45-degree style',
+  );
+  const samplePolygons = buildLinearHazardStripePolygons(10, 4, 8);
+  assertContract(
+    samplePolygons.some((polygon) => polygon.color === 'yellow') &&
+      samplePolygons.some((polygon) => polygon.color === 'black'),
+    'linear construction stripe partition retains both palette colors',
+  );
+  for (const polygon of samplePolygons) {
+    for (let index = 0; index < polygon.points.length; index++) {
+      const next = polygon.points[(index + 1) % polygon.points.length];
+      const deltaU = next[0] - polygon.points[index][0];
+      const deltaV = next[1] - polygon.points[index][1];
+      const isRectangleEdge = Math.abs(deltaU) < 1e-7 || Math.abs(deltaV) < 1e-7;
+      assertContract(
+        isRectangleEdge || Math.abs(Math.abs(deltaU) - Math.abs(deltaV)) < 1e-7,
+        'every non-outline construction stripe boundary has an exact 45-degree slant',
+      );
+    }
+  }
+
+  const blueprintHostIds = [
+    ...UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
+      (getUnitBlueprint(unitBlueprintId).constructionRate ?? 0) > 0),
+    ...BUILDING_BLUEPRINT_IDS.filter((buildingBlueprintId) =>
+      (getBuildingBlueprint(buildingBlueprintId).constructionRate ?? 0) > 0),
+  ].sort();
+  const configuredHostIds = Object.keys(CONSTRUCTION_HOST_MARKING_PROFILES).sort();
+  assertContract(
+    JSON.stringify(configuredHostIds) === JSON.stringify(blueprintHostIds),
+    `construction marking profiles must exactly cover construction-rate hosts; configured=${configuredHostIds.join(',')} blueprints=${blueprintHostIds.join(',')}`,
+  );
+
+  for (const entityId of configuredHostIds) {
+    const profile = CONSTRUCTION_HOST_MARKING_PROFILES[entityId];
+    assertContract(profile !== undefined, `${entityId} construction marking profile resolves`);
+    assertContract(
+      (profile as { kind: string }).kind !== 'torus' &&
+        (profile as { kind: string }).kind !== 'collar' &&
+        (profile as { kind: string }).kind !== 'ringPanels',
+      `${entityId} does not use legacy radial/twist marking geometry`,
+    );
+    const unitBlueprint = UNIT_BLUEPRINT_IDS.includes(entityId as UnitBlueprintId)
+      ? getUnitBlueprint(entityId as UnitBlueprintId)
+      : null;
+    const scale = unitBlueprint?.radius.other ?? 100;
+    const ringBoxTierVertexCounts: number[] = [];
+    for (const tier of TIERS) {
+      const marking = buildConstructionHostMarking(profile, scale, tier);
+      const colorMeshes = new Map<string, THREE.Mesh>();
+      marking.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        const color = object.userData.constructionHostMarkingColor as string | undefined;
+        if (mesh.isMesh && color !== undefined) colorMeshes.set(color, mesh);
+      });
+      for (const color of ['yellow', 'black']) {
+        const mesh = colorMeshes.get(color);
+        assertContract(
+          mesh !== undefined &&
+            mesh.geometry.getAttribute('position').count > 0,
+          `${entityId} ${tier} construction marking retains ${color} geometry`,
+        );
+        assertContract(
+          mesh?.userData.constructionHazardStripeAngleDeg === 45 &&
+            mesh.userData.constructionHazardPattern === 'linear-open' &&
+            mesh.userData.constructionHazardRadial === false,
+          `${entityId} ${tier} ${color} geometry declares exact linear 45-degree, non-radial topology`,
+        );
+      }
+      if (profile.kind === 'sleeve') {
+        for (const mesh of colorMeshes.values()) {
+          const positions = mesh.geometry.getAttribute('position');
+          for (let vertex = 0; vertex < positions.count; vertex++) {
+            const radialDistance = Math.hypot(
+              positions.getX(vertex),
+              positions.getZ(vertex),
+            );
+            assertContract(
+              radialDistance >= profile.radius * scale * 0.999,
+              `${entityId} ${tier} sleeve is open-ended and contains no radial cap-center vertices`,
+            );
+          }
+        }
+      }
+      if (profile.kind === 'ringBoxes') {
+        const lod = tier === 'close'
+          ? profile.lod.high
+          : tier === 'mid' ? profile.lod.medium : profile.lod.low;
+        assertContract(
+          profile.mountInset > 0 && profile.mountInset < profile.boxDepth,
+          `${entityId} ${tier} clamp boxes penetrate the host perimeter instead of floating`,
+        );
+        const housing = marking.children.find(
+          (child) =>
+            child.userData.constructionHostMarkingPart === 'mounted-housing',
+        ) as THREE.Mesh | undefined;
+        const latch = marking.children.find(
+          (child) =>
+            child.userData.constructionHostMarkingPart === 'top-latch',
+        ) as THREE.Mesh | undefined;
+        assertContract(
+          housing?.isMesh === true &&
+            housing.userData.constructionHostMarkingVolume === true &&
+            housing.geometry.getAttribute('position').count > 0,
+          `${entityId} ${tier} uses a real volumetric housing`,
+        );
+        assertContract(
+          housing?.geometry.userData.constructionHostMarkingLodTier === tier &&
+            housing.geometry.userData.constructionHostMarkingHousingStyle ===
+              (lod.chamferedHousing ? 'chamfered' : 'box'),
+          `${entityId} ${tier} selects its authored housing simplification`,
+        );
+        const expectsHardware = lod.topLatch || lod.cornerFasteners;
+        assertContract(
+          expectsHardware
+            ? latch?.isMesh === true &&
+              latch.userData.constructionHostMarkingVolume === true &&
+              latch.geometry.getAttribute('position').count > 0 &&
+              latch.geometry.userData.constructionHostMarkingTopLatch ===
+                lod.topLatch &&
+              latch.geometry.userData.constructionHostMarkingCornerFasteners ===
+                lod.cornerFasteners
+            : latch === undefined,
+          `${entityId} ${tier} hardware matches its authored latch/fastener LOD`,
+        );
+        const hostOuterRadius =
+          (profile.ringRadius + profile.tubeRadius) * scale;
+        const expectedBackRadius =
+          hostOuterRadius - profile.mountInset * scale;
+        const expectedFrontRadius =
+          expectedBackRadius + profile.boxDepth * scale;
+        const housingPositions = housing?.geometry.getAttribute('position');
+        let hasEmbeddedBack = false;
+        let hasProjectedFront = false;
+        if (housingPositions !== undefined) {
+          const tolerance = Math.max(1e-5, scale * 1e-5);
+          for (let vertex = 0; vertex < housingPositions.count; vertex++) {
+            const x = housingPositions.getX(vertex);
+            hasEmbeddedBack =
+              hasEmbeddedBack ||
+              Math.abs(x - expectedBackRadius) <= tolerance;
+            hasProjectedFront =
+              hasProjectedFront ||
+              Math.abs(x - expectedFrontRadius) <= tolerance;
+          }
+        }
+        assertContract(
+          expectedBackRadius < hostOuterRadius &&
+            hasEmbeddedBack &&
+            hasProjectedFront,
+          `${entityId} ${tier} housing spans from inside the torus surface to a true outer face`,
+        );
+        let tierVertexCount = 0;
+        marking.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          if (mesh.isMesh) {
+            tierVertexCount += mesh.geometry.getAttribute('position').count;
+          }
+        });
+        ringBoxTierVertexCounts.push(tierVertexCount);
+      }
+    }
+    if (profile.kind === 'ringBoxes') {
+      assertContract(
+        ringBoxTierVertexCounts.length === 3 &&
+          ringBoxTierVertexCounts[0] > ringBoxTierVertexCounts[1] &&
+          ringBoxTierVertexCounts[1] > ringBoxTierVertexCounts[2],
+        `${entityId} clamp-box vertices must strictly decrease close > mid > far; got ${ringBoxTierVertexCounts.join(' > ')}`,
+      );
+    }
+  }
+
+  for (const tier of TIERS) {
+    const pylonSleeve = buildConstructionHazardSleeve(
+      4,
+      2,
+      CONSTRUCTION_HAZARD_MARKING_STYLE.pylonStripeCount,
+      tier,
+    );
+    pylonSleeve.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      assertContract(
+        mesh.userData.constructionHazardStripeAngleDeg === 45 &&
+          mesh.userData.constructionHazardRadial === false,
+        `construction pylon ${tier} uses the same exact 45-degree non-radial sleeve`,
+      );
+    });
+  }
+}
+
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 25, 'visual roster covers all 25 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 12, 'visual roster covers all 12 buildings');
@@ -1405,6 +1608,7 @@ export function runEntityLodGeometry3DContractTest(): void {
     runVisualStateTransferContracts(material);
     runEmissionRegistryContracts();
     runEmissionPoseContracts();
+    runConstructionHostMarkingContracts();
   } finally {
     material.dispose();
   }
