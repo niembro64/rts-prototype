@@ -14,10 +14,13 @@
 //   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
 //
 // AUTO and the manual controls therefore resolve to the same authored rungs,
-// including OFF/GLYPH. Features snap to rung boundaries on purpose: one
-// hysteresis covers every transition and a whole zoom sweep costs at most
-// three mesh transitions per entity. Thresholds live in lod.json `detail`;
-// this module is pure (no THREE) and interprets that config.
+// including OFF/GLYPH. A manual HIGH/MED/LOW pin selects the geometry rung of a
+// DRAWN model only — it is not a visibility policy, so GLYPH stays the floor in
+// every mode (detailRungWithGlyphFloor) and a strategic zoom keeps its icons
+// instead of showing sub-pixel models. Features snap to rung boundaries on
+// purpose: one hysteresis covers every transition and a whole zoom sweep costs
+// at most three mesh transitions per entity. Thresholds live in lod.json
+// `detail`; this module is pure (no THREE) and interprets that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
@@ -276,30 +279,74 @@ export function detailLevelForViewPosition(
   ));
 }
 
-/** Shared projected-size rung selection for non-entity world objects.
- * Supplying the previous rung gives static props the same AUTO hysteresis as
- * entities; manual modes always resolve directly to their named rung. */
+/** Raw projected-size rung for non-entity world objects, ignoring the LOD mode.
+ * Supplying the previous coverage rung gives static props the same hysteresis
+ * as entities. Latches must always track THIS value, never the mode-resolved
+ * one, so a mode switch cannot feed a pinned rung back into the hysteresis. */
+export function coverageRungForViewPosition(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
+  currentCoverageRung?: DetailRung,
+): DetailRung {
+  const level = detailLevelForRadiusDistance(
+    radiusWorld,
+    Math.hypot(view.cameraX - simX, view.cameraY - simZ, view.cameraZ - simY),
+    view.fovYRad,
+  );
+  return currentCoverageRung === undefined
+    ? detailRungForLevel(level)
+    : detailRungWithHysteresis(currentCoverageRung, level);
+}
+
+/** Shared projected-size rung selection for non-entity world objects, with the
+ * current LOD mode applied. */
 export function detailRungForViewPosition(
   view: RenderViewState3D,
   simX: number,
   simY: number,
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
-  currentRung?: DetailRung,
+  currentCoverageRung?: DetailRung,
 ): DetailRung {
-  const lodMode = getLodMode();
-  if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
-  if (lodMode === 'medium') return DETAIL_RUNG_MID;
-  if (lodMode === 'low') return DETAIL_RUNG_FAR;
-  if (lodMode === 'off') return DETAIL_RUNG_GLYPH;
-  const level = detailLevelForRadiusDistance(
-    radiusWorld,
-    Math.hypot(view.cameraX - simX, view.cameraY - simZ, view.cameraZ - simY),
-    view.fovYRad,
-  );
-  return currentRung === undefined
-    ? detailRungForLevel(level)
-    : detailRungWithHysteresis(currentRung, level);
+  // OFF is the glyph end state, so it never needs the coverage rung at all.
+  if (pinnedRungForLodMode() === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
+  return detailRungForMode(coverageRungForViewPosition(
+    view, simX, simY, simZ, radiusWorld, currentCoverageRung));
+}
+
+/** The authored rung the current manual LOD override pins, or null in AUTO. */
+export function pinnedRungForLodMode(): DetailRung | null {
+  switch (getLodMode()) {
+    case 'high': return DETAIL_RUNG_CLOSE;
+    case 'medium': return DETAIL_RUNG_MID;
+    case 'low': return DETAIL_RUNG_FAR;
+    case 'off': return DETAIL_RUNG_GLYPH;
+    default: return null;
+  }
+}
+
+/** Applies the current LOD mode to a latched camera-coverage rung. */
+export function detailRungForMode(coverageRung: DetailRung): DetailRung {
+  const pinned = pinnedRungForLodMode();
+  return pinned === null ? coverageRung : detailRungWithGlyphFloor(pinned, coverageRung);
+}
+
+/**
+ * Manual-override resolution. HIGH/MED/LOW pin which authored geometry rung a
+ * DRAWN model uses; they do NOT decide whether the entity is drawn at all. An
+ * entity whose projected coverage already reached GLYPH stays a strategic glyph
+ * in every mode (BAR behaviour), so pinning HIGH can never trade a readable
+ * icon for a sub-pixel model. OFF pins GLYPH and is the end state.
+ */
+export function detailRungWithGlyphFloor(
+  pinnedRung: DetailRung,
+  coverageRung: DetailRung,
+): DetailRung {
+  if (pinnedRung === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
+  return coverageRung === DETAIL_RUNG_GLYPH ? DETAIL_RUNG_GLYPH : pinnedRung;
 }
 
 // ── Rung ladder ─────────────────────────────────────────────────────

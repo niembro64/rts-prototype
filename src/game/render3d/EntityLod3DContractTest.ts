@@ -168,6 +168,38 @@ export function runEntityLod3DContractTest(): void {
       entityLodProxyGlyph3D(groundUnit) === ENTITY_LOD_PROXY_GLYPH_CIRCLE,
       'ground combat units use the default circular proxy glyph',
     );
+    // A manual pin selects the geometry rung of a DRAWN model; it is not a
+    // visibility policy. At a strategic zoom the model is sub-pixel, so every
+    // mode must still hand the entity to its strategic glyph — otherwise
+    // clicking HIGH makes the whole battlefield vanish.
+    for (const mode of ['high', 'medium', 'low'] as const) {
+      groundUnit.transform.y = -10000;
+      setLodMode(mode);
+      bodyLod.beginFrame();
+      assertContract(
+        bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+          bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_GLYPH,
+        `${mode} mode drew a sub-pixel model instead of the strategic glyph`,
+      );
+      // ...and the icon cross-fades in beforehand exactly as it does in AUTO.
+      groundUnit.transform.y = -4000;
+      bodyLod.beginFrame();
+      const pinnedBandAlpha =
+        bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
+      assertContract(
+        !bodyLod.entityUsesLodProxyForView(viewAt(camera), groundUnit) &&
+          pinnedBandAlpha > 0 && pinnedBandAlpha < 1,
+        `${mode} mode lost AUTO's icon cross-fade band`,
+      );
+    }
+    // The pin still governs the geometry of everything that IS drawn.
+    groundUnit.transform.y = -4000;
+    setLodMode('high');
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_CLOSE,
+      'HIGH did not lift a far-coverage unit to the close rung',
+    );
     setLodMode('off');
     groundUnit.transform.y = -10;
     bodyLod.beginFrame();

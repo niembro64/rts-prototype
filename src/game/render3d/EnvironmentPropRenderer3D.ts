@@ -24,12 +24,11 @@ import {
 } from '../sim/vegetation';
 import {
   DETAIL_RUNG_CLOSE,
-  DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
-  DETAIL_RUNG_MID,
   type DetailRung,
+  coverageRungForViewPosition,
   detailLevelForRung,
-  detailRungForViewPosition,
+  detailRungForMode,
   geometryTierForDetail,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
@@ -42,7 +41,8 @@ type EnvironmentPropNode = {
   prop: VegetationProp;
   root: THREE.Group;
   lods: Record<PrimitiveGeometryTier, THREE.Object3D>;
-  detailRung: DetailRung;
+  /** Latched camera-coverage rung (mode-independent); see the update loop. */
+  coverageRung: DetailRung;
 };
 
 type LoadedEnvironmentAsset = {
@@ -334,23 +334,19 @@ export class EnvironmentPropRenderer3D {
         node.root.visible = false;
         continue;
       }
-      const rung = view
-        ? detailRungForViewPosition(
+      // The node latches the CAMERA-COVERAGE rung so its hysteresis survives a
+      // mode switch; the manual pin is applied on top for this frame only.
+      node.coverageRung = view
+        ? coverageRungForViewPosition(
             view,
             p.x,
             p.y,
             p.z + p.height * 0.5,
             Math.max(p.radius, p.height * 0.5),
-            node.detailRung,
+            node.coverageRung,
           )
-        : lodMode === 'off'
-          ? DETAIL_RUNG_GLYPH
-          : lodMode === 'low'
-            ? DETAIL_RUNG_FAR
-            : lodMode === 'medium'
-              ? DETAIL_RUNG_MID
-              : DETAIL_RUNG_CLOSE;
-      node.detailRung = rung;
+        : DETAIL_RUNG_CLOSE;
+      const rung = detailRungForMode(node.coverageRung);
       node.root.visible = environmentPropVisibleAtDetailRung(rung);
       if (!node.root.visible) continue;
       const tier = geometryTierForDetail(detailLevelForRung(rung));
@@ -833,7 +829,7 @@ export class EnvironmentPropRenderer3D {
         prop,
         root,
         lods,
-        detailRung: DETAIL_RUNG_CLOSE,
+        coverageRung: DETAIL_RUNG_CLOSE,
       };
       this.nodes.push(node);
       this.nodesByPropIndex.set(prop.index, node);

@@ -110,9 +110,23 @@ export function runEntityDetailLevel3DContractTest(): void {
     };
     setLodMode('high');
     assertContract(
-      detailLevelForViewPosition(view, 0, -10000, 0) === DETAIL_LEVEL_FULL,
+      detailLevelForViewPosition(view, 0, -10, 0) === DETAIL_LEVEL_FULL,
       'HIGH freezes bare-position effects at the close rung',
     );
+    // The glyph floor holds in every manual mode: a pin chooses the geometry of
+    // a DRAWN model, so it must never replace a readable strategic icon with a
+    // sub-pixel model. This is what makes HIGH usable at a strategic zoom.
+    for (const mode of ['high', 'medium', 'low'] as const) {
+      setLodMode(mode);
+      assertContract(
+        detailRungForViewPosition(view, 0, -10000, 0, 1) === DETAIL_RUNG_GLYPH,
+        `${mode} kept a sub-pixel model instead of the glyph`,
+      );
+      assertContract(
+        detailRungForViewPosition(view, 0, -10, 0, 1000) !== DETAIL_RUNG_GLYPH,
+        `${mode} glyphed an entity that fills the screen`,
+      );
+    }
     setLodMode('medium');
     assertContract(
       detailLevelForViewPosition(view, 0, -10, 0) === detailLevelForRung(DETAIL_RUNG_MID),
@@ -137,6 +151,24 @@ export function runEntityDetailLevel3DContractTest(): void {
     assertContract(
       detailRungForViewPosition(view, 0, -10000, 0, 1000) === DETAIL_RUNG_CLOSE,
       'AUTO retains more detail for a larger prop at the same distance',
+    );
+    // A pin replaces the AUTO ladder for everything still drawn as a model.
+    setLodMode('high');
+    assertContract(
+      detailRungForViewPosition(view, 0, -10000, 0, 200) === DETAIL_RUNG_CLOSE,
+      'HIGH did not lift a mid-coverage prop to the close rung',
+    );
+    setLodMode('low');
+    assertContract(
+      detailRungForViewPosition(view, 0, -10000, 0, 1000) === DETAIL_RUNG_FAR,
+      'LOW did not drop a close-coverage prop to the far rung',
+    );
+    // The pin is applied on top of the caller's latch, never fed back into it:
+    // a latched CLOSE coverage rung must still resolve to the pinned rung.
+    assertContract(
+      detailRungForViewPosition(view, 0, -10000, 0, 1000, DETAIL_RUNG_CLOSE) ===
+        DETAIL_RUNG_FAR,
+      'a manual pin leaked into the coverage hysteresis latch',
     );
   } finally {
     setLodMode(previousLodMode);

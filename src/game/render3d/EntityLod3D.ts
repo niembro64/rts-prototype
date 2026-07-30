@@ -5,20 +5,18 @@ import { isRayType } from '@/types/shotTypes';
 import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
 import {
-  DETAIL_LEVEL_FULL,
   DETAIL_RADIUS_FLOOR_BEAM,
   DETAIL_RADIUS_FLOOR_PROJECTILE,
-  DETAIL_RUNG_CLOSE,
-  DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
-  DETAIL_RUNG_MID,
   type DetailRung,
   detailLevelForRadiusDistance,
   detailLevelForRung,
   detailRungForLevel,
+  detailRungForMode,
   detailRungWithHysteresis,
   detailScreenRadiusPx,
   lodProxyFadeAlphaForScreenRadius,
+  pinnedRungForLodMode,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
@@ -191,22 +189,30 @@ export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
 }
 
 /**
+ * Applies the current LOD mode to a raw camera-coverage level. AUTO passes the
+ * coverage through; a manual HIGH/MED/LOW pin replaces it with that rung's
+ * level, except where the coverage already reached GLYPH — a pin chooses the
+ * geometry of a DRAWN model, it never keeps a sub-pixel model on screen in
+ * place of the strategic icon. OFF resolves to GLYPH everywhere.
+ */
+function detailLevelForMode(coverageLevel: number): number {
+  return pinnedRungForLodMode() === null
+    ? coverageLevel
+    : detailLevelForRung(detailRungForMode(detailRungForLevel(coverageLevel)));
+}
+
+/**
  * Screen-coverage metric for callers without a render-loop cache. It is used
  * only to choose a rung; rendered output is always HIGH, MED, LOW, or glyph.
  * No hysteresis — use {@link EntityLodState3D.entityDetailRungForView}
  * for anything that triggers rebuilds.
  */
 export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
-  const lodMode = getLodMode();
-  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-  if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
-  return detailLevelForRadiusDistance(
+  return detailLevelForMode(detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(entityCameraDistanceSq3D(camera, entity)),
     cameraFovYRad(camera),
-  );
+  ));
 }
 
 /**
@@ -216,12 +222,7 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
  * {@link entityDetailLevel3D}.
  */
 export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
-  const lodMode = getLodMode();
-  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-  if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-  if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-  if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
-  return detailLevelForRadiusDistance(
+  return detailLevelForMode(detailLevelForRadiusDistance(
     entityDetailRadius3D(entity),
     Math.sqrt(simPositionViewDistanceSq3D(
       view,
@@ -230,7 +231,7 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
       entity.transform.z,
     )),
     view.fovYRad,
-  );
+  ));
 }
 
 export class EntityLodState3D {
@@ -334,11 +335,12 @@ export class EntityLodState3D {
    * feed rebuild bands with {@link entityDetailRungForView}.
    */
   entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
-    const lodMode = getLodMode();
-    if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-    if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-    if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-    if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
+    return detailLevelForMode(this.entityCoverageDetailLevel(view, entity));
+  }
+
+  /** Raw camera-coverage level, ignoring the LOD mode. Everything mode-aware
+   *  layers on top of this so a manual pin is never applied twice. */
+  private entityCoverageDetailLevel(view: RenderViewState3D, entity: Entity): number {
     return detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
@@ -351,10 +353,12 @@ export class EntityLodState3D {
    * GLYPH rung: 0 outside the fade band, ramping to 1 as the projected
    * screen radius approaches the glyph threshold. Computed from the raw
    * (unlatched) screen radius so the fade is continuous; only the model
-   * cut itself rides the hysteresis-latched rung.
+   * cut itself rides the hysteresis-latched rung. OFF has no band — it
+   * shows the fully opaque glyph outright — but HIGH/MED/LOW keep AUTO's,
+   * because they keep AUTO's glyph flip.
    */
   entityLodProxyFadeAlphaForView(view: RenderViewState3D, entity: Entity): number {
-    if (getLodMode() !== 'auto') return 0;
+    if (getLodMode() === 'off') return 0;
     if (!entityLodEnabled()) return 0;
     return lodProxyFadeAlphaForScreenRadius(detailScreenRadiusPx(
       entityDetailRadius3D(entity),
@@ -366,15 +370,21 @@ export class EntityLodState3D {
   /**
    * Latched detail rung with hysteresis — THE per-entity LOD decision for
    * everything that costs a rebuild. Latches once per frame per entity;
-   * repeat calls within a frame return the latched value.
+   * repeat calls within a frame return the latched value. A manual
+   * HIGH/MED/LOW pin is applied to the latched COVERAGE rung, so the latch
+   * survives mode switches and the glyph flip keeps its hysteresis in every
+   * mode.
    */
   entityDetailRungForView(view: RenderViewState3D, entity: Entity): DetailRung {
-    const lodMode = getLodMode();
-    if (lodMode === 'high') return DETAIL_RUNG_CLOSE;
-    if (lodMode === 'medium') return DETAIL_RUNG_MID;
-    if (lodMode === 'low') return DETAIL_RUNG_FAR;
-    if (lodMode === 'off') return DETAIL_RUNG_GLYPH;
+    // OFF is the glyph end state, so it never needs the coverage rung at all.
+    if (pinnedRungForLodMode() === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
+    return detailRungForMode(this.entityCoverageDetailRungForView(view, entity));
+  }
 
+  private entityCoverageDetailRungForView(
+    view: RenderViewState3D,
+    entity: Entity,
+  ): DetailRung {
     const entityId = entity.id;
     if (canIndexClientEntityId(entityId)) {
       const frame = this.rungFrameByIndexedEntityId[entityId];
@@ -382,7 +392,7 @@ export class EntityLodState3D {
       if (frame === this.frame && stored !== undefined) {
         return stored;
       }
-      const level = this.entityDetailLevelForView(view, entity);
+      const level = this.entityCoverageDetailLevel(view, entity);
       const rung = stored !== undefined && frame !== undefined &&
         this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
         ? detailRungWithHysteresis(stored, level)
@@ -402,7 +412,7 @@ export class EntityLodState3D {
     if (frame === this.frame && stored !== undefined) {
       return stored;
     }
-    const level = this.entityDetailLevelForView(view, entity);
+    const level = this.entityCoverageDetailLevel(view, entity);
     const rung = stored !== undefined && frame !== undefined &&
       this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
       ? detailRungWithHysteresis(stored, level)
@@ -428,11 +438,13 @@ export class EntityLodState3D {
   }
 
   /**
-   * AUTO-mode proxy selection for the active 3D render loop: the entity is
-   * a glyph exactly when its latched detail rung reaches GLYPH (projected
-   * screen radius at/below the configured glyph size, with hysteresis).
-   * Units iconify too (BAR behavior) — the cross-fade band beforehand is
-   * {@link entityLodProxyFadeAlphaForView}.
+   * Proxy selection for the active 3D render loop: the entity is a glyph
+   * exactly when its latched detail rung reaches GLYPH (projected screen
+   * radius at/below the configured glyph size, with hysteresis). Units
+   * iconify too (BAR behavior) — the cross-fade band beforehand is
+   * {@link entityLodProxyFadeAlphaForView}. AUTO and the manual HIGH/MED/LOW
+   * pins share this line: a pin picks the geometry rung of a drawn model, it
+   * does not keep a sub-pixel model on screen in place of the icon.
    */
   entityUsesLodProxyForView(
     view: RenderViewState3D,
@@ -451,27 +463,19 @@ export class EntityLodState3D {
    * camera distance. Callers must resolve it to the shared three-rung ladder.
    */
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
-    const lodMode = getLodMode();
-    if (lodMode === 'high') return DETAIL_LEVEL_FULL;
-    if (lodMode === 'medium') return detailLevelForRung(DETAIL_RUNG_MID);
-    if (lodMode === 'low') return detailLevelForRung(DETAIL_RUNG_FAR);
-    if (lodMode === 'off') return detailLevelForRung(DETAIL_RUNG_GLYPH);
-    return detailLevelForRadiusDistance(
+    return detailLevelForMode(detailLevelForRadiusDistance(
       entityDetailRadius3D(entity),
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
-    );
+    ));
   }
 
   /** Shared explicit-mode gate for the proxy-decision entry points: the
-   *  forced answer for high/medium/low/off/disabled, or null when AUTO
-   *  mode must compute the rung (last-seen frame already recorded). */
+   *  forced answer for off/disabled, or null when the caller must compute the
+   *  rung (last-seen frame already recorded). HIGH/MED/LOW are NOT gated here:
+   *  they keep AUTO's glyph flip and only pin the drawn model's rung. */
   private channelProxyModeGate(channel: string, entity: Entity): boolean | null {
     const lodMode = getLodMode();
-    if (lodMode === 'high' || lodMode === 'medium' || lodMode === 'low') {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
     if (lodMode === 'off') {
       const proxyIds = this.proxyIdsForChannel(channel);
       this.lastSeenForChannel(channel).set(entity.id, this.frame);
