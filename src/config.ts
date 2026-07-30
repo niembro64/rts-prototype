@@ -319,18 +319,6 @@ export const LAVA_RENDER_CONFIG = {
   emissiveScale: COLORS.world.water.lava.emissiveScale,
 } as const;
 
-/** SURFACE = METAL ground material. A deposit crown is matte ore; a whole map
- *  made OF metal is a polished sheet, so this is authored much shinier and a
- *  shade brighter than the deposit base. The rock detail texture still tiles
- *  over it, which is what keeps the sheen from reading as plastic. */
-export const TERRAIN_METAL_SURFACE_CONFIG = {
-  color: COLORS.world.terrain.metalSurface.baseColorHex,
-  metalness: COLORS.world.terrain.metalSurface.metalness,
-  roughness: COLORS.world.terrain.metalSurface.roughness,
-  envMapIntensity: COLORS.world.terrain.metalSurface.envMapIntensity,
-  rockTileWorldSize: COLORS.world.terrain.metalSurface.rockTileWorldSize,
-} as const;
-
 // Static sky background gradient. Generated once as a tiny canvas
 // texture by ThreeApp, then reused as the scene background.
 export const SKY_RENDER_CONFIG = COLORS.world.sky;
@@ -522,6 +510,18 @@ if (METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION !== TERRAIN_ROCK_TEXTURE_RESOLUTION) {
       'colorsConfig.world.terrain.rock.texture.resolution because both use RockDetailTexture.ts',
   );
 }
+
+/** SURFACE = METAL ground material. Not a metal-LOOKING terrain material —
+ *  THE metal deposit material, applied to the whole ground. Every value is the
+ *  same colorsConfig entry MetalDepositRenderer3D reads, so the two can never
+ *  drift: retune a deposit and the metal world follows. */
+export const TERRAIN_METAL_SURFACE_CONFIG = {
+  color: COLORS.environment.metalDeposit.baseColorHex,
+  metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
+  roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
+  rockTileWorldSize: METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
+  rockTextureBlend: METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
+} as const;
 
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original

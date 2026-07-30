@@ -59,13 +59,6 @@
           "tileWorldSize": 512
         }
       },
-      "metalSurface": {
-        "baseColorHex": "#3A4046",
-        "metalness": 0.7,
-        "roughness": 0.52,
-        "envMapIntensity": 0.55,
-        "rockTileWorldSize": 2000
-      },
       "rock": {
         "baseColorHex": "#38362f",
         "texture": {

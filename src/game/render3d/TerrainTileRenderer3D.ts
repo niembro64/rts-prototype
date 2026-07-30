@@ -657,6 +657,9 @@ export class TerrainTileRenderer3D {
   private metalSurfaceTileWorldSizeUniform = {
     value: TERRAIN_METAL_SURFACE_CONFIG.rockTileWorldSize,
   };
+  private metalSurfaceBlendUniform = {
+    value: TERRAIN_METAL_SURFACE_CONFIG.rockTextureBlend,
+  };
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -716,7 +719,6 @@ export class TerrainTileRenderer3D {
         vertexColors: false,
         metalness: TERRAIN_METAL_SURFACE_CONFIG.metalness,
         roughness: TERRAIN_METAL_SURFACE_CONFIG.roughness,
-        envMapIntensity: TERRAIN_METAL_SURFACE_CONFIG.envMapIntensity,
       })
       : new THREE.MeshLambertMaterial({
         color: NEUTRAL_COLOR,
@@ -765,6 +767,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceEnabled = this.metalSurfaceEnabledUniform;
       shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
       shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
+      shader.uniforms.uMetalSurfaceBlend = this.metalSurfaceBlendUniform;
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -825,6 +828,7 @@ export class TerrainTileRenderer3D {
             'uniform float uMetalSurfaceEnabled;',
             'uniform vec3 uMetalSurfaceColor;',
             'uniform float uMetalSurfaceTileWorldSize;',
+            'uniform float uMetalSurfaceBlend;',
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -946,12 +950,20 @@ export class TerrainTileRenderer3D {
             '    texture2D(uRockDetailTexture, vTerrainWorldPos.xz / uMetalSurfaceTileWorldSize).rgb * metalTriW.y',
             '  + texture2D(uRockDetailTexture, vTerrainWorldPos.yz / uMetalSurfaceTileWorldSize).rgb * metalTriW.x',
             '  + texture2D(uRockDetailTexture, vTerrainWorldPos.xy / uMetalSurfaceTileWorldSize).rgb * metalTriW.z;',
-            '  terrainRgb = uMetalSurfaceColor * metalDetail;',
+            '  // Identical to MetalDepositRenderer3D: the decoded ore base with',
+            '  // the rock detail map multiplied over it at the authored blend.',
+            '  terrainRgb = uMetalSurfaceColor * mix(vec3(1.0), metalDetail, clamp(uMetalSurfaceBlend, 0.0, 1.0));',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
-            'diffuseColor.rgb = clamp(terrainRgb, vec3(0.02), vec3(1.0)) * terrainFinalShade;',
+            // The 0.02 floor keeps biome ground from crushing to black. A metal
+            // world has a legitimately near-black albedo — its look comes from
+            // the reflection, not the diffuse — and srgbToLinear(#272b2e) times
+            // a rock texel lands AT that floor, so the clamp would flatten the
+            // whole map to one constant and erase the rock texture entirely.
+            'float terrainAlbedoFloor = uMetalSurfaceEnabled > 0.0 ? 0.0 : 0.02;',
+            'diffuseColor.rgb = clamp(terrainRgb, vec3(terrainAlbedoFloor), vec3(1.0)) * terrainFinalShade;',
             'if (uElevationMapEnabled > 0.0) {',
             '  vec3 elevationLow = vec3(0.10, 0.25, 0.56);',
             '  vec3 elevationMid = vec3(0.22, 0.54, 0.30);',
