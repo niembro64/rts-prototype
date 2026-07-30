@@ -1,4 +1,5 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
+import { setLiquidSurfaceMode, setTerrainSurfaceMode } from './worldSurfaceState';
 import { getSimWasm } from '../sim-wasm/init';
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
@@ -401,6 +402,17 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
         // Reroute in-flight units under the new slope rule.
         ctx.world.invalidateAllActivePaths();
       }
+      break;
+    case 'setTerrainSurfaceMode':
+      // Deposit crowns, metal coverage, and the ground material all follow
+      // this; the terrain geometry does not (deposit placement already shaped
+      // the land either way).
+      ctx.world.terrainSurfaceMode = command.mode;
+      setTerrainSurfaceMode(command.mode);
+      break;
+    case 'setLiquidSurfaceMode':
+      ctx.world.liquidSurfaceMode = command.mode;
+      setLiquidSurfaceMode(command.mode);
       break;
     case 'setConverterTax':
       ctx.world.converterTax = command.tax;

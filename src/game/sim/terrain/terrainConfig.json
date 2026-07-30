@@ -41,7 +41,8 @@
   },
   "water": {
     "levelFraction": 0.8,
-    "fullyOpaque": false
+    "fullyOpaque": false,
+    "lavaDamagePerSecond": 900
   },
   "generation": {
     "edgeFadeWidthFraction": 0.01,

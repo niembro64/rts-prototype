@@ -4,6 +4,10 @@ import type { BattleMode } from '../battleBarConfig';
 import { persist } from '../persistence';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
 
 export type BattlePreset = {
   readonly name: string;
@@ -22,6 +26,11 @@ export type BattlePreset = {
   readonly fogOfWarEnabled: boolean;
   /** Ground pathfinding slope policy (SLOPE LIMIT bar toggle). */
   readonly slopePathMode: SlopePathMode;
+  /** Ground material policy (WORLD bar group). `metal` makes the whole map
+   *  one ore body — see types/worldSurfaceMode. */
+  readonly terrainSurfaceMode: TerrainSurfaceMode;
+  /** What fills the map below the water level (WORLD bar group). */
+  readonly liquidSurfaceMode: LiquidSurfaceMode;
   readonly converterTax: number;
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
@@ -73,6 +82,9 @@ const SUBSYSTEM_DEFAULTS = {
   forceFieldsVisible: true,
   shieldReflectionMode: 'both' as ShieldReflectionMode,
   slopePathMode: 'directional' as SlopePathMode,
+  // Every stock preset ships the authored world; only METAL HELL flips these.
+  terrainSurfaceMode: 'normal' as TerrainSurfaceMode,
+  liquidSurfaceMode: 'water' as LiquidSurfaceMode,
 };
 
 // Every preset enables all buildings — there is no preset that ships with
@@ -260,6 +272,38 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 79,
       barsCollapsed: false,
     },
+    {
+      // METAL HELL — the showcase for the WORLD toggles. Sunken dividers
+      // flood the lanes between the start positions with lava and the
+      // negative perimeter keeps the surrounding molten ocean, while a large
+      // deposit step raises every deposit pad into a metal mesa. Dividers stay
+      // at -400 rather than a full trench so the island remains one connected
+      // landmass: the lava is a hazard to route around, not a wall that
+      // strands every army where it spawned. The whole map is metal, so
+      // extractors pay out anywhere a builder can reach.
+      name: 'METAL HELL',
+      units: allUnits(),
+      cap: 81,
+      ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
+      terrainSurfaceMode: 'metal',
+      liquidSurfaceMode: 'lava',
+      shieldsObstructSight: false,
+      fogOfWarEnabled: true,
+      converterTax: 0.5,
+      centerMagnitude: 0,
+      dividersMagnitude: -400,
+      perimeterMagnitude: -800,
+      terrainDTerrain: 400,
+      plateauWallSlopeDegrees: 80,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
+      metalDepositStep: 1600,
+      terrainDetail: 4,
+      mapWidthLandCells: 79,
+      mapLengthLandCells: 79,
+      barsCollapsed: false,
+    },
   ];
 }
 
@@ -304,6 +348,8 @@ function presetMatchesCurrent(
     sameUnits(p.units, c.units) &&
     sameUnits(p.buildings, c.buildings) &&
     p.cap === c.cap &&
+    p.terrainSurfaceMode === c.terrainSurfaceMode &&
+    p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&

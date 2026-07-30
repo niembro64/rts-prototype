@@ -34,6 +34,12 @@ import {
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { DEFAULT_SLOPE_PATH_MODE, type SlopePathMode } from '../../types/slopePathMode';
 import {
+  DEFAULT_LIQUID_SURFACE_MODE,
+  DEFAULT_TERRAIN_SURFACE_MODE,
+  type LiquidSurfaceMode,
+  type TerrainSurfaceMode,
+} from '../../types/worldSurfaceMode';
+import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_COMBAT_MODE,
@@ -206,6 +212,12 @@ export class WorldState {
   // Slope-traversal policy for ground pathfinding. `directional` lets units
   // descend/fall any slope and only gates uphill; `symmetric` gates both.
   public slopePathMode: SlopePathMode = DEFAULT_SLOPE_PATH_MODE;
+  // Ground material policy. `metal` treats every build-grid cell as metal ore
+  // and suppresses the discrete deposit crowns; the deposits still shaped the
+  // terrain. See types/worldSurfaceMode.
+  public terrainSurfaceMode: TerrainSurfaceMode = DEFAULT_TERRAIN_SURFACE_MODE;
+  // What fills the map below WATER_LEVEL. `lava` burns anything touching it.
+  public liquidSurfaceMode: LiquidSurfaceMode = DEFAULT_LIQUID_SURFACE_MODE;
   /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick
    *  output. 0 = lossless; 0.5 = lose half of the source resource on
    *  every conversion. Read by economy.update each tick. */

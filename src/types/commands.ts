@@ -3,6 +3,10 @@
 import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitAirIdleState, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from './worldSurfaceMode';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
 type CommandType =
@@ -67,6 +71,8 @@ type CommandType =
   | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
   | 'setSlopePathMode'
+  | 'setTerrainSurfaceMode'
+  | 'setLiquidSurfaceMode'
   | 'setConverterTax';
 
 export type BaseCommand = {
@@ -612,6 +618,18 @@ export type SetSlopePathModeCommand = BaseCommand & {
   mode: SlopePathMode;
 };
 
+/** WORLD group: ground material policy. See types/worldSurfaceMode. */
+export type SetTerrainSurfaceModeCommand = BaseCommand & {
+  type: 'setTerrainSurfaceMode';
+  mode: TerrainSurfaceMode;
+};
+
+/** WORLD group: what fills the map below the water level. */
+export type SetLiquidSurfaceModeCommand = BaseCommand & {
+  type: 'setLiquidSurfaceMode';
+  mode: LiquidSurfaceMode;
+};
+
 export type SetConverterTaxCommand = BaseCommand & {
   type: 'setConverterTax';
   tax: number;
@@ -679,4 +697,6 @@ export type Command =
   | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
   | SetSlopePathModeCommand
+  | SetTerrainSurfaceModeCommand
+  | SetLiquidSurfaceModeCommand
   | SetConverterTaxCommand;

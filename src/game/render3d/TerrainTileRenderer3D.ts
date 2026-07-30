@@ -93,7 +93,9 @@ import {
   terrainPrecomputedShadow,
   terrainSunShade,
 } from './SunLighting';
-import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
+import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
+import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
+import { TERRAIN_METAL_SURFACE_CONFIG } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import { smoothstep01 } from '../math';
 import {
@@ -141,7 +143,11 @@ const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
-const TERRAIN_HORIZON_WATER_COLOR = WATER_SURFACE_LINEAR_COLOR.clone();
+// The perimeter-rim seam-hider blends to whatever liquid the map is using,
+// so a lava map's rim meets lava instead of a leftover sea colour.
+const TERRAIN_HORIZON_WATER_COLOR = (isLavaLiquidSurface()
+  ? LAVA_SURFACE_LINEAR_COLOR
+  : WATER_SURFACE_LINEAR_COLOR).clone();
 
 type TerrainTileRendererUpdateOptions = {
   localPlayerId: PlayerId;
@@ -576,7 +582,10 @@ function smoothTerrainRenderedScalar(
 export class TerrainTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
-  private terrainMaterial: THREE.MeshLambertMaterial;
+  // Lambert for the authored biome world; MeshStandardMaterial in SURFACE =
+  // METAL so the ground gets real metalness/roughness shine. Both take the
+  // same injected terrain shader.
+  private terrainMaterial: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
   private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
   private terrainGeometryCacheBytes = 0;
   private currentTerrainGeometryCacheKey = '';
@@ -639,6 +648,15 @@ export class TerrainTileRenderer3D {
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
+  private metalSurfaceEnabledUniform = { value: isMetalTerrainSurface() ? 1 : 0 };
+  // three.js decodes an authored hex to the linear working space, exactly as it
+  // does for the metal deposits' vertex colour.
+  private metalSurfaceColorUniform = {
+    value: new THREE.Color(TERRAIN_METAL_SURFACE_CONFIG.color),
+  };
+  private metalSurfaceTileWorldSizeUniform = {
+    value: TERRAIN_METAL_SURFACE_CONFIG.rockTileWorldSize,
+  };
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -691,11 +709,20 @@ export class TerrainTileRenderer3D {
     }
 
     this.terrainGeometry = new THREE.BufferGeometry();
-    this.terrainMaterial = new THREE.MeshLambertMaterial({
-      color: NEUTRAL_COLOR,
-      side: THREE.DoubleSide,
-      vertexColors: false,
-    });
+    this.terrainMaterial = isMetalTerrainSurface()
+      ? new THREE.MeshStandardMaterial({
+        color: NEUTRAL_COLOR,
+        side: THREE.DoubleSide,
+        vertexColors: false,
+        metalness: TERRAIN_METAL_SURFACE_CONFIG.metalness,
+        roughness: TERRAIN_METAL_SURFACE_CONFIG.roughness,
+        envMapIntensity: TERRAIN_METAL_SURFACE_CONFIG.envMapIntensity,
+      })
+      : new THREE.MeshLambertMaterial({
+        color: NEUTRAL_COLOR,
+        side: THREE.DoubleSide,
+        vertexColors: false,
+      });
     // dFdx/dFdy in the fragment shader for per-fragment geometric slope.
     // No-op on WebGL2 (derivatives are core); enables the OES extension on
     // the WebGL1 fallback path.
@@ -735,6 +762,9 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
       shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
       shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
+      shader.uniforms.uMetalSurfaceEnabled = this.metalSurfaceEnabledUniform;
+      shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
+      shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -792,6 +822,9 @@ export class TerrainTileRenderer3D {
             'uniform float uRockDetailEnabled;',
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
+            'uniform float uMetalSurfaceEnabled;',
+            'uniform vec3 uMetalSurfaceColor;',
+            'uniform float uMetalSurfaceTileWorldSize;',
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -900,6 +933,20 @@ export class TerrainTileRenderer3D {
             '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
             '  }',
+            '}',
+            // SURFACE = METAL: the whole map is one ore body, so the biome
+            // ramp and the ground/rock detail overlays above are replaced
+            // wholesale by srgbToLinear(ore base) * the rock detail map,
+            // sampled triplanar so cliff walls get real rock instead of a
+            // vertical smear. The baked shade below still supplies the relief.
+            'if (uMetalSurfaceEnabled > 0.0) {',
+            '  vec3 metalTriW = pow(abs(geomNormal), vec3(8.0));',
+            '  metalTriW /= max(metalTriW.x + metalTriW.y + metalTriW.z, 1.0e-5);',
+            '  vec3 metalDetail =',
+            '    texture2D(uRockDetailTexture, vTerrainWorldPos.xz / uMetalSurfaceTileWorldSize).rgb * metalTriW.y',
+            '  + texture2D(uRockDetailTexture, vTerrainWorldPos.yz / uMetalSurfaceTileWorldSize).rgb * metalTriW.x',
+            '  + texture2D(uRockDetailTexture, vTerrainWorldPos.xy / uMetalSurfaceTileWorldSize).rgb * metalTriW.z;',
+            '  terrainRgb = uMetalSurfaceColor * metalDetail;',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',

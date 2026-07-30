@@ -92,6 +92,8 @@ const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = ne
   'setShieldReflectionMode',
   'setFogOfWarEnabled',
   'setSlopePathMode',
+  'setTerrainSurfaceMode',
+  'setLiquidSurfaceMode',
   'setConverterTax',
 ]);
 

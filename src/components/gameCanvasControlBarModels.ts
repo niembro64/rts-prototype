@@ -25,6 +25,10 @@ import type {
 import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
 
@@ -65,6 +69,8 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentShieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentSlopePathMode: SlopePathMode;
+  readonly currentTerrainSurfaceMode: TerrainSurfaceMode;
+  readonly currentLiquidSurfaceMode: LiquidSurfaceMode;
   readonly currentConverterTax: number;
   readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly presets: readonly BattlePreset[];
@@ -95,6 +101,8 @@ export type GameCanvasBattleControlBarModel = {
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
+  setTerrainSurfaceMode(mode: TerrainSurfaceMode): void;
+  setLiquidSurfaceMode(mode: LiquidSurfaceMode): void;
   setConverterTax(tax: number): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
 };

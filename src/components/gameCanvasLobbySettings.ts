@@ -1,4 +1,16 @@
 import { nextTick, type ComputedRef, type Ref } from 'vue';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
+import {
+  setLiquidSurfaceMode,
+  setTerrainSurfaceMode,
+} from '../game/sim/worldSurfaceState';
+import {
+  saveLiquidSurfaceMode,
+  saveTerrainSurfaceMode,
+} from '../battleBarConfig';
 import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
@@ -48,6 +60,8 @@ type GameCanvasLobbySettings = {
   applyWatersEdgeCliffHeight(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
+  applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
+  applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
   applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
     broadcast?: boolean,
@@ -275,6 +289,27 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
+  // The two WORLD toggles. Neither changes terrain GEOMETRY, so there is no
+  // terrain runtime config to re-apply — but SURFACE decides whether deposit
+  // crowns exist and which cells are metal, and LIQUID is baked into the
+  // terrain mesh's per-vertex horizon liquid colour, so both need the world
+  // rebuilt rather than just re-shaded.
+  function applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
+    const battleMode = currentBattleMode.value;
+    saveTerrainSurfaceMode(mode, battleMode);
+    if (!setTerrainSurfaceMode(mode)) return;
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
+  function applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast = true): void {
+    const battleMode = currentBattleMode.value;
+    saveLiquidSurfaceMode(mode, battleMode);
+    if (!setLiquidSurfaceMode(mode)) return;
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
   function applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
     broadcast = true,
@@ -470,6 +505,8 @@ export function useGameCanvasLobbySettings({
     applyWatersEdgeCliffHeight,
     applyMetalDepositStep,
     applyTerrainDetail,
+    applyTerrainSurfaceMode,
+    applyLiquidSurfaceMode,
     applyMapLandDimensions,
     applyLobbySettingsFromHost,
     resetTerrainDefaults,

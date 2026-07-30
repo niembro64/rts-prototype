@@ -7,6 +7,8 @@ import {
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredSlopePathMode,
+  loadStoredTerrainSurfaceMode,
+  loadStoredLiquidSurfaceMode,
   loadStoredTurretShieldPanelsEnabled,
 } from '../../battleBarConfig';
 import {
@@ -86,6 +88,16 @@ export function buildStoredBattleServerSettingCommands(
       type: 'setSlopePathMode',
       tick: 0,
       mode: loadStoredSlopePathMode(mode),
+    },
+    {
+      type: 'setTerrainSurfaceMode',
+      tick: 0,
+      mode: loadStoredTerrainSurfaceMode(mode),
+    },
+    {
+      type: 'setLiquidSurfaceMode',
+      tick: 0,
+      mode: loadStoredLiquidSurfaceMode(mode),
     },
     {
       type: 'setConverterTax',

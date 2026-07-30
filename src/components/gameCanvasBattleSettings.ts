@@ -15,10 +15,16 @@ import {
   saveFogOfWarEnabled,
   loadStoredSlopePathMode,
   saveSlopePathMode,
+  loadStoredTerrainSurfaceMode,
+  loadStoredLiquidSurfaceMode,
   saveStoredCap,
   type BattleMode,
 } from '../battleBarConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
@@ -42,6 +48,8 @@ type GameCanvasBattleSettings = {
   currentShieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentSlopePathMode: ComputedRef<SlopePathMode>;
+  currentTerrainSurfaceMode: ComputedRef<TerrainSurfaceMode>;
+  currentLiquidSurfaceMode: ComputedRef<LiquidSurfaceMode>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoUnits(): void;
@@ -52,6 +60,8 @@ type GameCanvasBattleSettings = {
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
+  setTerrainSurfaceMode(mode: TerrainSurfaceMode): void;
+  setLiquidSurfaceMode(mode: LiquidSurfaceMode): void;
   setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
   applyPreset(preset: BattlePreset): void;
@@ -73,6 +83,8 @@ type GameCanvasBattleSettingsOptions = {
   applyWatersEdgeCliffHeight: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
+  applyTerrainSurfaceMode: (mode: TerrainSurfaceMode, broadcast?: boolean) => void;
+  applyLiquidSurfaceMode: (mode: LiquidSurfaceMode, broadcast?: boolean) => void;
   applyMapLandDimensions: (
     dimensions: MapLandCellDimensions,
     broadcast?: boolean,
@@ -95,6 +107,8 @@ export function useGameCanvasBattleSettings({
   applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainSurfaceMode,
+  applyLiquidSurfaceMode,
   applyMapLandDimensions,
 }: GameCanvasBattleSettingsOptions): GameCanvasBattleSettings {
   const currentAllowedUnits = computed<readonly string[]>(
@@ -186,6 +200,18 @@ export function useGameCanvasBattleSettings({
   const currentSlopePathMode = computed<SlopePathMode>(() => {
     void slopePathModeStoreVersion.value;
     return loadStoredSlopePathMode(currentBattleMode.value);
+  });
+  // Same story as the slope mode: the WORLD toggles are not mirrored on the
+  // snapshot meta, so the bar reflects the stored value and the version refs
+  // re-read it after each local toggle.
+  const worldSurfaceStoreVersion = ref(0);
+  const currentTerrainSurfaceMode = computed<TerrainSurfaceMode>(() => {
+    void worldSurfaceStoreVersion.value;
+    return loadStoredTerrainSurfaceMode(currentBattleMode.value);
+  });
+  const currentLiquidSurfaceMode = computed<LiquidSurfaceMode>(() => {
+    void worldSurfaceStoreVersion.value;
+    return loadStoredLiquidSurfaceMode(currentBattleMode.value);
   });
   const currentConverterTax = computed(
     () =>
@@ -282,6 +308,22 @@ export function useGameCanvasBattleSettings({
     slopePathModeStoreVersion.value++;
   }
 
+  // Both WORLD toggles restart the battle: SURFACE decides whether deposit
+  // crowns exist and which cells are metal, and LIQUID is baked into the
+  // terrain mesh's per-vertex horizon liquid colour, so neither can be
+  // re-shaded in place.
+  function setTerrainSurfaceMode(mode: TerrainSurfaceMode): void {
+    getActiveConnection()?.sendCommand({ type: 'setTerrainSurfaceMode', tick: 0, mode });
+    worldSurfaceStoreVersion.value++;
+    applyTerrainSurfaceMode(mode);
+  }
+
+  function setLiquidSurfaceMode(mode: LiquidSurfaceMode): void {
+    getActiveConnection()?.sendCommand({ type: 'setLiquidSurfaceMode', tick: 0, mode });
+    worldSurfaceStoreVersion.value++;
+    applyLiquidSurfaceMode(mode);
+  }
+
   function setConverterTax(tax: number, broadcast = true): void {
     const normalized = normalizeConverterTax(tax);
     const mode = currentBattleMode.value;
@@ -316,6 +358,12 @@ export function useGameCanvasBattleSettings({
     setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlopePathMode(preset.slopePathMode);
+    if (preset.terrainSurfaceMode !== currentTerrainSurfaceMode.value) {
+      setTerrainSurfaceMode(preset.terrainSurfaceMode);
+    }
+    if (preset.liquidSurfaceMode !== currentLiquidSurfaceMode.value) {
+      setLiquidSurfaceMode(preset.liquidSurfaceMode);
+    }
     setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
@@ -352,6 +400,8 @@ export function useGameCanvasBattleSettings({
     currentShieldsObstructSight,
     currentFogOfWarEnabled,
     currentSlopePathMode,
+    currentTerrainSurfaceMode,
+    currentLiquidSurfaceMode,
     currentConverterTax,
     toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
@@ -362,6 +412,8 @@ export function useGameCanvasBattleSettings({
     setShieldsObstructSight,
     setFogOfWarEnabled,
     setSlopePathMode,
+    setTerrainSurfaceMode,
+    setLiquidSurfaceMode,
     setConverterTax,
     resetDemoDefaults,
     applyPreset,

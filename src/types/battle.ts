@@ -2,6 +2,7 @@ import type { BooleanSetting, OptionsConfig } from './bars';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
+import type { LiquidSurfaceMode, TerrainSurfaceMode } from './worldSurfaceMode';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -23,6 +24,14 @@ export type BattleBarConfig = {
   readonly fogOfWarEnabled: BooleanSetting;
   readonly slopePathMode: {
     readonly default: SlopePathMode;
+  };
+  /** Ground material policy (WORLD bar group). */
+  readonly terrainSurfaceMode: {
+    readonly default: TerrainSurfaceMode;
+  };
+  /** What fills the map below the water level (WORLD bar group). */
+  readonly liquidSurfaceMode: {
+    readonly default: LiquidSurfaceMode;
   };
   /** Signed altitude amplitude of the central ripple zone (CENTER
    *  button group). Negative values dish the centre below ground

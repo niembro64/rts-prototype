@@ -1,5 +1,6 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import type { TerrainSurfaceMode } from '../../types/worldSurfaceMode';
 import type { Entity, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { getBuildingBlueprint } from './blueprints/buildings';
@@ -69,11 +70,17 @@ type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
 type BuildPlacementDiagnosticsOptions = {
   includeMetalDiagnostics: boolean;
   ignoreTerrain: boolean;
+  /** Ground material policy. `metal` makes every in-map build cell count as a
+   *  metal cell, so extractors are placeable anywhere and earn their full
+   *  nominal rate. Optional so the many callers that predate the WORLD
+   *  toggles keep the authored behaviour. */
+  terrainSurfaceMode?: TerrainSurfaceMode;
 };
 
 const DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS: BuildPlacementDiagnosticsOptions = {
   includeMetalDiagnostics: true,
   ignoreTerrain: false,
+  terrainSurfaceMode: 'normal',
 };
 
 function cellKey(gx: number, gy: number): string {
@@ -154,16 +161,26 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const sensorSourceMediumMismatch =
     requiredSensorSourceMedium !== null &&
     centerSensorSourceMedium !== requiredSensorSourceMedium;
-  const extractorCoverage = isMetalExtractorBlueprintId(candidateType)
-    ? getMetalDepositFootprintCoverage(
-      metalDeposits,
-      center.x,
-      center.y,
-      halfWidth,
-      halfHeight,
-      BUILD_GRID_CELL_SIZE,
-    )
-    : null;
+  const wholeMapIsMetal = (options.terrainSurfaceMode ?? 'normal') === 'metal';
+  const extractorCoverage = !isMetalExtractorBlueprintId(candidateType)
+    ? null
+    : wholeMapIsMetal
+      // Every sampled cell is ore, so synthesize full coverage rather than
+      // walking a deposit list that no longer describes where the metal is.
+      ? {
+        fraction: 1,
+        coveredCells: footprint.gridWidth * footprint.gridHeight,
+        totalCells: footprint.gridWidth * footprint.gridHeight,
+        primaryDepositId: null,
+      }
+      : getMetalDepositFootprintCoverage(
+        metalDeposits,
+        center.x,
+        center.y,
+        halfWidth,
+        halfHeight,
+        BUILD_GRID_CELL_SIZE,
+      );
   const mapCellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
   const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
@@ -255,8 +272,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
       }
 
       if (!blocking && includeMetalDiagnostics) {
-        const deposit = findDepositContainingPoint(metalDeposits, x, y);
-        metalCovered = deposit !== null;
+        const deposit = wholeMapIsMetal ? null : findDepositContainingPoint(metalDeposits, x, y);
+        metalCovered = wholeMapIsMetal || deposit !== null;
         depositId = deposit === null ? null : deposit.id;
         if (isMetalExtractorBlueprintId(candidateType)) {
           if (metalCovered) {

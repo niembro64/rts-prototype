@@ -13,7 +13,8 @@ import {
   type WaterBoundaryMode,
 } from '@/clientBarConfig';
 import { WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
-import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
+import { HORIZON_RENDER_EXTEND, LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '../../config';
+import { isLavaLiquidSurface } from '../sim/worldSurfaceState';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
@@ -39,6 +40,13 @@ import { getFloatingWaterOverhang, getWaterBoxFloorY } from './WorldBoxGeometry3
 // jitter.
 const WATER_DEPTH_OFFSET_FACTOR = 0;
 const WATER_DEPTH_OFFSET_UNITS = 64;
+/** The lava surface colour in the renderer's linear working space, scaled past
+ *  the display range so tone mapping treats it as an emitter. */
+function lavaSurfaceColor(): THREE.Color {
+  return new THREE.Color(LAVA_RENDER_CONFIG.color)
+    .multiplyScalar(Math.max(0, LAVA_RENDER_CONFIG.emissiveScale));
+}
+
 const WATER_TRIANGLE_DEBUG_COLOR = 0xfff17a;
 const WATER_TRIANGLE_DEBUG_OPACITY = 0.95;
 
@@ -68,10 +76,14 @@ export class WaterRenderer3D {
     // otherwise this depth write would erase submerged instanced bodies.
     // WATER_FULLY_OPAQUE additionally disables alpha blending; triangles
     // beneath the ocean are culled in TerrainTileRenderer3D for that mode.
+    // LIQUID = LAVA swaps the surface for opaque molten rock. Same
+    // MeshBasicMaterial (unlit, still tone mapped), but the colour is scaled
+    // past 1.0 so ACES renders it as an emitter rather than as red paint.
+    const lava = isLavaLiquidSurface();
     this.waterMaterial = new THREE.MeshBasicMaterial({
-      color: WATER_RENDER_CONFIG.color,
-      transparent: !WATER_FULLY_OPAQUE,
-      opacity: WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
+      color: lava ? lavaSurfaceColor() : WATER_RENDER_CONFIG.color,
+      transparent: !lava && !WATER_FULLY_OPAQUE,
+      opacity: lava || WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
       depthWrite: true,
       depthTest: true,
       polygonOffset: true,
@@ -242,7 +254,9 @@ export class WaterRenderer3D {
     _frameState?: RenderFrameState3D,
     _sharedRenderGrid?: unknown,
   ): void {
-    const opacity = WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity;
+    const opacity = isLavaLiquidSurface() || WATER_FULLY_OPAQUE
+      ? 1
+      : WATER_RENDER_CONFIG.opacity;
     if (opacity <= 0) {
       this.setVisible(false);
       this.setTriangleDebugVisible(false);

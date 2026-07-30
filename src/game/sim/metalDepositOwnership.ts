@@ -68,6 +68,17 @@ function syncExtractorRateFromCoveredCells(world: WorldState, extractor: Entity)
     return;
   }
 
+  // SURFACE = METAL: the map IS the ore body, so every cell under the
+  // footprint pays out and there is no individual deposit to bind to. The
+  // deposits still exist — they shaped the terrain — they just no longer
+  // decide where the metal is.
+  if (world.terrainSurfaceMode === 'metal') {
+    extractor.coveredDepositIds = [];
+    extractor.metalExtractionRate =
+      footprint.gridW * footprint.gridH * perMetalCellProduction(extractor);
+    return;
+  }
+
   const touchedDepositIds: number[] = [];
   let coveredCellCount = 0;
   const candidates = getMetalDepositsOverlappingBuildingFootprint(

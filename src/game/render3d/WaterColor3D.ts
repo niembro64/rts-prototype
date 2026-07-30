@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WATER_RENDER_CONFIG } from '../../config';
+import { LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '../../config';
 import { clamp01 } from '../math';
 
 type Rgb01 = {
@@ -83,6 +83,15 @@ function rgb01ToLinearColor(color: Rgb01): THREE.Color {
 // tone-mapping and output-color conversion.
 const WATER_SURFACE_LINEAR_RGB = hexToLinearRgb(WATER_RENDER_CONFIG.color);
 export const WATER_SURFACE_LINEAR_COLOR = rgb01ToLinearColor(WATER_SURFACE_LINEAR_RGB);
+
+// LIQUID = LAVA surface in the same linear working space. Scaled past the
+// display range so tone mapping renders it as an emitter; the terrain's
+// horizon-rim seam-hider mixes to this when the map's liquid is lava.
+const LAVA_SURFACE_LINEAR_RGB = scaleRgb(
+  hexToLinearRgb(LAVA_RENDER_CONFIG.color),
+  Math.max(0, LAVA_RENDER_CONFIG.emissiveScale),
+);
+export const LAVA_SURFACE_LINEAR_COLOR = rgb01ToLinearColor(LAVA_SURFACE_LINEAR_RGB);
 
 // Final visible water target, snapped to the 8-bit framebuffer grid.
 const WATER_SURFACE_OUTPUT_RGB = quantizeOutputRgb(

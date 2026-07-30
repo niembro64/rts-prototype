@@ -1465,6 +1465,8 @@ const {
   applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainSurfaceMode,
+  applyLiquidSurfaceMode,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
 } = useGameCanvasLobbySettings({
@@ -1508,6 +1510,8 @@ const {
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
   currentSlopePathMode,
+  currentTerrainSurfaceMode,
+  currentLiquidSurfaceMode,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
@@ -1518,6 +1522,8 @@ const {
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlopePathMode,
+  setTerrainSurfaceMode,
+  setLiquidSurfaceMode,
   setConverterTax,
   resetDemoDefaults,
   applyPreset,
@@ -1537,6 +1543,8 @@ const {
   applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainSurfaceMode,
+  applyLiquidSurfaceMode,
   applyMapLandDimensions,
 });
 
@@ -1759,6 +1767,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlopePathMode: currentSlopePathMode.value,
+  currentTerrainSurfaceMode: currentTerrainSurfaceMode.value,
+  currentLiquidSurfaceMode: currentLiquidSurfaceMode.value,
   currentConverterTax: currentConverterTax.value,
   serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   presets: BATTLE_PRESETS,
@@ -1789,6 +1799,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlopePathMode,
+  setTerrainSurfaceMode,
+  setLiquidSurfaceMode,
   setConverterTax,
   setUnitGroundNormalEmaModeValue,
 });
@@ -1831,6 +1843,8 @@ watchEffect(() => {
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
+  m.currentTerrainSurfaceMode = currentTerrainSurfaceMode.value;
+  m.currentLiquidSurfaceMode = currentLiquidSurfaceMode.value;
   m.currentConverterTax = currentConverterTax.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.activePresetName = findMatchingPresetName({
@@ -1843,6 +1857,8 @@ watchEffect(() => {
     shieldsObstructSight: currentShieldsObstructSight.value,
     shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
+    terrainSurfaceMode: currentTerrainSurfaceMode.value,
+    liquidSurfaceMode: currentLiquidSurfaceMode.value,
     slopePathMode: BATTLE_CONFIG.slopePathMode.default,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,

@@ -1,6 +1,12 @@
 import type { BattleBarConfig } from './types/battle';
 import type { ShieldReflectionMode } from './types/shotTypes';
 import { isSlopePathMode, type SlopePathMode } from './types/slopePathMode';
+import {
+  isLiquidSurfaceMode,
+  isTerrainSurfaceMode,
+  type LiquidSurfaceMode,
+  type TerrainSurfaceMode,
+} from './types/worldSurfaceMode';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
@@ -112,6 +118,13 @@ export const BATTLE_CONFIG = {
   slopePathMode: {
     default: _demoPreset.slopePathMode,
   },
+  // WORLD group: ground material and what fills the map below water level.
+  terrainSurfaceMode: {
+    default: _demoPreset.terrainSurfaceMode,
+  },
+  liquidSurfaceMode: {
+    default: _demoPreset.liquidSurfaceMode,
+  },
   // CENTER / DIVIDERS amplitudes — applied at game-construction time
   // via setTerrainCenterMagnitude / setTerrainDividersMagnitude
   // (Terrain.ts). Signed: negative dishes the feature below ground,
@@ -215,6 +228,10 @@ const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
 const STORAGE_DEMO_SLOPE_PATH_MODE = sk.demoSlopePathMode;
 const STORAGE_REAL_SLOPE_PATH_MODE = sk.realSlopePathMode;
+const STORAGE_DEMO_TERRAIN_SURFACE_MODE = sk.demoTerrainSurfaceMode;
+const STORAGE_REAL_TERRAIN_SURFACE_MODE = sk.realTerrainSurfaceMode;
+const STORAGE_DEMO_LIQUID_SURFACE_MODE = sk.demoLiquidSurfaceMode;
+const STORAGE_REAL_LIQUID_SURFACE_MODE = sk.realLiquidSurfaceMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
@@ -593,6 +610,34 @@ export function loadStoredSlopePathMode(mode: BattleMode): SlopePathMode {
 export function saveSlopePathMode(value: SlopePathMode, mode: BattleMode): void {
   persist(
     mode === 'real' ? STORAGE_REAL_SLOPE_PATH_MODE : STORAGE_DEMO_SLOPE_PATH_MODE,
+    value,
+  );
+}
+
+export function loadStoredTerrainSurfaceMode(mode: BattleMode): TerrainSurfaceMode {
+  const stored = readPersisted(
+    mode === 'real' ? STORAGE_REAL_TERRAIN_SURFACE_MODE : STORAGE_DEMO_TERRAIN_SURFACE_MODE,
+  );
+  return isTerrainSurfaceMode(stored) ? stored : getModeDefaultPreset(mode).terrainSurfaceMode;
+}
+
+export function saveTerrainSurfaceMode(value: TerrainSurfaceMode, mode: BattleMode): void {
+  persist(
+    mode === 'real' ? STORAGE_REAL_TERRAIN_SURFACE_MODE : STORAGE_DEMO_TERRAIN_SURFACE_MODE,
+    value,
+  );
+}
+
+export function loadStoredLiquidSurfaceMode(mode: BattleMode): LiquidSurfaceMode {
+  const stored = readPersisted(
+    mode === 'real' ? STORAGE_REAL_LIQUID_SURFACE_MODE : STORAGE_DEMO_LIQUID_SURFACE_MODE,
+  );
+  return isLiquidSurfaceMode(stored) ? stored : getModeDefaultPreset(mode).liquidSurfaceMode;
+}
+
+export function saveLiquidSurfaceMode(value: LiquidSurfaceMode, mode: BattleMode): void {
+  persist(
+    mode === 'real' ? STORAGE_REAL_LIQUID_SURFACE_MODE : STORAGE_DEMO_LIQUID_SURFACE_MODE,
     value,
   );
 }

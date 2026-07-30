@@ -96,6 +96,8 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       shieldReflectionMode: world.shieldReflectionMode,
       fogOfWarEnabled: world.fogOfWarEnabled,
       slopePathMode: world.slopePathMode,
+      terrainSurfaceMode: world.terrainSurfaceMode,
+      liquidSurfaceMode: world.liquidSurfaceMode,
       converterTax: world.converterTax,
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
       buildingVersion: world.getBuildingVersion(),

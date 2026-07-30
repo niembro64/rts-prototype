@@ -54,6 +54,7 @@ import {
 } from './SimulationPathPlanScheduler';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
+import { applyLavaSurfaceDamage } from './lavaSurfaceDamage';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
 import { getRecentHostileAttacker } from './aggression';
@@ -463,6 +464,11 @@ export class Simulation {
     // Stop or re-toggle arriving on the fire tick wins the tie. The
     // zero-hp write routes the blast through the normal death path.
     this.fireDueSelfDestructs(tick);
+
+    // Right after the self-destruct pass, with the same direct-hp-drain
+    // semantics, so every "the world killed me" rule resolves before anything
+    // downstream reads hp this tick. A no-op unless LIQUID = LAVA.
+    applyLavaSurfaceDamage(this.world, dtMs);
 
     // Solar collectors, wind turbines, and metal extractors share a
     // fortifiable-producer lifecycle: a 2 s grace timer arms on the

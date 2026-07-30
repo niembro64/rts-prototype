@@ -1,6 +1,14 @@
 // LobbyManager — lobby/background battle lifecycle management.
 
 import { createGame, destroyGame } from '../createGame';
+import {
+  setLiquidSurfaceMode,
+  setTerrainSurfaceMode,
+} from '../sim/worldSurfaceState';
+import {
+  loadStoredLiquidSurfaceMode,
+  loadStoredTerrainSurfaceMode,
+} from '../../battleBarConfig';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { ClientViewState } from '../network/ClientViewState';
@@ -121,6 +129,12 @@ export async function createBackgroundBattle(
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  // Seed the WORLD materials BEFORE the scene builds: the 3D renderers read
+  // these at construction (deposit crowns, terrain material, liquid colour),
+  // so waiting for the setTerrainSurfaceMode / setLiquidSurfaceMode commands
+  // on the first sim tick would build the scene with the wrong world.
+  setTerrainSurfaceMode(loadStoredTerrainSurfaceMode(mode));
+  setLiquidSurfaceMode(loadStoredLiquidSurfaceMode(mode));
   await report(0.1, 'Loading terrain settings');
 
   // GAME LOBBY preview = a stripped-down background battle showing

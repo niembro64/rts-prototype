@@ -27,6 +27,7 @@ import {
   type DepositVisualCell,
   type MetalDepositVisualCluster,
 } from './MetalDepositVisualClusters';
+import { isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
@@ -83,6 +84,10 @@ export class MetalDepositRenderer3D {
   }
 
   private buildAll(): void {
+    // SURFACE = METAL builds no crowns: the deposits already did their job by
+    // shaping the terrain, and with the whole map metallic there is nothing to
+    // single out.
+    if (isMetalTerrainSurface()) return;
     for (let i = 0; i < this.clusters.length; i++) {
       const { node, meshes } = this.buildDepositNode(i);
       node.visible = true;
