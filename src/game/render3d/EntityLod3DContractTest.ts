@@ -41,6 +41,7 @@ function viewAt(camera: THREE.Camera): RenderViewState3D {
     forwardY: 0,
     forwardZ: -1,
     fovYRad: Math.PI / 4,
+    aspect: 1,
   };
 }
 

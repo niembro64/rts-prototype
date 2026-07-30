@@ -107,6 +107,7 @@ export function runEntityDetailLevel3DContractTest(): void {
       forwardY: 0,
       forwardZ: -1,
       fovYRad: Math.PI / 4,
+      aspect: 1,
     };
     setLodMode('high');
     assertContract(

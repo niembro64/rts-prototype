@@ -42,6 +42,9 @@ export type RenderViewState3D = {
   forwardY: number;
   forwardZ: number;
   fovYRad: number;
+  /** Viewport width / height. Needed to reconstruct the frustum's horizontal
+   *  extent for off-screen tests; fovYRad alone only gives the vertical one. */
+  aspect: number;
 };
 
 const DEFAULT_RENDER_VIEW: RenderViewState3D = {
@@ -53,6 +56,7 @@ const DEFAULT_RENDER_VIEW: RenderViewState3D = {
   forwardY: 0,
   forwardZ: -1,
   fovYRad: Math.PI / 4,
+  aspect: 1,
 };
 
 function createRenderViewState(): RenderViewState3D {
@@ -87,6 +91,7 @@ export function snapshotRenderFrameState(
     view.forwardY = -me[9];
     view.forwardZ = -me[10];
     view.fovYRad = (camera.fov * Math.PI) / 180;
+    view.aspect = camera.aspect > 0 ? camera.aspect : 1;
   } else {
     view.viewportHeightPx = DEFAULT_RENDER_VIEW.viewportHeightPx;
     view.cameraX = DEFAULT_RENDER_VIEW.cameraX;

@@ -283,6 +283,46 @@ export function detailLevelForViewPosition(
  * Supplying the previous coverage rung gives static props the same hysteresis
  * as entities. Latches must always track THIS value, never the mode-resolved
  * one, so a mode switch cannot feed a pinned rung back into the hysteresis. */
+/** Safety factor on the cull cone, so the cone always strictly contains the
+ *  view frustum even as the aspect ratio changes mid-frame. */
+const VIEW_CULL_CONE_MARGIN = 1.15;
+
+/** Conservative "this sphere cannot be on screen" test.
+ *
+ *  three.js frustum-culls per Mesh, but it still walks every node of every
+ *  subtree to reach those meshes. A caller that owns a whole subtree can skip
+ *  that walk entirely by hiding the subtree root -- worth a lot in an RTS,
+ *  where most of the world is off camera at any moment.
+ *
+ *  Hiding something that IS visible would be a rendering bug, so this tests
+ *  against a cone that strictly CONTAINS the frustum (built from the frustum's
+ *  corner half-angle, times a margin) rather than against the frustum itself.
+ *  It therefore returns false for plenty of off-screen spheres; it just never
+ *  returns true for an on-screen one. Positions are sim-space, matching the
+ *  other view helpers here: three (x, y, z) = sim (x, z, y).
+ */
+export function viewExcludesSphere(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radiusWorld: number,
+): boolean {
+  const dx = simX - view.cameraX;
+  const dy = simZ - view.cameraY;
+  const dz = simY - view.cameraZ;
+  const radius = Math.max(0, radiusWorld);
+  const along = dx * view.forwardX + dy * view.forwardY + dz * view.forwardZ;
+  if (along + radius < 0) return true;
+  if (along <= 0) return false;
+  const tanY = Math.tan(Math.max(0.01, view.fovYRad) * 0.5);
+  const tanCorner =
+    Math.hypot(tanY * Math.max(1e-3, view.aspect), tanY) * VIEW_CULL_CONE_MARGIN;
+  const coneRadius = along * tanCorner + radius;
+  const perpSq = Math.max(0, dx * dx + dy * dy + dz * dz - along * along);
+  return perpSq > coneRadius * coneRadius;
+}
+
 export function coverageRungForViewPosition(
   view: RenderViewState3D,
   simX: number,

@@ -30,6 +30,7 @@ import {
   detailLevelForRung,
   detailRungForMode,
   geometryTierForDetail,
+  viewExcludesSphere,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import type { WorldShade3D } from './WorldShade3D';
@@ -331,6 +332,26 @@ export class EnvironmentPropRenderer3D {
         p.radius + SCOPE_PADDING_EXTRA,
       );
       if (!inScope) {
+        node.root.visible = false;
+        continue;
+      }
+      // Off-camera props still cost: three.js frustum-culls per Mesh, so it
+      // walks each prop's LOD subtree every frame just to reject it. Hiding
+      // the prop root skips that walk. Measured in the running game, every one
+      // of the ~660 in-scope props was outside the frustum while the camera
+      // sat over the battle, so this is the common case, not the edge case.
+      // viewExcludesSphere is deliberately conservative (cone strictly
+      // containing the frustum), so it never hides a prop that is on screen.
+      if (
+        view &&
+        viewExcludesSphere(
+          view,
+          p.x,
+          p.y,
+          p.z + p.height * 0.5,
+          Math.max(p.radius, p.height * 0.5) + SCOPE_PADDING_EXTRA,
+        )
+      ) {
         node.root.visible = false;
         continue;
       }

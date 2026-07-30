@@ -916,6 +916,7 @@ export class RtsScene3D {
         forwardY: -matrix[9],
         forwardZ: -matrix[10],
         fovYRad: (camera.fov * Math.PI) / 180,
+        aspect: camera.aspect > 0 ? camera.aspect : 1,
       },
       simX,
       simY,
