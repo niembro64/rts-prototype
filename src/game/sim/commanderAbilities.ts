@@ -22,6 +22,7 @@ import { ballSpawnRateForWorkRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
+import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -194,7 +195,19 @@ class CommanderAbilitiesSystem {
       const spec = getWorkEmitterSpec(source);
       const pointCount = Math.max(1, spec?.points.length ?? 0);
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
-        const origin = writeWorkEmitterWorldPosition(source, pointIndex, _workEmitterWorld);
+        const fabricatorProductionWork =
+          movement.operation === 'construct' &&
+          source.buildingBlueprintId === 'towerFabricator' &&
+          source.factory?.currentShellId === movement.targetEntityId;
+        const origin = fabricatorProductionWork
+          ? writeFabricatorProductionSprayOrigin(
+              source,
+              world.getTick(),
+              movement.targetEntityId,
+              pointIndex,
+              _workEmitterWorld,
+            )
+          : writeWorkEmitterWorldPosition(source, pointIndex, _workEmitterWorld);
         const spray = this.acquireSprayTarget();
         spray.source.id = source.id;
         spray.source.pos.x = origin.x;

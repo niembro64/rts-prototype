@@ -513,8 +513,8 @@ export class Simulation {
       this.forceAccumulator,
       this.windState,
     );
-    // Notify about newly spawned unit shells immediately so their
-    // elevated initial position can fall/settle during construction.
+    // Notify about newly spawned unit shells immediately so their physics
+    // bodies exist while the production hold pins them at the ring center.
     if (productionResult.spawnedUnits.length > 0) {
       const onUnitSpawn = this.onUnitSpawn;
       if (onUnitSpawn !== null) onUnitSpawn(productionResult.spawnedUnits);

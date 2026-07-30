@@ -18,6 +18,7 @@ import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
 import {
   fabricatorTorusHoverHeight,
   fabricatorTorusOuterRadius,
+  fabricatorTorusRingRadius,
   getAllUnitBlueprints,
   getUnitBlueprint,
 } from './blueprints';
@@ -35,6 +36,8 @@ import {
   getFactoryProductionPylonVisual,
   productionHoldRingRadiusForProducedUnit,
 } from './factoryProductionHold';
+import { applyEntityHoldPose } from './entityHolds';
+import { commanderAbilitiesSystem } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
@@ -54,6 +57,7 @@ import type {
 import { WorldState } from './WorldState';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getHighestBuildFootprintGroundZ } from './buildingPlacementPolicy';
+import { deterministicMath as DMath } from './deterministicMath';
 
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
@@ -592,12 +596,13 @@ function assertFactoryShellContract(): void {
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
-  const fabricatorSpawnClearance = fabricatorTorusHoverHeight();
+  const fabricatorSpawnClearance = (unitShell: Entity) =>
+    fabricatorTorusHoverHeight() - unitShell.unit!.supportPointOffsetZ;
   assertFactoryShellSpawnedAboveSupport(
     shell,
     shellSupport.groundZ,
     'factory shell spawn must use shared support',
-    fabricatorSpawnClearance,
+    fabricatorSpawnClearance(shell),
   );
   assertFactoryShellPhysicsKeepsRoofSupport(world, factory, shell, shellSupport.groundZ);
   assertContract(
@@ -608,6 +613,77 @@ function assertFactoryShellContract(): void {
   );
   assertContract(shell.buildable !== null && !shell.buildable.isComplete, 'spawned shell must be an incomplete buildable');
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
+  assertNear(
+    shell.transform.z,
+    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight(),
+    'fabricator must hold the unit body center in the torus center plane',
+  );
+
+  shell.transform.x += 37;
+  shell.transform.y -= 29;
+  shell.transform.z -= 81;
+  shell.unit!.velocityX = 12;
+  shell.unit!.velocityY = -7;
+  shell.unit!.velocityZ = 5;
+  assertContract(
+    applyEntityHoldPose(world, shell),
+    'fabricator production hold must resolve while the shell is incomplete',
+  );
+  assertNear(shell.transform.x, factory.transform.x, 'fabricator hold must restore exact center x');
+  assertNear(shell.transform.y, factory.transform.y, 'fabricator hold must restore exact center y');
+  assertNear(
+    shell.transform.z,
+    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight(),
+    'fabricator hold must restore exact center z',
+  );
+  assertNear(shell.unit!.velocityX, 0, 'fabricator hold must zero shell velocity x');
+  assertNear(shell.unit!.velocityY, 0, 'fabricator hold must zero shell velocity y');
+  assertNear(shell.unit!.velocityZ, 0, 'fabricator hold must zero shell velocity z');
+
+  const expectedSprayRadius = fabricatorTorusRingRadius(
+    factory.building!.width,
+    factory.building!.depth,
+  );
+  world.beginWorkMovementTick();
+  world.recordWorkMovement(factory.id, shell.id, 'construct', 25);
+  const firstSpray = commanderAbilitiesSystem.update(world, 16).sprayTargets.find(
+    (spray) => spray.source.id === factory.id && spray.target.id === shell.id,
+  );
+  assertContract(firstSpray !== undefined, 'fabricator construction must publish a work spray');
+  assertNear(
+    DMath.hypot(
+      firstSpray.source.pos.x - factory.transform.x,
+      firstSpray.source.pos.y - factory.transform.y,
+    ),
+    expectedSprayRadius,
+    'fabricator work spray must originate on the torus circumference',
+  );
+  assertNear(
+    firstSpray.source.z ?? Number.NaN,
+    shell.transform.z,
+    'fabricator work spray origin must share the centered shell ring plane',
+  );
+  const firstSprayX = firstSpray.source.pos.x;
+  const firstSprayY = firstSpray.source.pos.y;
+  world.incrementTick();
+  world.beginWorkMovementTick();
+  world.recordWorkMovement(factory.id, shell.id, 'construct', 25);
+  const nextSpray = commanderAbilitiesSystem.update(world, 16).sprayTargets.find(
+    (spray) => spray.source.id === factory.id && spray.target.id === shell.id,
+  );
+  assertContract(nextSpray !== undefined, 'fabricator construction spray must persist across active ticks');
+  assertNear(
+    DMath.hypot(
+      nextSpray.source.pos.x - factory.transform.x,
+      nextSpray.source.pos.y - factory.transform.y,
+    ),
+    expectedSprayRadius,
+    'each fabricator work spray origin must remain on the torus circumference',
+  );
+  assertContract(
+    DMath.hypot(nextSpray.source.pos.x - firstSprayX, nextSpray.source.pos.y - firstSprayY) > 1e-3,
+    'fabricator work spray must choose a new random ring point on the next tick',
+  );
 
   shell.buildable.isComplete = true;
   const completed = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
@@ -712,7 +788,7 @@ function assertFactoryShellContract(): void {
     oneShotShell,
     shellSupport.groundZ,
     'one-shot shell spawn must use shared support',
-    fabricatorSpawnClearance,
+    fabricatorSpawnClearance(oneShotShell),
   );
   assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
   oneShotShell.buildable.isComplete = true;
@@ -733,7 +809,7 @@ function assertFactoryShellContract(): void {
     queuedShell,
     shellSupport.groundZ,
     'queued shell spawn must use shared support',
-    fabricatorSpawnClearance,
+    fabricatorSpawnClearance(queuedShell),
   );
   assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
   queuedShell.buildable.isComplete = true;
@@ -1109,4 +1185,8 @@ export function runSupportSurfaceContractTest(): void {
     assertFabricatorTerrainIndependentPlacementContract();
     assertExtractorTierCoverageContract();
   });
+}
+
+export function runFabricatorProductionRingContractTest(): void {
+  withKnownSupportSurfaceTerrain(assertFactoryShellContract);
 }

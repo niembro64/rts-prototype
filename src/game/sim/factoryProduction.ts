@@ -175,7 +175,7 @@ function directFactoryRallyActions(
 // Factory production system
 class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
-  // shell of the selected repeat-build unit on its center support when
+  // shell of the selected repeat-build unit at its exact ring center when
   // work begins, and (b) detecting completion of the shell and finishing the
   // activation (static rally + turret aim). Resource transfer into the
   // shell is handled by energyDistribution, the same path that funds
