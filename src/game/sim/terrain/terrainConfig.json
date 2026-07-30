@@ -89,6 +89,7 @@
     "heightSmoothing": {
       "maxSteps": 0,
       "amount": 0.5
-    }
+    },
+    "consolidateWallTriangles": true
   }
 }

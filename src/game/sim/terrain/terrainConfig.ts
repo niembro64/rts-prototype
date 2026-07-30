@@ -79,6 +79,21 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
   amount: terrainConfig.mesh.heightSmoothing.amount,
 };
 
+/** Debug switch for wall-strip consolidation. A wall region is a ribbon
+ *  between two iso-contours (the shelf below it and the shelf above it)
+ *  and the ramp between them is a single authored slope, so nothing
+ *  strictly inside the ribbon carries shape. With this on, the mesh
+ *  baker deletes every vertex whose whole triangle fan belongs to one
+ *  wall strip and retriangulates the fan without it, leaving each strip
+ *  as triangles whose corners all sit on one of its two contours. The
+ *  fan's outer boundary is reused edge for edge, so the mesh stays
+ *  conforming. Off restores the per-leaf tessellation for A/B — it
+ *  changes the authoritative mesh (heights, buildability, pathing), so
+ *  it is an authored constant shared by every peer, never a per-client
+ *  toggle. Either setting needs a terrain rebuild to take effect. */
+export const TERRAIN_MESH_CONSOLIDATE_WALL_TRIANGLES =
+  terrainConfig.mesh.consolidateWallTriangles;
+
 /** Render-only "solid ocean" mode. When true:
  *    (a) `WaterRenderer3D` draws the ocean surface fully opaque
  *        (transparency disabled, depth writes on), and

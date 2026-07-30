@@ -858,6 +858,10 @@ pub(crate) struct TerrainMeshBuildConfig {
     final_repair_max_passes: i32,
     smoothing_steps: i32,
     smoothing_amount: f64,
+    /// Debug switch (terrainConfig.json `mesh.consolidateWallTriangles`):
+    /// collapse each wall strip onto its two boundary contours instead
+    /// of keeping the tessellation the leaf lattice left inside it.
+    consolidate_wall_triangles: bool,
 }
 
 #[derive(Default)]
@@ -3008,6 +3012,482 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
     (indices, levels, wall_flags, leaf_indices)
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  Wall-strip consolidation
+//
+//  A wall region is a ribbon between two iso-contours of the region
+//  field — the shelf below it and the shelf above it. Nothing inside
+//  that ribbon carries shape: the ramp is authored as a single slope
+//  between those two lines, so every vertex the leaf lattice, the
+//  region clipper, and the T-junction repair happened to drop STRICTLY
+//  INSIDE the ribbon is pure tessellation cost.
+//
+//  This pass deletes them. A vertex whose entire triangle fan belongs
+//  to one wall strip is interior to that strip by construction, so the
+//  fan can be retriangulated without it while its outer boundary — the
+//  edges shared with the shelves on either side — is left untouched.
+//  That keeps the mesh conforming with no crack repair, and once no
+//  interior vertex remains every triangle in the strip has all three
+//  corners on one of its two boundary contours.
+//
+//  Runs after the conforming topology has converged (the repair loop
+//  compares per-triangle levels across shared edges, and a merged
+//  triangle spans leaves of different levels, so running this inside
+//  the loop would drive it to split forever).
+// ─────────────────────────────────────────────────────────────────
+
+/// Strip ids for waterfront regions start here so they can never
+/// collide with a plateau region key (a signed shelf/wall level).
+pub(crate) const TERRAIN_WALL_STRIP_WATERS_EDGE_BASE: i32 = 1_000_000;
+
+/// Ceiling on consolidation sweeps. A sweep visits vertices in
+/// ascending index order, so a vertex that only becomes removable
+/// after a lower-indexed neighbour goes needs another sweep; in
+/// practice everything settles in two or three.
+pub(crate) const TERRAIN_WALL_STRIP_MAX_PASSES: i32 = 8;
+
+/// Which wall strip the point (x, z) belongs to, or None where no
+/// region system classifies it. Inside the waters-edge band the
+/// shoreline classification is authoritative — the same rule
+/// `terrain_waters_edge_wall_flag` applies when it stamps the flag —
+/// so a cliff wall, an end-cap face, and the shelves a cap flattens
+/// into are each their own strip. Everywhere else the plateau region
+/// key names the strip.
+pub(crate) fn terrain_wall_strip_id_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> Option<i32> {
+    if let Some(height_key) = terrain_waters_edge_height_key_at_world(c, x, z) {
+        if (1..=3).contains(&height_key) {
+            let zone = terrain_waters_edge_zone_key_at_world(c, x, z).unwrap_or(0);
+            return Some(TERRAIN_WALL_STRIP_WATERS_EDGE_BASE + zone * 8 + height_key);
+        }
+    }
+    terrain_plateau_region_key_at_world(c, x, z)
+}
+
+/// Strip id for a triangle, sampled at its centroid. The centroid of a
+/// region-clipped triangle sits well inside that region, away from the
+/// chords the clipper cut along the contours.
+pub(crate) fn terrain_wall_strip_id_for_triangle(
+    c: &TerrainMeshBuildConfig,
+    vc: &[f64],
+    a: i32,
+    b: i32,
+    cc: i32,
+) -> Option<i32> {
+    let (ai, bi, ci) = (a as usize, b as usize, cc as usize);
+    if vc.len() < (ai.max(bi).max(ci) + 1) * 2 {
+        return None;
+    }
+    let x = (vc[ai * 2] + vc[bi * 2] + vc[ci * 2]) / 3.0;
+    let z = (vc[ai * 2 + 1] + vc[bi * 2 + 1] + vc[ci * 2 + 1]) / 3.0;
+    terrain_wall_strip_id_at_world(c, x, z)
+}
+
+/// True when `p` is inside (or on the border of) the counter-clockwise
+/// triangle `a`, `b`, `c`.
+pub(crate) fn terrain_point_in_triangle(vc: &[f64], a: i32, b: i32, c: i32, p: i32) -> bool {
+    terrain_triangle_area_from_vertex_ids(vc, a, b, p) >= -TERRAIN_MESH_EPSILON
+        && terrain_triangle_area_from_vertex_ids(vc, b, c, p) >= -TERRAIN_MESH_EPSILON
+        && terrain_triangle_area_from_vertex_ids(vc, c, a, p) >= -TERRAIN_MESH_EPSILON
+}
+
+/// Ear-clip a simple (possibly concave) polygon. Unlike
+/// `terrain_triangulate_convex_polygon` this rejects an ear that
+/// contains another polygon vertex, which is what makes it safe on the
+/// concave fan boundaries wall-strip consolidation produces. Returns
+/// false — leaving `out` untouched — when the polygon is degenerate or
+/// not simple, so the caller can keep the vertex it wanted to drop.
+pub(crate) fn terrain_triangulate_simple_polygon(
+    vc: &[f64],
+    polygon: &[i32],
+    out: &mut Vec<[i32; 3]>,
+) -> bool {
+    if polygon.len() < 3 {
+        return false;
+    }
+    let start = out.len();
+    let mut work: Vec<i32> = polygon.to_vec();
+    if terrain_polygon_signed_area_from_vertex_ids(vc, &work) < 0.0 {
+        work.reverse();
+    }
+
+    while work.len() > 3 {
+        let n = work.len();
+        let mut clipped = false;
+        for i in 0..n {
+            let prev = work[(i + n - 1) % n];
+            let curr = work[i];
+            let next = work[(i + 1) % n];
+            if terrain_triangle_area_from_vertex_ids(vc, prev, curr, next) <= TERRAIN_MESH_EPSILON {
+                continue;
+            }
+            let mut contains_other = false;
+            for &other in &work {
+                if other == prev || other == curr || other == next {
+                    continue;
+                }
+                if terrain_point_in_triangle(vc, prev, curr, next, other) {
+                    contains_other = true;
+                    break;
+                }
+            }
+            if contains_other {
+                continue;
+            }
+            out.push([prev, curr, next]);
+            work.remove(i);
+            clipped = true;
+            break;
+        }
+        if !clipped {
+            out.truncate(start);
+            return false;
+        }
+    }
+
+    if terrain_triangle_area_from_vertex_ids(vc, work[0], work[1], work[2]) <= TERRAIN_MESH_EPSILON {
+        out.truncate(start);
+        return false;
+    }
+    out.push([work[0], work[1], work[2]]);
+    true
+}
+
+/// True when all three vertices sit on the same edge of the map. Used
+/// to clear a fan that is open because the strip runs off the map:
+/// deleting a vertex colinear with the two chain ends re-draws that
+/// stretch of border as one straight segment through where it was, so
+/// the border outline is unchanged.
+pub(crate) fn terrain_mesh_vertices_share_map_border(
+    c: &TerrainMeshBuildConfig,
+    vc: &[f64],
+    a: i32,
+    b: i32,
+    cc: i32,
+) -> bool {
+    let (ai, bi, ci) = (a as usize, b as usize, cc as usize);
+    if vc.len() < (ai.max(bi).max(ci) + 1) * 2 {
+        return false;
+    }
+    let xs = [vc[ai * 2], vc[bi * 2], vc[ci * 2]];
+    let zs = [vc[ai * 2 + 1], vc[bi * 2 + 1], vc[ci * 2 + 1]];
+    let on_line = |values: [f64; 3], target: f64| -> bool {
+        values
+            .iter()
+            .all(|value| (value - target).abs() <= TERRAIN_MESH_EDGE_EPSILON)
+    };
+    on_line(xs, 0.0)
+        || on_line(xs, c.map_width)
+        || on_line(zs, 0.0)
+        || on_line(zs, c.map_height)
+}
+
+/// Ordered ring of the vertices around `vertex`, walked from its
+/// incident triangles. Each triangle contributes the directed edge
+/// opposite `vertex`; a well-formed fan chains those edges head to
+/// tail into a closed cycle, or — where the strip is cut by the map
+/// border — into a single open chain whose ends share that border with
+/// `vertex`. Returns false for anything else (a branching or repeated
+/// link, an open fan away from the border), which simply means this
+/// vertex is left alone.
+pub(crate) fn terrain_collect_fan_ring(
+    c: &TerrainMeshBuildConfig,
+    indices: &[i32],
+    vc: &[f64],
+    fan: &[i32],
+    vertex: i32,
+    ring_out: &mut Vec<i32>,
+) -> bool {
+    ring_out.clear();
+    if fan.len() < 2 {
+        return false;
+    }
+    let mut edges: Vec<(i32, i32)> = Vec::with_capacity(fan.len());
+    for &tri in fan {
+        let base = tri as usize * 3;
+        if base + 2 >= indices.len() {
+            return false;
+        }
+        let (a, b, c) = (indices[base], indices[base + 1], indices[base + 2]);
+        let edge = if a == vertex {
+            (b, c)
+        } else if b == vertex {
+            (c, a)
+        } else if c == vertex {
+            (a, b)
+        } else {
+            return false;
+        };
+        if edge.0 == edge.1 || edge.0 == vertex || edge.1 == vertex {
+            return false;
+        }
+        edges.push(edge);
+    }
+
+    for i in 0..edges.len() {
+        for j in (i + 1)..edges.len() {
+            if edges[i].0 == edges[j].0 || edges[i].1 == edges[j].1 {
+                return false;
+            }
+        }
+    }
+
+    // An open chain starts at the one vertex that heads an edge without
+    // ending one; a closed cycle has no such vertex and may start
+    // anywhere, so it starts at the lowest-indexed triangle's edge.
+    let chain_starts: Vec<i32> = edges
+        .iter()
+        .filter(|e| !edges.iter().any(|other| other.1 == e.0))
+        .map(|e| e.0)
+        .collect();
+    let closed = chain_starts.is_empty();
+    if !closed && chain_starts.len() != 1 {
+        return false;
+    }
+    let start = if closed { edges[0].0 } else { chain_starts[0] };
+
+    let mut current = start;
+    for _ in 0..edges.len() {
+        ring_out.push(current);
+        let Some(next) = edges.iter().find(|e| e.0 == current).map(|e| e.1) else {
+            ring_out.clear();
+            return false;
+        };
+        current = next;
+    }
+
+    if closed {
+        if current != start {
+            ring_out.clear();
+            return false;
+        }
+        return ring_out.len() >= 3;
+    }
+
+    if ring_out.contains(&current) {
+        ring_out.clear();
+        return false;
+    }
+    ring_out.push(current);
+    if ring_out.len() < 3
+        || !terrain_mesh_vertices_share_map_border(c, vc, vertex, start, current)
+    {
+        ring_out.clear();
+        return false;
+    }
+    true
+}
+
+/// Drop every vertex that lies strictly inside a wall strip, merging
+/// its triangle fan into a retriangulation that skips it. Returns the
+/// number of vertices removed.
+pub(crate) fn terrain_consolidate_wall_triangles(
+    c: &TerrainMeshBuildConfig,
+    topology: &mut TerrainMeshTopologyRust,
+) -> usize {
+    let vertex_count = topology.vertex_heights.len();
+    let mut indices = std::mem::take(&mut topology.triangle_indices);
+    let mut levels = std::mem::take(&mut topology.triangle_levels);
+    let mut wall_flags = std::mem::take(&mut topology.triangle_wall_flags);
+    let mut leaf_indices = std::mem::take(&mut topology.triangle_leaf_indices);
+    let vc = &topology.vertex_coords;
+    let triangle_count = indices.len() / 3;
+
+    // Strip ids are only ever asked of wall triangles, and the sample
+    // is not cheap (it re-runs the generation pipeline at the
+    // centroid), so shelf triangles never pay for one.
+    let mut strip_ids: Vec<i32> = vec![i32::MIN; triangle_count];
+    for tri in 0..triangle_count {
+        if wall_flags.get(tri).copied().unwrap_or(0) == 0 {
+            continue;
+        }
+        let base = tri * 3;
+        if let Some(id) =
+            terrain_wall_strip_id_for_triangle(c, vc, indices[base], indices[base + 1], indices[base + 2])
+        {
+            strip_ids[tri] = id;
+        }
+    }
+
+    let mut alive: Vec<bool> = vec![true; triangle_count];
+    let mut fans: Vec<Vec<i32>> = vec![Vec::new(); vertex_count];
+    for tri in 0..triangle_count {
+        let base = tri * 3;
+        for k in 0..3 {
+            let v = indices[base + k] as usize;
+            if v < vertex_count && !fans[v].contains(&(tri as i32)) {
+                fans[v].push(tri as i32);
+            }
+        }
+    }
+
+    let mut removed_total: usize = 0;
+    let mut fan: Vec<i32> = Vec::new();
+    let mut ring: Vec<i32> = Vec::new();
+    let mut fan_triangles: Vec<[i32; 3]> = Vec::new();
+
+    for _pass in 0..TERRAIN_WALL_STRIP_MAX_PASSES {
+        let mut removed_this_pass: usize = 0;
+        for v in 0..vertex_count {
+            if fans[v].len() < 2 {
+                continue;
+            }
+            fan.clear();
+            fan.extend_from_slice(&fans[v]);
+            fan.sort_unstable();
+
+            // Interior to a strip: the whole fan is wall, and all of it
+            // is the SAME wall. A vertex on a strip's boundary contour
+            // always has a shelf triangle in its fan; a vertex on the
+            // seam between two strips sees two ids.
+            let strip = strip_ids[fan[0] as usize];
+            if strip == i32::MIN {
+                continue;
+            }
+            let mut uniform = true;
+            for &tri in &fan {
+                let t = tri as usize;
+                if wall_flags[t] == 0 || strip_ids[t] != strip {
+                    uniform = false;
+                    break;
+                }
+            }
+            if !uniform {
+                continue;
+            }
+
+            if !terrain_collect_fan_ring(c, &indices, vc, &fan, v as i32, &mut ring) {
+                continue;
+            }
+            fan_triangles.clear();
+            if !terrain_triangulate_simple_polygon(vc, &ring, &mut fan_triangles) {
+                continue;
+            }
+            if fan_triangles.len() + 2 != ring.len() {
+                continue;
+            }
+
+            // Commit: the fan's outer boundary is reused edge for edge,
+            // so no neighbour outside the fan notices.
+            let level = levels[fan[0] as usize];
+            let leaf = leaf_indices[fan[0] as usize];
+            let wall_flag = wall_flags[fan[0] as usize];
+            for &tri in &fan {
+                let t = tri as usize;
+                alive[t] = false;
+                let base = t * 3;
+                for k in 0..3 {
+                    let vertex = indices[base + k] as usize;
+                    if vertex < vertex_count {
+                        fans[vertex].retain(|&entry| entry != tri);
+                    }
+                }
+            }
+            for triangle in &fan_triangles {
+                let next = alive.len() as i32;
+                indices.push(triangle[0]);
+                indices.push(triangle[1]);
+                indices.push(triangle[2]);
+                levels.push(level);
+                wall_flags.push(wall_flag);
+                leaf_indices.push(leaf);
+                strip_ids.push(strip);
+                alive.push(true);
+                for k in 0..3 {
+                    let vertex = triangle[k] as usize;
+                    if vertex < vertex_count && !fans[vertex].contains(&next) {
+                        fans[vertex].push(next);
+                    }
+                }
+            }
+            removed_this_pass += 1;
+        }
+        removed_total += removed_this_pass;
+        if removed_this_pass == 0 {
+            break;
+        }
+    }
+
+    if removed_total == 0 {
+        topology.triangle_indices = indices;
+        topology.triangle_levels = levels;
+        topology.triangle_wall_flags = wall_flags;
+        topology.triangle_leaf_indices = leaf_indices;
+        return 0;
+    }
+
+    let mut next_indices: Vec<i32> = Vec::with_capacity(indices.len());
+    let mut next_levels: Vec<i32> = Vec::with_capacity(levels.len());
+    let mut next_wall_flags: Vec<i32> = Vec::with_capacity(wall_flags.len());
+    let mut next_leaf_indices: Vec<i32> = Vec::with_capacity(leaf_indices.len());
+    for tri in 0..alive.len() {
+        if !alive[tri] {
+            continue;
+        }
+        let base = tri * 3;
+        next_indices.push(indices[base]);
+        next_indices.push(indices[base + 1]);
+        next_indices.push(indices[base + 2]);
+        next_levels.push(levels[tri]);
+        next_wall_flags.push(wall_flags[tri]);
+        next_leaf_indices.push(leaf_indices[tri]);
+    }
+
+    topology.triangle_indices = next_indices;
+    topology.triangle_levels = next_levels;
+    topology.triangle_wall_flags = next_wall_flags;
+    topology.triangle_leaf_indices = next_leaf_indices;
+    terrain_compact_unused_mesh_vertices(topology);
+    removed_total
+}
+
+/// Drop vertices no triangle references any more (consolidation orphans
+/// every vertex it deletes) and renumber what is left, so the exported
+/// buffers and the wire pack carry no dead rows.
+pub(crate) fn terrain_compact_unused_mesh_vertices(topology: &mut TerrainMeshTopologyRust) {
+    let vertex_count = topology.vertex_heights.len();
+    let mut used: Vec<bool> = vec![false; vertex_count];
+    for &index in &topology.triangle_indices {
+        let v = index as usize;
+        if v < vertex_count {
+            used[v] = true;
+        }
+    }
+
+    // Renumber in ascending original order so surviving vertices keep
+    // their relative order — only the gaps close.
+    let mut remap: Vec<i32> = vec![-1; vertex_count];
+    let mut next_id: i32 = 0;
+    for v in 0..vertex_count {
+        if used[v] {
+            remap[v] = next_id;
+            next_id += 1;
+        }
+    }
+    if next_id as usize == vertex_count {
+        return;
+    }
+
+    let mut coords: Vec<f64> = Vec::with_capacity(next_id as usize * 2);
+    let mut heights: Vec<f64> = Vec::with_capacity(next_id as usize);
+    for v in 0..vertex_count {
+        if !used[v] {
+            continue;
+        }
+        coords.push(topology.vertex_coords[v * 2]);
+        coords.push(topology.vertex_coords[v * 2 + 1]);
+        heights.push(topology.vertex_heights[v]);
+    }
+    for index in &mut topology.triangle_indices {
+        *index = remap[*index as usize];
+    }
+    topology.vertex_coords = coords;
+    topology.vertex_heights = heights;
+}
+
 pub(crate) fn terrain_build_conforming_topology(
     c: &TerrainMeshBuildConfig,
     cache: &mut TerrainMeshHeightCache,
@@ -3177,6 +3657,14 @@ pub(crate) fn terrain_finalize_conforming_topology(
     cells_y: i32,
     cell_size: f64,
 ) -> Option<TerrainBuiltMeshRust> {
+    // Wall strips collapse to their two boundary contours here, once
+    // the topology has converged and before anything downstream reads
+    // the triangle list.
+    let mut topology = topology;
+    if c.consolidate_wall_triangles {
+        terrain_consolidate_wall_triangles(c, &mut topology);
+    }
+
     let mut vertex_heights = topology.vertex_heights.clone();
     terrain_smooth_mesh_vertex_heights(
         &mut vertex_heights,
@@ -3346,8 +3834,9 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
 /// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
 /// `flat_zones` is the 7-stride deposit override list (x, y, radius, height,
-/// blendRadius, plateauRadius, groupId); `lod_config` packs the 10
-/// triangle/repair tuning values.
+/// blendRadius, plateauRadius, groupId); `lod_config` packs the 11
+/// triangle/repair tuning values (the last one is the wall-strip
+/// consolidation debug switch).
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn terrain_build_adaptive_mesh(
@@ -3374,7 +3863,7 @@ pub fn terrain_build_adaptive_mesh(
         || max_subdiv < 1
         || !extent_fraction.is_finite()
         || flat_zones.len() % METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE != 0
-        || lod_config.len() < 10
+        || lod_config.len() < 11
     {
         return fail;
     }
@@ -3410,6 +3899,7 @@ pub fn terrain_build_adaptive_mesh(
         final_repair_max_passes: lod_config[7] as i32,
         smoothing_steps: lod_config[8] as i32,
         smoothing_amount: lod_config[9],
+        consolidate_wall_triangles: lod_config[10] != 0.0,
     };
 
     let Some(mesh) = terrain_build_adaptive_mesh_internal(&c, cells_x, cells_y, cell_size) else {
@@ -4712,4 +5202,171 @@ pub fn terrain_bake_buildability_grid(
     }
 
     1
+}
+
+#[cfg(test)]
+mod wall_strip_tests {
+    use super::*;
+
+    /// Terraced round island at a shallow wall slope, so the plateau
+    /// walls are wide strips several triangles across before
+    /// consolidation.
+    fn build_config(consolidate: bool) -> TerrainMeshBuildConfig {
+        let terrain_config = [
+            800.0,   // center_magnitude
+            400.0,   // dividers_magnitude
+            400.0,   // terrain_d_terrain (plateau ON)
+            -800.0,  // perimeter_magnitude
+            4.0,     // team_count
+            -1200.0, // tile_floor_y
+            0.49,    // perimeter_outer_radius_fraction
+            0.39,    // perimeter_inner_radius_fraction
+            0.04,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            1.0,     // plateau_ramp_edge_sharpness
+            0.4,     // ripple_radius_fraction
+            1.7,     // ripple_phase
+            700.0,
+            0.9, // ripple component 0 wavelength/magnitude
+            600.0,
+            0.0, // ripple component 1
+            600.0,
+            0.0, // ripple component 2
+            0.1,
+            0.4,
+            0.08, // ridge inner/outer/half-width fractions
+            70.0, // plateau_wall_slope_degrees (wide walls)
+            0.0,  // waters_edge_beach_slope_degrees
+            0.0,  // waters_edge_cliff_height
+            0.0,  // shoreline_beach_fade_radius
+            0.0,  // shoreline_cliff_fade_radius
+            0.0,
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6.0, // pipeline stage order, all active
+        ];
+        let gen_cfg = metal_deposit_terrain_config_from_slice(&terrain_config)
+            .expect("terrain generation config slice parses");
+        let cell_size = 200.0;
+        let map = 12.0 * cell_size;
+        let fine_edge = cell_size / 8.0;
+        let fine_height = fine_edge * TERRAIN_SQRT3_OVER_2;
+        let root_side = terrain_next_power_of_two(
+            (map / fine_edge).max(map / fine_height).ceil().max(1.0) as i64,
+        ) as i32;
+        TerrainMeshBuildConfig {
+            map_width: map,
+            map_height: map,
+            fine_edge,
+            fine_height,
+            root_level: 31 - (root_side.max(1) as u32).leading_zeros() as i32,
+            metrics: terrain_make_oval_metrics(map, map, 0.92),
+            gen_cfg,
+            flat_zones: Vec::new(),
+            max_surface_error: 4.0,
+            min_normal_dot: 0.951,
+            max_neighbor_level_delta: 1,
+            preserve_waterline: true,
+            sample_centroid: true,
+            water_level: -120.0,
+            vertex_key_scale: 1000.0,
+            final_repair_max_passes: 3,
+            smoothing_steps: 0,
+            smoothing_amount: 0.5,
+            consolidate_wall_triangles: consolidate,
+        }
+    }
+
+    /// (triangles, wall triangles, vertices strictly inside one wall
+    /// strip, vertices on a seam where two wall strips abut).
+    fn measure(c: &TerrainMeshBuildConfig) -> (usize, usize, usize, usize) {
+        let mesh = terrain_build_adaptive_mesh_internal(c, 12, 12, 200.0)
+            .expect("adaptive mesh builds");
+        let vertex_count = mesh.vertex_heights.len();
+        let triangle_count = mesh.triangle_indices.len() / 3;
+        let mut fan_total = vec![0usize; vertex_count];
+        let mut fan_wall = vec![0usize; vertex_count];
+        let mut fan_strip = vec![i32::MIN; vertex_count];
+        let mut fan_mixed = vec![false; vertex_count];
+        let mut wall_count = 0usize;
+
+        for tri in 0..triangle_count {
+            let base = tri * 3;
+            let wall = mesh.triangle_wall_flags[tri] != 0;
+            if wall {
+                wall_count += 1;
+            }
+            let strip = if wall {
+                terrain_wall_strip_id_for_triangle(
+                    c,
+                    &mesh.vertex_coords,
+                    mesh.triangle_indices[base],
+                    mesh.triangle_indices[base + 1],
+                    mesh.triangle_indices[base + 2],
+                )
+                .unwrap_or(i32::MIN)
+            } else {
+                i32::MIN
+            };
+            for corner in 0..3 {
+                let v = mesh.triangle_indices[base + corner] as usize;
+                fan_total[v] += 1;
+                if wall {
+                    fan_wall[v] += 1;
+                    if fan_strip[v] == i32::MIN {
+                        fan_strip[v] = strip;
+                    } else if fan_strip[v] != strip {
+                        fan_mixed[v] = true;
+                    }
+                }
+            }
+        }
+
+        let mut interior = 0usize;
+        let mut seams = 0usize;
+        for v in 0..vertex_count {
+            if fan_total[v] == 0 || fan_total[v] != fan_wall[v] {
+                continue;
+            }
+            if fan_mixed[v] {
+                seams += 1;
+            } else {
+                interior += 1;
+            }
+        }
+        (triangle_count, wall_count, interior, seams)
+    }
+
+    /// The consolidation contract: no vertex may be left strictly
+    /// inside a wall strip, so every wall triangle has all three
+    /// corners on one of that strip's two boundary contours.
+    ///
+    /// Vertices where two strips abut directly are NOT interior — at a
+    /// terrain slope steeper than the authored wall angle the shelf
+    /// between two walls pinches to zero width, and that pinched line
+    /// is a real boundary contour of both walls.
+    #[test]
+    fn consolidation_leaves_no_vertex_inside_a_wall_strip() {
+        let (plain_tris, plain_wall, plain_interior, _) = measure(&build_config(false));
+        let (merged_tris, merged_wall, merged_interior, _) = measure(&build_config(true));
+
+        assert!(
+            plain_wall > 0 && plain_interior > 0,
+            "the unconsolidated mesh must have wall strips with interior vertices to merge \
+             (walls={plain_wall}, interior={plain_interior})"
+        );
+        assert_eq!(
+            merged_interior, 0,
+            "consolidation must leave no vertex strictly inside a wall strip \
+             (was {plain_interior}, now {merged_interior})"
+        );
+        assert!(
+            merged_wall < plain_wall && merged_tris < plain_tris,
+            "consolidation must remove triangles \
+             (tris {plain_tris} -> {merged_tris}, walls {plain_wall} -> {merged_wall})"
+        );
+    }
 }

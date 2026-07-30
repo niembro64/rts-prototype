@@ -7,6 +7,7 @@ import {
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
+  TERRAIN_MESH_CONSOLIDATE_WALL_TRIANGLES,
   TERRAIN_MESH_HEIGHT_SMOOTHING,
   TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES,
   TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA,
@@ -177,6 +178,7 @@ function buildAdaptiveEquilateralTerrainMesh(
     TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES,
     TERRAIN_MESH_HEIGHT_SMOOTHING.maxSteps,
     TERRAIN_MESH_HEIGHT_SMOOTHING.amount,
+    TERRAIN_MESH_CONSOLIDATE_WALL_TRIANGLES ? 1 : 0,
   ]);
 
   const terrainConfig = packTerrainGenerationConfigForWasm();

@@ -8410,7 +8410,7 @@ mod sim_kernel_tests {
             0.0,  // shoreline_cliff_fade_radius
             0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, // pipeline stage order, all active
         ];
-        // 10-value LOD slice mirroring terrainConfig.json defaults.
+        // 11-value LOD slice mirroring terrainConfig.json defaults.
         let lod_config = [
             0.0,    // max_surface_error
             0.951,  // min_normal_dot (~18 deg)
@@ -8422,6 +8422,7 @@ mod sim_kernel_tests {
             3.0,    // final_repair_max_passes
             0.0,    // smoothing_steps
             0.5,    // smoothing_amount
+            1.0,    // consolidate_wall_triangles
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;
@@ -8556,6 +8557,7 @@ mod sim_kernel_tests {
                 3.0,
                 0.0,
                 0.5,
+                1.0,
             ];
             let flat_zones: [f64; 0] = [];
             let cells = 12i32;
@@ -8640,6 +8642,7 @@ mod sim_kernel_tests {
             3.0,
             0.0,
             0.5,
+            1.0,
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;
