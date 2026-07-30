@@ -3156,42 +3156,55 @@ pub(crate) fn terrain_triangulate_simple_polygon(
     true
 }
 
-/// True when all three vertices sit on the same edge of the map. Used
-/// to clear a fan that is open because the strip runs off the map:
-/// deleting a vertex colinear with the two chain ends re-draws that
-/// stretch of border as one straight segment through where it was, so
-/// the border outline is unchanged.
-pub(crate) fn terrain_mesh_vertices_share_map_border(
+/// True when `vertex` lies on the segment from `a` to `b`, within the
+/// mesh's own vertex quantization (vertices closer than 1 /
+/// vertexKeyScale are the same vertex to this mesh). Used to clear a
+/// fan that is open — the strip running off the map border, or a
+/// vertex sitting on a neighbour's edge — where dropping the vertex
+/// re-draws that stretch of the outline as one straight segment
+/// through where it stood, so nothing on the far side moves.
+pub(crate) fn terrain_vertex_lies_on_segment(
     c: &TerrainMeshBuildConfig,
     vc: &[f64],
+    vertex: i32,
     a: i32,
     b: i32,
-    cc: i32,
 ) -> bool {
-    let (ai, bi, ci) = (a as usize, b as usize, cc as usize);
-    if vc.len() < (ai.max(bi).max(ci) + 1) * 2 {
+    let (vi, ai, bi) = (vertex as usize, a as usize, b as usize);
+    if vc.len() < (vi.max(ai).max(bi) + 1) * 2 {
         return false;
     }
-    let xs = [vc[ai * 2], vc[bi * 2], vc[ci * 2]];
-    let zs = [vc[ai * 2 + 1], vc[bi * 2 + 1], vc[ci * 2 + 1]];
-    let on_line = |values: [f64; 3], target: f64| -> bool {
-        values
-            .iter()
-            .all(|value| (value - target).abs() <= TERRAIN_MESH_EDGE_EPSILON)
+    let tolerance = if c.vertex_key_scale > 0.0 {
+        1.0 / c.vertex_key_scale
+    } else {
+        TERRAIN_MESH_EDGE_EPSILON
     };
-    on_line(xs, 0.0)
-        || on_line(xs, c.map_width)
-        || on_line(zs, 0.0)
-        || on_line(zs, c.map_height)
+    let (ax, az) = (vc[ai * 2], vc[ai * 2 + 1]);
+    let (bx, bz) = (vc[bi * 2], vc[bi * 2 + 1]);
+    let (vx, vz) = (vc[vi * 2], vc[vi * 2 + 1]);
+    let dx = bx - ax;
+    let dz = bz - az;
+    let length_sq = dx * dx + dz * dz;
+    if length_sq <= TERRAIN_MESH_EPSILON {
+        return false;
+    }
+    let length = length_sq.sqrt();
+    if (dx * (vz - az) - dz * (vx - ax)).abs() > tolerance * length {
+        return false;
+    }
+    let along = ((vx - ax) * dx + (vz - az) * dz) / length_sq;
+    let slack = tolerance / length;
+    along >= -slack && along <= 1.0 + slack
 }
 
 /// Ordered ring of the vertices around `vertex`, walked from its
 /// incident triangles. Each triangle contributes the directed edge
 /// opposite `vertex`; a well-formed fan chains those edges head to
-/// tail into a closed cycle, or — where the strip is cut by the map
-/// border — into a single open chain whose ends share that border with
-/// `vertex`. Returns false for anything else (a branching or repeated
-/// link, an open fan away from the border), which simply means this
+/// tail into a closed cycle, or — where the fan is open, at the map
+/// border or against a neighbour's edge — into a single chain whose
+/// ends straddle `vertex`. Returns false for anything else (a
+/// branching or repeated link, a chain that does not straddle the
+/// vertex, a link that visits a vertex twice), which simply means this
 /// vertex is left alone.
 pub(crate) fn terrain_collect_fan_ring(
     c: &TerrainMeshBuildConfig,
@@ -3260,11 +3273,22 @@ pub(crate) fn terrain_collect_fan_ring(
     }
 
     if closed {
-        if current != start {
+        if current != start || ring_out.len() < 3 {
             ring_out.clear();
             return false;
         }
-        return ring_out.len() >= 3;
+        // A fan pinched at this vertex splits its link into several
+        // disjoint cycles, and the walk above laps the first one; the
+        // repeat is the tell.
+        for i in 0..ring_out.len() {
+            for j in (i + 1)..ring_out.len() {
+                if ring_out[i] == ring_out[j] {
+                    ring_out.clear();
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     if ring_out.contains(&current) {
@@ -3272,9 +3296,7 @@ pub(crate) fn terrain_collect_fan_ring(
         return false;
     }
     ring_out.push(current);
-    if ring_out.len() < 3
-        || !terrain_mesh_vertices_share_map_border(c, vc, vertex, start, current)
-    {
+    if ring_out.len() < 3 || !terrain_vertex_lies_on_segment(c, vc, vertex, start, current) {
         ring_out.clear();
         return false;
     }
@@ -5208,14 +5230,15 @@ pub fn terrain_bake_buildability_grid(
 mod wall_strip_tests {
     use super::*;
 
-    /// Terraced round island at a shallow wall slope, so the plateau
-    /// walls are wide strips several triangles across before
-    /// consolidation.
-    fn build_config(consolidate: bool) -> TerrainMeshBuildConfig {
+    /// Terraced round island. `wall_slope` shallow gives wide strips
+    /// several triangles across; a small `step` over steep ground makes
+    /// the shelves between walls pinch to nothing, so neighbouring
+    /// strips abut directly and the mesh is full of seam vertices.
+    fn build_config(consolidate: bool, step: f64, wall_slope: f64) -> TerrainMeshBuildConfig {
         let terrain_config = [
             800.0,   // center_magnitude
             400.0,   // dividers_magnitude
-            400.0,   // terrain_d_terrain (plateau ON)
+            step,    // terrain_d_terrain (plateau ON)
             -800.0,  // perimeter_magnitude
             4.0,     // team_count
             -1200.0, // tile_floor_y
@@ -5235,7 +5258,7 @@ mod wall_strip_tests {
             0.1,
             0.4,
             0.08, // ridge inner/outer/half-width fractions
-            70.0, // plateau_wall_slope_degrees (wide walls)
+            wall_slope, // plateau_wall_slope_degrees
             0.0,  // waters_edge_beach_slope_degrees
             0.0,  // waters_edge_cliff_height
             0.0,  // shoreline_beach_fade_radius
@@ -5350,8 +5373,18 @@ mod wall_strip_tests {
     /// is a real boundary contour of both walls.
     #[test]
     fn consolidation_leaves_no_vertex_inside_a_wall_strip() {
-        let (plain_tris, plain_wall, plain_interior, _) = measure(&build_config(false));
-        let (merged_tris, merged_wall, merged_interior, _) = measure(&build_config(true));
+        // Wide strips, then thin strips over steep ground where the
+        // shelves pinch out and walls abut each other directly.
+        for (step, wall_slope) in [(400.0, 70.0), (100.0, 89.0)] {
+            check_case(step, wall_slope);
+        }
+    }
+
+    fn check_case(step: f64, wall_slope: f64) {
+        let (plain_tris, plain_wall, plain_interior, plain_seams) =
+            measure(&build_config(false, step, wall_slope));
+        let (merged_tris, merged_wall, merged_interior, merged_seams) =
+            measure(&build_config(true, step, wall_slope));
 
         assert!(
             plain_wall > 0 && plain_interior > 0,
@@ -5367,6 +5400,11 @@ mod wall_strip_tests {
             merged_wall < plain_wall && merged_tris < plain_tris,
             "consolidation must remove triangles \
              (tris {plain_tris} -> {merged_tris}, walls {plain_wall} -> {merged_wall})"
+        );
+        assert!(
+            merged_seams >= plain_seams,
+            "consolidation must not erase the seam between two abutting wall strips \
+             (was {plain_seams}, now {merged_seams})"
         );
     }
 }
