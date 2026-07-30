@@ -28,7 +28,7 @@ import {
 import {
   getLiquidSurfaceMode,
   getTerrainSurfaceMode,
-  vegetationMediumSupported,
+  vegetationSupported,
 } from './worldSurfaceState';
 import {
   getVegetationAssetOptions,
@@ -410,10 +410,10 @@ function packVegetationConfigRows(): {
     flatAssets.push(...options);
 
     const base = kindIndex * VEGETATION_KIND_ROW_STRIDE;
-    // A world that cannot support this medium gets a zero budget rather than
-    // a post-filter: the props would otherwise still be reclaimable energy
+    // A barren world gets a zero budget for every kind rather than a
+    // post-filter: the props would otherwise still be reclaimable energy
     // sitting inside metal or lava.
-    kindRows[base] = vegetationMediumSupported(config.medium) ? config.targetCount : 0;
+    kindRows[base] = vegetationSupported() ? config.targetCount : 0;
     kindRows[base + 1] = VEGETATION_MEDIUM_CODE[config.medium];
     kindRows[base + 2] = config.waterBuffer;
     kindRows[base + 3] = config.waterlineRangeFraction;

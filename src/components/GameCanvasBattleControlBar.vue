@@ -378,17 +378,17 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
         >FOG OF WAR</BarButton>
         <BarDivider />
-        <BarLabel title="World materials. METAL treats the whole map as metal ore — the deposits still shape the land, but there are no separate deposit crowns and extractors pay out anywhere. LAVA replaces the sea with molten rock that burns anything touching it.">WORLD:</BarLabel>
+        <BarLabel title="World materials. METAL treats the whole map as metal ore — the deposits still shape the land, but there are no separate deposit crowns and extractors pay out anywhere. LAVA replaces the sea with molten rock that burns anything touching it. Either one leaves the world barren: no trees, grass, or seaweed.">WORLD:</BarLabel>
         <BarButton
           :active="model.currentTerrainSurfaceMode === 'metal'"
-          title="Ground material. NORMAL is the authored world with discrete metal deposits. METAL makes the entire map one polished ore body: same terrain shaping, no deposit crowns, every build cell pays metal."
+          title="ON makes the entire map one polished ore body: same terrain shaping, no deposit crowns, every build cell pays metal. OFF is the authored world with discrete metal deposits."
           @click="model.setTerrainSurfaceMode(model.currentTerrainSurfaceMode === 'metal' ? 'normal' : 'metal')"
-        >{{ model.currentTerrainSurfaceMode === 'metal' ? 'METAL' : 'NORMAL' }}</BarButton>
+        >METAL</BarButton>
         <BarButton
           :active="model.currentLiquidSurfaceMode === 'lava'"
-          title="What fills the map below the water level. WATER is the authored sea. LAVA is opaque molten rock that drains health very fast from anything touching its surface."
+          title="ON fills the map below the water level with opaque molten rock that drains health very fast from anything touching its surface. OFF is the authored sea."
           @click="model.setLiquidSurfaceMode(model.currentLiquidSurfaceMode === 'lava' ? 'water' : 'lava')"
-        >{{ model.currentLiquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER' }}</BarButton>
+        >LAVA</BarButton>
         <BarDivider />
         <BarLabel title="All cells must fit the unit's medium-specific force envelope. This chooses whether the inter-cell climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
         <BarButton

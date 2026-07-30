@@ -17,7 +17,6 @@ import {
   type LiquidSurfaceMode,
   type TerrainSurfaceMode,
 } from '../../types/worldSurfaceMode';
-import type { VegetationMedium } from '../../vegetationConfig';
 import { WATER_LEVEL } from './terrain/terrainConfig';
 
 let terrainSurfaceMode: TerrainSurfaceMode = DEFAULT_TERRAIN_SURFACE_MODE;
@@ -44,12 +43,15 @@ export function isLavaLiquidSurface(): boolean {
   return liquidSurfaceMode === 'lava';
 }
 
-/** Whether vegetation rooted in this medium takes hold on the current world.
- *  Nothing grows on a map made of metal, and nothing grows at a lava
- *  waterline. Gated on the medium a kind roots in rather than on its name, so
- *  a new vegetation kind inherits the rule for free. */
-export function vegetationMediumSupported(medium: VegetationMedium): boolean {
-  return !isMetalTerrainSurface() && !(isLavaLiquidSurface() && medium === 'waterline');
+/** Whether anything grows on the current world. Vegetation belongs to the
+ *  authored world and nothing else: a map made of metal has no soil, and a
+ *  world whose sea is molten rock is no place for anything to grow — not even
+ *  inland, well away from the lava. So the authored NORMAL + WATER world is the
+ *  only one that grows trees, grass, and seaweed; every other WORLD combination
+ *  is barren. Kind-agnostic, so a new vegetation kind inherits the rule for
+ *  free. */
+export function vegetationSupported(): boolean {
+  return !isMetalTerrainSurface() && !isLavaLiquidSurface();
 }
 
 /** Whether a deposit at this pad height can be worked. A deposit below the
