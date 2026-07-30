@@ -28,6 +28,11 @@ import {
   type MetalDepositVisualCluster,
 } from './MetalDepositVisualClusters';
 import { isMetalTerrainSurface } from '../sim/worldSurfaceState';
+import {
+  METAL_SURFACE_ALBEDO_GLSL,
+  METAL_SURFACE_MATERIAL,
+  metalSurfaceStandardParameters,
+} from './MetalSurfaceMaterial3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
@@ -170,13 +175,16 @@ function makeDepositMaterial(
 ): THREE.Material {
   const rockMap = METAL_DEPOSIT_ROCK_TEXTURE_BLEND > 0 ? getRockDetailTexture() : null;
   if (kind === 'standard') {
+    // PBR comes from MetalSurfaceMaterial3D, the one definition of the metal
+    // surface, so a crown and a SURFACE = METAL world light identically.
+    // flatShading stays here: it belongs to this faceted coin geometry, not
+    // to the material's response to light.
     const material = new THREE.MeshStandardMaterial({
       color: COLORS.environment.metalDeposit.standardMaterial.colorHex,
       map: rockMap,
       vertexColors: true,
-      flatShading: COLORS.environment.metalDeposit.standardMaterial.flatShading,
-      metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
-      roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
+      flatShading: METAL_SURFACE_MATERIAL.flatShading,
+      ...metalSurfaceStandardParameters(),
     });
     installDepositTextureBlendShader(material, buildGridOverlayUniforms);
     return material;
@@ -226,6 +234,7 @@ function installDepositTextureBlendShader(
         '#include <common>',
         [
           'uniform float uMetalDepositTextureBlend;',
+          METAL_SURFACE_ALBEDO_GLSL,
           buildGridOverlayUniformDeclarations(),
           'varying vec3 vBuildGridOverlayWorldPos;',
           '#include <common>',
@@ -239,8 +248,7 @@ function installDepositTextureBlendShader(
           '  #ifdef DECODE_VIDEO_TEXTURE',
           '    sampledDiffuseColor = sRGBTransferEOTF(sampledDiffuseColor);',
           '  #endif',
-          '  float textureBlend = clamp(uMetalDepositTextureBlend, 0.0, 1.0);',
-          '  diffuseColor.rgb *= mix(vec3(1.0), sampledDiffuseColor.rgb, textureBlend);',
+          '  diffuseColor.rgb = metalSurfaceAlbedo(diffuseColor.rgb, sampledDiffuseColor.rgb, uMetalDepositTextureBlend);',
           '  diffuseColor.a *= sampledDiffuseColor.a;',
           '#endif',
         ].join('\n'),

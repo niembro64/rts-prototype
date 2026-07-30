@@ -95,7 +95,11 @@ import {
 } from './SunLighting';
 import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
-import { TERRAIN_METAL_SURFACE_CONFIG } from '../../config';
+import {
+  METAL_SURFACE_ALBEDO_GLSL,
+  METAL_SURFACE_MATERIAL,
+  metalSurfaceStandardParameters,
+} from './MetalSurfaceMaterial3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { smoothstep01 } from '../math';
 import {
@@ -652,13 +656,13 @@ export class TerrainTileRenderer3D {
   // three.js decodes an authored hex to the linear working space, exactly as it
   // does for the metal deposits' vertex colour.
   private metalSurfaceColorUniform = {
-    value: new THREE.Color(TERRAIN_METAL_SURFACE_CONFIG.color),
+    value: new THREE.Color(METAL_SURFACE_MATERIAL.color),
   };
   private metalSurfaceTileWorldSizeUniform = {
-    value: TERRAIN_METAL_SURFACE_CONFIG.rockTileWorldSize,
+    value: METAL_SURFACE_MATERIAL.rockTileWorldSize,
   };
   private metalSurfaceBlendUniform = {
-    value: TERRAIN_METAL_SURFACE_CONFIG.rockTextureBlend,
+    value: METAL_SURFACE_MATERIAL.rockTextureBlend,
   };
   private readonly worldShade: WorldShade3D;
 
@@ -717,8 +721,7 @@ export class TerrainTileRenderer3D {
         color: NEUTRAL_COLOR,
         side: THREE.DoubleSide,
         vertexColors: false,
-        metalness: TERRAIN_METAL_SURFACE_CONFIG.metalness,
-        roughness: TERRAIN_METAL_SURFACE_CONFIG.roughness,
+        ...metalSurfaceStandardParameters(),
       })
       : new THREE.MeshLambertMaterial({
         color: NEUTRAL_COLOR,
@@ -829,6 +832,7 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uMetalSurfaceColor;',
             'uniform float uMetalSurfaceTileWorldSize;',
             'uniform float uMetalSurfaceBlend;',
+            METAL_SURFACE_ALBEDO_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -952,11 +956,16 @@ export class TerrainTileRenderer3D {
             '  + texture2D(uRockDetailTexture, vTerrainWorldPos.xy / uMetalSurfaceTileWorldSize).rgb * metalTriW.z;',
             '  // Identical to MetalDepositRenderer3D: the decoded ore base with',
             '  // the rock detail map multiplied over it at the authored blend.',
-            '  terrainRgb = uMetalSurfaceColor * mix(vec3(1.0), metalDetail, clamp(uMetalSurfaceBlend, 0.0, 1.0));',
+            '  terrainRgb = metalSurfaceAlbedo(uMetalSurfaceColor, metalDetail, uMetalSurfaceBlend);',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
+            '// A metal world takes NO baked sun/AO shade: a deposit crown never',
+            '// receives one, so applying it here would make the two surfaces',
+            '// respond to light differently. Relief still reads, because the',
+            '// standard material lights the ground through its own normals.',
+            'if (uMetalSurfaceEnabled > 0.0) terrainFinalShade = 1.0;',
             // The 0.02 floor keeps biome ground from crushing to black. A metal
             // world has a legitimately near-black albedo — its look comes from
             // the reflection, not the diffuse — and srgbToLinear(#272b2e) times
