@@ -1,5 +1,6 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { metalDepositWorkableAtHeight } from './worldSurfaceState';
 
 export type MetalDepositFootprintCell = {
   x: number;
@@ -43,6 +44,10 @@ function getMetalDepositGridLookup(deposits: ReadonlyArray<MetalDeposit>): Metal
   const byGridCell = new Map<string, MetalDeposit>();
   const cells: MetalDepositGridCell[] = [];
   for (const deposit of deposits) {
+    // A deposit drowned by lava resolves to nothing: no crown, no coverage,
+    // no extractor income. It stays in the generated list because it already
+    // shaped the terrain, and that shaping must not change with the liquid.
+    if (!metalDepositWorkableAtHeight(deposit.height)) continue;
     for (const cell of deposit.cells) {
       byGridCell.set(metalDepositGridCellKey(cell.gx, cell.gy), deposit);
       cells.push({
@@ -120,6 +125,7 @@ export function getMetalDepositsOverlappingBuildingFootprint(
 ): MetalDeposit[] {
   const out: MetalDeposit[] = [];
   for (const deposit of deposits) {
+    if (!metalDepositWorkableAtHeight(deposit.height)) continue;
     if (metalDepositOverlapsBuildingFootprint(deposit, gridX, gridY, gridW, gridH)) {
       out.push(deposit);
     }

@@ -17,6 +17,8 @@ import {
   type LiquidSurfaceMode,
   type TerrainSurfaceMode,
 } from '../../types/worldSurfaceMode';
+import type { VegetationMedium } from '../../vegetationConfig';
+import { WATER_LEVEL } from './terrain/terrainConfig';
 
 let terrainSurfaceMode: TerrainSurfaceMode = DEFAULT_TERRAIN_SURFACE_MODE;
 let liquidSurfaceMode: LiquidSurfaceMode = DEFAULT_LIQUID_SURFACE_MODE;
@@ -40,6 +42,23 @@ export function isMetalTerrainSurface(): boolean {
 /** True when the map's liquid is lava: opaque, self-lit, and lethal to touch. */
 export function isLavaLiquidSurface(): boolean {
   return liquidSurfaceMode === 'lava';
+}
+
+/** Whether vegetation rooted in this medium takes hold on the current world.
+ *  Nothing grows on a map made of metal, and nothing grows at a lava
+ *  waterline. Gated on the medium a kind roots in rather than on its name, so
+ *  a new vegetation kind inherits the rule for free. */
+export function vegetationMediumSupported(medium: VegetationMedium): boolean {
+  return !isMetalTerrainSurface() && !(isLavaLiquidSurface() && medium === 'waterline');
+}
+
+/** Whether a deposit at this pad height can be worked. A deposit below the
+ *  liquid surface is unworkable once that liquid is molten rock: no crown is
+ *  drawn and its cells pay no metal. The deposit is still GENERATED either
+ *  way, because it already shaped the terrain and that shaping must not
+ *  change with the liquid. */
+export function metalDepositWorkableAtHeight(height: number): boolean {
+  return !(isLavaLiquidSurface() && height <= WATER_LEVEL);
 }
 
 /** Returns true when the value changed, so callers can rebuild what depends

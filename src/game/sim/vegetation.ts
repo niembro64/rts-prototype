@@ -26,6 +26,11 @@ import {
   type VegetationKindId,
 } from '@/vegetationConfig';
 import {
+  getLiquidSurfaceMode,
+  getTerrainSurfaceMode,
+  vegetationMediumSupported,
+} from './worldSurfaceState';
+import {
   getVegetationAssetOptions,
   getVegetationAssetSpec,
   vegetationAssetScale,
@@ -126,7 +131,10 @@ function vegetationGenerationKey(
   mapHeight: number,
   playerCount: number,
 ): string {
-  return `${mapWidth}x${mapHeight}:${playerCount}`;
+  // The WORLD materials decide which kinds are placed at all, so they are part
+  // of the layout's identity — otherwise a mode flip would silently keep the
+  // previous world's forest instead of tripping the mismatch error below.
+  return `${mapWidth}x${mapHeight}:${playerCount}:${getTerrainSurfaceMode()}:${getLiquidSurfaceMode()}`;
 }
 
 /**
@@ -402,7 +410,10 @@ function packVegetationConfigRows(): {
     flatAssets.push(...options);
 
     const base = kindIndex * VEGETATION_KIND_ROW_STRIDE;
-    kindRows[base] = config.targetCount;
+    // A world that cannot support this medium gets a zero budget rather than
+    // a post-filter: the props would otherwise still be reclaimable energy
+    // sitting inside metal or lava.
+    kindRows[base] = vegetationMediumSupported(config.medium) ? config.targetCount : 0;
     kindRows[base + 1] = VEGETATION_MEDIUM_CODE[config.medium];
     kindRows[base + 2] = config.waterBuffer;
     kindRows[base + 3] = config.waterlineRangeFraction;

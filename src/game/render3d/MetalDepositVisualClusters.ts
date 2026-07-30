@@ -1,4 +1,5 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
+import { metalDepositWorkableAtHeight } from '../sim/worldSurfaceState';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 
@@ -32,8 +33,14 @@ export function metalDepositCellKey(gx: number, gy: number): string {
 }
 
 export function makeMetalDepositVisualClusters(
-  deposits: ReadonlyArray<MetalDeposit>,
+  allDeposits: ReadonlyArray<MetalDeposit>,
 ): MetalDepositVisualCluster[] {
+  // Drowned deposits are dropped BEFORE clustering, not filtered out of the
+  // result: leaving them in would let a deposit nobody can work fuse two live
+  // ones into a single crown.
+  const deposits = allDeposits.filter(
+    (deposit) => metalDepositWorkableAtHeight(deposit.height),
+  );
   if (deposits.length === 0) return [];
 
   const parents = new Array<number>(deposits.length);
