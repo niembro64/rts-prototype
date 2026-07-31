@@ -103,6 +103,16 @@ pub(crate) struct PathfinderState {
     /// origin, so this is the honest fording depth and immersion center.
     /// 0 falls back to the collision radius (sphere resting tangent).
     cur_support_point_offset_z: f64,
+    /// Per-query fast path for the lateral-hold legality gate: at or above
+    /// this min-cell-normal even a fully lateral hold provably fits the dry
+    /// tangent budget (and the wet budget is never smaller), so the edge
+    /// force helper can be skipped with one comparison. 0 = always skip
+    /// (zero-envelope queries keep legacy unconstrained legality).
+    cur_lateral_skip_normal_z: f64,
+    /// Per-query descent envelope cos(atan μ), precomputed so the downhill
+    /// gate costs a lookup and comparison instead of per-edge trig.
+    /// 0 = unconstrained descent (no authored grip).
+    cur_descent_hold_normal_z: f64,
     /// Intentional destination/entry domain for the current query. Physical
     /// passability uses the traversal passed to the kernels; this second
     /// domain only prevents a body that is already in its intended medium
@@ -305,6 +315,8 @@ impl PathfinderState {
             cur_symmetric_slope: false,
             cur_unit_radius: 0.0,
             cur_support_point_offset_z: 0.0,
+            cur_lateral_skip_normal_z: 0.0,
+            cur_descent_hold_normal_z: 0.0,
             cur_waypoint_traversal: PathfinderTraversal {
                 min_ground_normal_z: 0.0,
                 safe_ground_accel: 0.0,
@@ -907,6 +919,54 @@ fn pathfinder_query_body_center_height(state: &PathfinderState) -> f64 {
     }
 }
 
+/// Precompute the per-query slope-gate thresholds consumed by
+/// `pathfinder_can_step_height_delta`'s hot path.
+///
+/// Lateral skip: the smallest min-cell normal at which a fully lateral hold
+/// provably fits the dry tangent budget — from `a ≥ g·sqrt(1−nz²)` and
+/// `μ·g·nz ≥ g·sqrt(1−nz²)`, i.e. nz ≥ max(sqrt(1−(a/g)²), 1/sqrt(1+μ²)).
+/// Wet edges only ever ADD budget, so the same threshold is safe for them.
+///
+/// Descent hold: cos(atan μ), the downhill braking envelope.
+///
+/// Zero-envelope queries (no accel, grip, or water drive authored) keep the
+/// legacy unconstrained legality: both thresholds go to 0 (always skip).
+pub(crate) fn pathfinder_apply_query_slope_gates(
+    state: &mut PathfinderState,
+    safe_ground_accel: f64,
+    static_friction_coefficient: f64,
+    safe_water_drive_accel: f64,
+) {
+    let a = if safe_ground_accel.is_finite() {
+        safe_ground_accel.max(0.0)
+    } else {
+        0.0
+    };
+    let mu = if static_friction_coefficient.is_finite() {
+        static_friction_coefficient.max(0.0)
+    } else {
+        0.0
+    };
+    let water = if safe_water_drive_accel.is_finite() {
+        safe_water_drive_accel.max(0.0)
+    } else {
+        0.0
+    };
+    if a <= 0.0 && mu <= 0.0 && water <= 0.0 {
+        state.cur_lateral_skip_normal_z = 0.0;
+        state.cur_descent_hold_normal_z = 0.0;
+        return;
+    }
+    let accel_branch = if a >= GRAVITY {
+        0.0
+    } else {
+        (1.0 - (a / GRAVITY) * (a / GRAVITY)).max(0.0).sqrt()
+    };
+    let friction_branch = 1.0 / (1.0 + mu * mu).sqrt();
+    state.cur_lateral_skip_normal_z = accel_branch.max(friction_branch);
+    state.cur_descent_hold_normal_z = if mu > 0.0 { friction_branch } else { 0.0 };
+}
+
 #[inline]
 pub(crate) fn pathfinder_allows_exposed_case(traversal: PathfinderTraversal) -> bool {
     traversal.allow_ground || traversal.allow_air
@@ -1336,26 +1396,33 @@ pub(crate) fn pathfinder_can_step_height_delta(
     // merely expensive — the unit cannot track it, so it is not a legal step
     // in either direction. This is the same math the edge cost prices, so
     // A* can never be forced through an unholdable contour leg as a
-    // least-bad route.
-    if let Some(forces) = pathfinder_bed_edge_forces(
-        state,
-        from_idx,
-        to_idx,
-        horizontal,
-        traversal.allow_air,
-        traversal.allow_ground,
-        traversal.water_surface_supported,
-        traversal.safe_ground_accel,
-        traversal.static_friction_coefficient,
-        traversal.safe_water_drive_accel,
-    ) {
-        // A query that authors no tangent envelope at all (zero accel and
-        // friction — capability probes, unconstrained test traversals) keeps
-        // the legacy unconstrained legality, mirroring min_ground_normal_z=0.
-        if forces.total_tangent_budget > 0.0
-            && forces.lateral_hold_accel >= forces.total_tangent_budget
-        {
-            return false;
+    // least-bad route. The precomputed per-query threshold keeps this a
+    // single comparison on ordinary terrain — the force helper only runs for
+    // edges steep enough that a fully lateral hold might not fit the budget.
+    let min_cell_normal_z = (state.terrain_normal_z[from_idx] as f64)
+        .min(state.terrain_normal_z[to_idx] as f64);
+    if min_cell_normal_z < state.cur_lateral_skip_normal_z {
+        if let Some(forces) = pathfinder_bed_edge_forces(
+            state,
+            from_idx,
+            to_idx,
+            horizontal,
+            traversal.allow_air,
+            traversal.allow_ground,
+            traversal.water_surface_supported,
+            traversal.safe_ground_accel,
+            traversal.static_friction_coefficient,
+            traversal.safe_water_drive_accel,
+        ) {
+            // A query that authors no tangent envelope at all (zero accel and
+            // friction — capability probes, unconstrained test traversals)
+            // keeps the legacy unconstrained legality, mirroring
+            // min_ground_normal_z=0.
+            if forces.total_tangent_budget > 0.0
+                && forces.lateral_hold_accel >= forces.total_tangent_budget
+            {
+                return false;
+            }
         }
     }
 
@@ -1370,16 +1437,21 @@ pub(crate) fn pathfinder_can_step_height_delta(
     // plateau lip or waterline cliff is gated here even downhill. Queries
     // that author no grip keep the legacy unconstrained descent.
     if center_dz <= 0.0 && !state.cur_symmetric_slope {
-        let mu = traversal.static_friction_coefficient;
-        if mu <= 0.0 {
+        let hold_normal_z = state.cur_descent_hold_normal_z;
+        if hold_normal_z <= 0.0 {
             return true;
         }
-        let hold_normal_z = 1.0 / (1.0 + mu * mu).sqrt();
-        let center_normal_z =
-            horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
         let transition_normal_z =
             pathfinder_precomputed_transition_normal_z(state, from_gx, from_gy, to_gx, to_gy);
-        return center_normal_z.min(transition_normal_z) >= hold_normal_z;
+        if transition_normal_z < hold_normal_z {
+            return false;
+        }
+        if center_dz == 0.0 {
+            return true;
+        }
+        let center_normal_z =
+            horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
+        return center_normal_z >= hold_normal_z;
     }
     let required_normal_z = from_required_normal_z.max(to_required_normal_z);
     let center_abs_dz = if state.cur_symmetric_slope {
@@ -2084,6 +2156,12 @@ pub fn pathfinder_find_path(
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
+    pathfinder_apply_query_slope_gates(
+        state,
+        safe_drive_accel,
+        static_friction_coefficient,
+        safe_water_drive_accel,
+    );
     let hard_clearance = if traversal.allow_air {
         0
     } else {
@@ -2401,6 +2479,12 @@ pub fn pathfinder_validate_path(
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
+    pathfinder_apply_query_slope_gates(
+        state,
+        safe_drive_accel,
+        static_friction_coefficient,
+        safe_water_drive_accel,
+    );
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
@@ -2840,6 +2924,7 @@ mod tests {
             wet_contact_required_normal_z: 0.0,
         }
         .derived();
+        pathfinder_apply_query_slope_gates(&mut state, 100.0, 0.85, 0.0);
         assert!(
             !pathfinder_can_step_height_delta(&state, 0, 1, treads),
             "walking off a boundary lip is a fall, not a route"
@@ -2867,12 +2952,14 @@ mod tests {
             wet_contact_required_normal_z: 0.0,
         };
         let grippy = base.derived();
+        pathfinder_apply_query_slope_gates(&mut state, 100.0, 0.85, 0.0);
         assert!(pathfinder_can_step_height_delta(&state, 0, 1, grippy));
         let slippery = PathfinderTraversal {
             static_friction_coefficient: 0.3,
             ..base
         }
         .derived();
+        pathfinder_apply_query_slope_gates(&mut state, 100.0, 0.3, 0.0);
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, slippery));
     }
 
@@ -2899,6 +2986,7 @@ mod tests {
             wet_contact_required_normal_z: 0.0,
         }
         .derived();
+        pathfinder_apply_query_slope_gates(&mut state, 100.0, 0.5, 0.0);
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, weak));
         assert!(!pathfinder_can_step_height_delta(&state, 1, 0, weak));
 
@@ -2916,6 +3004,7 @@ mod tests {
             wet_contact_required_normal_z: 0.0,
         }
         .derived();
+        pathfinder_apply_query_slope_gates(&mut state, 500.0, 2.0, 0.0);
         assert!(pathfinder_can_step_height_delta(&state, 0, 1, strong));
     }
 
