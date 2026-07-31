@@ -1282,12 +1282,27 @@ pub(crate) fn pathfinder_can_step_height_delta(
         }
     }
 
-    // DIRECTIONAL mode preserves one-way controlled descent, but unlike the
-    // old fall-permitting rule both cell surfaces already passed their local
-    // force test above. SYMMETRIC mode additionally requires uphill coupling
-    // authority in both directions.
+    // DIRECTIONAL mode preserves one-way controlled descent: no climb
+    // authority is needed going down, but the unit must be able to BRAKE on
+    // the faces it rides — descending a surface its contact grip cannot hold
+    // is a fall, not a route. The hold envelope cos(atan μ) is deliberately
+    // looser than the climb envelope (a weak-engined, grippy unit may
+    // descend slopes it cannot climb) but a cliff fails it for everyone.
+    // The transition normal is the only record of a face lying exactly on
+    // the cell boundary (both neighboring interiors can be flat), so a
+    // plateau lip or waterline cliff is gated here even downhill. Queries
+    // that author no grip keep the legacy unconstrained descent.
     if center_dz <= 0.0 && !state.cur_symmetric_slope {
-        return true;
+        let mu = traversal.static_friction_coefficient;
+        if mu <= 0.0 {
+            return true;
+        }
+        let hold_normal_z = 1.0 / (1.0 + mu * mu).sqrt();
+        let center_normal_z =
+            horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
+        let transition_normal_z =
+            pathfinder_precomputed_transition_normal_z(state, from_gx, from_gy, to_gx, to_gy);
+        return center_normal_z.min(transition_normal_z) >= hold_normal_z;
     }
     let required_normal_z = from_required_normal_z.max(to_required_normal_z);
     let center_abs_dz = if state.cur_symmetric_slope {
@@ -2658,6 +2673,61 @@ mod tests {
         .derived();
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
         assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
+    }
+
+    #[test]
+    fn boundary_cliffs_are_not_descent_routes() {
+        let mut state = open_test_state(2, 1);
+        // Both interiors flat; the 80°-wall face lies exactly on the shared
+        // boundary and is recorded only in the transition normal.
+        state.terrain_transition_normal_z[0] = 0.17;
+        let treads = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 100.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 0.85,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
+        assert!(
+            !pathfinder_can_step_height_delta(&state, 0, 1, treads),
+            "walking off a boundary lip is a fall, not a route"
+        );
+        assert!(!pathfinder_can_step_height_delta(&state, 1, 0, treads));
+    }
+
+    #[test]
+    fn descent_is_gated_by_grip_not_climb_authority() {
+        let mut state = open_test_state(2, 1);
+        // 10-unit drop over the 20-unit cell pitch ≈ 26.6°: chord normal
+        // 0.894. Treads (μ 0.85, hold normal 0.762) may ride it down;
+        // wheels at μ 0.3 (hold normal 0.958) may not.
+        state.terrain_height[1] = -10.0;
+        let base = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 100.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 0.85,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+            wet_contact_required_normal_z: 0.0,
+        };
+        let grippy = base.derived();
+        assert!(pathfinder_can_step_height_delta(&state, 0, 1, grippy));
+        let slippery = PathfinderTraversal {
+            static_friction_coefficient: 0.3,
+            ..base
+        }
+        .derived();
+        assert!(!pathfinder_can_step_height_delta(&state, 0, 1, slippery));
     }
 
     #[test]
