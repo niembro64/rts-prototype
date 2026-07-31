@@ -67,6 +67,7 @@ import {
   BODY_FLAG_IS_STATIC,
   BODY_FLAG_UPWARD_CONTACT,
   BODY_FLAG_SHAPE_CUBOID,
+  BODY_FLAG_SHAPE_RING,
   BODY_FLAG_OCCUPIED,
   type BodyPoolViews,
 } from '../sim-wasm/init';
@@ -175,7 +176,7 @@ function pv(): BodyPoolViews {
  *  PhysicsEngine3D.createUnitBody / .createBuildingBody. */
 export class Body3D {
   readonly slot: number;
-  readonly shape: 'sphere' | 'cuboid';
+  readonly shape: 'sphere' | 'cuboid' | 'ring';
   /** Pre-multiplier mass × UNIT_MASS_MULTIPLIER for dynamic bodies;
    *  0 for static bodies. Kept JS-side for diagnostics/serialization and
    *  kept in lockstep with the pool `invMass`. Mutable because a host's
@@ -197,7 +198,7 @@ export class Body3D {
 
   private constructor(args: {
     slot: number;
-    shape: 'sphere' | 'cuboid';
+    shape: 'sphere' | 'cuboid' | 'ring';
     mass: number;
     isStatic: boolean;
     label: string;
@@ -216,7 +217,7 @@ export class Body3D {
    *  by PhysicsEngine3D — external callers should go through
    *  createUnitBody / createBuildingBody on the engine. */
   static allocate(args: {
-    shape: 'sphere' | 'cuboid';
+    shape: 'sphere' | 'cuboid' | 'ring';
     isStatic: boolean;
     mass: number;
     label: string;
@@ -267,6 +268,7 @@ export class Body3D {
     let flags = BODY_FLAG_OCCUPIED;
     if (args.isStatic) flags |= BODY_FLAG_IS_STATIC;
     if (args.shape === 'cuboid') flags |= BODY_FLAG_SHAPE_CUBOID;
+    if (args.shape === 'ring') flags |= BODY_FLAG_SHAPE_RING;
     views.flags[slot] = flags;
     return body;
   }
@@ -622,6 +624,47 @@ export class PhysicsEngine3D {
     return body;
   }
 
+  /** Static vertical-axis annular cylinder — the hovering fabricator torus.
+   *  Floats at its combat center z with an open center hole, so aircraft
+   *  collide with the visible ring while released production shells and
+   *  ground units pass through the hole / underneath untouched. */
+  createHoveringRingBody(
+    x: number,
+    y: number,
+    centerZ: number,
+    outerRadius: number,
+    innerRadius: number,
+    tubeHalfHeight: number,
+    label: string,
+    entityId: EntityId | undefined = undefined,
+  ): Body3D {
+    refreshAndBindBody3DPool(getSimWasm()!.pool);
+    const body = Body3D.allocate({
+      shape: 'ring',
+      isStatic: true,
+      mass: 0,
+      label,
+      x,
+      y,
+      z: centerZ,
+      // Ring pool encoding: halfX/halfY carry the OUTER radius (keeps the
+      // shared static broadphase AABB correct), radius carries the INNER
+      // radius, halfZ the tube half-height.
+      radius: innerRadius,
+      halfX: outerRadius,
+      halfY: outerRadius,
+      halfZ: tubeHalfHeight,
+      groundOffset: undefined,
+      restitution: 0.1,
+      airDragCoefficient: 0,
+      groundTangentialDampingRate: 0,
+      surfaceNormal: null,
+      entityId,
+    });
+    this.addBody(body);
+    return body;
+  }
+
   private addBody(body: Body3D): void {
     if (!body.isStatic && body.shape !== 'sphere') {
       throw new Error(
@@ -934,14 +977,14 @@ export class PhysicsEngine3D {
   }
 
   private addStaticToBroadphase(body: Body3D): void {
-    if (body.shape !== 'cuboid') return;
+    if (body.shape === 'sphere') return;
     const sim = getSimWasm()!;
     sim.engineStaticsAdd(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
     refreshAndBindBody3DPool(sim.pool);
   }
 
   private removeStaticFromBroadphase(body: Body3D): void {
-    if (body.shape !== 'cuboid') return;
+    if (body.shape === 'sphere') return;
     const sim = getSimWasm()!;
     sim.engineStaticsRemove(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
     refreshAndBindBody3DPool(sim.pool);

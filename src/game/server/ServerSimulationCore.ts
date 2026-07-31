@@ -18,6 +18,7 @@ import {
   type CanonicalServerStateHash,
 } from '../architecture/CanonicalStateHash';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
+import { createPhysicsBodyForBuilding } from './buildingPhysicsBody';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
@@ -222,27 +223,7 @@ export class ServerSimulationCore {
 
     this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
       for (const entity of newBuildings) {
-        if (entity.building === null || entity.body !== null) continue;
-        // A hovering building (the fabricator torus) is intangible at ground
-        // level: it gets NO collision body, so units walk freely underneath and
-        // released shells fall through it under normal physics. Its footprint
-        // is still reserved + it stays selectable/targetable via the entity
-        // spatial grid.
-        if (entity.building.hovering) continue;
-        const baseZ = entity.transform.z - entity.building.depth / 2;
-        const body = this.physics.createBuildingBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          entity.building.depth,
-          baseZ,
-          entity.building.supportSurface,
-          `building_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-        this.world.refreshEntitySlotState(entity);
+        createPhysicsBodyForBuilding(this.world, this.physics, entity);
       }
     };
 

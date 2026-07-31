@@ -10,38 +10,19 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity } from '../sim/types';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { createPhysicsBodyForBuilding } from './buildingPhysicsBody';
 
-// Pass 1: create building bodies (buildings + towers share static
-// cuboid bodies — towers are buildings-with-turrets structurally).
+// Pass 1: create building bodies (buildings + towers share static bodies —
+// towers are buildings-with-turrets structurally). Shape policy lives in
+// createPhysicsBodyForBuilding, shared with the runtime spawn path.
 export function createBuildingBodiesForEntities(
   world: WorldState,
   physics: PhysicsEngine3D,
   entities: Entity[],
 ): void {
   for (const entity of entities) {
-    if ((entity.type === 'building') && entity.building) {
-      // Hovering structures (the fabricator torus) are intangible at ground
-      // level — no collision body — so units pass under and falling units drop
-      // straight through to the ground. (Mirrors ServerSimulationCore's runtime
-      // onBuildingSpawn path.)
-      if (entity.building.hovering) continue;
-      // baseZ matches WorldState.createBuilding's terrain lookup so
-      // the static cuboid body sits where the entity transform says
-      // it does — base on the local cube tile top.
-      const baseZ = entity.transform.z - entity.building.depth / 2;
-      const body = physics.createBuildingBody(
-        entity.transform.x,
-        entity.transform.y,
-        entity.building.width,
-        entity.building.height,
-        entity.building.depth,
-        baseZ,
-        entity.building.supportSurface,
-        `building_${entity.id}`,
-        entity.id,
-      );
-      entity.body = { physicsBody: body };
-      world.refreshEntitySlotState(entity);
+    if (entity.type === 'building') {
+      createPhysicsBodyForBuilding(world, physics, entity);
     }
   }
 }

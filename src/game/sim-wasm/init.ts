@@ -3821,6 +3821,7 @@ export const BODY_FLAG_IS_STATIC = 1 << 1;
 export const BODY_FLAG_UPWARD_CONTACT = 1 << 2;
 export const BODY_FLAG_SHAPE_CUBOID = 1 << 3;
 export const BODY_FLAG_OCCUPIED = 1 << 4;
+export const BODY_FLAG_SHAPE_RING = 1 << 5;
 
 /** Typed-array views over the WASM-side BodyPool. All views are
  *  indexed by slot id (returned by allocSlot()). Capacity is

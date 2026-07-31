@@ -45,6 +45,11 @@ pub const BODY_FLAG_IS_STATIC: u8 = 1 << 1;
 pub const BODY_FLAG_UPWARD_CONTACT: u8 = 1 << 2;
 pub const BODY_FLAG_SHAPE_CUBOID: u8 = 1 << 3;
 pub const BODY_FLAG_OCCUPIED: u8 = 1 << 4;
+/// Static vertical-axis annular cylinder (the hovering fabricator torus).
+/// Pool encoding: half_x = half_y = OUTER radius (keeps the shared static
+/// broadphase AABB correct with no special case), radius = INNER radius,
+/// half_z = tube half-height.
+pub const BODY_FLAG_SHAPE_RING: u8 = 1 << 5;
 
 pub(crate) struct BodyPool {
     // Position + velocity + per-step accumulator. The hot integrator
@@ -2315,6 +2320,41 @@ pub fn pool_resolve_sphere_sphere_active(
 //  dyn body's pool flags byte when contact normal nz > 0.35.
 // ─────────────────────────────────────────────────────────────────
 
+/// Shared contact tail for sphere-vs-static resolvers: project the sphere
+/// out along the contact normal by the full penetration, mark upward
+/// contact, and reflect the into-surface velocity component with the
+/// dynamic body's restitution. Tangential velocity is preserved so bodies
+/// slide along static surfaces.
+#[inline]
+fn resolve_sphere_static_contact_in_pool(
+    p: &mut BodyPool,
+    dyn_slot: usize,
+    nx: f64,
+    ny: f64,
+    nz: f64,
+    penetration: f64,
+) {
+    p.pos_x[dyn_slot] += nx * penetration;
+    p.pos_y[dyn_slot] += ny * penetration;
+    p.pos_z[dyn_slot] += nz * penetration;
+
+    if nz > 0.35 {
+        p.flags[dyn_slot] |= BODY_FLAG_UPWARD_CONTACT;
+    }
+
+    let dyn_vx = p.vel_x[dyn_slot];
+    let dyn_vy = p.vel_y[dyn_slot];
+    let dyn_vz = p.vel_z[dyn_slot];
+    let v_dot_n = dyn_vx * nx + dyn_vy * ny + dyn_vz * nz;
+    if v_dot_n < 0.0 {
+        let restitution = p.restitution[dyn_slot];
+        let j = (1.0 + restitution) * v_dot_n;
+        p.vel_x[dyn_slot] = dyn_vx - j * nx;
+        p.vel_y[dyn_slot] = dyn_vy - j * ny;
+        p.vel_z[dyn_slot] = dyn_vz - j * nz;
+    }
+}
+
 /// Internal sphere-vs-cuboid pair resolver (single pair). Reads
 /// dyn body geometry + cuboid extents from the pool, mutates dyn
 /// pos/vel/flags in place. Returns true iff the pair overlapped
@@ -2383,25 +2423,84 @@ pub(crate) fn resolve_sphere_cuboid_pair_in_pool(
         penetration = dyn_r - dist;
     }
 
-    p.pos_x[dyn_slot] = dyn_x + nx * penetration;
-    p.pos_y[dyn_slot] = dyn_y + ny * penetration;
-    p.pos_z[dyn_slot] = dyn_z + nz * penetration;
+    resolve_sphere_static_contact_in_pool(p, dyn_slot, nx, ny, nz, penetration);
+    true
+}
 
-    if nz > 0.35 {
-        p.flags[dyn_slot] |= BODY_FLAG_UPWARD_CONTACT;
+/// Internal sphere-vs-static-ring pair resolver (single pair): a vertical-
+/// axis annular cylinder (see BODY_FLAG_SHAPE_RING pool encoding). The
+/// closest solid point to the sphere center is the radial clamp of the
+/// center onto [inner, outer] combined with the z clamp onto ±half_z; the
+/// contact then resolves exactly like the cuboid path. Falling bodies whose
+/// axis distance stays inside the inner radius drop through the center hole
+/// untouched — that is how released production shells reach the ground.
+#[inline]
+pub(crate) fn resolve_sphere_ring_pair_in_pool(
+    p: &mut BodyPool,
+    dyn_slot: usize,
+    st_slot: usize,
+) -> bool {
+    let dyn_r = p.radius[dyn_slot];
+    let outer = p.half_x[st_slot];
+    let inner = p.radius[st_slot];
+    let half_z = p.half_z[st_slot];
+    let dx = p.pos_x[dyn_slot] - p.pos_x[st_slot];
+    let dy = p.pos_y[dyn_slot] - p.pos_y[st_slot];
+    let dz = p.pos_z[dyn_slot] - p.pos_z[st_slot];
+
+    let radial = (dx * dx + dy * dy).sqrt();
+    // Deterministic radial direction for the exactly-on-axis case.
+    let (ux, uy) = if radial > 1.0e-9 {
+        (dx / radial, dy / radial)
+    } else {
+        (1.0, 0.0)
+    };
+    let clamped_radial = radial.clamp(inner, outer);
+    let clamped_z = dz.clamp(-half_z, half_z);
+    let sep_x = dx - ux * clamped_radial;
+    let sep_y = dy - uy * clamped_radial;
+    let sep_z = dz - clamped_z;
+    let dist_sq = sep_x * sep_x + sep_y * sep_y + sep_z * sep_z;
+    if dist_sq >= dyn_r * dyn_r {
+        return false;
+    }
+    let dist = dist_sq.sqrt();
+
+    let nx: f64;
+    let ny: f64;
+    let nz: f64;
+    let penetration: f64;
+    if dist < 1e-6 {
+        // Center inside the solid annulus: exit along the cheapest of
+        // radial-out, radial-in (through the hole), or vertical.
+        let out_radial = outer - radial;
+        let in_radial = radial - inner;
+        let out_z = half_z - dz.abs();
+        if out_radial <= in_radial && out_radial <= out_z {
+            nx = ux;
+            ny = uy;
+            nz = 0.0;
+            penetration = out_radial + dyn_r;
+        } else if in_radial <= out_z {
+            nx = -ux;
+            ny = -uy;
+            nz = 0.0;
+            penetration = in_radial + dyn_r;
+        } else {
+            nx = 0.0;
+            ny = 0.0;
+            nz = if dz >= 0.0 { 1.0 } else { -1.0 };
+            penetration = out_z + dyn_r;
+        }
+    } else {
+        let inv_dist = 1.0 / dist;
+        nx = sep_x * inv_dist;
+        ny = sep_y * inv_dist;
+        nz = sep_z * inv_dist;
+        penetration = dyn_r - dist;
     }
 
-    let dyn_vx = p.vel_x[dyn_slot];
-    let dyn_vy = p.vel_y[dyn_slot];
-    let dyn_vz = p.vel_z[dyn_slot];
-    let v_dot_n = dyn_vx * nx + dyn_vy * ny + dyn_vz * nz;
-    if v_dot_n < 0.0 {
-        let restitution = p.restitution[dyn_slot];
-        let j = (1.0 + restitution) * v_dot_n;
-        p.vel_x[dyn_slot] = dyn_vx - j * nx;
-        p.vel_y[dyn_slot] = dyn_vy - j * ny;
-        p.vel_z[dyn_slot] = dyn_vz - j * nz;
-    }
+    resolve_sphere_static_contact_in_pool(p, dyn_slot, nx, ny, nz, penetration);
     true
 }
 
@@ -2655,7 +2754,12 @@ pub fn pool_resolve_sphere_cuboid_full(
                         if st_slot_u32 == ignored {
                             continue;
                         }
-                        if resolve_sphere_cuboid_pair_in_pool(p, dyn_slot, st_slot) {
+                        let resolved = if p.flags[st_slot] & BODY_FLAG_SHAPE_RING != 0 {
+                            resolve_sphere_ring_pair_in_pool(p, dyn_slot, st_slot)
+                        } else {
+                            resolve_sphere_cuboid_pair_in_pool(p, dyn_slot, st_slot)
+                        };
+                        if resolved {
                             hit = true;
                         }
                     }

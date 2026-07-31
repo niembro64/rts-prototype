@@ -6535,6 +6535,60 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn ring_static_blocks_the_annulus_but_not_the_hole() {
+        let _guard = lock_tests();
+        pool_init();
+        let dyn_slot = pool_alloc_slot() as usize;
+        let ring_slot = pool_alloc_slot() as usize;
+        {
+            let p = pool();
+            // Ring: outer 130, inner 90, tube half-height 20, centered at z=0.
+            p.pos_x[ring_slot] = 0.0;
+            p.pos_y[ring_slot] = 0.0;
+            p.pos_z[ring_slot] = 0.0;
+            p.half_x[ring_slot] = 130.0;
+            p.half_y[ring_slot] = 130.0;
+            p.radius[ring_slot] = 90.0;
+            p.half_z[ring_slot] = 20.0;
+            p.flags[ring_slot] = BODY_FLAG_OCCUPIED | BODY_FLAG_IS_STATIC | BODY_FLAG_SHAPE_RING;
+
+            p.pos_x[dyn_slot] = 0.0;
+            p.pos_y[dyn_slot] = 0.0;
+            p.pos_z[dyn_slot] = 0.0;
+            p.radius[dyn_slot] = 10.0;
+            p.flags[dyn_slot] = BODY_FLAG_OCCUPIED;
+        }
+        let p = pool();
+        // A released production shell falling through the center hole never
+        // touches the ring (axis distance 0, inner radius 90).
+        assert!(!resolve_sphere_ring_pair_in_pool(p, dyn_slot, ring_slot));
+
+        // A body inside the solid annulus is projected out radially.
+        p.pos_x[dyn_slot] = 110.0;
+        assert!(resolve_sphere_ring_pair_in_pool(p, dyn_slot, ring_slot));
+        assert!(
+            p.pos_x[dyn_slot] >= 130.0 + 10.0 - 1e-9,
+            "expected radial expulsion past the outer wall, got {}",
+            p.pos_x[dyn_slot]
+        );
+
+        // A plane skimming the tube from above is pushed back up and its
+        // downward velocity reflects off the top face.
+        p.pos_x[dyn_slot] = 110.0;
+        p.pos_z[dyn_slot] = 28.0;
+        p.vel_z[dyn_slot] = -40.0;
+        p.restitution[dyn_slot] = 0.0;
+        assert!(resolve_sphere_ring_pair_in_pool(p, dyn_slot, ring_slot));
+        assert!((p.pos_z[dyn_slot] - 30.0).abs() < 1e-9, "got {}", p.pos_z[dyn_slot]);
+        assert!(p.vel_z[dyn_slot] >= 0.0, "downward velocity must not survive");
+
+        // Well clear of the tube: no contact.
+        p.pos_x[dyn_slot] = 200.0;
+        p.pos_z[dyn_slot] = 0.0;
+        assert!(!resolve_sphere_ring_pair_in_pool(p, dyn_slot, ring_slot));
+    }
+
+    #[test]
     pub(crate) fn pool_dynamic_step_prepares_collects_and_finalizes_body_slots() {
         let _guard = lock_tests();
         pool_init();
