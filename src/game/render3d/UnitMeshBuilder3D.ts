@@ -220,7 +220,12 @@ export class UnitMeshBuilder3D {
       ? null
       : getConstructionHostMarkingProfile(blueprint.unitBlueprintId);
     if (markingProfile !== null) {
-      const marking = buildConstructionHostMarking(markingProfile, radius, geometryTier);
+      // Chassis children live in unit-radius-1 space; the renderer scales
+      // the chassis group by the unit's render radius every frame. Marking
+      // profiles are authored in body-radius units, so build at scale 1 —
+      // passing the world radius here would scale the marking twice and
+      // detach it from the model.
+      const marking = buildConstructionHostMarking(markingProfile, 1, geometryTier);
       marking.userData.entityId = entity.id;
       marking.traverse((obj) => {
         obj.userData.entityId = entity.id;
