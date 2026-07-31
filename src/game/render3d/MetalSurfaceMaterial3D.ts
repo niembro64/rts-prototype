@@ -1,10 +1,10 @@
 // THE metal surface, and the only definition of it.
 //
 // Two very different renderers draw metal: MetalDepositRenderer3D builds small
-// faceted ore crowns, and TerrainTileRenderer3D shades a whole SURFACE = METAL
+// raised ore crowns, and TerrainTileRenderer3D shades a whole SURFACE = METAL
 // world. They must be the same material — same albedo, same PBR response, same
-// light — so both take their parameters and their shader maths from here
-// rather than each authoring their own.
+// light, and same world-space texture projection — so both take their
+// parameters and shader maths from here rather than each authoring their own.
 //
 // Everything below resolves from ONE colorsConfig entry,
 // `environment.metalDeposit`: retune a deposit and the metal world follows.
@@ -17,14 +17,13 @@ import {
 } from '../../config';
 
 /** The authored metal surface. `color` is the sRGB ore base three.js decodes
- *  to linear working space; the rock detail texture is multiplied over it as
- *  the material's `map` at `rockTextureBlend`, tiled every
- *  `rockTileWorldSize` world units. */
+ *  to linear working space; the shared shader multiplies the rock detail
+ *  texture over it at `rockTextureBlend`, tiled every `rockTileWorldSize`
+ *  world units. */
 export const METAL_SURFACE_MATERIAL = {
   color: COLORS.environment.metalDeposit.baseColorHex,
   metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
   roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
-  flatShading: COLORS.environment.metalDeposit.standardMaterial.flatShading,
   rockTileWorldSize: METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
   rockTextureBlend: METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
 } as const;
@@ -34,10 +33,8 @@ export const METAL_SURFACE_MATERIAL = {
  *  `envMapIntensity` is deliberately absent: neither surface sets it, so both
  *  take three.js's default of 1 and reflect `scene.environment` identically.
  *  Setting it on one and not the other is exactly how the two drifted apart
- *  before. `flatShading` is NOT included — that is a property of the geometry
- *  being shaded (a faceted coin vs. a smooth terrain mesh), not of the
- *  material's response to light, and forcing it on terrain would facet the
- *  entire world. */
+ *  before. Surface normals are likewise owned by the renderers' geometry, not
+ *  duplicated as a material parameter. */
 export function metalSurfaceStandardParameters(): THREE.MeshStandardMaterialParameters {
   return {
     metalness: METAL_SURFACE_MATERIAL.metalness,
@@ -60,5 +57,22 @@ export function metalSurfaceStandardParameters(): THREE.MeshStandardMaterialPara
 export const METAL_SURFACE_ALBEDO_GLSL = [
   'vec3 metalSurfaceAlbedo(vec3 baseLinear, vec3 detailTexel, float blend) {',
   '  return baseLinear * mix(vec3(1.0), detailTexel, clamp(blend, 0.0, 1.0));',
+  '}',
+].join('\n');
+
+/** Canonical world-space projection for the metal detail texture.
+ *
+ * Both deposit crowns and METAL terrain use the geometric face normal rather
+ * than their interpolated lighting normal. Horizontal faces therefore sample
+ * XZ identically, while rims and terrain cliffs receive the same triplanar
+ * projection instead of stretching a top-down UV down their sides. */
+export const METAL_SURFACE_TRIPLANAR_GLSL = [
+  'vec3 sampleMetalSurfaceDetail(sampler2D detailTexture, vec3 worldPosition, vec3 geometricNormal, float tileWorldSize) {',
+  '  vec3 weights = pow(abs(geometricNormal), vec3(8.0));',
+  '  weights /= max(weights.x + weights.y + weights.z, 1.0e-5);',
+  '  vec3 detailXZ = texture2D(detailTexture, worldPosition.xz / tileWorldSize).rgb;',
+  '  vec3 detailYZ = texture2D(detailTexture, worldPosition.yz / tileWorldSize).rgb;',
+  '  vec3 detailXY = texture2D(detailTexture, worldPosition.xy / tileWorldSize).rgb;',
+  '  return detailXZ * weights.y + detailYZ * weights.x + detailXY * weights.z;',
   '}',
 ].join('\n');

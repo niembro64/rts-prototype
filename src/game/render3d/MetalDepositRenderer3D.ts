@@ -10,10 +10,6 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
-import {
-  METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
-  METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
-} from '../../config';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
   assignBuildGridOverlayUniforms,
@@ -31,11 +27,17 @@ import { isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import {
   METAL_SURFACE_ALBEDO_GLSL,
   METAL_SURFACE_MATERIAL,
+  METAL_SURFACE_TRIPLANAR_GLSL,
   metalSurfaceStandardParameters,
 } from './MetalSurfaceMaterial3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import {
+  WORLD_SHADE_FRAGMENT_PARS,
+  worldShadeFragment,
+  type WorldShade3D,
+} from './WorldShade3D';
 
 const DEPOSIT_MESH_DETAIL = {
   close: { outlineStep: 2, maxOutlinePoints: Number.POSITIVE_INFINITY },
@@ -47,7 +49,6 @@ const DEPOSIT_MESH_DETAIL = {
 const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
 const DEPOSIT_VISUAL_MARGIN = BUILD_GRID_CELL_SIZE * 0.16;
 
-const DEPOSIT_BASE = new THREE.Color(COLORS.environment.metalDeposit.baseColorHex);
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private clusters: ReadonlyArray<MetalDepositVisualCluster>;
@@ -62,6 +63,7 @@ export class MetalDepositRenderer3D {
     parentWorld: THREE.Group,
     deposits: ReadonlyArray<MetalDeposit>,
     private readonly buildGridOverlayUniforms: BuildGridOverlayUniforms,
+    private readonly worldShade: WorldShade3D,
   ) {
     this.clusters = makeMetalDepositVisualClusters(deposits);
     this.group = new THREE.Group();
@@ -140,7 +142,7 @@ export class MetalDepositRenderer3D {
   private getMaterial(kind: 'lambert' | 'standard'): THREE.Material {
     let material = this.materials.get(kind);
     if (!material) {
-      material = makeDepositMaterial(kind, this.buildGridOverlayUniforms);
+      material = makeDepositMaterial(kind, this.buildGridOverlayUniforms, this.worldShade);
       this.materials.set(kind, material);
     }
     return material;
@@ -164,47 +166,55 @@ function disposeDepositNode(node: THREE.Group): void {
   });
 }
 
-function seededNoise(seed: number): number {
-  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
-
 function makeDepositMaterial(
   kind: 'lambert' | 'standard',
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
+  worldShade: WorldShade3D,
 ): THREE.Material {
-  const rockMap = METAL_DEPOSIT_ROCK_TEXTURE_BLEND > 0 ? getRockDetailTexture() : null;
   if (kind === 'standard') {
-    // PBR comes from MetalSurfaceMaterial3D, the one definition of the metal
-    // surface, so a crown and a SURFACE = METAL world light identically.
-    // flatShading stays here: it belongs to this faceted coin geometry, not
-    // to the material's response to light.
+    // The crown deliberately uses the same smooth MeshStandardMaterial
+    // response as METAL terrain. Its raised geometry may bend the reflected
+    // light, but the material and its shading pipeline are canonical.
     const material = new THREE.MeshStandardMaterial({
       color: COLORS.environment.metalDeposit.standardMaterial.colorHex,
-      map: rockMap,
-      vertexColors: true,
-      flatShading: METAL_SURFACE_MATERIAL.flatShading,
+      vertexColors: false,
       ...metalSurfaceStandardParameters(),
     });
-    installDepositTextureBlendShader(material, buildGridOverlayUniforms);
+    installDepositMetalSurfaceShader(material, buildGridOverlayUniforms, worldShade);
     return material;
   }
   const material = new THREE.MeshLambertMaterial({
     color: COLORS.environment.metalDeposit.lambertMaterial.colorHex,
-    map: rockMap,
-    vertexColors: true,
-    flatShading: COLORS.environment.metalDeposit.lambertMaterial.flatShading,
+    vertexColors: false,
   });
-  installDepositTextureBlendShader(material, buildGridOverlayUniforms);
+  installDepositMetalSurfaceShader(material, buildGridOverlayUniforms, worldShade);
   return material;
 }
 
-function installDepositTextureBlendShader(
+function installDepositMetalSurfaceShader(
   material: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial,
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
+  worldShade: WorldShade3D,
 ): void {
+  // dFdx/dFdy supplies the same per-fragment geometric normal used by terrain's
+  // triplanar metal projection. WebGL2 has derivatives in core; this enables
+  // the extension on the WebGL1 fallback.
+  (material as unknown as { extensions: Record<string, boolean> }).extensions = {
+    derivatives: true,
+  };
   material.onBeforeCompile = (shader) => {
     assignBuildGridOverlayUniforms(shader, buildGridOverlayUniforms);
+    worldShade.assignUniforms(shader);
+    shader.uniforms.uMetalSurfaceTexture = { value: getRockDetailTexture() };
+    shader.uniforms.uMetalSurfaceColor = {
+      value: new THREE.Color(METAL_SURFACE_MATERIAL.color),
+    };
+    shader.uniforms.uMetalSurfaceTileWorldSize = {
+      value: METAL_SURFACE_MATERIAL.rockTileWorldSize,
+    };
+    shader.uniforms.uMetalSurfaceBlend = {
+      value: METAL_SURFACE_MATERIAL.rockTextureBlend,
+    };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -228,44 +238,47 @@ function installDepositTextureBlendShader(
           'vBuildGridOverlayWorldPos = buildGridOverlayWorldPosition.xyz;',
         ].join('\n'),
       );
-    shader.uniforms.uMetalDepositTextureBlend = { value: METAL_DEPOSIT_ROCK_TEXTURE_BLEND };
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         [
-          'uniform float uMetalDepositTextureBlend;',
+          'uniform sampler2D uMetalSurfaceTexture;',
+          'uniform vec3 uMetalSurfaceColor;',
+          'uniform float uMetalSurfaceTileWorldSize;',
+          'uniform float uMetalSurfaceBlend;',
           METAL_SURFACE_ALBEDO_GLSL,
+          METAL_SURFACE_TRIPLANAR_GLSL,
+          WORLD_SHADE_FRAGMENT_PARS,
           buildGridOverlayUniformDeclarations(),
           'varying vec3 vBuildGridOverlayWorldPos;',
           '#include <common>',
         ].join('\n'),
       )
       .replace(
-        '#include <map_fragment>',
+        '#include <color_fragment>',
         [
-          '#ifdef USE_MAP',
-          '  vec4 sampledDiffuseColor = texture2D(map, vMapUv);',
-          '  #ifdef DECODE_VIDEO_TEXTURE',
-          '    sampledDiffuseColor = sRGBTransferEOTF(sampledDiffuseColor);',
-          '  #endif',
-          '  diffuseColor.rgb = metalSurfaceAlbedo(diffuseColor.rgb, sampledDiffuseColor.rgb, uMetalDepositTextureBlend);',
-          '  diffuseColor.a *= sampledDiffuseColor.a;',
-          '#endif',
-        ].join('\n'),
-      )
-      // The coin is dark/metallic, so apply the build-grid overlay AFTER
-      // lighting (onto gl_FragColor) instead of pre-lighting into diffuseColor.
-      // That keeps the squares as bright as the terrain ones, which sit on a
-      // bright lit surface.
-      .replace(
-        '#include <opaque_fragment>',
-        [
-          '#include <opaque_fragment>',
-          buildGridOverlayFragment('vBuildGridOverlayWorldPos', 'gl_FragColor.rgb'),
+          '#include <color_fragment>',
+          'vec3 metalDepositDpdx = dFdx(vBuildGridOverlayWorldPos);',
+          'vec3 metalDepositDpdy = dFdy(vBuildGridOverlayWorldPos);',
+          'vec3 metalDepositGeomNormal = normalize(cross(metalDepositDpdx, metalDepositDpdy));',
+          'vec3 metalDepositDetail = sampleMetalSurfaceDetail(',
+          '  uMetalSurfaceTexture,',
+          '  vBuildGridOverlayWorldPos,',
+          '  metalDepositGeomNormal,',
+          '  uMetalSurfaceTileWorldSize',
+          ');',
+          'diffuseColor.rgb = metalSurfaceAlbedo(',
+          '  uMetalSurfaceColor,',
+          '  metalDepositDetail,',
+          '  uMetalSurfaceBlend',
+          ');',
+          worldShadeFragment('vBuildGridOverlayWorldPos', true),
+          buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
         ].join('\n'),
       );
   };
-  material.customProgramCacheKey = () => 'metalDepositTextureBlend-buildGridOverlay';
+  material.customProgramCacheKey = () =>
+    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v2';
 }
 
 type DepositOutlinePoint = { x: number; z: number };
@@ -294,26 +307,28 @@ function makeDepositCoinGeometry(
     maxOutlinePoints,
   );
   const positions: number[] = [];
-  const uvs: number[] = [];
-  const colors: number[] = [];
   const indices: number[] = [];
   const visibleHeight = height * 0.5;
-  const seed = source.seed;
 
+  // The crown keeps a hard material boundary between its horizontal cap and
+  // raised rim. The cap therefore has the same straight-up lighting normal as
+  // a flat METAL terrain pad, while the rim can smooth around its own outline.
   const topStart = positions.length / 3;
   for (let i = 0; i < outline.length; i++) {
     const p = outline[i];
     positions.push(p.x, visibleHeight, p.z);
-    pushDepositUv(uvs, p.x, p.z, seed);
-    pushDepositColor(colors);
   }
 
-  const groundStart = positions.length / 3;
+  const rimTopStart = positions.length / 3;
+  for (let i = 0; i < outline.length; i++) {
+    const p = outline[i];
+    positions.push(p.x, visibleHeight, p.z);
+  }
+
+  const rimGroundStart = positions.length / 3;
   for (let i = 0; i < outline.length; i++) {
     const p = outline[i];
     positions.push(p.x, 0, p.z);
-    pushDepositUv(uvs, p.x, p.z, seed);
-    pushDepositColor(colors);
   }
 
   const contour = new Array<THREE.Vector2>(outline.length);
@@ -329,10 +344,10 @@ function makeDepositCoinGeometry(
   const n = outline.length;
   for (let i = 0; i < n; i++) {
     const next = (i + 1) % n;
-    const topA = topStart + i;
-    const topB = topStart + next;
-    const groundA = groundStart + i;
-    const groundB = groundStart + next;
+    const topA = rimTopStart + i;
+    const topB = rimTopStart + next;
+    const groundA = rimGroundStart + i;
+    const groundB = rimGroundStart + next;
 
     // Vertical rim follows the same smoothed outline as the top face, so
     // the visible deposit footprint stays tied to the metal-producing cells.
@@ -341,13 +356,12 @@ function makeDepositCoinGeometry(
 
   const indexed = new THREE.BufferGeometry();
   indexed.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  indexed.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  indexed.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   indexed.setIndex(indices);
-  const geom = indexed.toNonIndexed();
-  indexed.dispose();
-  geom.computeVertexNormals();
-  return geom;
+  // Smooth within each surface, matching terrain's interpolated lighting
+  // normals without rounding the cap into the vertical rim. The geometric
+  // derivative used for texture projection remains face-true.
+  indexed.computeVertexNormals();
+  return indexed;
 }
 
 function limitDepositOutline(
@@ -585,17 +599,4 @@ function signedLoopArea(points: readonly DepositOutlinePoint[]): number {
     area += a.x * b.z - b.x * a.z;
   }
   return area * 0.5;
-}
-
-function pushDepositUv(uvs: number[], x: number, z: number, seed: number): void {
-  const offsetU = seededNoise(seed * 101 + 7);
-  const offsetV = seededNoise(seed * 163 + 19);
-  uvs.push(
-    x / METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE + offsetU,
-    z / METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE + offsetV,
-  );
-}
-
-function pushDepositColor(colors: number[]): void {
-  colors.push(DEPOSIT_BASE.r, DEPOSIT_BASE.g, DEPOSIT_BASE.b);
 }

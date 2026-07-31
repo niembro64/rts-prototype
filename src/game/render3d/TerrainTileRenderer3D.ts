@@ -98,6 +98,7 @@ import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceS
 import {
   METAL_SURFACE_ALBEDO_GLSL,
   METAL_SURFACE_MATERIAL,
+  METAL_SURFACE_TRIPLANAR_GLSL,
   metalSurfaceStandardParameters,
 } from './MetalSurfaceMaterial3D';
 import { getSimWasm } from '../sim-wasm/init';
@@ -833,6 +834,7 @@ export class TerrainTileRenderer3D {
             'uniform float uMetalSurfaceTileWorldSize;',
             'uniform float uMetalSurfaceBlend;',
             METAL_SURFACE_ALBEDO_GLSL,
+            METAL_SURFACE_TRIPLANAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -948,12 +950,12 @@ export class TerrainTileRenderer3D {
             // sampled triplanar so cliff walls get real rock instead of a
             // vertical smear. The baked shade below still supplies the relief.
             'if (uMetalSurfaceEnabled > 0.0) {',
-            '  vec3 metalTriW = pow(abs(geomNormal), vec3(8.0));',
-            '  metalTriW /= max(metalTriW.x + metalTriW.y + metalTriW.z, 1.0e-5);',
-            '  vec3 metalDetail =',
-            '    texture2D(uRockDetailTexture, vTerrainWorldPos.xz / uMetalSurfaceTileWorldSize).rgb * metalTriW.y',
-            '  + texture2D(uRockDetailTexture, vTerrainWorldPos.yz / uMetalSurfaceTileWorldSize).rgb * metalTriW.x',
-            '  + texture2D(uRockDetailTexture, vTerrainWorldPos.xy / uMetalSurfaceTileWorldSize).rgb * metalTriW.z;',
+            '  vec3 metalDetail = sampleMetalSurfaceDetail(',
+            '    uRockDetailTexture,',
+            '    vTerrainWorldPos,',
+            '    geomNormal,',
+            '    uMetalSurfaceTileWorldSize',
+            '  );',
             '  // Identical to MetalDepositRenderer3D: the decoded ore base with',
             '  // the rock detail map multiplied over it at the authored blend.',
             '  terrainRgb = metalSurfaceAlbedo(uMetalSurfaceColor, metalDetail, uMetalSurfaceBlend);',
