@@ -2173,15 +2173,34 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           if (waterBoundaryMode === 'infinity' && midFade >= 1) continue;
-          const topA = meshVertexToTerrainVertex[
+          const surfaceTopA = meshVertexToTerrainVertex[
             meshVertexMapIndex(edge.a, edge.wallClass)
           ];
-          const topB = meshVertexToTerrainVertex[
+          const surfaceTopB = meshVertexToTerrainVertex[
             meshVertexMapIndex(edge.b, edge.wallClass)
           ];
-          if (topA < 0 || topB < 0) continue;
-          const topAOff = topA * 3;
-          const topBOff = topB * 3;
+          if (surfaceTopA < 0 || surfaceTopB < 0) continue;
+          const topAOff = surfaceTopA * 3;
+          const topBOff = surfaceTopB * 3;
+          // The slab wall needs a hard normal seam at the terrain rim. Reusing
+          // the surface vertices here would interpolate their upward terrain
+          // normals into the wall's horizontal normals. That bent the PBR
+          // reflection across the entire tall face and produced temporal
+          // shimmer while the camera moved, most visibly on METAL worlds.
+          const wallTopA = pushWallVertex(
+            terrainPositions[topAOff],
+            terrainPositions[topAOff + 1],
+            terrainPositions[topAOff + 2],
+            normal.nx,
+            normal.nz,
+          );
+          const wallTopB = pushWallVertex(
+            terrainPositions[topBOff],
+            terrainPositions[topBOff + 1],
+            terrainPositions[topBOff + 2],
+            normal.nx,
+            normal.nz,
+          );
           const floorA = pushWallVertex(
             terrainPositions[topAOff],
             worldBoxFloorY,
@@ -2196,7 +2215,14 @@ export class TerrainTileRenderer3D {
             normal.nx,
             normal.nz,
           );
-          terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
+          terrainIndices.push(
+            floorA,
+            wallTopA,
+            wallTopB,
+            floorA,
+            wallTopB,
+            floorB,
+          );
           terrainDebugLevels.push(-1, -1);
           terrainTriangleWallFlags.push(0, 0);
         }
