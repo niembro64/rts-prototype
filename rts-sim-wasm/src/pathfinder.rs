@@ -1572,9 +1572,18 @@ pub(crate) fn pathfinder_edge_cost(
                 .safe_drive_accel
                 .min(GRAVITY * cost_profile.static_friction_coefficient)
                 + forces.safe_water_accel;
-            let acceleration_time_scale = (flat_safe_accel / remaining_accel).sqrt().max(1.0);
-            travel_cost =
-                forces.surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE * acceleration_time_scale;
+            // Terminal-velocity time model: with exponential tangential
+            // damping the cruise speed is accel/rate, so the edge-vs-flat
+            // travel-time ratio is the LINEAR accel ratio — the damping rate
+            // cancels for one unit on one edge, needing no extra plumbing.
+            // (The old sqrt() was an acceleration-time model that
+            // systematically under-priced climbs against the integrator's
+            // steady-state speeds.) Wet edges still share the dry damping
+            // assumption; water drag makes them slightly cheap, never
+            // inadmissibly expensive.
+            let terminal_velocity_time_scale = (flat_safe_accel / remaining_accel).max(1.0);
+            travel_cost = forces.surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE
+                * terminal_velocity_time_scale;
         }
     }
 
