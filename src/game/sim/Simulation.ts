@@ -44,6 +44,7 @@ import {
   PATHFINDING_CHASE_REPATH_DRIFT_DISTANCE_FRACTION,
   PATHFINDING_CHASE_REPATH_DRIFT_MIN_WU,
   PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU,
+  PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
 } from './pathfindingTuning';
 import {
@@ -1097,6 +1098,18 @@ export class Simulation {
       if (!this.isDirectPathPointReachable(entity, nextPoint)) break;
       plan.index++;
     }
+    // A surviving intermediate point is one the loop above could not consume
+    // (no validated shortcut to the point after it — switchback corners on
+    // slopes). Passing it must not demand a pinpoint hit: once the unit
+    // crosses the waypoint's perpendicular plane along the incoming leg,
+    // inside a lateral corridor, the corner is done and steering may rotate
+    // onto the next leg instead of oscillating around the point.
+    if (
+      plan.index < plan.points.length - 1 &&
+      this.hasCrossedIntermediatePointPlane(entity, plan)
+    ) {
+      plan.index++;
+    }
     // Advancing past a preview point shrinks the serialized route; re-mark
     // actions so selected-unit waypoint visuals follow the unit forward.
     if (plan.index !== startIndex) {
@@ -1119,6 +1132,42 @@ export class Simulation {
       isFinalActionPoint,
       pathAdvanceRadius,
     };
+  }
+
+  /** True when the unit has passed the current intermediate waypoint's
+   *  perpendicular plane (measured along the incoming leg direction) while
+   *  staying inside the leg's lateral corridor. The corridor keeps a unit
+   *  that slid far off the planned line from skipping corners it never
+   *  actually rounded; the plane test keeps a fast unit that stepped over
+   *  the point in one tick from turning back to hunt a 1-wu bullseye. */
+  private hasCrossedIntermediatePointPlane(
+    entity: Entity,
+    plan: NonNullable<Unit['activePath']>,
+  ): boolean {
+    const unit = entity.unit;
+    if (unit === null) return false;
+    const point = plan.points[plan.index];
+    const px = entity.transform.x - point.x;
+    const py = entity.transform.y - point.y;
+    let legX: number;
+    let legY: number;
+    if (plan.index > 0) {
+      const prev = plan.points[plan.index - 1];
+      legX = point.x - prev.x;
+      legY = point.y - prev.y;
+    } else {
+      // The first point has no incoming leg; the unit's motion direction is
+      // the approach direction.
+      legX = unit.velocityX;
+      legY = unit.velocityY;
+    }
+    const legLength = magnitude(legX, legY);
+    if (legLength <= 1e-6) return false;
+    const invLegLength = 1 / legLength;
+    const alongLeg = (px * legX + py * legY) * invLegLength;
+    if (alongLeg < 0) return false;
+    const lateral = Math.abs(px * legY - py * legX) * invLegLength;
+    return lateral <= PATHFINDING_INTERMEDIATE_CORRIDOR_WU;
   }
 
   private isDirectPathPointReachable(entity: Entity, point: UnitPathPoint): boolean {

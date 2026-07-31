@@ -2,6 +2,7 @@
   "forceSafetyRatio": 0.85,
   "allowDiagonalNeighbors": true,
   "arrivalRadius": 50,
+  "intermediateCorridorWu": 10,
   "softClearanceCells": 2,
   "softClearancePenaltyPerCell": 0.35,
   "planBudgetPerPlayerPerTick": 8,

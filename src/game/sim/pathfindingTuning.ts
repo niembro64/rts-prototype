@@ -3,6 +3,7 @@ import rawPathfindingTuningConfig from './pathfindingTuningConfig.json';
 type PathfindingTuningConfig = {
   forceSafetyRatio: number;
   arrivalRadius: number;
+  intermediateCorridorWu: number;
   allowDiagonalNeighbors: boolean;
   softClearanceCells: number;
   softClearancePenaltyPerCell: number;
@@ -120,6 +121,14 @@ function requireUnitIntervalRatio(label: string, value: number): number {
  *  as reached). This is controller behavior and is deliberately not folded
  *  into the unit's hard pathfinding collision clearance. */
 export const PATHFINDING_ARRIVAL_RADIUS = readArrivalRadius();
+/** Half-width (world units) of the corridor around a path leg inside which
+ *  crossing an intermediate waypoint's perpendicular plane counts as passing
+ *  the corner. Keeps corner capture tolerant of speed without letting a
+ *  far-off-course unit skip waypoints. */
+export const PATHFINDING_INTERMEDIATE_CORRIDOR_WU = requireNonNegativeNumber(
+  'intermediateCorridorWu',
+  config.intermediateCorridorWu,
+);
 export const PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS = readAllowDiagonalNeighbors();
 export const PATHFINDING_SOFT_CLEARANCE_CELLS = readSoftClearanceCells();
 export const PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL = readSoftClearancePenaltyPerCell();
