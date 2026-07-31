@@ -534,6 +534,60 @@ pub(crate) fn unit_force_contact_normal_load(
     (weight_into_surface - force_out_of_surface).max(0.0)
 }
 
+/// Split the Coulomb-limited ground drive budget between cross-track slope
+/// hold and along-track propulsion. The lateral (perpendicular-to-command)
+/// component of slope gravity is cancelled first, at full authority — a
+/// tracked or legged contact patch resists sideways sliding with the same
+/// grip it drives with, and neither a formation speed factor nor a
+/// body-forward cos-throttle should surrender that grip. Whatever authority
+/// remains in quadrature drives along the commanded tangent, scaled by the
+/// throttle. Along-track gravity is deliberately NOT compensated: climbing
+/// spends it and descending keeps it, exactly as the pathfinder's edge-cost
+/// model prices legs (lateral hold reserved, longitudinal = sqrt(B² − L²),
+/// uphill minus g·sinθ).
+#[inline]
+pub(crate) fn unit_force_ground_drive_forces(
+    drive_dir_x: f64,
+    drive_dir_y: f64,
+    throttle: f64,
+    nx: f64,
+    ny: f64,
+    nz: f64,
+    available_ground_force: f64,
+    body_mass: f64,
+) -> (f64, f64, f64) {
+    let (tx, ty, tz) =
+        unit_force_project_horizontal_onto_slope(drive_dir_x, drive_dir_y, nx, ny, nz);
+    // Tangential (downslope) component of gravity, as acceleration.
+    let sg_x = GRAVITY * nz * nx;
+    let sg_y = GRAVITY * nz * ny;
+    let sg_z = -GRAVITY + GRAVITY * nz * nz;
+    // Cross-track share of that acceleration.
+    let sg_dot_t = sg_x * tx + sg_y * ty + sg_z * tz;
+    let lat_x = sg_x - sg_dot_t * tx;
+    let lat_y = sg_y - sg_dot_t * ty;
+    let lat_z = sg_z - sg_dot_t * tz;
+    let lat_accel = (lat_x * lat_x + lat_y * lat_y + lat_z * lat_z).sqrt();
+    let budget = available_ground_force.max(0.0);
+    let hold_force = if lat_accel > 1.0e-12 && body_mass > 0.0 && lat_accel.is_finite() {
+        (lat_accel * body_mass / 1_000_000.0).min(budget)
+    } else {
+        0.0
+    };
+    let longitudinal_budget = (budget * budget - hold_force * hold_force).max(0.0).sqrt();
+    let thrust_mag = longitudinal_budget * throttle;
+    let mut fx = tx * thrust_mag;
+    let mut fy = ty * thrust_mag;
+    let mut fz = tz * thrust_mag;
+    if hold_force > 0.0 {
+        let inv = 1.0 / lat_accel;
+        fx -= lat_x * inv * hold_force;
+        fy -= lat_y * inv * hold_force;
+        fz -= lat_z * inv * hold_force;
+    }
+    (fx, fy, fz)
+}
+
 /// Convert a world-space movement request into a signed throttle for a
 /// body-forward actuator. A positive request drives along the nose, while a
 /// request opposite the nose applies reverse thrust. This lets the arrival
@@ -1336,17 +1390,19 @@ pub fn unit_force_step_batch(
                 runtime.available_ground_force[runtime_slot] = available_ground_force;
             }
             if has_drive_dir {
-                let thrust_mag = available_ground_force * drive_thrust_scale;
-                let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
+                let (fx, fy, fz) = unit_force_ground_drive_forces(
                     drive_dir_x,
                     drive_dir_y,
+                    drive_thrust_scale,
                     rows[base + UF_ROW_NORMAL_X],
                     rows[base + UF_ROW_NORMAL_Y],
                     rows[base + UF_ROW_NORMAL_Z],
+                    available_ground_force,
+                    body_mass,
                 );
-                thrust_force_x += tx * thrust_mag;
-                thrust_force_y += ty * thrust_mag;
-                thrust_force_z += tz * thrust_mag;
+                thrust_force_x += fx;
+                thrust_force_y += fy;
+                thrust_force_z += fz;
             } else {
                 let (fx, fy, fz) = unit_force_idle_brake(
                     body_mass,
@@ -1507,6 +1563,85 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn flat_ground_drive_spends_the_full_budget_along_the_command() {
+        let budget = 2.0;
+        let (fx, fy, fz) =
+            unit_force_ground_drive_forces(1.0, 0.0, 1.0, 0.0, 0.0, 1.0, budget, 40_000.0);
+        assert_near(fx, budget);
+        assert_near(fy, 0.0);
+        assert_near(fz, 0.0);
+    }
+
+    #[test]
+    fn straight_fall_line_drive_reserves_no_hold() {
+        // 20° incline rising toward +y: normal tilts toward -y.
+        let theta: f64 = 20.0_f64.to_radians();
+        let (nx, ny, nz) = (0.0, -theta.sin(), theta.cos());
+        let budget = 2.0;
+        // Commanded straight uphill (+y): lateral gravity is zero, so the
+        // whole budget goes along the climb tangent, matching the old model.
+        let (fx, fy, fz) =
+            unit_force_ground_drive_forces(0.0, 1.0, 1.0, nx, ny, nz, budget, 40_000.0);
+        let mag = (fx * fx + fy * fy + fz * fz).sqrt();
+        assert_near(fx, 0.0);
+        assert_near(mag, budget);
+        assert!(fy > 0.0 && fz > 0.0, "climb tangent has +y and +z parts");
+    }
+
+    #[test]
+    fn cross_slope_drive_cancels_lateral_gravity_before_driving() {
+        let theta: f64 = 20.0_f64.to_radians();
+        let (nx, ny, nz) = (0.0, -theta.sin(), theta.cos());
+        let body_mass = 40_000.0;
+        let budget = 8.0;
+        // Commanded along the contour (+x). Lateral slope gravity is
+        // g·sinθ toward -y (with a tangent-plane z part).
+        let (fx, fy, fz) =
+            unit_force_ground_drive_forces(1.0, 0.0, 1.0, nx, ny, nz, budget, body_mass);
+        let hold_force = GRAVITY * theta.sin() * body_mass / 1_000_000.0;
+        assert!(hold_force < budget, "test premise: hold fits in budget");
+        let longitudinal = (budget * budget - hold_force * hold_force).sqrt();
+        // Along-track (+x) share is the reduced longitudinal budget.
+        assert_near(fx, longitudinal);
+        // Cross-track share exactly opposes the lateral gravity force:
+        // gravity tangent is (0, -g·sinθ·cosθ, -g·sin²θ)·m, so the hold
+        // force is its negation.
+        assert_near(fy, GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0);
+        assert_near(fz, GRAVITY * theta.sin() * theta.sin() * body_mass / 1_000_000.0);
+    }
+
+    #[test]
+    fn unholdable_cross_slope_saturates_the_budget_on_hold() {
+        let theta: f64 = 60.0_f64.to_radians();
+        let (nx, ny, nz) = (0.0, -theta.sin(), theta.cos());
+        let body_mass = 40_000.0;
+        // Budget far below m·g·sinθ/1e6 ≈ 10.39.
+        let budget = 2.0;
+        let (fx, fy, fz) =
+            unit_force_ground_drive_forces(1.0, 0.0, 1.0, nx, ny, nz, budget, body_mass);
+        // Zero longitudinal drive; the entire budget pushes against the
+        // lateral slide direction.
+        assert_near(fx, 0.0);
+        let mag = (fx * fx + fy * fy + fz * fz).sqrt();
+        assert_near(mag, budget);
+        assert!(fy > 0.0, "hold pushes back uphill (+y)");
+    }
+
+    #[test]
+    fn zero_throttle_drive_still_holds_the_slope() {
+        // A body-forward unit mid-yaw (cos throttle ≈ 0) must not surrender
+        // its cross-slope grip while it turns.
+        let theta: f64 = 20.0_f64.to_radians();
+        let (nx, ny, nz) = (0.0, -theta.sin(), theta.cos());
+        let body_mass = 40_000.0;
+        let budget = 8.0;
+        let (fx, fy, _fz) =
+            unit_force_ground_drive_forces(1.0, 0.0, 0.0, nx, ny, nz, budget, body_mass);
+        assert_near(fx, 0.0);
+        assert_near(fy, GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0);
     }
 
     #[test]
