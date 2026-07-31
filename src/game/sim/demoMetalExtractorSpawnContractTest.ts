@@ -341,8 +341,19 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
   const expectedDepositIds = new Set<number>();
   const depositById = new Map<number, (typeof deposits)[number]>();
   for (let i = 0; i < deposits.length; i++) {
-    depositById.set(deposits[i].id, deposits[i]);
-    if (deposits[i].demoAutoExtractor) expectedDepositIds.add(deposits[i].id);
+    const deposit = deposits[i];
+    assertContract(
+      deposit.cells.every(
+        (cell) =>
+          cell.x >= 0 &&
+          cell.x < mapWidth &&
+          cell.y >= 0 &&
+          cell.y < mapHeight,
+      ),
+      `authored metal deposit ${deposit.id} must stay inside the map footprint`,
+    );
+    depositById.set(deposit.id, deposit);
+    if (deposit.demoAutoExtractor) expectedDepositIds.add(deposit.id);
   }
 
   const world = new WorldState(1242, mapWidth, mapHeight);

@@ -227,7 +227,7 @@
         "spots": [
           { "radiusFraction": 0.9, "sliceOffset": -0.2 },
           { "radiusFraction": 1.0, "sliceOffset": -0.25 },
-          { "radiusFraction": 1.7, "sliceOffset": -0.25 },
+          { "radiusFraction": 1.1, "sliceOffset": -0.25 },
           { "radiusFraction": 1.14, "sliceOffset": -0.2 }
         ]
       }
