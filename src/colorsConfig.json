@@ -25,7 +25,7 @@
       "colorHex": "#22303B",
       "opacity": 0.45,
       "lava": {
-        "colorHex": "#D93B12",
+        "colorHex": "#b2523a",
         "emissiveScale": 1.35
       }
     },
@@ -142,17 +142,17 @@
       }
     },
     "metalDeposit": {
-      "baseColorHex": "#272b2e",
+      "baseColorHex": "#687987",
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
         "resolution": 4096,
-        "blend": 1,
-        "contrast": 0.30,
+        "blend": 0.0,
+        "contrast": 0.3,
         "roughnessVariation": 0.2,
         "tileWorldSize": 2000
       },
       "standardMaterial": {
-        "metalness": 0.50,
+        "metalness": 0.5,
         "roughness": 0.88
       }
     }

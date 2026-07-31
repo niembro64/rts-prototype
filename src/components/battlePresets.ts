@@ -54,12 +54,6 @@ export type BattlePreset = {
 
 type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
 
-// Stable identifiers for the two presets that supply DEMO BATTLE and
-// REAL BATTLE bar defaults. The bars never carry their own defaults;
-// every fallback flows through one of these presets.
-const DEMO_BATTLE_DEFAULT_PRESET_NAME = 'DEMO BATTLE DEFAULT';
-const REAL_BATTLE_DEFAULT_PRESET_NAME = 'REAL BATTLE DEFAULT';
-
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
   demo: 'Angels Flat',
   real: 'Angels Flat',
@@ -242,11 +236,11 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 0,
       dividersMagnitude: -400,
       perimeterMagnitude: -400,
-      terrainDTerrain: 400,
+      terrainDTerrain: 0,
       plateauWallSlopeDegrees: 80,
       watersEdgeBeachSlopeDegrees: 10,
       watersEdgeCliffHeight: 100,
-      metalDepositStep: 1600,
+      metalDepositStep: 200,
       terrainDetail: 4,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
