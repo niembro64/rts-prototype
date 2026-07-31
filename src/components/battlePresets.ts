@@ -259,7 +259,7 @@ function buildPresets(): readonly BattlePreset[] {
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
-      liquidSurfaceMode: 'lava',
+      liquidSurfaceMode: 'water',
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
