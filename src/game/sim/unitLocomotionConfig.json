@@ -139,7 +139,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "many"
+        "altitudeProbeSetId": "few"
       },
       "navigation": {
         "allowOnGround": true,
@@ -289,7 +289,7 @@
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
-        "altitudeProbeSetId": "many"
+        "altitudeProbeSetId": "few"
       },
       "navigation": {
         "allowOnGround": false,
