@@ -367,9 +367,37 @@ export function isPathPlanTraversable(
   unitRadius: number,
   symmetricSlope: boolean,
 ): boolean {
-  if (points.length === 0) return false;
+  return isPathPlanSuffixTraversable(
+    startX,
+    startY,
+    points,
+    0,
+    mapWidth,
+    mapHeight,
+    terrainFilter,
+    unitRadius,
+    symmetricSlope,
+  );
+}
+
+/** Validate the remaining legs of a partially walked plan (points from
+ * `fromIndex` on), with the live position as the first vertex. Used when
+ * building occupancy changes underneath an installed route. */
+export function isPathPlanSuffixTraversable(
+  startX: number,
+  startY: number,
+  points: readonly UnitPathPoint[],
+  fromIndex: number,
+  mapWidth: number,
+  mapHeight: number,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+): boolean {
+  const remaining = points.length - fromIndex;
+  if (remaining <= 0) return false;
   ensurePathfinderTerrain(mapWidth, mapHeight);
-  const requiredLength = (points.length + 1) * 2;
+  const requiredLength = (remaining + 1) * 2;
   if (_pathValidationScratch.length < requiredLength) {
     let capacity = _pathValidationScratch.length;
     while (capacity < requiredLength) capacity *= 2;
@@ -377,9 +405,10 @@ export function isPathPlanTraversable(
   }
   _pathValidationScratch[0] = startX;
   _pathValidationScratch[1] = startY;
-  for (let i = 0; i < points.length; i++) {
-    _pathValidationScratch[(i + 1) * 2] = points[i].x;
-    _pathValidationScratch[(i + 1) * 2 + 1] = points[i].y;
+  for (let i = 0; i < remaining; i++) {
+    const point = points[fromIndex + i];
+    _pathValidationScratch[(i + 1) * 2] = point.x;
+    _pathValidationScratch[(i + 1) * 2 + 1] = point.y;
   }
   return validatePathScratch(requiredLength, terrainFilter, unitRadius, symmetricSlope);
 }

@@ -297,6 +297,8 @@ import __wbg_init, {
   pathfinder_compute_locomotion_climb_profile,
   pathfinder_rebuild_terrain_mask_and_cc,
   pathfinder_bake_traversability_grid,
+  pathfinder_sync_building_occupancy,
+  pathfinder_building_occupancy_version,
   pathfinder_find_path,
   pathfinder_last_result_status,
   pathfinder_validate_path,
@@ -3686,8 +3688,16 @@ export interface PathfinderApi {
    *  `ceil(mapW/20), ceil(mapH/20)`. */
   init: (mapWidth: number, mapHeight: number) => void;
   /** Rebuild the terrain-only locomotion mask and connected components.
-   *  Build-grid reservations deliberately do not enter this surface. */
+   *  Resets the building occupancy layer (version 0) so the caller resyncs
+   *  it afterward. */
   rebuildTerrainMaskAndCc: (terrainVersion: number) => void;
+  /** Replace the building occupancy layer with the given grounded footprint
+   *  cells (shared 20-wu build/path grid) and re-run the O(n)
+   *  blocked/clearance/component sweeps. Hovering structures are never
+   *  submitted. */
+  syncBuildingOccupancy: (cellGx: Int32Array, cellGy: Int32Array, version: number) => number;
+  /** Version of the installed building occupancy layer; 0 = not synced. */
+  buildingOccupancyVersion: () => number;
   /** Bake authoritative WAYPOINT and MOVE validity for every build square.
    *  Both arrays must hold at least gridWidth()*gridHeight() bytes. */
   bakeTraversabilityGrid: (
@@ -4280,6 +4290,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           computeLocomotionClimbProfile: pathfinder_compute_locomotion_climb_profile,
           rebuildTerrainMaskAndCc: pathfinder_rebuild_terrain_mask_and_cc,
           bakeTraversabilityGrid: pathfinder_bake_traversability_grid,
+          syncBuildingOccupancy: pathfinder_sync_building_occupancy,
+          buildingOccupancyVersion: pathfinder_building_occupancy_version,
           findPath: pathfinder_find_path,
           lastResultStatus: pathfinder_last_result_status,
           validatePath: pathfinder_validate_path,

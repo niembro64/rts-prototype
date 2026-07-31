@@ -29,6 +29,7 @@ import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
   expandPathPlan,
+  isPathPlanSuffixTraversable,
   isPathPlanTraversable,
   isPathSegmentTraversable,
   type ExpandedPathPlan,
@@ -53,6 +54,7 @@ import {
   PATH_REQUEST_REFRESH,
   SimulationPathPlanScheduler,
 } from './SimulationPathPlanScheduler';
+import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { applyLavaSurfaceDamage } from './lavaSurfaceDamage';
@@ -316,6 +318,18 @@ export class Simulation {
       world.mapHeight,
       terrainBuildabilityGrid,
     );
+    // Grounded building footprints are a dynamic obstacle layer in the WASM
+    // locomotion grid. The cache pulls the cell set whenever the grid
+    // version moves; hovering structures never report cells (their
+    // blocksMovement is authored false at placement).
+    registerPathfinderBuildingOccupancy({
+      getVersion: () => this.constructionSystem.getGrid().getVersion(),
+      forEachBlockedCell: (visit) => {
+        for (const { gx, gy } of this.constructionSystem.getGrid().occupiedCells()) {
+          visit(gx, gy);
+        }
+      },
+    });
     this.damageSystem = new DamageSystem(world);
     this.deathExplosionPlanner = new SimulationDeathExplosionPlanner(
       this.world,
@@ -675,6 +689,32 @@ export class Simulation {
     terrainVersion: number,
   ): boolean {
     if (plan.terrainVersion !== terrainVersion) return true;
+    const buildingGridVersion = this.constructionSystem.getGrid().getVersion();
+    if (plan.buildingGridVersion !== buildingGridVersion) {
+      // Building occupancy changed somewhere. Re-validate only this plan's
+      // remaining legs: routes nowhere near the change restamp for free,
+      // routes now crossing a footprint queue a budgeted refresh while the
+      // unit keeps steering (physics stops it at the wall meanwhile).
+      const unit = entity.unit;
+      if (
+        unit !== null &&
+        isPathPlanSuffixTraversable(
+          entity.transform.x,
+          entity.transform.y,
+          plan.points,
+          plan.index,
+          this.world.mapWidth,
+          this.world.mapHeight,
+          this.pathTerrainFilterForUnit(entity),
+          unit.radius.collision,
+          this.world.slopePathMode === 'symmetric',
+        )
+      ) {
+        plan.buildingGridVersion = buildingGridVersion;
+      } else {
+        return true;
+      }
+    }
     const age = this.world.getTick() - plan.plannedAtTick;
     if (isChase && age >= PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS) {
       const drift = magnitude(action.x - plan.goalX, action.y - plan.goalY);
@@ -756,6 +796,7 @@ export class Simulation {
   ): string {
     return [
       terrainVersion,
+      this.constructionSystem.getGrid().getVersion(),
       this.world.slopePathMode,
       pathTerrainFilterCacheKey(filter),
       metadata.radius,
@@ -1033,6 +1074,7 @@ export class Simulation {
       index: 0,
       actionHash: unit.actionHash,
       terrainVersion,
+      buildingGridVersion: this.constructionSystem.getGrid().getVersion(),
       plannedAtTick: this.world.getTick(),
       goalX: action.x,
       goalY: action.y,

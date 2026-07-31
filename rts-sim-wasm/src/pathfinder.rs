@@ -53,6 +53,12 @@ pub(crate) struct PathfinderState {
     /// medium cases: dry/exposed, water, or both.
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
+    /// Dynamic obstacle layer: grounded building footprint cells, synced
+    /// from the TS BuildingGrid (see pathfinder_sync_building_occupancy).
+    /// Hovering structures never appear here.
+    building_blocked: Vec<u8>,
+    /// BuildingGrid version of the installed layer; 0 = not synced.
+    building_occupancy_version: u32,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
     /// Minimum normal of the terrain transition between neighboring cell
@@ -296,6 +302,8 @@ impl PathfinderState {
             terrain_water: Vec::new(),
             terrain_submerged: Vec::new(),
             terrain_edge_blocked: Vec::new(),
+            building_blocked: Vec::new(),
+            building_occupancy_version: 0,
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             terrain_transition_normal_z: Vec::new(),
@@ -405,6 +413,9 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.terrain_submerged.resize(n, 0);
     state.terrain_edge_blocked.clear();
     state.terrain_edge_blocked.resize(n, 0);
+    state.building_blocked.clear();
+    state.building_blocked.resize(n, 0);
+    state.building_occupancy_version = 0;
     state.terrain_height.clear();
     state
         .terrain_height
@@ -641,13 +652,33 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         }
     }
 
-    // Locomotion is a terrain concern. Construction-grid occupancy reserves
-    // build squares only; it must not become elevated terrain, a path blocker,
-    // or a clearance source here. Hovering structures therefore never change
-    // the movement surface a unit plans across.
+    // A terrain rebuild invalidates the building occupancy layer: TS resyncs
+    // it immediately afterward (version 0 never matches a live BuildingGrid
+    // version, which starts at 1).
+    state.building_blocked.fill(0);
+    state.building_occupancy_version = 0;
+
+    pathfinder_rebuild_blocked_clearance_and_components(state);
+
+    state.terrain_only_key = key;
+}
+
+/// Rebuild the aggregate blocked mask, the three clearance distance fields,
+/// and the connected-component labels from the current terrain masks plus
+/// the building occupancy layer. Shared by the terrain rebuild and by
+/// building-occupancy sync — building churn re-runs ONLY these O(n) sweeps,
+/// never the far more expensive per-cell terrain sampling above.
+fn pathfinder_rebuild_blocked_clearance_and_components(state: &mut PathfinderState) {
+    let grid_w = state.grid_w;
+    let grid_h = state.grid_h;
+    let n = state.n;
+
+    // Terrain is the base locomotion surface; building occupancy is a
+    // dynamic obstacle layer on top of it. Hovering structures never enter
+    // the layer, so units path freely under them.
     state.blocked.copy_from_slice(&state.terrain_blocked);
     for idx in 0..n {
-        if state.terrain_edge_blocked[idx] != 0 {
+        if state.terrain_edge_blocked[idx] != 0 || state.building_blocked[idx] != 0 {
             state.blocked[idx] = 1;
         }
     }
@@ -656,21 +687,25 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     // medium cell. Ground/air-only traversal treats every water-containing
     // cell as an obstacle; water-only traversal treats every cell containing
     // exposed terrain as an obstacle. Dual-medium traversal has no terrain
-    // medium obstacle. All three fields are then clamped by exact map-edge
-    // distance so physical body radius still remains in bounds.
+    // medium obstacle. Buildings obstruct every non-air medium. All three
+    // fields are then clamped by exact map-edge distance so physical body
+    // radius still remains in bounds.
     for idx in 0..n {
+        let building = state.building_blocked[idx] != 0;
         state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
-        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] != 0 {
+        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] != 0 || building {
             0
         } else {
             u16::MAX
         };
-        state.water_clearance[idx] =
-            if state.terrain_submerged[idx] == 0 || state.terrain_edge_blocked[idx] != 0 {
-                0
-            } else {
-                u16::MAX
-            };
+        state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
+            || state.terrain_edge_blocked[idx] != 0
+            || building
+        {
+            0
+        } else {
+            u16::MAX
+        };
     }
     pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
     pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
@@ -747,8 +782,46 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         }
         next_label += 1;
     }
+}
 
-    state.terrain_only_key = key;
+/// Replace the building occupancy layer with the given footprint cells and
+/// re-run the O(n) blocked/clearance/component sweeps. Cells are grounded
+/// building footprint cells in the shared 20-wu build/path grid (hovering
+/// structures are never submitted). Full replacement per sync keeps the
+/// layer stateless against terrain rebuilds and desync-proof: the caller
+/// owns the authoritative cell set and the version.
+#[wasm_bindgen]
+pub fn pathfinder_sync_building_occupancy(
+    cell_gx: &[i32],
+    cell_gy: &[i32],
+    version: u32,
+) -> u32 {
+    let state = pathfinder_state();
+    if state.n == 0 {
+        return 0;
+    }
+    debug_assert!(cell_gy.len() >= cell_gx.len());
+    state.building_blocked.fill(0);
+    let count = cell_gx.len().min(cell_gy.len());
+    for i in 0..count {
+        let gx = cell_gx[i];
+        let gy = cell_gy[i];
+        if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
+            continue;
+        }
+        state.building_blocked[(gy * state.grid_w + gx) as usize] = 1;
+    }
+    state.building_occupancy_version = version;
+    pathfinder_rebuild_blocked_clearance_and_components(state);
+    1
+}
+
+/// Version of the currently installed building occupancy layer. 0 after any
+/// terrain rebuild or init — never a live BuildingGrid version — so the TS
+/// cache resyncs exactly when its grid version differs.
+#[wasm_bindgen]
+pub fn pathfinder_building_occupancy_version() -> u32 {
+    pathfinder_state().building_occupancy_version
 }
 
 pub(crate) fn pathfinder_rebuild_clearance_distance(
@@ -1021,7 +1094,35 @@ pub(crate) fn pathfinder_is_cell_passable(
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> bool {
+    pathfinder_is_cell_passable_impl(state, idx, traversal, true)
+}
+
+/// Building-blind passability, used only to classify a blocked START as an
+/// escape start: a unit standing where a building just went up may route out
+/// of the footprint (`can_step_between` rejects every step INTO a building
+/// cell, so escape is inherently one-way).
+#[inline]
+pub(crate) fn pathfinder_is_cell_passable_ignoring_buildings(
+    state: &PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+) -> bool {
+    pathfinder_is_cell_passable_impl(state, idx, traversal, false)
+}
+
+#[inline]
+fn pathfinder_is_cell_passable_impl(
+    state: &PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+    honor_buildings: bool,
+) -> bool {
     if !traversal.allow_air && state.terrain_edge_blocked[idx] != 0 {
+        return false;
+    }
+    // Grounded building footprints obstruct every non-air medium; air
+    // traversal overflies them exactly as it overflies terrain.
+    if honor_buildings && !traversal.allow_air && state.building_blocked[idx] != 0 {
         return false;
     }
     let has_water = state.terrain_water[idx] == 1;
@@ -2194,11 +2295,13 @@ pub fn pathfinder_find_path(
 
     // A physically blocked start is terminal. A waypoint-invalid but
     // move-valid start is a recovery start and may route into its intended
-    // domain.
+    // domain. A start blocked ONLY by a building footprint is an escape
+    // start: the unit was there before the building, and every step INTO a
+    // building cell is illegal anyway, so A* can only route it out.
     let start_cell_gx = sgx;
     let start_cell_gy = sgy;
     if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal)
-        || !pathfinder_is_cell_passable(state, start_idx, traversal)
+        || !pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
     {
         state.waypoint_scratch.push(start_x);
         state.waypoint_scratch.push(start_y);
@@ -2546,6 +2649,10 @@ mod tests {
         state.grid_w = grid_w;
         state.grid_h = grid_h;
         state.n = n;
+        state.building_blocked = vec![0; n];
+        state.bfs_queue = vec![0; n];
+        state.terrain_blocked = vec![0; n];
+        state.cc_labels = vec![0; n];
         state.blocked = vec![0; n];
         state.terrain_water = vec![0; n];
         state.terrain_submerged = vec![0; n];
@@ -2847,6 +2954,78 @@ mod tests {
         .derived();
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
         assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
+    }
+
+    #[test]
+    fn building_cells_block_every_non_air_medium_but_not_air() {
+        let mut state = open_test_state(3, 1);
+        state.building_blocked[1] = 1;
+        let ground = ground_traversal();
+        assert!(pathfinder_is_cell_passable(&state, 0, ground));
+        assert!(!pathfinder_is_cell_passable(&state, 1, ground));
+        assert!(
+            pathfinder_is_cell_passable_ignoring_buildings(&state, 1, ground),
+            "the cell is blocked ONLY by the building layer"
+        );
+        let air = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 0.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 0.0,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: false,
+            allow_water: false,
+            allow_air: true,
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
+        assert!(
+            pathfinder_is_cell_passable(&state, 1, air),
+            "air traversal overflies building footprints"
+        );
+    }
+
+    #[test]
+    fn building_escape_is_one_way() {
+        let mut state = open_test_state(3, 1);
+        state.building_blocked[1] = 1;
+        state.cur_waypoint_traversal = ground_traversal();
+        let ground = ground_traversal();
+        assert!(
+            pathfinder_can_step_between(&state, 1, 0, ground),
+            "a unit standing in a fresh footprint may step out"
+        );
+        assert!(
+            !pathfinder_can_step_between(&state, 0, 1, ground),
+            "no step may ever enter a building cell"
+        );
+    }
+
+    #[test]
+    fn building_sync_rebuilds_clearance_and_components() {
+        let mut state = open_test_state(5, 3);
+        // A full-height building wall down the middle column severs the map.
+        for gy in 0..3 {
+            state.building_blocked[(gy * 5 + 2) as usize] = 1;
+        }
+        pathfinder_rebuild_blocked_clearance_and_components(&mut state);
+        assert_eq!(state.clearance[(1 * 5 + 2) as usize], 0, "wall cell has no clearance");
+        assert_eq!(state.medium_clearance[(1 * 5 + 2) as usize], 0);
+        assert_eq!(state.cc_labels[(1 * 5 + 2) as usize], 0, "wall cells join no component");
+        let left = state.cc_labels[(1 * 5 + 0) as usize];
+        let right = state.cc_labels[(1 * 5 + 4) as usize];
+        assert!(left != 0 && right != 0);
+        assert_ne!(left, right, "the wall splits the grid into two components");
+        // Removing the wall re-merges the components.
+        for gy in 0..3 {
+            state.building_blocked[(gy * 5 + 2) as usize] = 0;
+        }
+        pathfinder_rebuild_blocked_clearance_and_components(&mut state);
+        assert_eq!(
+            state.cc_labels[(1 * 5 + 0) as usize],
+            state.cc_labels[(1 * 5 + 4) as usize],
+        );
     }
 
     #[test]

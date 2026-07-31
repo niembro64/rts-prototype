@@ -5,12 +5,34 @@ let initializedMapWidth = 0;
 let initializedMapHeight = 0;
 let initializedSim: ReturnType<typeof getSimWasm> | null = null;
 
+/** Provider of the current simulation's grounded building footprint cells.
+ * Registered by the owning Simulation; the pathfinder cache pulls from it
+ * whenever the installed occupancy version differs. Hovering structures must
+ * never be reported — they have no pathfinding surface. */
+export type PathfinderBuildingOccupancySource = {
+  getVersion(): number;
+  forEachBlockedCell(visit: (gx: number, gy: number) => void): void;
+};
+
+let occupancySource: PathfinderBuildingOccupancySource | null = null;
+let syncedSource: PathfinderBuildingOccupancySource | null = null;
+let cellGxScratch = new Int32Array(256);
+let cellGyScratch = new Int32Array(256);
+
+export function registerPathfinderBuildingOccupancy(
+  source: PathfinderBuildingOccupancySource | null,
+): void {
+  occupancySource = source;
+  syncedSource = null;
+}
+
 function ensureInitialized(mapWidth: number, mapHeight: number): void {
   const sim = getSimWasm()!;
   if (sim !== initializedSim) {
     initializedSim = sim;
     initializedMapWidth = 0;
     initializedMapHeight = 0;
+    syncedSource = null;
   }
   if (mapWidth === initializedMapWidth && mapHeight === initializedMapHeight) return;
 
@@ -19,14 +41,48 @@ function ensureInitialized(mapWidth: number, mapHeight: number): void {
   initializedMapHeight = mapHeight;
 }
 
-/** Ensure the WASM locomotion grid matches only the authoritative terrain.
- * Build-grid occupancy is a construction reservation and never participates
- * in route planning or route-cache invalidation. */
+function syncBuildingOccupancy(): void {
+  const source = occupancySource;
+  if (source === null) return;
+  const sim = getSimWasm()!;
+  const version = source.getVersion();
+  // Version match on the same source = layer already installed. A source
+  // swap (battle change) forces one resync even on version collision.
+  if (syncedSource === source && sim.pathfinder.buildingOccupancyVersion() === version) return;
+  let count = 0;
+  source.forEachBlockedCell((gx, gy) => {
+    if (count >= cellGxScratch.length) {
+      const grown = cellGxScratch.length * 2;
+      const nextGx = new Int32Array(grown);
+      const nextGy = new Int32Array(grown);
+      nextGx.set(cellGxScratch);
+      nextGy.set(cellGyScratch);
+      cellGxScratch = nextGx;
+      cellGyScratch = nextGy;
+    }
+    cellGxScratch[count] = gx;
+    cellGyScratch[count] = gy;
+    count++;
+  });
+  sim.pathfinder.syncBuildingOccupancy(
+    cellGxScratch.subarray(0, count),
+    cellGyScratch.subarray(0, count),
+    version,
+  );
+  syncedSource = source;
+}
+
+/** Ensure the WASM locomotion grid matches the authoritative terrain plus
+ * the registered building occupancy layer. Terrain is the base surface;
+ * grounded building footprints are a dynamic obstacle layer synced on top
+ * whenever the BuildingGrid version moves (or after a terrain rebuild,
+ * which resets the installed layer). */
 export function ensurePathfinderTerrain(mapWidth: number, mapHeight: number): void {
   ensureInitialized(mapWidth, mapHeight);
   // The Rust key is the source of truth and makes this an O(1) no-op when
   // terrain is unchanged. Reassert it every time because diagnostics/tests
   // can reinitialize the shared WASM pathfinder without this JS module seeing
-  // that mutation. Construction state remains completely absent.
+  // that mutation.
   getSimWasm()!.pathfinder.rebuildTerrainMaskAndCc(getTerrainVersion());
+  syncBuildingOccupancy();
 }

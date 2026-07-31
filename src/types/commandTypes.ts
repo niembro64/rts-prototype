@@ -69,6 +69,10 @@ export type UnitPathPlan = {
   index: number;
   actionHash: number;
   terrainVersion: number;
+  /** BuildingGrid version the plan was validated against. On mismatch the
+   *  remaining route is re-validated against current building occupancy and
+   *  either restamped (still clear) or refreshed (now crosses a footprint). */
+  buildingGridVersion: number;
   /** World tick this plan was installed. Chase drift/cooldown refresh and
    *  partial-plan retries measure plan age against this stamp. */
   plannedAtTick: number;
