@@ -59,11 +59,11 @@ export type ThreeAppFrameComplete = {
 //
 // CAMERA_FAR_PLANE raised 50000 → 100000 so the water plane (which
 // extends `HORIZON_RENDER_EXTEND` past every map edge) doesn't get
-// clipped at low-pitch / high-altitude views. The bigger far-plane
-// is paid for by `logarithmicDepthBuffer: true` on the renderer
-// below — log depth distributes precision evenly across the whole
-// near→far range, so widening the range is roughly free for
-// shoreline z-fight.
+// clipped at low-pitch / high-altitude views. The wider range costs
+// linear-depth precision at distance (log depth was reverted — see
+// the renderer note below); the bumped near plane pays most of that
+// back, and the water surface's small pure-units polygon offset
+// covers shoreline z-fight (see WaterRenderer3D.ts).
 const CAMERA_NEAR_PLANE = 50;
 /** Exported so world-extent renderers (water/terrain horizon skirts) can
  *  guarantee they finish inside the clip range instead of visibly ending
