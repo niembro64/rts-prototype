@@ -665,6 +665,12 @@ export class TerrainTileRenderer3D {
   private metalSurfaceBlendUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureBlend,
   };
+  private metalSurfaceContrastUniform = {
+    value: METAL_SURFACE_MATERIAL.rockTextureContrast,
+  };
+  private metalSurfaceRoughnessVariationUniform = {
+    value: METAL_SURFACE_MATERIAL.rockTextureRoughnessVariation,
+  };
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -772,6 +778,9 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
       shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
       shader.uniforms.uMetalSurfaceBlend = this.metalSurfaceBlendUniform;
+      shader.uniforms.uMetalSurfaceContrast = this.metalSurfaceContrastUniform;
+      shader.uniforms.uMetalSurfaceRoughnessVariation =
+        this.metalSurfaceRoughnessVariationUniform;
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -833,6 +842,8 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uMetalSurfaceColor;',
             'uniform float uMetalSurfaceTileWorldSize;',
             'uniform float uMetalSurfaceBlend;',
+            'uniform float uMetalSurfaceContrast;',
+            'uniform float uMetalSurfaceRoughnessVariation;',
             METAL_SURFACE_ALBEDO_GLSL,
             METAL_SURFACE_TRIPLANAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
@@ -949,16 +960,22 @@ export class TerrainTileRenderer3D {
             // wholesale by srgbToLinear(ore base) * the rock detail map,
             // sampled triplanar so cliff walls get real rock instead of a
             // vertical smear. The baked shade below still supplies the relief.
+            'vec3 metalDetail = vec3(1.0);',
             'if (uMetalSurfaceEnabled > 0.0) {',
-            '  vec3 metalDetail = sampleMetalSurfaceDetail(',
+            '  metalDetail = sampleMetalSurfaceDetail(',
             '    uRockDetailTexture,',
             '    vTerrainWorldPos,',
             '    geomNormal,',
             '    uMetalSurfaceTileWorldSize',
             '  );',
             '  // Identical to MetalDepositRenderer3D: the decoded ore base with',
-            '  // the rock detail map multiplied over it at the authored blend.',
-            '  terrainRgb = metalSurfaceAlbedo(uMetalSurfaceColor, metalDetail, uMetalSurfaceBlend);',
+            '  // the contrast-expanded rock detail at the authored blend.',
+            '  terrainRgb = metalSurfaceAlbedo(',
+            '    uMetalSurfaceColor,',
+            '    metalDetail,',
+            '    uMetalSurfaceBlend,',
+            '    uMetalSurfaceContrast',
+            '  );',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
@@ -992,6 +1009,20 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         )
         .replace(
+          '#include <roughnessmap_fragment>',
+          [
+            '#include <roughnessmap_fragment>',
+            'if (uMetalSurfaceEnabled > 0.0) {',
+            '  roughnessFactor = metalSurfaceRoughness(',
+            '    roughnessFactor,',
+            '    metalDetail,',
+            '    uMetalSurfaceContrast,',
+            '    uMetalSurfaceRoughnessVariation',
+            '  );',
+            '}',
+          ].join('\n'),
+        )
+        .replace(
           'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
           [
             'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
@@ -1008,7 +1039,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v35';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v36';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

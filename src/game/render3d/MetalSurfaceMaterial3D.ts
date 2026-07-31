@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import {
   METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
+  METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
+  METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION,
   METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
 
@@ -26,6 +28,8 @@ export const METAL_SURFACE_MATERIAL = {
   roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
   rockTileWorldSize: METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
   rockTextureBlend: METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
+  rockTextureContrast: METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
+  rockTextureRoughnessVariation: METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION,
 } as const;
 
 /** The metal surface's PBR half, for a THREE.MeshStandardMaterial.
@@ -42,21 +46,42 @@ export function metalSurfaceStandardParameters(): THREE.MeshStandardMaterialPara
   };
 }
 
-/** GLSL for the metal albedo, shared verbatim by both renderers' injected
- *  shaders so the maths cannot drift.
+/** GLSL for the metal texture response, shared verbatim by both renderers'
+ *  injected shaders so the maths cannot drift.
  *
- *  This is three.js's own `<map_fragment>` semantics spelled out: the decoded
- *  base colour multiplied by the rock texel at the material's map blend. The
- *  texel is raw LinearSRGB (the texture is created with
- *  LinearSRGBColorSpace), so it is used undecoded and only ever darkens or
- *  tints the base.
+ *  The raw LinearSRGB rock texel is contrast-expanded around the texture's
+ *  authored midtone before it modulates albedo. It also varies roughness:
+ *  dark fractures are rougher and bright slabs are smoother, so the detail
+ *  remains visible through the environment reflection instead of being
+ *  overwhelmed by one broad highlight.
  *
  *  Callers must supply `baseLinear` already in linear working space — three.js
  *  decodes material/vertex colours for you, so a uniform built from a
  *  THREE.Color is already correct. */
 export const METAL_SURFACE_ALBEDO_GLSL = [
-  'vec3 metalSurfaceAlbedo(vec3 baseLinear, vec3 detailTexel, float blend) {',
-  '  return baseLinear * mix(vec3(1.0), detailTexel, clamp(blend, 0.0, 1.0));',
+  'vec3 metalSurfaceContrastedDetail(vec3 detailTexel, float contrast) {',
+  '  const vec3 authoredMidtone = vec3(0.36);',
+  '  return clamp(',
+  '    (detailTexel - authoredMidtone) * max(contrast, 0.0) + authoredMidtone,',
+  '    vec3(0.04),',
+  '    vec3(1.0)',
+  '  );',
+  '}',
+  '',
+  'vec3 metalSurfaceAlbedo(vec3 baseLinear, vec3 detailTexel, float blend, float contrast) {',
+  '  vec3 detail = metalSurfaceContrastedDetail(detailTexel, contrast);',
+  '  return baseLinear * mix(vec3(1.0), detail, clamp(blend, 0.0, 1.0));',
+  '}',
+  '',
+  'float metalSurfaceRoughness(float baseRoughness, vec3 detailTexel, float contrast, float variation) {',
+  '  vec3 detail = metalSurfaceContrastedDetail(detailTexel, contrast);',
+  '  float luma = dot(detail, vec3(0.299, 0.587, 0.114));',
+  '  float slabSignal = smoothstep(0.06, 0.80, luma);',
+  '  return clamp(',
+  '    baseRoughness + (0.5 - slabSignal) * clamp(variation, 0.0, 1.0),',
+  '    0.12,',
+  '    1.0',
+  '  );',
   '}',
 ].join('\n');
 

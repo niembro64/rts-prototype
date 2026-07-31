@@ -496,6 +496,14 @@ export const METAL_DEPOSIT_ROCK_TEXTURE_BLEND = readUnitIntervalConfig(
   COLORS.environment.metalDeposit.rockTexture.blend,
   'colorsConfig.environment.metalDeposit.rockTexture.blend',
 );
+export const METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST = readPositiveConfigNumber(
+  COLORS.environment.metalDeposit.rockTexture.contrast,
+  'colorsConfig.environment.metalDeposit.rockTexture.contrast',
+);
+export const METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION = readUnitIntervalConfig(
+  COLORS.environment.metalDeposit.rockTexture.roughnessVariation,
+  'colorsConfig.environment.metalDeposit.rockTexture.roughnessVariation',
+);
 export const METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
   COLORS.environment.metalDeposit.rockTexture.tileWorldSize,
   'colorsConfig.environment.metalDeposit.rockTexture.tileWorldSize',

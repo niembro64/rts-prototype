@@ -7,7 +7,6 @@
 
 import * as THREE from 'three';
 import type { GraphicsConfig } from '@/types/graphics';
-import { COLORS } from '@/colorsConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
@@ -43,7 +42,6 @@ const DEPOSIT_MESH_DETAIL = {
   close: { outlineStep: 2, maxOutlinePoints: Number.POSITIVE_INFINITY },
   mid: { outlineStep: 5, maxOutlinePoints: 18 },
   far: { outlineStep: 1, maxOutlinePoints: 8 },
-  material: 'standard' as const,
 };
 
 const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
@@ -57,7 +55,7 @@ export class MetalDepositRenderer3D {
     meshes: Record<PrimitiveGeometryTier, THREE.Mesh>;
     cluster: MetalDepositVisualCluster;
   }> = [];
-  private materials = new Map<string, THREE.Material>();
+  private material: THREE.MeshStandardMaterial | null = null;
 
   constructor(
     parentWorld: THREE.Group,
@@ -110,7 +108,7 @@ export class MetalDepositRenderer3D {
     const cluster = this.clusters[index];
     const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
-    const material = this.getMaterial(DEPOSIT_MESH_DETAIL.material);
+    const material = this.getMaterial();
     const makeMesh = (tier: PrimitiveGeometryTier): THREE.Mesh => {
       const detail = DEPOSIT_MESH_DETAIL[tier];
       const mesh = new THREE.Mesh(
@@ -139,13 +137,11 @@ export class MetalDepositRenderer3D {
     return { node, meshes };
   }
 
-  private getMaterial(kind: 'lambert' | 'standard'): THREE.Material {
-    let material = this.materials.get(kind);
-    if (!material) {
-      material = makeDepositMaterial(kind, this.buildGridOverlayUniforms, this.worldShade);
-      this.materials.set(kind, material);
+  private getMaterial(): THREE.MeshStandardMaterial {
+    if (!this.material) {
+      this.material = makeDepositMaterial(this.buildGridOverlayUniforms, this.worldShade);
     }
-    return material;
+    return this.material;
   }
 
   dispose(): void {
@@ -153,8 +149,8 @@ export class MetalDepositRenderer3D {
       disposeDepositNode(record.node);
       this.group.remove(record.node);
     }
-    for (const material of this.materials.values()) material.dispose();
-    this.materials.clear();
+    this.material?.dispose();
+    this.material = null;
     if (this.group.parent) this.group.parent.remove(this.group);
   }
 }
@@ -167,32 +163,23 @@ function disposeDepositNode(node: THREE.Group): void {
 }
 
 function makeDepositMaterial(
-  kind: 'lambert' | 'standard',
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
   worldShade: WorldShade3D,
-): THREE.Material {
-  if (kind === 'standard') {
-    // The crown deliberately uses the same smooth MeshStandardMaterial
-    // response as METAL terrain. Its raised geometry may bend the reflected
-    // light, but the material and its shading pipeline are canonical.
-    const material = new THREE.MeshStandardMaterial({
-      color: COLORS.environment.metalDeposit.standardMaterial.colorHex,
-      vertexColors: false,
-      ...metalSurfaceStandardParameters(),
-    });
-    installDepositMetalSurfaceShader(material, buildGridOverlayUniforms, worldShade);
-    return material;
-  }
-  const material = new THREE.MeshLambertMaterial({
-    color: COLORS.environment.metalDeposit.lambertMaterial.colorHex,
+): THREE.MeshStandardMaterial {
+  // The crown deliberately uses the same smooth MeshStandardMaterial
+  // response as METAL terrain. Its raised geometry may bend the reflected
+  // light, but the material and its shading pipeline are canonical.
+  const material = new THREE.MeshStandardMaterial({
+    color: METAL_SURFACE_MATERIAL.color,
     vertexColors: false,
+    ...metalSurfaceStandardParameters(),
   });
   installDepositMetalSurfaceShader(material, buildGridOverlayUniforms, worldShade);
   return material;
 }
 
 function installDepositMetalSurfaceShader(
-  material: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial,
+  material: THREE.MeshStandardMaterial,
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
   worldShade: WorldShade3D,
 ): void {
@@ -214,6 +201,12 @@ function installDepositMetalSurfaceShader(
     };
     shader.uniforms.uMetalSurfaceBlend = {
       value: METAL_SURFACE_MATERIAL.rockTextureBlend,
+    };
+    shader.uniforms.uMetalSurfaceContrast = {
+      value: METAL_SURFACE_MATERIAL.rockTextureContrast,
+    };
+    shader.uniforms.uMetalSurfaceRoughnessVariation = {
+      value: METAL_SURFACE_MATERIAL.rockTextureRoughnessVariation,
     };
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -246,6 +239,8 @@ function installDepositMetalSurfaceShader(
           'uniform vec3 uMetalSurfaceColor;',
           'uniform float uMetalSurfaceTileWorldSize;',
           'uniform float uMetalSurfaceBlend;',
+          'uniform float uMetalSurfaceContrast;',
+          'uniform float uMetalSurfaceRoughnessVariation;',
           METAL_SURFACE_ALBEDO_GLSL,
           METAL_SURFACE_TRIPLANAR_GLSL,
           WORLD_SHADE_FRAGMENT_PARS,
@@ -270,15 +265,28 @@ function installDepositMetalSurfaceShader(
           'diffuseColor.rgb = metalSurfaceAlbedo(',
           '  uMetalSurfaceColor,',
           '  metalDepositDetail,',
-          '  uMetalSurfaceBlend',
+          '  uMetalSurfaceBlend,',
+          '  uMetalSurfaceContrast',
           ');',
           worldShadeFragment('vBuildGridOverlayWorldPos', true),
           buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
         ].join('\n'),
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        [
+          '#include <roughnessmap_fragment>',
+          'roughnessFactor = metalSurfaceRoughness(',
+          '  roughnessFactor,',
+          '  metalDepositDetail,',
+          '  uMetalSurfaceContrast,',
+          '  uMetalSurfaceRoughnessVariation',
+          ');',
+        ].join('\n'),
       );
   };
   material.customProgramCacheKey = () =>
-    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v2';
+    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v3';
 }
 
 type DepositOutlinePoint = { x: number; z: number };
