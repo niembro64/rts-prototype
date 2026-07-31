@@ -894,24 +894,44 @@
         the selected medium&rsquo;s force-derived envelope; directed edges must fit the matching climb
         budget as well.
       </p>
-      <h3>Build reservations and locomotion surfaces are separate</h3>
+      <h3>Terrain is the base surface; grounded buildings are an obstacle layer on it</h3>
       <p>
-        The construction grid answers whether a building may reserve a placement square. The
-        locomotion grid answers whether a unit&rsquo;s body may traverse the authoritative terrain at
-        that position. These are deliberately different questions: construction occupancy, buildings,
-        and hovering buildings do not become pathfinding terrain, hard blockers, clearance sources,
-        or route-cache invalidators. Units plan across the terrain beneath a hovering structure;
-        any intentional physical collision or transport rule belongs to its own physics system,
-        never to build-square pathing.
+        The locomotion grid is two layers with different lifetimes. Terrain is the expensive,
+        near-immutable base: sampled per cell from the authoritative mesh, rebuilt only when the
+        terrain version moves. Grounded building footprints are a cheap dynamic obstacle layer on
+        top: the construction system already authors per-cell movement semantics at placement
+        (<code>blocksMovement = !isHovering</code>, with a building&rsquo;s non-physical clearance
+        ring &mdash; a wind turbine&rsquo;s blade sweep &mdash; reserving placement but never
+        blocking movement), and the pathfinder syncs exactly that cell set whenever the
+        BuildingGrid version moves. Building churn re-runs only the O(n) blocked/clearance/
+        connected-component sweeps, never terrain sampling. The build grid and the path grid share
+        one 20-wu cell size and indexing precisely so this mapping is the identity.
+      </p>
+      <p>
+        A building cell blocks every non-air medium; air overflies footprints exactly as it
+        overflies terrain. Blockage is one-way by construction: no step may ever enter a building
+        cell, so a unit standing where a building just went up is an <em>escape start</em> that can
+        route out but never back in, with no special recovery machinery. Route plans carry the
+        BuildingGrid version they were validated against; when it moves, only each plan&rsquo;s
+        remaining legs re-validate &mdash; routes far from the change restamp for free, routes now
+        crossing a footprint take a budgeted refresh while the unit keeps steering.
+      </p>
+      <p>
+        The construction grid still answers a different question &mdash; whether a building may
+        reserve a placement square &mdash; and hovering buildings still answer it while
+        contributing nothing to locomotion: units plan and drive across the terrain beneath them.
       </p>
       <ul class="rule-list">
         <li>Map bounds and hard blockers remain symmetric. Water is an intentional-domain boundary for ordinary land waypoints but may remain a physical MOVE/recovery medium when the unit has water propulsion.</li>
         <li>Other units may be ignored by the global path calculation; local collision, steering, and arrival control handle moving-unit congestion.</li>
-        <li>Build squares are construction reservations, not locomotion squares. A hovering building never blocks, raises, lowers, or widens the clearance requirements of a terrain route.</li>
+        <li>Grounded building footprints are hard blockers, clearance sources, component splitters, and route-staleness triggers. Hovering buildings are none of these; their only ground effect is the construction reservation.</li>
+        <li>Goal points inside a footprint snap to the nearest legal cell through the same passability the router uses; assaulting a base is pathable by construction.</li>
         <li>Dry contact, wet commanded movement, and wet resting-waypoint support have separate force-derived surface envelopes; air and fluid-supported water are terrain-angle independent.</li>
-        <li>Shared connected-component shortcuts encode only invariant obstacles. Unit-specific medium, mass, force, contact, and directed-edge rules remain query-time tests.</li>
-        <li>Line-of-sight path smoothing must run the same directed edge checks as A*, so smoothing cannot erase a necessary climb gate.</li>
+        <li>Connected-component shortcuts encode invariant obstacles plus the current building layer; unit-specific medium, mass, force, contact, and directed-edge rules remain query-time tests.</li>
+        <li>Line-of-sight path smoothing must run the same directed edge checks as A*, so smoothing cannot erase a necessary climb gate or clip a footprint.</li>
         <li>Route costs are capability-based and deterministic: physical acceleration and clearance inputs, never locomotion rig type or presentation state.</li>
+        <li>Slope travel time is priced with the terminal-velocity model &mdash; the linear flat-to-remaining acceleration ratio, which the damping rate cancels out of &mdash; never the optimistic square root.</li>
+        <li>Intermediate corner capture is plane-crossing within a lateral corridor, not a pinpoint radius; corner speed shaping engages only for bends sharper than steering alone can round inside that corridor.</li>
         <li>Medium transitions have no fixed penalty, and the base planner carries no heading-state, turn-radius, congestion, or threat-cost expansion.</li>
       </ul>
 
@@ -2727,6 +2747,37 @@
         composes its sensor profile onto its attacking turret. Capability checks decide which
         commands and systems apply.
         A building never changes family because a turret is added or removed from its design.
+      </p>
+      <h3>Placement types: ground, water-surface, hover</h3>
+      <p>
+        Every building blueprint authors a <code>placementType</code> of <code>ground</code>,
+        <code>water-surface</code>, or <code>hover</code>, and separately a
+        <code>hoveringType</code> (<code>null</code> = grounded; <code>fabricator</code> is
+        currently the only hovering classification, carried by the fabricator torus). Grounded and
+        water-surface buildings are the normal case: a ground-seated static cuboid body, a
+        movement-blocking footprint in the locomotion grid, and combat volumes centered on
+        <code>transform.z</code>.
+      </p>
+      <p>
+        A hovering building keeps the shared z-model &mdash; <code>transform.z</code> remains the
+        ground-centered box center so build squares, snapshots, and the renderer base agree with
+        every other building &mdash; and derives its floating body from it. Anything that touches
+        the building as a physical or combat object MUST go through the anchor helpers
+        (<code>getBuildingCombatCenterZ</code>, <code>getBuildingVisualTopZ</code>,
+        <code>getEntityTargetPoint</code>): targeting cylinders, projectile and beam volumes, area
+        damage, death explosions, audio, selection picking, and health bars all live at the
+        floating body, never at the ground. Reading raw <code>transform.z</code> for a combat or
+        presentation consumer is a bug by definition.
+      </p>
+      <p>
+        A hovering building&rsquo;s ground-level presence is exactly one thing: its construction
+        reservation. It has no ground collision body, blocks no locomotion cell, and casts no
+        clearance. Its physical presence is a static annular ring floating at the combat center
+        that matches the visible torus &mdash; aircraft collide with the ring, ground units drive
+        underneath (the hover height clears the tallest unit by design), and released production
+        shells fall through the open center hole. Units that spawn overlapping the footprint carry
+        the standard ignore-static pair until they leave, so the structure never traps what it
+        builds.
       </p>
       <h3>Mount control and typed tasks</h3>
       <p>
