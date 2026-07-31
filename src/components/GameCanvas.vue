@@ -98,6 +98,7 @@ import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import { BATTLE_PRESETS, findMatchingPresetName } from './battlePresets';
+import { setActiveBackdropPresetName } from '../game/render3d/presetBackdrops';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
@@ -1874,6 +1875,9 @@ watchEffect(() => {
     mapLengthLandCells: mapLengthLandCells.value,
     barsCollapsed: bottomBarsCollapsed.value,
   });
+  // Sky backdrop panorama follows the matched preset; null (settings
+  // drifted off every stock preset) falls back to the gradient colors.
+  setActiveBackdropPresetName(m.activePresetName);
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy

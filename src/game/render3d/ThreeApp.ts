@@ -13,6 +13,7 @@ import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
+import { registerBackdropTarget } from './presetBackdrops';
 import { WebGlFrameProfiler, type WebGlFrameProfile } from './WebGlFrameProfiler';
 import { ZoomTerrainPointsOverlay3D } from './ZoomTerrainPointsOverlay3D';
 import {
@@ -119,6 +120,11 @@ export class ThreeApp {
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
+  /** Equirect panorama for the active battle preset (presetBackdrops.ts).
+   *  Null = no stock preset matched -> plain gradient backdrop colors. */
+  private _backdropTexture: THREE.Texture | null = null;
+  private _backdropUrl: string | null = null;
+  private _unregisterBackdropTarget: (() => void) | null = null;
   private _visibleSunDisk: THREE.Object3D | null = null;
   private _lastSeaBackgroundEnabled: boolean | null = null;
   private readonly _seaBackgroundColor = new THREE.Color().setRGB(
@@ -296,10 +302,56 @@ export class ThreeApp {
       }
     });
     this._resizeObserver.observe(parent);
+
+    // Pick up the current preset backdrop (and future preset switches).
+    // Registered last so setBackdropUrl never runs on a half-built app.
+    this._unregisterBackdropTarget = registerBackdropTarget(this);
   }
 
   get canvas(): HTMLCanvasElement {
     return this.renderer.domElement;
+  }
+
+  /** Swap the equirect panorama backdrop (null = gradient sky colors).
+   *  Loading is async; the gradient stays up until the image decodes, and
+   *  a failed load simply keeps the gradient. */
+  setBackdropUrl(url: string | null): void {
+    if (this._destroyed || url === this._backdropUrl) return;
+    this._backdropUrl = url;
+    if (!url) {
+      this._backdropTexture?.dispose();
+      this._backdropTexture = null;
+      this.applySceneBackground();
+      return;
+    }
+    new THREE.TextureLoader().load(
+      url,
+      (texture) => {
+        if (this._destroyed || this._backdropUrl !== url) {
+          texture.dispose();
+          return;
+        }
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+        this._backdropTexture?.dispose();
+        this._backdropTexture = texture;
+        this.applySceneBackground();
+      },
+      undefined,
+      () => {
+        // Missing/failed backdrop image: keep the gradient sky.
+      },
+    );
+  }
+
+  /** Single choke point for scene.background: sea override first, then
+   *  the preset panorama, then the default gradient colors. */
+  private applySceneBackground(): void {
+    this.scene.background =
+      this._lastSeaBackgroundEnabled === true
+        ? this._seaBackgroundColor
+        : (this._backdropTexture ?? this._skyTexture);
   }
 
   onUpdate(callback: (time: number, delta: number) => void): void {
@@ -367,9 +419,7 @@ export class ThreeApp {
     const seaBackgroundEnabled = getWaterBoundaryMode() === 'floating-square-sea';
     if (this._lastSeaBackgroundEnabled !== seaBackgroundEnabled) {
       this._lastSeaBackgroundEnabled = seaBackgroundEnabled;
-      this.scene.background = seaBackgroundEnabled
-        ? this._seaBackgroundColor
-        : this._skyTexture;
+      this.applySceneBackground();
     }
     if (!this._visibleSunDisk) {
       this._visibleSunDisk = this.scene.getObjectByName('VisibleSunDisk') ?? null;
@@ -484,12 +534,16 @@ export class ThreeApp {
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();
     this.frameProfiler.destroy();
+    this._unregisterBackdropTarget?.();
+    this._unregisterBackdropTarget = null;
     this.scene.environment = null;
     this.scene.background = null;
     this._environmentTexture?.dispose();
     this._environmentTexture = null;
     this._skyTexture?.dispose();
     this._skyTexture = null;
+    this._backdropTexture?.dispose();
+    this._backdropTexture = null;
     this.renderer.renderLists.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();
