@@ -1512,7 +1512,8 @@
       <p>
         In constant-altitude mode wheel zoom is the anchor-scaling law: eye and focus contract
         toward (or expand away from) the resolved 3D anchor by BAR&rsquo;s asymmetric wheel
-        factor, so distance still scales by 0.825/1.175 per notch, cursor zoom-in descends into a
+        factor, configured at twice BAR&rsquo;s default travel so distance scales by
+        0.65/1.35 per notch. Cursor zoom-in descends into a
         valley because the anchor is lower, and screen-center zoom-out ascends symmetrically.
         When the anchor ray finds no terrain, the factor applies around the focus itself &mdash;
         a plain center zoom &mdash; never around a fallback plane at pathological depth.

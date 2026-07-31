@@ -79,18 +79,36 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
   amount: terrainConfig.mesh.heightSmoothing.amount,
 };
 
-/** Debug switch for wall-strip consolidation. A wall region is a ribbon
- *  between two iso-contours (the shelf below it and the shelf above it)
- *  and the ramp between them is a single authored slope, so nothing
- *  strictly inside the ribbon carries shape. With this on, the mesh
- *  baker deletes every vertex whose whole triangle fan belongs to one
- *  wall strip and retriangulates the fan without it, leaving each strip
- *  as triangles whose corners all sit on one of its two contours. The
- *  fan's outer boundary is reused edge for edge, so the mesh stays
- *  conforming. Off restores the per-leaf tessellation for A/B — it
- *  changes the authoritative mesh (heights, buildability, pathing), so
- *  it is an authored constant shared by every peer, never a per-client
- *  toggle. Either setting needs a terrain rebuild to take effect. */
+/** Debug switch for wall-strip consolidation, OFF because it trades the
+ *  wrong way. A wall region is a ribbon between two iso-contours and the
+ *  ramp between them is one authored slope, so nothing strictly inside
+ *  it carries shape; with this on, the baker deletes every vertex whose
+ *  whole triangle fan is one wall strip and retriangulates the fan
+ *  without it, reusing the fan's outer boundary edge for edge so the
+ *  mesh stays conforming. That does cut triangles — wall triangles by a
+ *  third across the stability maps, and by 64% where the walls are
+ *  widest.
+ *
+ *  But a band 146 units wide whose contours are sampled every ~16 has
+ *  no triangulation on those vertices alone that is not made of ~9:1
+ *  needles, so removing the interior vertices IS asking for slivers:
+ *  wall triangles under 5 degrees go from 4.6% to 56% at a 70 degree
+ *  wall slope, and from 7.9% to 40% at 80. At the shipped 89 degrees
+ *  the band is 7 units wide, thinner than the contour spacing, so there
+ *  is nothing inside to remove and it buys only 5.7% fewer wall
+ *  triangles for slightly worse slivers.
+ *
+ *  Kept because it is the right tool if minimum triangle count ever
+ *  matters more than triangle shape. It changes the authoritative mesh
+ *  (heights, buildability, pathing), so it is an authored constant
+ *  shared by every peer, never a per-client toggle, and either setting
+ *  needs a terrain rebuild to take effect.
+ *
+ *  Note what it does NOT address: slivers are made by the region
+ *  clipper cutting leaf triangles along a contour, on both sides of
+ *  both lines, and they are there with this off — 60% of wall triangles
+ *  and 26% of their neighbours sit under 15 degrees, against 0.1% for
+ *  terrain away from any wall. */
 export const TERRAIN_MESH_CONSOLIDATE_WALL_TRIANGLES =
   terrainConfig.mesh.consolidateWallTriangles;
 

@@ -53,8 +53,9 @@ const KEYBOARD_CAMERA_FAST_MULTIPLIER = 2.5;
 const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
 // Recoil's Spring camera multiplies one SDL wheel unit by ScrollWheelSpeed=25;
-// its 0.007 zoom coefficient therefore produces a 0.175 distance change per
-// notch. These DOM-unit scales are retained only for the configurable
+// its 0.007 zoom coefficient produces a 0.175 distance change per notch.
+// Budget Annihilation configures twice that travel (0.35). These DOM-unit
+// scales are retained only for the configurable
 // continuous-delta path. Canonical BAR discrete input ignores accelerated
 // browser magnitude and maps each event to one signed controller unit.
 const WHEEL_PIXELS_PER_TICK = 100;
@@ -63,6 +64,7 @@ const BAR_FAST_POINTER_MULTIPLIER = 4;
 const BAR_FAST_WHEEL_MULTIPLIER = 2;
 const BAR_TILT_RADIANS_PER_WHEEL_TICK = 0.125;
 const BAR_CARDINAL_LOCK_WIDTH = 0.2;
+const DEFAULT_ZOOM_STEP_FRACTION = 0.35;
 /** Eye travel from one wheel tick may never exceed this fraction of the
  *  current controller distance. See barCameraTravelClampedZoomFactor. */
 const DEFAULT_ZOOM_TRAVEL_CLAMP_FRACTION = 0.5;
@@ -173,8 +175,8 @@ type OrbitCameraOptions = {
   transitionScope?: CameraTransitionScope;
   minPitch?: number;
   maxPitch?: number;
-  /** Relative-mode per-wheel-tick zoom fraction. BAR's default wheel speed
-   *  makes this 0.175: scroll-IN uses (1-f), scroll-OUT uses (1+f).
+  /** Relative-mode per-wheel-tick zoom fraction. The game default is 0.35,
+   *  twice BAR's 0.175: scroll-IN uses (1-f), scroll-OUT uses (1+f).
    *  Distance and target both scale by the resulting factor, which keeps the
    *  configured anchor pixel pinned through the move. */
   zoomStepFraction?: number;
@@ -740,7 +742,7 @@ export class OrbitCamera {
     }
     this.minPitch = opts.minPitch ?? Math.PI * 0.01;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
-    this.zoomStepFraction = opts.zoomStepFraction ?? 0.175;
+    this.zoomStepFraction = opts.zoomStepFraction ?? DEFAULT_ZOOM_STEP_FRACTION;
     if (
       opts.zoomTravelClampFraction !== undefined
       && Number.isFinite(opts.zoomTravelClampFraction)
@@ -1269,7 +1271,7 @@ export class OrbitCamera {
     //
     // Constant-altitude bar-spring zoom deliberately shares this path: eye
     // and focus contract toward (or expand away from) the 3D anchor by
-    // BAR's asymmetric factor, so distance still scales 0.825/1.175 per
+    // BAR's asymmetric factor, configured so distance scales 0.65/1.35 per
     // notch while focus altitude changes only through that anchor
     // translation. When the anchor ray finds no terrain, the factor is
     // applied around the focus itself — a plain center zoom — instead of

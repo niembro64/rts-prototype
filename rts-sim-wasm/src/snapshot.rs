@@ -8422,7 +8422,7 @@ mod sim_kernel_tests {
             3.0,    // final_repair_max_passes
             0.0,    // smoothing_steps
             0.5,    // smoothing_amount
-            1.0,    // consolidate_wall_triangles
+            0.0,    // consolidate_wall_triangles (off, as shipped)
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;
@@ -8557,7 +8557,7 @@ mod sim_kernel_tests {
                 3.0,
                 0.0,
                 0.5,
-                1.0,
+                0.0,
             ];
             let flat_zones: [f64; 0] = [];
             let cells = 12i32;
@@ -8642,7 +8642,7 @@ mod sim_kernel_tests {
             3.0,
             0.0,
             0.5,
-            1.0,
+            0.0,
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;

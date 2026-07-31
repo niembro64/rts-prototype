@@ -5,9 +5,9 @@
   "transitionScope": "zoom-only",
   "smoothingTauSeconds": {
     "snap": 0.0,
-    "fast": 0.08,
-    "mid": 0.12,
-    "slow": 0.4
+    "fast": 0.02,
+    "mid": 0.04,
+    "slow": 0.08
   },
   "barSpringHalfLifeSeconds": {
     "snap": 0.0,
@@ -22,7 +22,7 @@
     "minOrbitDistance": 300.0,
     "maxOrbitDistanceMapFactor": 1.333,
     "maxMapCenterDistance": 50000.0,
-    "stepFraction": 0.175,
+    "stepFraction": 0.35,
     "travelClampFraction": 0.5,
     "distanceSampling": {
       "pointMode": "seventeen",
