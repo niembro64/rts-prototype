@@ -86,7 +86,9 @@ export function writeFabricatorProductionSprayOrigin(
       Math.imul(pointIndex + 1, 0x632be5ab),
   );
   const angle = (seed / 0x100000000) * Math.PI * 2;
-  const ringRadius = fabricatorTorusRingRadius(building.width, building.depth);
+  // Footprint dims: width/height are horizontal; depth is vertical and was
+  // wrongly passed here (benign only because the torus footprint is square).
+  const ringRadius = fabricatorTorusRingRadius(building.width, building.height);
   out.x = factory.transform.x + DMath.cos(angle) * ringRadius;
   out.y = factory.transform.y + DMath.sin(angle) * ringRadius;
   out.z = getUnitGroundZ(factory) + fabricatorTorusHoverHeight();

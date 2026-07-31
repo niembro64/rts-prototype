@@ -533,7 +533,6 @@ export class Simulation {
     // Update factory production
     const productionResult = factoryProductionSystem.update(
       this.world, dtMs,
-      this.constructionSystem.getGrid(),
       this.forceAccumulator,
       this.windState,
     );

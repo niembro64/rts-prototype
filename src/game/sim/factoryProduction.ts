@@ -1,6 +1,5 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
-import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import {
@@ -183,7 +182,6 @@ class FactoryProductionSystem {
   update(
     world: WorldState,
     dtMs: number,
-    buildingGrid: BuildingGrid,
     forceAccumulator: ForceAccumulator,
     wind: WindState = STILL_AIR,
   ): FactoryProductionResult {
@@ -348,7 +346,7 @@ class FactoryProductionSystem {
           // Activation: stamp the static rally, aim turrets, mark dirty.
           // The selected blueprint is intentionally NOT cleared: repeat-
           // build mode keeps producing it until the player toggles it off.
-          this.activateShell(world, factory, shell, buildingGrid, dtMs, forceAccumulator, wind);
+          this.activateShell(world, factory, shell, dtMs, forceAccumulator, wind);
           completedUnits.push(shell);
         }
         this.finishProductionWorkflow(world, factory);
@@ -373,7 +371,7 @@ class FactoryProductionSystem {
           factoryComp.currentBuildProgress = 0;
           world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         } else {
-          this.activateShell(world, factory, product.entity, buildingGrid, dtMs, forceAccumulator, wind);
+          this.activateShell(world, factory, product.entity, dtMs, forceAccumulator, wind);
           completedUnits.push(product.entity);
           this.finishProductionWorkflow(world, factory);
         }
@@ -530,7 +528,6 @@ class FactoryProductionSystem {
     world: WorldState,
     factory: Entity,
     unit: Entity,
-    _buildingGrid: BuildingGrid,
     _dtMs: number,
     _forceAccumulator: ForceAccumulator,
     _wind: WindState,

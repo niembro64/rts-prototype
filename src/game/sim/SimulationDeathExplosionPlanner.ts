@@ -2,6 +2,7 @@ import type { EntityId } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { WorldState } from './WorldState';
 import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
+import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { DamageSystem, type AreaDamageSource } from './damage';
 import { collectKillsAndDeathContexts } from './combat/damageHelpers';
 import type { DeathContext, SimEvent } from './combat';
@@ -207,7 +208,10 @@ export class SimulationDeathExplosionPlanner {
       out.sourceEntityId = entity.id;
       out.center.x = entity.transform.x;
       out.center.y = entity.transform.y;
-      out.center.z = entity.transform.z;
+      // Hovering buildings die at their floating combat center — units
+      // sheltering underneath must not eat a ground-level blast (grounded
+      // buildings: combat center == transform.z, unchanged).
+      out.center.z = getBuildingCombatCenterZ(entity);
       return true;
     }
     return false;

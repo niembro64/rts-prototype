@@ -5,6 +5,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamRay, LaserRay, PlayerId } from '../types';
 import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
@@ -349,7 +350,9 @@ function emitAttackAlerts(
       pos: {
         x: attacker.transform.x,
         y: attacker.transform.y,
-        z: attacker.transform.z,
+        z: attacker.building !== null
+          ? getBuildingCombatCenterZ(attacker)
+          : attacker.transform.z,
       },
       victimPlayerId,
     });

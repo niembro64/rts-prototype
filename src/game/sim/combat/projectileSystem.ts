@@ -5,6 +5,7 @@ import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import { isAttackEmitterConfig } from '../emitterKinds';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { WindState } from '../wind';
@@ -270,6 +271,12 @@ function resolveBeamAim(
   out.targetEntityId = NO_ENTITY_ID;
   if (target !== undefined && isLiveHomingTarget(target)) {
     const point = getEntityPosition3d(target, _beamTargetPoint);
+    if (target.building !== null) {
+      // A building's combat volume floats for hovering types; the beam must
+      // aim at the combat center, not the ground-centered transform, or it
+      // strikes the terrain under the fabricator torus.
+      point.z = getBuildingCombatCenterZ(target);
+    }
     if (writeBeamAimFromPoint(startX, startY, startZ, point.x, point.y, point.z, out)) {
       out.targetEntityId = target.id;
       return out;

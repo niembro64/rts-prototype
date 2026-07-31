@@ -14,7 +14,7 @@ import {
   type TerrainRuntimeConfig,
 } from './Terrain';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   fabricatorTorusHoverHeight,
   fabricatorTorusOuterRadius,
@@ -568,7 +568,6 @@ function assertFactoryShellContract(): void {
   };
   world.addEntity(factory);
 
-  const buildingGrid = new BuildingGrid(world.mapWidth, world.mapHeight);
   const forceAccumulator = new ForceAccumulator();
   const originalRoute = factory.factory.defaultWaypoints;
   const originalRallyX = factory.factory.rallyX;
@@ -592,7 +591,7 @@ function assertFactoryShellContract(): void {
     'self factory guard must not overwrite the factory rally point',
   );
 
-  const spawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const spawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
@@ -686,7 +685,7 @@ function assertFactoryShellContract(): void {
   );
 
   shell.buildable.isComplete = true;
-  const completed = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const completed = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
   assertContract(shell.heldBy === null, 'factory must release the production hold after activation');
@@ -715,12 +714,12 @@ function assertFactoryShellContract(): void {
   factory.factory.currentShellId = null;
   factory.factory.isProducing = false;
   factory.factory.defaultWaypoints = null;
-  const builderSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const builderSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(builderSpawned.length === 1, 'factory guard mode must still produce builder shells');
   const builderShell = builderSpawned[0];
   assertContract(builderShell.buildable !== null, 'builder shell must be buildable');
   builderShell.buildable.isComplete = true;
-  const builderCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const builderCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(
     builderCompleted.length === 1 && builderCompleted[0] === builderShell,
     'factory guard mode must complete builder shells',
@@ -750,12 +749,12 @@ function assertFactoryShellContract(): void {
   factory.factory.currentShellId = null;
   factory.factory.currentBuildProgress = 0;
   factory.factory.isProducing = false;
-  const airPageSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const airPageSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(airPageSpawned.length === 1, 'air-page factory fixture must spawn one shell');
   const airPageShell = airPageSpawned[0];
   assertContract(airPageShell.buildable !== null, 'air-page shell must be buildable');
   airPageShell.buildable.isComplete = true;
-  const airPageCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const airPageCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(
     airPageCompleted.length === 1 && airPageCompleted[0] === airPageShell,
     'air-page factory fixture must complete its shell',
@@ -781,7 +780,7 @@ function assertFactoryShellContract(): void {
   factory.factory.defaultWaypoints = null;
   factory.factory.productionQueue.length = 0;
   factory.factory.productionQueue.push('unitLynx');
-  const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const oneShotSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
   assertFactoryShellSpawnedAboveSupport(
@@ -792,7 +791,7 @@ function assertFactoryShellContract(): void {
   );
   assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
   oneShotShell.buildable.isComplete = true;
-  const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const oneShotCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(
     oneShotCompleted.length === 1 && oneShotCompleted[0] === oneShotShell,
     'one-shot factory must complete its selected shell',
@@ -802,7 +801,7 @@ function assertFactoryShellContract(): void {
   assertContract(factory.factory.productionQueue.length === 0, 'one-shot factory must consume the queued unit');
   assertContract(factory.factory.repeatProduction === false, 'queued one-shot factory must remain in finite mode');
 
-  const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const queuedSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(queuedSpawned.length === 1, 'queued factory must spawn the advanced shell');
   const queuedShell = queuedSpawned[0];
   assertFactoryShellSpawnedAboveSupport(
@@ -813,7 +812,7 @@ function assertFactoryShellContract(): void {
   );
   assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
   queuedShell.buildable.isComplete = true;
-  const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const queuedCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(
     queuedCompleted.length === 1 && queuedCompleted[0] === queuedShell,
     'queued factory must complete the advanced shell',
@@ -868,7 +867,7 @@ function assertFactoryShellContract(): void {
     'BAR factory cell removal must preserve active selection while a matching tail was removed',
   );
 
-  const removableActiveSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const removableActiveSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(removableActiveSpawned.length === 1, 'BAR factory removal fixture must spawn the active shell');
   assertContract(
     factoryProductionSystem.removeUnitProduction(factory, world, 'unitLynx', 1),
@@ -905,12 +904,12 @@ function assertFactoryShellContract(): void {
   factory.factory.productionQueue.length = 0;
   factory.factory.productionQueue.push('unitLynx');
   factory.factory.productionQuotas.unitJackal = 1;
-  const preQuotaSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const preQuotaSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(preQuotaSpawned.length === 1, 'pre-quota finite factory must spawn the active selected unit');
   const preQuotaShell = preQuotaSpawned[0];
   assertContract(preQuotaShell.buildable !== null, 'pre-quota shell must be buildable');
   preQuotaShell.buildable.isComplete = true;
-  const preQuotaCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const preQuotaCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(preQuotaCompleted.length === 1, 'pre-quota finite factory must complete the active selected unit');
   assertContract(factory.factory.selectedUnitBlueprintId === 'unitJackal', 'factory quota must preempt the normal finite queue');
   assertContract(factory.factory.productionQueue.join(',') === 'unitLynx', 'quota preemption must preserve the normal finite queue');
@@ -926,14 +925,14 @@ function assertFactoryShellContract(): void {
   factory.factory.resumeRepeatUnitBlueprintId = null;
   factory.factory.productionQueue.length = 0;
   factory.factory.productionQuotas.unitJackal = 1;
-  const repeatPreemptInitial = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const repeatPreemptInitial = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(repeatPreemptInitial.length === 1, 'repeat factory must spawn the original shell before quota replacement');
   const repeatPreemptShell = repeatPreemptInitial[0];
   assertContract(repeatPreemptShell.unit?.unitBlueprintId === 'unitLynx', 'repeat preempt fixture must start with the repeat unit');
   assertContract(repeatPreemptShell.buildable !== null, 'repeat preempt shell must be buildable');
   repeatPreemptShell.buildable.paid.energy = repeatPreemptShell.buildable.required.energy * 0.01;
   repeatPreemptShell.buildable.paid.metal = repeatPreemptShell.buildable.required.metal * 0.01;
-  const quotaReplacement = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const quotaReplacement = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(
     quotaReplacement.length === 1 && quotaReplacement[0].unit?.unitBlueprintId === 'unitJackal',
     'low-progress repeat shell must be replaced by the most-needed quota unit',
@@ -947,7 +946,7 @@ function assertFactoryShellContract(): void {
   const quotaReplacementShell = quotaReplacement[0];
   assertContract(quotaReplacementShell.buildable !== null, 'quota replacement shell must be buildable');
   quotaReplacementShell.buildable.isComplete = true;
-  const quotaReplacementCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  const quotaReplacementCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(quotaReplacementCompleted.length === 1, 'quota replacement shell must complete');
   assertContract(
     factory.factory.selectedUnitBlueprintId === 'unitLynx' &&
@@ -964,13 +963,13 @@ function assertFactoryShellContract(): void {
   factory.factory.resumeRepeatUnitBlueprintId = null;
   factory.factory.productionQueue.length = 0;
   factory.factory.productionQuotas.unitBadger = 1;
-  const highProgressInitial = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const highProgressInitial = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(highProgressInitial.length === 1, 'high-progress fixture must spawn the repeat shell');
   const highProgressShell = highProgressInitial[0];
   assertContract(highProgressShell.buildable !== null, 'high-progress fixture shell must be buildable');
   highProgressShell.buildable.paid.energy = highProgressShell.buildable.required.energy * 0.2;
   highProgressShell.buildable.paid.metal = highProgressShell.buildable.required.metal * 0.2;
-  const highProgressReplacement = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  const highProgressReplacement = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
   assertContract(highProgressReplacement.length === 0, 'high-progress active shell must not be quota-replaced');
   assertContract(
     factory.factory.currentShellId === highProgressShell.id &&
