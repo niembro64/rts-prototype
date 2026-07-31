@@ -471,6 +471,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
+  fallbackToAuthoredArea = false,
 ): Entity[] {
   const count = unitBlueprintIds.length;
   if (count <= 0) return [];
@@ -481,7 +482,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
   for (let j = 0; j < count; j++) {
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
     const point = mapOvalPointAt(oval, a, radius);
-    const factory = placeCompleteBuilding(
+    let factory = placeCompleteBuilding(
       world,
       construction,
       'towerFabricator',
@@ -493,6 +494,25 @@ function placeFactoryArcRowForUnitBlueprintIds(
       acceptCompleted,
       acceptCandidate,
     );
+    if (factory === null && fallbackToAuthoredArea) {
+      // A flat or raised perimeter has no outer ocean, but that must not
+      // remove the repeat-production line from the demo roster. Keep the
+      // Fabricator on its authored outer arc and bypass only terrain
+      // suitability; map bounds and occupied grid cells remain enforced.
+      factory = placeCompleteBuilding(
+        world,
+        construction,
+        'towerFabricator',
+        point.x,
+        point.y,
+        playerId,
+        factoryWaypoint,
+        searchOffsets,
+        null,
+        null,
+        true,
+      );
+    }
     if (!factory) continue;
     seedFactoryRepeatBuild(factory, unitBlueprintIds[j]);
     entities.push(factory);
@@ -747,16 +767,7 @@ export function spawnInitialBases(
         playerId,
         factoryWaypoint,
         WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
-        (entity) => {
-          if (!isFabricatorOverWater(world, entity)) return false;
-          configureOuterWaterFactoryWaypoints(
-            world,
-            entity,
-            oval,
-            waterFactoryRadius,
-          );
-          return true;
-        },
+        (entity) => isFabricatorOverWater(world, entity),
         (x, y) => isFabricatorFootprintOverWater(
           world,
           x,
@@ -764,7 +775,19 @@ export function spawnInitialBases(
           fabricatorWidth,
           fabricatorHeight,
         ),
+        true,
       );
+      for (let j = 0; j < waterFactories.length; j++) {
+        const factory = waterFactories[j];
+        if (factory.factory !== null) {
+          configureOuterWaterFactoryWaypoints(
+            world,
+            factory,
+            oval,
+            waterFactoryRadius,
+          );
+        }
+      }
       const landFactories = placeFactoryArcRowForUnitBlueprintIds(
         world, construction, factoryUnitBlueprintIds,
         oval, factoryRadius, baseAngle, factorySectorAngle, playerId, factoryWaypoint,

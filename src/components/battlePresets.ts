@@ -128,7 +128,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
-      dividersMagnitude: 1600,
+      dividersMagnitude: 800,
       perimeterMagnitude: -800,
       terrainDTerrain: 400,
       plateauWallSlopeDegrees: 80,

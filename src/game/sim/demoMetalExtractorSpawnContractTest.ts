@@ -1,4 +1,7 @@
-import { getModeDefaultPreset } from '../../components/battlePresets';
+import {
+  getModeDefaultPreset,
+  type BattlePreset,
+} from '../../components/battlePresets';
 import { LAND_CELL_SIZE } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { generateMetalDeposits } from '../../metalDepositConfig';
@@ -11,7 +14,15 @@ import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionR
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import type { PlayerId } from './types';
 import { WorldState } from './WorldState';
-import { isWaterAt, WATER_LEVEL } from './Terrain';
+import {
+  getTerrainRuntimeConfig,
+  isWaterAt,
+  setTerrainPerimeterMagnitude,
+  setTerrainRuntimeConfig,
+  WATER_LEVEL,
+} from './Terrain';
+
+const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
@@ -37,8 +48,85 @@ function createNoBuildableTerrainGrid(
   };
 }
 
-export function runDemoMetalExtractorSpawnContractTest(): void {
-  const preset = getModeDefaultPreset('demo');
+function assertDryPerimeterFactoryFallback(
+  mapWidth: number,
+  mapHeight: number,
+  playerIds: readonly PlayerId[],
+): void {
+  const previousPerimeterMagnitude =
+    getTerrainRuntimeConfig().perimeterMagnitude;
+  const waterUnitBlueprintIds = new Set<string>(
+    DEMO_CONFIG.waterFabricators.unitBlueprintIds,
+  );
+  const factoryBuildingBlueprintIds = new Set<string>(['towerFabricator']);
+  const noBuildableTerrainGrid = createNoBuildableTerrainGrid(
+    mapWidth,
+    mapHeight,
+  );
+
+  try {
+    for (const perimeterMagnitude of [0, 800]) {
+      setTerrainPerimeterMagnitude(perimeterMagnitude);
+      const world = new WorldState(
+        1243 + perimeterMagnitude,
+        mapWidth,
+        mapHeight,
+      );
+      const construction = new ConstructionSystem(
+        mapWidth,
+        mapHeight,
+        noBuildableTerrainGrid,
+      );
+      const entities = spawnInitialBases(
+        world,
+        construction,
+        [...playerIds],
+        'demo',
+        waterUnitBlueprintIds,
+        factoryBuildingBlueprintIds,
+      );
+      let factoryCount = 0;
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+        factoryCount++;
+        const factory = entity.factory;
+        assertContract(
+          factory !== null &&
+            factory.selectedUnitBlueprintId !== null &&
+            waterUnitBlueprintIds.has(factory.selectedUnitBlueprintId),
+          `dry perimeter ${perimeterMagnitude} Fabricator must retain its water-unit repeat line`,
+        );
+        assertContract(
+          !isWaterAt(
+            entity.transform.x,
+            entity.transform.y,
+            mapWidth,
+            mapHeight,
+          ),
+          `dry perimeter ${perimeterMagnitude} fallback Fabricator must be placed on the authored dry outer arc`,
+        );
+        assertContract(
+          factory.defaultWaypoints?.length === 2 &&
+            factory.defaultWaypoints.every(
+              (waypoint) => waypoint.type === 'patrol',
+            ),
+          `dry perimeter ${perimeterMagnitude} fallback Fabricator must retain its outer patrol route`,
+        );
+      }
+      assertContract(
+        factoryCount === playerIds.length * waterUnitBlueprintIds.size,
+        `dry perimeter ${perimeterMagnitude} must spawn one Fabricator per water unit per player`,
+      );
+    }
+  } finally {
+    setTerrainPerimeterMagnitude(previousPerimeterMagnitude);
+  }
+}
+
+function runDemoMetalExtractorSpawnContractTestForPreset(
+  preset: BattlePreset,
+): void {
   const mapWidth = preset.mapWidthLandCells * LAND_CELL_SIZE;
   const mapHeight = preset.mapLengthLandCells * LAND_CELL_SIZE;
   const playerIds: PlayerId[] = [];
@@ -133,6 +221,7 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
       `demo base must spawn ${DEMO_CONFIG.buildingSonarCount} Sonar for player ${playerId}`,
     );
   }
+  assertDryPerimeterFactoryFallback(mapWidth, mapHeight, playerIds);
 
   const deposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const expectedDepositIds = new Set<number>();
@@ -367,5 +456,28 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
       coveredDepositIds.has(depositId),
       `authored auto-extractor deposit ${depositId} must receive an extractor`,
     );
+  }
+}
+
+export function runDemoMetalExtractorSpawnContractTest(): void {
+  const preset = getModeDefaultPreset('demo');
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  setTerrainRuntimeConfig({
+    centerMagnitude: preset.centerMagnitude,
+    dividersMagnitude: preset.dividersMagnitude,
+    // The baseline assertions exercise the authored offshore layout even if
+    // the current demo preset has deliberately selected a dry perimeter.
+    perimeterMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
+    terrainDTerrain: preset.terrainDTerrain,
+    plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
+    watersEdgeBeachSlopeDegrees: preset.watersEdgeBeachSlopeDegrees,
+    watersEdgeCliffHeight: preset.watersEdgeCliffHeight,
+    metalDepositStep: preset.metalDepositStep,
+    terrainDetail: preset.terrainDetail,
+  });
+  try {
+    runDemoMetalExtractorSpawnContractTestForPreset(preset);
+  } finally {
+    setTerrainRuntimeConfig(previousRuntimeConfig);
   }
 }
