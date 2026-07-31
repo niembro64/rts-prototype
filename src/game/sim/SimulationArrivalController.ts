@@ -14,7 +14,12 @@ import { growTypedArray } from '../memory/typedArrayGrowth';
  * configuration-space concerns in the pathfinder. */
 export const ARRIVAL_RADIUS = PATHFINDING_ARRIVAL_RADIUS;
 const ARRIVAL_FINAL_RADIUS = 15;
-const ARRIVAL_FINAL_STOP_SPEED = 100;
+/** Completion speed ceiling at the final point. The PD brake converges to
+ *  ~0.5·distance by arrival, so real approaches finish well under this; the
+ *  ceiling only decides how hot a first pass may complete. At 100 a cruising
+ *  Jackal completed at half speed and idle-brake coasted ~30 wu past the
+ *  click; 50 keeps the residual coast under ~8 wu. */
+const ARRIVAL_FINAL_STOP_SPEED = 50;
 const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
