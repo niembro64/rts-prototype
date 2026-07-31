@@ -93,6 +93,10 @@ pub(crate) struct PathfinderState {
     // makes the inter-cell climb gate apply downhill (SYMMETRIC mode).
     cur_required_clearance: i32,
     cur_symmetric_slope: bool,
+    /// Collision radius of the querying body. Drives the fording depth gate
+    /// and the planner-side immersion estimate for water thrust credit;
+    /// 0 = radius-less query with legacy binary-water behavior.
+    cur_unit_radius: f64,
     /// Intentional destination/entry domain for the current query. Physical
     /// passability uses the traversal passed to the kernels; this second
     /// domain only prevents a body that is already in its intended medium
@@ -293,6 +297,7 @@ impl PathfinderState {
             bfs_queue: Vec::new(),
             cur_required_clearance: 0,
             cur_symmetric_slope: false,
+            cur_unit_radius: 0.0,
             cur_waypoint_traversal: PathfinderTraversal {
                 min_ground_normal_z: 0.0,
                 safe_ground_accel: 0.0,
@@ -844,11 +849,13 @@ pub fn pathfinder_bake_traversability_grid(
     }
     .derived();
     let previous_clearance = state.cur_required_clearance;
+    let previous_unit_radius = state.cur_unit_radius;
     state.cur_required_clearance = if move_allow_air && waypoint_allow_air {
         0
     } else {
         pathfinder_hard_clearance_cells_for_radius(unit_radius)
     };
+    state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     for idx in 0..state.n {
         waypoint_out[idx] = if pathfinder_is_cell_passable(state, idx, waypoint_traversal) {
             1
@@ -862,7 +869,20 @@ pub fn pathfinder_bake_traversability_grid(
         };
     }
     state.cur_required_clearance = previous_clearance;
+    state.cur_unit_radius = previous_unit_radius;
     1
+}
+
+/// Sanitized per-query collision radius for the fording depth gate and the
+/// immersion-scaled water thrust credit. Non-finite / non-positive radii mean
+/// a radius-less query with legacy binary-water behavior.
+#[inline]
+fn pathfinder_query_unit_radius(unit_radius: f64) -> f64 {
+    if unit_radius.is_finite() && unit_radius > 0.0 {
+        unit_radius
+    } else {
+        0.0
+    }
 }
 
 #[inline]
@@ -899,9 +919,15 @@ pub(crate) fn pathfinder_position_is_in_navigation_domain(
     {
         return false;
     }
-    let point_is_water = pathfinder_sample_terrain(x, y).0 < TERRAIN_WATER_LEVEL;
-    if point_is_water {
+    let height = pathfinder_sample_terrain(x, y).0;
+    if height < TERRAIN_WATER_LEVEL {
+        // Exact points share the cell fording rule: ankle-deep water whose
+        // depth stays under the body's collision radius is valid ground.
         pathfinder_allows_water_case(traversal)
+            || (traversal.allow_ground
+                && !traversal.allow_air
+                && state.cur_unit_radius > 0.0
+                && (TERRAIN_WATER_LEVEL - height) <= state.cur_unit_radius)
     } else {
         pathfinder_allows_exposed_case(traversal)
     }
@@ -919,11 +945,22 @@ pub(crate) fn pathfinder_is_cell_passable(
     let has_water = state.terrain_water[idx] == 1;
     let has_exposed = state.terrain_submerged[idx] == 0;
     let allows_exposed = pathfinder_allows_exposed_case(traversal);
+    // Fording: a ground mover whose collision sphere's center stays above the
+    // water plane (cell depth <= radius) takes no water damage and keeps its
+    // full bed traction, so shallow shoreline water is part of its physical
+    // ground domain — as a route AND as a place to stand — not a foreign
+    // medium. Radius-less queries keep the legacy binary water gate.
+    let fords_shallow_water = has_water
+        && traversal.allow_ground
+        && !traversal.allow_air
+        && !pathfinder_allows_water_case(traversal)
+        && state.cur_unit_radius > 0.0
+        && (TERRAIN_WATER_LEVEL - state.terrain_height[idx] as f64) <= state.cur_unit_radius;
     // Every medium present in the square must be valid. A mixed shoreline
     // square therefore intersects its exposed and water permissions instead
     // of receiving a special shoreline class or buffer.
-    let passable_by_medium =
-        (!has_exposed || allows_exposed) && (!has_water || pathfinder_allows_water_case(traversal));
+    let passable_by_medium = (!has_exposed || allows_exposed)
+        && (!has_water || pathfinder_allows_water_case(traversal) || fords_shallow_water);
     if !passable_by_medium {
         return false;
     }
@@ -939,6 +976,12 @@ pub(crate) fn pathfinder_is_cell_passable(
         state.water_clearance[idx]
     } else if traversal.allow_water && allows_exposed {
         state.medium_clearance[idx]
+    } else if traversal.allow_ground && !traversal.allow_air && state.cur_unit_radius > 0.0 {
+        // A fording body's disk may overhang water — only dual-medium
+        // obstacles bound it. Its CENTER cell is still depth-gated above,
+        // and the soft-clearance cost still reads the dry field, so routes
+        // prefer dry land and pay for hugging the waterline.
+        state.medium_clearance[idx]
     } else {
         state.clearance[idx]
     };
@@ -953,13 +996,23 @@ pub(crate) fn pathfinder_is_cell_passable(
     true
 }
 
+/// Planner-side estimate of the runtime's displaced-volume thrust weighting
+/// (`unit_force_water_fraction`): a sphere of the query's collision radius
+/// resting tangent on the bed at the cell's center height. Keeps the water
+/// thrust credit the edge budget hands out consistent with what the force
+/// kernel will actually deliver in a barely-wet cell. Radius-less queries
+/// keep the legacy full credit.
 #[inline]
 fn pathfinder_cell_water_case_scale(state: &PathfinderState, idx: usize) -> f64 {
     if state.terrain_water[idx] == 0 {
-        0.0
-    } else {
-        1.0
+        return 0.0;
     }
+    let radius = state.cur_unit_radius;
+    if !(radius > 0.0) || !radius.is_finite() {
+        return 1.0;
+    }
+    let bed = state.terrain_height[idx] as f64;
+    unit_force_water_fraction(bed + radius, radius)
 }
 
 #[inline]
@@ -1996,6 +2049,7 @@ pub fn pathfinder_find_path(
     // Goals must be waypoint-valid and every segment must fit the body.
     // Air traversal flies over footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
+    state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     let hard_clearance = if traversal.allow_air {
         0
     } else {
@@ -2311,6 +2365,7 @@ pub fn pathfinder_validate_path(
     .derived();
     state.cur_waypoint_traversal = waypoint_traversal;
     state.cur_symmetric_slope = symmetric_slope;
+    state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
@@ -2673,6 +2728,57 @@ mod tests {
         .derived();
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
         assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
+    }
+
+    #[test]
+    fn shallow_water_is_fordable_ground_up_to_the_collision_radius() {
+        let mut state = open_test_state(3, 1);
+        // Middle cell: wet, 8 units deep. A ground-only unit of radius 12
+        // keeps its center above the water plane there — valid route AND
+        // valid stand; at radius 6 the same cell stays a foreign medium.
+        state.terrain_water[1] = 1;
+        state.terrain_height[1] = (TERRAIN_WATER_LEVEL - 8.0) as f32;
+        let dry_only = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 100.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 0.85,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
+        state.cur_unit_radius = 12.0;
+        assert!(pathfinder_is_cell_passable(&state, 1, dry_only));
+        state.cur_unit_radius = 6.0;
+        assert!(!pathfinder_is_cell_passable(&state, 1, dry_only));
+        // Radius-less queries keep the legacy binary water gate.
+        state.cur_unit_radius = 0.0;
+        assert!(!pathfinder_is_cell_passable(&state, 1, dry_only));
+    }
+
+    #[test]
+    fn planner_water_credit_scales_with_immersion() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_water[0] = 1;
+        state.terrain_water[1] = 1;
+        // Bed 2·r below the waterline: body fully submerged, full credit.
+        state.cur_unit_radius = 10.0;
+        state.terrain_height[0] = (TERRAIN_WATER_LEVEL - 20.0) as f32;
+        assert!((pathfinder_cell_water_case_scale(&state, 0) - 1.0).abs() < 1e-12);
+        // Bed exactly at the waterline: resting body entirely above, none.
+        state.terrain_height[1] = TERRAIN_WATER_LEVEL as f32;
+        assert!(pathfinder_cell_water_case_scale(&state, 1).abs() < 1e-12);
+        // Ankle-deep (r/2): a thin cap of displaced volume, far below half.
+        state.terrain_height[1] = (TERRAIN_WATER_LEVEL - 5.0) as f32;
+        let shallow = pathfinder_cell_water_case_scale(&state, 1);
+        assert!(shallow > 0.0 && shallow < 0.2, "got {shallow}");
+        // Radius-less queries keep the legacy full credit.
+        state.cur_unit_radius = 0.0;
+        assert!((pathfinder_cell_water_case_scale(&state, 1) - 1.0).abs() < 1e-12);
     }
 
     #[test]
