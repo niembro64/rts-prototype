@@ -172,7 +172,8 @@ export type GameServerConfig = {
   watersEdgeBeachSlopeDegrees?: number;
   /** Water's-edge cliff height (world units). 0 = no cliff. */
   watersEdgeCliffHeight?: number;
-  /** Metal-extractor pad altitude step (world units). */
+  /** Signed metal-extractor pad altitude step (world units). Negative values
+   *  lower positive authored deposit levels. */
   metalDepositStep?: number;
   /** Fine-triangle subdivisions per land cell. 0 = off; higher values
    *  refine the terrain mesh inside each cell. */

@@ -775,7 +775,7 @@ const terrainSectionVars = computed(() =>
                     v-for="opt in metalDepositStepOptions"
                     :key="opt"
                     :active="metalDepositStep === opt"
-                    :title="isHost ? `Vertical step between metal-extractor pad altitudes: ${opt}` : 'Only the host can change terrain'"
+                    :title="isHost ? `Signed metal-extractor pad altitude step: ${opt} (negative lowers authored levels)` : 'Only the host can change terrain'"
                     @click="pickMetalDepositStep(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>

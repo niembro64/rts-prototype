@@ -239,7 +239,7 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
             v-for="opt in BATTLE_CONFIG.metalDepositStep.options"
             :key="opt"
             :active="model.metalDepositStep === opt"
-            :title="`Vertical step between metal-extractor pad altitudes: ${opt}`"
+            :title="`Signed metal-extractor pad altitude step: ${opt} (negative lowers authored levels)`"
             @click="model.applyMetalDepositStep(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>

@@ -23,6 +23,7 @@ import {
 } from './Terrain';
 
 const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
+const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
@@ -124,6 +125,118 @@ function assertDryPerimeterFactoryFallback(
   }
 }
 
+function assertNegativeMetalDepositStepDemoSpawn(
+  mapWidth: number,
+  mapHeight: number,
+  playerIds: readonly PlayerId[],
+): void {
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  const disabledUnitBlueprintIds = new Set<string>();
+  const disabledBuildingBlueprintIds = new Set<string>();
+
+  try {
+    for (const metalDepositStep of CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS) {
+      setTerrainRuntimeConfig({
+        ...previousRuntimeConfig,
+        metalDepositStep,
+      });
+      assertContract(
+        getTerrainRuntimeConfig().metalDepositStep === metalDepositStep,
+        `terrain runtime must retain D-DEPOSIT ${metalDepositStep}`,
+      );
+
+      const deposits = generateMetalDeposits(
+        mapWidth,
+        mapHeight,
+        playerIds.length,
+      );
+      const commanderDeposits = deposits.filter(
+        (deposit) => deposit.dTerrainLevels === 1,
+      );
+      assertContract(
+        commanderDeposits.length === playerIds.length * 3,
+        `D-DEPOSIT ${metalDepositStep} must retain the authored commander deposit triangles`,
+      );
+      assertContract(
+        commanderDeposits.every(
+          (deposit) => deposit.height === metalDepositStep,
+        ),
+        `D-DEPOSIT ${metalDepositStep} must lower every level-one commander deposit`,
+      );
+
+      const world = new WorldState(
+        1700 - metalDepositStep,
+        mapWidth,
+        mapHeight,
+      );
+      world.playerCount = playerIds.length;
+      world.metalDeposits = commanderDeposits;
+      const construction = new ConstructionSystem(
+        mapWidth,
+        mapHeight,
+        createNoBuildableTerrainGrid(mapWidth, mapHeight),
+      );
+      const baseEntities = spawnInitialBases(
+        world,
+        construction,
+        [...playerIds],
+        'demo',
+        disabledUnitBlueprintIds,
+        disabledBuildingBlueprintIds,
+      );
+      const commanders = baseEntities.filter(
+        (entity) => entity.unit?.unitBlueprintId === 'unitCommander',
+      );
+      assertContract(
+        commanders.length === playerIds.length,
+        `D-DEPOSIT ${metalDepositStep} demo base must spawn every commander`,
+      );
+      for (let i = 0; i < commanders.length; i++) {
+        const commander = commanders[i];
+        const bedZ = world.getTerrainBedZ(
+          commander.transform.x,
+          commander.transform.y,
+        );
+        const groundZ = world.getGroundZ(
+          commander.transform.x,
+          commander.transform.y,
+        );
+        assertContract(
+          Math.abs(bedZ - metalDepositStep) <= 1e-6,
+          `D-DEPOSIT ${metalDepositStep} commander ${commander.id} must spawn over the lowered commander pad`,
+        );
+        assertContract(
+          commander.transform.z > groundZ,
+          `D-DEPOSIT ${metalDepositStep} commander ${commander.id} must spawn above its support surface`,
+        );
+      }
+
+      const extractors = spawnMetalExtractorsOnDeposits(
+        world,
+        construction,
+        [...playerIds],
+      );
+      assertContract(
+        extractors.length === commanderDeposits.length,
+        `D-DEPOSIT ${metalDepositStep} demo battle must place every commander-pad extractor`,
+      );
+      for (let i = 0; i < extractors.length; i++) {
+        const extractor = extractors[i];
+        assertContract(
+          Math.abs(
+            extractor.transform.z -
+              extractor.building!.depth / 2 -
+              metalDepositStep,
+          ) <= 1e-6,
+          `D-DEPOSIT ${metalDepositStep} extractor ${extractor.id} must sit on the lowered terrain bed`,
+        );
+      }
+    }
+  } finally {
+    setTerrainRuntimeConfig(previousRuntimeConfig);
+  }
+}
+
 function runDemoMetalExtractorSpawnContractTestForPreset(
   preset: BattlePreset,
 ): void {
@@ -222,6 +335,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     );
   }
   assertDryPerimeterFactoryFallback(mapWidth, mapHeight, playerIds);
+  assertNegativeMetalDepositStepDemoSpawn(mapWidth, mapHeight, playerIds);
 
   const deposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const expectedDepositIds = new Set<number>();

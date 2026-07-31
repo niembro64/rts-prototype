@@ -59,11 +59,11 @@ export type BattleBarConfig = {
   readonly watersEdgeBeachSlopeDegrees: OptionsConfig<number>;
   /** Height (world units) of the water's-edge cliff. 0 = no cliff. */
   readonly watersEdgeCliffHeight: OptionsConfig<number>;
-  /** Vertical step (world units) between metal-extractor pad altitude
+  /** Signed vertical step (world units) between metal-extractor pad altitude
    *  levels — a deposit ring's `dTerrainLevels` is multiplied by this
    *  to get its pad `height`. Independent from `terrainDTerrain` so
    *  the plateau lattice and the deposit lattice can use different
-   *  step sizes. */
+   *  step sizes. Negative values lower positive authored levels. */
   readonly metalDepositStep: OptionsConfig<number>;
   /** Fine-triangle subdivisions per land cell (TERRAIN DETAIL bar).
    *  `0` collapses to one triangle per cell (current default — the sim

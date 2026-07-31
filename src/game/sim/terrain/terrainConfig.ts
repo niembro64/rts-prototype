@@ -178,11 +178,11 @@ export let TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES =
 export let TERRAIN_WATERS_EDGE_CLIFF_HEIGHT =
   BATTLE_CONFIG.watersEdgeCliffHeight.default;
 
-/** Vertical step (world units) between metal-extractor pad altitude
+/** Signed vertical step (world units) between metal-extractor pad altitude
  *  levels. A deposit ring's `dTerrainLevels` is multiplied by this
  *  to get the pad's `height`. Independent from `TERRAIN_D_TERRAIN`
  *  so the deposit lattice can use a different step than the plateau
- *  lattice. */
+ *  lattice. Negative values lower positive authored levels. */
 export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
 
 /** PERIMETER ring shape (sim authority): fractions of the map's smaller
@@ -275,7 +275,10 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
-  const nextDepositStep = Math.max(0, config.metalDepositStep);
+  const rawDepositStep = Number(config.metalDepositStep);
+  const nextDepositStep = Number.isFinite(rawDepositStep)
+    ? rawDepositStep
+    : METAL_DEPOSIT_STEP;
   if (METAL_DEPOSIT_STEP !== nextDepositStep) {
     METAL_DEPOSIT_STEP = nextDepositStep;
     changed = true;
