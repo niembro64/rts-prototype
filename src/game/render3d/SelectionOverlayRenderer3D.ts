@@ -90,6 +90,33 @@ function buildAnnulusWireframeGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   return geometry;
 }
+
+/** Unit cylinder wireframe (radius 1, y in ±1): two rim circles joined by
+ *  vertical ribs. Scaled (radius, halfHeight, radius) per volume — this is
+ *  the target-acquisition cylinder shape Rust combat targeting tests for
+ *  every entity. */
+function buildUnitCylinderWireframeGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const y of [1, -1]) {
+    for (let i = 0; i < ANNULUS_WIREFRAME_SEGMENTS; i++) {
+      const a0 = (i / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
+      const a1 = ((i + 1) / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
+      positions.push(
+        Math.cos(a0), y, Math.sin(a0),
+        Math.cos(a1), y, Math.sin(a1),
+      );
+    }
+  }
+  for (let i = 0; i < ANNULUS_WIREFRAME_RIBS; i++) {
+    const a = (i / ANNULUS_WIREFRAME_RIBS) * Math.PI * 2;
+    const cx = Math.cos(a);
+    const sz = Math.sin(a);
+    positions.push(cx, 1, sz, cx, -1, sz);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  return geometry;
+}
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 const _selectedSensorPosition = { x: 0, y: 0, z: 0 };
@@ -135,6 +162,8 @@ export class SelectionOverlayRenderer3D {
   private readonly radiusSphereGeom: THREE.BufferGeometry;
   /** Unit-cube edge wireframe, non-uniformly scaled per building box. */
   private readonly radiusBoxGeom = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+  /** Unit cylinder wireframe, scaled (r, halfH, r) per acquisition volume. */
+  private readonly radiusCylinderGeom = buildUnitCylinderWireframeGeometry();
   /** Annulus wireframes keyed by exact dims — one per hovering blueprint. */
   private readonly annulusGeomCache = new Map<string, THREE.BufferGeometry>();
   private readonly supportDiagnosticSurface = createWorldSupportSurface();
@@ -328,8 +357,9 @@ export class SelectionOverlayRenderer3D {
     const collider = entity.unit?.radius;
     if (!entity.unit || !collider) return;
 
-    // Units really are spheres in every system: the physics body, hit
-    // detection, and arming volume are all spheres at the body center.
+    // Unit physics, projectile hit detection, and arming volumes really are
+    // spheres at the body center; target ACQUISITION is a cylinder for every
+    // entity (radius = hitbox, half-height = max(hitbox, support offset)).
     const rings = m.radiusRings ?? (m.radiusRings = {});
     const centerY = getUnitSupportPointOffsetZ(entity.unit);
     this.setRadiusVolumeSphere(
@@ -339,6 +369,13 @@ export class SelectionOverlayRenderer3D {
     this.setRadiusVolumeSphere(
       rings, 'hitbox', this.showHitboxRadius, m.group,
       centerY, collider.hitbox, this.radiusMatHitbox,
+    );
+    const unitAcquisitionHalfHeight = Math.max(collider.hitbox, centerY);
+    this.setRadiusVolume(
+      rings, 'hitboxAcquisition', this.showHitboxRadius, m.group,
+      this.radiusCylinderGeom, centerY,
+      collider.hitbox, unitAcquisitionHalfHeight, collider.hitbox,
+      this.radiusMatHitbox,
     );
     this.setRadiusVolumeSphere(
       rings, 'collision', this.showCollisionRadius, m.group,
@@ -370,10 +407,20 @@ export class SelectionOverlayRenderer3D {
       selectionVolumeCenterZ(entity) - baseZ, selectionVolumeRadius(entity),
       this.radiusMatOther,
     );
-    // HIT: the combat AABB that projectiles, beams, and splash test.
+    // HIT is two true volumes for buildings: the combat AABB that
+    // projectiles, beams, and splash test, plus the target-acquisition
+    // cylinder Rust combat targeting gates on (radius = targetRadius,
+    // half-height = max(targetRadius, depth/2)).
     this.setRadiusVolume(
       rings, 'hitbox', this.showHitboxRadius, m.group, this.radiusBoxGeom,
       combatCenterY, building.width, building.depth, building.height,
+      this.radiusMatHitbox,
+    );
+    const acquisitionHalfHeight = Math.max(building.targetRadius, building.depth / 2);
+    this.setRadiusVolume(
+      rings, 'hitboxAcquisition', this.showHitboxRadius, m.group,
+      this.radiusCylinderGeom, combatCenterY,
+      building.targetRadius, acquisitionHalfHeight, building.targetRadius,
       this.radiusMatHitbox,
     );
     // COL: the physics volume — grounded static cuboid, or the fabricator's
@@ -425,6 +472,9 @@ export class SelectionOverlayRenderer3D {
     if (m.radiusRingsVisible && m.radiusRings) {
       if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
       if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
+      if (m.radiusRings.hitboxAcquisition) {
+        setObjectVisibleIfChanged(m.radiusRings.hitboxAcquisition, false);
+      }
       if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
       if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
     }
@@ -623,6 +673,7 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatCollision.dispose();
     this.radiusMatShotArming.dispose();
     this.radiusBoxGeom.dispose();
+    this.radiusCylinderGeom.dispose();
     for (const geometry of this.annulusGeomCache.values()) geometry.dispose();
     this.annulusGeomCache.clear();
     this.supportDiagnosticNextLogAtMs.clear();

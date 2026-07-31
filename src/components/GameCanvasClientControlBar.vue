@@ -890,7 +890,7 @@ function resetEveryCustomHotkey(): void {
           >SEL</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.hitbox"
-            title="Show the hit volume — units: hitbox sphere (radius.hitbox); buildings: the width × height × depth combat box that projectiles, beams, and splash test (floats at the combat center for hovering buildings)"
+            title="Show the hit volumes — projectile/beam/splash volume (units: hitbox sphere; buildings: the width × height × depth combat box) PLUS the target-acquisition cylinder every entity carries (radius = hitbox, half-height = max(hitbox, vertical extent)); both float at the combat center for hovering buildings"
             @click="model.toggleUnitRadius('hitbox')"
           >HIT</BarButton>
           <BarButton
@@ -986,7 +986,7 @@ function resetEveryCustomHotkey(): void {
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
-        <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; follow movement is immediate while discrete zoom keeps its configured smoothing.">FOLLOW:</BarLabel>
+        <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; follow movement shares the configured camera smoothing.">FOLLOW:</BarLabel>
         <BarButtonGroup>
           <BarButton
             :active="model.cameraFollowMode === 'free'"

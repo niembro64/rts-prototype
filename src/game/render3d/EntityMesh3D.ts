@@ -18,6 +18,10 @@ import type { SolarRig } from './SolarCollectorMesh3D';
 export type RadiusRingMeshes = {
   other?: THREE.LineSegments;
   hitbox?: THREE.LineSegments;
+  /** Companion to `hitbox`: the target-acquisition cylinder every entity
+   *  carries in Rust combat targeting (radius = hitbox/targetRadius,
+   *  half-height = max(hitbox, aabbHz)). */
+  hitboxAcquisition?: THREE.LineSegments;
   collision?: THREE.LineSegments;
   shotArmingRadius?: THREE.LineSegments;
 };
