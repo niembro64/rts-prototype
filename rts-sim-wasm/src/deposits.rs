@@ -228,25 +228,6 @@ pub(crate) fn terrain_plateau_step(cfg: &MetalDepositTerrainConfigRust) -> f64 {
     }
 }
 
-/// Horizontal width of a wall band, which is what the authored wall
-/// slope means: dropping one step at that angle takes step / tan(angle)
-/// of ground. Contour snapping must stay well inside this or it snaps
-/// the band itself away — at 89 degrees a 400 step is only 7 units
-/// wide, far thinner than a fine mesh edge.
-pub(crate) fn terrain_wall_band_width(cfg: &MetalDepositTerrainConfigRust) -> f64 {
-    let angle = cfg.plateau_wall_slope_degrees.clamp(1.0, 89.0);
-    let tan_angle = (angle * std::f64::consts::PI / 180.0).tan().max(1e-6);
-    let mut width = f64::MAX;
-    let step = terrain_plateau_step(cfg);
-    if step > 0.0 {
-        width = width.min(step / tan_angle);
-    }
-    if terrain_waters_edge_cliff_enabled(cfg) && cfg.waters_edge_cliff_height > 0.0 {
-        width = width.min(cfg.waters_edge_cliff_height / tan_angle);
-    }
-    width
-}
-
 pub(crate) fn terrain_plateau_flat_half_for_gradient(
     gradient_magnitude: f64,
     cfg: &MetalDepositTerrainConfigRust,

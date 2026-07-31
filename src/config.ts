@@ -793,8 +793,8 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
  *   factor_in  = (1 − f)         → distance shrinks by f
  *   factor_out = (1 + f)         → distance grows by f
  *
- * BAR's default is f=0.175; this game's configured f=0.35 doubles that
- * per-tick travel. The configured anchor remains pinned through the move.
+ * BAR's default ScrollWheelSpeed=25 and controller coefficient 0.007 make
+ * f=0.175. The configured anchor remains pinned through the move.
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 

@@ -79,66 +79,6 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
   amount: terrainConfig.mesh.heightSmoothing.amount,
 };
 
-/** Debug switch for wall-strip consolidation, OFF because it trades the
- *  wrong way. A wall region is a ribbon between two iso-contours and the
- *  ramp between them is one authored slope, so nothing strictly inside
- *  it carries shape; with this on, the baker deletes every vertex whose
- *  whole triangle fan is one wall strip and retriangulates the fan
- *  without it, reusing the fan's outer boundary edge for edge so the
- *  mesh stays conforming. That does cut triangles — wall triangles by a
- *  third across the stability maps, and by 64% where the walls are
- *  widest.
- *
- *  But a band 146 units wide whose contours are sampled every ~16 has
- *  no triangulation on those vertices alone that is not made of ~9:1
- *  needles, so removing the interior vertices IS asking for slivers:
- *  wall triangles under 5 degrees go from 4.6% to 56% at a 70 degree
- *  wall slope, and from 7.9% to 40% at 80. At the shipped 89 degrees
- *  the band is 7 units wide, thinner than the contour spacing, so there
- *  is nothing inside to remove and it buys only 5.7% fewer wall
- *  triangles for slightly worse slivers.
- *
- *  Kept because it is the right tool if minimum triangle count ever
- *  matters more than triangle shape. It changes the authoritative mesh
- *  (heights, buildability, pathing), so it is an authored constant
- *  shared by every peer, never a per-client toggle, and either setting
- *  needs a terrain rebuild to take effect.
- *
- *  Note what it does NOT address: slivers are made by the region
- *  clipper cutting leaf triangles along a contour, on both sides of
- *  both lines, and they are there with this off — 60% of wall triangles
- *  and 26% of their neighbours sit under 15 degrees, against 0.1% for
- *  terrain away from any wall. */
-export const TERRAIN_MESH_CONSOLIDATE_WALL_TRIANGLES =
-  terrainConfig.mesh.consolidateWallTriangles;
-
-/** How close a region-boundary crossing may land to the end of the mesh
- *  edge it cuts before it snaps onto that endpoint instead of inserting
- *  a vertex beside it, as a fraction of the snapping scale (the fine
- *  triangle edge, or the wall band width where that is narrower).
- *
- *  Slivers in this mesh are made here and nowhere else: terrain away
- *  from any wall runs 0.1% of triangles under 15 degrees, while wall
- *  triangles and their neighbours run 20-60%, because the region
- *  clipper cuts leaf triangles along a contour and a crossing that
- *  lands a hair from a vertex leaves a needle. Snapping removes the
- *  needle and the fragment triangle with it, so it cuts triangle count
- *  as well. It is symmetric across a shared edge — the neighbouring
- *  leaf measures the same distance to the same endpoint — so the two
- *  sides still meet exactly and the mesh stays conforming.
- *
- *  Bounded by the wall band width because that is the feature being
- *  cut: an 89 degree wall on a 400 step is 7 units wide, far thinner
- *  than a 25 unit fine edge, and snapping by a fine-edge fraction there
- *  snaps the cliff away rather than the sliver (mean surface error
- *  4 -> 42). Bounded, 0.15 measures: worst angle anywhere 0.02 -> 0.39
- *  degrees, and on wider walls (80 degrees, 200 step) triangles under
- *  5 degrees 7.9% -> 0.3% with 18% fewer triangles, for mean error
- *  0.9 -> 1.6. Raising it keeps trading accuracy for shape; past ~0.2
- *  a near-vertical wall starts losing its terrace. 0 disables. */
-export const TERRAIN_MESH_CONTOUR_SNAP_FRACTION_OF_FINE_EDGE =
-  terrainConfig.mesh.contourSnapFractionOfFineEdge;
-
 /** Render-only "solid ocean" mode. When true:
  *    (a) `WaterRenderer3D` draws the ocean surface fully opaque
  *        (transparency disabled, depth writes on), and
