@@ -28,8 +28,11 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "public", "assets", "backdrops")
-W, H = 2048, 1024
-JPEG_QUALITY = 90
+W, H = 4096, 2048
+# Final soft-focus blur (box-blur radius, 3 passes ~ Gaussian). Keeps the
+# backdrops dreamy and hides silhouette stair-steps at horizon
+# magnification; individual presets can override in PRESETS.
+DEFAULT_BLUR_RADIUS = 6
 
 with open(os.path.join(ROOT, "src", "colorsConfig.json")) as f:
     COLORS = json.load(f)["world"]
@@ -212,6 +215,25 @@ def paint_azimuth_glow(
     img[:] = np.clip(img + color[None, None, :] * glow[..., None], 0.0, 1.0)
 
 
+def _gauss_kernel(sigma: float) -> np.ndarray:
+    """Small 2D Gaussian splat kernel, peak-normalized to 1."""
+    r = max(1, int(np.ceil(sigma * 3.0)))
+    ax = np.arange(-r, r + 1)
+    k = np.exp(-(ax[:, None] ** 2 + ax[None, :] ** 2) / (2.0 * sigma * sigma))
+    return k / k.max()
+
+
+def _splat(img: np.ndarray, y: int, x: int, kernel: np.ndarray, color: np.ndarray, strength: float) -> None:
+    """Additively stamp a soft dot; wraps in x, clips in y."""
+    r = kernel.shape[0] // 2
+    ys = np.arange(y - r, y + r + 1)
+    xs = np.arange(x - r, x + r + 1) % W
+    valid = (ys >= 0) & (ys < H)
+    if not np.any(valid):
+        return
+    img[np.ix_(ys[valid], xs)] += kernel[valid][:, :, None] * color[None, None, :] * strength
+
+
 def paint_stars(
     img: np.ndarray,
     rng: np.random.Generator,
@@ -219,26 +241,33 @@ def paint_stars(
     min_elev_deg: float,
     max_strength: float = 0.9,
 ) -> None:
+    # Soft multi-pixel dots (not single pixels) so the final soft-focus
+    # blur dims them gracefully instead of erasing them.
+    dot = _gauss_kernel(1.7)
+    bright = _gauss_kernel(2.6)
+    white = np.ones(3)
     for _ in range(count):
-        x = rng.integers(0, W)
+        x = int(rng.integers(0, W))
         # Bias star rows toward the zenith less strongly than area-uniform
         # sampling would: backdrop viewers mostly see the low sky.
         y = int(rng.uniform(0.0, (90.0 - min_elev_deg) / 180.0) * H)
         strength = rng.uniform(0.25, max_strength)
-        img[y, x] = np.clip(img[y, x] + strength, 0.0, 1.0)
-        if rng.random() < 0.18:  # a few brighter 4-tap stars
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                yy, xx = (y + dy) % H, (x + dx) % W
-                img[yy, xx] = np.clip(img[yy, xx] + strength * 0.45, 0.0, 1.0)
+        if rng.random() < 0.18:
+            _splat(img, y, x, bright, white, strength * 1.3)
+        else:
+            _splat(img, y, x, dot, white, strength)
+    np.clip(img, 0.0, 1.0, out=img)
 
 
 def paint_embers(img: np.ndarray, rng: np.random.Generator, count: int, max_elev_deg: float) -> None:
+    dot = _gauss_kernel(1.4)
     for _ in range(count):
         x = int(rng.integers(0, W))
         elev = rng.uniform(0.5, max_elev_deg)
         y = int((90.0 - elev) / 180.0 * H)
         strength = rng.uniform(0.2, 0.7) * (1.0 - elev / max_elev_deg)
-        img[y, x] = np.clip(img[y, x] + SUN_HALO * strength, 0.0, 1.0)
+        _splat(img, y, x, dot, SUN_HALO, strength)
+    np.clip(img, 0.0, 1.0, out=img)
 
 
 def below_horizon_sea(img: np.ndarray, surface: np.ndarray, deep: np.ndarray) -> None:
@@ -255,11 +284,46 @@ def terrace(ridge: np.ndarray, steps: int) -> np.ndarray:
     return np.round(ridge * steps) / steps
 
 
-def save(img: np.ndarray, slug: str) -> None:
+def _box_blur_x(img: np.ndarray, r: int) -> np.ndarray:
+    """Horizontal box blur with wrap-around, preserving the panorama seam."""
+    pad = np.concatenate([img[:, -r:], img, img[:, :r]], axis=1)
+    c = np.cumsum(pad, axis=1)
+    c = np.concatenate([np.zeros_like(c[:, :1]), c], axis=1)
+    return (c[:, 2 * r + 1 :] - c[:, : -(2 * r + 1)]) / (2 * r + 1)
+
+
+def _box_blur_y(img: np.ndarray, r: int) -> np.ndarray:
+    """Vertical box blur with edge-clamp padding."""
+    pad = np.concatenate([img[:1].repeat(r, axis=0), img, img[-1:].repeat(r, axis=0)], axis=0)
+    c = np.cumsum(pad, axis=0)
+    c = np.concatenate([np.zeros_like(c[:1]), c], axis=0)
+    return (c[2 * r + 1 :] - c[: -(2 * r + 1)]) / (2 * r + 1)
+
+
+def soft_focus(img: np.ndarray, radius: int) -> np.ndarray:
+    """Three box-blur passes ~ Gaussian. Done in numpy (not PIL) so the
+    x wrap keeps the 360-degree seam invisible after blurring."""
+    out = img
+    for _ in range(3):
+        out = _box_blur_y(_box_blur_x(out, radius), radius)
+    return out
+
+
+def save(img: np.ndarray, slug: str, blur_radius: int = DEFAULT_BLUR_RADIUS) -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
-    out = (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
-    path = os.path.join(OUT_DIR, f"{slug}.jpg")
-    Image.fromarray(out).save(path, quality=JPEG_QUALITY, optimize=True)
+    if blur_radius > 0:
+        img = soft_focus(img, blur_radius)
+    # Fine dither before quantization: breaks the visible banding steps
+    # that smooth sky gradients otherwise develop at 8 bits. A tiled
+    # pattern (not white noise) so PNG's LZ compression still bites —
+    # white noise here quadruples the file size.
+    tile = np.random.default_rng(999).uniform(-0.5, 0.5, (64, 64))
+    dither = np.tile(tile, (H // 64, W // 64))[..., None]
+    out = np.clip(img * 255.0 + dither, 0.0, 255.0).astype(np.uint8)
+    # PNG (lossless): no JPEG block/ringing artifacts around silhouettes,
+    # stars, or the horizon line.
+    path = os.path.join(OUT_DIR, f"{slug}.png")
+    Image.fromarray(out).save(path, optimize=True)
     print(f"wrote {os.path.relpath(path, ROOT)} ({os.path.getsize(path) // 1024} KB)")
 
 
@@ -444,21 +508,23 @@ def metal_plate() -> np.ndarray:
     return img
 
 
+# slug -> (painter, soft-focus blur radius). The metal worlds keep a
+# tighter blur so the starfield and razor horizon line stay defined.
 PRESETS = {
-    "large-circle": large_circle,
-    "angels-flat": angels_flat,
-    "boulder-mountain": boulder_mountain,
-    "spikey-lake": spikey_lake,
-    "niemo-islands": niemo_islands,
-    "angels-playhouse": angels_playhouse,
-    "metal-hell": metal_hell,
-    "metal-plate": metal_plate,
+    "large-circle": (large_circle, DEFAULT_BLUR_RADIUS),
+    "angels-flat": (angels_flat, DEFAULT_BLUR_RADIUS),
+    "boulder-mountain": (boulder_mountain, DEFAULT_BLUR_RADIUS),
+    "spikey-lake": (spikey_lake, DEFAULT_BLUR_RADIUS),
+    "niemo-islands": (niemo_islands, DEFAULT_BLUR_RADIUS),
+    "angels-playhouse": (angels_playhouse, DEFAULT_BLUR_RADIUS),
+    "metal-hell": (metal_hell, 4),
+    "metal-plate": (metal_plate, 3),
 }
 
 
 def main() -> None:
-    for slug, fn in PRESETS.items():
-        save(fn(), slug)
+    for slug, (fn, blur_radius) in PRESETS.items():
+        save(fn(), slug, blur_radius)
 
 
 if __name__ == "__main__":

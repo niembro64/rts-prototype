@@ -27,7 +27,7 @@ export function backdropUrlForPresetName(name: string | null): string | null {
   if (!name) return null;
   const slug = PRESET_BACKDROP_SLUGS[name];
   if (!slug) return null;
-  return `${import.meta.env.BASE_URL}assets/backdrops/${slug}.jpg`;
+  return `${import.meta.env.BASE_URL}assets/backdrops/${slug}.png`;
 }
 
 export type BackdropTarget = {
