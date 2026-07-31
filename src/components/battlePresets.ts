@@ -141,7 +141,7 @@ function buildPresets(): readonly BattlePreset[] {
       barsCollapsed: false,
     },
     {
-      name: 'Boulder Mountains',
+      name: 'Boulder Mountain',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -151,7 +151,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 1600,
       dividersMagnitude: 800,
-      perimeterMagnitude: -800,
+      perimeterMagnitude: -200,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 80,
       watersEdgeBeachSlopeDegrees: 10,
