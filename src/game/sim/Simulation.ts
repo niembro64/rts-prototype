@@ -159,6 +159,9 @@ type ActiveMovementTarget = UnitPathPoint & {
    *  corners use the broad arrival radius only when the current position has
    *  a hard-clearance LOS to the following point. */
   pathAdvanceRadius: number;
+  /** cos of the bend angle between the approach leg and the outgoing leg at
+   *  this point; 1 (straight) disables corner speed shaping. */
+  cornerBendCos: number;
 };
 
 type GatherWaitGroup = {
@@ -1085,6 +1088,7 @@ export class Simulation {
         z: action.z,
         isFinalActionPoint: true,
         pathAdvanceRadius: ARRIVAL_RADIUS,
+        cornerBendCos: 1,
       };
     }
 
@@ -1125,12 +1129,28 @@ export class Simulation {
       closeEnoughForBroadAdvance &&
       this.isDirectPathPointReachable(entity, plan.points[plan.index + 1])
     ) ? ARRIVAL_RADIUS : 1;
+    // Corner speed shaping only matters for the tight (no-shortcut) corners;
+    // broad-advance points are consumed 50 wu out and never steered at
+    // closely. The approach leg is measured from the live position so a unit
+    // rejoining the route after a slide still sees its true bend.
+    let cornerBendCos = 1;
+    if (!isFinalActionPoint && pathAdvanceRadius < ARRIVAL_RADIUS) {
+      const next = plan.points[plan.index + 1];
+      const outDx = next.x - point.x;
+      const outDy = next.y - point.y;
+      const inLength = magnitude(pointDx, pointDy);
+      const outLength = magnitude(outDx, outDy);
+      if (inLength > 1e-6 && outLength > 1e-6) {
+        cornerBendCos = (pointDx * outDx + pointDy * outDy) / (inLength * outLength);
+      }
+    }
     return {
       x: point.x,
       y: point.y,
       z: point.z,
       isFinalActionPoint,
       pathAdvanceRadius,
+      cornerBendCos,
     };
   }
 
@@ -1197,7 +1217,15 @@ export class Simulation {
       if (distance <= target.pathAdvanceRadius) {
         this.advanceActivePathPoint(entity);
       } else {
-        this.arrivalController.queueThrust(entity, action, dx, dy, distance, false);
+        this.arrivalController.queueThrust(
+          entity,
+          action,
+          dx,
+          dy,
+          distance,
+          false,
+          target.cornerBendCos,
+        );
       }
       return;
     }

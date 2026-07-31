@@ -995,6 +995,7 @@ export interface SimWasm {
     radiusCollision: Float64Array,
     driveScale: Float64Array,
     flags: Uint8Array,
+    cornerBendCos: Float64Array,
     outThrustX: Float64Array,
     outThrustY: Float64Array,
     outActive: Uint8Array,
@@ -1002,6 +1003,7 @@ export interface SimWasm {
     controlRadiusMin: number,
     responseTimeSec: number,
     minAccel: number,
+    cornerCorridor: number,
   ) => number;
   /** Current Rust-authoritative horizontal drive acceleration for a body,
    *  blended by air/water occupancy and ground contact/load. */

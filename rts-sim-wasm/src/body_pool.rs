@@ -302,6 +302,15 @@ pub(crate) fn arrival_horizontal_drive_accel(max_propulsive_force: f64, physics_
     max_propulsive_force.max(0.0) * 1_000_000.0 / physics_mass
 }
 
+/// Corner shaping engages only for bends sharper than ~25° (cos 25° ≈ 0.906);
+/// gentler direction changes are handled by steering alone at full speed.
+const CORNER_SHAPING_MAX_BEND_COS: f64 = 0.906;
+/// Floor on sin(bend) so reversal corners keep a finite, sane speed cap.
+const CORNER_SHAPING_MIN_BEND_SIN: f64 = 0.35;
+/// Coast band below the brake threshold, as a ratio of the allowed speed,
+/// so the controller settles instead of flip-flopping thrust and brake.
+const CORNER_SHAPING_COAST_RATIO: f64 = 0.9;
+
 #[inline]
 pub(crate) fn compute_arrival_control_thrust(
     dx: f64,
@@ -317,6 +326,8 @@ pub(crate) fn compute_arrival_control_thrust(
     control_radius_min: f64,
     response_time_sec: f64,
     min_accel: f64,
+    corner_bend_cos: f64,
+    corner_corridor: f64,
 ) -> (f64, f64, u8) {
     if distance <= 0.0001 || !distance.is_finite() {
         return (0.0, 0.0, 0);
@@ -324,6 +335,41 @@ pub(crate) fn compute_arrival_control_thrust(
 
     let inv_distance = 1.0 / distance;
     if flags & ARRIVAL_FLAG_MAINTAIN_FULL_THRUST != 0 || flags & ARRIVAL_FLAG_LAST_ACTION == 0 {
+        // Tight intermediate corner: cap the approach speed so the unit's own
+        // brake authority can pull the post-corner excursion back inside the
+        // leg corridor. The cap is physics-derived — sqrt(2·a·corridor/sinφ)
+        // — so shallow bends never brake and sharp switchbacks brake exactly
+        // as much as the corridor demands.
+        if flags & ARRIVAL_FLAG_MAINTAIN_FULL_THRUST == 0
+            && corner_bend_cos < CORNER_SHAPING_MAX_BEND_COS
+            && corner_corridor > 0.0
+        {
+            let max_accel = arrival_horizontal_drive_accel(max_propulsive_force, physics_mass);
+            if max_accel > min_accel && max_accel.is_finite() {
+                let bend_cos = corner_bend_cos.clamp(-1.0, 1.0);
+                let bend_sin =
+                    (1.0 - bend_cos * bend_cos).sqrt().max(CORNER_SHAPING_MIN_BEND_SIN);
+                let corner_speed = (2.0 * max_accel * corner_corridor / bend_sin).sqrt();
+                let dir_x = dx * inv_distance;
+                let dir_y = dy * inv_distance;
+                let closing_speed = body_vx * dir_x + body_vy * dir_y;
+                let allowed =
+                    (corner_speed * corner_speed + 2.0 * max_accel * distance).sqrt();
+                if closing_speed > allowed {
+                    // Brake against the velocity, not the leg; lateral drift
+                    // is the ground kernel's slope hold's job.
+                    let speed = (body_vx * body_vx + body_vy * body_vy).sqrt();
+                    if speed > 1.0e-9 {
+                        let inv_speed = 1.0 / speed;
+                        return (-body_vx * inv_speed, -body_vy * inv_speed, 1);
+                    }
+                } else if closing_speed > allowed * CORNER_SHAPING_COAST_RATIO {
+                    // Coast: zero drive input hands the tick to the idle
+                    // brake, which decelerates while still holding the slope.
+                    return (0.0, 0.0, 1);
+                }
+            }
+        }
         return (dx * inv_distance, dy * inv_distance, 1);
     }
 
@@ -431,6 +477,7 @@ pub fn arrival_control_step_batch(
     radius_collision: &[f64],
     drive_scale: &[f64],
     flags: &[u8],
+    corner_bend_cos: &[f64],
     out_thrust_x: &mut [f64],
     out_thrust_y: &mut [f64],
     out_active: &mut [u8],
@@ -438,6 +485,7 @@ pub fn arrival_control_step_batch(
     control_radius_min: f64,
     response_time_sec: f64,
     min_accel: f64,
+    corner_corridor: f64,
 ) -> u32 {
     let count = slots.len();
     debug_assert!(dx.len() >= count);
@@ -446,6 +494,7 @@ pub fn arrival_control_step_batch(
     debug_assert!(radius_collision.len() >= count);
     debug_assert!(drive_scale.len() >= count);
     debug_assert!(flags.len() >= count);
+    debug_assert!(corner_bend_cos.len() >= count);
     debug_assert!(out_thrust_x.len() >= count);
     debug_assert!(out_thrust_y.len() >= count);
     debug_assert!(out_active.len() >= count);
@@ -475,6 +524,8 @@ pub fn arrival_control_step_batch(
             control_radius_min,
             response_time_sec,
             min_accel,
+            corner_bend_cos[i],
+            corner_corridor,
         );
         out_thrust_x[i] = thrust_x;
         out_thrust_y[i] = thrust_y;

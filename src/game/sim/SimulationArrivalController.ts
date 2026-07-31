@@ -2,7 +2,10 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
-import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
+import {
+  PATHFINDING_ARRIVAL_RADIUS,
+  PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
+} from './pathfindingTuning';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import { growTypedArray } from '../memory/typedArrayGrowth';
 
@@ -31,6 +34,7 @@ export class SimulationArrivalController {
   private distance = new Float64Array(0);
   private radiusPush = new Float64Array(0);
   private speedLimitFactor = new Float64Array(0);
+  private cornerBendCos = new Float64Array(0);
   private flags = new Uint8Array(0);
   private outX = new Float64Array(0);
   private outY = new Float64Array(0);
@@ -157,6 +161,7 @@ export class SimulationArrivalController {
     dy: number,
     distance: number,
     isFinalActionPoint = true,
+    cornerBendCos = 1,
   ): void {
     const unit = entity.unit;
     const body = entity.body;
@@ -187,6 +192,7 @@ export class SimulationArrivalController {
     this.distance[index] = distance;
     this.radiusPush[index] = unit.radius.collision;
     this.speedLimitFactor[index] = speedLimitFactor;
+    this.cornerBendCos[index] = cornerBendCos;
     this.flags[index] =
       (maintainFullThrustAtWaypoints ? ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST : 0)
       | (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
@@ -208,6 +214,7 @@ export class SimulationArrivalController {
       this.radiusPush.subarray(0, count),
       this.speedLimitFactor.subarray(0, count),
       this.flags.subarray(0, count),
+      this.cornerBendCos.subarray(0, count),
       this.outX.subarray(0, count),
       this.outY.subarray(0, count),
       this.active.subarray(0, count),
@@ -215,6 +222,7 @@ export class SimulationArrivalController {
       ARRIVAL_CONTROL_RADIUS,
       ARRIVAL_RESPONSE_TIME_SEC,
       ARRIVAL_MIN_ACCEL,
+      PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
     );
 
     for (let i = 0; i < count; i++) {
@@ -256,6 +264,7 @@ export class SimulationArrivalController {
     this.distance = growTypedArray(this.distance, next);
     this.radiusPush = growTypedArray(this.radiusPush, next);
     this.speedLimitFactor = growTypedArray(this.speedLimitFactor, next);
+    this.cornerBendCos = growTypedArray(this.cornerBendCos, next);
     this.flags = growTypedArray(this.flags, next);
     this.outX = new Float64Array(next);
     this.outY = new Float64Array(next);

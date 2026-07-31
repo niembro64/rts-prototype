@@ -8754,10 +8754,89 @@ mod sim_kernel_tests {
             20.0,
             0.22,
             0.001,
+            1.0,
+            10.0,
         );
         assert_eq!(active, 1);
         assert!((x - 0.6).abs() < 1e-12);
         assert!((y - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    pub(crate) fn sharp_corner_brakes_an_overspeed_approach() {
+        // 90° bend (cos 0), corridor 10, max_accel = 100·1e6/1e6 = 100:
+        // corner speed = sqrt(2·100·10/1) ≈ 44.7; allowed at distance 5 is
+        // sqrt(2000 + 1000) ≈ 54.8. Closing at 200 → full reverse brake.
+        let (x, y, active) = compute_arrival_control_thrust(
+            5.0,
+            0.0,
+            5.0,
+            200.0,
+            0.0,
+            10.0,
+            100.0,
+            1_000_000.0,
+            0,
+            1.0 / 30.0,
+            20.0,
+            0.22,
+            0.001,
+            0.0,
+            10.0,
+        );
+        assert_eq!(active, 1);
+        assert!((x - -1.0).abs() < 1e-12, "brakes against velocity, got {x}");
+        assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    pub(crate) fn sharp_corner_keeps_full_thrust_below_the_cap() {
+        // Same corner, closing at 30 < 0.9·allowed → full thrust toward it.
+        let (x, y, active) = compute_arrival_control_thrust(
+            5.0,
+            0.0,
+            5.0,
+            30.0,
+            0.0,
+            10.0,
+            100.0,
+            1_000_000.0,
+            0,
+            1.0 / 30.0,
+            20.0,
+            0.22,
+            0.001,
+            0.0,
+            10.0,
+        );
+        assert_eq!(active, 1);
+        assert!((x - 1.0).abs() < 1e-12);
+        assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    pub(crate) fn shallow_bends_never_engage_corner_shaping() {
+        // cos(bend) = 0.95 (≈18°) is gentler than the shaping threshold:
+        // even a hot approach keeps full thrust.
+        let (x, _y, active) = compute_arrival_control_thrust(
+            5.0,
+            0.0,
+            5.0,
+            500.0,
+            0.0,
+            10.0,
+            100.0,
+            1_000_000.0,
+            0,
+            1.0 / 30.0,
+            20.0,
+            0.22,
+            0.001,
+            0.95,
+            10.0,
+        );
+        assert_eq!(active, 1);
+        assert!((x - 1.0).abs() < 1e-12);
     }
 
     #[test]
