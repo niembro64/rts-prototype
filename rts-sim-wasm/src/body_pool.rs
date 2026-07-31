@@ -1340,7 +1340,17 @@ pub fn pool_step_integrate(
         let mut just_slept = false;
         if authored_accel_sq <= SLEEP_ACCEL_SQ && speed_sq <= SLEEP_SPEED_SQ {
             let next_penetration = g_z - (motion[2] - ground_offset);
-            if is_in_contact(next_penetration) && next_penetration <= SLEEP_GROUND_PENETRATION_EPS {
+            // A resting body settles where the contact spring balances
+            // gravity — GRAVITY/spring (0.333 wu at authored constants), not
+            // zero — so the sleep gate allows penetration up to that
+            // equilibrium plus the eps slack. Gating on eps alone made the
+            // condition arithmetically unreachable and no ground body ever
+            // slept. Bodies resting shallower (buoyancy-lightened) still
+            // qualify; deeply compressed transients still do not.
+            let equilibrium_penetration = GRAVITY / UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT;
+            if is_in_contact(next_penetration)
+                && next_penetration <= equilibrium_penetration + SLEEP_GROUND_PENETRATION_EPS
+            {
                 sleep_ticks += 1.0;
                 if sleep_ticks >= SLEEP_TICKS {
                     p.pos_z[slot] = g_z + ground_offset;
