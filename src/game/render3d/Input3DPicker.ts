@@ -21,8 +21,10 @@ const SELECTION_VOLUME_SCALE = 1.18;
 const MIN_SELECTION_RADIUS = 12;
 
 /** World-space pick radius for an entity's selection volume. Units use
- *  their drawn radius; buildings/towers use their footprint half-diagonal. */
-function selectionVolumeRadius(entity: Entity): number {
+ *  their drawn radius; buildings/towers use their footprint half-diagonal.
+ *  Exported as the single source of truth: box selection and the debug
+ *  volume visualization draw exactly what the picker tests. */
+export function selectionVolumeRadius(entity: Entity): number {
   if (entity.unit !== null) {
     return Math.max(MIN_SELECTION_RADIUS, entity.unit.radius.other * SELECTION_VOLUME_SCALE);
   }
@@ -31,6 +33,13 @@ function selectionVolumeRadius(entity: Entity): number {
     return Math.max(MIN_SELECTION_RADIUS, halfDiag * SELECTION_VOLUME_SCALE);
   }
   return 0;
+}
+
+/** World-space vertical center of the selection volume: buildings pick at
+ *  their visual center (which floats for hovering types), everything else at
+ *  its sim altitude. */
+export function selectionVolumeCenterZ(entity: Entity): number {
+  return entity.building !== null ? getBuildingVisualCenterZ(entity) : entity.transform.z;
 }
 
 export class Input3DPicker {
@@ -103,9 +112,7 @@ export class Input3DPicker {
       const radius = selectionVolumeRadius(entity);
       if (radius <= 0) return;
       const cx = entity.transform.x;
-      const cy = entity.building !== null
-        ? getBuildingVisualCenterZ(entity)
-        : entity.transform.z;
+      const cy = selectionVolumeCenterZ(entity);
       const cz = entity.transform.y;
       const ox = cx - ox0;
       const oy = cy - oy0;

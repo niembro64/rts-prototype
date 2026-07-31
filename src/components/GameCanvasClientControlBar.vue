@@ -876,31 +876,31 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>HOST SPH:</BarLabel>
+        <BarLabel>VOLUMES:</BarLabel>
         <BarButton
           :active="model.allUnitRadiiActive"
-          title="Toggle every 3D host sphere viz on/off"
+          title="Toggle every host volume viz on/off (actual shapes: spheres for units, boxes/ring for buildings)"
           @click="model.toggleAllUnitRadii"
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
             :active="model.unitRadiusToggles.other"
-            title="Show host body sphere (radius.other - outer/render extent: mesh size, LOD distance, selection volume)"
+            title="Show the actual mouse-pick selection sphere (units: 1.18 × body radius, min 12; buildings: footprint half-diagonal × 1.18 at the visual center — floats for hovering buildings)"
             @click="model.toggleUnitRadius('other')"
-          >BODY</BarButton>
+          >SEL</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.hitbox"
-            title="Show host hitbox sphere (radius.hitbox - projectile/beam hit detection)"
+            title="Show the hit volume — units: hitbox sphere (radius.hitbox); buildings: the width × height × depth combat box that projectiles, beams, and splash test (floats at the combat center for hovering buildings)"
             @click="model.toggleUnitRadius('hitbox')"
           >HIT</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.collision"
-            title="Show host collision sphere (radius.collision - collision physics, ground-click selection fallback)"
+            title="Show the physics collision volume — units: collision sphere (radius.collision); grounded buildings: the static ground-seated cuboid; hovering fabricator: the floating annular ring (open center hole)"
             @click="model.toggleUnitRadius('collision')"
           >COL</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.shotArmingRadius"
-            title="Show host projectile arming sphere (ARM = 1.5 × collision radius; shots activate after fully clearing it)"
+            title="Show the projectile arming sphere (1.5 × collision radius; shots activate after fully clearing it)"
             @click="model.toggleUnitRadius('shotArmingRadius')"
           >ARM</BarButton>
         </BarButtonGroup>

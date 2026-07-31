@@ -13,7 +13,12 @@ import { isAttackEmitter } from '../sim/emitterKinds';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../sim/unitGeometry';
-import { fabricatorTorusHoverHeight } from '../sim/blueprints';
+import {
+  fabricatorTorusHoverHeight,
+  fabricatorTorusOuterRadius,
+  fabricatorTorusRingRadius,
+} from '../sim/blueprints';
+import { selectionVolumeCenterZ, selectionVolumeRadius } from './Input3DPicker';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
@@ -28,7 +33,6 @@ import {
   getEntityRadarRadius,
   getEntitySonarRadius,
 } from '../sim/sensorCoverage';
-import { getBuildingConfig } from '../sim/buildConfigs';
 import { isReclaimableTarget } from '../sim/reclaim';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RadiusRingMeshes } from './EntityMesh3D';
@@ -45,6 +49,47 @@ import {
 
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RADIUS_SPHERE_RENDER_ORDER = 22;
+const ANNULUS_WIREFRAME_SEGMENTS = 48;
+const ANNULUS_WIREFRAME_RIBS = 8;
+
+/** Wireframe for a vertical-axis annular cylinder (the fabricator torus's
+ *  true collision shape): four circles at the inner/outer radii, top and
+ *  bottom of the tube, joined by radial ribs. Built in world units — the
+ *  mesh is used unscaled. */
+function buildAnnulusWireframeGeometry(
+  outerRadius: number,
+  innerRadius: number,
+  tubeHalfHeight: number,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const circle = (radius: number, y: number): void => {
+    for (let i = 0; i < ANNULUS_WIREFRAME_SEGMENTS; i++) {
+      const a0 = (i / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
+      const a1 = ((i + 1) / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
+      positions.push(
+        Math.cos(a0) * radius, y, Math.sin(a0) * radius,
+        Math.cos(a1) * radius, y, Math.sin(a1) * radius,
+      );
+    }
+  };
+  circle(outerRadius, tubeHalfHeight);
+  circle(outerRadius, -tubeHalfHeight);
+  circle(innerRadius, tubeHalfHeight);
+  circle(innerRadius, -tubeHalfHeight);
+  for (let i = 0; i < ANNULUS_WIREFRAME_RIBS; i++) {
+    const a = (i / ANNULUS_WIREFRAME_RIBS) * Math.PI * 2;
+    const cx = Math.cos(a);
+    const sz = Math.sin(a);
+    const ot = [cx * outerRadius, tubeHalfHeight, sz * outerRadius];
+    const ob = [cx * outerRadius, -tubeHalfHeight, sz * outerRadius];
+    const it = [cx * innerRadius, tubeHalfHeight, sz * innerRadius];
+    const ib = [cx * innerRadius, -tubeHalfHeight, sz * innerRadius];
+    positions.push(...ot, ...ob, ...ob, ...ib, ...ib, ...it, ...it, ...ot);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  return geometry;
+}
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 const _selectedSensorPosition = { x: 0, y: 0, z: 0 };
@@ -88,6 +133,10 @@ export class SelectionOverlayRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
+  /** Unit-cube edge wireframe, non-uniformly scaled per building box. */
+  private readonly radiusBoxGeom = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+  /** Annulus wireframes keyed by exact dims — one per hovering blueprint. */
+  private readonly annulusGeomCache = new Map<string, THREE.BufferGeometry>();
   private readonly supportDiagnosticSurface = createWorldSupportSurface();
   private readonly supportDiagnosticNextLogAtMs = new Map<number, number>();
   private showTrackAcquire = false;
@@ -98,7 +147,9 @@ export class SelectionOverlayRenderer3D {
   private showEngageMinRelease = false;
   private showBuild = false;
   private showReclaimTargets = false;
-  private showOtherRadius = false;
+  /** The "SEL" toggle: draws the actual mouse-pick selection sphere.
+   *  Persisted under the legacy key 'other'. */
+  private showSelectionVolume = false;
   private showHitboxRadius = false;
   private showCollisionRadius = false;
   private showShotArmingRadius = false;
@@ -171,7 +222,7 @@ export class SelectionOverlayRenderer3D {
     this.showEngageMinRelease = getRangeToggle('engageMinRelease');
     this.showBuild = getRangeToggle('build');
     this.showReclaimTargets = options.reclaimTargets === true;
-    this.showOtherRadius = getUnitRadiusToggle('other');
+    this.showSelectionVolume = getUnitRadiusToggle('other');
     this.showHitboxRadius = getUnitRadiusToggle('hitbox');
     this.showCollisionRadius = getUnitRadiusToggle('collision');
     this.showShotArmingRadius = getUnitRadiusToggle('shotArmingRadius');
@@ -200,7 +251,7 @@ export class SelectionOverlayRenderer3D {
     }
     const nextUnitOverlayStateKey = [
       nextRangeStateKey,
-      this.showOtherRadius,
+      this.showSelectionVolume,
       this.showHitboxRadius,
       this.showCollisionRadius,
       this.showShotArmingRadius,
@@ -277,33 +328,96 @@ export class SelectionOverlayRenderer3D {
     const collider = entity.unit?.radius;
     if (!entity.unit || !collider) return;
 
+    // Units really are spheres in every system: the physics body, hit
+    // detection, and arming volume are all spheres at the body center.
+    const rings = m.radiusRings ?? (m.radiusRings = {});
     const centerY = getUnitSupportPointOffsetZ(entity.unit);
-    this.applyRadiusRings(
-      m, entity, centerY,
-      collider.other, collider.hitbox, collider.collision,
+    this.setRadiusVolumeSphere(
+      rings, 'other', this.showSelectionVolume, m.group,
+      centerY, selectionVolumeRadius(entity), this.radiusMatOther,
     );
+    this.setRadiusVolumeSphere(
+      rings, 'hitbox', this.showHitboxRadius, m.group,
+      centerY, collider.hitbox, this.radiusMatHitbox,
+    );
+    this.setRadiusVolumeSphere(
+      rings, 'collision', this.showCollisionRadius, m.group,
+      centerY, collider.collision, this.radiusMatCollision,
+    );
+    this.setRadiusVolumeSphere(
+      rings, 'shotArmingRadius', this.showShotArmingRadius, m.group,
+      centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
+    );
+    m.radiusRingsVisible = true;
   }
 
   updateBuildingRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
     if (this.hideRadiusRingsIfDisabled(m)) return;
-    if (!entity.building || !entity.buildingBlueprintId) return;
+    const building = entity.building;
+    if (!building || !entity.buildingBlueprintId) return;
 
-    const config = getBuildingConfig(entity.buildingBlueprintId);
-    const collider = config.radius;
-    // A hovering body (the fabricator torus) carries its hitbox/collision/visual
-    // volumes up at the torus center, not at the ground-level body midpoint.
-    const centerY = entity.building.hoveringType === 'fabricator'
-      ? fabricatorTorusHoverHeight()
-      : Math.max(0, config.visualHeight * 0.5);
-    this.applyRadiusRings(
-      m, entity, centerY,
-      collider.other, collider.hitbox, collider.collision,
+    const rings = m.radiusRings ?? (m.radiusRings = {});
+    const isHovering = building.hoveringType === 'fabricator';
+    // The mesh group origin sits at the footprint base. The combat/physics
+    // box center is depth/2 up for grounded buildings and the hover height
+    // for the torus (matching the slab z the sim stamps into targeting).
+    const baseZ = entity.transform.z - building.depth / 2;
+    const combatCenterY = isHovering ? fabricatorTorusHoverHeight() : building.depth / 2;
+
+    // SEL: the actual mouse-pick sphere, shared with Input3DPicker.
+    this.setRadiusVolumeSphere(
+      rings, 'other', this.showSelectionVolume, m.group,
+      selectionVolumeCenterZ(entity) - baseZ, selectionVolumeRadius(entity),
+      this.radiusMatOther,
     );
+    // HIT: the combat AABB that projectiles, beams, and splash test.
+    this.setRadiusVolume(
+      rings, 'hitbox', this.showHitboxRadius, m.group, this.radiusBoxGeom,
+      combatCenterY, building.width, building.depth, building.height,
+      this.radiusMatHitbox,
+    );
+    // COL: the physics volume — grounded static cuboid, or the fabricator's
+    // floating annular ring (open center hole and all).
+    if (isHovering) {
+      const ringRadius = fabricatorTorusRingRadius(building.width, building.height);
+      const outerRadius = fabricatorTorusOuterRadius(building.width, building.height);
+      const tubeHalfHeight = outerRadius - ringRadius;
+      this.setRadiusVolume(
+        rings, 'collision', this.showCollisionRadius, m.group,
+        this.annulusGeometry(outerRadius, ringRadius - tubeHalfHeight, tubeHalfHeight),
+        combatCenterY, 1, 1, 1, this.radiusMatCollision,
+      );
+    } else {
+      this.setRadiusVolume(
+        rings, 'collision', this.showCollisionRadius, m.group, this.radiusBoxGeom,
+        combatCenterY, building.width, building.depth, building.height,
+        this.radiusMatCollision,
+      );
+    }
+    this.setRadiusVolumeSphere(
+      rings, 'shotArmingRadius', this.showShotArmingRadius, m.group,
+      combatCenterY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
+    );
+    m.radiusRingsVisible = true;
+  }
+
+  private annulusGeometry(
+    outerRadius: number,
+    innerRadius: number,
+    tubeHalfHeight: number,
+  ): THREE.BufferGeometry {
+    const key = `${outerRadius}:${innerRadius}:${tubeHalfHeight}`;
+    let geometry = this.annulusGeomCache.get(key);
+    if (geometry === undefined) {
+      geometry = buildAnnulusWireframeGeometry(outerRadius, innerRadius, tubeHalfHeight);
+      this.annulusGeomCache.set(key, geometry);
+    }
+    return geometry;
   }
 
   private hideRadiusRingsIfDisabled(m: OverlayEntityMesh): boolean {
     if (
-      this.showOtherRadius || this.showHitboxRadius ||
+      this.showSelectionVolume || this.showHitboxRadius ||
       this.showCollisionRadius || this.showShotArmingRadius
     ) {
       return false;
@@ -316,35 +430,6 @@ export class SelectionOverlayRenderer3D {
     }
     m.radiusRingsVisible = false;
     return true;
-  }
-
-  private applyRadiusRings(
-    m: OverlayEntityMesh,
-    entity: Entity,
-    centerY: number,
-    otherRadius: number,
-    hitboxRadius: number,
-    collisionRadius: number,
-  ): void {
-    const rings = m.radiusRings ?? (m.radiusRings = {});
-
-    this.setUnitRadiusSphere(
-      rings, 'other', this.showOtherRadius, m.group,
-      centerY, otherRadius, this.radiusMatOther,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'hitbox', this.showHitboxRadius, m.group,
-      centerY, hitboxRadius, this.radiusMatHitbox,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'collision', this.showCollisionRadius, m.group,
-      centerY, collisionRadius, this.radiusMatCollision,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'shotArmingRadius', this.showShotArmingRadius, m.group,
-      centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
-    );
-    m.radiusRingsVisible = true;
   }
 
   updateRangeRings(m: OverlayEntityMesh, entity: Entity): void {
@@ -537,10 +622,13 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatHitbox.dispose();
     this.radiusMatCollision.dispose();
     this.radiusMatShotArming.dispose();
+    this.radiusBoxGeom.dispose();
+    for (const geometry of this.annulusGeomCache.values()) geometry.dispose();
+    this.annulusGeomCache.clear();
     this.supportDiagnosticNextLogAtMs.clear();
   }
 
-  private setUnitRadiusSphere(
+  private setRadiusVolumeSphere(
     rings: RadiusRingMeshes,
     key: keyof RadiusRingMeshes,
     want: boolean,
@@ -549,10 +637,35 @@ export class SelectionOverlayRenderer3D {
     radius: number,
     mat: THREE.LineBasicMaterial,
   ): void {
+    this.setRadiusVolume(
+      rings, key, want, parent, this.radiusSphereGeom,
+      centerY, radius, radius, radius, mat,
+    );
+  }
+
+  /** Place one debug volume wireframe. The mesh is recreated when the shape
+   *  geometry changes (a host's shape never changes, so this is one-time). */
+  private setRadiusVolume(
+    rings: RadiusRingMeshes,
+    key: keyof RadiusRingMeshes,
+    want: boolean,
+    parent: THREE.Group,
+    geometry: THREE.BufferGeometry,
+    centerY: number,
+    scaleX: number,
+    scaleY: number,
+    scaleZ: number,
+    mat: THREE.LineBasicMaterial,
+  ): void {
     let mesh = rings[key];
-    if (want && radius > 0) {
+    if (want && scaleX > 0 && scaleY > 0 && scaleZ > 0) {
+      if (mesh !== undefined && mesh.geometry !== geometry) {
+        parent.remove(mesh);
+        mesh = undefined;
+        rings[key] = undefined;
+      }
       if (!mesh) {
-        mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
+        mesh = new THREE.LineSegments(geometry, mat);
         mesh.renderOrder = RADIUS_SPHERE_RENDER_ORDER;
         mesh.frustumCulled = false;
         parent.add(mesh);
@@ -560,7 +673,13 @@ export class SelectionOverlayRenderer3D {
       }
       setObjectVisibleIfChanged(mesh, true);
       setVector3YIfChanged(mesh.position, centerY);
-      setScaleScalarIfChanged(mesh.scale, radius);
+      if (scaleX === scaleY && scaleY === scaleZ) {
+        setScaleScalarIfChanged(mesh.scale, scaleX);
+      } else if (
+        mesh.scale.x !== scaleX || mesh.scale.y !== scaleY || mesh.scale.z !== scaleZ
+      ) {
+        mesh.scale.set(scaleX, scaleY, scaleZ);
+      }
     } else if (mesh) {
       setObjectVisibleIfChanged(mesh, false);
     }
