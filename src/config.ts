@@ -489,12 +489,17 @@ export const TERRAIN_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   'colorsConfig.world.terrain.rock.texture.resolution',
 );
 
-/** Metal deposits reuse the rock detail texture, but their mesh material can
- *  blend the texture against the per-vertex ore colors independently from the
- *  terrain rock settings. */
+/** Both deposit crowns and METAL terrain reuse the rock detail texture.
+ *  `blend` applies it to the authored albedo before lighting, while
+ *  `litColorBlend` reapplies only its dark structure after lighting so broad
+ *  PBR reflections cannot wash the surface flat. */
 export const METAL_DEPOSIT_ROCK_TEXTURE_BLEND = readUnitIntervalConfig(
   COLORS.environment.metalDeposit.rockTexture.blend,
   'colorsConfig.environment.metalDeposit.rockTexture.blend',
+);
+export const METAL_DEPOSIT_ROCK_TEXTURE_LIT_COLOR_BLEND = readUnitIntervalConfig(
+  COLORS.environment.metalDeposit.rockTexture.litColorBlend,
+  'colorsConfig.environment.metalDeposit.rockTexture.litColorBlend',
 );
 export const METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST = readPositiveConfigNumber(
   COLORS.environment.metalDeposit.rockTexture.contrast,

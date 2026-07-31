@@ -24,8 +24,8 @@ import {
 } from './MetalDepositVisualClusters';
 import { isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import {
-  METAL_SURFACE_ALBEDO_GLSL,
   METAL_SURFACE_MATERIAL,
+  METAL_SURFACE_RESPONSE_GLSL,
   METAL_SURFACE_TRIPLANAR_GLSL,
   metalSurfaceStandardParameters,
 } from './MetalSurfaceMaterial3D';
@@ -202,6 +202,9 @@ function installDepositMetalSurfaceShader(
     shader.uniforms.uMetalSurfaceBlend = {
       value: METAL_SURFACE_MATERIAL.rockTextureBlend,
     };
+    shader.uniforms.uMetalSurfaceLitColorBlend = {
+      value: METAL_SURFACE_MATERIAL.rockTextureLitColorBlend,
+    };
     shader.uniforms.uMetalSurfaceContrast = {
       value: METAL_SURFACE_MATERIAL.rockTextureContrast,
     };
@@ -239,9 +242,10 @@ function installDepositMetalSurfaceShader(
           'uniform vec3 uMetalSurfaceColor;',
           'uniform float uMetalSurfaceTileWorldSize;',
           'uniform float uMetalSurfaceBlend;',
+          'uniform float uMetalSurfaceLitColorBlend;',
           'uniform float uMetalSurfaceContrast;',
           'uniform float uMetalSurfaceRoughnessVariation;',
-          METAL_SURFACE_ALBEDO_GLSL,
+          METAL_SURFACE_RESPONSE_GLSL,
           METAL_SURFACE_TRIPLANAR_GLSL,
           WORLD_SHADE_FRAGMENT_PARS,
           buildGridOverlayUniformDeclarations(),
@@ -283,10 +287,22 @@ function installDepositMetalSurfaceShader(
           '  uMetalSurfaceRoughnessVariation',
           ');',
         ].join('\n'),
+      )
+      .replace(
+        'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+        [
+          'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+          'outgoingLight = metalSurfaceLitColor(',
+          '  outgoingLight,',
+          '  metalDepositDetail,',
+          '  uMetalSurfaceContrast,',
+          '  uMetalSurfaceLitColorBlend',
+          ');',
+        ].join('\n'),
       );
   };
   material.customProgramCacheKey = () =>
-    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v3';
+    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v4';
 }
 
 type DepositOutlinePoint = { x: number; z: number };

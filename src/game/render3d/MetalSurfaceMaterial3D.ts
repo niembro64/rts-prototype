@@ -14,20 +14,23 @@ import { COLORS } from '@/colorsConfig';
 import {
   METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
   METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
+  METAL_DEPOSIT_ROCK_TEXTURE_LIT_COLOR_BLEND,
   METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION,
   METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
 
 /** The authored metal surface. `color` is the sRGB ore base three.js decodes
- *  to linear working space; the shared shader multiplies the rock detail
- *  texture over it at `rockTextureBlend`, tiled every `rockTileWorldSize`
- *  world units. */
+ *  to linear working space. The shared shader applies the rock detail before
+ *  lighting at `rockTextureBlend`, then preserves its dark structure after
+ *  lighting at `rockTextureLitColorBlend`; both projections tile every
+ *  `rockTileWorldSize` world units. */
 export const METAL_SURFACE_MATERIAL = {
   color: COLORS.environment.metalDeposit.baseColorHex,
   metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
   roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
   rockTileWorldSize: METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
   rockTextureBlend: METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
+  rockTextureLitColorBlend: METAL_DEPOSIT_ROCK_TEXTURE_LIT_COLOR_BLEND,
   rockTextureContrast: METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
   rockTextureRoughnessVariation: METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION,
 } as const;
@@ -58,7 +61,7 @@ export function metalSurfaceStandardParameters(): THREE.MeshStandardMaterialPara
  *  Callers must supply `baseLinear` already in linear working space — three.js
  *  decodes material/vertex colours for you, so a uniform built from a
  *  THREE.Color is already correct. */
-export const METAL_SURFACE_ALBEDO_GLSL = [
+export const METAL_SURFACE_RESPONSE_GLSL = [
   'vec3 metalSurfaceContrastedDetail(vec3 detailTexel, float contrast) {',
   '  const vec3 authoredMidtone = vec3(0.36);',
   '  return clamp(',
@@ -71,6 +74,17 @@ export const METAL_SURFACE_ALBEDO_GLSL = [
   'vec3 metalSurfaceAlbedo(vec3 baseLinear, vec3 detailTexel, float blend, float contrast) {',
   '  vec3 detail = metalSurfaceContrastedDetail(detailTexel, contrast);',
   '  return baseLinear * mix(vec3(1.0), detail, clamp(blend, 0.0, 1.0));',
+  '}',
+  '',
+  '// Preserve dark rock detail after lighting so broad PBR reflections cannot',
+  '// wash the surface back to a flat color at grazing angles. Normalize around',
+  '// the authored texture midtone so this changes contrast, not the chosen base',
+  '// color, and use luma so neutral reflections do not pick up a color cast.',
+  'vec3 metalSurfaceLitColor(vec3 litColor, vec3 detailTexel, float contrast, float blend) {',
+  '  vec3 detail = metalSurfaceContrastedDetail(detailTexel, contrast);',
+  '  float luma = dot(detail, vec3(0.299, 0.587, 0.114));',
+  '  float normalizedDarkDetail = clamp(luma / 0.36, 0.18, 1.0);',
+  '  return litColor * mix(1.0, normalizedDarkDetail, clamp(blend, 0.0, 1.0));',
   '}',
   '',
   'float metalSurfaceRoughness(float baseRoughness, vec3 detailTexel, float contrast, float variation) {',

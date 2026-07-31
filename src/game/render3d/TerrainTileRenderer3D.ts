@@ -96,8 +96,8 @@ import {
 import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import {
-  METAL_SURFACE_ALBEDO_GLSL,
   METAL_SURFACE_MATERIAL,
+  METAL_SURFACE_RESPONSE_GLSL,
   METAL_SURFACE_TRIPLANAR_GLSL,
   metalSurfaceStandardParameters,
 } from './MetalSurfaceMaterial3D';
@@ -665,6 +665,9 @@ export class TerrainTileRenderer3D {
   private metalSurfaceBlendUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureBlend,
   };
+  private metalSurfaceLitColorBlendUniform = {
+    value: METAL_SURFACE_MATERIAL.rockTextureLitColorBlend,
+  };
   private metalSurfaceContrastUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureContrast,
   };
@@ -778,6 +781,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
       shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
       shader.uniforms.uMetalSurfaceBlend = this.metalSurfaceBlendUniform;
+      shader.uniforms.uMetalSurfaceLitColorBlend = this.metalSurfaceLitColorBlendUniform;
       shader.uniforms.uMetalSurfaceContrast = this.metalSurfaceContrastUniform;
       shader.uniforms.uMetalSurfaceRoughnessVariation =
         this.metalSurfaceRoughnessVariationUniform;
@@ -842,9 +846,10 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uMetalSurfaceColor;',
             'uniform float uMetalSurfaceTileWorldSize;',
             'uniform float uMetalSurfaceBlend;',
+            'uniform float uMetalSurfaceLitColorBlend;',
             'uniform float uMetalSurfaceContrast;',
             'uniform float uMetalSurfaceRoughnessVariation;',
-            METAL_SURFACE_ALBEDO_GLSL,
+            METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_TRIPLANAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
@@ -1023,6 +1028,20 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         )
         .replace(
+          'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+          [
+            'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+            'if (uMetalSurfaceEnabled > 0.0) {',
+            '  outgoingLight = metalSurfaceLitColor(',
+            '    outgoingLight,',
+            '    metalDetail,',
+            '    uMetalSurfaceContrast,',
+            '    uMetalSurfaceLitColorBlend',
+            '  );',
+            '}',
+          ].join('\n'),
+        )
+        .replace(
           'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
           [
             'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
@@ -1039,7 +1058,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v36';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v37';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
