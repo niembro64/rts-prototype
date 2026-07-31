@@ -93,8 +93,7 @@ export class RtsScene3DCameraControl {
   }
 
   flipYaw(): void {
-    const orbit = this.threeApp.orbit;
-    orbit.setOrbitAngles(orbit.yaw + Math.PI, orbit.pitch);
+    this.threeApp.orbit.rotateYawBy(Math.PI);
   }
 
   showMapOverview(mapWidth: number, mapHeight: number, targetY = 0): void {

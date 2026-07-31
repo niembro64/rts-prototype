@@ -2,12 +2,12 @@
   "fovDegrees": 45,
   "initialPitchRadians": 0.541592653589793,
   "transitionMode": "ema",
-  "transitionScope": "zoom-only",
+  "transitionScope": "all-movements",
   "smoothingTauSeconds": {
     "snap": 0.0,
-    "fast": 0.08,
-    "mid": 0.12,
-    "slow": 0.4
+    "fast": 0.04,
+    "mid": 0.06,
+    "slow": 0.2
   },
   "barSpringHalfLifeSeconds": {
     "snap": 0.0,

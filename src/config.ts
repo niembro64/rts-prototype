@@ -756,12 +756,12 @@ export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegree
 export const CAMERA_INITIAL_PITCH_RADIANS = cameraConfigJson.initialPitchRadians;
 
 /** Active rendered-camera transition. BAR's velocity spring remains an
- * option; EMA is currently selected for discrete zoom smoothing. */
+ * option; EMA is currently selected for shared camera-pose smoothing. */
 export const CAMERA_TRANSITION_MODE =
   cameraConfigJson.transitionMode as CameraTransitionMode;
 
-/** `zoom-only` keeps discrete zoom smooth while continuous controls track
- * input exactly. `all-movements` retains the previous shared transition. */
+/** `all-movements` smooths translation, rotation, zoom, follow, and FOV.
+ * `zoom-only` retains the immediate continuous-control alternative. */
 export const CAMERA_TRANSITION_SCOPE =
   cameraConfigJson.transitionScope as CameraTransitionScope;
 

@@ -55,20 +55,19 @@ export class RtsScene3DCameraFramingSystem {
   tickCameraSmoothing(deltaSec: number): void {
     const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
     this.threeApp.orbit.setTransitionSeconds(this.cameraTransitionSeconds());
-    // Push follow into controller state before the transition tick. The orbit
-    // camera applies its configured scope (currently snap follow, smooth zoom).
+    // Push follow into controller state before the transition tick so it
+    // shares the same EMA as pan, orbit, and zoom.
     this.applyCameraFollow();
-    this.threeApp.orbit.tick(deltaSec);
     if (defaults.autoRotate && defaults.autoRotateRate !== 0) {
       this.threeApp.orbit.rotateYawBy(defaults.autoRotateRate * deltaSec);
     }
+    this.threeApp.orbit.tick(deltaSec);
   }
 
   /** Drive the orbit camera's smooth destination from the CLIENT-bar
    *  camera-follow mode. Only acts while exactly one unit is selected;
-   *  otherwise (or in 'free') it just pins the eased-yaw destination to
-   *  the current yaw so a just-ended follow-behind ease stops cleanly
-   *  and manual control stays inert. */
+   *  otherwise (or in 'free') it cancels only a yaw destination previously
+   *  owned by follow-behind, leaving manual yaw EMA input untouched. */
   private applyCameraFollow(): void {
     const orbit = this.threeApp.orbit;
     const mode = getCameraFollowMode();

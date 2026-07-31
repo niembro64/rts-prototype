@@ -49,7 +49,7 @@ export type CameraTransitionMode =
 
 /** Select which controller changes receive the configured render transition. */
 export type CameraTransitionScope =
-  /** Preserve the previous behavior: pan, rotate, follow, and zoom all ease. */
+  /** Pan, height-pan, rotate, follow, zoom, and FOV all ease. */
   | 'all-movements'
   /** Ease discrete zoom changes; apply continuous camera controls immediately. */
   | 'zoom-only';

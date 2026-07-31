@@ -1,3 +1,10 @@
+import * as THREE from 'three';
+import {
+  CAMERA_MOVEMENT_CONFIG,
+  CAMERA_ROTATE_ANCHOR,
+  CAMERA_SMOOTH_TAU_SECONDS,
+  CAMERA_TRANSITION_SCOPE,
+} from '../../config';
 import {
   averageOfShortestDistances,
   barCameraLockedYaw,
@@ -9,6 +16,7 @@ import {
   barSpringDamperStep,
   barCameraWheelTicks,
   cameraMouseDragModeForModifiers,
+  OrbitCamera,
   persistentTerrainRaise,
   zoomAggregationShortestCount,
 } from './OrbitCamera';
@@ -249,4 +257,109 @@ export function runOrbitCameraContractTest(): void {
     close(snappedStep.value, 7) && close(snappedStep.velocity, 0),
     'zero BAR half-life must snap and clear transition velocity',
   );
+
+  assertContract(
+    CAMERA_TRANSITION_SCOPE === 'all-movements',
+    'canonical camera transition scope must EMA every movement channel',
+  );
+  assertContract(
+    close(CAMERA_SMOOTH_TAU_SECONDS.fast, 0.04)
+      && close(CAMERA_SMOOTH_TAU_SECONDS.mid, 0.06)
+      && close(CAMERA_SMOOTH_TAU_SECONDS.slow, 0.2),
+    'EMA presets must use the doubled response rate (half the prior tau)',
+  );
+
+  const canvas = document.createElement('div');
+  Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: 1000 });
+  const camera = new THREE.PerspectiveCamera(45, 1, 1, 10000);
+  const orbit = new OrbitCamera(camera, canvas, {
+    transitionMode: 'ema',
+    transitionScope: 'all-movements',
+    movementConfig: CAMERA_MOVEMENT_CONFIG,
+    rotateAnchor: CAMERA_ROTATE_ANCHOR,
+    terrainCollisionMode: 'none',
+  });
+  try {
+    orbit.setState({
+      targetX: 0,
+      targetY: 0,
+      targetZ: 0,
+      distance: 1000,
+      yaw: 0,
+      pitch: 0.5,
+    });
+    orbit.setTransitionSeconds(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    orbit.panByWorldDelta(100, 50);
+    orbit.rotateYawBy(0.4);
+    orbit.moveByKeyboardScreenDirection('orbit', 0, 1);
+    orbit.setDistance(800);
+    orbit.setFovDegrees(60);
+
+    assertContract(
+      close(orbit.target.x, 0)
+        && close(orbit.target.z, 0)
+        && close(orbit.distance, 1000)
+        && close(orbit.yaw, 0)
+        && close(orbit.pitch, 0.5)
+        && close(camera.fov, 45),
+      'pan, zoom, yaw, pitch, and FOV inputs must not bypass the shared EMA',
+    );
+
+    orbit.tick(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    assertContract(
+      orbit.target.x > 0 && orbit.target.x < 100
+        && orbit.target.z > 0 && orbit.target.z < 50
+        && orbit.distance < 1000 && orbit.distance > 800
+        && orbit.yaw > 0 && orbit.yaw < 0.4
+        && orbit.pitch < 0.5 && orbit.pitch > 0.26
+        && camera.fov > 45 && camera.fov < 60,
+      'one EMA tick must advance every camera channel without snapping',
+    );
+
+    for (let i = 0; i < 20; i++) {
+      orbit.tick(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    }
+    assertContract(
+      close(orbit.target.x, 100)
+        && close(orbit.target.z, 50)
+        && close(orbit.distance, 800)
+        && close(orbit.yaw, 0.4)
+        && close(orbit.pitch, 0.26)
+        && close(camera.fov, 60),
+      'all shared EMA channels must converge to their controller destinations',
+    );
+
+    orbit.setCursorPicker(() => new THREE.Vector3(0, 0, 0));
+    const beforePivotTarget = orbit.target.clone();
+    const beforePivotYaw = orbit.yaw;
+    const beforePivotPitch = orbit.pitch;
+    canvas.dispatchEvent(new MouseEvent('mousedown', {
+      button: 1,
+      altKey: true,
+      clientX: 100,
+      clientY: 100,
+    }));
+    window.dispatchEvent(new MouseEvent('mousemove', {
+      buttons: 4,
+      altKey: true,
+      clientX: 120,
+      clientY: 110,
+    }));
+    assertContract(
+      orbit.target.equals(beforePivotTarget)
+        && close(orbit.yaw, beforePivotYaw)
+        && close(orbit.pitch, beforePivotPitch),
+      'anchored pointer orbit must write only the shared EMA destination',
+    );
+    orbit.tick(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    assertContract(
+      !orbit.target.equals(beforePivotTarget)
+        && !close(orbit.yaw, beforePivotYaw)
+        && !close(orbit.pitch, beforePivotPitch),
+      'anchored target translation, yaw, and pitch must advance together',
+    );
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 1 }));
+  } finally {
+    orbit.destroy();
+  }
 }
