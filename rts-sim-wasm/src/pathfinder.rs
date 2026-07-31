@@ -1254,6 +1254,34 @@ pub(crate) fn pathfinder_can_step_height_delta(
     }
     let center_dz = to_h - from_h;
 
+    // Edge legality includes the cross-slope force contract: an edge whose
+    // lateral hold demand meets or exceeds the safe tangent budget is not
+    // merely expensive — the unit cannot track it, so it is not a legal step
+    // in either direction. This is the same math the edge cost prices, so
+    // A* can never be forced through an unholdable contour leg as a
+    // least-bad route.
+    if let Some(forces) = pathfinder_bed_edge_forces(
+        state,
+        from_idx,
+        to_idx,
+        horizontal,
+        traversal.allow_air,
+        traversal.allow_ground,
+        traversal.water_surface_supported,
+        traversal.safe_ground_accel,
+        traversal.static_friction_coefficient,
+        traversal.safe_water_drive_accel,
+    ) {
+        // A query that authors no tangent envelope at all (zero accel and
+        // friction — capability probes, unconstrained test traversals) keeps
+        // the legacy unconstrained legality, mirroring min_ground_normal_z=0.
+        if forces.total_tangent_budget > 0.0
+            && forces.lateral_hold_accel >= forces.total_tangent_budget
+        {
+            return false;
+        }
+    }
+
     // DIRECTIONAL mode preserves one-way controlled descent, but unlike the
     // old fall-permitting rule both cell surfaces already passed their local
     // force test above. SYMMETRIC mode additionally requires uphill coupling
@@ -1343,6 +1371,77 @@ fn pathfinder_clearance_at(
     }
 }
 
+pub(crate) struct PathfinderBedEdgeForces {
+    pub surface_distance: f64,
+    pub uphill_sine: f64,
+    pub lateral_hold_accel: f64,
+    pub total_tangent_budget: f64,
+    pub safe_water_accel: f64,
+    pub wet_edge: bool,
+}
+
+/// Force geometry of one bed-supported edge: the cross-slope hold demand and
+/// the combined safe tangent budget (Coulomb-limited ground drive plus
+/// occupancy-scaled water thrust). This is the single source of truth for
+/// both edge cost and edge legality, so the planner cannot price a hold the
+/// legality gate does not enforce (or vice versa). Returns None when the edge
+/// is not bed-supported — fluid travel ignores lakebed geometry.
+#[inline]
+pub(crate) fn pathfinder_bed_edge_forces(
+    state: &PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    horizontal: f64,
+    allow_air: bool,
+    allow_ground: bool,
+    water_surface_supported: bool,
+    safe_ground_accel: f64,
+    static_friction_coefficient: f64,
+    safe_water_drive_accel: f64,
+) -> Option<PathfinderBedEdgeForces> {
+    let wet_edge = state.terrain_water[from_idx] != 0 || state.terrain_water[to_idx] != 0;
+    let bed_supported_edge = !allow_air && allow_ground && (!wet_edge || !water_surface_supported);
+    if !bed_supported_edge {
+        return None;
+    }
+    let dz = state.terrain_height[to_idx] as f64 - state.terrain_height[from_idx] as f64;
+    let surface_distance = (horizontal * horizontal + dz * dz).sqrt();
+    let directional_sine = dz / surface_distance.max(1.0e-9);
+    let uphill_sine = directional_sine.max(0.0);
+    let normal_z = (state.terrain_normal_z[from_idx] as f64)
+        .min(state.terrain_normal_z[to_idx] as f64)
+        .clamp(0.0, 1.0);
+    let total_tangent_sine = (1.0 - normal_z * normal_z).max(0.0).sqrt();
+    let lateral_sine_sq = (total_tangent_sine * total_tangent_sine
+        - directional_sine * directional_sine)
+        .max(0.0);
+    let lateral_hold_accel = GRAVITY * lateral_sine_sq.sqrt();
+    let grip_accel = GRAVITY * static_friction_coefficient * normal_z;
+    let safe_ground = safe_ground_accel.min(grip_accel);
+    let safe_water = if wet_edge {
+        let from_wet = state.terrain_water[from_idx] != 0;
+        let to_wet = state.terrain_water[to_idx] != 0;
+        let water_fraction = match (from_wet, to_wet) {
+            (true, true) => pathfinder_cell_water_case_scale(state, from_idx)
+                .min(pathfinder_cell_water_case_scale(state, to_idx)),
+            (true, false) => pathfinder_cell_water_case_scale(state, from_idx),
+            (false, true) => pathfinder_cell_water_case_scale(state, to_idx),
+            (false, false) => 0.0,
+        };
+        safe_water_drive_accel * water_fraction
+    } else {
+        0.0
+    };
+    Some(PathfinderBedEdgeForces {
+        surface_distance,
+        uphill_sine,
+        lateral_hold_accel,
+        total_tangent_budget: safe_ground + safe_water,
+        safe_water_accel: safe_water,
+        wet_edge,
+    })
+}
+
 /// Normalized traversal-time cost for one legal neighboring edge. Flat travel
 /// costs its grid distance. Bed-supported travel reserves the combined safe
 /// tangential force budget for cross-slope support before assigning what
@@ -1370,62 +1469,45 @@ pub(crate) fn pathfinder_edge_cost(
     let to_idx = (to_gy * state.grid_w + to_gx) as usize;
     let mut travel_cost = horizontal_cells;
 
-    let wet_edge = state.terrain_water[from_idx] != 0 || state.terrain_water[to_idx] != 0;
-    let bed_supported_edge = !traversal.allow_air
-        && traversal.allow_ground
-        && (!wet_edge || !traversal.water_surface_supported);
-    let has_contact_accel = if wet_edge {
-        cost_profile.flat_water_contact_accel > 0.0
-    } else {
-        cost_profile.flat_drive_accel > 0.0
-    };
-    if bed_supported_edge && has_contact_accel {
-        let horizontal = horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE;
-        let dz = state.terrain_height[to_idx] as f64 - state.terrain_height[from_idx] as f64;
-        let surface_distance = (horizontal * horizontal + dz * dz).sqrt();
-        let directional_sine = dz / surface_distance.max(1.0e-9);
-        let uphill_sine = directional_sine.max(0.0);
-        let normal_z = (state.terrain_normal_z[from_idx] as f64)
-            .min(state.terrain_normal_z[to_idx] as f64)
-            .clamp(0.0, 1.0);
-        let total_tangent_sine = (1.0 - normal_z * normal_z).max(0.0).sqrt();
-        let lateral_sine_sq = (total_tangent_sine * total_tangent_sine
-            - directional_sine * directional_sine)
-            .max(0.0);
-        let lateral_hold_accel = GRAVITY * lateral_sine_sq.sqrt();
-        let grip_accel = GRAVITY * cost_profile.static_friction_coefficient * normal_z;
-        let safe_ground_accel = cost_profile.safe_drive_accel.min(grip_accel);
-        let safe_water_accel = if wet_edge {
-            let from_wet = state.terrain_water[from_idx] != 0;
-            let to_wet = state.terrain_water[to_idx] != 0;
-            let water_fraction = match (from_wet, to_wet) {
-                (true, true) => pathfinder_cell_water_case_scale(state, from_idx)
-                    .min(pathfinder_cell_water_case_scale(state, to_idx)),
-                (true, false) => pathfinder_cell_water_case_scale(state, from_idx),
-                (false, true) => pathfinder_cell_water_case_scale(state, to_idx),
-                (false, false) => 0.0,
-            };
-            cost_profile.safe_water_drive_accel * water_fraction
+    let forces = pathfinder_bed_edge_forces(
+        state,
+        from_idx,
+        to_idx,
+        horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
+        traversal.allow_air,
+        traversal.allow_ground,
+        traversal.water_surface_supported,
+        cost_profile.safe_drive_accel,
+        cost_profile.static_friction_coefficient,
+        cost_profile.safe_water_drive_accel,
+    );
+    if let Some(forces) = forces {
+        let has_contact_accel = if forces.wet_edge {
+            cost_profile.flat_water_contact_accel > 0.0
         } else {
-            0.0
+            cost_profile.flat_drive_accel > 0.0
         };
-        // Ground traction and occupancy-weighted fluid thrust contribute to
-        // the same available tangent-force budget before cross-slope support.
-        let total_tangent_budget = safe_ground_accel + safe_water_accel;
-        if lateral_hold_accel >= total_tangent_budget {
-            return f32::MAX;
+        if has_contact_accel {
+            // Ground traction and occupancy-weighted fluid thrust contribute
+            // to the same available tangent-force budget before cross-slope
+            // support.
+            if forces.lateral_hold_accel >= forces.total_tangent_budget {
+                return f32::MAX;
+            }
+            let longitudinal_budget = (forces.total_tangent_budget * forces.total_tangent_budget
+                - forces.lateral_hold_accel * forces.lateral_hold_accel)
+                .max(0.0)
+                .sqrt();
+            let remaining_accel =
+                (longitudinal_budget - GRAVITY * forces.uphill_sine).max(1.0e-9);
+            let flat_safe_accel = cost_profile
+                .safe_drive_accel
+                .min(GRAVITY * cost_profile.static_friction_coefficient)
+                + forces.safe_water_accel;
+            let acceleration_time_scale = (flat_safe_accel / remaining_accel).sqrt().max(1.0);
+            travel_cost =
+                forces.surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE * acceleration_time_scale;
         }
-        let longitudinal_budget = (total_tangent_budget * total_tangent_budget
-            - lateral_hold_accel * lateral_hold_accel)
-            .max(0.0)
-            .sqrt();
-        let remaining_accel = (longitudinal_budget - GRAVITY * uphill_sine).max(1.0e-9);
-        let flat_safe_accel = cost_profile
-            .safe_drive_accel
-            .min(GRAVITY * cost_profile.static_friction_coefficient)
-            + safe_water_accel;
-        let acceleration_time_scale = (flat_safe_accel / remaining_accel).sqrt().max(1.0);
-        travel_cost = surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE * acceleration_time_scale;
     }
 
     if !traversal.allow_air
@@ -2576,6 +2658,49 @@ mod tests {
         .derived();
         assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
         assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
+    }
+
+    #[test]
+    fn unholdable_contour_edges_are_illegal_not_just_expensive() {
+        let mut state = open_test_state(2, 1);
+        // Two side-by-side cells on a steep face traversed along the contour:
+        // equal heights (no rise gate), worst normal 0.8 → lateral hold
+        // demand g·0.6 = 180. A unit with 100 safe accel and grip
+        // 300·0.5·0.8 = 120 cannot hold the leg — the edge must be illegal
+        // in BOTH directions, not merely cost f32::MAX.
+        state.terrain_normal_z[0] = 0.8;
+        state.terrain_normal_z[1] = 0.8;
+        let weak = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 100.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 0.5,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
+        assert!(!pathfinder_can_step_height_delta(&state, 0, 1, weak));
+        assert!(!pathfinder_can_step_height_delta(&state, 1, 0, weak));
+
+        // A grippier unit (grip 300·2·0.8 = 480 > 180) holds the same leg.
+        let strong = PathfinderTraversal {
+            min_ground_normal_z: 0.0,
+            safe_ground_accel: 500.0,
+            safe_water_drive_accel: 0.0,
+            static_friction_coefficient: 2.0,
+            water_surface_supported: false,
+            water_waypoint_hold: false,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+            wet_contact_required_normal_z: 0.0,
+        }
+        .derived();
+        assert!(pathfinder_can_step_height_delta(&state, 0, 1, strong));
     }
 
     #[test]
