@@ -3,7 +3,7 @@
     {
       "step": "naturalField",
       "active": true,
-      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface — stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction)."
+      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface \u2014 stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction)."
     },
     {
       "step": "mapBoundary",
@@ -22,7 +22,7 @@
     },
     {
       "step": "watersEdgeShoreline",
-      "active": false,
+      "active": true,
       "detail": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
     },
     {
@@ -54,9 +54,18 @@
       "radiusFraction": 0.4,
       "phase": 1.7,
       "components": [
-        { "wavelength": 700, "magnitude": 0.9 },
-        { "wavelength": 600, "magnitude": 0 },
-        { "wavelength": 600, "magnitude": 0 }
+        {
+          "wavelength": 700,
+          "magnitude": 0.9
+        },
+        {
+          "wavelength": 600,
+          "magnitude": 0
+        },
+        {
+          "wavelength": 600,
+          "magnitude": 0
+        }
       ]
     },
     "ridge": {
