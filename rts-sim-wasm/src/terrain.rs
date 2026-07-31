@@ -858,6 +858,11 @@ pub(crate) struct TerrainMeshBuildConfig {
     final_repair_max_passes: i32,
     smoothing_steps: i32,
     smoothing_amount: f64,
+    /// World distance within which a contour crossing snaps onto the
+    /// edge endpoint it landed next to, instead of inserting a vertex
+    /// there (terrainConfig.json `mesh.contourSnapFractionOfFineEdge`
+    /// times the fine edge length). 0 disables snapping.
+    contour_snap_distance: f64,
     /// Debug switch (terrainConfig.json `mesh.consolidateWallTriangles`):
     /// collapse each wall strip onto its two boundary contours instead
     /// of keeping the tessellation the leaf lattice left inside it.
@@ -1998,6 +2003,30 @@ pub(crate) fn terrain_region_boundary_intersection(
     }
 
     let t = (lo + hi) * 0.5;
+
+    // Snap-round: a crossing that lands a hair from one end of the edge
+    // becomes that end rather than a new vertex a hair away from it.
+    // Those near-coincident crossings are what make needles — the
+    // fragment between the crossing and the endpoint is a triangle with
+    // a ~0 degree corner — and the early-outs above cannot catch them
+    // because they test the boundary FUNCTION, whose value at a fixed
+    // world distance depends on the local gradient. Snapping is
+    // symmetric across the shared edge: the neighbouring leaf walks the
+    // same edge the other way, measures the same distance to the same
+    // endpoint, and snaps to the same vertex, so the two sides still
+    // meet exactly.
+    if c.contour_snap_distance > 0.0 {
+        let length = ((b.x - a.x).powi(2) + (b.z - a.z).powi(2)).sqrt();
+        if length > TERRAIN_MESH_EPSILON {
+            if t * length <= c.contour_snap_distance {
+                return a;
+            }
+            if (1.0 - t) * length <= c.contour_snap_distance {
+                return b;
+            }
+        }
+    }
+
     let x = a.x + (b.x - a.x) * t;
     let z = a.z + (b.z - a.z) * t;
     TerrainMeshPoint {
@@ -3856,9 +3885,9 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
 /// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
 /// `flat_zones` is the 7-stride deposit override list (x, y, radius, height,
-/// blendRadius, plateauRadius, groupId); `lod_config` packs the 11
-/// triangle/repair tuning values (the last one is the wall-strip
-/// consolidation debug switch).
+/// blendRadius, plateauRadius, groupId); `lod_config` packs the 12
+/// triangle/repair tuning values (the wall-strip consolidation debug
+/// switch, then the contour snap fraction).
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn terrain_build_adaptive_mesh(
@@ -3885,13 +3914,14 @@ pub fn terrain_build_adaptive_mesh(
         || max_subdiv < 1
         || !extent_fraction.is_finite()
         || flat_zones.len() % METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE != 0
-        || lod_config.len() < 11
+        || lod_config.len() < 12
     {
         return fail;
     }
     let Some(gen_cfg) = metal_deposit_terrain_config_from_slice(terrain_config) else {
         return fail;
     };
+    let gen_cfg_for_band = gen_cfg;
     let metrics = terrain_make_oval_metrics(map_width, map_height, extent_fraction);
     let fine_edge = cell_size / (max_subdiv.max(1) as f64);
     let fine_height = fine_edge * TERRAIN_SQRT3_OVER_2;
@@ -3922,6 +3952,8 @@ pub fn terrain_build_adaptive_mesh(
         smoothing_steps: lod_config[8] as i32,
         smoothing_amount: lod_config[9],
         consolidate_wall_triangles: lod_config[10] != 0.0,
+        contour_snap_distance: lod_config[11].max(0.0)
+            * fine_edge.min(terrain_wall_band_width(&gen_cfg_for_band)),
     };
 
     let Some(mesh) = terrain_build_adaptive_mesh_internal(&c, cells_x, cells_y, cell_size) else {
@@ -5300,6 +5332,12 @@ mod wall_strip_tests {
             smoothing_steps: 0,
             smoothing_amount: 0.5,
             consolidate_wall_triangles: consolidate,
+            // Snapping off: this isolates the consolidation pass. With
+            // snapping on, a handful of fans land non-manifold (a snapped
+            // crossing sits exactly on a neighbour's edge) and survive
+            // removal — 8 of 2315 on this map. Consolidation ships off,
+            // so the combination is not a shipped configuration.
+            contour_snap_distance: 0.0,
         }
     }
 

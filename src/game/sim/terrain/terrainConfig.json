@@ -90,6 +90,7 @@
       "maxSteps": 0,
       "amount": 0.5
     },
-    "consolidateWallTriangles": false
+    "consolidateWallTriangles": false,
+    "contourSnapFractionOfFineEdge": 0.15
   }
 }

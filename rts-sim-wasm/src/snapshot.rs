@@ -8423,6 +8423,7 @@ mod sim_kernel_tests {
             0.0,    // smoothing_steps
             0.5,    // smoothing_amount
             0.0,    // consolidate_wall_triangles (off, as shipped)
+            0.15,   // contour_snap_fraction_of_fine_edge
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;
@@ -8558,6 +8559,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.5,
                 0.0,
+                0.15,
             ];
             let flat_zones: [f64; 0] = [];
             let cells = 12i32;
@@ -8643,6 +8645,7 @@ mod sim_kernel_tests {
             0.0,
             0.5,
             0.0,
+            0.15,
         ];
         let flat_zones: [f64; 0] = [];
         let cells = 12i32;
