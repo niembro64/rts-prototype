@@ -279,9 +279,9 @@ def below_horizon_sea(img: np.ndarray, surface: np.ndarray, deep: np.ndarray) ->
     img[:] = np.where(mask, np.broadcast_to(fill, img.shape), img)
 
 
-def terrace(ridge: np.ndarray, steps: int) -> np.ndarray:
-    """Quantize a [0,1] ridge into flat-topped terraces (plateau motif)."""
-    return np.round(ridge * steps) / steps
+def rounded(profile01: np.ndarray, exponent: float = 0.8) -> np.ndarray:
+    """Widen and round the crests of a [0,1] ridge (organic, never boxy)."""
+    return np.clip(profile01, 0.0, 1.0) ** exponent
 
 
 def _box_blur_x(img: np.ndarray, r: int) -> np.ndarray:
@@ -351,14 +351,15 @@ def large_circle() -> np.ndarray:
 
 
 def angels_flat() -> np.ndarray:
-    """The default preset: today's gradient, alive — cumulus and far mesas."""
+    """The default preset: today's gradient, alive — cumulus over soft downs."""
     rng = np.random.default_rng(202)
     img = sky_gradient([(90.0, SKY_TOP), (20.0, SKY_MID), (0.0, SKY_HORIZON)])
     paint_cloud_layer(img, rng, 8.0, 26.0, mix(SUN_CORE, SKY_MID, 0.25), mix(SKY_MID, SKY_TOP, 0.45), 0.42, cells_x=8, cells_y=5, max_alpha=0.85)
     paint_cloud_layer(img, rng, 30.0, 50.0, mix(SKY_MID, SUN_COLOR, 0.2), SKY_MID, 0.3, cells_x=6, cells_y=3, max_alpha=0.45)
-    far = terrace(harmonic_ridge(rng, range(2, 12), 1.3) * 0.5 + 0.5, 4) * 4.5
+    # Gentle rolling downs: broad low-frequency swells, rounded crests.
+    far = rounded(harmonic_ridge(rng, range(2, 8), 1.3) * 0.5 + 0.5, 0.85) * 3.8
     paint_silhouette(img, far, 0.0, IN_BOUNDS, SKY_HORIZON, 0.82)
-    near = terrace(harmonic_ridge(rng, range(2, 9), 1.25) * 0.5 + 0.5, 3) * 7.5
+    near = rounded(harmonic_ridge(rng, range(2, 6), 1.25) * 0.5 + 0.5, 0.85) * 6.5
     paint_silhouette(img, near, 0.0, mix(IN_BOUNDS, GROUND, 0.5), SKY_HORIZON, 0.66, rim_color=SUN_CORE, rim_strength=0.22, rim_width_deg=0.5)
     paint_horizon_glow(img, SKY_HORIZON, 0.12, 3.0)
     below_horizon_sea(img, mix(WATER, SKY_HORIZON, 0.3), OUT_OF_BOUNDS)
@@ -450,10 +451,14 @@ def angels_playhouse() -> np.ndarray:
     paint_cloud_layer(img, rng, 35.0, 60.0, mix(SUN_CORE, SKY_MID, 0.4), mix(SKY_MID, SUN_HALO, 0.4), 0.3, cells_x=6, cells_y=3, max_alpha=0.45)
     paint_cloud_layer(img, rng, 10.0, 24.0, mix(SUN_CORE, SUN_HALO, 0.35), mix(SUN_HALO, GROUND_PRINT, 0.35), 0.32, cells_x=9, cells_y=4, max_alpha=0.6)
     haze = mix(SUN_HALO, SUN_COLOR, 0.5)
-    behind = terrace(harmonic_ridge(rng, range(2, 20), 1.15) * 0.5 + 0.5, 5) * 8.0
-    paint_silhouette(img, behind, 0.0, mix(ROCKS[7], GROUND_PRINT, 0.4), haze, 0.62, rim_color=SUN_CORE, rim_strength=0.35, rim_width_deg=0.6)
-    towers = terrace(harmonic_ridge(rng, range(2, 14), 1.05) * 0.5 + 0.5, 5) * 14.0
-    paint_silhouette(img, towers, 0.0, mix(GROUND_PRINT, ROCKS[7], 0.35), haze, 0.38, rim_color=SUN_CORE, rim_strength=0.55, rim_width_deg=0.8)
+    # Sweeping organic highlands in three depths — flowing rounded
+    # ridgelines with golden rim light, no hard geometry.
+    farthest = rounded(harmonic_ridge(rng, range(2, 10), 1.2) * 0.5 + 0.5, 0.9) * 5.5
+    paint_silhouette(img, farthest, 0.0, mix(ROCKS[7], SUN_HALO, 0.3), haze, 0.74, rim_color=SUN_CORE, rim_strength=0.25, rim_width_deg=0.7)
+    behind = rounded(harmonic_ridge(rng, range(2, 12), 1.15) * 0.5 + 0.5, 0.82) * 9.0
+    paint_silhouette(img, behind, 0.0, mix(ROCKS[7], GROUND_PRINT, 0.4), haze, 0.58, rim_color=SUN_CORE, rim_strength=0.4, rim_width_deg=0.8)
+    sweep = rounded(harmonic_ridge(rng, range(2, 7), 1.05) * 0.5 + 0.5, 0.75) * 15.0
+    paint_silhouette(img, sweep, 0.0, mix(GROUND_PRINT, ROCKS[7], 0.35), haze, 0.36, rim_color=SUN_CORE, rim_strength=0.6, rim_width_deg=1.1)
     below_horizon_sea(img, mix(WATER, SUN_HALO, 0.35), OUT_OF_BOUNDS)
     return img
 
