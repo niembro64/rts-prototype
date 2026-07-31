@@ -146,9 +146,9 @@
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
         "resolution": 4096,
-        "blend": 0.0,
-        "contrast": 0.3,
-        "roughnessVariation": 0.2,
+        "blend": 0.2,
+        "contrast": 1.0,
+        "roughnessVariation": 0.1,
         "tileWorldSize": 2000
       },
       "standardMaterial": {
