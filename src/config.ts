@@ -323,6 +323,12 @@ export const LAVA_RENDER_CONFIG = {
 // texture by ThreeApp, then reused as the scene background.
 export const SKY_RENDER_CONFIG = COLORS.world.sky;
 
+/** Signed elevation offset for the per-preset equirectangular panoramas.
+ *  The background is infinitely far, so an angular offset is the useful
+ *  equivalent of a world-space Z offset: 0 keeps the authored placement,
+ *  negative lowers the visuals, and positive raises them. */
+export const PRESET_BACKDROP_RENDER_CONFIG = worldRenderConfigJson.presetBackdrop;
+
 export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.colorHex;
 export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.colorHex;
 

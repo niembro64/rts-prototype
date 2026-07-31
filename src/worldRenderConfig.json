@@ -7,6 +7,10 @@
     "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
   },
   "horizonRenderExtend": 180000,
+  "presetBackdrop": {
+    "verticalOffsetDegrees": -15,
+    "detail": "Signed elevation offset for preset panorama visuals. 0 preserves the original placement; negative lowers the panorama and positive raises it. Degrees are used because scene backgrounds are infinitely far and have no world-space Z position."
+  },
   "sun": {
     "azimuthRad": 1.5707963267948966,
     "elevationRad": 0.7853981633974483,

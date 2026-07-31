@@ -42,6 +42,7 @@ import {
   CAMERA_LOST_TERRAIN_RECOVERY,
   CAMERA_TERRAIN_COLLISION,
   CAMERA_ZOOM_DISTANCE_SAMPLING,
+  PRESET_BACKDROP_RENDER_CONFIG,
 } from '../../config';
 import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
@@ -90,6 +91,46 @@ function makeSkyGradientTexture(): THREE.CanvasTexture {
   texture.colorSpace = THREE.SRGBColorSpace;
   configureSpriteTexture(texture);
   return texture;
+}
+
+/** Shift panorama pixels vertically before Three converts the equirectangular
+ *  image to its background cubemap. Scene backgrounds have no position, and
+ *  rotating the sphere would tilt the horizon instead of moving every visual
+ *  uniformly, so this image-space elevation shift is the Z-offset equivalent.
+ *  Newly exposed pole pixels extend the nearest edge row rather than wrapping
+ *  the opposite pole into view. */
+function applyPresetBackdropVerticalOffset(texture: THREE.Texture): void {
+  const offsetDegrees = PRESET_BACKDROP_RENDER_CONFIG.verticalOffsetDegrees;
+  if (!Number.isFinite(offsetDegrees) || Math.abs(offsetDegrees) >= 90) {
+    throw new Error(
+      'worldRenderConfig.presetBackdrop.verticalOffsetDegrees must be finite and between -90 and 90',
+    );
+  }
+  if (offsetDegrees === 0) return;
+
+  const image = texture.image as HTMLImageElement;
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  if (width <= 0 || height <= 0) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Unable to create preset backdrop offset texture');
+  }
+
+  // Generated panoramas cover +90 to -90 degrees from top to bottom.
+  // Canvas Y grows downward, so a negative configured elevation moves the
+  // source pixels downward and makes the far visuals appear lower in-world.
+  const shiftPixels = (-offsetDegrees / 180) * height;
+  const edgeSourceY = shiftPixels > 0 ? 0 : height - 1;
+  ctx.drawImage(image, 0, edgeSourceY, width, 1, 0, 0, width, height);
+  ctx.drawImage(image, 0, shiftPixels, width, height);
+
+  texture.image = canvas;
+  texture.needsUpdate = true;
 }
 
 export class ThreeApp {
@@ -331,6 +372,7 @@ export class ThreeApp {
           texture.dispose();
           return;
         }
+        applyPresetBackdropVerticalOffset(texture);
         texture.mapping = THREE.EquirectangularReflectionMapping;
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
