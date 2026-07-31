@@ -310,9 +310,9 @@ function makeDepositCoinGeometry(
   const indices: number[] = [];
   const visibleHeight = height * 0.5;
 
-  // The crown keeps a hard material boundary between its horizontal cap and
-  // raised rim. The cap therefore has the same straight-up lighting normal as
-  // a flat METAL terrain pad, while the rim can smooth around its own outline.
+  // The crown keeps a hard lighting boundary between its horizontal cap and
+  // raised rim. The cap can therefore match flat METAL terrain without its
+  // normal being averaged into the vertical rim.
   const topStart = positions.length / 3;
   for (let i = 0; i < outline.length; i++) {
     const p = outline[i];
@@ -361,6 +361,16 @@ function makeDepositCoinGeometry(
   // normals without rounding the cap into the vertical rim. The geometric
   // derivative used for texture projection remains face-true.
   indexed.computeVertexNormals();
+  // Authoritative terrain triangles are back-facing in Three's X/Y/Z space
+  // and rendered DoubleSide with upward-authored vertex normals. Three flips
+  // those normals for the visible back face, so a flat METAL world lights with
+  // an effective downward normal. Match that established appearance on the
+  // crown cap while keeping its front-facing topology and its rim normals.
+  const normals = indexed.getAttribute('normal');
+  for (let i = 0; i < outline.length; i++) {
+    normals.setXYZ(topStart + i, 0, -1, 0);
+  }
+  normals.needsUpdate = true;
   return indexed;
 }
 
