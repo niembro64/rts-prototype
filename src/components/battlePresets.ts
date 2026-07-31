@@ -61,8 +61,8 @@ const DEMO_BATTLE_DEFAULT_PRESET_NAME = 'DEMO BATTLE DEFAULT';
 const REAL_BATTLE_DEFAULT_PRESET_NAME = 'REAL BATTLE DEFAULT';
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
-  demo: DEMO_BATTLE_DEFAULT_PRESET_NAME,
-  real: REAL_BATTLE_DEFAULT_PRESET_NAME,
+  demo: 'Angels Flat',
+  real: 'Angels Flat',
 };
 
 function allUnits(): readonly string[] {
@@ -96,50 +96,6 @@ const STRUCTURE_DEFAULTS = {
 
 function buildPresets(): readonly BattlePreset[] {
   return [
-    {
-      name: DEMO_BATTLE_DEFAULT_PRESET_NAME,
-      units: allUnits(),
-      cap: 81,
-      ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
-      fogOfWarEnabled: false,
-      converterTax: 0.0,
-      centerMagnitude: 0,
-      dividersMagnitude: 0,
-      perimeterMagnitude: -800,
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 80,
-      watersEdgeBeachSlopeDegrees: 10,
-      watersEdgeCliffHeight: 100,
-      metalDepositStep: 0,
-      terrainDetail: 0,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-      barsCollapsed: true,
-    },
-    {
-      name: REAL_BATTLE_DEFAULT_PRESET_NAME,
-      units: allUnits(),
-      cap: 81,
-      ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 0,
-      dividersMagnitude: 400,
-      perimeterMagnitude: -800,
-      terrainDTerrain: 1,
-      plateauWallSlopeDegrees: 80,
-      watersEdgeBeachSlopeDegrees: 10,
-      watersEdgeCliffHeight: 100,
-      metalDepositStep: 200,
-      terrainDetail: 1,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-      barsCollapsed: true,
-    },
     {
       name: 'Large Circle',
       units: allUnits(),
