@@ -13,17 +13,12 @@
     {
       "step": "gradientEstimate",
       "active": true,
-      "detail": "Snapshots the current surface and estimates its slope at this position in the order; later stages consume both (plateau shelf sizing, waters-edge wall sizing, and the shore-distance estimate |surface - waterLevel| / gradient behind both shoreline fades). Stages that need them BEFORE this stage see zeros: plateau walls go near-vertical and the shoreline fades to no effect."
+      "detail": "Snapshots the current surface and estimates its slope at this position in the order; later plateau stages consume it for shelf sizing. Stages that need it BEFORE this stage see zero, so plateau walls go near-vertical."
     },
     {
       "step": "plateauTerracing",
       "active": true,
       "detail": "D-PLATEAU bar snap of the current height onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions."
-    },
-    {
-      "step": "watersEdgeShoreline",
-      "active": true,
-      "detail": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
     },
     {
       "step": "floorClamp",
@@ -77,10 +72,6 @@
       "shelfFractionOfStep": 0.99,
       "rampEdgeSharpness": 1,
       "buildableShelfHeightTolerance": 20
-    },
-    "shoreline": {
-      "beachFadeRadius": 800,
-      "cliffFadeRadius": 800
     }
   },
   "mesh": {

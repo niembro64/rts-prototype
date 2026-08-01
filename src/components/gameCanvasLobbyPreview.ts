@@ -5,8 +5,6 @@ import {
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
-  loadStoredWatersEdgeBeachSlopeDegrees,
-  loadStoredWatersEdgeCliffHeight,
   loadStoredPerimeterMagnitude,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
@@ -28,8 +26,6 @@ type GameCanvasLobbyPreviewOptions = {
   perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   plateauWallSlopeDegrees: Ref<number>;
-  watersEdgeBeachSlopeDegrees: Ref<number>;
-  watersEdgeCliffHeight: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
@@ -52,8 +48,6 @@ export function useGameCanvasLobbyPreview({
   perimeterMagnitude,
   terrainDTerrain,
   plateauWallSlopeDegrees,
-  watersEdgeBeachSlopeDegrees,
-  watersEdgeCliffHeight,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -80,9 +74,6 @@ export function useGameCanvasLobbyPreview({
     perimeterMagnitude.value = loadStoredPerimeterMagnitude(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     plateauWallSlopeDegrees.value = loadStoredPlateauWallSlopeDegrees(mode);
-    watersEdgeBeachSlopeDegrees.value =
-      loadStoredWatersEdgeBeachSlopeDegrees(mode);
-    watersEdgeCliffHeight.value = loadStoredWatersEdgeCliffHeight(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
     terrainDetail.value = loadStoredTerrainDetail(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);

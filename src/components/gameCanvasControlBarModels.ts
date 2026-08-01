@@ -55,8 +55,6 @@ export type GameCanvasBattleControlBarModel = {
   readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
-  readonly watersEdgeBeachSlopeDegrees: number;
-  readonly watersEdgeCliffHeight: number;
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
   readonly terrainTextureSmoothing: number;
@@ -88,8 +86,6 @@ export type GameCanvasBattleControlBarModel = {
   applyPerimeterMagnitude(value: number): void;
   applyTerrainDTerrain(value: number): void;
   applyPlateauWallSlopeDegrees(value: number): void;
-  applyWatersEdgeBeachSlopeDegrees(value: number): void;
-  applyWatersEdgeCliffHeight(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
   applyTerrainTextureSmoothing(value: number): void;

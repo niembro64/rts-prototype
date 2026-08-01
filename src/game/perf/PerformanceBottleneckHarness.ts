@@ -1062,8 +1062,6 @@ function createServerConfig(
     perimeterMagnitude: -800,
     terrainDTerrain: 0,
     plateauWallSlopeDegrees: 89,
-    watersEdgeBeachSlopeDegrees: 10,
-    watersEdgeCliffHeight: 100,
     metalDepositStep: 0,
     terrainDetail: 1,
     mapWidthLandCells: options.mapCells,

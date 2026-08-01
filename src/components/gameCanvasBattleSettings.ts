@@ -79,8 +79,6 @@ type GameCanvasBattleSettingsOptions = {
   applyPerimeterMagnitude: (value: number, broadcast?: boolean) => void;
   applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
   applyPlateauWallSlopeDegrees: (value: number, broadcast?: boolean) => void;
-  applyWatersEdgeBeachSlopeDegrees: (value: number, broadcast?: boolean) => void;
-  applyWatersEdgeCliffHeight: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
   applyTerrainSurfaceMode: (mode: TerrainSurfaceMode, broadcast?: boolean) => void;
@@ -103,8 +101,6 @@ export function useGameCanvasBattleSettings({
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
-  applyWatersEdgeBeachSlopeDegrees,
-  applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyTerrainSurfaceMode,
@@ -370,8 +366,6 @@ export function useGameCanvasBattleSettings({
     applyPerimeterMagnitude(preset.perimeterMagnitude, false);
     applyTerrainDTerrain(preset.terrainDTerrain, false);
     applyPlateauWallSlopeDegrees(preset.plateauWallSlopeDegrees, false);
-    applyWatersEdgeBeachSlopeDegrees(preset.watersEdgeBeachSlopeDegrees, false);
-    applyWatersEdgeCliffHeight(preset.watersEdgeCliffHeight, false);
     applyMetalDepositStep(preset.metalDepositStep, false);
     applyTerrainDetail(preset.terrainDetail, false);
     applyMapLandDimensions(

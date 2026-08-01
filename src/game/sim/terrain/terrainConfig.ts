@@ -107,19 +107,6 @@ export type TerrainRuntimeConfig = {
    *  90 produce cliff-like walls; lower values widen each wall into a
    *  gentler heightfield ramp. */
   plateauWallSlopeDegrees: number;
-  /** Waters-edge BEACH slope in degrees (BEACH bar). Beach shoreline
-   *  slices compress the terrain gradient through the waterline down
-   *  to (at most) this slope so ground units can wade in and out.
-   *  0 is a valid beach: a perfectly flat shelf at the water level,
-   *  fading back to natural terrain over the beach fade radius. Beach
-   *  shaping is disabled via shoreline.beachFadeRadius = 0 in
-   *  terrainConfig.json. */
-  watersEdgeBeachSlopeDegrees: number;
-  /** Waters-edge CLIFF height in world units (W-CLIFF bar). Cliff
-   *  shoreline slices snap heights near the waterline away from it
-   *  into a single plateau-style wall of this total height. 0
-   *  disables cliff shaping. */
-  watersEdgeCliffHeight: number;
   /** Metal-extractor pad altitude step (D-DEPOSIT bar). */
   metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell (TERRAIN DETAIL bar).
@@ -165,18 +152,6 @@ export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
  *  before deposit flat zones are blended in. */
 export let TERRAIN_PLATEAU_WALL_SLOPE_DEGREES =
   BATTLE_CONFIG.plateauWallSlopeDegrees.default;
-
-/** Currently-installed waters-edge BEACH slope (degrees). Beach
- *  shoreline slices compress the terrain gradient through the
- *  waterline to at most this slope. 0 = beach shaping off. */
-export let TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES =
-  BATTLE_CONFIG.watersEdgeBeachSlopeDegrees.default;
-
-/** Currently-installed waters-edge CLIFF height (world units). Cliff
- *  shoreline slices snap the waterline into a plateau-style wall of
- *  this total height. 0 = cliff shaping off. */
-export let TERRAIN_WATERS_EDGE_CLIFF_HEIGHT =
-  BATTLE_CONFIG.watersEdgeCliffHeight.default;
 
 /** Signed vertical step (world units) between metal-extractor pad altitude
  *  levels. A deposit ring's `dTerrainLevels` is multiplied by this
@@ -257,24 +232,6 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
-  const rawBeachSlopeDegrees = Number(config.watersEdgeBeachSlopeDegrees);
-  const nextBeachSlopeDegrees = Number.isFinite(rawBeachSlopeDegrees)
-    ? Math.max(0, Math.min(89, rawBeachSlopeDegrees))
-    : TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES;
-  if (TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES !== nextBeachSlopeDegrees) {
-    TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES = nextBeachSlopeDegrees;
-    changed = true;
-  }
-
-  const rawWatersEdgeCliffHeight = Number(config.watersEdgeCliffHeight);
-  const nextWatersEdgeCliffHeight = Number.isFinite(rawWatersEdgeCliffHeight)
-    ? Math.max(0, rawWatersEdgeCliffHeight)
-    : TERRAIN_WATERS_EDGE_CLIFF_HEIGHT;
-  if (TERRAIN_WATERS_EDGE_CLIFF_HEIGHT !== nextWatersEdgeCliffHeight) {
-    TERRAIN_WATERS_EDGE_CLIFF_HEIGHT = nextWatersEdgeCliffHeight;
-    changed = true;
-  }
-
   const rawDepositStep = Number(config.metalDepositStep);
   const nextDepositStep = Number.isFinite(rawDepositStep)
     ? rawDepositStep
@@ -315,7 +272,7 @@ export const TERRAIN_RIDGE_CONFIG = {
   halfWidthFraction: terrainConfig.generation.ridge.halfWidthFraction,
 } as const;
 
-/** The seven terrain-generation pipeline stages. terrainConfig.json's
+/** The six terrain-generation pipeline stages. terrainConfig.json's
  *  `pipeline` array drives execution: entries run strictly in authored
  *  order, each carrying an `active` flag (inactive stages are skipped
  *  by the generators AND by wall-region classification). Every stage
@@ -324,7 +281,7 @@ export const TERRAIN_RIDGE_CONFIG = {
  *    - naturalField OVERWRITES the height, discarding earlier stages.
  *    - gradientEstimate snapshots the surface + slope at its position;
  *      stages consuming them earlier see zeros (plateau walls go
- *      near-vertical, the shoreline fades to no effect).
+ *      near-vertical).
  *    - floorClamp clamps at its position; a final safety clamp always
  *      runs at the end of the pipeline regardless. */
 export type TerrainPipelineStep =
@@ -333,7 +290,6 @@ export type TerrainPipelineStep =
   | 'gradientEstimate'
   | 'plateauTerracing'
   | 'metalDepositPads'
-  | 'watersEdgeShoreline'
   | 'floorClamp';
 
 const TERRAIN_PIPELINE_STEPS: readonly TerrainPipelineStep[] = [
@@ -342,7 +298,6 @@ const TERRAIN_PIPELINE_STEPS: readonly TerrainPipelineStep[] = [
   'gradientEstimate',
   'plateauTerracing',
   'metalDepositPads',
-  'watersEdgeShoreline',
   'floorClamp',
 ];
 
@@ -392,8 +347,7 @@ export const TERRAIN_PIPELINE_STEP_CODES: Readonly<
   gradientEstimate: 2,
   plateauTerracing: 3,
   metalDepositPads: 4,
-  watersEdgeShoreline: 5,
-  floorClamp: 6,
+  floorClamp: 5,
 };
 
 /** True when `step` is present and active in the authored pipeline. */
@@ -401,22 +355,3 @@ export function isTerrainPipelineStepActive(step: TerrainPipelineStep): boolean 
   const entry = TERRAIN_PIPELINE.find((candidate) => candidate.step === step);
   return entry !== undefined && entry.active;
 }
-
-/** Static shoreline (waters-edge) shape knobs. The shoreline pattern is
- *  team-periodic — each player's slice is split into a beach half
- *  (centered on the player's spoke) and a cliff half (centered on the
- *  divider ridge) so every player gets an identical shoreline, joined
- *  by wall-steep end caps derived from the PLATEAU WALL slope.
- *  `beachFadeRadius` and `cliffFadeRadius` are horizontal world-unit
- *  distances from the water's edge over which each operator's effect
- *  raised-cosine-fades from full (at the waterline) back to the
- *  natural surface, on both the land and water sides, following the
- *  water's curves (0 = that operator disabled). The cliff's
- *  wall REGION classification is unaffected, so inland wall loops stay
- *  closed in WALL TRIS with flattened geometry. The live BEACH slope /
- *  CLIFF height come from the battle bars (`TERRAIN_WATERS_EDGE_*`
- *  above). */
-export const TERRAIN_SHORELINE_CONFIG = {
-  beachFadeRadius: terrainConfig.generation.shoreline.beachFadeRadius,
-  cliffFadeRadius: terrainConfig.generation.shoreline.cliffFadeRadius,
-} as const;

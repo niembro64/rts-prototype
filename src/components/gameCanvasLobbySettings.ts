@@ -21,14 +21,10 @@ import {
   normalizeDividersMagnitude,
   normalizeMetalDepositStep,
   normalizePlateauWallSlopeDegrees,
-  normalizeWatersEdgeBeachSlopeDegrees,
-  normalizeWatersEdgeCliffHeight,
   normalizePerimeterMagnitude,
   normalizeTerrainDTerrain,
   normalizeTerrainDetail,
   savePlateauWallSlopeDegrees,
-  saveWatersEdgeBeachSlopeDegrees,
-  saveWatersEdgeCliffHeight,
   saveCenterMagnitude,
   saveConverterTax,
   saveDividersMagnitude,
@@ -56,8 +52,6 @@ type GameCanvasLobbySettings = {
   applyPerimeterMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
   applyPlateauWallSlopeDegrees(value: number, broadcast?: boolean): void;
-  applyWatersEdgeBeachSlopeDegrees(value: number, broadcast?: boolean): void;
-  applyWatersEdgeCliffHeight(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
   applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
@@ -84,8 +78,6 @@ type GameCanvasLobbySettingsOptions = {
   perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   plateauWallSlopeDegrees: Ref<number>;
-  watersEdgeBeachSlopeDegrees: Ref<number>;
-  watersEdgeCliffHeight: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
@@ -115,8 +107,6 @@ export function useGameCanvasLobbySettings({
   perimeterMagnitude,
   terrainDTerrain,
   plateauWallSlopeDegrees,
-  watersEdgeBeachSlopeDegrees,
-  watersEdgeCliffHeight,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -144,8 +134,6 @@ export function useGameCanvasLobbySettings({
       perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
       plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
-      watersEdgeBeachSlopeDegrees: watersEdgeBeachSlopeDegrees.value,
-      watersEdgeCliffHeight: watersEdgeCliffHeight.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
     });
@@ -158,8 +146,6 @@ export function useGameCanvasLobbySettings({
       perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
       plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
-      watersEdgeBeachSlopeDegrees: watersEdgeBeachSlopeDegrees.value,
-      watersEdgeCliffHeight: watersEdgeCliffHeight.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
@@ -232,33 +218,6 @@ export function useGameCanvasLobbySettings({
     const changed = plateauWallSlopeDegrees.value !== normalized;
     plateauWallSlopeDegrees.value = normalized;
     savePlateauWallSlopeDegrees(normalized, mode);
-    if (!changed) return;
-    applyCurrentTerrainRuntimeConfig();
-    restartPreviewIfNeeded();
-    if (broadcast) broadcastLobbySettingsIfHost();
-  }
-
-  function applyWatersEdgeBeachSlopeDegrees(
-    value: number,
-    broadcast = true,
-  ): void {
-    const mode = currentBattleMode.value;
-    const normalized = normalizeWatersEdgeBeachSlopeDegrees(value);
-    const changed = watersEdgeBeachSlopeDegrees.value !== normalized;
-    watersEdgeBeachSlopeDegrees.value = normalized;
-    saveWatersEdgeBeachSlopeDegrees(normalized, mode);
-    if (!changed) return;
-    applyCurrentTerrainRuntimeConfig();
-    restartPreviewIfNeeded();
-    if (broadcast) broadcastLobbySettingsIfHost();
-  }
-
-  function applyWatersEdgeCliffHeight(value: number, broadcast = true): void {
-    const mode = currentBattleMode.value;
-    const normalized = normalizeWatersEdgeCliffHeight(value);
-    const changed = watersEdgeCliffHeight.value !== normalized;
-    watersEdgeCliffHeight.value = normalized;
-    saveWatersEdgeCliffHeight(normalized, mode);
     if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -349,16 +308,6 @@ export function useGameCanvasLobbySettings({
       settings.plateauWallSlopeDegrees === undefined
         ? plateauWallSlopeDegrees.value
         : normalizePlateauWallSlopeDegrees(settings.plateauWallSlopeDegrees);
-    const nextWatersEdgeBeachSlopeDegrees =
-      settings.watersEdgeBeachSlopeDegrees === undefined
-        ? watersEdgeBeachSlopeDegrees.value
-        : normalizeWatersEdgeBeachSlopeDegrees(
-            settings.watersEdgeBeachSlopeDegrees,
-          );
-    const nextWatersEdgeCliffHeight =
-      settings.watersEdgeCliffHeight === undefined
-        ? watersEdgeCliffHeight.value
-        : normalizeWatersEdgeCliffHeight(settings.watersEdgeCliffHeight);
     const nextMetalDepositStep =
       settings.metalDepositStep === undefined
         ? metalDepositStep.value
@@ -373,8 +322,6 @@ export function useGameCanvasLobbySettings({
       nextPerimeterMagnitude !== perimeterMagnitude.value ||
       nextDTerrain !== terrainDTerrain.value ||
       nextPlateauWallSlopeDegrees !== plateauWallSlopeDegrees.value ||
-      nextWatersEdgeBeachSlopeDegrees !== watersEdgeBeachSlopeDegrees.value ||
-      nextWatersEdgeCliffHeight !== watersEdgeCliffHeight.value ||
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
@@ -385,8 +332,6 @@ export function useGameCanvasLobbySettings({
     perimeterMagnitude.value = nextPerimeterMagnitude;
     terrainDTerrain.value = nextDTerrain;
     plateauWallSlopeDegrees.value = nextPlateauWallSlopeDegrees;
-    watersEdgeBeachSlopeDegrees.value = nextWatersEdgeBeachSlopeDegrees;
-    watersEdgeCliffHeight.value = nextWatersEdgeCliffHeight;
     metalDepositStep.value = nextMetalDepositStep;
     terrainDetail.value = nextTerrainDetail;
     mapWidthLandCells.value = settings.mapWidthLandCells;
@@ -396,8 +341,6 @@ export function useGameCanvasLobbySettings({
     savePerimeterMagnitude(nextPerimeterMagnitude, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
     savePlateauWallSlopeDegrees(nextPlateauWallSlopeDegrees, 'real');
-    saveWatersEdgeBeachSlopeDegrees(nextWatersEdgeBeachSlopeDegrees, 'real');
-    saveWatersEdgeCliffHeight(nextWatersEdgeCliffHeight, 'real');
     saveMetalDepositStep(nextMetalDepositStep, 'real');
     saveTerrainDetail(nextTerrainDetail, 'real');
     saveMapLandDimensions(
@@ -440,10 +383,6 @@ export function useGameCanvasLobbySettings({
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
     const plateauWallSlopeDegreesDefault =
       BATTLE_CONFIG.plateauWallSlopeDegrees.default;
-    const watersEdgeBeachSlopeDegreesDefault =
-      BATTLE_CONFIG.watersEdgeBeachSlopeDegrees.default;
-    const watersEdgeCliffHeightDefault =
-      BATTLE_CONFIG.watersEdgeCliffHeight.default;
     const metalDepositStepDefault = BATTLE_CONFIG.metalDepositStep.default;
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
@@ -453,8 +392,6 @@ export function useGameCanvasLobbySettings({
       perimeterMagnitude.value === perimeterMagnitudeDefault &&
       terrainDTerrain.value === dTerrainDefault &&
       plateauWallSlopeDegrees.value === plateauWallSlopeDegreesDefault &&
-      watersEdgeBeachSlopeDegrees.value === watersEdgeBeachSlopeDegreesDefault &&
-      watersEdgeCliffHeight.value === watersEdgeCliffHeightDefault &&
       metalDepositStep.value === metalDepositStepDefault &&
       terrainDetail.value === terrainDetailDefault &&
       sameMapLandDimensions(
@@ -473,8 +410,6 @@ export function useGameCanvasLobbySettings({
     perimeterMagnitude.value = perimeterMagnitudeDefault;
     terrainDTerrain.value = dTerrainDefault;
     plateauWallSlopeDegrees.value = plateauWallSlopeDegreesDefault;
-    watersEdgeBeachSlopeDegrees.value = watersEdgeBeachSlopeDegreesDefault;
-    watersEdgeCliffHeight.value = watersEdgeCliffHeightDefault;
     metalDepositStep.value = metalDepositStepDefault;
     terrainDetail.value = terrainDetailDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
@@ -484,8 +419,6 @@ export function useGameCanvasLobbySettings({
     savePerimeterMagnitude(perimeterMagnitudeDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
     savePlateauWallSlopeDegrees(plateauWallSlopeDegreesDefault, mode);
-    saveWatersEdgeBeachSlopeDegrees(watersEdgeBeachSlopeDegreesDefault, mode);
-    saveWatersEdgeCliffHeight(watersEdgeCliffHeightDefault, mode);
     saveMetalDepositStep(metalDepositStepDefault, mode);
     saveTerrainDetail(terrainDetailDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
@@ -501,8 +434,6 @@ export function useGameCanvasLobbySettings({
     applyPerimeterMagnitude,
     applyTerrainDTerrain,
     applyPlateauWallSlopeDegrees,
-    applyWatersEdgeBeachSlopeDegrees,
-    applyWatersEdgeCliffHeight,
     applyMetalDepositStep,
     applyTerrainDetail,
     applyTerrainSurfaceMode,

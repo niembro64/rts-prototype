@@ -182,9 +182,6 @@ function buildRealBattleLobbySettingsFromTerrain(
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-    watersEdgeBeachSlopeDegrees:
-      terrain.terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
-    watersEdgeCliffHeight: terrain.terrainRuntimeConfig.watersEdgeCliffHeight,
     metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
@@ -318,8 +315,6 @@ function assertTerrainMatchesSettings(
   pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
   pushMismatch(mismatches, 'terrainDTerrain', terrain.terrainRuntimeConfig.terrainDTerrain, settings.terrainDTerrain);
   pushMismatch(mismatches, 'plateauWallSlopeDegrees', terrain.terrainRuntimeConfig.plateauWallSlopeDegrees, settings.plateauWallSlopeDegrees);
-  pushMismatch(mismatches, 'watersEdgeBeachSlopeDegrees', terrain.terrainRuntimeConfig.watersEdgeBeachSlopeDegrees, settings.watersEdgeBeachSlopeDegrees);
-  pushMismatch(mismatches, 'watersEdgeCliffHeight', terrain.terrainRuntimeConfig.watersEdgeCliffHeight, settings.watersEdgeCliffHeight);
   pushMismatch(mismatches, 'metalDepositStep', terrain.terrainRuntimeConfig.metalDepositStep, settings.metalDepositStep);
   pushMismatch(mismatches, 'terrainDetail', terrain.terrainRuntimeConfig.terrainDetail, settings.terrainDetail);
   pushMismatch(mismatches, 'mapWidthLandCells', terrain.mapDimensions.widthLandCells, settings.mapWidthLandCells);
@@ -472,10 +467,6 @@ async function createRealBattleServer({
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
         terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-      watersEdgeBeachSlopeDegrees:
-        terrain.terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
-      watersEdgeCliffHeight:
-        terrain.terrainRuntimeConfig.watersEdgeCliffHeight,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,

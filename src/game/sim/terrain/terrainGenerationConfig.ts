@@ -6,7 +6,6 @@ import {
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
-  TERRAIN_SHORELINE_CONFIG,
   TILE_FLOOR_Y,
 } from './terrainConfig';
 import type { TerrainFlatZone } from './terrainFlatZones';
@@ -23,14 +22,14 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-const TERRAIN_GENERATION_CONFIG_LENGTH = 34;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 29;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height,
  *  blendRadius, plateauRadius, groupId (-1 = ungrouped classic pad).
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
 
-/** Pack the live terrain generation config into the 23-value slice the Rust
+/** Pack the live terrain generation config into the 29-value slice the Rust
  *  height sampler reads. Single source of truth for both the adaptive mesh
  *  baker and the metal-deposit placement/height kernels. */
 export function packTerrainGenerationConfigForWasm(): Float64Array {
@@ -60,13 +59,9 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[20] = TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
   rows[21] = TERRAIN_RIDGE_CONFIG.halfWidthFraction;
   rows[22] = runtime.plateauWallSlopeDegrees;
-  rows[23] = runtime.watersEdgeBeachSlopeDegrees;
-  rows[24] = runtime.watersEdgeCliffHeight;
-  rows[25] = TERRAIN_SHORELINE_CONFIG.beachFadeRadius;
-  rows[26] = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
   for (let i = 0; i < TERRAIN_PIPELINE.length; i++) {
     const entry = TERRAIN_PIPELINE[i];
-    rows[27 + i] =
+    rows[23 + i] =
       TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
   }
   return rows;

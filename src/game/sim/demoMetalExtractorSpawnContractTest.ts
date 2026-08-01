@@ -595,8 +595,6 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
     perimeterMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
     terrainDTerrain: preset.terrainDTerrain,
     plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
-    watersEdgeBeachSlopeDegrees: preset.watersEdgeBeachSlopeDegrees,
-    watersEdgeCliffHeight: preset.watersEdgeCliffHeight,
     metalDepositStep: preset.metalDepositStep,
     terrainDetail: preset.terrainDetail,
   });

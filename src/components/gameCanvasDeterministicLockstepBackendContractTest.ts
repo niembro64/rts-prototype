@@ -152,8 +152,6 @@ function assertInitializationHashMismatch(): void {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
-      watersEdgeBeachSlopeDegrees: 10,
-      watersEdgeCliffHeight: 100,
       metalDepositStep: 0,
       terrainDetail: 1,
       mapWidthLandCells: 9,
@@ -181,8 +179,6 @@ function createTerrain(): RealBattleStartupTerrain {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
-      watersEdgeBeachSlopeDegrees: 10,
-      watersEdgeCliffHeight: 100,
       metalDepositStep: 0,
       terrainDetail: 1,
     },
@@ -205,9 +201,6 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-    watersEdgeBeachSlopeDegrees:
-      terrain.terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
-    watersEdgeCliffHeight: terrain.terrainRuntimeConfig.watersEdgeCliffHeight,
     metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,

@@ -3,7 +3,7 @@
 // The generation pipeline itself lives ONLY in Rust
 // (rts-sim-wasm/src/deposits.rs): natural height, map boundary,
 // plateau terracing, metal-deposit flat-pad override (including
-// group-manual smoothing), and the waters-edge shoreline pass.
+// group-manual smoothing).
 // TypeScript packs the live config + flat zones and asks Rust — there
 // is no mirrored height math on this side. Callers are the tile-map
 // fallback sampler (no baked mesh installed yet) and the terrain
