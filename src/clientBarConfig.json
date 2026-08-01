@@ -109,6 +109,10 @@
     "demoDefault": false,
     "realDefault": false
   },
+  "pathingHierarchyDebug": {
+    "demoDefault": false,
+    "realDefault": false
+  },
   "airLiftProbeDebug": {
     "demoDefault": false,
     "realDefault": false
@@ -451,6 +455,7 @@
     "waterTriangleDebug": "water-triangle-debug",
     "wallTriangleDebug": "wall-triangle-debug",
     "buildGridDebug": "build-grid-debug",
+    "pathingHierarchyDebug": "pathing-hierarchy-debug",
     "airLiftProbeDebug": "air-lift-probe-debug",
     "zoomPointsDebug": "zoom-points-debug",
     "metalMap": "metal-map",

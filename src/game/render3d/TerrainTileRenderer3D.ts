@@ -10,6 +10,7 @@ import type { PlayerId } from '../sim/types';
 import { COLORS, readRgbaTuple } from '@/colorsConfig';
 import {
   getBuildGridDebug,
+  getPathingHierarchyDebug,
   getElevationMap,
   getMetalMap,
   getPathingMap,
@@ -116,6 +117,13 @@ import {
   buildGridOverlayUniformDeclarations,
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
+import {
+  assignPathfindingHierarchyOverlayUniforms,
+  PATHFINDING_HIERARCHY_CLUSTER_WORLD_SIZE_WU,
+  pathfindingHierarchyOverlayFragment,
+  pathfindingHierarchyOverlayUniformDeclarations,
+  type PathfindingHierarchyOverlayUniforms,
+} from './PathfindingHierarchyOverlayShader';
 
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
@@ -618,6 +626,16 @@ export class TerrainTileRenderer3D {
   private buildGridWorldSizeUniform = { value: new THREE.Vector2(1, 1) };
   private buildGridCellSizeUniform = { value: BUILD_GRID_CELL_SIZE };
   private buildGridEnabledUniform = { value: 0 };
+  private pathfindingHierarchyEnabledUniform = { value: 0 };
+  private pathfindingHierarchyWorldSizeUniform = {
+    value: new THREE.Vector2(1, 1),
+  };
+  private pathfindingHierarchyClusterWorldSizeUniform = {
+    value: PATHFINDING_HIERARCHY_CLUSTER_WORLD_SIZE_WU,
+  };
+  private pathfindingHierarchyFineCellSizeUniform = {
+    value: BUILD_GRID_CELL_SIZE,
+  };
   private buildGridKeyValid = false;
   private buildGridKeyCellsX = 0;
   private buildGridKeyCellsY = 0;
@@ -765,6 +783,10 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uTerrainHorizonShade = this.terrainHorizonShadeUniform;
       shader.uniforms.uElevationMapEnabled = this.elevationMapEnabledUniform;
       assignBuildGridOverlayUniforms(shader, this.getBuildGridOverlayUniforms());
+      assignPathfindingHierarchyOverlayUniforms(
+        shader,
+        this.getPathfindingHierarchyOverlayUniforms(),
+      );
       shader.uniforms.uGroundDetailTexture = this.groundDetailTextureUniform;
       shader.uniforms.uGroundDetailTileWorldSize = this.groundDetailTileWorldSizeUniform;
       shader.uniforms.uGroundDetailEnabled = this.groundDetailEnabledUniform;
@@ -830,6 +852,7 @@ export class TerrainTileRenderer3D {
             'uniform float uTerrainHorizonShade;',
             'uniform float uElevationMapEnabled;',
             buildGridOverlayUniformDeclarations(),
+            pathfindingHierarchyOverlayUniformDeclarations(),
             'uniform sampler2D uGroundDetailTexture;',
             'uniform float uGroundDetailTileWorldSize;',
             'uniform float uGroundDetailEnabled;',
@@ -1011,6 +1034,7 @@ export class TerrainTileRenderer3D {
             '}',
             worldShadeFragment('vTerrainWorldPos', true),
             buildGridOverlayFragment('vTerrainWorldPos'),
+            pathfindingHierarchyOverlayFragment('vTerrainWorldPos'),
           ].join('\n'),
         )
         .replace(
@@ -1058,7 +1082,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v37';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v38';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -2375,6 +2399,8 @@ export class TerrainTileRenderer3D {
     const waterBoundaryMode = getWaterBoundaryMode();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
+    this.pathfindingHierarchyEnabledUniform.value = getPathingHierarchyDebug() ? 1 : 0;
+    this.pathfindingHierarchyWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
     this.worldShade.update(
       this.clientViewState,
       options.localPlayerId,
@@ -2427,6 +2453,15 @@ export class TerrainTileRenderer3D {
       worldSize: this.buildGridWorldSizeUniform,
       cellSize: this.buildGridCellSizeUniform,
       enabled: this.buildGridEnabledUniform,
+    };
+  }
+
+  getPathfindingHierarchyOverlayUniforms(): PathfindingHierarchyOverlayUniforms {
+    return {
+      enabled: this.pathfindingHierarchyEnabledUniform,
+      worldSize: this.pathfindingHierarchyWorldSizeUniform,
+      clusterWorldSize: this.pathfindingHierarchyClusterWorldSizeUniform,
+      fineCellSize: this.pathfindingHierarchyFineCellSizeUniform,
     };
   }
 

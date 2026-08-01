@@ -1115,6 +1115,7 @@ const {
   waterTriangleDebug,
   wallTriangleDebug,
   buildGridDebug,
+  pathingHierarchyDebug,
   airLiftProbeDebug,
   zoomPointsDebug,
   metalMap,
@@ -1181,6 +1182,7 @@ const {
   toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
+  togglePathingHierarchyDebug,
   toggleAirLiftProbeDebug,
   toggleZoomPointsDebug,
   toggleMetalMap,
@@ -2026,6 +2028,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   waterTriangleDebug: waterTriangleDebug.value,
   wallTriangleDebug: wallTriangleDebug.value,
   buildGridDebug: buildGridDebug.value,
+  pathingHierarchyDebug: pathingHierarchyDebug.value,
   airLiftProbeDebug: airLiftProbeDebug.value,
   zoomPointsDebug: zoomPointsDebug.value,
   metalMap: metalMap.value,
@@ -2080,6 +2083,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
+  togglePathingHierarchyDebug,
   toggleAirLiftProbeDebug,
   toggleZoomPointsDebug,
   toggleMetalMap,
@@ -2231,6 +2235,7 @@ watchEffect(() => {
   m.waterTriangleDebug = waterTriangleDebug.value;
   m.wallTriangleDebug = wallTriangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
+  m.pathingHierarchyDebug = pathingHierarchyDebug.value;
   m.airLiftProbeDebug = airLiftProbeDebug.value;
   m.zoomPointsDebug = zoomPointsDebug.value;
   m.metalMap = metalMap.value;

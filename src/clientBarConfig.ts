@@ -76,6 +76,7 @@ type ClientDefaults = {
   readonly waterTriangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
+  readonly pathingHierarchyDebug: boolean;
   readonly airLiftProbeDebug: boolean;
   readonly zoomPointsDebug: boolean;
   readonly metalMap: boolean;
@@ -150,6 +151,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     waterTriangleDebug: pickDefault(clientBarConfig.waterTriangleDebug, mode),
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
+    pathingHierarchyDebug: pickDefault(clientBarConfig.pathingHierarchyDebug, mode),
     airLiftProbeDebug: pickDefault(clientBarConfig.airLiftProbeDebug, mode),
     zoomPointsDebug: pickDefault(clientBarConfig.zoomPointsDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
@@ -232,6 +234,7 @@ export const CLIENT_CONFIG = {
   waterTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.waterTriangleDebug },
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
+  pathingHierarchyDebug: { default: DEMO_CLIENT_DEFAULTS.pathingHierarchyDebug },
   airLiftProbeDebug: { default: DEMO_CLIENT_DEFAULTS.airLiftProbeDebug },
   zoomPointsDebug: { default: DEMO_CLIENT_DEFAULTS.zoomPointsDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
@@ -315,6 +318,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     waterTriangleDebug: { default: defaults.waterTriangleDebug },
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
+    pathingHierarchyDebug: { default: defaults.pathingHierarchyDebug },
     airLiftProbeDebug: { default: defaults.airLiftProbeDebug },
     zoomPointsDebug: { default: defaults.zoomPointsDebug },
     metalMap: { default: defaults.metalMap },
@@ -377,6 +381,7 @@ type ClientStorageKeyName =
   | 'waterTriangleDebug'
   | 'wallTriangleDebug'
   | 'buildGridDebug'
+  | 'pathingHierarchyDebug'
   | 'airLiftProbeDebug'
   | 'zoomPointsDebug'
   | 'metalMap'
@@ -422,6 +427,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'waterTriangleDebug',
   'wallTriangleDebug',
   'buildGridDebug',
+  'pathingHierarchyDebug',
   'airLiftProbeDebug',
   'zoomPointsDebug',
   'metalMap',
@@ -518,6 +524,7 @@ let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentWaterTriangleDebug: boolean = _cd.waterTriangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
+let currentPathingHierarchyDebug: boolean = _cd.pathingHierarchyDebug.default;
 let currentAirLiftProbeDebug: boolean = _cd.airLiftProbeDebug.default;
 let currentZoomPointsDebug: boolean = _cd.zoomPointsDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
@@ -601,6 +608,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentWaterTriangleDebug = cd.waterTriangleDebug.default;
   currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
+  currentPathingHierarchyDebug = cd.pathingHierarchyDebug.default;
   currentAirLiftProbeDebug = cd.airLiftProbeDebug.default;
   currentZoomPointsDebug = cd.zoomPointsDebug.default;
   currentMetalMap = cd.metalMap.default;
@@ -707,6 +715,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
+  }
+  const storedPathingHierarchyDebug = readPersisted(keys.pathingHierarchyDebug);
+  if (storedPathingHierarchyDebug !== null) {
+    currentPathingHierarchyDebug = storedPathingHierarchyDebug === 'true';
   }
   const storedAirLiftProbeDebug = readPersisted(keys.airLiftProbeDebug);
   if (storedAirLiftProbeDebug !== null) {
@@ -1195,6 +1207,15 @@ export function getBuildGridDebug(): boolean {
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
   persist(activeStorageKeys().buildGridDebug, String(enabled));
+}
+
+export function getPathingHierarchyDebug(): boolean {
+  return currentPathingHierarchyDebug;
+}
+
+export function setPathingHierarchyDebug(enabled: boolean): void {
+  currentPathingHierarchyDebug = enabled;
+  persist(activeStorageKeys().pathingHierarchyDebug, String(enabled));
 }
 
 export function getAirLiftProbeDebug(): boolean {

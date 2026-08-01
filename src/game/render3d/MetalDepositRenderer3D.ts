@@ -16,6 +16,12 @@ import {
   buildGridOverlayUniformDeclarations,
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
+import {
+  assignPathfindingHierarchyOverlayUniforms,
+  pathfindingHierarchyOverlayFragment,
+  pathfindingHierarchyOverlayUniformDeclarations,
+  type PathfindingHierarchyOverlayUniforms,
+} from './PathfindingHierarchyOverlayShader';
 import { getRockDetailTexture } from './RockDetailTexture';
 import {
   makeMetalDepositVisualClusters,
@@ -61,6 +67,7 @@ export class MetalDepositRenderer3D {
     parentWorld: THREE.Group,
     deposits: ReadonlyArray<MetalDeposit>,
     private readonly buildGridOverlayUniforms: BuildGridOverlayUniforms,
+    private readonly pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
     private readonly worldShade: WorldShade3D,
   ) {
     this.clusters = makeMetalDepositVisualClusters(deposits);
@@ -139,7 +146,11 @@ export class MetalDepositRenderer3D {
 
   private getMaterial(): THREE.MeshStandardMaterial {
     if (!this.material) {
-      this.material = makeDepositMaterial(this.buildGridOverlayUniforms, this.worldShade);
+      this.material = makeDepositMaterial(
+        this.buildGridOverlayUniforms,
+        this.pathfindingHierarchyOverlayUniforms,
+        this.worldShade,
+      );
     }
     return this.material;
   }
@@ -164,6 +175,7 @@ function disposeDepositNode(node: THREE.Group): void {
 
 function makeDepositMaterial(
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
+  pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
   worldShade: WorldShade3D,
 ): THREE.MeshStandardMaterial {
   // The crown deliberately uses the same smooth MeshStandardMaterial
@@ -174,13 +186,19 @@ function makeDepositMaterial(
     vertexColors: false,
     ...metalSurfaceStandardParameters(),
   });
-  installDepositMetalSurfaceShader(material, buildGridOverlayUniforms, worldShade);
+  installDepositMetalSurfaceShader(
+    material,
+    buildGridOverlayUniforms,
+    pathfindingHierarchyOverlayUniforms,
+    worldShade,
+  );
   return material;
 }
 
 function installDepositMetalSurfaceShader(
   material: THREE.MeshStandardMaterial,
   buildGridOverlayUniforms: BuildGridOverlayUniforms,
+  pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
   worldShade: WorldShade3D,
 ): void {
   // dFdx/dFdy supplies the same per-fragment geometric normal used by terrain's
@@ -191,6 +209,10 @@ function installDepositMetalSurfaceShader(
   };
   material.onBeforeCompile = (shader) => {
     assignBuildGridOverlayUniforms(shader, buildGridOverlayUniforms);
+    assignPathfindingHierarchyOverlayUniforms(
+      shader,
+      pathfindingHierarchyOverlayUniforms,
+    );
     worldShade.assignUniforms(shader);
     shader.uniforms.uMetalSurfaceTexture = { value: getRockDetailTexture() };
     shader.uniforms.uMetalSurfaceColor = {
@@ -249,6 +271,7 @@ function installDepositMetalSurfaceShader(
           METAL_SURFACE_TRIPLANAR_GLSL,
           WORLD_SHADE_FRAGMENT_PARS,
           buildGridOverlayUniformDeclarations(),
+          pathfindingHierarchyOverlayUniformDeclarations(),
           'varying vec3 vBuildGridOverlayWorldPos;',
           '#include <common>',
         ].join('\n'),
@@ -274,6 +297,7 @@ function installDepositMetalSurfaceShader(
           ');',
           worldShadeFragment('vBuildGridOverlayWorldPos', true),
           buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
+          pathfindingHierarchyOverlayFragment('vBuildGridOverlayWorldPos'),
         ].join('\n'),
       )
       .replace(
@@ -302,7 +326,7 @@ function installDepositMetalSurfaceShader(
       );
   };
   material.customProgramCacheKey = () =>
-    'metalDeposit-metalSurface-worldShade-buildGridOverlay-v4';
+    'metalDeposit-metalSurface-worldShade-buildGridOverlay-pathHierarchy-v5';
 }
 
 type DepositOutlinePoint = { x: number; z: number };

@@ -143,6 +143,9 @@ export type ClientBarConfig = {
   readonly waterTriangleDebug: BooleanSetting;
   readonly wallTriangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
+  /** Draws level-1 hierarchical pathfinding chunk boundaries and nominal
+   *  representative centers over the terrain. */
+  readonly pathingHierarchyDebug: BooleanSetting;
   /** Draws selected units' configured surface-lift probe points and
    *  vertical lines to the sampled terrain/water/support surface. */
   readonly airLiftProbeDebug: BooleanSetting;

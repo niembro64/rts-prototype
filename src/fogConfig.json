@@ -12,7 +12,7 @@
       "unseenDarknessPercent": 70,
       "radarDarknessPercent": 35,
       "unseenColorLossPercent": 100,
-      "radarColorLossPercent": 25
+      "radarColorLossPercent": 100
     }
   }
 }

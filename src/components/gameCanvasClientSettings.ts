@@ -11,6 +11,7 @@ import {
   getAirLiftProbeDebug,
   getZoomPointsDebug,
   getBuildGridDebug,
+  getPathingHierarchyDebug,
   getCameraFollowMode,
   getCameraFovDegrees,
   getCameraSmoothMode,
@@ -53,6 +54,7 @@ import {
   setAirLiftProbeDebug,
   setZoomPointsDebug,
   setBuildGridDebug,
+  setPathingHierarchyDebug,
   setCameraFollowMode,
   setCameraFovDegrees,
   setCameraSmoothMode,
@@ -149,6 +151,7 @@ export function useGameCanvasClientSettings({
   const waterTriangleDebug = ref<boolean>(getWaterTriangleDebug());
   const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
+  const pathingHierarchyDebug = ref<boolean>(getPathingHierarchyDebug());
   const airLiftProbeDebug = ref<boolean>(getAirLiftProbeDebug());
   const zoomPointsDebug = ref<boolean>(getZoomPointsDebug());
   const metalMap = ref<boolean>(getMetalMap());
@@ -239,6 +242,7 @@ export function useGameCanvasClientSettings({
     waterTriangleDebug.value = getWaterTriangleDebug();
     wallTriangleDebug.value = getWallTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
+    pathingHierarchyDebug.value = getPathingHierarchyDebug();
     airLiftProbeDebug.value = getAirLiftProbeDebug();
     zoomPointsDebug.value = getZoomPointsDebug();
     metalMap.value = getMetalMap();
@@ -484,6 +488,12 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = newValue;
   }
 
+  function togglePathingHierarchyDebug(): void {
+    const newValue = !pathingHierarchyDebug.value;
+    setPathingHierarchyDebug(newValue);
+    pathingHierarchyDebug.value = newValue;
+  }
+
   function toggleAirLiftProbeDebug(): void {
     const newValue = !airLiftProbeDebug.value;
     setAirLiftProbeDebug(newValue);
@@ -630,6 +640,8 @@ export function useGameCanvasClientSettings({
     wallTriangleDebug.value = cd.wallTriangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
+    setPathingHierarchyDebug(cd.pathingHierarchyDebug.default);
+    pathingHierarchyDebug.value = cd.pathingHierarchyDebug.default;
     setAirLiftProbeDebug(cd.airLiftProbeDebug.default);
     airLiftProbeDebug.value = cd.airLiftProbeDebug.default;
     setZoomPointsDebug(cd.zoomPointsDebug.default);
@@ -720,6 +732,7 @@ export function useGameCanvasClientSettings({
     waterTriangleDebug,
     wallTriangleDebug,
     buildGridDebug,
+    pathingHierarchyDebug,
     airLiftProbeDebug,
     zoomPointsDebug,
     metalMap,
@@ -788,6 +801,7 @@ export function useGameCanvasClientSettings({
     toggleWaterTriangleDebug,
     toggleWallTriangleDebug,
     toggleBuildGridDebug,
+    togglePathingHierarchyDebug,
     toggleAirLiftProbeDebug,
     toggleZoomPointsDebug,
     toggleMetalMap,

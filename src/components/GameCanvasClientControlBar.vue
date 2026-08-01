@@ -682,6 +682,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleBuildGridDebug"
         >BUILD</BarButton>
         <BarButton
+          :active="model.pathingHierarchyDebug"
+          title="HIER - show level-1 pathfinding chunks: cyan boundaries, alternating chunk tint, and orange nominal center nodes"
+          @click="model.togglePathingHierarchyDebug"
+        >HIER</BarButton>
+        <BarButton
           :active="model.airLiftProbeDebug"
           title="PROBES - show authoritative force-tick lift probes; brown lines are active solid/support distances and blue lines are active exposed-water distances"
           @click="model.toggleAirLiftProbeDebug"

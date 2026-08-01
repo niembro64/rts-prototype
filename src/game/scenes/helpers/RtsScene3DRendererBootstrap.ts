@@ -134,6 +134,7 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.world,
     metalDeposits,
     terrainTileRenderer.getBuildGridOverlayUniforms(),
+    terrainTileRenderer.getPathfindingHierarchyOverlayUniforms(),
     worldShade,
   );
   const environmentPropRenderer = new EnvironmentPropRenderer3D(
