@@ -1,0 +1,49 @@
+SCALE-1000 — make 1,000 real units smooth at 30 Hz sim / 60 fps render.
+Measured 2026-07-31 (.tmp/performance-bottleneck-suite-observation-coalesced.json):
+sim-only stepMs p95 20.3 ms at 421 live units, 41.2 ms at 681, 109.5 ms at
+1,455; observed TPS 9.5 / 5.1 / 2.2 against 30. Diagnosis at every cap >=1000:
+"simulation, high confidence". GPU is healthy (11.4 ms p95 at 1,000). The
+bottleneck is the main-thread sim plus the snapshot round-trip. Work the items
+below in order; re-run `npm run performance:bottleneck -- --suite` after each
+and append the numbers here. Item numbers continue the pre-e5335070 ledger.
+
+[30]+[32] Delete the snapshot round-trip for local play (do these together;
+    they are the deferred A-D plan in optimization_for_deterministic_lockstep_
+    and_removal_of_authoritative_server.txt). Presentation packets build
+    directly from ServerSimulationCore after each catch-up pump; ClientViewState
+    /RtsScene3D consume them without MessagePack encode/decode; wire generation
+    stays behind a diagnostics flag. Snapshot main-thread cost measured at up
+    to 134 ms/s and clientApply p95 98.6 ms at 5,000 nominal — this is the
+    single largest single-item win available.
+
+[24][25][26][27] Finish slot-native hot loops (existing item text stands):
+    Simulation.updateUnits action loop to Rust batches [24]; UnitForceSystem
+    pack/scatter removal [25]; PhysicsEngine3D slot-native dirty-range sync
+    [26]; spatial queries fully native without JS Entity materialization [27].
+    Profile evidence 2026-07-31: findBeamSegmentHit 3.86% self,
+    supportSurfaceIndex.addOrUpdateEntity+rebuild 3.81%, applyAreaDamage
+    1.11%, GC 1.27%. physics.poolResolveSphereSphere grows superlinearly
+    (2.68 ms/call at 1,000 nominal -> 10.59 at 5,000): fix pair-count growth
+    (broadphase cell fit + early-out on sleeping pairs) as part of [26]/[27].
+
+[33] Sim in a Worker over SharedArrayBuffer. Prerequisite LANDED: vite dev+
+    preview now send Cross-Origin-Opener-Policy: same-origin and
+    Cross-Origin-Embedder-Policy: require-corp, so crossOriginIsolated is true
+    and SharedArrayBuffer is available (static hosts need a coi-serviceworker
+    shim; Tauri needs the same headers on its protocol handler). Move the
+    30 Hz ServerTickLoop + ServerSimulationCore + the WASM instance into a
+    dedicated Worker with WASM memory backed by SharedArrayBuffer; main thread
+    keeps render + input + Vue and reads presentation slabs through Atomics-
+    published tick fences. Do AFTER [30]+[32] (less state to share) and only
+    once [24]-[27] shrink the JS<->WASM chatter (fewer per-tick JS objects to
+    proxy across the boundary). Render must interpolate from the shared pose
+    history exactly as ClientLockstepPresentation does today.
+
+[34] Make the cheap render path real at scale. The 2026-07-31 suite ran with
+    renderPhaseUnitLodProxyRows = 0 — the glyph LOD never engaged, so every
+    benchmark unit drew a full EntityMesh3D group. (a) Add a zoomed-out camera
+    point to the harness matrix so glyph/far rungs are exercised; (b) then
+    [31] (existing text stands): render high-count units from stable GPU
+    instance buffers with dirty-range updates instead of per-unit Object3D
+    orchestration. Success: full-stack frameMs p95 <= 16.6 at 1,000 real units
+    at both camera points.
