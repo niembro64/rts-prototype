@@ -1966,6 +1966,24 @@
     </section>
 
     <section>
+      <h2>Relationship to Annihilation Plus Plus (the native flagship)</h2>
+      <p>
+        A native C++/Vulkan sibling, <code>../annihilation-plus-plus</code>, ships the same game on
+        Steam. The relationship is one game family, two products, one content plane &mdash; not two
+        mirrors. This project is the design lab and the free browser edition: gameplay, physics
+        feel, balance, and content are invented here first because iteration is fastest here. The
+        native project re-delivers the same played experience at several times the unit scale using
+        architecture this platform cannot express (real threads, explicit GPU control).
+      </p>
+      <ul class="rule-list">
+        <li><strong>Content is shared; implementations are not.</strong> Blueprints, configs, colors, LOD tables, and wire enums in this repo are canonical and are vendored/code-generated into the native build. Simulation code, renderers, and UI implementations diverge freely on each side.</li>
+        <li><strong>Behavioral parity, not bit parity.</strong> The two sims are numerically different by design (f64 + libm here; fixed-point + CORDIC there). Parity means a player cannot tell the rules apart, verified at milestone syncs &mdash; never byte-equality of state, wire, or pixels.</li>
+        <li><strong>This repo carries no reverse obligation.</strong> Nothing here may be blocked on, or contorted for, the native port. Parity debt is tracked and paid on the native side at its own sync cadence.</li>
+        <li><strong>The signature is the medium physics.</strong> Ground, hover, air, and water locomotion as per-unit force physics is the product&rsquo;s soul in both editions. Performance work on either side buys the physics more headroom; it never simplifies what the player can see.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>Atomic Gameplay Pieces</h2>
       <p>
         Gameplay should be built from small, atomic pieces that do one job and compose cleanly:

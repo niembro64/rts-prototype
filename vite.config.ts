@@ -7,6 +7,17 @@ import { resolve } from 'path';
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 const usePollingWatcher = process.env.RTS_WATCH_POLLING === '1';
 
+// SharedArrayBuffer prerequisite for the sim-in-worker roadmap (SCALE-1000):
+// the page must be crossOriginIsolated, which requires these two headers on
+// the document. require-corp (not credentialless) keeps Safari 16.4+ in the
+// supported set; every asset is same-origin so no subresource needs CORP.
+// Static hosts that cannot set response headers need a coi-serviceworker
+// shim at deploy time; dev and `vite preview` get the real headers here.
+const crossOriginIsolationHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
 export default defineConfig(({ command }) => {
   const isTauriBuild = isTauri && command === 'build';
   return {
@@ -18,19 +29,25 @@ export default defineConfig(({ command }) => {
           legalComments: 'none',
         }
       : undefined,
-    server: usePollingWatcher
-      ? {
-          watch: {
-            usePolling: true,
-            interval: 500,
-            ignored: [
-              '**/node_modules/**',
-              '**/dist/**',
-              '**/public/assets/environment-packs/**',
-            ],
-          },
-        }
-      : undefined,
+    server: {
+      headers: crossOriginIsolationHeaders,
+      ...(usePollingWatcher
+        ? {
+            watch: {
+              usePolling: true,
+              interval: 500,
+              ignored: [
+                '**/node_modules/**',
+                '**/dist/**',
+                '**/public/assets/environment-packs/**',
+              ],
+            },
+          }
+        : {}),
+    },
+    preview: {
+      headers: crossOriginIsolationHeaders,
+    },
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),
