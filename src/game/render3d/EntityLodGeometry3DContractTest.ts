@@ -1107,8 +1107,8 @@ function runEmissionPoseContracts(): void {
     'Low beam transparency matches the canonical outer beam layer',
   );
   assertContract(
-    BEAM_UPDATE_BUCKET_COUNT > 1,
-    'beam path updates use more than one stagger bucket',
+    BEAM_UPDATE_BUCKET_COUNT === 1,
+    'beam paths and live turret origins refresh every render frame',
   );
   const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
   for (let entityId = 1; entityId <= 256; entityId++) {

@@ -5806,6 +5806,46 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn damage_closest_body_segment_hit_fuses_spatial_query_and_shape_tests() {
+        let _guard = lock_tests();
+        spatial_init(10.0, 16);
+
+        spatial_set_entity_id(0, 100);
+        spatial_set_unit(0, 3.0, 0.0, 0.0, 1.0, 1.0, 1, 1);
+        spatial_set_entity_id(1, 101);
+        spatial_set_unit(1, 9.0, 0.0, 0.0, 1.0, 1.0, 2, 1);
+        spatial_set_entity_id(2, 200);
+        spatial_set_building(2, 6.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2, 1, 1);
+
+        assert_eq!(
+            damage_find_closest_body_segment_hit(0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 4.0, 0.0, -1, -1,),
+            100,
+        );
+        assert!((damage_closest_body_segment_hit_t() - (2.0 / 12.0)).abs() < 1e-12);
+
+        // Launch-style exclusion skips the unit body, exposing the nearer
+        // building before the second unit.
+        assert_eq!(
+            damage_find_closest_body_segment_hit(0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 4.0, 0.0, 100, -1,),
+            200,
+        );
+        assert!((damage_closest_body_segment_hit_t() - (5.0 / 12.0)).abs() < 1e-12);
+
+        // A panel index makes the reflected unit host eligible again.
+        assert_eq!(
+            damage_find_closest_body_segment_hit(0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 4.0, 0.0, 100, 0,),
+            100,
+        );
+
+        // Buildings remain excluded after a panel reflection.
+        spatial_unset_slot(0);
+        assert_eq!(
+            damage_find_closest_body_segment_hit(0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 4.0, 0.0, 200, 0,),
+            101,
+        );
+    }
+
+    #[test]
     pub(crate) fn damage_apply_batch_applies_unit_projectile_and_fortified_building_damage() {
         let enabled = [1_u8, 1, 1, 1];
         let kind = [

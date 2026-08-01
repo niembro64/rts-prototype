@@ -50,6 +50,8 @@ import __wbg_init, {
   death_explosion_planner_append_kills,
   death_explosion_planner_next,
   damage_apply_batch,
+  damage_closest_body_segment_hit_t,
+  damage_find_closest_body_segment_hit,
   damage_segment_candidates_batch,
   damage_segment_hits_batch,
   death_cleanup_diff_batch,
@@ -1203,6 +1205,23 @@ export interface SimWasm {
     outFlags: Uint8Array,
     outT: Float64Array,
   ) => number;
+  /** Beam hot path — spatially query live unit/building bodies and return the
+   *  closest exact sphere/AABB intersection without materializing candidate
+   *  slots across the WASM boundary. Returns the entity id, or -1 for none. */
+  readonly damageFindClosestBodySegmentHit: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    queryWidth: number,
+    sphereInflation: number,
+    bodyExcludeEntityId: number,
+    bodyExcludePanelIndex: number,
+  ) => number;
+  /** Parametric hit distance written by damageFindClosestBodySegmentHit. */
+  readonly damageClosestBodySegmentHitT: () => number;
   /** C1 — authoritative HP write-back math for damage. TypeScript
    *  gathers candidates and applies returned entity diffs; Rust owns
    *  target-kind adjustment, next HP, and kill classification. */
@@ -4247,6 +4266,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         deathExplosionPlannerAppendKills: death_explosion_planner_append_kills,
         deathExplosionPlannerNext: death_explosion_planner_next,
         damageApplyBatch: damage_apply_batch,
+        damageClosestBodySegmentHitT: damage_closest_body_segment_hit_t,
+        damageFindClosestBodySegmentHit: damage_find_closest_body_segment_hit,
         damageSegmentCandidatesBatch: damage_segment_candidates_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,
         deathCleanupDiffBatch: death_cleanup_diff_batch,

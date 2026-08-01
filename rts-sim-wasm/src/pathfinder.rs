@@ -106,8 +106,24 @@ pub(crate) struct PathfinderState {
     hierarchy_closed: Vec<u8>,
     hierarchy_heap: Vec<u32>,
     hierarchy_edge_cost: Vec<f32>,
-    hierarchy_edge_exact: Vec<u8>,
+    hierarchy_edge_from_cell: Vec<i32>,
+    hierarchy_edge_to_cell: Vec<i32>,
     hierarchy_path: Vec<u32>,
+    // Query-local transition caches. Cell passability is revisited from many
+    // incoming edges, especially for diagonal neighbors; 0 = unknown,
+    // 1 = blocked, 2 = passable. Touched lists let each query clear only the
+    // cells it actually inspected instead of sweeping a huge open map.
+    move_passability_cache: Vec<u8>,
+    move_passability_touched: Vec<u32>,
+    waypoint_passability_cache: Vec<u8>,
+    waypoint_passability_touched: Vec<u32>,
+    // Exact directed-neighbor costs traced by direct LOS, hierarchy
+    // refinement, and string pulling. Fine A* evaluates its mostly-unique
+    // outgoing edges directly, avoiding a hash lookup on every expansion.
+    line_transition_cost_cache: HashMap<u64, f32>,
+    line_transition_cache_enabled: bool,
+    line_transition_cache_hits: u32,
+    line_transition_cache_misses: u32,
     // BFS scratch
     bfs_queue: Vec<u32>,
 
@@ -143,6 +159,11 @@ pub(crate) struct PathfinderState {
     /// domain only prevents a body that is already in its intended medium
     /// from voluntarily entering a recovery-only medium.
     cur_waypoint_traversal: PathfinderTraversal,
+    /// True when MOVE and WAYPOINT classify every cell identically. Ordinary
+    /// ground/air/water units take this path and avoid two redundant waypoint
+    /// passability evaluations for every directed edge. Recovery-only medium
+    /// transitions keep the full directed-domain rule.
+    cur_waypoint_matches_move_domain: bool,
 
     // Cache key — invalidated on terrain/grid-dimension change.
     terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
@@ -237,6 +258,22 @@ impl PathfinderTraversal {
         }
         pathfinder_required_normal_z(water_required as f32)
     }
+}
+
+#[inline]
+fn pathfinder_traversal_cell_domain_equivalent(
+    left: PathfinderTraversal,
+    right: PathfinderTraversal,
+) -> bool {
+    // These are precisely the traversal fields consumed by cell passability.
+    // Compare normalized ground requirements so two unfiltered NaN inputs are
+    // still recognized as the same effective domain.
+    left.allow_ground == right.allow_ground
+        && left.allow_water == right.allow_water
+        && left.allow_air == right.allow_air
+        && pathfinder_required_normal_z(left.min_ground_normal_z)
+            == pathfinder_required_normal_z(right.min_ground_normal_z)
+        && left.wet_contact_required_normal_z == right.wet_contact_required_normal_z
 }
 
 /// Query-local route objective, deliberately independent of locomotion rig
@@ -355,8 +392,17 @@ impl PathfinderState {
             hierarchy_closed: Vec::new(),
             hierarchy_heap: Vec::new(),
             hierarchy_edge_cost: Vec::new(),
-            hierarchy_edge_exact: Vec::new(),
+            hierarchy_edge_from_cell: Vec::new(),
+            hierarchy_edge_to_cell: Vec::new(),
             hierarchy_path: Vec::new(),
+            move_passability_cache: Vec::new(),
+            move_passability_touched: Vec::new(),
+            waypoint_passability_cache: Vec::new(),
+            waypoint_passability_touched: Vec::new(),
+            line_transition_cost_cache: HashMap::default(),
+            line_transition_cache_enabled: false,
+            line_transition_cache_hits: 0,
+            line_transition_cache_misses: 0,
             bfs_queue: Vec::new(),
             cur_required_clearance: 0,
             cur_symmetric_slope: false,
@@ -377,6 +423,7 @@ impl PathfinderState {
                 wet_contact_required_normal_z: 0.0,
             }
             .derived(),
+            cur_waypoint_matches_move_domain: false,
             terrain_only_key: u64::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
@@ -501,8 +548,19 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.hierarchy_closed.clear();
     state.hierarchy_heap.clear();
     state.hierarchy_edge_cost.clear();
-    state.hierarchy_edge_exact.clear();
+    state.hierarchy_edge_from_cell.clear();
+    state.hierarchy_edge_to_cell.clear();
     state.hierarchy_path.clear();
+    state.move_passability_cache.clear();
+    state.move_passability_cache.resize(n, 0);
+    state.move_passability_touched.clear();
+    state.waypoint_passability_cache.clear();
+    state.waypoint_passability_cache.resize(n, 0);
+    state.waypoint_passability_touched.clear();
+    state.line_transition_cost_cache.clear();
+    state.line_transition_cache_enabled = false;
+    state.line_transition_cache_hits = 0;
+    state.line_transition_cache_misses = 0;
     state.path_scratch.clear();
     state.bfs_queue.clear();
     state.bfs_queue.resize(n, 0);
@@ -1239,6 +1297,45 @@ fn pathfinder_is_cell_passable_impl(
     true
 }
 
+fn pathfinder_begin_query_transition_cache(state: &mut PathfinderState) {
+    while let Some(idx) = state.move_passability_touched.pop() {
+        state.move_passability_cache[idx as usize] = 0;
+    }
+    while let Some(idx) = state.waypoint_passability_touched.pop() {
+        state.waypoint_passability_cache[idx as usize] = 0;
+    }
+    state.line_transition_cost_cache.clear();
+    state.line_transition_cache_enabled = false;
+    state.line_transition_cache_hits = 0;
+    state.line_transition_cache_misses = 0;
+}
+
+#[inline]
+fn pathfinder_cached_cell_passable(
+    state: &mut PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+    waypoint_domain: bool,
+) -> bool {
+    let cached = if waypoint_domain {
+        state.waypoint_passability_cache[idx]
+    } else {
+        state.move_passability_cache[idx]
+    };
+    if cached != 0 {
+        return cached == 2;
+    }
+    let passable = pathfinder_is_cell_passable(state, idx, traversal);
+    if waypoint_domain {
+        state.waypoint_passability_cache[idx] = if passable { 2 } else { 1 };
+        state.waypoint_passability_touched.push(idx as u32);
+    } else {
+        state.move_passability_cache[idx] = if passable { 2 } else { 1 };
+        state.move_passability_touched.push(idx as u32);
+    }
+    passable
+}
+
 /// Planner-side estimate of the runtime's displaced-volume thrust weighting
 /// (`unit_force_water_fraction`): a sphere of the query's collision radius
 /// with its center at the body's resting height above the cell's bed —
@@ -1512,19 +1609,20 @@ fn pathfinder_precomputed_transition_normal_z(
 }
 
 #[inline]
-pub(crate) fn pathfinder_can_step_height_delta(
+fn pathfinder_step_height_forces(
     state: &PathfinderState,
     from_idx: usize,
     to_idx: usize,
     traversal: PathfinderTraversal,
-) -> bool {
+    eagerly_compute_forces: bool,
+) -> Option<Option<PathfinderBedEdgeForces>> {
     if traversal.allow_air {
-        return true;
+        return Some(None);
     }
     let from_h = state.terrain_height[from_idx] as f64;
     let to_h = state.terrain_height[to_idx] as f64;
     if !from_h.is_finite() || !to_h.is_finite() {
-        return false;
+        return None;
     }
     // Each medium owns its own mass/force-derived contact envelope. A
     // fluid-supported water cell reports zero and therefore ignores lakebed
@@ -1535,7 +1633,7 @@ pub(crate) fn pathfinder_can_step_height_delta(
     if state.terrain_normal_z[from_idx] < from_required_normal_z
         || state.terrain_normal_z[to_idx] < to_required_normal_z
     {
-        return false;
+        return None;
     }
     let from_i32 = from_idx as i32;
     let to_i32 = to_idx as i32;
@@ -1547,7 +1645,7 @@ pub(crate) fn pathfinder_can_step_height_delta(
     let dy = (to_gy - from_gy) as f64;
     let horizontal = (dx * dx + dy * dy).sqrt() * PATHFINDER_BUILD_GRID_CELL_SIZE;
     if horizontal <= 1.0e-9 {
-        return true;
+        return Some(None);
     }
     let center_dz = to_h - from_h;
 
@@ -1561,8 +1659,10 @@ pub(crate) fn pathfinder_can_step_height_delta(
     // edges steep enough that a fully lateral hold might not fit the budget.
     let min_cell_normal_z = (state.terrain_normal_z[from_idx] as f64)
         .min(state.terrain_normal_z[to_idx] as f64);
-    if min_cell_normal_z < state.cur_lateral_skip_normal_z {
-        if let Some(forces) = pathfinder_bed_edge_forces(
+    let forces = if eagerly_compute_forces
+        || min_cell_normal_z < state.cur_lateral_skip_normal_z
+    {
+        pathfinder_bed_edge_forces(
             state,
             from_idx,
             to_idx,
@@ -1573,7 +1673,12 @@ pub(crate) fn pathfinder_can_step_height_delta(
             traversal.safe_ground_accel,
             traversal.static_friction_coefficient,
             traversal.safe_water_drive_accel,
-        ) {
+        )
+    } else {
+        None
+    };
+    if min_cell_normal_z < state.cur_lateral_skip_normal_z {
+        if let Some(forces) = forces {
             // A query that authors no tangent envelope at all (zero accel and
             // friction — capability probes, unconstrained test traversals)
             // keeps the legacy unconstrained legality, mirroring
@@ -1581,7 +1686,7 @@ pub(crate) fn pathfinder_can_step_height_delta(
             if forces.total_tangent_budget > 0.0
                 && forces.lateral_hold_accel >= forces.total_tangent_budget
             {
-                return false;
+                return None;
             }
         }
     }
@@ -1599,19 +1704,23 @@ pub(crate) fn pathfinder_can_step_height_delta(
     if center_dz <= 0.0 && !state.cur_symmetric_slope {
         let hold_normal_z = state.cur_descent_hold_normal_z;
         if hold_normal_z <= 0.0 {
-            return true;
+            return Some(forces);
         }
         let transition_normal_z =
             pathfinder_precomputed_transition_normal_z(state, from_gx, from_gy, to_gx, to_gy);
         if transition_normal_z < hold_normal_z {
-            return false;
+            return None;
         }
         if center_dz == 0.0 {
-            return true;
+            return Some(forces);
         }
         let center_normal_z =
             horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
-        return center_normal_z >= hold_normal_z;
+        return if center_normal_z >= hold_normal_z {
+            Some(forces)
+        } else {
+            None
+        };
     }
     let required_normal_z = from_required_normal_z.max(to_required_normal_z);
     let center_abs_dz = if state.cur_symmetric_slope {
@@ -1627,9 +1736,25 @@ pub(crate) fn pathfinder_can_step_height_delta(
     // a blocked edge instead of smearing it over either neighboring square.
     let transition_normal_z =
         pathfinder_precomputed_transition_normal_z(state, from_gx, from_gy, to_gx, to_gy);
-    center_normal_z.min(transition_normal_z) >= required_normal_z as f64
+    if center_normal_z.min(transition_normal_z) >= required_normal_z as f64 {
+        Some(forces)
+    } else {
+        None
+    }
 }
 
+#[inline]
+#[cfg(test)]
+pub(crate) fn pathfinder_can_step_height_delta(
+    state: &PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    traversal: PathfinderTraversal,
+) -> bool {
+    pathfinder_step_height_forces(state, from_idx, to_idx, traversal, false).is_some()
+}
+
+#[cfg(test)]
 pub(crate) fn pathfinder_can_step_between(
     state: &PathfinderState,
     from_idx: usize,
@@ -1639,7 +1764,8 @@ pub(crate) fn pathfinder_can_step_between(
     // Directed recovery rule: an externally displaced body may move through
     // physically traversable recovery-only cells and enter its waypoint
     // domain, but once inside that intended domain it may not route back out.
-    if pathfinder_is_cell_passable(state, from_idx, state.cur_waypoint_traversal)
+    if !state.cur_waypoint_matches_move_domain
+        && pathfinder_is_cell_passable(state, from_idx, state.cur_waypoint_traversal)
         && !pathfinder_is_cell_passable(state, to_idx, state.cur_waypoint_traversal)
     {
         return false;
@@ -1651,6 +1777,81 @@ pub(crate) fn pathfinder_can_step_between(
 }
 
 #[inline]
+fn pathfinder_step_between_cached_forces(
+    state: &mut PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    traversal: PathfinderTraversal,
+    eagerly_compute_forces: bool,
+) -> Option<Option<PathfinderBedEdgeForces>> {
+    if !state.cur_waypoint_matches_move_domain {
+        let waypoint_traversal = state.cur_waypoint_traversal;
+        let from_is_waypoint = pathfinder_cached_cell_passable(
+            state,
+            from_idx,
+            waypoint_traversal,
+            true,
+        );
+        if from_is_waypoint
+            && !pathfinder_cached_cell_passable(
+                state,
+                to_idx,
+                waypoint_traversal,
+                true,
+            )
+        {
+            return None;
+        }
+    }
+    if !pathfinder_cached_cell_passable(state, to_idx, traversal, false) {
+        return None;
+    }
+    pathfinder_step_height_forces(
+        state,
+        from_idx,
+        to_idx,
+        traversal,
+        eagerly_compute_forces,
+    )
+}
+
+#[inline]
+fn pathfinder_can_step_between_cached(
+    state: &mut PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    traversal: PathfinderTraversal,
+) -> bool {
+    pathfinder_step_between_cached_forces(state, from_idx, to_idx, traversal, false).is_some()
+}
+
+#[inline]
+fn pathfinder_can_step_neighbor_cached(
+    state: &mut PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+) -> bool {
+    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
+    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
+    if !pathfinder_can_step_between_cached(state, from_idx, to_idx, traversal) {
+        return false;
+    }
+    let dx = to_gx - from_gx;
+    let dy = to_gy - from_gy;
+    if dx == 0 || dy == 0 {
+        return true;
+    }
+    let side_x_idx = (from_gy * state.grid_w + to_gx) as usize;
+    let side_y_idx = (to_gy * state.grid_w + from_gx) as usize;
+    pathfinder_can_step_between_cached(state, from_idx, side_x_idx, traversal)
+        && pathfinder_can_step_between_cached(state, from_idx, side_y_idx, traversal)
+}
+
+#[inline]
+#[cfg(test)]
 pub(crate) fn pathfinder_can_step_neighbor(
     state: &PathfinderState,
     from_gx: i32,
@@ -1695,6 +1896,7 @@ fn pathfinder_clearance_at(
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct PathfinderBedEdgeForces {
     pub surface_distance: f64,
     pub uphill_sine: f64,
@@ -1774,37 +1976,15 @@ pub(crate) fn pathfinder_bed_edge_forces(
 /// the route. Fluid-supported water ignores lakebed geometry. A downhill edge
 /// receives no speculative speed bonus, keeping octile distance admissible.
 #[inline]
-pub(crate) fn pathfinder_edge_cost(
+fn pathfinder_edge_cost_from_forces(
     state: &PathfinderState,
-    from_gx: i32,
-    from_gy: i32,
-    to_gx: i32,
-    to_gy: i32,
+    to_idx: usize,
+    horizontal_cells: f64,
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
+    forces: Option<PathfinderBedEdgeForces>,
 ) -> f32 {
-    let dx = (to_gx - from_gx) as f64;
-    let dy = (to_gy - from_gy) as f64;
-    let horizontal_cells = (dx * dx + dy * dy).sqrt();
-    if horizontal_cells <= 0.0 {
-        return 0.0;
-    }
-    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
-    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
     let mut travel_cost = horizontal_cells;
-
-    let forces = pathfinder_bed_edge_forces(
-        state,
-        from_idx,
-        to_idx,
-        horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
-        traversal.allow_air,
-        traversal.allow_ground,
-        traversal.water_surface_supported,
-        cost_profile.safe_drive_accel,
-        cost_profile.static_friction_coefficient,
-        cost_profile.safe_water_drive_accel,
-    );
     if let Some(forces) = forces {
         let has_contact_accel = if forces.wet_edge {
             cost_profile.flat_water_contact_accel > 0.0
@@ -1859,6 +2039,185 @@ pub(crate) fn pathfinder_edge_cost(
         }
     }
     travel_cost.min(f32::MAX as f64) as f32
+}
+
+#[inline]
+#[cfg(test)]
+pub(crate) fn pathfinder_edge_cost(
+    state: &PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> f32 {
+    let dx = (to_gx - from_gx) as f64;
+    let dy = (to_gy - from_gy) as f64;
+    let horizontal_cells = (dx * dx + dy * dy).sqrt();
+    if horizontal_cells <= 0.0 {
+        return 0.0;
+    }
+    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
+    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
+    let forces = pathfinder_bed_edge_forces(
+        state,
+        from_idx,
+        to_idx,
+        horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
+        traversal.allow_air,
+        traversal.allow_ground,
+        traversal.water_surface_supported,
+        cost_profile.safe_drive_accel,
+        cost_profile.static_friction_coefficient,
+        cost_profile.safe_water_drive_accel,
+    );
+    pathfinder_edge_cost_from_forces(
+        state,
+        to_idx,
+        horizontal_cells,
+        traversal,
+        cost_profile,
+        forces,
+    )
+}
+
+#[inline]
+fn pathfinder_force_profiles_match(
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> bool {
+    traversal.safe_ground_accel.to_bits() == cost_profile.safe_drive_accel.to_bits()
+        && traversal.safe_water_drive_accel.to_bits()
+            == cost_profile.safe_water_drive_accel.to_bits()
+        && traversal.static_friction_coefficient.to_bits()
+            == cost_profile.static_friction_coefficient.to_bits()
+}
+
+/// Evaluate one directed neighboring move and its cost as a single operation.
+/// The primary edge's force geometry feeds both legality and travel-time cost,
+/// eliminating the duplicate square roots and water-force work that formerly
+/// occurred in `can_step_neighbor` followed by `edge_cost`.
+#[inline]
+fn pathfinder_neighbor_cost_uncached(
+    state: &mut PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> Option<f32> {
+    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
+    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
+    let legality_forces = pathfinder_step_between_cached_forces(
+        state,
+        from_idx,
+        to_idx,
+        traversal,
+        true,
+    )?;
+    let dx = to_gx - from_gx;
+    let dy = to_gy - from_gy;
+    if dx != 0 && dy != 0 {
+        // Preserve exact supercover corner rules: a diagonal is legal only
+        // when both cardinal side cells can be entered from the source.
+        let side_x_idx = (from_gy * state.grid_w + to_gx) as usize;
+        let side_y_idx = (to_gy * state.grid_w + from_gx) as usize;
+        if !pathfinder_can_step_between_cached(state, from_idx, side_x_idx, traversal)
+            || !pathfinder_can_step_between_cached(state, from_idx, side_y_idx, traversal)
+        {
+            return None;
+        }
+    }
+    let horizontal_cells = ((dx * dx + dy * dy) as f64).sqrt();
+    let forces = if pathfinder_force_profiles_match(traversal, cost_profile) {
+        legality_forces
+    } else {
+        pathfinder_bed_edge_forces(
+            state,
+            from_idx,
+            to_idx,
+            horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
+            traversal.allow_air,
+            traversal.allow_ground,
+            traversal.water_surface_supported,
+            cost_profile.safe_drive_accel,
+            cost_profile.static_friction_coefficient,
+            cost_profile.safe_water_drive_accel,
+        )
+    };
+    Some(pathfinder_edge_cost_from_forces(
+        state,
+        to_idx,
+        horizontal_cells,
+        traversal,
+        cost_profile,
+        forces,
+    ))
+}
+
+#[inline]
+fn pathfinder_neighbor_direction(dx: i32, dy: i32) -> Option<u64> {
+    match (dx, dy) {
+        (1, 0) => Some(0),
+        (-1, 0) => Some(1),
+        (0, 1) => Some(2),
+        (0, -1) => Some(3),
+        (1, 1) => Some(4),
+        (1, -1) => Some(5),
+        (-1, 1) => Some(6),
+        (-1, -1) => Some(7),
+        _ => None,
+    }
+}
+
+#[inline]
+fn pathfinder_line_neighbor_cost(
+    state: &mut PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> Option<f32> {
+    // The first straight-line probe is the overwhelmingly common open-field
+    // fast path and usually returns immediately, so do not pay HashMap
+    // insertion cost for edges that will never be revisited. Hierarchy and
+    // string pulling enable the cache only after that direct probe fails.
+    if !state.line_transition_cache_enabled {
+        return pathfinder_neighbor_cost_uncached(
+            state,
+            from_gx,
+            from_gy,
+            to_gx,
+            to_gy,
+            traversal,
+            cost_profile,
+        );
+    }
+    let direction = pathfinder_neighbor_direction(to_gx - from_gx, to_gy - from_gy)?;
+    let from_idx = (from_gy * state.grid_w + from_gx) as u64;
+    let key = (from_idx << 3) | direction;
+    if let Some(cached) = state.line_transition_cost_cache.get(&key).copied() {
+        state.line_transition_cache_hits = state.line_transition_cache_hits.saturating_add(1);
+        return if cached.is_finite() { Some(cached) } else { None };
+    }
+    state.line_transition_cache_misses = state.line_transition_cache_misses.saturating_add(1);
+    let cost = pathfinder_neighbor_cost_uncached(
+        state,
+        from_gx,
+        from_gy,
+        to_gx,
+        to_gy,
+        traversal,
+        cost_profile,
+    );
+    state
+        .line_transition_cost_cache
+        .insert(key, cost.unwrap_or(f32::INFINITY));
+    cost
 }
 
 pub(crate) fn pathfinder_find_nearest_open(
@@ -2097,14 +2456,21 @@ pub(crate) fn pathfinder_a_star(
             }
             let nidx = (ny * grid_w + nx) as usize;
             pathfinder_touch_a_star_cell(state, nidx);
-            if !pathfinder_can_step_neighbor(state, cgx, cgy, nx, ny, traversal) {
-                continue;
-            }
             if state.closed[nidx] != 0 {
                 continue;
             }
-            let tentative = state.g_score[cur_us]
-                + pathfinder_edge_cost(state, cgx, cgy, nx, ny, traversal, cost_profile);
+            let Some(step_cost) = pathfinder_neighbor_cost_uncached(
+                state,
+                cgx,
+                cgy,
+                nx,
+                ny,
+                traversal,
+                cost_profile,
+            ) else {
+                continue;
+            };
+            let tentative = state.g_score[cur_us] + step_cost;
             if tentative < state.g_score[nidx] {
                 state.parent[nidx] = cur as i32;
                 state.g_score[nidx] = tentative;
@@ -2153,7 +2519,7 @@ pub(crate) fn pathfinder_a_star(
 /// smoothing. Returning its cost keeps path legality and route quality on one
 /// traversal primitive; `None` means the segment is illegal.
 pub(crate) fn pathfinder_line_cost(
-    state: &PathfinderState,
+    state: &mut PathfinderState,
     x0: f64,
     y0: f64,
     x1: f64,
@@ -2198,10 +2564,15 @@ pub(crate) fn pathfinder_line_cost(
         if next_gx < 0 || next_gy < 0 || next_gx >= state.grid_w || next_gy >= state.grid_h {
             return None;
         }
-        if !pathfinder_can_step_neighbor(state, gx, gy, next_gx, next_gy, traversal) {
-            return None;
-        }
-        cost += pathfinder_edge_cost(state, gx, gy, next_gx, next_gy, traversal, cost_profile);
+        cost += pathfinder_line_neighbor_cost(
+            state,
+            gx,
+            gy,
+            next_gx,
+            next_gy,
+            traversal,
+            cost_profile,
+        )?;
         gx = next_gx;
         gy = next_gy;
     }
@@ -2210,7 +2581,7 @@ pub(crate) fn pathfinder_line_cost(
 
 #[inline]
 pub(crate) fn pathfinder_has_los(
-    state: &PathfinderState,
+    state: &mut PathfinderState,
     x0: f64,
     y0: f64,
     x1: f64,
@@ -2342,7 +2713,7 @@ fn pathfinder_hierarchy_resolve_node_cell(
     let center_gx = (min_gx + max_gx - 1) / 2;
     let center_gy = (min_gy + max_gy - 1) / 2;
     let center_cell = center_gy * state.grid_w + center_gx;
-    if pathfinder_is_cell_passable(state, center_cell as usize, traversal) {
+    if pathfinder_cached_cell_passable(state, center_cell as usize, traversal, false) {
         state.hierarchy_node_cell[node_idx] = center_cell;
         return Some(center_cell);
     }
@@ -2352,7 +2723,7 @@ fn pathfinder_hierarchy_resolve_node_cell(
     for gy in min_gy..max_gy {
         for gx in min_gx..max_gx {
             let fine_idx = gy * state.grid_w + gx;
-            if !pathfinder_is_cell_passable(state, fine_idx as usize, traversal) {
+            if !pathfinder_cached_cell_passable(state, fine_idx as usize, traversal, false) {
                 continue;
             }
             let dx = gx - center_gx;
@@ -2403,6 +2774,123 @@ fn pathfinder_hierarchy_heuristic(x: f64, y: f64, goal_x: f64, goal_y: f64) -> f
     ((dx * dx + dy * dy).sqrt() / PATHFINDER_BUILD_GRID_CELL_SIZE) as f32
 }
 
+/// Find a deterministic fine-grid portal across the shared boundary of two
+/// adjacent hierarchy chunks. Candidates are checked from the boundary center
+/// outward so open terrain stays cheap while off-center passes through long
+/// walls remain discoverable. Retaining the actual cells is essential: merely
+/// knowing that a boundary has an opening and then refining center-to-center
+/// can still draw the exact route through the blocked part of that boundary.
+fn pathfinder_hierarchy_boundary_transition(
+    state: &mut PathfinderState,
+    from: u32,
+    to: u32,
+    traversal: PathfinderTraversal,
+) -> Option<(i32, i32)> {
+    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let from_cx = from as i32 % state.hierarchy_grid_w;
+    let from_cy = from as i32 / state.hierarchy_grid_w;
+    let to_cx = to as i32 % state.hierarchy_grid_w;
+    let to_cy = to as i32 / state.hierarchy_grid_w;
+    let dx = to_cx - from_cx;
+    let dy = to_cy - from_cy;
+
+    let from_min_x = from_cx * cluster_size;
+    let from_min_y = from_cy * cluster_size;
+    let from_max_x = ((from_cx + 1) * cluster_size).min(state.grid_w);
+    let from_max_y = ((from_cy + 1) * cluster_size).min(state.grid_h);
+    let to_min_x = to_cx * cluster_size;
+    let to_min_y = to_cy * cluster_size;
+    let to_max_x = ((to_cx + 1) * cluster_size).min(state.grid_w);
+    let to_max_y = ((to_cy + 1) * cluster_size).min(state.grid_h);
+
+    match (dx, dy) {
+        (1, 0) | (-1, 0) => {
+            let (from_gx, to_gx) = if dx > 0 {
+                (from_max_x - 1, to_min_x)
+            } else {
+                (from_min_x, to_max_x - 1)
+            };
+            let min_gy = from_min_y.max(to_min_y);
+            let max_gy = from_max_y.min(to_max_y);
+            let center_gy = (min_gy + max_gy - 1) / 2;
+            for offset in 0..(max_gy - min_gy) {
+                let gy = if offset == 0 {
+                    center_gy
+                } else if offset & 1 == 1 {
+                    center_gy - (offset + 1) / 2
+                } else {
+                    center_gy + offset / 2
+                };
+                if gy < min_gy || gy >= max_gy {
+                    continue;
+                }
+                if pathfinder_can_step_neighbor_cached(
+                    state, from_gx, gy, to_gx, gy, traversal,
+                ) {
+                    return Some((
+                        gy * state.grid_w + from_gx,
+                        gy * state.grid_w + to_gx,
+                    ));
+                }
+            }
+            None
+        }
+        (0, 1) | (0, -1) => {
+            let (from_gy, to_gy) = if dy > 0 {
+                (from_max_y - 1, to_min_y)
+            } else {
+                (from_min_y, to_max_y - 1)
+            };
+            let min_gx = from_min_x.max(to_min_x);
+            let max_gx = from_max_x.min(to_max_x);
+            let center_gx = (min_gx + max_gx - 1) / 2;
+            for offset in 0..(max_gx - min_gx) {
+                let gx = if offset == 0 {
+                    center_gx
+                } else if offset & 1 == 1 {
+                    center_gx - (offset + 1) / 2
+                } else {
+                    center_gx + offset / 2
+                };
+                if gx < min_gx || gx >= max_gx {
+                    continue;
+                }
+                if pathfinder_can_step_neighbor_cached(
+                    state, gx, from_gy, gx, to_gy, traversal,
+                ) {
+                    return Some((
+                        from_gy * state.grid_w + gx,
+                        to_gy * state.grid_w + gx,
+                    ));
+                }
+            }
+            None
+        }
+        (1, 1) | (1, -1) | (-1, 1) | (-1, -1) => {
+            let from_gx = if dx > 0 { from_max_x - 1 } else { from_min_x };
+            let to_gx = if dx > 0 { to_min_x } else { to_max_x - 1 };
+            let from_gy = if dy > 0 { from_max_y - 1 } else { from_min_y };
+            let to_gy = if dy > 0 { to_min_y } else { to_max_y - 1 };
+            if pathfinder_can_step_neighbor_cached(
+                state,
+                from_gx,
+                from_gy,
+                to_gx,
+                to_gy,
+                traversal,
+            ) {
+                Some((
+                    from_gy * state.grid_w + from_gx,
+                    to_gy * state.grid_w + to_gx,
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 fn pathfinder_hierarchy_edge_cost(
     state: &mut PathfinderState,
     from: u32,
@@ -2426,6 +2914,14 @@ fn pathfinder_hierarchy_edge_cost(
             None
         };
     }
+    let Some((portal_from, portal_to)) =
+        pathfinder_hierarchy_boundary_transition(state, from, to, traversal)
+    else {
+        state.hierarchy_edge_cost[slot] = f32::INFINITY;
+        return None;
+    };
+    state.hierarchy_edge_from_cell[slot] = portal_from;
+    state.hierarchy_edge_to_cell[slot] = portal_to;
     let from_position = pathfinder_hierarchy_node_position(
         state, from, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
     );
@@ -2439,9 +2935,6 @@ fn pathfinder_hierarchy_edge_cost(
         _ => None,
     };
     state.hierarchy_edge_cost[slot] = cost.unwrap_or(f32::INFINITY);
-    if cost.is_none() {
-        state.hierarchy_edge_exact[slot] = 1;
-    }
     cost
 }
 
@@ -2458,10 +2951,10 @@ fn pathfinder_hierarchy_direction(state: &PathfinderState, from: u32, to: u32) -
     })
 }
 
-/// Replace lower-bound costs on one candidate abstract path with exact
-/// fine-grid line costs. Invalid segments become permanently blocked for this
-/// query. The caller can then rerun coarse A* cheaply with the refined edge
-/// costs, which is the LazySP form of hierarchical path refinement.
+/// Refine one candidate abstract path through the concrete boundary portals
+/// retained for its edges. Invalid approaches become blocked abstract edges
+/// for this query so coarse A* can cheaply seek another route. A successful
+/// result is already an exact, legal fine-grid chain suitable for smoothing.
 fn pathfinder_hierarchy_refine_candidate(
     state: &mut PathfinderState,
     start_node: u32,
@@ -2472,57 +2965,99 @@ fn pathfinder_hierarchy_refine_candidate(
     goal_y: f64,
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
-) -> (Option<f32>, bool) {
+) -> (Option<(f32, Vec<u32>)>, bool) {
     let mut total_cost = 0.0f32;
-    let mut updated = false;
-    let mut valid = true;
+    let mut fine_path = Vec::with_capacity(state.hierarchy_path.len() * 2 + 1);
+    let mut current_x = start_x;
+    let mut current_y = start_y;
     let mut from = start_node;
+    let mut last_slot = None;
     for path_index in 0..state.hierarchy_path.len() {
         let to = state.hierarchy_path[path_index];
         let Some(direction) = pathfinder_hierarchy_direction(state, from, to) else {
-            return (None, updated);
+            return (None, false);
         };
         let slot = from as usize * 8 + direction;
-        if state.hierarchy_edge_exact[slot] == 0 {
-            state.last_coarse_exact_edge_checks += 1;
-            let from_position = pathfinder_hierarchy_node_position(
-                state, from, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
-            );
-            let to_position = pathfinder_hierarchy_node_position(
-                state, to, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
-            );
-            let exact_cost = match (from_position, to_position) {
-                (Some((from_x, from_y)), Some((to_x, to_y))) => pathfinder_line_cost(
-                    state,
-                    from_x,
-                    from_y,
-                    to_x,
-                    to_y,
-                    traversal,
-                    cost_profile,
-                ),
-                _ => None,
-            };
-            state.hierarchy_edge_cost[slot] = exact_cost.unwrap_or(f32::INFINITY);
-            state.hierarchy_edge_exact[slot] = 1;
-            updated = true;
+        let portal_from = state.hierarchy_edge_from_cell[slot];
+        let portal_to = state.hierarchy_edge_to_cell[slot];
+        if portal_from < 0 || portal_to < 0 {
+            state.hierarchy_edge_cost[slot] = f32::INFINITY;
+            return (None, true);
         }
-        let cost = state.hierarchy_edge_cost[slot];
-        if !cost.is_finite() {
-            valid = false;
-        } else {
-            total_cost += cost;
+
+        let portal_from_gx = portal_from % state.grid_w;
+        let portal_from_gy = portal_from / state.grid_w;
+        let portal_to_gx = portal_to % state.grid_w;
+        let portal_to_gy = portal_to / state.grid_w;
+        let portal_from_position = pathfinder_cell_center(portal_from_gx, portal_from_gy);
+        let portal_to_position = pathfinder_cell_center(portal_to_gx, portal_to_gy);
+
+        state.last_coarse_exact_edge_checks += 1;
+        let Some(approach_cost) = pathfinder_line_cost(
+            state,
+            current_x,
+            current_y,
+            portal_from_position.0,
+            portal_from_position.1,
+            traversal,
+            cost_profile,
+        ) else {
+            state.hierarchy_edge_cost[slot] = f32::INFINITY;
+            return (None, true);
+        };
+        state.last_coarse_exact_edge_checks += 1;
+        let Some(crossing_cost) = pathfinder_line_cost(
+            state,
+            portal_from_position.0,
+            portal_from_position.1,
+            portal_to_position.0,
+            portal_to_position.1,
+            traversal,
+            cost_profile,
+        ) else {
+            state.hierarchy_edge_cost[slot] = f32::INFINITY;
+            return (None, true);
+        };
+        total_cost += approach_cost + crossing_cost;
+        for portal in [portal_from as u32, portal_to as u32] {
+            if fine_path.last().copied() != Some(portal) {
+                fine_path.push(portal);
+            }
         }
+        current_x = portal_to_position.0;
+        current_y = portal_to_position.1;
+        last_slot = Some(slot);
         from = to;
     }
     debug_assert_eq!(from, goal_node);
-    (if valid { Some(total_cost) } else { None }, updated)
+    state.last_coarse_exact_edge_checks += 1;
+    let Some(goal_cost) = pathfinder_line_cost(
+        state,
+        current_x,
+        current_y,
+        goal_x,
+        goal_y,
+        traversal,
+        cost_profile,
+    ) else {
+        if let Some(slot) = last_slot {
+            state.hierarchy_edge_cost[slot] = f32::INFINITY;
+            return (None, true);
+        }
+        return (None, false);
+    };
+    total_cost += goal_cost;
+    let goal_cell = state.hierarchy_node_cell[goal_node as usize];
+    if goal_cell >= 0 && fine_path.last().copied() != Some(goal_cell as u32) {
+        fine_path.push(goal_cell as u32);
+    }
+    (Some((total_cost, fine_path)), false)
 }
 
-/// Search a sparse level-1 graph for long routes. Coarse A* starts with
-/// geometric lower bounds, then exact-validates only the edges on each
-/// candidate route and reruns with those refined costs. Returned routes are
-/// therefore fully legal even though unselected abstract edges stay cheap.
+/// Search a sparse level-1 graph for long routes. Coarse A* uses geometric
+/// lower bounds and exact directed boundary connectivity, then refines a
+/// candidate through those boundary portals. Returned routes are fully legal
+/// even though unselected abstract edges stay cheap.
 fn pathfinder_hierarchical_a_star(
     state: &mut PathfinderState,
     start_gx: i32,
@@ -2562,8 +3097,10 @@ fn pathfinder_hierarchical_a_star(
     state.hierarchy_closed.resize(node_count, 0);
     state.hierarchy_edge_cost.clear();
     state.hierarchy_edge_cost.resize(node_count * 8, f32::NAN);
-    state.hierarchy_edge_exact.clear();
-    state.hierarchy_edge_exact.resize(node_count * 8, 0);
+    state.hierarchy_edge_from_cell.clear();
+    state.hierarchy_edge_from_cell.resize(node_count * 8, -1);
+    state.hierarchy_edge_to_cell.clear();
+    state.hierarchy_edge_to_cell.resize(node_count * 8, -1);
     state.hierarchy_heap.clear();
     state.hierarchy_path.clear();
 
@@ -2580,7 +3117,7 @@ fn pathfinder_hierarchical_a_star(
     state.hierarchy_node_cell[goal_node as usize] = goal_gy * state.grid_w + goal_gx;
     let mut total_expanded = 0u32;
     let mut best_cost = f32::INFINITY;
-    let mut best_path: Vec<u32> = Vec::new();
+    let mut best_fine_path: Vec<u32> = Vec::new();
     for _ in 0..PATHFINDER_HIERARCHY_MAX_REFINEMENTS {
         state.last_coarse_refinement_passes += 1;
         state.hierarchy_g_score.fill(f32::INFINITY);
@@ -2690,10 +3227,10 @@ fn pathfinder_hierarchical_a_star(
             traversal,
             cost_profile,
         );
-        if let Some(refined_cost) = refined_cost {
+        if let Some((refined_cost, fine_path)) = refined_cost {
             if refined_cost < best_cost {
                 best_cost = refined_cost;
-                best_path.clone_from(&state.hierarchy_path);
+                best_fine_path = fine_path;
             }
             if !updated {
                 break;
@@ -2701,18 +3238,10 @@ fn pathfinder_hierarchical_a_star(
         }
     }
     state.last_coarse_expanded_nodes = total_expanded;
-    if best_path.is_empty() {
+    if best_fine_path.is_empty() {
         return None;
     }
-    state.hierarchy_path = best_path;
-    state.path_scratch.clear();
-    for &node in &state.hierarchy_path {
-        let fine_idx = state.hierarchy_node_cell[node as usize];
-        if fine_idx < 0 {
-            return None;
-        }
-        state.path_scratch.push(fine_idx as u32);
-    }
+    state.path_scratch = best_fine_path;
     Some(HierarchicalAStarResult {
         route_cost: best_cost,
         expanded_nodes: total_expanded,
@@ -2810,6 +3339,9 @@ pub fn pathfinder_find_path(
     }
     .derived();
     state.cur_waypoint_traversal = waypoint_traversal;
+    state.cur_waypoint_matches_move_domain =
+        pathfinder_traversal_cell_domain_equivalent(waypoint_traversal, traversal);
+    pathfinder_begin_query_transition_cache(state);
     // Per-query traversal params. The current cell must be physically
     // move-valid, even when it is outside the intentional waypoint domain.
     // Goals must be waypoint-valid and every segment must fit the body.
@@ -2978,6 +3510,7 @@ pub fn pathfinder_find_path(
         return 1;
     }
 
+    state.line_transition_cache_enabled = true;
     let hierarchical_result = pathfinder_hierarchical_a_star(
         state,
         start_cell_gx,
@@ -3262,6 +3795,10 @@ pub fn pathfinder_validate_path(
     }
     .derived();
     state.cur_waypoint_traversal = waypoint_traversal;
+    state.cur_waypoint_matches_move_domain =
+        pathfinder_traversal_cell_domain_equivalent(waypoint_traversal, traversal);
+    pathfinder_begin_query_transition_cache(state);
+    state.line_transition_cache_enabled = true;
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
@@ -3352,6 +3889,8 @@ mod tests {
         state.closed = vec![0; n];
         state.visited_gen = vec![0; n];
         state.current_gen = 1;
+        state.move_passability_cache = vec![0; n];
+        state.waypoint_passability_cache = vec![0; n];
         state
     }
 
@@ -3916,6 +4455,118 @@ mod tests {
     }
 
     #[test]
+    fn combined_neighbor_evaluation_matches_separate_legality_and_cost() {
+        let mut state = open_test_state(3, 1);
+        state.terrain_height[1] = 8.0;
+        state.terrain_normal_z[0] = 0.94;
+        state.terrain_normal_z[1] = 0.94;
+        let traversal = ground_traversal();
+        let profile = ground_cost_profile(GRAVITY);
+        state.cur_waypoint_traversal = traversal;
+        state.cur_waypoint_matches_move_domain = true;
+        pathfinder_begin_query_transition_cache(&mut state);
+
+        assert!(pathfinder_can_step_neighbor(&state, 0, 0, 1, 0, traversal));
+        let separate = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
+        let combined = pathfinder_neighbor_cost_uncached(
+            &mut state,
+            0,
+            0,
+            1,
+            0,
+            traversal,
+            profile,
+        )
+        .expect("the legal uphill edge must retain a combined cost");
+        assert_eq!(combined.to_bits(), separate.to_bits());
+    }
+
+    #[test]
+    fn ordinary_domains_skip_waypoint_passability_cache() {
+        let mut state = open_test_state(4, 1);
+        let traversal = ground_traversal();
+        let profile = ground_cost_profile(0.0);
+        state.cur_waypoint_traversal = traversal;
+        state.cur_waypoint_matches_move_domain =
+            pathfinder_traversal_cell_domain_equivalent(traversal, traversal);
+        pathfinder_begin_query_transition_cache(&mut state);
+
+        assert!(pathfinder_neighbor_cost_uncached(
+            &mut state,
+            0,
+            0,
+            1,
+            0,
+            traversal,
+            profile,
+        )
+        .is_some());
+        assert_eq!(state.move_passability_touched, vec![1]);
+        assert!(state.waypoint_passability_touched.is_empty());
+    }
+
+    #[test]
+    fn cached_transition_path_preserves_recovery_only_direction() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_water[0] = 1;
+        let move_traversal = PathfinderTraversal {
+            allow_water: true,
+            ..ground_traversal()
+        }
+        .derived();
+        let waypoint_traversal = ground_traversal();
+        state.cur_waypoint_traversal = waypoint_traversal;
+        state.cur_waypoint_matches_move_domain = false;
+        pathfinder_begin_query_transition_cache(&mut state);
+
+        assert!(
+            pathfinder_can_step_between_cached(&mut state, 0, 1, move_traversal),
+            "a displaced unit may leave its recovery-only water cell",
+        );
+        assert!(
+            !pathfinder_can_step_between_cached(&mut state, 1, 0, move_traversal),
+            "a unit in its waypoint domain may not voluntarily re-enter recovery-only water",
+        );
+    }
+
+    #[test]
+    fn repeated_line_refinement_reuses_directed_transition_costs() {
+        let mut state = open_test_state(16, 1);
+        let traversal = ground_traversal();
+        let profile = ground_cost_profile(0.0);
+        state.cur_waypoint_traversal = traversal;
+        state.cur_waypoint_matches_move_domain = true;
+        pathfinder_begin_query_transition_cache(&mut state);
+        state.line_transition_cache_enabled = true;
+        let start = pathfinder_cell_center(1, 0);
+        let goal = pathfinder_cell_center(14, 0);
+
+        let first = pathfinder_line_cost(
+            &mut state,
+            start.0,
+            start.1,
+            goal.0,
+            goal.1,
+            traversal,
+            profile,
+        );
+        let first_misses = state.line_transition_cache_misses;
+        assert!(first.is_some() && first_misses > 0);
+        let second = pathfinder_line_cost(
+            &mut state,
+            start.0,
+            start.1,
+            goal.0,
+            goal.1,
+            traversal,
+            profile,
+        );
+        assert_eq!(second.map(f32::to_bits), first.map(f32::to_bits));
+        assert_eq!(state.line_transition_cache_misses, first_misses);
+        assert_eq!(state.line_transition_cache_hits, first_misses);
+    }
+
+    #[test]
     fn hierarchical_search_crosses_a_large_open_grid_with_few_abstract_nodes() {
         let mut state = open_test_state(256, 256);
         let traversal = ground_traversal();
@@ -3939,13 +4590,14 @@ mod tests {
         );
 
         let mut previous = (start_x, start_y);
-        for &fine_idx in &state.path_scratch {
+        let hierarchy_path = state.path_scratch.clone();
+        for fine_idx in hierarchy_path {
             let fine_idx = fine_idx as i32;
             let gx = fine_idx % state.grid_w;
             let gy = (fine_idx - gx) / state.grid_w;
             let next = pathfinder_cell_center(gx, gy);
             assert!(pathfinder_line_cost(
-                &state, previous.0, previous.1, next.0, next.1, traversal, profile,
+                &mut state, previous.0, previous.1, next.0, next.1, traversal, profile,
             )
             .is_some());
             previous = next;
@@ -3967,6 +4619,33 @@ mod tests {
             &mut state, 1, 128, 254, 128, start_x, start_y, goal_x, goal_y, traversal, profile,
         )
         .is_none());
+    }
+
+    #[test]
+    fn hierarchical_boundary_connectivity_routes_to_a_distant_wall_gap() {
+        let mut state = open_test_state(256, 256);
+        for gy in 0..state.grid_h {
+            if !(224..=231).contains(&gy) {
+                state.terrain_water[(gy * state.grid_w + 128) as usize] = 1;
+            }
+        }
+        let traversal = ground_traversal();
+        state.cur_waypoint_traversal = traversal;
+        state.cur_waypoint_matches_move_domain = true;
+        pathfinder_begin_query_transition_cache(&mut state);
+        state.line_transition_cache_enabled = true;
+        let profile = ground_cost_profile(0.0);
+        let (start_x, start_y) = pathfinder_cell_center(1, 1);
+        let (goal_x, goal_y) = pathfinder_cell_center(254, 254);
+        let result = pathfinder_hierarchical_a_star(
+            &mut state, 1, 1, 254, 254, start_x, start_y, goal_x, goal_y, traversal, profile,
+        )
+        .expect("coarse boundary connectivity must route toward the only wall opening");
+        assert!(result.expanded_nodes > 0);
+        assert!(state.path_scratch.iter().any(|&idx| {
+            let idx = idx as i32;
+            idx % state.grid_w >= 128 && idx / state.grid_w >= 224
+        }));
     }
 
     #[test]
@@ -4139,7 +4818,15 @@ mod tests {
             .path_scratch
             .iter()
             .any(|&idx| (idx as i32 / state.grid_w) != 1));
-        let direct_cost = pathfinder_line_cost(&state, 10.0, 30.0, 90.0, 30.0, traversal, profile)
+        let direct_cost = pathfinder_line_cost(
+            &mut state,
+            10.0,
+            30.0,
+            90.0,
+            30.0,
+            traversal,
+            profile,
+        )
             .expect("tight direct row remains physically legal");
         let chosen_cost = state.g_score[(1 * state.grid_w + 4) as usize];
         assert!(

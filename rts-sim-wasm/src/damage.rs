@@ -414,6 +414,196 @@ pub fn damage_segment_candidates_batch(
     processed
 }
 
+/// Beam hot path — query the spatial grid and resolve the closest live unit or
+/// building body in one call. This fuses the former slot-list materialization
+/// with the exact sphere/AABB tests, avoiding a WASM -> JS -> WASM-shaped loop
+/// for every beam segment. Reflectors, terrain, and travelling projectiles keep
+/// their existing ordering in the TypeScript orchestrator.
+pub(crate) struct DamageClosestBodyHitOutput(UnsafeCell<f64>);
+unsafe impl Sync for DamageClosestBodyHitOutput {}
+pub(crate) static DAMAGE_CLOSEST_BODY_HIT_T: DamageClosestBodyHitOutput =
+    DamageClosestBodyHitOutput(UnsafeCell::new(0.0));
+
+#[inline]
+fn damage_set_closest_body_segment_hit_t(t: f64) {
+    // SAFETY: the simulation WASM is single-threaded. The scalar is written by
+    // the query and read immediately by its caller before another query runs.
+    unsafe {
+        *DAMAGE_CLOSEST_BODY_HIT_T.0.get() = t;
+    }
+}
+
+#[wasm_bindgen]
+pub fn damage_closest_body_segment_hit_t() -> f64 {
+    // SAFETY: see damage_set_closest_body_segment_hit_t.
+    unsafe { *DAMAGE_CLOSEST_BODY_HIT_T.0.get() }
+}
+
+#[wasm_bindgen]
+pub fn damage_find_closest_body_segment_hit(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    query_width: f64,
+    sphere_inflation: f64,
+    body_exclude_entity_id: i32,
+    body_exclude_panel_index: i32,
+) -> i32 {
+    damage_set_closest_body_segment_hit_t(0.0);
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite()
+        && query_width.is_finite()
+        && sphere_inflation.is_finite())
+        || query_width < 0.0
+        || sphere_inflation < 0.0
+    {
+        return -1;
+    }
+
+    let state = spatial_grid();
+    if !spatial_collect_cells_along_line(
+        state,
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        query_width,
+    ) {
+        return -1;
+    }
+
+    state.dedup.clear();
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut dedup = std::mem::take(&mut state.dedup);
+    let mut best_t = f64::INFINITY;
+    let mut best_entity_id = -1_i32;
+
+    // Preserve the former TypeScript tie order: unit bodies are considered
+    // before building bodies, and equal-t building hits do not replace them.
+    for key in &nearby {
+        let Some(bucket) = state.cells.get(key) else {
+            continue;
+        };
+        for &slot in &bucket.units {
+            if !dedup.insert(slot) {
+                continue;
+            }
+            let s = slot as usize;
+            if s >= state.slot_kind.len()
+                || state.slot_kind[s] != SPATIAL_KIND_UNIT
+                || state.slot_hp_alive[s] == 0
+            {
+                continue;
+            }
+            let entity_id = state.slot_entity_id[s];
+            // Launch excludes the firing unit body. Immediately after a panel
+            // reflection, the panel index is non-negative and the host body is
+            // intentionally eligible again on the continuation segment.
+            if entity_id == body_exclude_entity_id && body_exclude_panel_index < 0 {
+                continue;
+            }
+            let radius = state.slot_radius_hitbox[s] + sphere_inflation;
+            if !radius.is_finite() || radius < 0.0 {
+                continue;
+            }
+            let Some(t) = damage_segment_sphere_intersection_t(
+                start_x,
+                start_y,
+                start_z,
+                end_x,
+                end_y,
+                end_z,
+                state.slot_x[s],
+                state.slot_y[s],
+                state.slot_z[s],
+                radius,
+            ) else {
+                continue;
+            };
+            if t < best_t {
+                best_t = t;
+                best_entity_id = entity_id;
+            }
+        }
+    }
+
+    for key in &nearby {
+        let Some(bucket) = state.cells.get(key) else {
+            continue;
+        };
+        for &slot in &bucket.buildings {
+            if !dedup.insert(slot) {
+                continue;
+            }
+            let s = slot as usize;
+            if s >= state.slot_kind.len()
+                || state.slot_kind[s] != SPATIAL_KIND_BUILDING
+                || state.slot_hp_alive[s] == 0
+            {
+                continue;
+            }
+            let entity_id = state.slot_entity_id[s];
+            // Building bodies stay excluded after either launch or a panel
+            // reflection, matching the prior beam loop exactly.
+            if entity_id == body_exclude_entity_id {
+                continue;
+            }
+            let hx = state.slot_aabb_hx[s];
+            let hy = state.slot_aabb_hy[s];
+            let hz = state.slot_aabb_hz[s];
+            if !(hx.is_finite()
+                && hy.is_finite()
+                && hz.is_finite()
+                && hx >= 0.0
+                && hy >= 0.0
+                && hz >= 0.0)
+            {
+                continue;
+            }
+            let x = state.slot_x[s];
+            let y = state.slot_y[s];
+            let z = state.slot_z[s];
+            let Some(t) = damage_segment_aabb_intersection_t(
+                start_x,
+                start_y,
+                start_z,
+                end_x,
+                end_y,
+                end_z,
+                x - hx,
+                y - hy,
+                z - hz,
+                x + hx,
+                y + hy,
+                z + hz,
+            ) else {
+                continue;
+            };
+            if t < best_t {
+                best_t = t;
+                best_entity_id = entity_id;
+            }
+        }
+    }
+
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    if best_entity_id < 0 {
+        return -1;
+    }
+    damage_set_closest_body_segment_hit_t(best_t);
+    best_entity_id
+}
+
 #[inline]
 pub(crate) fn normalize_angle_pi(mut angle: f64) -> f64 {
     const PI: f64 = core::f64::consts::PI;

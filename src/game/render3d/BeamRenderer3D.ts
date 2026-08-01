@@ -212,15 +212,16 @@ export function beamImposterWorldRadiusForSegment(
 }
 
 const configuredBeamUpdateBucketCount =
-  rawBeamConfig.staggeredPathUpdates?.bucketCount ?? 3;
+  rawBeamConfig.staggeredPathUpdates?.bucketCount ?? 1;
 
 /** Number of deterministic refresh phases in the beam path update ring.
- *  One disables staggering; larger values trade per-beam refresh rate for
- *  smoother aggregate work and remove synchronized path jumps. */
+ *  One disables staggering so live beam paths and turret-mounted origins
+ *  retain the renderer's full frame cadence. Larger values are available as
+ *  an explicit throughput tradeoff for extreme beam counts. */
 export const BEAM_UPDATE_BUCKET_COUNT = THREE.MathUtils.clamp(
   Math.round(Number.isFinite(configuredBeamUpdateBucketCount)
     ? configuredBeamUpdateBucketCount
-    : 3),
+    : 1),
   1,
   8,
 );

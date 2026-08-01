@@ -268,7 +268,10 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
   seconds: 6,
   warmupSeconds: 2,
   snapshotEveryTicks: 6,
-  mapCells: 17,
+  // The benchmark boots the complete demo production roster. Keep enough
+  // perimeter arc for every repeat Fabricator so roster growth cannot make
+  // the harness fail during setup before it records a sample.
+  mapCells: 25,
   width: 1280,
   height: 720,
 };

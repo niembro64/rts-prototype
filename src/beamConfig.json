@@ -17,7 +17,7 @@
     "minScreenRadiusPx": 0.9
   },
   "staggeredPathUpdates": {
-    "bucketCount": 3
+    "bucketCount": 1
   },
   "openEndedLine": {
     "extendToInfinity": false,

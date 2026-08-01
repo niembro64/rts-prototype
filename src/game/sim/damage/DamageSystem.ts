@@ -50,7 +50,6 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
 import { recordEffectiveHostileDamage } from '../aggression';
 import { isAttackEmitter } from '../emitterKinds';
-import { rayBoxIntersectionTWithDelta } from '../../math/CollisionHelpers';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1378,93 +1377,45 @@ export class DamageSystem {
     let bestT = Infinity;
     let found = false;
     let bestHitIsGround = false;
+    let bestHitIsBuildingBody = false;
 
     const dx = endX - startX;
     const dy = endY - startY;
     const dz = endZ - startZ;
-    const segLenSq = dx * dx + dy * dy;
-    const segLen3Sq = segLenSq + dz * dz;
-    const segMinX = startX < endX ? startX : endX;
-    const segMaxX = startX > endX ? startX : endX;
-    const segMinY = startY < endY ? startY : endY;
-    const segMaxY = startY > endY ? startY : endY;
-    const segMinZ = startZ < endZ ? startZ : endZ;
-    const segMaxZ = startZ > endZ ? startZ : endZ;
+    const segLen3Sq = dx * dx + dy * dy + dz * dz;
     const halfLineWidth = lineWidth / 2;
     const unitProjectileQueryWidth = lineWidth + 60;
     const buildingQueryWidth = lineWidth + 100;
     const bodyQueryWidth = Math.max(unitProjectileQueryWidth, buildingQueryWidth);
-
-    const nearbyBodySlots = spatialGrid.queryUnitBuildingSlotRangesAlongLine(
+    const bodySim = reflectorSim ?? getSimWasm();
+    if (bodySim === undefined) {
+      throw new Error('Beam body collision requires initialized sim-wasm');
+    }
+    const bodyHitEntityId = bodySim.damageFindClosestBodySegmentHit(
       startX, startY, startZ,
       endX, endY, endZ,
       bodyQueryWidth,
+      halfLineWidth,
+      bodyExcludeEntityId,
+      bodyExcludePanelIndex,
     );
-    const entityViews = entitySlotRegistry.getViews();
-    if (entityViews !== null) {
-      const slots = nearbyBodySlots.slots;
-      const unitEnd = nearbyBodySlots.unitStart + nearbyBodySlots.unitCount;
-      const capacity = entityViews.capacity;
-      const entityIds = entityViews.entityId;
-      const hp = entityViews.hp;
-      const posX = entityViews.posX;
-      const posY = entityViews.posY;
-      const posZ = entityViews.posZ;
-      const radiusHitbox = entityViews.radiusHitbox;
-      for (let i = nearbyBodySlots.unitStart; i < unitEnd; i++) {
-        const slot = slots[i];
-        if (slot >= capacity) continue;
-        const unitId = entityIds[slot] as EntityId;
-        const isExcludedEntity = unitId === bodyExcludeEntityId;
-        if (isExcludedEntity && bodyExcludePanelIndex < 0) continue;
-        if (hp[slot] <= 0) continue;
-
-        // Horizontal-only early-out — the beam may arc vertically past
-        // the unit, but we still require its XY projection to come near
-        // the unit's bounding radius. Reflector surfaces (panels/fields)
-        // are tested by the shared Rust kernel below, not per unit here.
-        const unitX = posX[slot];
-        const unitY = posY[slot];
-        const unitZ = posZ[slot];
-        const ux = unitX - startX, uy = unitY - startY;
-        const crossSq = (ux * dy - uy * dx);
-        const boundR = radiusHitbox[slot] + halfLineWidth;
-        if (
-          unitX + boundR < segMinX ||
-          unitX - boundR > segMaxX ||
-          unitY + boundR < segMinY ||
-          unitY - boundR > segMaxY ||
-          unitZ + boundR < segMinZ ||
-          unitZ - boundR > segMaxZ
-        ) {
-          continue;
-        }
-        if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
-
-        // Unit body: 3D segment-vs-sphere.
-        const t = lineSphereIntersectionTWithDelta(
-          startX, startY, startZ,
-          dx, dy, dz,
-          segLen3Sq,
-          unitX, unitY, unitZ,
-          boundR,
-        );
-        if (t !== null && t < bestT) {
-          bestT = t; found = true;
-          bestHitIsGround = false;
-          _segHit.t = t;
-          _segHit.x = startX + t * dx;
-          _segHit.y = startY + t * dy;
-          _segHit.z = startZ + t * dz;
-          _segHit.entityId = unitId;
-          _segHit.isMirror = false;
-          _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
-          _segHit.reflectDirX = 0; _segHit.reflectDirY = 0; _segHit.reflectDirZ = 0;
-          _segHit.panelIndex = -1;
-          _segHit.reflectorKind = undefined;
-          _segHit.reflectorPlayerId = undefined;
-        }
-      }
+    if (bodyHitEntityId >= 0) {
+      const t = bodySim.damageClosestBodySegmentHitT();
+      bestT = t; found = true;
+      bestHitIsGround = false;
+      _segHit.t = t;
+      _segHit.x = startX + t * dx;
+      _segHit.y = startY + t * dy;
+      _segHit.z = startZ + t * dz;
+      _segHit.entityId = bodyHitEntityId as EntityId;
+      const bodyEntity = this.world.getEntity(_segHit.entityId);
+      bestHitIsBuildingBody = bodyEntity !== undefined && bodyEntity.building !== null;
+      _segHit.isMirror = false;
+      _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
+      _segHit.reflectDirX = 0; _segHit.reflectDirY = 0; _segHit.reflectDirZ = 0;
+      _segHit.panelIndex = -1;
+      _segHit.reflectorKind = undefined;
+      _segHit.reflectorPlayerId = undefined;
     }
 
     // Reflector surfaces (mirror panels AND sphere/cylinder fields):
@@ -1523,9 +1474,13 @@ export class DamageSystem {
         _beamReflOutSurfVelY,
         _beamReflOutSurfVelZ,
       );
-      if (_beamReflOutKind[0] !== REFLECTOR_HIT_KIND_NONE && _beamReflOutT[0] < bestT) {
+      if (
+        _beamReflOutKind[0] !== REFLECTOR_HIT_KIND_NONE &&
+        (_beamReflOutT[0] < bestT || (bestHitIsBuildingBody && _beamReflOutT[0] === bestT))
+      ) {
         bestT = _beamReflOutT[0]; found = true;
         bestHitIsGround = false;
+        bestHitIsBuildingBody = false;
         _segHit.t = _beamReflOutT[0];
         _segHit.x = _beamReflOutX[0];
         _segHit.y = _beamReflOutY[0];
@@ -1548,77 +1503,6 @@ export class DamageSystem {
       }
     }
 
-    // Buildings: 3D ray-vs-AABB (x/y footprint × z depth). A beam arcing
-    // over a short building correctly misses; clipping the wall stops.
-    if (entityViews !== null) {
-      const slots = nearbyBodySlots.slots;
-      const buildingEnd = nearbyBodySlots.buildingStart + nearbyBodySlots.buildingCount;
-      const capacity = entityViews.capacity;
-      const entityIds = entityViews.entityId;
-      const hp = entityViews.hp;
-      const posX = entityViews.posX;
-      const posY = entityViews.posY;
-      const posZ = entityViews.posZ;
-      const aabbHx = entityViews.aabbHx;
-      const aabbHy = entityViews.aabbHy;
-      const aabbHz = entityViews.aabbHz;
-      for (let i = nearbyBodySlots.buildingStart; i < buildingEnd; i++) {
-        const slot = slots[i];
-        if (slot >= capacity) continue;
-        const buildingId = entityIds[slot] as EntityId;
-        // Skip the firing building — a tower-mounted turret must not
-        // self-block on its own AABB. Mirrors the unit-source guard
-        // above (bodyExclude* tracks the entity the beam was just
-        // emitted from / last reflected off).
-        if (buildingId === bodyExcludeEntityId) continue;
-        if (hp[slot] <= 0) continue;
-        const bCenterX = posX[slot];
-        const bCenterY = posY[slot];
-        // The entity-state slab's z column carries transform.z (the
-        // ground-centered box the renderer derives the mesh base from).
-        // The combat box of a hovering building sits at its floating
-        // body instead — the same center the spatial-grid broadphase
-        // that produced these candidate slots already uses.
-        const buildingEntity = this.world.getEntity(buildingId);
-        const bCenterZ = buildingEntity !== undefined
-          ? getBuildingCombatCenterZ(buildingEntity)
-          : posZ[slot];
-        const bHalfX = aabbHx[slot];
-        const bHalfY = aabbHy[slot];
-        const bHalfZ = aabbHz[slot];
-        if (
-          segMaxX < bCenterX - bHalfX ||
-          segMinX > bCenterX + bHalfX ||
-          segMaxY < bCenterY - bHalfY ||
-          segMinY > bCenterY + bHalfY ||
-          segMaxZ < bCenterZ - bHalfZ ||
-          segMinZ > bCenterZ + bHalfZ
-        ) {
-          continue;
-        }
-        const t = rayBoxIntersectionTWithDelta(
-          startX, startY, startZ,
-          dx, dy, dz,
-          bCenterX - bHalfX, bCenterY - bHalfY, bCenterZ - bHalfZ,
-          bCenterX + bHalfX, bCenterY + bHalfY, bCenterZ + bHalfZ,
-        );
-        if (t !== null && t < bestT) {
-          bestT = t; found = true;
-          bestHitIsGround = false;
-          _segHit.t = t;
-          _segHit.x = startX + t * dx;
-          _segHit.y = startY + t * dy;
-          _segHit.z = startZ + t * dz;
-          _segHit.entityId = buildingId;
-          _segHit.isMirror = false;
-          _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
-          _segHit.panelIndex = -1;
-          _segHit.reflectorKind = undefined;
-          _segHit.reflectorPlayerId = undefined;
-        }
-      }
-    }
-
     const groundT = this.findGroundSegmentT(
       startX,
       startY,
@@ -1631,6 +1515,7 @@ export class DamageSystem {
     if (groundT !== null && groundT < bestT) {
       bestT = groundT; found = true;
       bestHitIsGround = true;
+      bestHitIsBuildingBody = false;
       _segHit.t = groundT;
       _segHit.x = startX + groundT * dx;
       _segHit.y = startY + groundT * dy;
@@ -1662,6 +1547,7 @@ export class DamageSystem {
       queryEndX, queryEndY, queryEndZ,
       unitProjectileQueryWidth,
     );
+    const entityViews = entitySlotRegistry.getViews();
     if (entityViews !== null) {
       const slots = nearbyProjectiles.slots;
       const count = nearbyProjectiles.count;
