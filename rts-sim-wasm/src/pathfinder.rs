@@ -33,6 +33,11 @@ pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
 pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
 pub(crate) const PATHFINDER_RESULT_SNAPPED: u32 = 2;
 pub(crate) const PATHFINDER_RESULT_PARTIAL: u32 = 3;
+pub(crate) const PATHFINDER_SEARCH_NONE: u32 = 0;
+pub(crate) const PATHFINDER_SEARCH_DIRECT: u32 = 1;
+pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
+pub(crate) const PATHFINDER_SEARCH_FINE_A_STAR: u32 = 3;
+pub(crate) const PATHFINDER_HIERARCHY_MAX_REFINEMENTS: u32 = 4;
 /// Independent of shoreline classification. Terrain-bound unit centers stay
 /// out of the outer map guard cells even for point-size developer queries.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_CELLS: i32 = 2;
@@ -89,6 +94,20 @@ pub(crate) struct PathfinderState {
     visited_gen: Vec<u32>,
     current_gen: u32,
     heap: Vec<u32>,
+    // Level-1 hierarchy scratch. One abstract node represents a square cluster
+    // of fine navigation cells. Abstract edges are never assumed passable:
+    // every edge is validated and priced by the exact fine-grid line tracer.
+    hierarchy_grid_w: i32,
+    hierarchy_grid_h: i32,
+    hierarchy_node_cell: Vec<i32>,
+    hierarchy_g_score: Vec<f32>,
+    hierarchy_f_score: Vec<f32>,
+    hierarchy_parent: Vec<i32>,
+    hierarchy_closed: Vec<u8>,
+    hierarchy_heap: Vec<u32>,
+    hierarchy_edge_cost: Vec<f32>,
+    hierarchy_edge_exact: Vec<u8>,
+    hierarchy_path: Vec<u32>,
     // BFS scratch
     bfs_queue: Vec<u32>,
 
@@ -135,6 +154,15 @@ pub(crate) struct PathfinderState {
     waypoint_scratch: Vec<f64>,
     path_scratch: Vec<u32>,
     last_result_status: u32,
+    last_search_strategy: u32,
+    last_fine_expanded_nodes: u32,
+    last_coarse_expanded_nodes: u32,
+    last_coarse_refinement_passes: u32,
+    last_coarse_exact_edge_checks: u32,
+    last_coarse_full_cluster_scans: u32,
+    last_fine_hit_node_limit: bool,
+    last_smoothing_line_checks: u32,
+    last_direct_cost_ratio: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -318,6 +346,17 @@ impl PathfinderState {
             visited_gen: Vec::new(),
             current_gen: 1,
             heap: Vec::new(),
+            hierarchy_grid_w: 0,
+            hierarchy_grid_h: 0,
+            hierarchy_node_cell: Vec::new(),
+            hierarchy_g_score: Vec::new(),
+            hierarchy_f_score: Vec::new(),
+            hierarchy_parent: Vec::new(),
+            hierarchy_closed: Vec::new(),
+            hierarchy_heap: Vec::new(),
+            hierarchy_edge_cost: Vec::new(),
+            hierarchy_edge_exact: Vec::new(),
+            hierarchy_path: Vec::new(),
             bfs_queue: Vec::new(),
             cur_required_clearance: 0,
             cur_symmetric_slope: false,
@@ -343,6 +382,15 @@ impl PathfinderState {
             waypoint_scratch: Vec::new(),
             path_scratch: Vec::new(),
             last_result_status: PATHFINDER_RESULT_UNREACHABLE,
+            last_search_strategy: PATHFINDER_SEARCH_NONE,
+            last_fine_expanded_nodes: 0,
+            last_coarse_expanded_nodes: 0,
+            last_coarse_refinement_passes: 0,
+            last_coarse_exact_edge_checks: 0,
+            last_coarse_full_cluster_scans: 0,
+            last_fine_hit_node_limit: false,
+            last_smoothing_line_checks: 0,
+            last_direct_cost_ratio: f32::NAN,
         }
     }
 }
@@ -444,6 +492,17 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.visited_gen.resize(n, 0);
     state.current_gen = 1;
     state.heap.clear();
+    state.hierarchy_grid_w = 0;
+    state.hierarchy_grid_h = 0;
+    state.hierarchy_node_cell.clear();
+    state.hierarchy_g_score.clear();
+    state.hierarchy_f_score.clear();
+    state.hierarchy_parent.clear();
+    state.hierarchy_closed.clear();
+    state.hierarchy_heap.clear();
+    state.hierarchy_edge_cost.clear();
+    state.hierarchy_edge_exact.clear();
+    state.hierarchy_path.clear();
     state.path_scratch.clear();
     state.bfs_queue.clear();
     state.bfs_queue.resize(n, 0);
@@ -1876,6 +1935,12 @@ pub(crate) fn pathfinder_octile(ax: i32, ay: i32, bx: i32, by: i32) -> f32 {
 }
 
 #[inline]
+fn pathfinder_direct_cost_within_fast_path(direct_cost: Option<f32>, lower_bound: f32) -> bool {
+    direct_cost
+        .is_some_and(|cost| cost <= lower_bound * PATHFINDING_DIRECT_PATH_MAX_COST_RATIO + 1.0e-5)
+}
+
+#[inline]
 fn pathfinder_heap_precedes(state: &PathfinderState, left: u32, right: u32) -> bool {
     let left_idx = left as usize;
     let right_idx = right as usize;
@@ -1942,6 +2007,8 @@ pub(crate) struct AStarResult {
     goal_gx: i32,
     goal_gy: i32,
     reached_goal: bool,
+    expanded_nodes: u32,
+    hit_node_limit: bool,
 }
 
 #[inline]
@@ -2077,6 +2144,8 @@ pub(crate) fn pathfinder_a_star(
         goal_gx: gx,
         goal_gy: gy,
         reached_goal: found,
+        expanded_nodes: expanded,
+        hit_node_limit: !found && expanded >= PATHFINDER_MAX_A_STAR_NODES,
     })
 }
 
@@ -2168,6 +2237,488 @@ pub(crate) fn pathfinder_cell_center(gx: i32, gy: i32) -> (f64, f64) {
     )
 }
 
+struct HierarchicalAStarResult {
+    route_cost: f32,
+    expanded_nodes: u32,
+}
+
+#[inline]
+fn pathfinder_hierarchy_heap_precedes(state: &PathfinderState, left: u32, right: u32) -> bool {
+    let left_idx = left as usize;
+    let right_idx = right as usize;
+    let left_f = state.hierarchy_f_score[left_idx];
+    let right_f = state.hierarchy_f_score[right_idx];
+    if left_f != right_f {
+        return left_f < right_f;
+    }
+    let left_g = state.hierarchy_g_score[left_idx];
+    let right_g = state.hierarchy_g_score[right_idx];
+    if left_g != right_g {
+        return left_g > right_g;
+    }
+    left < right
+}
+
+fn pathfinder_hierarchy_heap_push(state: &mut PathfinderState, idx: u32) {
+    state.hierarchy_heap.push(idx);
+    let mut i = state.hierarchy_heap.len() - 1;
+    while i > 0 {
+        let parent = (i - 1) >> 1;
+        if pathfinder_hierarchy_heap_precedes(
+            state,
+            state.hierarchy_heap[i],
+            state.hierarchy_heap[parent],
+        ) {
+            state.hierarchy_heap.swap(i, parent);
+            i = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+fn pathfinder_hierarchy_heap_pop(state: &mut PathfinderState) -> u32 {
+    let top = state.hierarchy_heap[0];
+    let last = state.hierarchy_heap.pop().unwrap();
+    let len = state.hierarchy_heap.len();
+    if len > 0 {
+        state.hierarchy_heap[0] = last;
+        let mut i = 0usize;
+        loop {
+            let left = (i << 1) + 1;
+            let right = left + 1;
+            let mut smallest = i;
+            if left < len
+                && pathfinder_hierarchy_heap_precedes(
+                    state,
+                    state.hierarchy_heap[left],
+                    state.hierarchy_heap[smallest],
+                )
+            {
+                smallest = left;
+            }
+            if right < len
+                && pathfinder_hierarchy_heap_precedes(
+                    state,
+                    state.hierarchy_heap[right],
+                    state.hierarchy_heap[smallest],
+                )
+            {
+                smallest = right;
+            }
+            if smallest == i {
+                break;
+            }
+            state.hierarchy_heap.swap(i, smallest);
+            i = smallest;
+        }
+    }
+    top
+}
+
+/// Resolve a cluster to a deterministic fine-grid representative. A cluster
+/// whose geometric center is blocked uses the nearest passable fine cell in
+/// that same cluster. This is intentionally query-local because clearance,
+/// locomotion medium, slope capability, and building occupancy all affect
+/// passability.
+fn pathfinder_hierarchy_resolve_node_cell(
+    state: &mut PathfinderState,
+    node: u32,
+    traversal: PathfinderTraversal,
+) -> Option<i32> {
+    let node_idx = node as usize;
+    let cached = state.hierarchy_node_cell[node_idx];
+    if cached != i32::MIN {
+        return if cached >= 0 { Some(cached) } else { None };
+    }
+
+    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let cluster_x = node as i32 % state.hierarchy_grid_w;
+    let cluster_y = node as i32 / state.hierarchy_grid_w;
+    let min_gx = cluster_x * cluster_size;
+    let min_gy = cluster_y * cluster_size;
+    let max_gx = ((cluster_x + 1) * cluster_size).min(state.grid_w);
+    let max_gy = ((cluster_y + 1) * cluster_size).min(state.grid_h);
+    let center_gx = (min_gx + max_gx - 1) / 2;
+    let center_gy = (min_gy + max_gy - 1) / 2;
+    let center_cell = center_gy * state.grid_w + center_gx;
+    if pathfinder_is_cell_passable(state, center_cell as usize, traversal) {
+        state.hierarchy_node_cell[node_idx] = center_cell;
+        return Some(center_cell);
+    }
+    state.last_coarse_full_cluster_scans += 1;
+    let mut best_cell = -1;
+    let mut best_d2 = i32::MAX;
+    for gy in min_gy..max_gy {
+        for gx in min_gx..max_gx {
+            let fine_idx = gy * state.grid_w + gx;
+            if !pathfinder_is_cell_passable(state, fine_idx as usize, traversal) {
+                continue;
+            }
+            let dx = gx - center_gx;
+            let dy = gy - center_gy;
+            let d2 = dx * dx + dy * dy;
+            if d2 < best_d2 || (d2 == best_d2 && fine_idx < best_cell) {
+                best_cell = fine_idx;
+                best_d2 = d2;
+            }
+        }
+    }
+    state.hierarchy_node_cell[node_idx] = best_cell;
+    if best_cell >= 0 {
+        Some(best_cell)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn pathfinder_hierarchy_node_position(
+    state: &mut PathfinderState,
+    node: u32,
+    start_node: u32,
+    goal_node: u32,
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    traversal: PathfinderTraversal,
+) -> Option<(f64, f64)> {
+    if node == start_node {
+        return Some((start_x, start_y));
+    }
+    if node == goal_node {
+        return Some((goal_x, goal_y));
+    }
+    let fine_idx = pathfinder_hierarchy_resolve_node_cell(state, node, traversal)?;
+    let gx = fine_idx % state.grid_w;
+    let gy = (fine_idx - gx) / state.grid_w;
+    Some(pathfinder_cell_center(gx, gy))
+}
+
+#[inline]
+fn pathfinder_hierarchy_heuristic(x: f64, y: f64, goal_x: f64, goal_y: f64) -> f32 {
+    let dx = x - goal_x;
+    let dy = y - goal_y;
+    ((dx * dx + dy * dy).sqrt() / PATHFINDER_BUILD_GRID_CELL_SIZE) as f32
+}
+
+fn pathfinder_hierarchy_edge_cost(
+    state: &mut PathfinderState,
+    from: u32,
+    to: u32,
+    direction: usize,
+    start_node: u32,
+    goal_node: u32,
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    traversal: PathfinderTraversal,
+    _cost_profile: PathfinderCostProfile,
+) -> Option<f32> {
+    let slot = from as usize * 8 + direction;
+    let cached = state.hierarchy_edge_cost[slot];
+    if !cached.is_nan() {
+        return if cached.is_finite() {
+            Some(cached)
+        } else {
+            None
+        };
+    }
+    let from_position = pathfinder_hierarchy_node_position(
+        state, from, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
+    );
+    let to_position = pathfinder_hierarchy_node_position(
+        state, to, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
+    );
+    let cost = match (from_position, to_position) {
+        (Some((from_x, from_y)), Some((to_x, to_y))) => Some(
+            pathfinder_hierarchy_heuristic(from_x, from_y, to_x, to_y),
+        ),
+        _ => None,
+    };
+    state.hierarchy_edge_cost[slot] = cost.unwrap_or(f32::INFINITY);
+    if cost.is_none() {
+        state.hierarchy_edge_exact[slot] = 1;
+    }
+    cost
+}
+
+#[inline]
+fn pathfinder_hierarchy_direction(state: &PathfinderState, from: u32, to: u32) -> Option<usize> {
+    let from_x = from as i32 % state.hierarchy_grid_w;
+    let from_y = from as i32 / state.hierarchy_grid_w;
+    let to_x = to as i32 % state.hierarchy_grid_w;
+    let to_y = to as i32 / state.hierarchy_grid_w;
+    let dx = to_x - from_x;
+    let dy = to_y - from_y;
+    (0..8).find(|&direction| {
+        PATHFINDER_NEIGHBOR_DX[direction] == dx && PATHFINDER_NEIGHBOR_DY[direction] == dy
+    })
+}
+
+/// Replace lower-bound costs on one candidate abstract path with exact
+/// fine-grid line costs. Invalid segments become permanently blocked for this
+/// query. The caller can then rerun coarse A* cheaply with the refined edge
+/// costs, which is the LazySP form of hierarchical path refinement.
+fn pathfinder_hierarchy_refine_candidate(
+    state: &mut PathfinderState,
+    start_node: u32,
+    goal_node: u32,
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> (Option<f32>, bool) {
+    let mut total_cost = 0.0f32;
+    let mut updated = false;
+    let mut valid = true;
+    let mut from = start_node;
+    for path_index in 0..state.hierarchy_path.len() {
+        let to = state.hierarchy_path[path_index];
+        let Some(direction) = pathfinder_hierarchy_direction(state, from, to) else {
+            return (None, updated);
+        };
+        let slot = from as usize * 8 + direction;
+        if state.hierarchy_edge_exact[slot] == 0 {
+            state.last_coarse_exact_edge_checks += 1;
+            let from_position = pathfinder_hierarchy_node_position(
+                state, from, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
+            );
+            let to_position = pathfinder_hierarchy_node_position(
+                state, to, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
+            );
+            let exact_cost = match (from_position, to_position) {
+                (Some((from_x, from_y)), Some((to_x, to_y))) => pathfinder_line_cost(
+                    state,
+                    from_x,
+                    from_y,
+                    to_x,
+                    to_y,
+                    traversal,
+                    cost_profile,
+                ),
+                _ => None,
+            };
+            state.hierarchy_edge_cost[slot] = exact_cost.unwrap_or(f32::INFINITY);
+            state.hierarchy_edge_exact[slot] = 1;
+            updated = true;
+        }
+        let cost = state.hierarchy_edge_cost[slot];
+        if !cost.is_finite() {
+            valid = false;
+        } else {
+            total_cost += cost;
+        }
+        from = to;
+    }
+    debug_assert_eq!(from, goal_node);
+    (if valid { Some(total_cost) } else { None }, updated)
+}
+
+/// Search a sparse level-1 graph for long routes. Coarse A* starts with
+/// geometric lower bounds, then exact-validates only the edges on each
+/// candidate route and reruns with those refined costs. Returned routes are
+/// therefore fully legal even though unselected abstract edges stay cheap.
+fn pathfinder_hierarchical_a_star(
+    state: &mut PathfinderState,
+    start_gx: i32,
+    start_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> Option<HierarchicalAStarResult> {
+    if pathfinder_octile(start_gx, start_gy, goal_gx, goal_gy)
+        < PATHFINDING_HIERARCHICAL_MIN_DISTANCE_CELLS
+    {
+        return None;
+    }
+    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let hierarchy_grid_w = (state.grid_w + cluster_size - 1) / cluster_size;
+    let hierarchy_grid_h = (state.grid_h + cluster_size - 1) / cluster_size;
+    let node_count = (hierarchy_grid_w * hierarchy_grid_h) as usize;
+    if node_count <= 1 {
+        return None;
+    }
+    state.hierarchy_grid_w = hierarchy_grid_w;
+    state.hierarchy_grid_h = hierarchy_grid_h;
+    state.hierarchy_node_cell.clear();
+    state.hierarchy_node_cell.resize(node_count, i32::MIN);
+    state.hierarchy_g_score.clear();
+    state.hierarchy_g_score.resize(node_count, f32::INFINITY);
+    state.hierarchy_f_score.clear();
+    state.hierarchy_f_score.resize(node_count, f32::INFINITY);
+    state.hierarchy_parent.clear();
+    state.hierarchy_parent.resize(node_count, -1);
+    state.hierarchy_closed.clear();
+    state.hierarchy_closed.resize(node_count, 0);
+    state.hierarchy_edge_cost.clear();
+    state.hierarchy_edge_cost.resize(node_count * 8, f32::NAN);
+    state.hierarchy_edge_exact.clear();
+    state.hierarchy_edge_exact.resize(node_count * 8, 0);
+    state.hierarchy_heap.clear();
+    state.hierarchy_path.clear();
+
+    let start_cluster_x = start_gx / cluster_size;
+    let start_cluster_y = start_gy / cluster_size;
+    let goal_cluster_x = goal_gx / cluster_size;
+    let goal_cluster_y = goal_gy / cluster_size;
+    let start_node = (start_cluster_y * hierarchy_grid_w + start_cluster_x) as u32;
+    let goal_node = (goal_cluster_y * hierarchy_grid_w + goal_cluster_x) as u32;
+    if start_node == goal_node {
+        return None;
+    }
+    state.hierarchy_node_cell[start_node as usize] = start_gy * state.grid_w + start_gx;
+    state.hierarchy_node_cell[goal_node as usize] = goal_gy * state.grid_w + goal_gx;
+    let mut total_expanded = 0u32;
+    let mut best_cost = f32::INFINITY;
+    let mut best_path: Vec<u32> = Vec::new();
+    for _ in 0..PATHFINDER_HIERARCHY_MAX_REFINEMENTS {
+        state.last_coarse_refinement_passes += 1;
+        state.hierarchy_g_score.fill(f32::INFINITY);
+        state.hierarchy_f_score.fill(f32::INFINITY);
+        state.hierarchy_parent.fill(-1);
+        state.hierarchy_closed.fill(0);
+        state.hierarchy_heap.clear();
+        state.hierarchy_path.clear();
+        state.hierarchy_g_score[start_node as usize] = 0.0;
+        state.hierarchy_f_score[start_node as usize] =
+            pathfinder_hierarchy_heuristic(start_x, start_y, goal_x, goal_y);
+        pathfinder_hierarchy_heap_push(state, start_node);
+
+        let mut expanded = 0u32;
+        let mut found = false;
+        while !state.hierarchy_heap.is_empty() {
+            let current = pathfinder_hierarchy_heap_pop(state);
+            let current_idx = current as usize;
+            if state.hierarchy_closed[current_idx] != 0 {
+                continue;
+            }
+            state.hierarchy_closed[current_idx] = 1;
+            expanded += 1;
+            if current == goal_node {
+                found = true;
+                break;
+            }
+            let current_x = current as i32 % hierarchy_grid_w;
+            let current_y = current as i32 / hierarchy_grid_w;
+            for direction in 0..8 {
+                let next_x = current_x + PATHFINDER_NEIGHBOR_DX[direction];
+                let next_y = current_y + PATHFINDER_NEIGHBOR_DY[direction];
+                if next_x < 0
+                    || next_y < 0
+                    || next_x >= hierarchy_grid_w
+                    || next_y >= hierarchy_grid_h
+                {
+                    continue;
+                }
+                let next = (next_y * hierarchy_grid_w + next_x) as u32;
+                if state.hierarchy_closed[next as usize] != 0 {
+                    continue;
+                }
+                let Some(edge_cost) = pathfinder_hierarchy_edge_cost(
+                    state,
+                    current,
+                    next,
+                    direction,
+                    start_node,
+                    goal_node,
+                    start_x,
+                    start_y,
+                    goal_x,
+                    goal_y,
+                    traversal,
+                    cost_profile,
+                ) else {
+                    continue;
+                };
+                let tentative = state.hierarchy_g_score[current_idx] + edge_cost;
+                let next_idx = next as usize;
+                if tentative >= state.hierarchy_g_score[next_idx] {
+                    continue;
+                }
+                state.hierarchy_parent[next_idx] = current as i32;
+                state.hierarchy_g_score[next_idx] = tentative;
+                let Some((next_world_x, next_world_y)) = pathfinder_hierarchy_node_position(
+                    state,
+                    next,
+                    start_node,
+                    goal_node,
+                    start_x,
+                    start_y,
+                    goal_x,
+                    goal_y,
+                    traversal,
+                ) else {
+                    continue;
+                };
+                state.hierarchy_f_score[next_idx] = tentative
+                    + pathfinder_hierarchy_heuristic(next_world_x, next_world_y, goal_x, goal_y);
+                pathfinder_hierarchy_heap_push(state, next);
+            }
+        }
+        total_expanded = total_expanded.saturating_add(expanded);
+        if !found {
+            break;
+        }
+
+        let mut walker = goal_node as i32;
+        while walker != start_node as i32 && walker >= 0 {
+            state.hierarchy_path.push(walker as u32);
+            walker = state.hierarchy_parent[walker as usize];
+        }
+        if walker != start_node as i32 {
+            break;
+        }
+        state.hierarchy_path.reverse();
+        let (refined_cost, updated) = pathfinder_hierarchy_refine_candidate(
+            state,
+            start_node,
+            goal_node,
+            start_x,
+            start_y,
+            goal_x,
+            goal_y,
+            traversal,
+            cost_profile,
+        );
+        if let Some(refined_cost) = refined_cost {
+            if refined_cost < best_cost {
+                best_cost = refined_cost;
+                best_path.clone_from(&state.hierarchy_path);
+            }
+            if !updated {
+                break;
+            }
+        }
+    }
+    state.last_coarse_expanded_nodes = total_expanded;
+    if best_path.is_empty() {
+        return None;
+    }
+    state.hierarchy_path = best_path;
+    state.path_scratch.clear();
+    for &node in &state.hierarchy_path {
+        let fine_idx = state.hierarchy_node_cell[node as usize];
+        if fine_idx < 0 {
+            return None;
+        }
+        state.path_scratch.push(fine_idx as u32);
+    }
+    Some(HierarchicalAStarResult {
+        route_cost: best_cost,
+        expanded_nodes: total_expanded,
+    })
+}
+
 #[inline]
 pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f64) {
     let len = state.waypoint_scratch.len();
@@ -2223,6 +2774,15 @@ pub fn pathfinder_find_path(
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
     state.last_result_status = PATHFINDER_RESULT_UNREACHABLE;
+    state.last_search_strategy = PATHFINDER_SEARCH_NONE;
+    state.last_fine_expanded_nodes = 0;
+    state.last_coarse_expanded_nodes = 0;
+    state.last_coarse_refinement_passes = 0;
+    state.last_coarse_exact_edge_checks = 0;
+    state.last_coarse_full_cluster_scans = 0;
+    state.last_fine_hit_node_limit = false;
+    state.last_smoothing_line_checks = 0;
+    state.last_direct_cost_ratio = f32::NAN;
     let traversal = PathfinderTraversal {
         min_ground_normal_z,
         safe_ground_accel: safe_drive_accel,
@@ -2375,6 +2935,7 @@ pub fn pathfinder_find_path(
         } else {
             PATHFINDER_RESULT_COMPLETE
         };
+        state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
         return 1;
     }
 
@@ -2402,7 +2963,10 @@ pub fn pathfinder_find_path(
     );
     let geometric_lower_bound =
         pathfinder_octile(start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy);
-    if direct_cost.is_some_and(|cost| cost <= geometric_lower_bound + 1.0e-5) {
+    if let Some(cost) = direct_cost {
+        state.last_direct_cost_ratio = cost / geometric_lower_bound.max(1.0e-6);
+    }
+    if pathfinder_direct_cost_within_fast_path(direct_cost, geometric_lower_bound) {
         state.waypoint_scratch.push(raw_goal_x);
         state.waypoint_scratch.push(raw_goal_y);
         state.last_result_status = if goal_was_snapped {
@@ -2410,21 +2974,77 @@ pub fn pathfinder_find_path(
         } else {
             PATHFINDER_RESULT_COMPLETE
         };
+        state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
         return 1;
     }
 
-    let a_star_result = pathfinder_a_star(
+    let hierarchical_result = pathfinder_hierarchical_a_star(
         state,
         start_cell_gx,
         start_cell_gy,
         goal_cell_gx,
         goal_cell_gy,
+        start_x,
+        start_y,
+        raw_goal_x,
+        raw_goal_y,
         traversal,
         cost_profile,
     );
+    let a_star_result = if let Some(hierarchical) = hierarchical_result {
+        state.last_coarse_expanded_nodes = hierarchical.expanded_nodes;
+        // The legal direct segment remains a useful upper bound. If the sparse
+        // graph did not improve it, prefer the simpler exact route.
+        if direct_cost.is_some_and(|cost| cost <= hierarchical.route_cost + 1.0e-5) {
+            state.waypoint_scratch.push(raw_goal_x);
+            state.waypoint_scratch.push(raw_goal_y);
+            state.last_result_status = if goal_was_snapped {
+                PATHFINDER_RESULT_SNAPPED
+            } else {
+                PATHFINDER_RESULT_COMPLETE
+            };
+            state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
+            return 1;
+        }
+        state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
+        Some(AStarResult {
+            goal_gx: goal_cell_gx,
+            goal_gy: goal_cell_gy,
+            reached_goal: true,
+            expanded_nodes: 0,
+            hit_node_limit: false,
+        })
+    } else {
+        state.last_search_strategy = PATHFINDER_SEARCH_FINE_A_STAR;
+        let result = pathfinder_a_star(
+            state,
+            start_cell_gx,
+            start_cell_gy,
+            goal_cell_gx,
+            goal_cell_gy,
+            traversal,
+            cost_profile,
+        );
+        if let Some(result) = &result {
+            state.last_fine_expanded_nodes = result.expanded_nodes;
+            state.last_fine_hit_node_limit = result.hit_node_limit;
+        }
+        result
+    };
     let a_star_result = match a_star_result {
         Some(r) => r,
         None => {
+            if direct_cost.is_some() {
+                state.waypoint_scratch.push(raw_goal_x);
+                state.waypoint_scratch.push(raw_goal_y);
+                state.last_result_status = if goal_was_snapped {
+                    PATHFINDER_RESULT_SNAPPED
+                } else {
+                    PATHFINDER_RESULT_COMPLETE
+                };
+                state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
+                return 1;
+            }
             state.waypoint_scratch.push(start_x);
             state.waypoint_scratch.push(start_y);
             return 1;
@@ -2432,6 +3052,19 @@ pub fn pathfinder_find_path(
     };
 
     if !a_star_result.reached_goal {
+        // A node-limited fine search must never return a partial route when a
+        // complete, physically legal straight route is already known.
+        if direct_cost.is_some() {
+            state.waypoint_scratch.push(raw_goal_x);
+            state.waypoint_scratch.push(raw_goal_y);
+            state.last_result_status = if goal_was_snapped {
+                PATHFINDER_RESULT_SNAPPED
+            } else {
+                PATHFINDER_RESULT_COMPLETE
+            };
+            state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
+            return 1;
+        }
         goal_cell_gx = a_star_result.goal_gx;
         goal_cell_gy = a_star_result.goal_gy;
         goal_was_snapped = true;
@@ -2453,6 +3086,7 @@ pub fn pathfinder_find_path(
         let first_gx = first_idx % grid_w;
         let first_gy = (first_idx - first_gx) / grid_w;
         let (first_x, first_y) = pathfinder_cell_center(first_gx, first_gy);
+        state.last_smoothing_line_checks += 1;
         let mut chain_cost = pathfinder_line_cost(
             state,
             anchor_x,
@@ -2472,6 +3106,7 @@ pub fn pathfinder_find_path(
             let ngy = (next_idx - ngx) / grid_w;
             let (cand_x, cand_y) = pathfinder_cell_center(cgx, cgy);
             let (next_x, next_y) = pathfinder_cell_center(ngx, ngy);
+            state.last_smoothing_line_checks += 1;
             let raw_edge_cost = pathfinder_line_cost(
                 state,
                 cand_x,
@@ -2483,6 +3118,7 @@ pub fn pathfinder_find_path(
             )
             .unwrap_or(f32::INFINITY);
             chain_cost += raw_edge_cost;
+            state.last_smoothing_line_checks += 1;
             let shortcut_cost = pathfinder_line_cost(
                 state,
                 anchor_x,
@@ -2519,6 +3155,53 @@ pub fn pathfinder_find_path(
 #[wasm_bindgen]
 pub fn pathfinder_last_result_status() -> u32 {
     pathfinder_state().last_result_status
+}
+
+/// Strategy code for the most recent query: 0 none/unreachable, 1 direct,
+/// 2 hierarchical, 3 full fine-grid A*.
+#[wasm_bindgen]
+pub fn pathfinder_last_search_strategy() -> u32 {
+    pathfinder_state().last_search_strategy
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_fine_expanded_nodes() -> u32 {
+    pathfinder_state().last_fine_expanded_nodes
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_coarse_expanded_nodes() -> u32 {
+    pathfinder_state().last_coarse_expanded_nodes
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_coarse_refinement_passes() -> u32 {
+    pathfinder_state().last_coarse_refinement_passes
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_coarse_exact_edge_checks() -> u32 {
+    pathfinder_state().last_coarse_exact_edge_checks
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_coarse_full_cluster_scans() -> u32 {
+    pathfinder_state().last_coarse_full_cluster_scans
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_fine_hit_node_limit() -> u32 {
+    pathfinder_state().last_fine_hit_node_limit as u32
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_smoothing_line_checks() -> u32 {
+    pathfinder_state().last_smoothing_line_checks
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_direct_cost_ratio() -> f32 {
+    pathfinder_state().last_direct_cost_ratio
 }
 
 /// Validate a world-space polyline against the exact traversal rules consumed
@@ -3216,6 +3899,74 @@ mod tests {
             !state.path_scratch.contains(&hill_idx),
             "time-optimal route should go around the legal but slower hill"
         );
+    }
+
+    #[test]
+    fn direct_fast_path_allows_small_cost_overhead_but_not_large_detours() {
+        let lower_bound = 100.0;
+        assert!(pathfinder_direct_cost_within_fast_path(
+            Some(lower_bound * PATHFINDING_DIRECT_PATH_MAX_COST_RATIO),
+            lower_bound,
+        ));
+        assert!(!pathfinder_direct_cost_within_fast_path(
+            Some(lower_bound * (PATHFINDING_DIRECT_PATH_MAX_COST_RATIO + 0.05)),
+            lower_bound,
+        ));
+        assert!(!pathfinder_direct_cost_within_fast_path(None, lower_bound));
+    }
+
+    #[test]
+    fn hierarchical_search_crosses_a_large_open_grid_with_few_abstract_nodes() {
+        let mut state = open_test_state(256, 256);
+        let traversal = ground_traversal();
+        state.cur_waypoint_traversal = traversal;
+        let profile = ground_cost_profile(0.0);
+        let (start_x, start_y) = pathfinder_cell_center(1, 1);
+        let (goal_x, goal_y) = pathfinder_cell_center(254, 254);
+        let result = pathfinder_hierarchical_a_star(
+            &mut state, 1, 1, 254, 254, start_x, start_y, goal_x, goal_y, traversal, profile,
+        )
+        .expect("the open level-1 graph must connect opposite corners");
+        assert!(
+            result.expanded_nodes <= 16,
+            "expanded {}",
+            result.expanded_nodes
+        );
+        assert!(!state.path_scratch.is_empty());
+        assert_eq!(
+            *state.path_scratch.last().unwrap(),
+            (254 * state.grid_w + 254) as u32,
+        );
+
+        let mut previous = (start_x, start_y);
+        for &fine_idx in &state.path_scratch {
+            let fine_idx = fine_idx as i32;
+            let gx = fine_idx % state.grid_w;
+            let gy = (fine_idx - gx) / state.grid_w;
+            let next = pathfinder_cell_center(gx, gy);
+            assert!(pathfinder_line_cost(
+                &state, previous.0, previous.1, next.0, next.1, traversal, profile,
+            )
+            .is_some());
+            previous = next;
+        }
+    }
+
+    #[test]
+    fn hierarchical_search_never_invents_an_edge_through_a_blocked_wall() {
+        let mut state = open_test_state(256, 256);
+        for gy in 0..state.grid_h {
+            state.terrain_water[(gy * state.grid_w + 128) as usize] = 1;
+        }
+        let traversal = ground_traversal();
+        state.cur_waypoint_traversal = traversal;
+        let profile = ground_cost_profile(0.0);
+        let (start_x, start_y) = pathfinder_cell_center(1, 128);
+        let (goal_x, goal_y) = pathfinder_cell_center(254, 128);
+        assert!(pathfinder_hierarchical_a_star(
+            &mut state, 1, 128, 254, 128, start_x, start_y, goal_x, goal_y, traversal, profile,
+        )
+        .is_none());
     }
 
     #[test]

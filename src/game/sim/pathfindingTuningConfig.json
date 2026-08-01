@@ -11,5 +11,8 @@
   "chaseRepathDriftMinWu": 150,
   "chaseRepathDriftDistanceFraction": 0.15,
   "partialPlanRetryTicks": 90,
-  "directPlanMaxDistanceWu": 800
+  "directPlanMaxDistanceWu": 800,
+  "directPathMaxCostRatio": 1.1,
+  "hierarchicalMinDistanceCells": 64,
+  "hierarchicalClusterSizeCells": 32
 }

@@ -1,0 +1,347 @@
+{
+  "assets": [
+    {
+      "bytes": 67452,
+      "file": "large-circle-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "7241408467d9d7c5b13d832e75d43aced42ede42f55e976582dd5ed54571434b",
+      "slug": "large-circle",
+      "width": 4096
+    },
+    {
+      "bytes": 182308,
+      "file": "large-circle-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "a38f858b40740abf4c647852ea159ea33efb4da401217c248cd3697467e58e14",
+      "slug": "large-circle",
+      "width": 3072
+    },
+    {
+      "bytes": 84539,
+      "file": "large-circle-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "ced7bf8a447d51d9da128517bb89d071f42458c55028a831653894d2f29a6eca",
+      "slug": "large-circle",
+      "width": 2048
+    },
+    {
+      "bytes": 46671,
+      "file": "large-circle-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "bcfade2b957317a8a1dc03367d4237d5ce84b731346778a07e54bfeb71e21adc",
+      "slug": "large-circle",
+      "width": 4096
+    },
+    {
+      "bytes": 256979,
+      "file": "angels-flat-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "c0027f4babeb4a6d2d05558556195c9f801679962e80e46559ff9128a8c4ac47",
+      "slug": "angels-flat",
+      "width": 4096
+    },
+    {
+      "bytes": 127562,
+      "file": "angels-flat-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "96db3d3249a3240f05d75f2734a0cf741544b64f767e1d3c9eb953a3793173d6",
+      "slug": "angels-flat",
+      "width": 3072
+    },
+    {
+      "bytes": 76793,
+      "file": "angels-flat-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "9368110562a452e3d9def08bb2fa1141028c25f6d39365e31e61ab7e7548b3fe",
+      "slug": "angels-flat",
+      "width": 2048
+    },
+    {
+      "bytes": 49126,
+      "file": "angels-flat-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "b4c72b96891ca781274d81e929dc8880e5ede44b590ccb0459cf8c0cba993d69",
+      "slug": "angels-flat",
+      "width": 4096
+    },
+    {
+      "bytes": 232204,
+      "file": "boulder-mountain-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "d3c735ea234caefcd5e3201658d41c1a9f8e3f2bf7cb545a37d5e4e522b1d92f",
+      "slug": "boulder-mountain",
+      "width": 4096
+    },
+    {
+      "bytes": 195055,
+      "file": "boulder-mountain-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "e7480127bd3c0e1eb5cac26b84bcfca279cdcc175be300baf6676d12ee24d708",
+      "slug": "boulder-mountain",
+      "width": 3072
+    },
+    {
+      "bytes": 129341,
+      "file": "boulder-mountain-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "22cef0768b0d43df7a2aaf855121fa0f59fe48a6720ae7d14e6c5ba8a406f006",
+      "slug": "boulder-mountain",
+      "width": 2048
+    },
+    {
+      "bytes": 44014,
+      "file": "boulder-mountain-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "1f2a0a8a21f7c9e5bf1dffa8ca98fac511d18d1fa9681466e1fd1c22067eacff",
+      "slug": "boulder-mountain",
+      "width": 4096
+    },
+    {
+      "bytes": 126688,
+      "file": "spikey-lake-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "86598175c2b3f5f62a28d1f011fc09c094dc50e81eb66366e6e33b2f20a07ea7",
+      "slug": "spikey-lake",
+      "width": 4096
+    },
+    {
+      "bytes": 124819,
+      "file": "spikey-lake-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "04dc113e0961922510d6c0966a3ac7a70697325f58d89f0ad4acf969df5bd18e",
+      "slug": "spikey-lake",
+      "width": 3072
+    },
+    {
+      "bytes": 116723,
+      "file": "spikey-lake-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "115516ec44a0d0aa0b05ef2022c7d0802fc578214332c6c0904bab1a103ab56b",
+      "slug": "spikey-lake",
+      "width": 2048
+    },
+    {
+      "bytes": 48649,
+      "file": "spikey-lake-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "5a87f57f8c08485ef74e44e5724f841bf3e8051eaefb050dea742b2ce8c5d768",
+      "slug": "spikey-lake",
+      "width": 4096
+    },
+    {
+      "bytes": 48500,
+      "file": "niemo-islands-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "fbda3056e372269a3cd980744d93499c4f13d0a0af0a9c9e3d60bb3f3270adb0",
+      "slug": "niemo-islands",
+      "width": 4096
+    },
+    {
+      "bytes": 165378,
+      "file": "niemo-islands-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "20b2651d1b462da81760def2e4d7306b5c29873344c414f46517f10468c02e5c",
+      "slug": "niemo-islands",
+      "width": 3072
+    },
+    {
+      "bytes": 80109,
+      "file": "niemo-islands-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "dc65a751aeaeb4287e0ba57c9381173c32c30d196f49b1f35bcbfd92b72b1e08",
+      "slug": "niemo-islands",
+      "width": 2048
+    },
+    {
+      "bytes": 680106,
+      "file": "niemo-islands-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "ecfd8abac4a528a658a387d6ab41eab68533bddd5736ecffb2a87c52271f6c61",
+      "slug": "niemo-islands",
+      "width": 4096
+    },
+    {
+      "bytes": 204080,
+      "file": "angels-playhouse-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "0d71c7d177cb0bf1110fc1ae8314488e19b684b92a17f395af93872ffa938890",
+      "slug": "angels-playhouse",
+      "width": 4096
+    },
+    {
+      "bytes": 171989,
+      "file": "angels-playhouse-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "c35abfc9e905cbab7b6a927cae79a7bc9486a6563d6333c3f6820162fb1b1075",
+      "slug": "angels-playhouse",
+      "width": 3072
+    },
+    {
+      "bytes": 79408,
+      "file": "angels-playhouse-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "c9c85e5dcd4ae2591cd0bf1195e689a5ac9a0c58275bbec009579d8b8dc36365",
+      "slug": "angels-playhouse",
+      "width": 2048
+    },
+    {
+      "bytes": 748437,
+      "file": "angels-playhouse-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "ccd269ce47fb0cc10a05f7ebd92baaa90bd045a607e9da7450c94854862b4014",
+      "slug": "angels-playhouse",
+      "width": 4096
+    },
+    {
+      "bytes": 172627,
+      "file": "metal-hell-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "374a597ff79b3b1f84ec91f8525cc309dc0d31700042d364867438afd618e323",
+      "slug": "metal-hell",
+      "width": 4096
+    },
+    {
+      "bytes": 168819,
+      "file": "metal-hell-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "051288d6daa699ef8a031303037ad8426158e3eb435e7abd74d884c4ab02b3be",
+      "slug": "metal-hell",
+      "width": 3072
+    },
+    {
+      "bytes": 167681,
+      "file": "metal-hell-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "88ded83090b170b79e2d7f7de3c3b4385d394b596dad9242e460ce2cabd21ecc",
+      "slug": "metal-hell",
+      "width": 2048
+    },
+    {
+      "bytes": 31569,
+      "file": "metal-hell-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "acead1a39164ba38c50177edc206fc2a11c3af14261a3329a1d540a91ba1aafa",
+      "slug": "metal-hell",
+      "width": 4096
+    },
+    {
+      "bytes": 92557,
+      "file": "metal-plate-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "130e155bba06f8dc55750a8ee7b3babe712aa41d4aee7ccc014fe8df1420711e",
+      "slug": "metal-plate",
+      "width": 4096
+    },
+    {
+      "bytes": 69774,
+      "file": "metal-plate-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "a516117e596bdb3d78014a0b3da12dc9674c71707e1305fdf4c0b80e5122e033",
+      "slug": "metal-plate",
+      "width": 3072
+    },
+    {
+      "bytes": 52762,
+      "file": "metal-plate-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "920ec2387fd66655d8095630f94d8cfdc6cc53c11e3a5d50eab22473f2fa2ebf",
+      "slug": "metal-plate",
+      "width": 2048
+    },
+    {
+      "bytes": 1002947,
+      "file": "metal-plate-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "d120d233b9cabfe489551514e2504f03b306750b9c2915557c23892aa188526b",
+      "slug": "metal-plate",
+      "width": 4096
+    }
+  ],
+  "encoder": {
+    "package": "basisu",
+    "version": "1.16.3"
+  },
+  "encoding": {
+    "container": "KTX2",
+    "mipmapLevels": 1,
+    "supercompressionFormat": "UASTC",
+    "supercompressionScheme": "Zstandard",
+    "uastcLevel": 2,
+    "uastcRdoLambda": 0.75,
+    "yFlippedForThreeJsUv": true,
+    "zstandardLevel": 9
+  },
+  "fingerprint": "7ea1111fd46c6e517413e6fa122928b56b712c129cd46dc07a9bf0e257224610",
+  "generator": {
+    "visualRevision": 1
+  },
+  "inputHashes": {
+    "backdropPaletteSha256": "b8c7875baeda279f87c4d28f894a621828f01b4d5e232a1820af42c7150082d2",
+    "presetBackdropConfigSha256": "331911a25c93bb4ebb281a08fbc432f6c67701f4f7dd1640cdc32f1126dccec3"
+  },
+  "schemaVersion": 1
+}

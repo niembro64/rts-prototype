@@ -30,7 +30,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     straight line through obstacles.
 
 import { LAND_CELL_SIZE } from '../../config';
-import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
+import { GAME_DIAGNOSTICS, debugLog, debugWarn } from '../diagnostics';
 import {
   isWaterAt,
   getTerrainBedHeight,
@@ -72,6 +72,15 @@ function decodePathResolution(code: number): PathResolution {
   }
 }
 
+function decodePathSearchStrategy(code: number): string {
+  switch (code) {
+    case 1: return 'direct';
+    case 2: return 'hierarchical';
+    case 3: return 'fine-a-star';
+    default: return 'none';
+  }
+}
+
 function findPath(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -106,6 +115,21 @@ function findPath(
     symmetricSlope,
   );
   const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());
+  debugLog(GAME_DIAGNOSTICS.pathfindingSearch, '[pathfinding-search]', {
+    strategy: decodePathSearchStrategy(sim.pathfinder.lastSearchStrategy()),
+    resolution,
+    directCostRatio: sim.pathfinder.lastDirectCostRatio(),
+    coarseExpandedNodes: sim.pathfinder.lastCoarseExpandedNodes(),
+    coarseRefinementPasses: sim.pathfinder.lastCoarseRefinementPasses(),
+    coarseExactEdgeChecks: sim.pathfinder.lastCoarseExactEdgeChecks(),
+    coarseFullClusterScans: sim.pathfinder.lastCoarseFullClusterScans(),
+    fineExpandedNodes: sim.pathfinder.lastFineExpandedNodes(),
+    fineHitNodeLimit: sim.pathfinder.lastFineHitNodeLimit() !== 0,
+    smoothingLineChecks: sim.pathfinder.lastSmoothingLineChecks(),
+    waypointCount: count,
+    start: { x: startX, y: startY },
+    goal: { x: goalX, y: goalY },
+  });
   if (count === 0) {
     return { points: [{ x: startX, y: startY }], resolution: 'unreachable' };
   }

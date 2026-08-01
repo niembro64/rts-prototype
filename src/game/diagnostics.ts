@@ -19,6 +19,9 @@ function queryFlag(...names: string[]): boolean {
 
 export const GAME_DIAGNOSTICS = {
   pathValidation: envFlag('VITE_BA_VALIDATE_PATHS'),
+  pathfindingSearch:
+    envFlag('VITE_BA_DEBUG_PATHFINDING') ||
+    queryFlag('pathfinding', 'pathfindingSearch'),
   commandPlans: envFlag('VITE_BA_DEBUG_COMMANDS'),
   networkSnapshots: envFlag('VITE_BA_DEBUG_NET_SNAPSHOTS'),
   shaderErrorChecks:

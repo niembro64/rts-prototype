@@ -14,6 +14,7 @@ import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
 import { registerBackdropTarget } from './presetBackdrops';
+import { ParallaxBackdropRenderer3D } from './ParallaxBackdropRenderer3D';
 import { WebGlFrameProfiler, type WebGlFrameProfile } from './WebGlFrameProfiler';
 import { ZoomTerrainPointsOverlay3D } from './ZoomTerrainPointsOverlay3D';
 import {
@@ -42,7 +43,6 @@ import {
   CAMERA_LOST_TERRAIN_RECOVERY,
   CAMERA_TERRAIN_COLLISION,
   CAMERA_ZOOM_DISTANCE_SAMPLING,
-  PRESET_BACKDROP_RENDER_CONFIG,
 } from '../../config';
 import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
@@ -93,46 +93,6 @@ function makeSkyGradientTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-/** Shift panorama pixels vertically before Three converts the equirectangular
- *  image to its background cubemap. Scene backgrounds have no position, and
- *  rotating the sphere would tilt the horizon instead of moving every visual
- *  uniformly, so this image-space elevation shift is the Z-offset equivalent.
- *  Newly exposed pole pixels extend the nearest edge row rather than wrapping
- *  the opposite pole into view. */
-function applyPresetBackdropVerticalOffset(texture: THREE.Texture): void {
-  const offsetDegrees = PRESET_BACKDROP_RENDER_CONFIG.verticalOffsetDegrees;
-  if (!Number.isFinite(offsetDegrees) || Math.abs(offsetDegrees) >= 90) {
-    throw new Error(
-      'worldRenderConfig.presetBackdrop.verticalOffsetDegrees must be finite and between -90 and 90',
-    );
-  }
-  if (offsetDegrees === 0) return;
-
-  const image = texture.image as HTMLImageElement;
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
-  if (width <= 0 || height <= 0) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Unable to create preset backdrop offset texture');
-  }
-
-  // Generated panoramas cover +90 to -90 degrees from top to bottom.
-  // Canvas Y grows downward, so a negative configured elevation moves the
-  // source pixels downward and makes the far visuals appear lower in-world.
-  const shiftPixels = (-offsetDegrees / 180) * height;
-  const edgeSourceY = shiftPixels > 0 ? 0 : height - 1;
-  ctx.drawImage(image, 0, edgeSourceY, width, 1, 0, 0, width, height);
-  ctx.drawImage(image, 0, shiftPixels, width, height);
-
-  texture.image = canvas;
-  texture.needsUpdate = true;
-}
-
 export class ThreeApp {
   public renderer: THREE.WebGLRenderer;
   public scene: THREE.Scene;
@@ -161,10 +121,7 @@ export class ThreeApp {
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
-  /** Equirect panorama for the active battle preset (presetBackdrops.ts).
-   *  Null = no stock preset matched -> plain gradient backdrop colors. */
-  private _backdropTexture: THREE.Texture | null = null;
-  private _backdropUrl: string | null = null;
+  private readonly _parallaxBackdrop: ParallaxBackdropRenderer3D;
   private _unregisterBackdropTarget: (() => void) | null = null;
   private _visibleSunDisk: THREE.Object3D | null = null;
   private _lastSeaBackgroundEnabled: boolean | null = null;
@@ -239,6 +196,12 @@ export class ThreeApp {
       CAMERA_FAR_PLANE,
     );
     this.resizeRenderer(width, height);
+    this._parallaxBackdrop = new ParallaxBackdropRenderer3D(
+      this.scene,
+      this.renderer,
+      mapWidth,
+      mapHeight,
+    );
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
 
@@ -345,55 +308,22 @@ export class ThreeApp {
     this._resizeObserver.observe(parent);
 
     // Pick up the current preset backdrop (and future preset switches).
-    // Registered last so setBackdropUrl never runs on a half-built app.
-    this._unregisterBackdropTarget = registerBackdropTarget(this);
+    // Registered last so the initial layer set never reaches a half-built app.
+    this._unregisterBackdropTarget = registerBackdropTarget(this._parallaxBackdrop);
   }
 
   get canvas(): HTMLCanvasElement {
     return this.renderer.domElement;
   }
 
-  /** Swap the equirect panorama backdrop (null = gradient sky colors).
-   *  Loading is async; the gradient stays up until the image decodes, and
-   *  a failed load simply keeps the gradient. */
-  setBackdropUrl(url: string | null): void {
-    if (this._destroyed || url === this._backdropUrl) return;
-    this._backdropUrl = url;
-    if (!url) {
-      this._backdropTexture?.dispose();
-      this._backdropTexture = null;
-      this.applySceneBackground();
-      return;
-    }
-    new THREE.TextureLoader().load(
-      url,
-      (texture) => {
-        if (this._destroyed || this._backdropUrl !== url) {
-          texture.dispose();
-          return;
-        }
-        applyPresetBackdropVerticalOffset(texture);
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-        this._backdropTexture?.dispose();
-        this._backdropTexture = texture;
-        this.applySceneBackground();
-      },
-      undefined,
-      () => {
-        // Missing/failed backdrop image: keep the gradient sky.
-      },
-    );
-  }
-
-  /** Single choke point for scene.background: sea override first, then
-   *  the preset panorama, then the default gradient colors. */
+  /** Single choke point for the plain clear background and suppression of
+   *  the layered preset backdrop. The floating-square sea override wins. */
   private applySceneBackground(): void {
     this.scene.background =
       this._lastSeaBackgroundEnabled === true
         ? this._seaBackgroundColor
-        : (this._backdropTexture ?? this._skyTexture);
+        : this._skyTexture;
+    this._parallaxBackdrop.setSuppressed(this._lastSeaBackgroundEnabled === true);
   }
 
   onUpdate(callback: (time: number, delta: number) => void): void {
@@ -578,14 +508,13 @@ export class ThreeApp {
     this.frameProfiler.destroy();
     this._unregisterBackdropTarget?.();
     this._unregisterBackdropTarget = null;
+    this._parallaxBackdrop.destroy();
     this.scene.environment = null;
     this.scene.background = null;
     this._environmentTexture?.dispose();
     this._environmentTexture = null;
     this._skyTexture?.dispose();
     this._skyTexture = null;
-    this._backdropTexture?.dispose();
-    this._backdropTexture = null;
     this.renderer.renderLists.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();

@@ -14,6 +14,9 @@ type PathfindingTuningConfig = {
   chaseRepathDriftDistanceFraction: number;
   partialPlanRetryTicks: number;
   directPlanMaxDistanceWu: number;
+  directPathMaxCostRatio: number;
+  hierarchicalMinDistanceCells: number;
+  hierarchicalClusterSizeCells: number;
 };
 
 const config = rawPathfindingTuningConfig as PathfindingTuningConfig;
@@ -107,6 +110,16 @@ function requireNonNegativeNumber(label: string, value: number): number {
   return value;
 }
 
+function requireAtLeastOne(label: string, value: number): number {
+  requireFinite(label, value);
+  if (value < 1) {
+    throw new Error(
+      `Invalid pathfinding tuning ${label}: expected number >= 1, got ${value}`,
+    );
+  }
+  return value;
+}
+
 function requireUnitIntervalRatio(label: string, value: number): number {
   requireFinite(label, value);
   if (value < 0 || value > 1) {
@@ -180,4 +193,21 @@ export const PATHFINDING_PARTIAL_PLAN_RETRY_TICKS = requireNonNegativeInteger(
 export const PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU = requireNonNegativeNumber(
   'directPlanMaxDistanceWu',
   config.directPlanMaxDistanceWu,
+);
+/** A physically legal straight route may bypass graph search when its
+ * movement-time cost is within this multiple of the geometric lower bound. */
+export const PATHFINDING_DIRECT_PATH_MAX_COST_RATIO = requireAtLeastOne(
+  'directPathMaxCostRatio',
+  config.directPathMaxCostRatio,
+);
+/** Minimum octile distance, in 20-wu navigation cells, before the WASM
+ * planner tries its sparse hierarchical graph ahead of full-grid A*. */
+export const PATHFINDING_HIERARCHICAL_MIN_DISTANCE_CELLS = requireNonNegativeInteger(
+  'hierarchicalMinDistanceCells',
+  config.hierarchicalMinDistanceCells,
+);
+/** Fine navigation cells per side of one level-1 hierarchy cluster. */
+export const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS = requirePositiveInteger(
+  'hierarchicalClusterSizeCells',
+  config.hierarchicalClusterSizeCells,
 );

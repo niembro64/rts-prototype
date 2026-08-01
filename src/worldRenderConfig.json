@@ -8,8 +8,38 @@
   },
   "horizonRenderExtend": 180000,
   "presetBackdrop": {
-    "verticalOffsetDegrees": -15,
-    "detail": "Signed elevation offset for preset panorama visuals. 0 preserves the original placement; negative lowers the panorama and positive raises it. Degrees are used because scene backgrounds are infinitely far and have no world-space Z position."
+    "verticalOffsetDegrees": -8,
+    "layers": [
+      {
+        "id": "near",
+        "minimumDistanceWorldUnits": 24000,
+        "distanceMapFactor": 2.5,
+        "textureWidth": 4096,
+        "blurRadiusPixels": 5
+      },
+      {
+        "id": "middle",
+        "minimumDistanceWorldUnits": 38000,
+        "distanceMapFactor": 3.7,
+        "textureWidth": 3072,
+        "blurRadiusPixels": 6
+      },
+      {
+        "id": "far",
+        "minimumDistanceWorldUnits": 54000,
+        "distanceMapFactor": 4.8,
+        "textureWidth": 2048,
+        "blurRadiusPixels": 7
+      },
+      {
+        "id": "terminal",
+        "minimumDistanceWorldUnits": 70000,
+        "distanceMapFactor": 5.8,
+        "textureWidth": 4096,
+        "blurRadiusPixels": 8
+      }
+    ],
+    "detail": "Four map-centered panorama shells, ordered near to terminal. Effective distance is max(minimumDistanceWorldUnits, distanceMapFactor times the larger map axis). The first three generated UASTC KTX2 textures are transparent RGBA scenery/cloud layers; terminal is the fully opaque sky and is the only layer allowed to contain stars. verticalOffsetDegrees applies to all four: 0 is authored placement, negative lowers, positive raises. Generator blur must increase with distance."
   },
   "sun": {
     "azimuthRad": 1.5707963267948966,

@@ -301,6 +301,15 @@ import __wbg_init, {
   pathfinder_building_occupancy_version,
   pathfinder_find_path,
   pathfinder_last_result_status,
+  pathfinder_last_search_strategy,
+  pathfinder_last_fine_expanded_nodes,
+  pathfinder_last_coarse_expanded_nodes,
+  pathfinder_last_coarse_refinement_passes,
+  pathfinder_last_coarse_exact_edge_checks,
+  pathfinder_last_coarse_full_cluster_scans,
+  pathfinder_last_fine_hit_node_limit,
+  pathfinder_last_smoothing_line_checks,
+  pathfinder_last_direct_cost_ratio,
   pathfinder_validate_path,
   pathfinder_waypoints_ptr,
   pathfinder_grid_size_w,
@@ -3756,6 +3765,16 @@ export interface PathfinderApi {
   /** Resolution code for the most recent findPath call:
    *  0 unreachable, 1 complete, 2 snapped, 3 partial. */
   lastResultStatus: () => number;
+  /** Search strategy: 0 none, 1 direct, 2 hierarchical, 3 fine A*. */
+  lastSearchStrategy: () => number;
+  lastFineExpandedNodes: () => number;
+  lastCoarseExpandedNodes: () => number;
+  lastCoarseRefinementPasses: () => number;
+  lastCoarseExactEdgeChecks: () => number;
+  lastCoarseFullClusterScans: () => number;
+  lastFineHitNodeLimit: () => number;
+  lastSmoothingLineChecks: () => number;
+  lastDirectCostRatio: () => number;
   /** Validate an interleaved x/y polyline (including its start point) against
    *  the same medium, hard-clearance, slope, and LOS rules as planning. */
   validatePath: (
@@ -4295,6 +4314,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           buildingOccupancyVersion: pathfinder_building_occupancy_version,
           findPath: pathfinder_find_path,
           lastResultStatus: pathfinder_last_result_status,
+          lastSearchStrategy: pathfinder_last_search_strategy,
+          lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
+          lastCoarseExpandedNodes: pathfinder_last_coarse_expanded_nodes,
+          lastCoarseRefinementPasses: pathfinder_last_coarse_refinement_passes,
+          lastCoarseExactEdgeChecks: pathfinder_last_coarse_exact_edge_checks,
+          lastCoarseFullClusterScans: pathfinder_last_coarse_full_cluster_scans,
+          lastFineHitNodeLimit: pathfinder_last_fine_hit_node_limit,
+          lastSmoothingLineChecks: pathfinder_last_smoothing_line_checks,
+          lastDirectCostRatio: pathfinder_last_direct_cost_ratio,
           validatePath: pathfinder_validate_path,
           waypointsPtr: pathfinder_waypoints_ptr,
           gridWidth: pathfinder_grid_size_w,
@@ -4812,6 +4840,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientRenderEntityStateSlabContractTest();
         const { runTransparentRenderOrder3DContractTest } = await import('../render3d/TransparentRenderOrder3DContractTest');
         runTransparentRenderOrder3DContractTest();
+        const { runParallaxBackdropRenderer3DContractTest } = await import('../render3d/ParallaxBackdropRenderer3DContractTest');
+        runParallaxBackdropRenderer3DContractTest();
         const { runClientRenderSpatialIndexContractTest } = await import('../network/ClientRenderSpatialIndexContractTest');
         runClientRenderSpatialIndexContractTest();
         const { runClientProjectileRenderStateSlabContractTest } = await import('../network/ClientProjectileRenderStateSlabContractTest');
