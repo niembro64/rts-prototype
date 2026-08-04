@@ -2,6 +2,7 @@ type NullableWireValue = unknown | null | undefined;
 
 export type SprayTargetWireFlagSource = {
   type: string;
+  inverse?: NullableWireValue;
   source: { z?: NullableWireValue };
   target: {
     z?: NullableWireValue;
@@ -25,5 +26,6 @@ export function getSprayTargetWireFlags(
   if (spray.speed !== undefined && spray.speed !== null) flags |= 0x20;
   if (spray.particleRadius !== undefined && spray.particleRadius !== null) flags |= 0x40;
   if (spray.ballSpawnRate !== undefined && spray.ballSpawnRate !== null) flags |= 0x80;
+  if (spray.inverse === true) flags |= 0x100;
   return flags;
 }

@@ -3,9 +3,12 @@
 export {
   METAL_DEPOSIT_STEP,
   TERRAIN_MAX_RENDER_Y,
+  TERRAIN_SUBMERGED_BRIGHTNESS,
+  TERRAIN_SUBMERGED_FADE_END_HEIGHT,
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
+  terrainUnderwaterBrightnessAtHeight,
   type TerrainRuntimeConfig,
 } from './terrain/terrainConfig';
 export {

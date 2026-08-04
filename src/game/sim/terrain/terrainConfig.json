@@ -37,7 +37,11 @@
   "water": {
     "levelFraction": 0.8,
     "fullyOpaque": false,
-    "lavaDamagePerSecond": 900
+    "lavaDamagePerSecond": 900,
+    "terrainDarkening": {
+      "submergedBrightness": 0.5,
+      "fadeEndHeight": 0
+    }
   },
   "generation": {
     "edgeFadeWidthFraction": 0.01,

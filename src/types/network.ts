@@ -837,6 +837,7 @@ export type NetworkServerSnapshotSprayTarget = {
   source: { id: number; pos: Vec2; z: number | null; playerId: PlayerId };
   target: { id: number; pos: Vec2; z: number | null; dim: Vec2 | null; radius: number | null };
   type: 'build' | 'heal';
+  inverse?: boolean;
   intensity: number;
   speed: number | null;
   particleRadius: number | null;

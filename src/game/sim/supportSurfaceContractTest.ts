@@ -681,6 +681,17 @@ function assertFactoryShellContract(): void {
     DMath.hypot(nextSpray.source.pos.x - firstSprayX, nextSpray.source.pos.y - firstSprayY) > 1e-3,
     'fabricator work spray must choose a new random ring point on the next tick',
   );
+  assertContract(nextSpray.inverse !== true, 'construction spray must remain builder-to-target');
+
+  world.beginWorkMovementTick();
+  world.recordWorkMovement(factory.id, shell.id, 'reclaim', 25);
+  const reclaimSpray = commanderAbilitiesSystem.update(world, 16).sprayTargets.find(
+    (spray) => spray.source.id === factory.id && spray.target.id === shell.id,
+  );
+  assertContract(
+    reclaimSpray?.inverse === true,
+    'reclaim work spray must use BAR target-volume-to-builder inverse mode',
+  );
 
   shell.buildable.isComplete = true;
   const completed = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;

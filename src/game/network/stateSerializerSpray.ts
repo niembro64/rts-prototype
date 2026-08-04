@@ -171,6 +171,7 @@ export function serializeSprayTargets(
     }
     out.target.radius = source.target.radius ?? null;
     out.type = source.type;
+    out.inverse = source.inverse === true ? true : undefined;
     out.intensity = source.intensity;
     out.speed = source.speed ?? null;
     out.particleRadius = source.particleRadius ?? null;

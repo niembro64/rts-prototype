@@ -472,6 +472,7 @@ export class PylonTubeFlowRenderer {
     target.waypoint2 = undefined;
     target.speed = undefined;
     target.particleRadius = undefined;
+    target.inverse = undefined;
     // coneAxis stays as a reusable object across pool reuse; coneAngle is
     // the gate — undefined means "no cone, legacy sphere".
     target.coneAngle = undefined;

@@ -28,6 +28,7 @@ export class ClientSprayTargetStore {
         target.target.dim = source.target.dim ?? undefined;
         target.target.radius = source.target.radius ?? undefined;
         target.type = source.type;
+        target.inverse = source.inverse === true;
         target.intensity = source.intensity;
         target.channel = 0;
         target.flow = 'direct';
@@ -65,6 +66,7 @@ export class ClientSprayTargetStore {
     }
     target.channel = 0;
     target.flow = 'direct';
+    target.inverse = undefined;
     target.flowRadius = 0;
     target.speed = undefined;
     target.particleRadius = undefined;

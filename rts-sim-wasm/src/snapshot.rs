@@ -1983,7 +1983,8 @@ pub fn snapshot_encode_resource_movement_scratch_ensure(count: u32) {
 //   [15]   ballSpawnRate (gated by flags bit 7)
 //   [16]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
 //          bit 2 has_target_z, bit 3 has_target_dim, bit 4 has_target_radius,
-//          bit 5 has_speed, bit 6 has_particleRadius, bit 7 hasBallSpawnRate.
+//          bit 5 has_speed, bit 6 has_particleRadius, bit 7 hasBallSpawnRate,
+//          bit 8 inverse (target-volume -> source emitter).
 snapshot_scratch_pool!(
     SnapshotEncodeSprayScratch,
     SnapshotEncodeSprayScratchHolder,
@@ -4390,6 +4391,7 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         let has_speed = (flags & 0x20) != 0;
         let has_particle_radius = (flags & 0x40) != 0;
         let has_ball_spawn_rate = (flags & 0x80) != 0;
+        let inverse = (flags & 0x100) != 0;
 
         // Outer field count: source, target, type, intensity always +
         // optional speed + particleRadius + ballSpawnRate.
@@ -4401,6 +4403,9 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
             field_count += 1;
         }
         if has_ball_spawn_rate {
+            field_count += 1;
+        }
+        if inverse {
             field_count += 1;
         }
         w.write_map_header(field_count);
@@ -4467,6 +4472,10 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
             w.write_str("heal");
         } else {
             w.write_str("build");
+        }
+        if inverse {
+            w.write_str("inverse");
+            w.write_bool(true);
         }
         w.write_str("intensity");
         w.write_number(scratch.buf[base + 12]);

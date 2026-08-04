@@ -69,6 +69,8 @@ import {
   terrainMeshNormalFromSample,
   getTerrainPerimeterMagnitude,
   TERRAIN_MAX_RENDER_Y,
+  TERRAIN_SUBMERGED_BRIGHTNESS,
+  TERRAIN_SUBMERGED_FADE_END_HEIGHT,
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
@@ -606,6 +608,10 @@ export class TerrainTileRenderer3D {
   private triangleDebugEnabledUniform = { value: 0 };
   private terrainWaterLevelUniform = { value: WATER_LEVEL };
   private terrainMaxHeightUniform = { value: TERRAIN_MAX_RENDER_Y };
+  private terrainSubmergedBrightnessUniform = { value: TERRAIN_SUBMERGED_BRIGHTNESS };
+  private terrainSubmergedFadeEndHeightUniform = {
+    value: TERRAIN_SUBMERGED_FADE_END_HEIGHT,
+  };
   private terrainHorizonBlendEnabledUniform = {
     value: TERRAIN_HORIZON_BLEND_CONFIG.enabled ? 1 : 0,
   };
@@ -775,6 +781,9 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
       shader.uniforms.uTerrainWaterLevel = this.terrainWaterLevelUniform;
       shader.uniforms.uTerrainMaxHeight = this.terrainMaxHeightUniform;
+      shader.uniforms.uTerrainSubmergedBrightness = this.terrainSubmergedBrightnessUniform;
+      shader.uniforms.uTerrainSubmergedFadeEndHeight =
+        this.terrainSubmergedFadeEndHeightUniform;
       shader.uniforms.uTerrainHorizonBlendEnabled = this.terrainHorizonBlendEnabledUniform;
       shader.uniforms.uTerrainHorizonFadeStart = this.terrainHorizonFadeStartUniform;
       shader.uniforms.uTerrainHorizonFadeEnd = this.terrainHorizonFadeEndUniform;
@@ -844,6 +853,8 @@ export class TerrainTileRenderer3D {
             'uniform float uTriangleDebugEnabled;',
             'uniform float uTerrainWaterLevel;',
             'uniform float uTerrainMaxHeight;',
+            'uniform float uTerrainSubmergedBrightness;',
+            'uniform float uTerrainSubmergedFadeEndHeight;',
             'uniform float uTerrainHorizonBlendEnabled;',
             'uniform float uTerrainHorizonFadeStart;',
             'uniform float uTerrainHorizonFadeEnd;',
@@ -889,6 +900,9 @@ export class TerrainTileRenderer3D {
           [
             '#include <color_fragment>',
             'float terrainHeightT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(1.0, uTerrainMaxHeight - uTerrainWaterLevel), 0.0, 1.0);',
+            'float terrainDepthT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(0.0001, uTerrainSubmergedFadeEndHeight - uTerrainWaterLevel), 0.0, 1.0);',
+            'float terrainDepthCosine = 0.5 - 0.5 * cos(3.141592653589793 * terrainDepthT);',
+            'float terrainDepthBrightness = mix(uTerrainSubmergedBrightness, 1.0, terrainDepthCosine);',
             'float shoreline = 1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y);',
             'float upland = smoothstep(0.16, 0.58, terrainHeightT);',
             'float exposedRock = smoothstep(0.38, 0.86, terrainHeightT);',
@@ -1049,6 +1063,7 @@ export class TerrainTileRenderer3D {
             '    uMetalSurfaceRoughnessVariation',
             '  );',
             '}',
+            'outgoingLight *= terrainDepthBrightness;',
           ].join('\n'),
         )
         .replace(
@@ -1070,6 +1085,7 @@ export class TerrainTileRenderer3D {
           [
             'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
             'outgoingLight = mix(outgoingLight, uTerrainHorizonWaterColor, horizonBlend);',
+            'outgoingLight *= terrainDepthBrightness;',
           ].join('\n'),
         )
         .replace(
@@ -1082,7 +1098,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v38';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v39';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

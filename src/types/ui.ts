@@ -468,6 +468,11 @@ export type SprayTarget = {
    *  source point as their pylon head and generate per-particle random
    *  world offsets inward or outward from that point. */
   flow: SprayFlowMode;
+  /** BAR nano-particle inverse mode. For a direct spray, particles are
+   *  born throughout the target volume and converge on the source
+   *  emitter. Reclaim uses one inverse spray; resurrection emits one
+   *  normal spray and one inverse spray at the same time. */
+  inverse?: boolean;
   flowRadius: number;
   /** Standardized "ray to a lock-on spot + cone" dispersion. When both
    *  fields are set, a randomInbound/randomOutbound flow constrains its

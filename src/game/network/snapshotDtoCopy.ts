@@ -326,6 +326,7 @@ export function createSprayDto(): NetworkServerSnapshotSprayTarget {
     source: { id: 0, pos: { x: 0, y: 0 }, z: null, playerId: 1 as PlayerId },
     target: { id: 0, pos: { x: 0, y: 0 }, z: null, dim: null, radius: null },
     type: 'build',
+    inverse: undefined,
     intensity: 0,
     speed: null,
     particleRadius: null,
@@ -355,6 +356,7 @@ export function copySprayInto(
   }
   dst.target.radius = src.target.radius;
   dst.type = src.type;
+  dst.inverse = src.inverse;
   dst.intensity = src.intensity;
   dst.speed = src.speed;
   dst.particleRadius = src.particleRadius;

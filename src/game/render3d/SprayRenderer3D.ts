@@ -296,7 +296,7 @@ export class SprayRenderer3D {
   }
 
   private sprayKey(spray: SprayTarget): string {
-    return `${spray.type}:${spray.source.id}:${spray.target.id}:${spray.channel}:${spray.flow}`;
+    return `${spray.type}:${spray.source.id}:${spray.target.id}:${spray.channel}:${spray.flow}:${spray.inverse === true ? 1 : 0}`;
   }
 
   private registerLivePylonTip(spray: SprayTarget): void {
@@ -599,6 +599,21 @@ export class SprayRenderer3D {
       endX = tx + Math.cos(areaPhase) * areaRing;
       endZ = tz + Math.sin(areaPhase) * areaRing;
       endY = ty + (this.random() * 2 - 1) * Math.min(healSpread * 0.4, 5);
+    }
+    if (spray.inverse === true && spray.flow === 'direct') {
+      // BAR reclaim/resurrection return particles are emitted over the
+      // target volume, then travel backward and converge exactly on the
+      // builder's nano emitter. The logical source/target pair stays
+      // unchanged so ownership, visibility and wire identity do too.
+      const inverseStartX = endX;
+      const inverseStartY = endY;
+      const inverseStartZ = endZ;
+      endX = sx;
+      endY = sy;
+      endZ = sz;
+      sx = inverseStartX;
+      sy = inverseStartY;
+      sz = inverseStartZ;
     }
     const targetSpread = spray.flow !== 'direct'
       ? Math.max(1, spray.flowRadius)

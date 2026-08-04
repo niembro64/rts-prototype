@@ -229,6 +229,7 @@ class CommanderAbilitiesSystem {
         spray.intensity = 1;
         spray.channel = pointIndex;
         spray.flow = 'direct';
+        spray.inverse = movement.operation === 'reclaim';
         spray.flowRadius = 0;
         spray.speed = spec?.particleTravelSpeed;
         spray.particleRadius = spec?.particleRadius;
@@ -252,6 +253,7 @@ class CommanderAbilitiesSystem {
         intensity: 0,
         channel: 0,
         flow: 'direct',
+        inverse: undefined,
         flowRadius: 0,
         coneAxis: undefined,
         coneAngle: undefined,
@@ -267,6 +269,7 @@ class CommanderAbilitiesSystem {
     }
     spray.target.dim = undefined;
     spray.target.radius = undefined;
+    spray.inverse = undefined;
     spray.waypoint = undefined;
     spray.waypoint2 = undefined;
     spray.coneAxis = undefined;
@@ -409,8 +412,8 @@ class CommanderAbilitiesSystem {
       'reclaim',
       dtSec > 0 ? { energy: refund.energy / dtSec, metal: refund.metal / dtSec } : null,
     );
-    // Reclaim shares the one outward work spray with build and repair;
-    // the prop is not an entity, so the movement carries its own point.
+    // The prop is not an entity, so the movement carries its own point.
+    // emitWorkSprays applies BAR's inverse nano direction to reclaim.
     world.recordWorkMovement(commander.id, target.id, 'reclaim', buildPower, {
       x: target.x,
       y: target.y,
@@ -475,6 +478,12 @@ class CommanderAbilitiesSystem {
 
     hpState.hp = _reclaimTickOut[0];
     world.markSnapshotDirty(target.id, ENTITY_CHANGED_HP);
+    world.recordWorkMovement(
+      commander.id,
+      target.id,
+      'reclaim',
+      getBuilderConstructionRate(commander),
+    );
     return _reclaimTickOut[4] !== 0;
   }
 
@@ -517,7 +526,10 @@ class CommanderAbilitiesSystem {
     spray.target.pos.y = target.transform.y;
     spray.target.z = target.transform.z;
     spray.target.radius = target.unit !== null ? target.unit.radius.hitbox : target.building?.targetRadius ?? 0;
-    spray.type = 'heal';
+    // BAR capture nano is builder -> target and uses the builder's team
+    // color, the same visual family as construction rather than repair's
+    // legacy white/wobbling stream.
+    spray.type = 'build';
     spray.intensity = Math.max(0.2, state.progress);
     spray.channel = 1;
     spray.flow = 'direct';
@@ -568,23 +580,30 @@ class CommanderAbilitiesSystem {
     );
     const progress = wreck.resurrectProgressMs / wreck.resurrectRequiredMs;
 
-    const spray = this.acquireSprayTarget();
-    spray.source.id = commander.id;
-    spray.source.pos.x = sourceX;
-    spray.source.pos.y = sourceY;
-    spray.source.z = sourceZ;
-    spray.source.playerId = playerId;
-    spray.target.id = target.id;
-    spray.target.pos.x = target.transform.x;
-    spray.target.pos.y = target.transform.y;
-    spray.target.z = target.transform.z;
-    spray.target.radius = target.building?.targetRadius ?? 20;
-    spray.type = 'heal';
-    spray.intensity = Math.max(0.2, progress);
-    spray.channel = 2;
-    spray.flow = 'direct';
-    spray.flowRadius = 0;
-    spray.ballSpawnRate = 10;
+    const emitResurrectionLeg = (inverse: boolean, channel: number): void => {
+      const spray = this.acquireSprayTarget();
+      spray.source.id = commander.id;
+      spray.source.pos.x = sourceX;
+      spray.source.pos.y = sourceY;
+      spray.source.z = sourceZ;
+      spray.source.playerId = playerId;
+      spray.target.id = target.id;
+      spray.target.pos.x = target.transform.x;
+      spray.target.pos.y = target.transform.y;
+      spray.target.z = target.transform.z;
+      spray.target.radius = target.building?.targetRadius ?? 20;
+      spray.type = 'build';
+      spray.intensity = Math.max(0.2, progress);
+      spray.channel = channel;
+      spray.flow = 'direct';
+      spray.inverse = inverse;
+      spray.flowRadius = 0;
+      spray.ballSpawnRate = 10;
+    };
+    // BAR resurrection emits both the ordinary builder -> wreck stream
+    // and the inverse wreck-volume -> builder return stream.
+    emitResurrectionLeg(false, 2);
+    emitResurrectionLeg(true, 3);
 
     if (wreck.resurrectProgressMs < wreck.resurrectRequiredMs) return false;
 

@@ -413,6 +413,7 @@ export class ResourcePylonFlowController3D {
     target.particleRadius = undefined;
     target.channel = 0;
     target.flow = 'direct';
+    target.inverse = undefined;
     target.flowRadius = 0;
     target.coneAngle = undefined;
     this.sprayTargets.push(target);

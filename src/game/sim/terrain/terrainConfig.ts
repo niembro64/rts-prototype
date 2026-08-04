@@ -8,6 +8,35 @@ export const TILE_FLOOR_Y = terrainConfig.world.floorY;
 const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
+/** Render-only terrain brightness at and below the water surface. */
+export const TERRAIN_SUBMERGED_BRIGHTNESS =
+  terrainConfig.water.terrainDarkening.submergedBrightness;
+
+/** Altitude where the submerged-to-normal terrain transition finishes. */
+export const TERRAIN_SUBMERGED_FADE_END_HEIGHT =
+  terrainConfig.water.terrainDarkening.fadeEndHeight;
+
+if (!Number.isFinite(TERRAIN_SUBMERGED_BRIGHTNESS) ||
+    TERRAIN_SUBMERGED_BRIGHTNESS < 0 ||
+    TERRAIN_SUBMERGED_BRIGHTNESS > 1) {
+  throw new Error('terrainConfig.water.terrainDarkening.submergedBrightness must be in [0, 1]');
+}
+if (!Number.isFinite(TERRAIN_SUBMERGED_FADE_END_HEIGHT) ||
+    TERRAIN_SUBMERGED_FADE_END_HEIGHT <= WATER_LEVEL) {
+  throw new Error('terrainConfig.water.terrainDarkening.fadeEndHeight must be above WATER_LEVEL');
+}
+
+/** Matches the terrain fragment shaders' clamped half-cosine depth curve. */
+export function terrainUnderwaterBrightnessAtHeight(height: number): number {
+  const heightT = Math.max(0, Math.min(
+    1,
+    (height - WATER_LEVEL) / (TERRAIN_SUBMERGED_FADE_END_HEIGHT - WATER_LEVEL),
+  ));
+  const cosineT = 0.5 - 0.5 * Math.cos(Math.PI * heightT);
+  return TERRAIN_SUBMERGED_BRIGHTNESS +
+    (1 - TERRAIN_SUBMERGED_BRIGHTNESS) * cosineT;
+}
+
 // Authoritative simulation and terrain rendering share this exact mesh.
 // This is the finest equilateral-triangle edge resolution relative to
 // LAND_CELL_SIZE. The baker groups fine triangles upward into larger

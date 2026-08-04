@@ -1849,6 +1849,7 @@ type SprayTargetFixture = {
     radius?: number;
   };
   type: 'build' | 'heal';
+  inverse?: boolean;
   intensity: number;
   speed?: number;
   particleRadius?: number;
@@ -1893,6 +1894,7 @@ function packSprayTargetsIntoScratch(
     if (s.speed !== undefined) flags |= 0x20;
     if (s.particleRadius !== undefined) flags |= 0x40;
     if (s.ballSpawnRate !== undefined) flags |= 0x80;
+    if (s.inverse === true) flags |= 0x100;
     view[base + 16] = flags;
   }
 }
@@ -2731,6 +2733,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           radius: 80,
         },
         type: 'heal',
+        inverse: true,
         intensity: 0.85,
         speed: 12,
         particleRadius: 3,
