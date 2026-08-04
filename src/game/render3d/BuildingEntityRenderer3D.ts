@@ -21,6 +21,16 @@ import {
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
+import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
+import * as THREE_TRIM from 'three';
+import { entityTeamColorHexForPlayer } from './EntityInstanceColor3D';
+
+/** Roof band proportions. The band overhangs the footprint slightly so
+ *  it reads as a lip rather than a decal painted on the roof. */
+const BUILDING_TRIM_SPAN = 1.06;
+const BUILDING_TRIM_THICKNESS = 0.12;
+const _buildingTrimQuat = new THREE_TRIM.Quaternion();
+const _buildingTrimUp = new THREE_TRIM.Vector3(0, 1, 0);
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
@@ -337,6 +347,8 @@ type BuildingEntityRenderer3DOptions = {
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  /** Shared team-trim pool. Optional so harnesses can omit it. */
+  teamTrim?: TeamTrimRenderer3D | null;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   metalDeposits: readonly MetalDeposit[];
   scopedMeshRetention: ScopedRenderMeshRetention3D;
@@ -354,6 +366,9 @@ export class BuildingEntityRenderer3D {
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  /** Shared team-trim pool, owned by Render3DEntities. Null in harnesses
+   *  that construct this renderer without one. */
+  private teamTrim: TeamTrimRenderer3D | null = null;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
   private readonly lodProxyRenderer: EntityLodProxyRenderer3D;
@@ -412,6 +427,7 @@ export class BuildingEntityRenderer3D {
     this.coneBarrelGeom = options.coneBarrelGeom;
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTurretAccentMat = options.getTurretAccentMat;
+    this.teamTrim = options.teamTrim ?? null;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
     this.lodProxyRenderer = options.lodProxyRenderer;
@@ -1080,6 +1096,8 @@ export class BuildingEntityRenderer3D {
       }
     }
 
+    this.updateTeamTrim(mesh, ownerId, x, y, z, width, depth);
+
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
     mesh.buildingCachedOwnerId = ownerId;
@@ -1092,6 +1110,49 @@ export class BuildingEntityRenderer3D {
     mesh.buildingCachedZ = z;
     mesh.buildingCachedRotation = rotation;
     mesh.buildingCachedDetailsReady = detailsReady;
+  }
+
+  /**
+   * A structure's team trim: a band across the roof edge.
+   *
+   * Buildings are read from above in an RTS, so the roof is where the
+   * side has to be legible; a wall stripe would be hidden by the
+   * building's own footprint at normal camera pitch. The band is TEAM
+   * color while the structure body stays PLAYER color, so allies share
+   * the band and their hulls still tell them apart.
+   */
+  private updateTeamTrim(
+    mesh: EntityMesh,
+    ownerId: PlayerId | undefined,
+    x: number,
+    y: number,
+    z: number,
+    width: number,
+    depth: number,
+  ): void {
+    const trim = this.teamTrim;
+    if (trim === null) return;
+    if (mesh.teamTrimSlot === undefined) {
+      const slot = trim.alloc();
+      // A full pool just means no band on this structure, never a
+      // broken frame.
+      if (slot < 0) return;
+      mesh.teamTrimSlot = slot;
+    }
+    const height = mesh.buildingHeight ?? Math.max(width, depth) * 0.5;
+    const bandThickness = Math.max(2, Math.min(width, depth) * BUILDING_TRIM_THICKNESS);
+    _buildingTrimQuat.setFromAxisAngle(_buildingTrimUp, mesh.buildingCachedRotation ?? 0);
+    trim.set(
+      mesh.teamTrimSlot,
+      x,
+      y + height,
+      z,
+      _buildingTrimQuat,
+      width * BUILDING_TRIM_SPAN,
+      bandThickness,
+      depth * BUILDING_TRIM_SPAN,
+      entityTeamColorHexForPlayer(ownerId),
+    );
   }
 
   private updateTurretPoses(

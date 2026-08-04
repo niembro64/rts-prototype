@@ -93,7 +93,7 @@ import type {
   GamePhase,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { setPlayerCountForColors } from '../sim/types';
+import { setTeamLayoutForColors } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -328,7 +328,14 @@ export class RtsScene3D {
     this.perimeterMagnitude = config.perimeterMagnitude ?? 0;
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
-    setPlayerCountForColors(this.playerIds.length);
+    // Identity colors nest team-then-player, so they need the real
+    // sides, not just a seat count. Same roster the sim uses, so a unit
+    // is the same color on every client.
+    setTeamLayoutForColors(
+      this.teamRoster.allyTeamIds.map(
+        (id) => this.teamRoster.playersByAllyTeam.get(id) ?? [],
+      ),
+    );
     // Also seed the heightmap's divider count from the same source.
     // The same radial-slice math is used for every player count,
     // including one-player maps. The host's GameServer sets this too,

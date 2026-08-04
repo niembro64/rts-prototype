@@ -107,25 +107,98 @@ export { createCombatComponent, createEmptyEntityComponentSlots, createTransform
 import type { PlayerId } from '@/types/sim';
 import { COLORS } from '@/colorsConfig';
 
-type PlayerColors = { primary: number; secondary: number; name: string };
+/**
+ * Identity colors for one seat. FOUR colors, because a seat has two
+ * identities and an entity shows both:
+ *
+ *   colorTeamNormal / colorTeamDark     the SIDE this seat plays on
+ *   colorPlayerNormal / colorPlayerDark the seat itself
+ *
+ * `primary` / `secondary` stay as aliases of the PLAYER pair so existing
+ * callers keep working unchanged.
+ */
+type PlayerColors = {
+  primary: number;
+  secondary: number;
+  colorPlayerNormal: number;
+  colorPlayerDark: number;
+  colorTeamNormal: number;
+  colorTeamDark: number;
+  name: string;
+};
 
-// Number of total players currently in the lobby / game. Drives the
-// evenly-spaced hue distribution: with N players slot k lands at hue
-// ((k − 1) / N) × 360°, so slot 1 is always red (0°) and slot 1 +
-// floor(N/2) sits exactly opposite on the color wheel — "red ↔
-// anti-red". Set via setPlayerCountForColors() at game/lobby init.
+/**
+ * Hue nests two levels deep, mirroring the team model (see
+ * src/game/sim/teamRoster.ts and budget_design_philosophy.html):
+ *
+ *   1. The wheel splits evenly by TEAM count. A team's color is the
+ *      MIDDLE of its slice, at hue k x 360/N - so team 1 is always red.
+ *   2. That slice splits evenly by how many players the team holds. A
+ *      player's color is the MIDDLE of its sub-slice.
+ *
+ * A one-player team makes step 2 a no-op: its sub-slice IS the team
+ * slice, so player hue == team hue and all four colors collapse to two.
+ * Free-for-all therefore reproduces the pre-team wheel exactly - six
+ * seats over six sides still land on 0/60/120/180/240/300.
+ */
+type ColorTeamLayout = {
+  sideIndexByPlayer: Map<PlayerId, number>;
+  seatIndexByPlayer: Map<PlayerId, number>;
+  seatCountByPlayer: Map<PlayerId, number>;
+  sideCount: number;
+};
+
 let _playerCountForColors = 6;
+let _colorTeamLayout: ColorTeamLayout | null = null;
 
-
-/** Tell the color helpers how many total players are in the game so
- *  the hue wheel divides evenly. With N players, hues land at
- *  k × 360°/N for k = 0..N−1: slot 1 → 0° (Red), slot 1 + floor(N/2)
- *  → 180° (Cyan, "anti-red"). Calling with a new count invalidates
- *  the slot cache. */
+/** Legacy entry point: N seats, each its own side (free-for-all). */
 export function setPlayerCountForColors(count: number): void {
   const next = Math.max(1, Math.floor(count));
-  if (_playerCountForColors === next) return;
+  if (_colorTeamLayout === null && _playerCountForColors === next) return;
   _playerCountForColors = next;
+  _colorTeamLayout = null;
+  _playerColorCache.clear();
+}
+
+/**
+ * Install the match's real sides so team hues divide the wheel and player
+ * hues divide their own team's slice. `playersBySide` is one entry per
+ * side, each listing that side's seats in roster order.
+ *
+ * Presentation only - colors never enter the simulation hash. Every client
+ * must still derive from the SAME roster so a unit is the same color on
+ * every screen, which is why this takes the roster's own grouping rather
+ * than re-deriving one.
+ */
+export function setTeamLayoutForColors(
+  playersBySide: readonly (readonly PlayerId[])[],
+): void {
+  const sides = playersBySide.filter((side) => side.length > 0);
+  if (sides.length === 0) {
+    _colorTeamLayout = null;
+    _playerColorCache.clear();
+    return;
+  }
+  const sideIndexByPlayer = new Map<PlayerId, number>();
+  const seatIndexByPlayer = new Map<PlayerId, number>();
+  const seatCountByPlayer = new Map<PlayerId, number>();
+  let total = 0;
+  for (let side = 0; side < sides.length; side++) {
+    const seats = sides[side];
+    for (let seat = 0; seat < seats.length; seat++) {
+      sideIndexByPlayer.set(seats[seat], side);
+      seatIndexByPlayer.set(seats[seat], seat);
+      seatCountByPlayer.set(seats[seat], seats.length);
+    }
+    total += seats.length;
+  }
+  _colorTeamLayout = {
+    sideIndexByPlayer,
+    seatIndexByPlayer,
+    seatCountByPlayer,
+    sideCount: sides.length,
+  };
+  _playerCountForColors = Math.max(1, total);
   _playerColorCache.clear();
 }
 
@@ -196,30 +269,66 @@ const PLAYER_PRIMARY_OKLCH_C = 0.12;
 const PLAYER_SECONDARY_OKLCH_L = 0.3;
 const PLAYER_SECONDARY_OKLCH_C = 0.05;
 
-/** Resolve a player's color triplet (primary / secondary / display
- *  name). Hues are evenly distributed around the color wheel based
- *  on the total player count: with N players, slot k lands at hue
- *  ((k − 1) / N) × 360°. The wheel divides for ANY N — there's no
- *  hardcoded slot table, so a 10-player or 20-player lobby works
- *  the same way a 6-player lobby does.
+/**
+ * Resolve a seat's four identity colors plus its display name.
  *
- *  The primary/secondary pair uses OKLCH at fixed L and C, varying
- *  only hue, so every player has the SAME perceptual brightness and
- *  saturation regardless of which slot they got. Player names are
- *  the primary color's hex string (`#RRGGBB`) so the name always
- *  matches exactly what's on screen. */
+ * Hue nests: the wheel splits by TEAM, and a team's slice splits by its
+ * own player count (see ColorTeamLayout above). Every color uses OKLCH at
+ * fixed L and C and varies only hue, so no seat is perceptually brighter
+ * than another whichever slice it landed in.
+ *
+ * `primary` / `secondary` alias the PLAYER pair, which is what they always
+ * were - in a free-for-all the player hue IS the team hue, so nothing
+ * about the old wheel changes.
+ */
 export function getPlayerColors(playerId: PlayerId): PlayerColors {
   const slot = pidToSlot(playerId);
   let cached = _playerColorCache.get(slot);
   if (cached) return cached;
-  // Use the larger of "configured player count" and "this slot index"
-  // so an out-of-range pid still gets a valid (if slightly off-circle)
-  // hue without divide-by-zero or wrap weirdness.
-  const total = Math.max(_playerCountForColors, slot);
-  const hue = ((slot - 1) / total) * 360;
-  const primary = oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, hue);
-  const secondary = oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, hue);
-  cached = { primary, secondary, name: hexToHashString(primary) };
+
+  const layout = _colorTeamLayout;
+  let teamHue: number;
+  let playerHue: number;
+  if (layout !== null && layout.sideIndexByPlayer.has(slot)) {
+    const sideCount = Math.max(1, layout.sideCount);
+    const sideIndex = layout.sideIndexByPlayer.get(slot) as number;
+    const seatIndex = layout.seatIndexByPlayer.get(slot) ?? 0;
+    const seatCount = Math.max(1, layout.seatCountByPlayer.get(slot) ?? 1);
+    // Team color is the MIDDLE of its wheel slice, so team 0 is red.
+    const sliceWidth = 360 / sideCount;
+    teamHue = sideIndex * sliceWidth;
+    // Player color is the MIDDLE of its sub-slice of that team slice. A
+    // lone seat lands back on the team hue, which is why single-player
+    // teams come out with player == team for free.
+    const subSlice = sliceWidth / seatCount;
+    playerHue = teamHue - sliceWidth * 0.5 + (seatIndex + 0.5) * subSlice;
+  } else {
+    // No roster installed (lobby before assignment, tests, an out-of-range
+    // pid): fall back to the flat per-seat wheel. Use the larger of
+    // "configured count" and this slot so an unknown pid still gets a
+    // valid hue instead of a divide-by-zero or a wrap.
+    const total = Math.max(_playerCountForColors, slot);
+    playerHue = ((slot - 1) / total) * 360;
+    teamHue = playerHue;
+  }
+
+  const colorPlayerNormal =
+    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, playerHue);
+  const colorPlayerDark =
+    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, playerHue);
+  const colorTeamNormal =
+    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, teamHue);
+  const colorTeamDark =
+    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, teamHue);
+  cached = {
+    primary: colorPlayerNormal,
+    secondary: colorPlayerDark,
+    colorPlayerNormal,
+    colorPlayerDark,
+    colorTeamNormal,
+    colorTeamDark,
+    name: hexToHashString(colorPlayerNormal),
+  };
   _playerColorCache.set(slot, cached);
   return cached;
 }

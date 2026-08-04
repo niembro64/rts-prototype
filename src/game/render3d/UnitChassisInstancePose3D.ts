@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import type { BodyGeomEntry, BodyMeshPart } from './BodyShape3D';
 import type { EntityMesh } from './EntityMesh3D';
@@ -7,6 +7,8 @@ import {
   UnitChassisMatrixBatch3D,
 } from './UnitChassisMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
+import { entityTeamColorHex } from './EntityInstanceColor3D';
 import {
   growFloat32Array,
   writePositionQuaternion,
@@ -14,6 +16,21 @@ import {
 
 const WRITE_SMOOTH = 0;
 const WRITE_POLY = 1;
+
+// Dorsal fin — the unit's team trim. Proportions are in unit-radius-1
+// space, the same space BodyMeshPart uses, so every hull gets a fin
+// scaled to itself. It runs fore-aft along the spine because the RTS
+// camera looks down: a lateral stripe would be invisible from above,
+// which is exactly where the player needs to read alliance.
+const FIN_LENGTH = 1.15;
+const FIN_THICKNESS = 0.22;
+const FIN_HEIGHT = 0.30;
+/** How far the fin sinks into the hull, so it reads as mounted rather
+ *  than floating above the body. */
+const FIN_EMBED = 0.10;
+
+/** Reused per fin write; the pose pass is a hot loop. */
+const _finOffset = new THREE.Vector3();
 
 export class UnitChassisInstancePose3D {
   private readonly batch = new UnitChassisMatrixBatch3D();
@@ -24,6 +41,47 @@ export class UnitChassisInstancePose3D {
   private readonly entities: Entity[] = [];
   private readonly bodyShapeKeys: string[] = [];
   private readonly writeColors: boolean[] = [];
+
+  /**
+   * Place this unit's dorsal fin. The fin sits on the chassis spine at
+   * the body's own top, oriented with the body, so it banks and tilts
+   * with the hull instead of sliding around on it.
+   *
+   * The trim is TEAM color while the hull is PLAYER color — that pairing
+   * is the whole point: teammates share the fin, and their hulls tell
+   * them apart.
+   */
+  private updateTeamFin(
+    entity: Entity,
+    mesh: EntityMesh,
+    bodyEntry: BodyGeomEntry,
+    radius: number,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    teamTrim: TeamTrimRenderer3D,
+  ): void {
+    if (mesh.teamTrimSlot === undefined) {
+      const slot = teamTrim.alloc();
+      // A full pool just means no fin on this unit; never a broken frame.
+      if (slot < 0) return;
+      mesh.teamTrimSlot = slot;
+    }
+    const height = FIN_HEIGHT * radius;
+    // Ride the body's top, sunk by FIN_EMBED so it looks mounted.
+    const localY = (bodyEntry.topY - FIN_EMBED) * radius + height * 0.5;
+    _finOffset.set(0, localY, 0).applyQuaternion(parentQuaternion);
+    teamTrim.set(
+      mesh.teamTrimSlot,
+      parentPosition.x + _finOffset.x,
+      parentPosition.y + _finOffset.y,
+      parentPosition.z + _finOffset.z,
+      parentQuaternion,
+      FIN_LENGTH * radius,
+      height,
+      FIN_THICKNESS * radius,
+      entityTeamColorHex(entity),
+    );
+  }
 
   begin(): void {
     this.count = 0;
@@ -43,10 +101,17 @@ export class UnitChassisInstancePose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
+    teamTrim: TeamTrimRenderer3D | null = null,
   ): void {
     if (!fullUnitDetail) {
       unitDetailInstances.clearChassisSlots(mesh);
+      if (teamTrim !== null && mesh.teamTrimSlot !== undefined) {
+        teamTrim.hide(mesh.teamTrimSlot);
+      }
       return;
+    }
+    if (teamTrim !== null) {
+      this.updateTeamFin(entity, mesh, bodyEntry, radius, parentPosition, parentQuaternion, teamTrim);
     }
 
     if (mesh.smoothChassisSlots) {

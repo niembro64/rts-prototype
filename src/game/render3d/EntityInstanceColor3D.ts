@@ -24,9 +24,33 @@ export function entityInstanceColorHexForPlayer(pid: number | undefined): number
   return entityBodyColorHexForPlayer(pid);
 }
 
+/** Every seat carries two identities and every entity must show both:
+ *  the BODY is the player's own color, the TRIM is the side's. These
+ *  four accessors are the only place renderers should get either. */
+export function entityTeamColorHexForPlayer(pid: number | undefined): number {
+  return pid !== undefined ? getPlayerColors(pid).colorTeamNormal : COLORS.units.neutral.colorHex;
+}
+
+export function entityTeamDarkColorHexForPlayer(pid: number | undefined): number {
+  return pid !== undefined ? getPlayerColors(pid).colorTeamDark : COLORS.units.neutral.colorHex;
+}
+
+export function entityTeamColorHex(entity: Entity): number {
+  return entityTeamColorHexForPlayer(entity.ownership?.playerId);
+}
+
+export function entityPlayerDarkColorHexForPlayer(pid: number | undefined): number {
+  return pid !== undefined ? getPlayerColors(pid).colorPlayerDark : COLORS.units.neutral.colorHex;
+}
+
+/** Turret accent — the collar/trim ring around a turret mount and the
+ *  barrel accent on structures. This is TEAM color: a turret head already
+ *  spends its own color on firing state, so identity lives on the trim,
+ *  and putting the side there means every combat entity reads as its
+ *  alliance from any angle. Lightened so it stays distinct from a body
+ *  that happens to sit near the same hue. */
 export function turretAccentColorHexForPlayer(playerId: number | undefined): number {
-  const primary = entityBodyColorHexForPlayer(playerId);
-  return blendHexTowardWhite(primary, 0.5);
+  return blendHexTowardWhite(entityTeamColorHexForPlayer(playerId), 0.25);
 }
 
 export function entityTurretAccentColorHex(entity: Entity): number {

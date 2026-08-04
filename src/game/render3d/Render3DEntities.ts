@@ -74,6 +74,7 @@ import { tickBeamWaveTime } from './BeamWaveVisual3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
+import { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
@@ -229,6 +230,10 @@ export class Render3DEntities {
   private barrelSpinState = new UnitBarrelSpinState3D();
   private shieldPanelPose = new ShieldPanelPose3D();
   private chassisInstancePose = new UnitChassisInstancePose3D();
+  /** Team-colored trim for every entity this renderer owns. One shared
+   *  instanced pool — see TeamTrimRenderer3D on why it is not a child
+   *  mesh per entity. */
+  private teamTrim: TeamTrimRenderer3D | null = null;
   private turretPose = new UnitTurretPose3D();
   private unitRenderPose = new UnitRenderPoseBatch3D();
   private readonly locomotionRenderPose: LocomotionRenderPose = {
@@ -337,6 +342,7 @@ export class Render3DEntities {
     rendererCanvas?: HTMLCanvasElement,
   ) {
     this.world = world;
+    this.teamTrim = new TeamTrimRenderer3D(this.world);
     this.clientViewState = clientViewState;
     this.scope = scope;
     this.legRenderer = legRenderer;
@@ -374,6 +380,7 @@ export class Render3DEntities {
       coneBarrelGeom: this.coneBarrelGeom,
       getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
       getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
+      teamTrim: this.teamTrim,
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       metalDeposits: this.metalDeposits,
       scopedMeshRetention: this.scopedMeshRetention,
@@ -990,6 +997,7 @@ export class Render3DEntities {
         this._smoothLiftedPos,
         this._smoothParentQuat,
         this.unitDetailInstances,
+        this.teamTrim,
       );
 
       const selected = unitRows.selectedAt(row);
@@ -1147,6 +1155,7 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
     this.chassisInstancePose.flush(this.unitDetailInstances);
+    this.teamTrim?.flush();
     this.turretPose.flush(this.unitDetailInstances, this.turretMountCache);
     this.shieldPanelPose.flush(this.unitDetailInstances);
     this.airborneEmitterBatch.flush(this.hoverSmokeEmitters);
@@ -1351,6 +1360,8 @@ export class Render3DEntities {
     // future build will consume them.
     this.locomotionStateCache.clear();
     this.unitLodVisualStateCache.clear();
+    this.teamTrim?.dispose();
+    this.teamTrim = null;
     this.buildingRenderer.destroy();
     this.lodProxyRenderer.destroy();
     this.projectileRangeEnvelope.destroy();
