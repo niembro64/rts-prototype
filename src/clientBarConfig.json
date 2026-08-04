@@ -293,11 +293,7 @@
     "demoDefault": false,
     "realDefault": false
   },
-  "projRangeToggles": {
-    "demoDefault": false,
-    "realDefault": false
-  },
-  "unitRadiusToggles": {
+  "volumeToggles": {
     "demoDefault": false,
     "realDefault": false
   },
@@ -428,15 +424,12 @@
     "engageMinRelease",
     "build"
   ],
-  "projRangeTypes": [
+  "volumeTypes": [
+    "selection",
+    "hit",
     "collision",
+    "arming",
     "explosion"
-  ],
-  "unitRadiusTypes": [
-    "other",
-    "hitbox",
-    "collision",
-    "shotArmingRadius"
   ],
   "storageKeySuffixes": {
     "renderMode": "render-mode",
@@ -468,8 +461,7 @@
     "unitGroundNormalEmaMode": "unit-ground-normal-ema-mode",
     "soundToggles": "sound-toggles",
     "rangeToggles": "range-toggles",
-    "projRangeToggles": "proj-range-toggles",
-    "unitRadiusToggles": "unit-radius-toggles",
+    "volumeToggles": "volume-toggles",
     "legsRadius": "legs-radius",
     "legsReach": "legs-reach",
     "cameraSmooth": "camera-smooth-v3",

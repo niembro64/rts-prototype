@@ -1,5 +1,11 @@
 import * as THREE from 'three';
-import { getProjRangeToggle } from '@/clientBarConfig';
+import { getVolumeToggle } from '@/clientBarConfig';
+import {
+  createEntityVolume,
+  writeExplosionVolume,
+  writeHitVolume,
+  type EntityVolume,
+} from '../sim/entityVolumes';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
@@ -217,8 +223,11 @@ function writeComposedMatrix(
   out[o + 15] = 1;
 }
 
+/** A shot's share of the unified VOLUMES group: its HIT sphere (what
+ *  collision resolution tests) and its EXP sphere (what it detonates
+ *  with). Same two buttons that draw host hit/explosion volumes. */
 type ProjectileRadiusMeshes = {
-  collision?: THREE.LineSegments;
+  hit?: THREE.LineSegments;
   explosion?: THREE.LineSegments;
 };
 
@@ -325,6 +334,8 @@ export class ProjectileRenderer3D {
   );
   private readonly seenProjectileIds = new Set<number>();
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
+  /** Scratch volume reused by the per-shot HIT/EXP wireframe writers. */
+  private readonly projVolume = createEntityVolume();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
   private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
@@ -489,8 +500,8 @@ export class ProjectileRenderer3D {
     let plasmaLowCount = 0;
     let finCount = 0;
     let mediumFinCount = 0;
-    const wantCol = getProjRangeToggle('collision');
-    const wantExp = getProjRangeToggle('explosion');
+    const wantHit = getVolumeToggle('hit');
+    const wantExp = getVolumeToggle('explosion');
     this.projectileAxisPose.begin(projectiles.length);
     for (let i = 0; i < projectiles.length; i++) {
       const entity = projectiles[i];
@@ -596,7 +607,7 @@ export class ProjectileRenderer3D {
             r,
           );
         }
-        this.updateProjRadiusMeshes(e, wantCol, wantExp);
+        this.updateProjRadiusMeshes(e, wantHit, wantExp);
         continue;
       }
 
@@ -721,7 +732,7 @@ export class ProjectileRenderer3D {
         }
       }
 
-      this.updateProjRadiusMeshes(e, wantCol, wantExp);
+      this.updateProjRadiusMeshes(e, wantHit, wantExp);
     }
 
     if (this.sphereInstanced.count !== sphereCount) this.sphereInstanced.count = sphereCount;
@@ -795,7 +806,7 @@ export class ProjectileRenderer3D {
     if (pruneProjectiles) {
       for (const [id, radii] of this.projectileRadiusMeshes) {
         if (!seen.has(id)) {
-          this.releaseProjRadiusMesh(radii.collision);
+          this.releaseProjRadiusMesh(radii.hit);
           this.releaseProjRadiusMesh(radii.explosion);
           this.projectileRadiusMeshes.delete(id);
         }
@@ -820,8 +831,8 @@ export class ProjectileRenderer3D {
     disposeMesh(this.finInstanced, { material: false, geometry: false });
     disposeMesh(this.mediumFinInstanced, { material: false, geometry: false });
     for (const radii of this.projectileRadiusMeshes.values()) {
-      if (radii.collision) {
-        disposeMesh(radii.collision, { material: false, geometry: false });
+      if (radii.hit) {
+        disposeMesh(radii.hit, { material: false, geometry: false });
       }
       if (radii.explosion) {
         disposeMesh(radii.explosion, { material: false, geometry: false });
@@ -1292,20 +1303,16 @@ export class ProjectileRenderer3D {
 
   private updateProjRadiusMeshes(
     entity: Entity,
-    wantCol: boolean,
+    wantHit: boolean,
     wantExp: boolean,
   ): void {
     const proj = entity.projectile;
     if (!proj) return;
-    const profile = proj.config.shotProfile;
-    if (!profile.runtime.isProjectile) return;
+    if (!proj.config.shotProfile.runtime.isProjectile) return;
 
-    if (!wantCol && !wantExp) {
+    if (!wantHit && !wantExp) {
       const existing = this.projectileRadiusMeshes.get(entity.id);
-      if (existing) {
-        if (existing.collision) setObjectVisibleIfChanged(existing.collision, false);
-        if (existing.explosion) setObjectVisibleIfChanged(existing.explosion, false);
-      }
+      if (existing) this.hideProjRadiusMeshRecord(existing);
       return;
     }
 
@@ -1315,44 +1322,46 @@ export class ProjectileRenderer3D {
       this.projectileRadiusMeshes.set(entity.id, radii);
     }
 
-    const projX = entity.transform.x;
-    const projY = entity.transform.y;
-    const projZ = entity.transform.z;
-
+    // Both spheres come from the shared entityVolumes writers, the same
+    // ones the host overlay and the mouse picker use.
     this.setProjRadiusMesh(
-      radii, 'collision', wantCol,
-      projX, projY, projZ,
-      profile.runtime.radius.collision,
-      this.projMatCollision,
+      radii, 'hit',
+      wantHit && writeHitVolume(entity, this.projVolume),
+      this.projVolume, this.projMatCollision,
     );
     this.setProjRadiusMesh(
-      radii, 'explosion', wantExp && !proj.hasExploded,
-      projX, projY, projZ,
-      profile.runtime.deathExplosionRadius,
-      this.projMatExplosion,
+      radii, 'explosion',
+      wantExp && writeExplosionVolume(entity, this.projVolume),
+      this.projVolume, this.projMatExplosion,
     );
   }
 
   private hideProjRadiusMeshes(entityId: EntityId): void {
     const radii = this.projectileRadiusMeshes.get(entityId);
-    if (!radii) return;
-    if (radii.collision) setObjectVisibleIfChanged(radii.collision, false);
+    if (radii) this.hideProjRadiusMeshRecord(radii);
+  }
+
+  private hideProjRadiusMeshRecord(radii: ProjectileRadiusMeshes): void {
+    if (radii.hit) setObjectVisibleIfChanged(radii.hit, false);
     if (radii.explosion) setObjectVisibleIfChanged(radii.explosion, false);
   }
 
   private setProjRadiusMesh(
     radii: ProjectileRadiusMeshes,
-    key: 'collision' | 'explosion',
+    key: 'hit' | 'explosion',
     want: boolean,
-    x: number, y: number, z: number,
-    radius: number,
+    volume: EntityVolume,
     mat: THREE.LineBasicMaterial,
   ): void {
+    const radius = volume.halfX;
     if (!want || radius <= 0) {
       const m = radii[key];
       if (m) setObjectVisibleIfChanged(m, false);
       return;
     }
+    const x = volume.x;
+    const y = volume.y;
+    const z = volume.z;
     let mesh = radii[key];
     if (!mesh) {
       mesh = this.projectileRadiusMeshPool.pop() ??

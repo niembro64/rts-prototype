@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import {
-  getUnitRadiusToggle,
-  setUnitRadiusToggle,
-  UNIT_RADIUS_TYPES,
+  getVolumeToggle,
+  setVolumeToggle,
+  VOLUME_TYPES,
 } from '@/clientBarConfig';
-import type { UnitRadiusType } from '@/types/client';
+import type { VolumeType } from '@/types/client';
 import { WorldState } from '../sim/WorldState';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getHostShotArmingRadius } from '../sim/combat/shotArming';
@@ -26,8 +26,8 @@ function assertNear(actual: number, expected: number, message: string): void {
 }
 
 export function runShotArmingOverlay3DContractTest(): void {
-  const previous = new Map<UnitRadiusType, boolean>();
-  for (const type of UNIT_RADIUS_TYPES) previous.set(type, getUnitRadiusToggle(type));
+  const previous = new Map<VolumeType, boolean>();
+  for (const type of VOLUME_TYPES) previous.set(type, getVolumeToggle(type));
 
   const sphereSourceGeom = createPrimitiveSphereGeometry('debug', 'close');
   const radiusSphereGeom = new THREE.WireframeGeometry(sphereSourceGeom);
@@ -43,7 +43,7 @@ export function runShotArmingOverlay3DContractTest(): void {
   });
 
   try {
-    for (const type of UNIT_RADIUS_TYPES) setUnitRadiusToggle(type, type === 'shotArmingRadius');
+    for (const type of VOLUME_TYPES) setVolumeToggle(type, type === 'arming');
     renderer.beginFrame();
 
     const host = new WorldState(7831, 512, 512).createUnitFromBlueprint(
@@ -60,9 +60,9 @@ export function runShotArmingOverlay3DContractTest(): void {
       group: new THREE.Group(),
       turrets: [],
     } as unknown as EntityMesh;
-    renderer.updateUnitRadiusRings(mesh, host);
+    renderer.updateHostVolumes(mesh, host);
 
-    const armMesh = mesh.radiusRings?.shotArmingRadius;
+    const armMesh = mesh.radiusRings?.arming;
     assertContract(armMesh !== undefined, 'ARM toggle must create a host sphere mesh');
     assertContract(armMesh.visible, 'ARM host sphere mesh must be visible while its button is active');
     assertNear(
@@ -76,12 +76,12 @@ export function runShotArmingOverlay3DContractTest(): void {
       'ARM mesh must be 1.5 times the host collision sphere',
     );
 
-    setUnitRadiusToggle('shotArmingRadius', false);
+    setVolumeToggle('arming', false);
     renderer.beginFrame();
-    renderer.updateUnitRadiusRings(mesh, host);
+    renderer.updateHostVolumes(mesh, host);
     assertContract(!armMesh.visible, 'ARM host sphere mesh must hide when its button is inactive');
   } finally {
-    for (const type of UNIT_RADIUS_TYPES) setUnitRadiusToggle(type, previous.get(type) ?? false);
+    for (const type of VOLUME_TYPES) setVolumeToggle(type, previous.get(type) ?? false);
     renderer.dispose();
     radiusSphereGeom.dispose();
     sphereSourceGeom.dispose();

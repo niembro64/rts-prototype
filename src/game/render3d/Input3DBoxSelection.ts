@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EntityId, PlayerId } from '../sim/types';
-import { selectionVolumeCenterZ } from './Input3DPicker';
+import { selectionVolumeCenterZ } from '../sim/entityVolumes';
 import {
   selectEntitiesInScreenRect,
   type ScreenRectSelectionOptions,

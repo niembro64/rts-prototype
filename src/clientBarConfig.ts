@@ -19,8 +19,7 @@ import type {
   SelectionHudMode,
   SoundCategory,
   RangeType,
-  ProjRangeType,
-  UnitRadiusType,
+  VolumeType,
   WaypointDetail,
   WaterBoundaryMode,
 } from './types/client';
@@ -96,8 +95,7 @@ type ClientDefaults = {
   readonly dragPan: boolean;
   readonly sounds: Record<SoundCategory, boolean>;
   readonly rangeToggles: boolean;
-  readonly projRangeToggles: boolean;
-  readonly unitRadiusToggles: boolean;
+  readonly volumeToggles: boolean;
   readonly lobbyVisible: { readonly mobile: boolean; readonly desktop: boolean };
   readonly waypointDetail: WaypointDetail;
   readonly entityHud: EntityHudToggles;
@@ -176,8 +174,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     dragPan: pickDefault(clientBarConfig.dragPan, mode),
     sounds: { ...pickDefault(clientBarConfig.sounds, mode) } as Record<SoundCategory, boolean>,
     rangeToggles: pickDefault(clientBarConfig.rangeToggles, mode),
-    projRangeToggles: pickDefault(clientBarConfig.projRangeToggles, mode),
-    unitRadiusToggles: pickDefault(clientBarConfig.unitRadiusToggles, mode),
+    volumeToggles: pickDefault(clientBarConfig.volumeToggles, mode),
     lobbyVisible: { ...pickDefault(clientBarConfig.lobbyVisible, mode) },
     waypointDetail: pickDefault(clientBarConfig.waypointDetail, mode) as WaypointDetail,
     entityHud: cloneEntityHud(
@@ -271,8 +268,7 @@ export const CLIENT_CONFIG = {
   dragPan: { default: DEMO_CLIENT_DEFAULTS.dragPan },
   sounds: { default: { ...DEMO_CLIENT_DEFAULTS.sounds } },
   rangeToggles: { default: DEMO_CLIENT_DEFAULTS.rangeToggles },
-  projRangeToggles: { default: DEMO_CLIENT_DEFAULTS.projRangeToggles },
-  unitRadiusToggles: { default: DEMO_CLIENT_DEFAULTS.unitRadiusToggles },
+  volumeToggles: { default: DEMO_CLIENT_DEFAULTS.volumeToggles },
   lobbyVisible: { default: { ...DEMO_CLIENT_DEFAULTS.lobbyVisible } },
   waypointDetail: {
     default: DEMO_CLIENT_DEFAULTS.waypointDetail,
@@ -293,11 +289,8 @@ export const SOUND_CATEGORIES: SoundCategory[] =
 export const RANGE_TYPES: RangeType[] =
   clientBarConfig.rangeTypes as RangeType[];
 
-export const PROJ_RANGE_TYPES: ProjRangeType[] =
-  clientBarConfig.projRangeTypes as ProjRangeType[];
-
-export const UNIT_RADIUS_TYPES: UnitRadiusType[] =
-  clientBarConfig.unitRadiusTypes as UnitRadiusType[];
+export const VOLUME_TYPES: VolumeType[] =
+  clientBarConfig.volumeTypes as VolumeType[];
 
 function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
   return {
@@ -344,8 +337,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     dragPan: { default: defaults.dragPan },
     sounds: { default: { ...defaults.sounds } },
     rangeToggles: { default: defaults.rangeToggles },
-    projRangeToggles: { default: defaults.projRangeToggles },
-    unitRadiusToggles: { default: defaults.unitRadiusToggles },
+    volumeToggles: { default: defaults.volumeToggles },
     lobbyVisible: { default: { ...defaults.lobbyVisible } },
     waypointDetail: { ...CLIENT_CONFIG.waypointDetail, default: defaults.waypointDetail },
     entityHud: { default: cloneEntityHud(defaults.entityHud) },
@@ -394,8 +386,7 @@ type ClientStorageKeyName =
   | 'unitGroundNormalEmaMode'
   | 'soundToggles'
   | 'rangeToggles'
-  | 'projRangeToggles'
-  | 'unitRadiusToggles'
+  | 'volumeToggles'
   | 'legsRadius'
   | 'legsReach'
   | 'cameraSmooth'
@@ -440,8 +431,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'unitGroundNormalEmaMode',
   'soundToggles',
   'rangeToggles',
-  'projRangeToggles',
-  'unitRadiusToggles',
+  'volumeToggles',
   'legsRadius',
   'legsReach',
   'cameraSmooth',
@@ -493,15 +483,12 @@ const currentRangeToggles: Record<RangeType, boolean> = {
   engageMinRelease: _cd.rangeToggles.default,
   build: _cd.rangeToggles.default,
 };
-const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
-  collision: _cd.projRangeToggles.default,
-  explosion: _cd.projRangeToggles.default,
-};
-const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
-  other: _cd.unitRadiusToggles.default,
-  hitbox: _cd.unitRadiusToggles.default,
-  collision: _cd.unitRadiusToggles.default,
-  shotArmingRadius: _cd.unitRadiusToggles.default,
+const currentVolumeToggles: Record<VolumeType, boolean> = {
+  selection: _cd.volumeToggles.default,
+  hit: _cd.volumeToggles.default,
+  collision: _cd.volumeToggles.default,
+  arming: _cd.volumeToggles.default,
+  explosion: _cd.volumeToggles.default,
 };
 let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentLegsReach: boolean = _cd.legsReach.default;
@@ -585,8 +572,7 @@ function applyClientDefaults(mode: ClientMode): void {
   const cd = getClientConfig(mode);
   currentRenderMode = cd.render.default;
   for (const rt of RANGE_TYPES) currentRangeToggles[rt] = cd.rangeToggles.default;
-  for (const prt of PROJ_RANGE_TYPES) currentProjRangeToggles[prt] = cd.projRangeToggles.default;
-  for (const urt of UNIT_RADIUS_TYPES) currentUnitRadiusToggles[urt] = cd.unitRadiusToggles.default;
+  for (const vt of VOLUME_TYPES) currentVolumeToggles[vt] = cd.volumeToggles.default;
   currentLegsRadius = cd.legsRadius.default;
   currentLegsReach = cd.legsReach.default;
   currentCameraSmoothMode = cd.cameraSmooth.default;
@@ -824,24 +810,13 @@ function loadFromStorage(mode: ClientMode): void {
       }
     } catch { /* malformed JSON — keep defaults */ }
   }
-  const storedProjRangeToggles = readPersisted(keys.projRangeToggles);
-  if (storedProjRangeToggles) {
+  const storedVolumeToggles = readPersisted(keys.volumeToggles);
+  if (storedVolumeToggles) {
     try {
-      const parsed = JSON.parse(storedProjRangeToggles);
-      for (const prt of PROJ_RANGE_TYPES) {
-        if (typeof parsed[prt] === 'boolean') {
-          currentProjRangeToggles[prt] = parsed[prt];
-        }
-      }
-    } catch { /* malformed JSON — keep defaults */ }
-  }
-  const storedUnitRadiusToggles = readPersisted(keys.unitRadiusToggles);
-  if (storedUnitRadiusToggles) {
-    try {
-      const parsed = JSON.parse(storedUnitRadiusToggles);
-      for (const urt of UNIT_RADIUS_TYPES) {
-        if (typeof parsed[urt] === 'boolean') {
-          currentUnitRadiusToggles[urt] = parsed[urt];
+      const parsed = JSON.parse(storedVolumeToggles);
+      for (const vt of VOLUME_TYPES) {
+        if (typeof parsed[vt] === 'boolean') {
+          currentVolumeToggles[vt] = parsed[vt];
         }
       }
     } catch { /* malformed JSON — keep defaults */ }
@@ -920,26 +895,20 @@ export function anyRangeToggleActive(): boolean {
   return RANGE_TYPES.some((rt) => currentRangeToggles[rt]);
 }
 
-export function getProjRangeToggle(type: ProjRangeType): boolean {
-  return currentProjRangeToggles[type];
+/** One unified debug-volume group. A category is asked for once and every
+ *  entity kind that carries that volume draws it — units, buildings,
+ *  projectiles, and vegetation props all answer the same five buttons. */
+export function getVolumeToggle(type: VolumeType): boolean {
+  return currentVolumeToggles[type];
 }
 
-export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
-  currentProjRangeToggles[type] = show;
-  persistJson(activeStorageKeys().projRangeToggles, currentProjRangeToggles);
+export function setVolumeToggle(type: VolumeType, show: boolean): void {
+  currentVolumeToggles[type] = show;
+  persistJson(activeStorageKeys().volumeToggles, currentVolumeToggles);
 }
 
-export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
-  return currentUnitRadiusToggles[type];
-}
-
-export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
-  currentUnitRadiusToggles[type] = show;
-  persistJson(activeStorageKeys().unitRadiusToggles, currentUnitRadiusToggles);
-}
-
-export function anyUnitRadiusToggleActive(): boolean {
-  return UNIT_RADIUS_TYPES.some((urt) => currentUnitRadiusToggles[urt]);
+export function anyVolumeToggleActive(): boolean {
+  return VOLUME_TYPES.some((vt) => currentVolumeToggles[vt]);
 }
 
 export function getLegsRadiusToggle(): boolean {

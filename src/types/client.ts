@@ -82,8 +82,23 @@ export type RangeType =
   | 'engageMinAcquire'
   | 'engageMinRelease'
   | 'build';
-export type ProjRangeType = 'collision' | 'explosion';
-export type UnitRadiusType = 'other' | 'hitbox' | 'collision' | 'shotArmingRadius';
+/** One debug-volume category, applied to EVERY entity that carries that
+ *  kind of volume rather than to one entity class. Units, buildings,
+ *  projectiles, and vegetation props each contribute whichever of these
+ *  they actually have:
+ *
+ *    selection — the mouse-pick volume (sphere / box / torus / prop cylinder)
+ *    hit       — damage volume + the target-acquisition cylinder
+ *    collision — the physics volume
+ *    arming    — the host safety sphere a shot must clear before it arms
+ *    explosion — the splash volume a shot detonates with
+ */
+export type VolumeType =
+  | 'selection'
+  | 'hit'
+  | 'collision'
+  | 'arming'
+  | 'explosion';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;
 
@@ -182,8 +197,8 @@ export type ClientBarConfig = {
   readonly dragPan: BooleanSetting;
   readonly sounds: DefaultSetting<SoundDefaults>;
   readonly rangeToggles: BooleanSetting;
-  readonly projRangeToggles: BooleanSetting;
-  readonly unitRadiusToggles: BooleanSetting;
+  /** One default for the whole unified VOLUMES group. */
+  readonly volumeToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
   readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
   /** Per-entity-type HUD element toggles (name / health bar /

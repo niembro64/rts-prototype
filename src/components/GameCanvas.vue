@@ -1122,8 +1122,7 @@ const {
   commandHotkeyRevision,
   soundToggles,
   rangeToggles,
-  projRangeToggles,
-  unitRadiusToggles,
+  volumeToggles,
   legsRadiusToggle,
   legsReachToggle,
   lodMode,
@@ -1132,8 +1131,7 @@ const {
   cameraFovDegrees,
   waterBoundaryMode,
   allRangesActive,
-  allProjRangesActive,
-  allUnitRadiiActive,
+  allVolumesActive,
   entityHudTypes,
   entityHudElements,
   SFX_CATEGORIES,
@@ -1146,8 +1144,7 @@ const {
   changeMasterVolume,
   toggleRange,
   cycleAttackRangeDisplay,
-  toggleProjRange,
-  toggleUnitRadius,
+  toggleVolume,
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
@@ -1157,8 +1154,7 @@ const {
   changeCameraFovBy,
   changeWaterBoundaryMode,
   toggleAllRanges,
-  toggleAllProjRanges,
-  toggleAllUnitRadii,
+  toggleAllVolumes,
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleWindParticles,
@@ -2020,10 +2016,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   soundTooltips: SOUND_TOOLTIPS,
   allRangesActive: allRangesActive.value,
   rangeToggles,
-  allProjRangesActive: allProjRangesActive.value,
-  projRangeToggles,
-  allUnitRadiiActive: allUnitRadiiActive.value,
-  unitRadiusToggles,
+  allVolumesActive: allVolumesActive.value,
+  volumeToggles,
   legsRadiusToggle: legsRadiusToggle.value,
   legsReachToggle: legsReachToggle.value,
   lodMode: lodMode.value,
@@ -2073,10 +2067,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleSoundCategory,
   toggleAllRanges,
   toggleRange,
-  toggleAllProjRanges,
-  toggleProjRange,
-  toggleAllUnitRadii,
-  toggleUnitRadius,
+  toggleAllVolumes,
+  toggleVolume,
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
@@ -2222,8 +2214,7 @@ watchEffect(() => {
   m.masterVolume = masterVolume.value;
   m.allSoundsActive = allSoundsActive.value;
   m.allRangesActive = allRangesActive.value;
-  m.allProjRangesActive = allProjRangesActive.value;
-  m.allUnitRadiiActive = allUnitRadiiActive.value;
+  m.allVolumesActive = allVolumesActive.value;
   m.legsRadiusToggle = legsRadiusToggle.value;
   m.legsReachToggle = legsReachToggle.value;
   m.lodMode = lodMode.value;

@@ -975,7 +975,7 @@ export class BuildingEntityRenderer3D {
     this.updateTurretPoses(entity, mesh, rows, row);
     if (updateStaticOverlays) {
       this.selectionOverlays.updateRangeRings(mesh, entity);
-      this.selectionOverlays.updateBuildingRadiusRings(mesh, entity);
+      this.selectionOverlays.updateHostVolumes(mesh, entity);
       mesh.buildingRangeOverlayVersion = rangeOverlayStateVersion;
       mesh.buildingUnitOverlayVersion = unitOverlayStateVersion;
     }

@@ -860,54 +860,38 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>SHOT SPH:</BarLabel>
-        <BarButton
-          :active="model.allProjRangesActive"
-          title="Toggle every 3D projectile sphere viz on/off"
-          @click="model.toggleAllProjRanges"
-        >ALL</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            :active="model.projRangeToggles.collision"
-            title="Show projectile collision sphere (3D hit volume)"
-            @click="model.toggleProjRange('collision')"
-          >COL</BarButton>
-          <BarButton
-            :active="model.projRangeToggles.explosion"
-            title="Show projectile explosion sphere (3D splash volume)"
-            @click="model.toggleProjRange('explosion')"
-          >EXP</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel>VOLUMES:</BarLabel>
         <BarButton
-          :active="model.allUnitRadiiActive"
-          title="Toggle every host volume viz on/off (actual shapes: spheres for units, boxes/ring for buildings)"
-          @click="model.toggleAllUnitRadii"
+          :active="model.allVolumesActive"
+          title="Toggle every 3D volume viz on/off. Each button draws one CONCEPT across every entity that carries it — units, buildings/towers, shots, and vegetation props — in that entity's true shape (sphere, box, cylinder, or ring)."
+          @click="model.toggleAllVolumes"
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
-            :active="model.unitRadiusToggles.other"
-            title="Show the actual mouse-pick selection sphere (units: 1.18 × body radius, min 12; buildings: footprint half-diagonal × 1.18 at the visual center — floats for hovering buildings)"
-            @click="model.toggleUnitRadius('other')"
+            :active="model.volumeToggles.selection"
+            title="SELECTION — the exact volume the mouse picker ray-tests. Units: body sphere (1.18 × radius, min 12). Buildings/towers: upright footprint × visual-height box. Hovering fabricator: its torus ring (the open middle does not pick). Vegetation props: their upright reclaim cylinder."
+            @click="model.toggleVolume('selection')"
           >SEL</BarButton>
           <BarButton
-            :active="model.unitRadiusToggles.hitbox"
-            title="Show the hit volumes — projectile/beam/splash volume (units: hitbox sphere; buildings: the width × height × depth combat box) PLUS the target-acquisition cylinder every entity carries (radius = hitbox, half-height = max(hitbox, vertical extent)); both float at the combat center for hovering buildings"
-            @click="model.toggleUnitRadius('hitbox')"
+            :active="model.volumeToggles.hit"
+            title="HIT — the damage volume projectiles, beams, and splash test, plus the target-acquisition cylinder combat targeting gates on. Units: hitbox sphere. Buildings: the width × height × depth combat box. Shots: their own collision sphere. Both float at the combat center for hovering buildings."
+            @click="model.toggleVolume('hit')"
           >HIT</BarButton>
           <BarButton
-            :active="model.unitRadiusToggles.collision"
-            title="Show the physics collision volume — units: collision sphere (radius.collision); grounded buildings: the static ground-seated cuboid; hovering fabricator: the floating annular ring (open center hole)"
-            @click="model.toggleUnitRadius('collision')"
+            :active="model.volumeToggles.collision"
+            title="COLLISION — the physics volume. Units: collision sphere (radius.collision). Grounded buildings: the static ground-seated cuboid. Hovering fabricator: the floating annular ring (open center hole)."
+            @click="model.toggleVolume('collision')"
           >COL</BarButton>
           <BarButton
-            :active="model.unitRadiusToggles.shotArmingRadius"
-            title="Show the projectile arming sphere (1.5 × collision radius; shots activate after fully clearing it)"
-            @click="model.toggleUnitRadius('shotArmingRadius')"
+            :active="model.volumeToggles.arming"
+            title="ARMING — the host-centered safety sphere (1.5 × collision radius) a shot must fully clear before it becomes collision-active. Drawn on every host that fires."
+            @click="model.toggleVolume('arming')"
           >ARM</BarButton>
+          <BarButton
+            :active="model.volumeToggles.explosion"
+            title="EXPLOSION — the splash volume a shot detonates with, drawn on live shots that carry a death explosion."
+            @click="model.toggleVolume('explosion')"
+          >EXP</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

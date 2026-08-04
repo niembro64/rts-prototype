@@ -1,8 +1,7 @@
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import {
   RANGE_TYPES,
-  PROJ_RANGE_TYPES,
-  UNIT_RADIUS_TYPES,
+  VOLUME_TYPES,
   SOUND_CATEGORIES,
   ENTITY_HUD_TYPES,
   ENTITY_HUD_ELEMENTS,
@@ -37,14 +36,13 @@ import {
   getSmokeTrails,
   getSmokeSoftEdges,
   getSightBoundary,
-  getProjRangeToggle,
+  getVolumeToggle,
   getRangeToggle,
   getRenderMode,
   getSoundToggle,
   getTriangleDebug,
   getWaterTriangleDebug,
   getWallTriangleDebug,
-  getUnitRadiusToggle,
   getWaypointDetail,
   getWaterBoundaryMode,
   getEntityHudToggle,
@@ -80,14 +78,13 @@ import {
   setSmokeTrails,
   setSmokeSoftEdges,
   setSightBoundary,
-  setProjRangeToggle,
+  setVolumeToggle,
   setRangeToggle,
   setRenderMode,
   setSoundToggle,
   setTriangleDebug,
   setWaterTriangleDebug,
   setWallTriangleDebug,
-  setUnitRadiusToggle,
   setWaypointDetail,
   setWaterBoundaryMode,
   setEntityHudToggle,
@@ -114,11 +111,10 @@ import type {
   EntityHudToggles,
   EntityHudType,
   MasterVolumePercent,
-  ProjRangeType,
+  VolumeType,
   RangeType,
   SelectionHudMode,
   SoundCategory,
-  UnitRadiusType,
   WaypointDetail,
   PathingDebugMode,
   PathingDebugUnitId,
@@ -181,15 +177,12 @@ export function useGameCanvasClientSettings({
     engageMinRelease: getRangeToggle('engageMinRelease'),
     build: getRangeToggle('build'),
   });
-  const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
-    collision: getProjRangeToggle('collision'),
-    explosion: getProjRangeToggle('explosion'),
-  });
-  const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
-    other: getUnitRadiusToggle('other'),
-    hitbox: getUnitRadiusToggle('hitbox'),
-    collision: getUnitRadiusToggle('collision'),
-    shotArmingRadius: getUnitRadiusToggle('shotArmingRadius'),
+  const volumeToggles = reactive<Record<VolumeType, boolean>>({
+    selection: getVolumeToggle('selection'),
+    hit: getVolumeToggle('hit'),
+    collision: getVolumeToggle('collision'),
+    arming: getVolumeToggle('arming'),
+    explosion: getVolumeToggle('explosion'),
   });
   function seedEntityHud(): EntityHudToggles {
     const out = {} as EntityHudToggles;
@@ -264,8 +257,7 @@ export function useGameCanvasClientSettings({
     commandHotkeyPreset.value = getActiveCommandHotkeyPresetId();
     for (const cat of SOUND_CATEGORIES) soundToggles[cat] = getSoundToggle(cat);
     for (const rt of RANGE_TYPES) rangeToggles[rt] = getRangeToggle(rt);
-    for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
-    for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
+    for (const vt of VOLUME_TYPES) volumeToggles[vt] = getVolumeToggle(vt);
     legsRadiusToggle.value = getLegsRadiusToggle();
     legsReachToggle.value = getLegsReachToggle();
     lodMode.value = getLodMode();
@@ -321,16 +313,10 @@ export function useGameCanvasClientSettings({
     });
   }
 
-  function toggleProjRange(type: ProjRangeType): void {
-    const newValue = !projRangeToggles[type];
-    setProjRangeToggle(type, newValue);
-    projRangeToggles[type] = newValue;
-  }
-
-  function toggleUnitRadius(type: UnitRadiusType): void {
-    const newValue = !unitRadiusToggles[type];
-    setUnitRadiusToggle(type, newValue);
-    unitRadiusToggles[type] = newValue;
+  function toggleVolume(type: VolumeType): void {
+    const newValue = !volumeToggles[type];
+    setVolumeToggle(type, newValue);
+    volumeToggles[type] = newValue;
   }
 
   function toggleLegsRadius(): void {
@@ -379,11 +365,8 @@ export function useGameCanvasClientSettings({
   const allRangesActive = computed(() =>
     RANGE_TYPES.every((rt) => rangeToggles[rt]),
   );
-  const allProjRangesActive = computed(() =>
-    PROJ_RANGE_TYPES.every((prt) => projRangeToggles[prt]),
-  );
-  const allUnitRadiiActive = computed(() =>
-    UNIT_RADIUS_TYPES.every((urt) => unitRadiusToggles[urt]),
+  const allVolumesActive = computed(() =>
+    VOLUME_TYPES.every((vt) => volumeToggles[vt]),
   );
 
   function toggleAllRanges(): void {
@@ -394,19 +377,11 @@ export function useGameCanvasClientSettings({
     }
   }
 
-  function toggleAllProjRanges(): void {
-    const enable = !allProjRangesActive.value;
-    for (const prt of PROJ_RANGE_TYPES) {
-      setProjRangeToggle(prt, enable);
-      projRangeToggles[prt] = enable;
-    }
-  }
-
-  function toggleAllUnitRadii(): void {
-    const enable = !allUnitRadiiActive.value;
-    for (const urt of UNIT_RADIUS_TYPES) {
-      setUnitRadiusToggle(urt, enable);
-      unitRadiusToggles[urt] = enable;
+  function toggleAllVolumes(): void {
+    const enable = !allVolumesActive.value;
+    for (const vt of VOLUME_TYPES) {
+      setVolumeToggle(vt, enable);
+      volumeToggles[vt] = enable;
     }
   }
 
@@ -664,15 +639,8 @@ export function useGameCanvasClientSettings({
     for (const rt of RANGE_TYPES) {
       if (rangeToggles[rt] !== cd.rangeToggles.default) toggleRange(rt);
     }
-    for (const prt of PROJ_RANGE_TYPES) {
-      if (projRangeToggles[prt] !== cd.projRangeToggles.default) {
-        toggleProjRange(prt);
-      }
-    }
-    for (const urt of UNIT_RADIUS_TYPES) {
-      if (unitRadiusToggles[urt] !== cd.unitRadiusToggles.default) {
-        toggleUnitRadius(urt);
-      }
+    for (const vt of VOLUME_TYPES) {
+      if (volumeToggles[vt] !== cd.volumeToggles.default) toggleVolume(vt);
     }
     for (const cat of SOUND_CATEGORIES) {
       if (soundToggles[cat] !== cd.sounds.default[cat]) {
@@ -753,8 +721,7 @@ export function useGameCanvasClientSettings({
     entityHudElements: ENTITY_HUD_ELEMENTS,
     soundToggles,
     rangeToggles,
-    projRangeToggles,
-    unitRadiusToggles,
+    volumeToggles,
     legsRadiusToggle,
     legsReachToggle,
     lodMode,
@@ -763,8 +730,7 @@ export function useGameCanvasClientSettings({
     cameraFovDegrees,
     waterBoundaryMode,
     allRangesActive,
-    allProjRangesActive,
-    allUnitRadiiActive,
+    allVolumesActive,
     SFX_CATEGORIES,
     allSoundsActive,
     SOUND_LABELS,
@@ -775,8 +741,7 @@ export function useGameCanvasClientSettings({
     changeMasterVolume,
     toggleRange,
     cycleAttackRangeDisplay,
-    toggleProjRange,
-    toggleUnitRadius,
+    toggleVolume,
     toggleLegsRadius,
     toggleLegsReach,
     changeLodMode,
@@ -786,8 +751,7 @@ export function useGameCanvasClientSettings({
     changeCameraFovBy,
     changeWaterBoundaryMode,
     toggleAllRanges,
-    toggleAllProjRanges,
-    toggleAllUnitRadii,
+    toggleAllVolumes,
     toggleAudioSmoothing,
     toggleBurnMarks,
     toggleWindParticles,

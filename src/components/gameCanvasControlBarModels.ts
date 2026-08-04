@@ -14,11 +14,10 @@ import type {
   MasterVolumePercent,
   PathingDebugMode,
   PathingDebugUnitId,
-  ProjRangeType,
+  VolumeType,
   RangeType,
   SelectionHudMode,
   SoundCategory,
-  UnitRadiusType,
   WaypointDetail,
   WaterBoundaryMode,
 } from '../types/client';
@@ -246,10 +245,8 @@ export type GameCanvasClientControlBarModel = {
   readonly soundTooltips: Readonly<Record<SoundCategory, string>>;
   readonly allRangesActive: boolean;
   readonly rangeToggles: Readonly<Record<RangeType, boolean>>;
-  readonly allProjRangesActive: boolean;
-  readonly projRangeToggles: Readonly<Record<ProjRangeType, boolean>>;
-  readonly allUnitRadiiActive: boolean;
-  readonly unitRadiusToggles: Readonly<Record<UnitRadiusType, boolean>>;
+  readonly allVolumesActive: boolean;
+  readonly volumeToggles: Readonly<Record<VolumeType, boolean>>;
   readonly legsRadiusToggle: boolean;
   readonly legsReachToggle: boolean;
   readonly lodMode: LodMode;
@@ -299,10 +296,8 @@ export type GameCanvasClientControlBarModel = {
   toggleSoundCategory(category: SoundCategory): void;
   toggleAllRanges(): void;
   toggleRange(type: RangeType): void;
-  toggleAllProjRanges(): void;
-  toggleProjRange(type: ProjRangeType): void;
-  toggleAllUnitRadii(): void;
-  toggleUnitRadius(type: UnitRadiusType): void;
+  toggleAllVolumes(): void;
+  toggleVolume(type: VolumeType): void;
   toggleLegsRadius(): void;
   toggleLegsReach(): void;
   changeLodMode(mode: LodMode): void;

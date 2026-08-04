@@ -1003,7 +1003,7 @@ export class Render3DEntities {
         this.selectionOverlays.unitStaticOverlaysNeedUpdate(m, selected)
       ) {
         this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
-        this.selectionOverlays.updateUnitRadiusRings(m, e);
+        this.selectionOverlays.updateHostVolumes(m, e);
       }
       if (this.selectionOverlays.unitRangeOverlaysNeedUpdate(m, selected)) {
         this.selectionOverlays.updateRangeRings(m, e);
