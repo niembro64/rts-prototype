@@ -7,6 +7,11 @@ import {
   isVegetationAlive,
   queryVegetationInCircle,
 } from '../sim/vegetation';
+import {
+  createEntityVolume,
+  writeVegetationPropVolume,
+  type EntityVolume,
+} from '../sim/entityVolumes';
 
 /**
  * SEL volumes for vegetation props.
@@ -39,6 +44,8 @@ export class VegetationVolumeOverlay3D {
   private readonly mesh: THREE.LineSegments;
   private readonly material: THREE.LineBasicMaterial;
   private readonly queryScratch = new Uint32Array(MAX_DRAWN_PROPS * 4);
+  /** Reused per prop; the shared writer owns the cylinder's dimensions. */
+  private readonly propVolume = createEntityVolume();
   private geometry: THREE.BufferGeometry | null = null;
   private built = false;
   private lastCameraX = NaN;
@@ -94,7 +101,8 @@ export class VegetationVolumeOverlay3D {
       for (let i = 0; i < limit; i++) {
         const prop = props[this.queryScratch[i]];
         if (prop === undefined || !isVegetationAlive(prop.index)) continue;
-        appendPropCylinder(positions, prop.x, prop.y, prop.z, prop.radius, prop.height);
+        if (!writeVegetationPropVolume(prop, this.propVolume)) continue;
+        appendPropCylinder(positions, this.propVolume);
       }
     }
     const geometry = new THREE.BufferGeometry();
@@ -116,16 +124,13 @@ export class VegetationVolumeOverlay3D {
 
 /** One upright capped-cylinder wireframe in three.js world coords. Sim
  *  (x, y, z) maps to THREE (x, z_altitude, y). */
-function appendPropCylinder(
-  out: number[],
-  simX: number,
-  simY: number,
-  baseZ: number,
-  radius: number,
-  height: number,
-): void {
-  if (radius <= 0 || height <= 0) return;
-  const topY = baseZ + height;
+function appendPropCylinder(out: number[], volume: EntityVolume): void {
+  const simX = volume.x;
+  const simY = volume.y;
+  const radius = volume.halfX;
+  const baseZ = volume.z - volume.halfZ;
+  const topY = volume.z + volume.halfZ;
+  if (radius <= 0 || volume.halfZ <= 0) return;
   for (let i = 0; i < CYLINDER_SEGMENTS; i++) {
     const a0 = (i / CYLINDER_SEGMENTS) * Math.PI * 2;
     const a1 = ((i + 1) / CYLINDER_SEGMENTS) * Math.PI * 2;

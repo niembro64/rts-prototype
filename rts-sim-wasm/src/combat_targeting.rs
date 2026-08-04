@@ -3718,6 +3718,24 @@ pub(crate) fn combat_targeting_invalid_cylinder_target() -> CombatTargetingCylin
     }
 }
 
+/// Half-height of the cylinder the range gate tests a target with.
+///
+/// The range shells are vertical cylinders, so a target has to be handed to
+/// them in cylinder terms; this is NOT a second volume with a life of its
+/// own, it is the damage volume re-expressed for that test, and it must
+/// stay the damage volume's own vertical reach.
+///
+/// A STRUCTURE is a box: its vertical reach is `aabb_half_z` (depth/2) and
+/// nothing else. It used to be `max(hitbox, aabb_half_z)`, but a building's
+/// `radius_hitbox` is its FOOTPRINT half-diagonal — a horizontal measure —
+/// so that max floored a vertical extent at a horizontal one and inflated
+/// flat structures: a 60x60x20 solar panel was handed to the range gate as
+/// 85 units tall (2 x 42.4) instead of 20.
+///
+/// A UNIT is a sphere at its body center, so `hitbox` is its vertical reach.
+/// `aabb_half_z` carries the support-point offset for units (how far the
+/// chassis floats above its footing), which legitimately extends a legged
+/// body's targetable span down toward its feet, so units keep the max.
 #[inline]
 pub(crate) fn combat_targeting_target_vertical_extent(
     pool: &CombatTargetingPool,
@@ -3726,12 +3744,20 @@ pub(crate) fn combat_targeting_target_vertical_extent(
     if entity_slot >= pool.entity_radius_hitbox.len() {
         return 0.0;
     }
-    let hitbox = combat_targeting_nonnegative_finite(pool.entity_radius_hitbox[entity_slot]);
     let half_z = if entity_slot < pool.entity_aabb_half_z.len() {
         combat_targeting_nonnegative_finite(pool.entity_aabb_half_z[entity_slot])
     } else {
         0.0
     };
+    let family = if entity_slot < pool.entity_family.len() {
+        pool.entity_family[entity_slot]
+    } else {
+        CT_ENTITY_FAMILY_NONE
+    };
+    if family == CT_ENTITY_FAMILY_BUILDING || family == CT_ENTITY_FAMILY_TOWER {
+        return half_z;
+    }
+    let hitbox = combat_targeting_nonnegative_finite(pool.entity_radius_hitbox[entity_slot]);
     hitbox.max(half_z)
 }
 
@@ -10474,6 +10500,34 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    /// A target is handed to the cylindrical range shells as the DAMAGE
+    /// volume re-expressed, never as a looser second volume. A structure's
+    /// `radius_hitbox` is its footprint half-diagonal — horizontal — so it
+    /// must not floor the vertical reach of a flat building.
+    #[test]
+    fn target_vertical_extent_is_the_body_reach_for_each_family() {
+        let mut pool = CombatTargetingPool::empty();
+        pool.entity_radius_hitbox = vec![42.426, 42.426, 6.0, 6.0];
+        pool.entity_aabb_half_z = vec![10.0, 70.0, 5.68, 24.0];
+        pool.entity_family = vec![
+            CT_ENTITY_FAMILY_BUILDING,
+            CT_ENTITY_FAMILY_TOWER,
+            CT_ENTITY_FAMILY_UNIT,
+            CT_ENTITY_FAMILY_UNIT,
+        ];
+
+        // 60x60x20 solar panel: 10, NOT max(42.426, 10). Before the fix it
+        // was handed over as ~85 units tall instead of 20.
+        assert_close(combat_targeting_target_vertical_extent(&pool, 0), 10.0);
+        // A tall tower is unchanged: its own half-depth already dominated.
+        assert_close(combat_targeting_target_vertical_extent(&pool, 1), 70.0);
+        // Units are spheres at their body center, so the hitbox radius IS
+        // their vertical reach; the support-point offset only extends a
+        // legged body downward toward its footing, so the max stays.
+        assert_close(combat_targeting_target_vertical_extent(&pool, 2), 6.0);
+        assert_close(combat_targeting_target_vertical_extent(&pool, 3), 24.0);
     }
 
     #[test]

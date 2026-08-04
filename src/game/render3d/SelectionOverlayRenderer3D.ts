@@ -15,7 +15,6 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../sim/unitGeometry';
 import {
   createEntityVolume,
-  writeAcquisitionVolume,
   writeArmingVolume,
   writeCollisionVolume,
   writeHitVolume,
@@ -55,7 +54,7 @@ const ANNULUS_WIREFRAME_SEGMENTS = 48;
 const ANNULUS_WIREFRAME_RIBS = 8;
 /** Every debug-volume wireframe slot, for the bulk hide path. */
 const VOLUME_MESH_KEYS: readonly (keyof RadiusRingMeshes)[] = [
-  'selection', 'hit', 'hitAcquisition', 'collision', 'arming',
+  'selection', 'hit', 'collision', 'arming',
 ];
 
 /** Wireframe for a vertical-axis annular cylinder (the fabricator torus's
@@ -192,7 +191,6 @@ export class SelectionOverlayRenderer3D {
   private showAnyVolume = false;
   /** Scratch volumes reused by the per-entity overlay writers. */
   private readonly scratchVolume = createEntityVolume();
-  private readonly scratchAcquisitionVolume = createEntityVolume();
   private selectedCount = 0;
   private rangeStateKey = '';
   private rangeStateVersion = 0;
@@ -380,19 +378,13 @@ export class SelectionOverlayRenderer3D {
       writeSelectionVolume(entity, this.scratchVolume) ? this.scratchVolume : null,
       this.radiusMatSelection,
     );
-    // HIT is two true volumes: the damage volume projectiles, beams, and
-    // splash test, plus the target-acquisition cylinder Rust combat
-    // targeting gates on.
+    // HIT is ONE volume. Rust combat targeting hands a target to its
+    // cylindrical range shells as `combat_targeting_cylinder_target_to_
+    // entity_slot`, but that cylinder is this same volume re-expressed for
+    // that test, not a second volume — so there is nothing extra to draw.
     this.setVolume(
       rings, 'hit', this.showHitVolume, m.group, baseZ,
       writeHitVolume(entity, this.scratchVolume) ? this.scratchVolume : null,
-      this.radiusMatHit,
-    );
-    this.setVolume(
-      rings, 'hitAcquisition', this.showHitVolume, m.group, baseZ,
-      writeAcquisitionVolume(entity, this.scratchAcquisitionVolume)
-        ? this.scratchAcquisitionVolume
-        : null,
       this.radiusMatHit,
     );
     this.setVolume(

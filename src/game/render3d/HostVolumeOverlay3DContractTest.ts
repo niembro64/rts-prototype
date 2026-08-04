@@ -131,20 +131,12 @@ export function runHostVolumeOverlay3DContractTest(): void {
         && unitRings.selection.geometry === radiusSphereGeom,
       'unit SEL volume stays a body sphere',
     );
-    const unitCyl = unitRings.hitAcquisition;
+    // HIT is ONE shape. The cylinder combat targeting hands to its range
+    // shells is this same volume re-expressed for that test, not a second
+    // volume, so nothing rides along with it.
     assertContract(
-      unitCyl !== undefined && unitCyl.visible && unitCyl.geometry !== radiusSphereGeom,
-      'unit acquisition volume must be a cylinder, not a sphere',
-    );
-    assertNear(
-      unitCyl.scale.x,
-      unitHost.unit.radius.hitbox,
-      'unit acquisition cylinder radius equals the hitbox radius',
-    );
-    assertNear(
-      unitCyl.scale.y,
-      Math.max(unitHost.unit.radius.hitbox, unitHost.unit.supportPointOffsetZ),
-      'unit acquisition cylinder half-height equals max(hitbox, support offset)',
+      (unitRings as Record<string, unknown>).hitAcquisition === undefined,
+      'HIT must not draw a companion acquisition wireframe',
     );
 
     // ── Grounded building: combat box, physics cuboid, cylinder ────
@@ -172,10 +164,6 @@ export function runHostVolumeOverlay3DContractTest(): void {
     assertContract(
       solarCol !== undefined && solarCol.visible && solarCol.geometry === solarHit.geometry,
       'grounded building COL volume is the same ground-seated cuboid shape',
-    );
-    assertContract(
-      solarRings.hitAcquisition !== undefined && solarRings.hitAcquisition.visible,
-      'grounded building must draw its acquisition cylinder',
     );
 
     // ── Grounded building SEL: an upright box over the drawn body ───
@@ -241,17 +229,6 @@ export function runHostVolumeOverlay3DContractTest(): void {
       'fabricator HIT volume must be the combat box, not a sphere',
     );
     assertNear(fabricatorHit.position.y, hoverY, 'fabricator combat box floats at hover height');
-    const fabricatorCyl = fabricatorRings.hitAcquisition;
-    assertContract(
-      fabricatorCyl !== undefined && fabricatorCyl.visible
-        && fabricatorCyl.geometry !== radiusSphereGeom,
-      'fabricator acquisition volume must be a cylinder, not a sphere',
-    );
-    assertNear(
-      fabricatorCyl.scale.x,
-      fabricatorBuilding.targetRadius,
-      'fabricator acquisition cylinder radius equals targetRadius',
-    );
     const fabricatorCol = fabricatorRings.collision;
     assertContract(
       fabricatorCol !== undefined && fabricatorCol.visible,
@@ -259,9 +236,8 @@ export function runHostVolumeOverlay3DContractTest(): void {
     );
     assertContract(
       fabricatorCol.geometry !== radiusSphereGeom
-        && fabricatorCol.geometry !== fabricatorHit.geometry
-        && fabricatorCol.geometry !== fabricatorCyl.geometry,
-      'fabricator COL volume must be the annular ring, not a sphere, box, or cylinder',
+        && fabricatorCol.geometry !== fabricatorHit.geometry,
+      'fabricator COL volume must be the annular ring, not a sphere or box',
     );
     assertNear(
       fabricatorCol.position.y,

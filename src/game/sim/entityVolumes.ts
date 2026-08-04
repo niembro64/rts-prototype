@@ -17,7 +17,7 @@
  *
  *   sphere   — units (body-centered; unit bodies really are round)
  *   box      — grounded buildings (footprint x visual height)
- *   cylinder — target acquisition (radius + half-height)
+ *   cylinder — upright bodies (vegetation props; radius + half-height)
  *   annulus  — the hovering fabricator torus (open center hole and all)
  *
  * The writers fill a caller-owned EntityVolume so the picker's per-entity
@@ -31,7 +31,7 @@ import {
   fabricatorTorusRingRadius,
 } from './blueprints';
 import { getBuildingVisualTopZ } from './buildingAnchors';
-import { getUnitGroundZ, getUnitSupportPointOffsetZ } from './unitGeometry';
+import { getUnitGroundZ } from './unitGeometry';
 import { getHostShotArmingRadius } from './combat/shotArming';
 
 export type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
@@ -193,6 +193,18 @@ export function writeSelectionVolume(entity: Entity, out: EntityVolume): boolean
   return false;
 }
 
+/** A vegetation prop's pick volume: the upright capped cylinder Rust's
+ *  `vegetation_raycast` tests. Props are not entities — thousands of trees
+ *  stay out of the entity map — so they get their own writer, but they get
+ *  the SAME volume model, and the SEL overlay draws exactly this. */
+export function writeVegetationPropVolume(
+  prop: { x: number; y: number; z: number; radius: number; height: number },
+  out: EntityVolume,
+): boolean {
+  const halfHeight = prop.height * 0.5;
+  return writeCylinder(out, prop.x, prop.y, prop.z + halfHeight, prop.radius, halfHeight);
+}
+
 /** World z the selection volume is centered on. Screen-rect box selection
  *  projects this one point, so it must agree with the volume the ray test
  *  uses or a unit could be rubber-band selected where it cannot be
@@ -236,36 +248,6 @@ export function writeHitVolume(entity: Entity, out: EntityVolume): boolean {
       entity.transform.y,
       entity.transform.z,
       projectile.config.shotProfile.runtime.radius.collision,
-    );
-  }
-  return false;
-}
-
-/** The upright cylinder Rust combat targeting gates acquisition on. Every
- *  host carries one: radius = its target radius, half-height = whichever
- *  of its radius / vertical extent reaches further. */
-export function writeAcquisitionVolume(entity: Entity, out: EntityVolume): boolean {
-  const unit = entity.unit;
-  if (unit !== null) {
-    const radius = unit.radius.hitbox;
-    return writeCylinder(
-      out,
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.z,
-      radius,
-      Math.max(radius, getUnitSupportPointOffsetZ(unit)),
-    );
-  }
-  const building = entity.building;
-  if (building !== null) {
-    return writeCylinder(
-      out,
-      entity.transform.x,
-      entity.transform.y,
-      buildingCombatCenterZ(entity),
-      building.targetRadius,
-      Math.max(building.targetRadius, building.depth * 0.5),
     );
   }
   return false;

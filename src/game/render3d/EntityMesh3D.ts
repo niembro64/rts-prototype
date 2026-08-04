@@ -16,15 +16,11 @@ import type {
 import type { SolarRig } from './SolarCollectorMesh3D';
 
 /** One wireframe per debug-volume category the host actually carries.
- *  Keys mirror the unified VOLUMES bar group (`VolumeType`), plus the
- *  acquisition cylinder that rides along with `hit`. */
+ *  Keys mirror the unified VOLUMES bar group (`VolumeType`) exactly —
+ *  one shape per concept, no companions. */
 export type RadiusRingMeshes = {
   selection?: THREE.LineSegments;
   hit?: THREE.LineSegments;
-  /** Companion to `hit`: the target-acquisition cylinder every entity
-   *  carries in Rust combat targeting (radius = hitbox/targetRadius,
-   *  half-height = max(hitbox, vertical extent)). */
-  hitAcquisition?: THREE.LineSegments;
   collision?: THREE.LineSegments;
   arming?: THREE.LineSegments;
 };
