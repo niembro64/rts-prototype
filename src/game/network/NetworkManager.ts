@@ -58,6 +58,8 @@ import {
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLockstepTransport } from './NetworkLockstepTransport';
 import { createLobbyPlayer, NetworkLobbyRoster } from './NetworkLobbyRoster';
+import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
+import { DEMO_CONFIG } from '@/demoConfig';
 import {
   generateRoomCode,
   normalizeRoomCode,
@@ -176,6 +178,49 @@ function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLocks
 }
 
 export class NetworkManager {
+  /** How many SIDES this lobby splits its seats across. Defaults to the
+   *  demo's 2v2v2 shape and is clamped to the seat count at battle start.
+   *  Host-owned; see src/game/sim/teamRoster.ts. */
+  private allyTeamCount: number = Math.max(1, Math.floor(DEMO_CONFIG.allyTeamCount) || 1);
+
+  lobbyAllyTeamCount(): number {
+    return this.allyTeamCount;
+  }
+
+  /** Change how many sides the lobby offers. Seats already sitting on a
+   *  side that no longer exists are pulled back onto the emptiest
+   *  remaining one, so the roster is always internally consistent. */
+  setLobbyAllyTeamCount(count: number): void {
+    const next = Math.max(1, Math.min(6, Math.floor(count) || 1));
+    if (next === this.allyTeamCount) return;
+    this.allyTeamCount = next;
+    for (const player of [...this.roster.values()]) {
+      if (player.allyTeamId - FIRST_ALLY_TEAM_ID >= next) {
+        this.roster.setAllyTeam(player.playerId, this.roster.defaultAllyTeamForJoin(next));
+      }
+    }
+    this.broadcastLobbyRoster();
+  }
+
+  /** Host-side side change for one seat, then re-announce the roster. */
+  setPlayerAllyTeam(playerId: PlayerId, allyTeamId: number): void {
+    if (!this.roster.setAllyTeam(playerId, allyTeamId)) return;
+    this.broadcastLobbyRoster();
+  }
+
+  /** Re-announce every seat's side to every client. Side changes ride the
+   *  existing per-player info message, so this needs no new wire type. */
+  private broadcastLobbyRoster(): void {
+    for (const player of this.roster.values()) {
+      this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
+    }
+  }
+
+  /** Seat -> side for handing this lobby's roster to the sim. */
+  getAllyTeamByPlayerId(): Record<number, number> {
+    return this.roster.allyTeamByPlayerId();
+  }
+
   private peer: Peer | null = null;
   private connections: Map<PlayerId, DataConnection> = new Map();
   private role: NetworkRole | null = null;
@@ -475,6 +520,7 @@ export class NetworkManager {
     // user can edit this from their lobby player slot; setLocalPlayerName below
     // persists + broadcasts the change.
     this.roster.seedHost(1);
+    this.roster.setAllyTeam(1, FIRST_ALLY_TEAM_ID);
 
     return new Promise((resolve, reject) => {
       let resolved = false;
@@ -703,7 +749,14 @@ export class NetworkManager {
 
       const playerName = getDefaultPlayerName(playerId);
 
-      const player = createLobbyPlayer(playerId, playerName, false);
+      // The host owns side assignment; a joiner lands on the emptiest
+      // side so a lobby fills balanced without anyone touching a control.
+      const player = createLobbyPlayer(
+        playerId,
+        playerName,
+        false,
+        this.roster.defaultAllyTeamForJoin(this.lobbyAllyTeamCount()),
+      );
       this.roster.set(player);
 
       // Send player their assignment
@@ -1022,10 +1075,15 @@ export class NetworkManager {
         // already-known IP.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
+          // Keep the seat's current side when the message omits one —
+          // a rename-only update must not knock a player off their team.
           const target = this.mergeRosterPlayer(createLobbyPlayer(
             message.playerId,
             message.name ?? getDefaultPlayerName(message.playerId),
             message.playerId === 1,
+            message.allyTeamId ??
+              this.roster.get(message.playerId)?.allyTeamId ??
+              FIRST_ALLY_TEAM_ID,
           ));
           this.roster.applyPlayerInfo(target, message);
           this.emitPlayerInfoUpdate(this.roster.copy(target));

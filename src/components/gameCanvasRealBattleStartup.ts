@@ -76,6 +76,7 @@ export type RealBattleStartupTerrain = {
 
 type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
+  allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
   aiPlayerIds?: PlayerId[];
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
@@ -108,6 +109,9 @@ export type RealBattleBackendDiagnostics = {
 
 export type RealBattleBackendRuntime = {
   readonly server: GameServer | null;
+  /** Seat -> side from the hashed canonical initialization. The renderer
+   *  takes it from here so it builds the same roster the sim did. */
+  readonly allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
   readonly ownsServer?: boolean;
   readonly gameConnection: GameConnection;
   start(): void;
@@ -134,6 +138,9 @@ type RealBattleMatchContext = {
   readonly settings: LobbySettings;
   readonly initializationHash: string;
   readonly gameGenerationSeed: number;
+  /** Seat -> side, taken from the hashed canonical initialization so the
+   *  sim and the renderer cannot disagree about who is allied. */
+  readonly allyTeamByPlayerId: Readonly<Record<number, number>> | undefined;
 };
 
 type CreateRealBattleMatchContextOptions = {
@@ -240,6 +247,7 @@ function createRealBattleMatchContext({
       roomCode: battleHandoff.roomCode,
       hostPlayerId: battleHandoff.hostPlayerId,
       playerIds: battleHandoff.playerIds,
+      allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(battleHandoff.initialization),
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
       settings,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
@@ -257,6 +265,7 @@ function createRealBattleMatchContext({
       roomCode: battleHandoff.roomCode,
       hostPlayerId: battleHandoff.hostPlayerId,
       settings,
+      allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(battleHandoff.initialization),
       initializationHash: battleHandoff.initializationHash,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
     };
@@ -275,6 +284,7 @@ function createRealBattleMatchContext({
     roomCode,
     hostPlayerId,
     playerIds,
+    allyTeamByPlayerId: network?.getAllyTeamByPlayerId(),
     aiPlayerIds,
     settings: fallbackSettings,
     gameGenerationSeed,
@@ -286,7 +296,24 @@ function createRealBattleMatchContext({
     settings: fallbackSettings,
     initializationHash: hashCanonicalMatchInitialization(initialization),
     gameGenerationSeed,
+    // Canonical, hashed, and identical on every peer — the one roster the
+    // sim and the renderer both build their sides from.
+    allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(initialization),
   };
+}
+
+/** Re-read a canonical initialization's index-aligned side list as the
+ *  seat -> side map the builder and the sim both take. */
+export function allyTeamByPlayerIdFromInitialization(
+  initialization: { playerIds: readonly PlayerId[]; allyTeamIds?: readonly number[] },
+): Record<number, number> | undefined {
+  const sides = initialization.allyTeamIds;
+  if (sides === undefined || sides.length !== initialization.playerIds.length) return undefined;
+  const out: Record<number, number> = {};
+  for (let i = 0; i < initialization.playerIds.length; i++) {
+    out[initialization.playerIds[i]] = sides[i];
+  }
+  return out;
 }
 
 function assertSamePlayerIds(
@@ -450,6 +477,7 @@ function createLocalRealBattleConnection(
 
 async function createRealBattleServer({
   playerIds,
+  allyTeamByPlayerId,
   aiPlayerIds,
   gameGenerationSeed,
   terrain,
@@ -459,6 +487,7 @@ async function createRealBattleServer({
   return GameServer.create(
     {
       playerIds,
+      allyTeamByPlayerId,
       aiPlayerIds,
       gameGenerationSeed,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
@@ -517,6 +546,7 @@ async function createDeterministicLockstepBackendRuntime({
   });
   const server = await createRealBattleServer({
     playerIds,
+    allyTeamByPlayerId: matchContext.allyTeamByPlayerId,
     aiPlayerIds,
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
@@ -1045,6 +1075,7 @@ async function createDeterministicLockstepBackendRuntime({
 
   return {
     server,
+    allyTeamByPlayerId: matchContext.allyTeamByPlayerId,
     gameConnection: localConnection,
     start() {
       applyStoredBattleServerSettings(server, 'real', {

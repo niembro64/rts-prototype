@@ -217,6 +217,7 @@ export async function startRealBattleWithPlayers(
       width: rect.width || window.innerWidth,
       height: rect.height || window.innerHeight,
       playerIds,
+      allyTeamByPlayerId: backend.allyTeamByPlayerId,
       localPlayerId: options.localPlayerId.value,
       gameConnection,
       mapWidth: realBattleTerrain.mapSize.width,

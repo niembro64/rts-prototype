@@ -193,6 +193,19 @@ const showLobby = ref(true);
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
+
+/** Host-only: move a seat to the next side, wrapping at the lobby's side
+ *  count. The host is authoritative — NetworkManager re-announces the
+ *  roster, and every client's list updates from that broadcast rather
+ *  than from a local guess. */
+function cyclePlayerAllyTeam(playerId: PlayerId): void {
+  if (!isHost.value) return;
+  const sides = networkManager.lobbyAllyTeamCount();
+  const current = lobbyPlayers.value.find((p) => p.playerId === playerId)?.allyTeamId ?? 1;
+  const next = (current % Math.max(1, sides)) + 1;
+  networkManager.setPlayerAllyTeam(playerId, next);
+  lobbyPlayers.value = networkManager.getPlayers().map((p) => ({ ...p }));
+}
 const localPlayerId = ref<PlayerId>(1);
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
@@ -2694,6 +2707,7 @@ watchEffect(() => {
       @toggle-building="(bt) => toggleDemoBuildingBlueprintId(bt)"
       @toggle-all-buildings="toggleAllDemoBuildings"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
+      @cycle-player-ally-team="cyclePlayerAllyTeam"
       @set-force-fields-visible="(e) => setForceFieldsVisible(e)"
       @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"
       @set-converter-tax="(v) => setConverterTax(v)"

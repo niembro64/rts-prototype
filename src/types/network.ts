@@ -239,6 +239,10 @@ import type {
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
 
 export type LobbyPlayerInfoPayload = {
+  /** Host-assigned SIDE for this seat (the lobby's TEAM N). Rides the
+   *  existing per-player info message so team changes need no new wire
+   *  type. Undefined leaves the seat where it is. */
+  allyTeamId?: number | undefined;
   ipAddress: string | undefined;
   location: string | undefined;
   timezone: string | undefined;
@@ -475,6 +479,10 @@ export type NetworkMessage =
       type: 'playerInfoUpdate';
       gameId: string | undefined;
       playerId: PlayerId;
+      /** Host-assigned SIDE (the lobby's TEAM N). Optional so older
+       *  senders stay decodable; receivers leave the seat alone when it
+       *  is absent. */
+      allyTeamId?: number | undefined;
       ipAddress: string | undefined;
       location: string | undefined;
       timezone: string | undefined;
@@ -1107,6 +1115,12 @@ export type LobbyPlayer = {
   playerId: PlayerId;
   name: string;
   isHost: boolean;
+  /** Which SIDE this seat plays on — BAR calls it the ally team, the
+   *  lobby labels it TEAM N. Host-authoritative: the host assigns one on
+   *  join and broadcasts it, and a seat change is a host decision even
+   *  when a player requested it. Teammates share a terrain slice, vision,
+   *  and immunity from each other. See src/game/sim/teamRoster.ts. */
+  allyTeamId: number;
   /** Public IP (v4) — populated lazily after the player's
    *  client-side IP lookup resolves and the host has fanned the
    *  value out to every connected client via

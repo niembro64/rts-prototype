@@ -76,6 +76,8 @@ const emit = defineEmits<{
   (e: 'toggleBuilding', buildingBlueprintId: string): void;
   (e: 'toggleAllBuildings'): void;
   (e: 'setUnitCap', cap: number): void;
+  /** Host moves a seat to the next side (the lobby's TEAM N). */
+  (e: 'cyclePlayerAllyTeam', playerId: PlayerId): void;
   (e: 'setForceFieldsVisible', enabled: boolean): void;
   (e: 'setShieldsObstructSight', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
@@ -328,6 +330,14 @@ watch(
   { immediate: true },
 );
 
+/** Side accent used for the TEAM badge outline. Sides are few, so a
+ *  fixed ladder reads faster than deriving a hue per side. */
+const ALLY_TEAM_COLORS = ['#5ad1ff', '#ff8a5a', '#8aff6a', '#e46aff', '#ffd54a', '#6affd0'];
+function allyTeamColor(allyTeamId: number): string {
+  const index = Math.max(0, Math.floor(allyTeamId) - 1) % ALLY_TEAM_COLORS.length;
+  return ALLY_TEAM_COLORS[index];
+}
+
 function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? NEUTRAL_PLAYER_COLOR;
   return '#' + color.toString(16).padStart(6, '0');
@@ -574,10 +584,24 @@ const terrainSectionVars = computed(() =>
                      position), YOU drops to bottom-right via
                      `margin-top: auto` so it always pins to the
                      bottom whether or not HOST is also present. -->
-                <div
-                  v-if="player.isHost || player.playerId === localPlayerId"
-                  class="player-badges"
-                >
+                <div class="player-badges">
+                  <!-- Side (BAR's ally team). Teammates share a terrain
+                       slice, vision, and immunity from each other. The host
+                       owns the assignment, so only their control is live;
+                       everyone else reads the same label. -->
+                  <button
+                    v-if="isHost"
+                    class="team-badge team-badge-btn"
+                    type="button"
+                    :style="{ borderColor: allyTeamColor(player.allyTeamId) }"
+                    :title="`Move ${player.name} to the next team`"
+                    @click="emit('cyclePlayerAllyTeam', player.playerId)"
+                  >TEAM {{ player.allyTeamId }}</button>
+                  <span
+                    v-else
+                    class="team-badge"
+                    :style="{ borderColor: allyTeamColor(player.allyTeamId) }"
+                  >TEAM {{ player.allyTeamId }}</span>
                   <span v-if="player.isHost" class="host-badge">HOST</span>
                   <span v-if="player.playerId === localPlayerId" class="you-badge">YOU</span>
                 </div>
@@ -1609,6 +1633,32 @@ const terrainSectionVars = computed(() =>
    * cells touch the row's outer rounded edges. Keep these in sync
    * if the player-item padding ever changes. */
   margin: -10px -14px -10px 0;
+}
+
+/* TEAM badge: a compact outlined pill in the badge column. The host's
+   variant is a button; every other client renders the same pill inert. */
+.player-badges .team-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: white;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.player-badges .team-badge-btn {
+  cursor: pointer;
+}
+
+.player-badges .team-badge-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .player-badges .host-badge,

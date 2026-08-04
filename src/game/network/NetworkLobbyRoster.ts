@@ -4,6 +4,7 @@ import {
   MAX_NAME_LENGTH,
 } from '@/playerNamesConfig';
 import type { PlayerId } from '../sim/types';
+import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
 import type {
   LobbyPlayer,
   LobbyPlayerInfoPayload,
@@ -25,11 +26,13 @@ export function createLobbyPlayer(
   playerId: PlayerId,
   name: string,
   isHost: boolean,
+  allyTeamId: number = FIRST_ALLY_TEAM_ID,
 ): LobbyPlayer {
   return {
     playerId,
     name,
     isHost,
+    allyTeamId,
     ipAddress: undefined,
     location: undefined,
     timezone: undefined,
@@ -92,6 +95,12 @@ export class NetworkLobbyRoster {
     }
 
     existing.isHost = player.isHost;
+    // The host owns side assignment. An incoming value replaces ours; an
+    // absent one leaves the seat where the host last put it, so a client
+    // announcing itself cannot knock itself back to a default team.
+    if (Number.isFinite(player.allyTeamId) && player.allyTeamId > 0) {
+      existing.allyTeamId = player.allyTeamId;
+    }
     this.applyPlayerInfo(existing, player);
     return {
       player: existing,
@@ -107,6 +116,15 @@ export class NetworkLobbyRoster {
       changed = true;
     };
 
+    if (
+      info.allyTeamId !== undefined &&
+      Number.isFinite(info.allyTeamId) &&
+      info.allyTeamId >= FIRST_ALLY_TEAM_ID &&
+      player.allyTeamId !== Math.floor(info.allyTeamId)
+    ) {
+      player.allyTeamId = Math.floor(info.allyTeamId);
+      changed = true;
+    }
     setIfChanged('ipAddress', info.ipAddress);
     setIfChanged('location', info.location);
     setIfChanged('timezone', info.timezone);
@@ -167,6 +185,7 @@ export class NetworkLobbyRoster {
       type: 'playerInfoUpdate',
       gameId,
       playerId: player.playerId,
+      allyTeamId: player.allyTeamId,
       ipAddress: player.ipAddress,
       location: player.location,
       timezone: player.timezone,
@@ -191,6 +210,48 @@ export class NetworkLobbyRoster {
 
   copy(player: LobbyPlayer): LobbyPlayer {
     return { ...player };
+  }
+
+  /** Put a seat on a side. Host-only in practice; clients receive the
+   *  result through the roster broadcast. Returns false for an unknown
+   *  seat or a side id that is not a positive integer. */
+  setAllyTeam(playerId: PlayerId, allyTeamId: number): boolean {
+    const player = this.players.get(playerId);
+    if (!player) return false;
+    if (!Number.isFinite(allyTeamId) || allyTeamId < FIRST_ALLY_TEAM_ID) return false;
+    const next = Math.floor(allyTeamId);
+    if (player.allyTeamId === next) return false;
+    player.allyTeamId = next;
+    return true;
+  }
+
+  /**
+   * Side for a newly joined seat: the emptiest of `sideCount` sides, ties
+   * going to the lowest id. That is how a lobby fills — a joiner lands on
+   * the short-handed team rather than piling onto TEAM 1 — and it keeps a
+   * 2v2v2 balanced without anyone touching a control.
+   */
+  defaultAllyTeamForJoin(sideCount: number): number {
+    const sides = Math.max(1, Math.floor(sideCount) || 1);
+    const counts = new Array<number>(sides).fill(0);
+    for (const player of this.players.values()) {
+      const index = player.allyTeamId - FIRST_ALLY_TEAM_ID;
+      if (index >= 0 && index < sides) counts[index]++;
+    }
+    let best = 0;
+    for (let i = 1; i < sides; i++) {
+      if (counts[i] < counts[best]) best = i;
+    }
+    return FIRST_ALLY_TEAM_ID + best;
+  }
+
+  /** Seat -> side, for handing the match's roster to the sim. */
+  allyTeamByPlayerId(): Record<number, number> {
+    const out: Record<number, number> = {};
+    for (const player of this.players.values()) {
+      out[player.playerId] = player.allyTeamId;
+    }
+    return out;
   }
 }
 

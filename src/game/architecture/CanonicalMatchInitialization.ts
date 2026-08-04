@@ -40,7 +40,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v5';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v6';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
@@ -51,6 +51,11 @@ export type CanonicalMatchInitialization = {
   readonly roomCode: string;
   readonly hostPlayerId: PlayerId;
   readonly playerIds: readonly PlayerId[];
+  /** SIDE per seat, index-aligned with `playerIds` — BAR's ally team, the
+   *  lobby's TEAM N. Part of the hashed initialization because it decides
+   *  terrain slices, spawn angles, and who can shoot whom: two peers that
+   *  disagreed here would diverge on frame one. */
+  readonly allyTeamIds: readonly number[];
   readonly aiPlayerIds: readonly PlayerId[];
   readonly gameGenerationSeed: number;
   readonly map: {
@@ -83,6 +88,9 @@ type BuildCanonicalMatchInitializationOptions = {
   roomCode: string;
   hostPlayerId: PlayerId;
   playerIds: Iterable<PlayerId>;
+  /** Seat -> side. Seats missing from the map become their own side, so an
+   *  omitted assignment is exactly free-for-all. */
+  allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
   aiPlayerIds?: Iterable<PlayerId> | undefined;
   settings: LobbySettings | undefined;
   gameGenerationSeed?: number;
@@ -122,17 +130,20 @@ export function buildCanonicalMatchInitialization({
   roomCode,
   hostPlayerId,
   playerIds,
+  allyTeamByPlayerId,
   aiPlayerIds,
   settings,
   gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
+  const seats = normalizePlayerIds(playerIds);
   return {
     schema: CANONICAL_MATCH_INITIALIZATION_SCHEMA,
     lockstep: ARCHITECTURE_CONFIG.lockstep,
     gameId,
     roomCode,
     hostPlayerId,
-    playerIds: normalizePlayerIds(playerIds),
+    playerIds: seats,
+    allyTeamIds: canonicalAllyTeamIds(seats, allyTeamByPlayerId),
     aiPlayerIds: normalizePlayerIds(aiPlayerIds ?? []),
     gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
@@ -212,6 +223,35 @@ function canonicalStringify(value: unknown): string {
 
 function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {
   return [...new Set(playerIds)].sort((a, b) => a - b);
+}
+
+/**
+ * Sides for the canonical roster, index-aligned with `seats`.
+ *
+ * Renumbered densely in seat order so two hosts that reached the same
+ * grouping by different lobby routes (one emptied TEAM 2, the other never
+ * created it) produce the SAME canonical value and therefore the same
+ * initialization hash. A seat with no assignment is its own side.
+ */
+function canonicalAllyTeamIds(
+  seats: readonly PlayerId[],
+  assignment: Readonly<Record<number, number>> | undefined,
+): number[] {
+  const dense = new Map<number, number>();
+  const out: number[] = [];
+  for (const seat of seats) {
+    const raw = assignment?.[seat];
+    // Unassigned seats key off their own id, namespaced away from real
+    // side ids so they can never collide with one.
+    const source = typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : -seat;
+    let id = dense.get(source);
+    if (id === undefined) {
+      id = dense.size + 1;
+      dense.set(source, id);
+    }
+    out.push(id);
+  }
+  return out;
 }
 
 function finiteOrNull(value: number | undefined): number | null {
