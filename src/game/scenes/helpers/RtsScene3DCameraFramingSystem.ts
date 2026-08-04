@@ -9,7 +9,8 @@ import {
 } from '../../../config';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import { isCommander } from '../../sim/combat/combatUtils';
-import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../../sim/spawn';
+import { getSeatBaseAngle, getSpawnPositionForSeat } from '../../sim/spawn';
+import type { TeamRoster } from '../../sim/teamRoster';
 import type { Entity, PlayerId } from '../../sim/types';
 
 type CameraTarget = {
@@ -30,7 +31,9 @@ export class RtsScene3DCameraFramingSystem {
     private readonly baseDistance: number,
     private readonly mapWidth: number,
     private readonly mapHeight: number,
-    private readonly playerIds: readonly PlayerId[],
+    /** Same assignment the host used, rebuilt from the same inputs, so the
+     *  camera pre-frames on the commander the host will actually spawn. */
+    private readonly getTeamRoster: () => TeamRoster,
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly cameraBattleKind: CameraBattleKind,
     private readonly getTerrainY: (x: number, z: number) => number,
@@ -147,8 +150,8 @@ export class RtsScene3DCameraFramingSystem {
     }
 
     const spawn = getSpawnPositionForSeat(
-      this.localSeatIndex(),
-      Math.max(1, this.playerIds.length),
+      this.getTeamRoster(),
+      this.getLocalPlayerId(),
       this.mapWidth,
       this.mapHeight,
     );
@@ -177,18 +180,15 @@ export class RtsScene3DCameraFramingSystem {
   }
 
   private povYawForLocalSeat(): number {
-    const playerCount = Math.max(1, this.playerIds.length);
-    const seatIndex = this.isMapOriginFocus(CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind].focus)
-      ? 0
-      : this.localSeatIndex();
-    const angle = getPlayerBaseAngle(seatIndex, playerCount);
+    const roster = this.getTeamRoster();
+    const seatPlayerId =
+      this.isMapOriginFocus(CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind].focus)
+        ? roster.playerIds[0] ?? this.getLocalPlayerId()
+        : this.getLocalPlayerId();
+    const angle = getSeatBaseAngle(roster, seatPlayerId);
     const forwardSimX = -Math.cos(angle);
     const forwardSimY = -Math.sin(angle);
     return Math.atan2(-forwardSimX, forwardSimY);
-  }
-
-  private localSeatIndex(): number {
-    return Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()));
   }
 
   private isMapOriginFocus(focus: CameraBattleFocus): focus is MapOriginCameraFocus {

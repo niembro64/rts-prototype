@@ -103,6 +103,13 @@ export async function createBackgroundBattle(
     demoPlayerIds = [];
     for (let i = 1; i <= fallbackCount; i++) demoPlayerIds.push(i as PlayerId);
   }
+  // Sides. The demo runs 2v2v2 by default; a lobby preview inherits the
+  // demo's side count so the previewed slices match what the real battle
+  // will carve, clamped to the seat count for small rosters.
+  const demoAllyTeamCount = Math.max(
+    1,
+    Math.min(demoPlayerIds.length, Math.floor(DEMO_CONFIG.allyTeamCount) || 1),
+  );
   let resolvedLocalPlayerId: PlayerId = demoPlayerIds[0];
   if (localPlayerId !== undefined) {
     for (let i = 0; i < demoPlayerIds.length; i++) {
@@ -195,6 +202,7 @@ export async function createBackgroundBattle(
   const server = await GameServer.create(
     {
       playerIds: demoPlayerIds,
+      allyTeamCount: demoAllyTeamCount,
       gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
@@ -259,6 +267,7 @@ export async function createBackgroundBattle(
     width: rect.width || window.innerWidth,
     height: rect.height || window.innerHeight,
     playerIds: demoPlayerIds,
+    allyTeamCount: demoAllyTeamCount,
     localPlayerId: resolvedLocalPlayerId,
     gameConnection: connection,
     clientViewState,

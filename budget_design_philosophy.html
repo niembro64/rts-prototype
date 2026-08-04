@@ -2674,6 +2674,49 @@
         ownership. They are stored beside the ID, not inside it.
       </p>
 
+      <h3>Player, team, ally team &mdash; three words, three different jobs</h3>
+      <p>
+        Ownership is not one concept. Beyond All Reason (and the Recoil engine under it) splits it
+        into three levels, and conflating any two of them produces a game that cannot express a
+        2v2v2. We use the same split and the same vocabulary:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Player</strong> &mdash; a client seat. A human or an AI holding a connection and
+        issuing commands. Players are who talks; they are not who owns.</li>
+        <li><strong>Team</strong> &mdash; the owner of units and of an economy. Every unit, building,
+        shot, and wreck belongs to exactly one team, and metal and energy are pooled per team. A team
+        normally has exactly one player, which is why the two are so easily confused &mdash; but the
+        engine allows several players to share one team (BAR calls this comshare), and when they do
+        they drive the same units out of the same bank. Team is the unit-ownership answer.</li>
+        <li><strong>Ally team</strong> &mdash; the alliance. Several teams that do not damage each
+        other, that share vision, and that spawn inside one start area. This is what a player
+        <em>means</em> by &ldquo;my team&rdquo; and what the lobby labels TEAM 1, TEAM 2, TEAM 3.
+        Ally team is the friend-or-foe answer.</li>
+      </ul>
+      <p>
+        So a 3v3v3 is nine players, nine teams, three ally teams. Every question about the game
+        resolves to exactly one of those levels, and the level is never inferred:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Who owns this unit, who pays for it, who gets the reclaim?</strong> Team.</li>
+        <li><strong>Can this weapon damage that body? Does this guard order apply? Is this a valid
+        capture, assist, transport, or shared-vision source?</strong> Ally team. Every one of these
+        goes through the single alliance predicate; none of them compares player ids directly.</li>
+        <li><strong>Whose cursor issued this command, and is that seat allowed to?</strong> Player.</li>
+      </ul>
+      <p>
+        The map follows the same split. Terrain dividers carve one slice per <em>ally team</em>, not
+        per player, because a slice is a defensible frontage shared by allies &mdash; giving each
+        player their own ridge-walled wedge would put a wall between teammates and make an alliance
+        mean nothing on the ground. Inside its slice, an ally team spreads its teams evenly across
+        the arc, so two allies start shoulder to shoulder behind one shared front rather than stacked
+        on one point or split by terrain.
+      </p>
+      <p>
+        A one-player game is not a special case: it is one player, one team, one ally team, one
+        slice. The general path runs it.
+      </p>
+
       <h3>A build site is the product, carrying its own id from frame one</h3>
       <p>
         A unit or building under construction is not a placeholder that later hands off to the

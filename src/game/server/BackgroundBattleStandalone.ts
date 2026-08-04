@@ -8,7 +8,7 @@ import type { PhysicsEngine3D as PhysicsEngine } from './PhysicsEngine3D';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
 import { BACKGROUND_UNIT_SPAWN_DISTRIBUTION } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
-import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
+import { getSeatBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import {
   makeMapOvalMetrics,
   mapOvalPointAt,
@@ -259,7 +259,7 @@ export function spawnBackgroundUnitsStandalone(
   }
   const players = normalizePlayerIds(playersSource);
   const numPlayers = players.length;
-  const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
+  const unitCapPerPlayer = world.getUnitCapPerPlayer();
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
@@ -270,7 +270,7 @@ export function spawnBackgroundUnitsStandalone(
   // used for commanders / solars / factories in spawn.ts).
   const baseAngles: number[] = [];
   for (let p = 0; p < numPlayers; p++) {
-    baseAngles.push(getPlayerBaseAngle(p, numPlayers));
+    baseAngles.push(getSeatBaseAngle(world.teamRoster, players[p]));
   }
 
   if (initialSpawn) {
@@ -283,13 +283,12 @@ export function spawnBackgroundUnitsStandalone(
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
-      const productionReserve = seededFabricatorProductionReserve(world, playerId);
       const flatRoster = BACKGROUND_UNIT_SPAWN_DISTRIBUTION === 'flat-distribution'
         ? shuffledInitialFlatRoster(allowedUnitBlueprintIds, () => world.nextRandom(playerId))
         : null;
-      // Commander is already live and counts against the cap. Fill the center
-      // battle only to cap - commander - repeat-production reservations.
-      const totalPerPlayer = Math.max(0, unitCapPerPlayer - 1 - productionReserve);
+      // CAP specifies the randomized opening wave itself. The Commander and
+      // seeded Fabricator lines are demo infrastructure and do not reduce it.
+      const totalPerPlayer = unitCapPerPlayer;
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
         const unitBlueprintId = flatRoster !== null

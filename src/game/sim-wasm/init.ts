@@ -4899,6 +4899,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBuildGhost3DContractTest();
         const { runResourcePylonFlowController3DContractTest } = await import('../render3d/ResourcePylonFlowController3DContractTest');
         runResourcePylonFlowController3DContractTest();
+        const { runSprayRenderer3DContractTest } = await import('../render3d/SprayRenderer3DContractTest');
+        runSprayRenderer3DContractTest();
         const { runMetalDepositVisualClustersContractTest } = await import('../render3d/MetalDepositVisualClustersContractTest');
         runMetalDepositVisualClustersContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
@@ -4911,6 +4913,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runWaterSurfaceBuildingContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
         runDemoMetalExtractorSpawnContractTest();
+        const { runTeamRosterContractTest } = await import('../sim/teamRosterContractTest');
+        runTeamRosterContractTest();
       }
       return handle;
     })();

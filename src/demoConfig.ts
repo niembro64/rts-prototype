@@ -48,6 +48,12 @@ export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: demoConfig.playerCount,
 
+  /** Number of ALLY TEAMS (sides) the demo’s seats are split into, in
+   *  contiguous lobby order. 6 players across 3 sides is 2v2v2: three
+   *  terrain slices, two commanders sharing each slice. See
+   *  src/game/sim/teamRoster.ts. */
+  allyTeamCount: demoConfig.allyTeamCount,
+
   /** Number of solar collectors per player on the dedicated solar arc. */
   buildingSolarCount: demoConfig.buildingSolarCount,
 

@@ -13,6 +13,14 @@ export type GameConfig = {
   width: number;
   height: number;
   playerIds?: PlayerId[];
+  /** Sides the seats are split into; see GameServerConfig.allyTeamCount.
+   *  The client rebuilds the same roster from this so its terrain
+   *  dividers and camera pre-framing match the host’s layout exactly. */
+  allyTeamCount?: number;
+  /** Explicit per-seat side assignment from the lobby, when players have
+   *  moved themselves between teams. Takes precedence over
+   *  `allyTeamCount`. Seats missing here fall back to their own side. */
+  allyTeamByPlayerId?: Readonly<Record<number, number>>;
   localPlayerId?: PlayerId;
   gameConnection: GameConnection;
   /** ClientViewState owned by GameCanvas so its contents (units, buildings,
@@ -154,6 +162,15 @@ export type GameConnection = {
 
 export type GameServerConfig = {
   playerIds: PlayerId[];
+  /** Number of ALLY TEAMS (sides) the seats are split into, in contiguous
+   *  lobby order. Omitted means free-for-all: one side per seat. Terrain
+   *  dividers carve one slice per side, and a side’s seats share that
+   *  slice. See src/game/sim/teamRoster.ts. */
+  allyTeamCount?: number;
+  /** Explicit per-seat side assignment from the lobby, when players have
+   *  moved themselves between teams. Takes precedence over
+   *  `allyTeamCount`. Seats missing here fall back to their own side. */
+  allyTeamByPlayerId?: Readonly<Record<number, number>>;
   /** Immutable uint32 sampled once by the match host and distributed through
    * canonical initialization. Omitted only by deterministic tests/fixtures. */
   gameGenerationSeed?: number;

@@ -15,11 +15,12 @@ import {
 } from '../../config';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import {
-  getLayoutPlayerCount,
-  getPlayerBaseAngle,
-  getPlayerBuildArcAngle,
+  getAllyTeamBuildArcAngle,
+  getLayoutAllyTeamCount,
+  getSeatBaseAngle,
   normalizePlayerIds,
 } from './playerLayout';
+import type { TeamRoster } from './teamRoster';
 import {
   makeMapOvalMetrics,
   mapOvalAngleAt,
@@ -32,7 +33,7 @@ import { isWaterAt } from './Terrain';
 import { fabricatorTorusOuterRadius } from './blueprints';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
-export {  getPlayerBaseAngle } from './playerLayout';
+export { getSeatBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
 
@@ -204,13 +205,13 @@ function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
  *  the periphery. The radial-sector layout uses the same oval as
  *  `getDemoOval`. */
 export function getSpawnPositionForSeat(
-  seatIndex: number,
-  playerCount: number,
+  roster: TeamRoster,
+  playerId: PlayerId,
   mapWidth: number,
   mapHeight: number,
 ): { x: number; y: number } {
   const radius = commanderRadiusForMap(mapWidth, mapHeight);
-  const angle = getPlayerBaseAngle(seatIndex, playerCount);
+  const angle = getSeatBaseAngle(roster, playerId);
   return mapOvalPointAt(makeMapOvalMetrics(mapWidth, mapHeight), angle, radius);
 }
 
@@ -219,16 +220,15 @@ export function getSpawnPositionForSeat(
 // shared with demo battle through DEMO_CONFIG.baseRings.unitCommander.
 function getSpawnPositions(
   world: WorldState,
-  playerCount: number
+  playerIds: readonly PlayerId[],
 ): { x: number; y: number; facingAngle: number }[] {
   const cx = world.mapWidth / 2;
   const cy = world.mapHeight / 2;
   const oval = makeMapOvalMetrics(world.mapWidth, world.mapHeight);
   const radius = commanderRadiusForMap(world.mapWidth, world.mapHeight);
   const positions: { x: number; y: number; facingAngle: number }[] = [];
-  const count = getLayoutPlayerCount(playerCount);
-  for (let i = 0; i < count; i++) {
-    const angle = getPlayerBaseAngle(i, count);
+  for (let i = 0; i < playerIds.length; i++) {
+    const angle = getSeatBaseAngle(world.teamRoster, playerIds[i]);
     const point = mapOvalPointAt(oval, angle, radius);
     positions.push({
       x: point.x,
@@ -353,7 +353,7 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
     economyManager.initPlayer(playerId);
   }
 
-  const spawnPositions = getSpawnPositions(world, normalizedPlayerIds.length);
+  const spawnPositions = getSpawnPositions(world, normalizedPlayerIds);
 
   for (let i = 0; i < normalizedPlayerIds.length; i++) {
     const playerId = normalizedPlayerIds[i];
@@ -693,15 +693,16 @@ export function spawnInitialBases(
   // (the mountain ridge in Terrain.ts). This same formula is used for
   // one-player maps too: one commander gets one team slice and one
   // divider slice, rather than a special full-circle layout.
-  const sectorAngle = getPlayerBuildArcAngle(playerCount, DEMO_CONFIG.arcSectorFraction);
+  const allyTeamCount = getLayoutAllyTeamCount(world.getAllyTeamCount());
+  const sectorAngle = getAllyTeamBuildArcAngle(allyTeamCount, DEMO_CONFIG.arcSectorFraction);
   // The complete one-Fabricator-per-unit roster needs more room than the
   // shared structure arcs. It may occupy the full team sector, but never
   // crosses into the alternating divider sector.
-  const factorySectorAngle = getPlayerBuildArcAngle(playerCount, 1);
+  const factorySectorAngle = getAllyTeamBuildArcAngle(allyTeamCount, 1);
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
-    const baseAngle = getPlayerBaseAngle(i, playerCount);
+    const baseAngle = getSeatBaseAngle(world.teamRoster, playerId);
 
     // Commander: single entity at the player's spawn point on the outer
     // oval, facing the map center.
@@ -760,8 +761,8 @@ export function spawnInitialBases(
         oval,
         waterFactoryRadius,
         baseAngle,
-        getPlayerBuildArcAngle(
-          playerCount,
+        getAllyTeamBuildArcAngle(
+          allyTeamCount,
           DEMO_CONFIG.waterFabricators.arcSectorFraction,
         ),
         playerId,
@@ -882,7 +883,7 @@ function ownerForDeposit(world: WorldState, playerIds: PlayerId[], x: number, y:
   let bestIndex = 0;
   let bestDelta = Infinity;
   for (let i = 0; i < playerIds.length; i++) {
-    const delta = angleDeltaAbs(depositAngle, getPlayerBaseAngle(i, playerIds.length));
+    const delta = angleDeltaAbs(depositAngle, getSeatBaseAngle(world.teamRoster, playerIds[i]));
     if (delta < bestDelta) {
       bestDelta = delta;
       bestIndex = i;

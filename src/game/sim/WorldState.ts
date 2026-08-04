@@ -14,6 +14,11 @@ import {
   createTransform,
   NO_ENTITY_ID,
 } from './types';
+import {
+  buildAlliesByPlayer,
+  buildFreeForAllRoster,
+  type TeamRoster,
+} from './teamRoster';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
@@ -162,6 +167,15 @@ export class WorldState {
    *  never mutated mid-game (alliances are not currently switchable). */
   public alliesByPlayer: Map<PlayerId, ReadonlySet<PlayerId>> = new Map();
 
+  /** Who is on which side. Player -> team -> ally team, the three BAR
+   *  ownership levels; see teamRoster.ts. Terrain dividers, spawn angles,
+   *  and `alliesByPlayer` above are all derived from this one assignment
+   *  rather than each re-deriving groupings from player ids. Defaults to
+   *  free-for-all (every seat its own side) so a fresh world, a test
+   *  fixture, or a reset path behaves exactly as it did before teams
+   *  existed. */
+  public teamRoster: TeamRoster = buildFreeForAllRoster([1 as PlayerId]);
+
   /** Active temporary vision pulses (FOW-14 — Starcraft
    *  scanner sweep / SupCom recon drone). Each pulse contributes a
    *  full-vision source to its owner's team for the ticks between
@@ -190,7 +204,8 @@ export class WorldState {
   // Same list across all clients (deterministic from map size).
   public metalDeposits: MetalDeposit[] = [];
 
-  // Configurable unit cap (can be changed at runtime via command)
+  // Configurable per-player unit cap (can be changed at runtime via command).
+  // The legacy field name is retained in the wire/settings schema.
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
   // Whether turretShieldPanels/panels participate in targeting and reflections
@@ -330,9 +345,9 @@ export class WorldState {
     this.cache.rebuildIfNeeded(this.entities);
   }
 
-  // Get unit cap per player (total units / number of players)
+  // CAP is already a per-player value; player count must not dilute it.
   getUnitCapPerPlayer(): number {
-    return Math.floor(this.maxTotalUnits / this.playerCount);
+    return Math.max(0, Math.floor(this.maxTotalUnits));
   }
 
   // Check if player can build more units (existing units only, no queue accounting)
@@ -981,6 +996,20 @@ export class WorldState {
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildingsByPlayer(playerId);
+  }
+
+  /** Install the roster and rebuild the alliance sets from it. This is the
+   *  ONLY way alliances should be established: an ally team is the source
+   *  of truth and `alliesByPlayer` is its cache, so the two cannot drift
+   *  into a state where A is allied to B but B is on another side. */
+  setTeamRoster(roster: TeamRoster): void {
+    this.teamRoster = roster;
+    this.alliesByPlayer = buildAlliesByPlayer(roster);
+  }
+
+  /** Number of sides in the match. Terrain dividers carve one slice each. */
+  getAllyTeamCount(): number {
+    return this.teamRoster.allyTeamIds.length;
   }
 
   /** Get the per-player ally set, NOT including the player itself.

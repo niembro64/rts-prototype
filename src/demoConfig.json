@@ -1,5 +1,6 @@
 {
   "playerCount": 6,
+  "allyTeamCount": 3,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {

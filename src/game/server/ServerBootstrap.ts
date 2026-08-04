@@ -33,6 +33,7 @@ import {
 } from '../sim/Terrain';
 import { buildTerrainBuildabilityGrid } from '../sim/terrain/terrainBuildability';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
+import { resolveTeamRoster } from '../sim/teamRoster';
 import {
   spawnInitialBases,
   spawnInitialEntities,
@@ -78,6 +79,10 @@ export class ServerBootstrap {
 
     await report(0, 'Reading map size');
     const playerIds = normalizePlayerIds(config.playerIds);
+    const teamRoster = resolveTeamRoster(playerIds, {
+      allyTeamCount: config.allyTeamCount,
+      allyTeamByPlayerId: config.allyTeamByPlayerId,
+    });
     const gameGenerationSeed = normalizeGameGenerationSeed(
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
@@ -113,16 +118,20 @@ export class ServerBootstrap {
       terrainDetail:
         config.terrainDetail ?? terrainRuntimeConfig.terrainDetail,
     });
-    setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
+    setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
     await report(0.14, 'Configuring terrain');
 
+    // Deposits are laid out in radial slices phase-aligned to the terrain
+    // dividers, so they must count SIDES, not seats — otherwise a 2v2v2
+    // would phase deposits on 60-degree spokes while the ridges run on
+    // 120-degree ones and metal would end up buried inside a divider.
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
-      playerIds.length,
+      teamRoster.allyTeamIds.length,
     );
     await report(0.24, 'Generating metal deposits');
 
@@ -139,6 +148,8 @@ export class ServerBootstrap {
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
+    // One assignment drives alliances, terrain slices, and spawn angles.
+    world.setTeamRoster(teamRoster);
     world.metalDeposits = deposits;
     // Trees, grass, and seaweed are reclaimable energy deposits, so their
     // layout is simulation state. It is derived deterministically from the
@@ -248,6 +259,10 @@ export class ServerBootstrap {
     providedPhysics: PhysicsEngine3D | undefined = undefined,
   ): BootstrappedServerWorld {
     const playerIds = normalizePlayerIds(config.playerIds);
+    const teamRoster = resolveTeamRoster(playerIds, {
+      allyTeamCount: config.allyTeamCount,
+      allyTeamByPlayerId: config.allyTeamByPlayerId,
+    });
     const gameGenerationSeed = normalizeGameGenerationSeed(
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
@@ -287,7 +302,7 @@ export class ServerBootstrap {
       terrainDetail:
         config.terrainDetail ?? terrainRuntimeConfig.terrainDetail,
     });
-    setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
+    setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
@@ -298,10 +313,14 @@ export class ServerBootstrap {
     // docstring — needed for the two-pass null-dTerrain resolution),
     // so by the time we hit `buildTerrainTileMap` the heightmap and
     // every downstream sim/render sampler already sees the pads.
+    // Deposits are laid out in radial slices phase-aligned to the terrain
+    // dividers, so they must count SIDES, not seats — otherwise a 2v2v2
+    // would phase deposits on 60-degree spokes while the ridges run on
+    // 120-degree ones and metal would end up buried inside a divider.
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
-      playerIds.length,
+      teamRoster.allyTeamIds.length,
     );
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
@@ -313,6 +332,8 @@ export class ServerBootstrap {
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
+    // One assignment drives alliances, terrain slices, and spawn angles.
+    world.setTeamRoster(teamRoster);
     world.metalDeposits = deposits;
     // Trees, grass, and seaweed are reclaimable energy deposits, so their
     // layout is simulation state. It is derived deterministically from the
@@ -344,7 +365,7 @@ export class ServerBootstrap {
       config.initialAllowedBuildingBlueprintIds ?? BUILDING_BLUEPRINT_IDS,
     );
     // Same ordering rule for the unit cap: the demo spawn now fills
-    // `maxTotalUnits / numPlayers` slots per team, so the cap must
+    // `maxTotalUnits` randomized slots per team, so the cap must
     // be set BEFORE spawnBackgroundUnitsStandalone runs (in the
     // playerIds branch below). Without this override, the world
     // boots at MAX_TOTAL_UNITS (4096) regardless of user storage,

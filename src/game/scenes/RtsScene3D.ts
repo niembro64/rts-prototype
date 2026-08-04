@@ -76,6 +76,7 @@ import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
+import { resolveTeamRoster, type TeamRoster } from '../sim/teamRoster';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
@@ -111,6 +112,12 @@ import {
 
 type RtsScene3DConfig = {
   playerIds: PlayerId[];
+  /** Sides the seats are split into (see GameServerConfig.allyTeamCount).
+   *  Omitted means free-for-all. The scene rebuilds the host's roster from
+   *  this so terrain dividers and camera framing agree with the sim. */
+  allyTeamCount?: number;
+  /** Explicit lobby side assignment; takes precedence over allyTeamCount. */
+  allyTeamByPlayerId?: Readonly<Record<number, number>>;
   localPlayerId: PlayerId;
   gameConnection: GameConnection;
   /** Hoisted up to GameCanvas so state survives a live 2D↔3D renderer
@@ -213,6 +220,8 @@ export class RtsScene3D {
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
+  /** Player -> team -> ally team for this match. */
+  private teamRoster: TeamRoster;
   private mapWidth: number;
   private mapHeight: number;
   private centerMagnitude: number;
@@ -307,6 +316,10 @@ export class RtsScene3D {
     this.clientRenderEnabled = threeApp.isRenderEnabled();
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
+    this.teamRoster = resolveTeamRoster(this.playerIds, {
+      allyTeamCount: config.allyTeamCount,
+      allyTeamByPlayerId: config.allyTeamByPlayerId,
+    });
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
     this.onRendererWarmupChange = config.onRendererWarmupChange;
     this.onStartupReady = config.onStartupReady;
@@ -320,7 +333,7 @@ export class RtsScene3D {
     // The same radial-slice math is used for every player count,
     // including one-player maps. The host's GameServer sets this too,
     // but remote clients only construct the renderer.
-    setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
+    setTerrainTeamCount(getTerrainDividerTeamCount(this.teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(this.centerMagnitude);
     setTerrainDividersMagnitude(this.dividersMagnitude);
     setTerrainPerimeterMagnitude(this.perimeterMagnitude);
@@ -328,16 +341,17 @@ export class RtsScene3D {
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
 
-    // Metal deposits are deterministic from map size + player count,
-    // so the client re-derives the same list. `generateMetalDeposits`
-    // installs the resulting flat zones into the client's local
-    // Terrain module itself (see its docstring), so by the time the
-    // marker pass below reads `metalDeposits` the heightmap already
-    // matches the server's.
+    // Metal deposits are deterministic from map size + SIDE count (they
+    // are phase-aligned to the terrain dividers, which carve one slice per
+    // ally team), so the client re-derives the same list.
+    // `generateMetalDeposits` installs the resulting flat zones into the
+    // client's local Terrain module itself (see its docstring), so by the
+    // time the marker pass below reads `metalDeposits` the heightmap
+    // already matches the server's.
     const metalDeposits = generateMetalDeposits(
       this.mapWidth,
       this.mapHeight,
-      this.playerIds.length,
+      this.teamRoster.allyTeamIds.length,
     );
     this.metalDeposits = metalDeposits;
     this.lobbyPreview = config.lobbyPreview ?? false;
@@ -378,7 +392,7 @@ export class RtsScene3D {
       baseDistance,
       this.mapWidth,
       this.mapHeight,
-      this.playerIds,
+      () => this.teamRoster,
       () => this.localPlayerId,
       cameraBattleKind,
       (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
