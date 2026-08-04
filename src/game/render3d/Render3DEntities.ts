@@ -553,6 +553,13 @@ export class Render3DEntities {
    *  alongside m.group. */
   private disposeWorldParentedOverlays(m: EntityMesh): void {
     this.selectionOverlays.removeWorldParentedOverlays(m);
+    // Team trim lives in a world-parented instanced pool, so it does NOT
+    // leave with m.group. Without this the slot keeps its last transform
+    // and the trim hangs in the air at the spot the entity died.
+    if (m.teamTrimSlot !== undefined) {
+      this.teamTrim?.release(m.teamTrimSlot);
+      m.teamTrimSlot = undefined;
+    }
   }
 
   private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
@@ -568,6 +575,9 @@ export class Render3DEntities {
 
   private detachUnitMeshGroup(m: EntityMesh): void {
     if (m.group.parent === this.world) this.world.remove(m.group);
+    // Trim is world-parented, so detaching the group does not hide it.
+    // Park the slot instead or it keeps drawing where the unit was.
+    if (m.teamTrimSlot !== undefined) this.teamTrim?.hide(m.teamTrimSlot);
   }
 
   private attachUnitMeshGroup(m: EntityMesh): void {

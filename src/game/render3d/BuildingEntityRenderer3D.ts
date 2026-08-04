@@ -1096,7 +1096,7 @@ export class BuildingEntityRenderer3D {
       }
     }
 
-    this.updateTeamTrim(mesh, ownerId, x, y, z, width, depth);
+    this.updateTeamTrim(mesh, ownerId, x, y, buildingBaseY + height, width, depth);
 
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
@@ -1124,9 +1124,9 @@ export class BuildingEntityRenderer3D {
   private updateTeamTrim(
     mesh: EntityMesh,
     ownerId: PlayerId | undefined,
-    x: number,
-    y: number,
-    z: number,
+    simX: number,
+    simY: number,
+    roofY: number,
     width: number,
     depth: number,
   ): void {
@@ -1139,14 +1139,16 @@ export class BuildingEntityRenderer3D {
       if (slot < 0) return;
       mesh.teamTrimSlot = slot;
     }
-    const height = mesh.buildingHeight ?? Math.max(width, depth) * 0.5;
     const bandThickness = Math.max(2, Math.min(width, depth) * BUILDING_TRIM_THICKNESS);
     _buildingTrimQuat.setFromAxisAngle(_buildingTrimUp, mesh.buildingCachedRotation ?? 0);
+    // Sim (x, y) are both HORIZONTAL; three.js wants (simX, altitude,
+    // simY). `roofY` is the caller's already-composed roof altitude, so
+    // the band sits on the roof instead of hovering over the map.
     trim.set(
       mesh.teamTrimSlot,
-      x,
-      y + height,
-      z,
+      simX,
+      roofY,
+      simY,
       _buildingTrimQuat,
       width * BUILDING_TRIM_SPAN,
       bandThickness,
