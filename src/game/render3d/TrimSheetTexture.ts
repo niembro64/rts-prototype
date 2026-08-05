@@ -30,9 +30,12 @@
 import * as THREE from 'three';
 import {
   TRIM_BAND_GUTTER_PIXELS,
+  TRIM_BAND_HEIGHTS,
   TRIM_BAND_ORDER,
-  TRIM_BAND_PIXELS,
   TRIM_SHEET_PIXELS,
+  bandFeatureCounts,
+  bandPixelAspect,
+  bandTopRow,
   type TrimBandId,
 } from './SurfaceChart3D';
 import {
@@ -91,24 +94,25 @@ function makeContext(size: number): CanvasRenderingContext2D {
 
 /** Fill one band's full slot (gutters included) with a flat base so nothing is
  *  ever undefined, then hand back the content rect the band draws into. */
-function beginBand(layer: Layer, index: number, base: {
+function beginBand(layer: Layer, band: TrimBandId, base: {
   albedo: number;
   height: number;
   bare: number;
 }): BandRect {
-  const slotY = index * TRIM_BAND_PIXELS;
+  const slotY = bandTopRow(band);
+  const slotHeight = TRIM_BAND_HEIGHTS[band];
   const rect: BandRect = {
     x: 0,
     y: slotY + TRIM_BAND_GUTTER_PIXELS,
     width: TRIM_SHEET_PIXELS,
-    height: TRIM_BAND_PIXELS - TRIM_BAND_GUTTER_PIXELS * 2,
+    height: slotHeight - TRIM_BAND_GUTTER_PIXELS * 2,
   };
   layer.albedo.fillStyle = gray(base.albedo);
-  layer.albedo.fillRect(0, slotY, TRIM_SHEET_PIXELS, TRIM_BAND_PIXELS);
+  layer.albedo.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
   layer.height.fillStyle = gray(base.height);
-  layer.height.fillRect(0, slotY, TRIM_SHEET_PIXELS, TRIM_BAND_PIXELS);
+  layer.height.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
   layer.bare.fillStyle = gray(base.bare);
-  layer.bare.fillRect(0, slotY, TRIM_SHEET_PIXELS, TRIM_BAND_PIXELS);
+  layer.bare.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
   return rect;
 }
 
@@ -116,8 +120,8 @@ function beginBand(layer: Layer, index: number, base: {
  *  levels average neighbouring rows; without this the bottom of one band
  *  bleeds into the top of the next two or three mips down, and a hull lobe
  *  starts showing nose facets at range. */
-function fillBandGutters(layer: Layer, index: number, rect: BandRect): void {
-  const slotY = index * TRIM_BAND_PIXELS;
+function fillBandGutters(layer: Layer, band: TrimBandId, rect: BandRect): void {
+  const slotY = bandTopRow(band);
   for (const ctx of [layer.albedo, layer.height, layer.bare]) {
     // putImageData rather than drawImage. Stretching a one-pixel-tall source
     // with drawImage runs it through the smoothing filter, which samples
@@ -175,35 +179,40 @@ function bevelRect(
 /** A bolt: bright dome, hard contact shadow, bare metal head. Bolts are the
  *  cheapest read at RTS range — they survive to low mips as a value rhythm
  *  long after the individual heads stop resolving. */
-function rivet(layer: Layer, cx: number, cy: number, r: number): void {
-  layer.albedo.fillStyle = gray(0.04);
-  layer.albedo.beginPath();
-  layer.albedo.arc(cx, cy + 0.7, r + 1.1, 0, Math.PI * 2);
-  layer.albedo.fill();
-  layer.albedo.fillStyle = gray(0.95);
-  layer.albedo.beginPath();
-  layer.albedo.arc(cx, cy, r, 0, Math.PI * 2);
-  layer.albedo.fill();
-  layer.albedo.fillStyle = gray(0.55);
-  layer.albedo.beginPath();
-  layer.albedo.arc(cx + r * 0.22, cy + r * 0.22, r * 0.55, 0, Math.PI * 2);
-  layer.albedo.fill();
-
-  layer.height.fillStyle = gray(0.95);
-  layer.height.beginPath();
-  layer.height.arc(cx, cy, r, 0, Math.PI * 2);
-  layer.height.fill();
-
-  layer.bare.fillStyle = gray(0.7);
-  layer.bare.beginPath();
-  layer.bare.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
-  layer.bare.fill();
+/** A bolt: bright dome, hard contact shadow, bare-metal head.
+ *
+ *  `r` is the bolt's radius in MODEL terms, expressed in band rows; the
+ *  horizontal radius is scaled by the band's pixel aspect so it lands round on
+ *  the surface instead of as a vertical sliver. Bolts are the cheapest read at
+ *  RTS range — they survive to low mips as a value rhythm long after the
+ *  individual heads stop resolving — which is why they get the sheet's only
+ *  near-white values. */
+function rivet(
+  layer: Layer, cx: number, cy: number, r: number, aspect = 1,
+): void {
+  const rx = r * aspect;
+  const ellipse = (
+    ctx: CanvasRenderingContext2D,
+    ox: number, oy: number, sx: number, sy: number, fill: string,
+  ) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.ellipse(cx + ox, cy + oy, sx, sy, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  ellipse(layer.albedo, 0, r * 0.22, rx + aspect * 1.3, r + 1.3, gray(0.03));
+  ellipse(layer.albedo, 0, 0, rx, r, gray(0.96));
+  ellipse(layer.albedo, rx * 0.22, r * 0.22, rx * 0.55, r * 0.55, gray(0.52));
+  ellipse(layer.height, 0, 0, rx, r, gray(0.96));
+  ellipse(layer.bare, 0, 0, rx * 0.85, r * 0.85, gray(0.75));
 }
 
 /** Evenly spaced bolts along a horizontal line, wrapping in u. */
-function boltRow(layer: Layer, y: number, count: number, r: number): void {
+function boltRow(
+  layer: Layer, y: number, count: number, r: number, aspect = 1,
+): void {
   const spacing = TRIM_SHEET_PIXELS / count;
-  for (let i = 0; i < count; i++) rivet(layer, (i + 0.5) * spacing, y, r);
+  for (let i = 0; i < count; i++) rivet(layer, (i + 0.5) * spacing, y, r, aspect);
 }
 
 /** Recessed seam between panels: near-black gap with a lit lower lip. Runs the
@@ -282,7 +291,14 @@ function panelCourse(
   height: number,
   columns: number,
   rng: () => number,
-  options: { bolts?: boolean; vents?: boolean; faceJitter?: number } = {},
+  options: {
+    bolts?: boolean;
+    vents?: boolean;
+    faceJitter?: number;
+    /** Band pixels per model unit horizontally over the same vertically, so
+     *  bolts stay round and insets stay square on the model. */
+    aspect?: number;
+  } = {},
 ): void {
   layer.albedo.fillStyle = gray(0.03);
   layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, height);
@@ -312,11 +328,18 @@ function panelCourse(
     const face = 0.53 + randIn(rng, -jitter, jitter);
     bevelRect(layer, x + 2, y + 2.5, w - 4, height - 5, face, 0.66, 0.30);
     if (options.bolts !== false) {
-      const inset = 5;
-      rivet(layer, x + inset, y + inset, 1.8);
-      rivet(layer, x + w - inset, y + inset, 1.8);
-      rivet(layer, x + inset, y + height - inset, 1.8);
-      rivet(layer, x + w - inset, y + height - inset, 1.8);
+      const aspect = options.aspect ?? 1;
+      // Inset is a MODEL distance, so it is wider in pixels horizontally by
+      // exactly the band's aspect — otherwise bolts crowd one axis.
+      const insetY = Math.min(height * 0.15, 14);
+      const insetX = insetY * aspect;
+      const r = Math.min(height * 0.075, 7);
+      // TWO bolts per panel, on one diagonal. Four puts a bolt at every panel
+      // corner, and since neighbouring panels share corners the surface ends
+      // up ringed with doubled bolts — the single biggest contributor to the
+      // busy, gaudy read.
+      rivet(layer, x + insetX, y + insetY, r, aspect);
+      rivet(layer, x + w - insetX, y + height - insetY, r, aspect);
     }
     if (options.vents === true && wide && height > 22) {
       ventBlock(layer, x + w * 0.3, y + height * 0.28, w * 0.4, height * 0.44);
@@ -352,41 +375,48 @@ function scratch(
 
 /** Hull plating: three courses of bolted panels separated by recessed seams,
  *  with a conduit run crossing the middle course. */
-function drawArmorPlate(layer: Layer, rect: BandRect, rng: () => number): void {
-  const courses = 3;
+function drawArmorPlate(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const { columns, courses } = bandFeatureCounts(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, 9 + Math.floor(rng() * 3), rng, {
+    panelCourse(layer, y, courseHeight, columns, rng, {
       vents: c === 1,
+      aspect: bandPixelAspect(band),
     });
-    seamRow(layer, y, 2.5);
+    seamRow(layer, y, 4);
   }
-  pipeRun(layer, rect.y + courseHeight * 1.72, 5, 9, 0.12);
-  for (let i = 0; i < 34; i++) scratch(layer, rng, rect, 42);
+  pipeRun(layer, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
+  for (let i = 0; i < 34; i++) scratch(layer, rng, rect, 90);
 }
 
 /** Nose armour: heavier, fewer, thicker-bolted plates than the hull, with a
  *  bright lit chine along the leading course. */
-function drawNoseFacet(layer: Layer, rect: BandRect, rng: () => number): void {
-  const courses = 2;
+function drawNoseFacet(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const { columns, courses } = bandFeatureCounts(band);
+  const aspect = bandPixelAspect(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, 8 + Math.floor(rng() * 2), rng, {
+    panelCourse(layer, y, courseHeight, columns, rng, {
       faceJitter: 0.06,
+      aspect,
     });
-    seamRow(layer, y, 3);
+    seamRow(layer, y, 5);
   }
-  // Heavy corner bolts on the forward course.
-  boltRow(layer, rect.y + courseHeight * 0.5, 7, 3.4);
+  boltRow(layer, rect.y + courseHeight * 0.5, columns, 5, aspect);
+  // Lit chine along the leading edge.
   layer.albedo.fillStyle = gray(0.97);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
+  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
   layer.height.fillStyle = gray(0.98);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
-  layer.bare.fillStyle = gray(0.45);
-  layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
-  for (let i = 0; i < 24; i++) scratch(layer, rng, rect, 56);
+  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
+  layer.bare.fillStyle = gray(0.40);
+  layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
+  for (let i = 0; i < 24; i++) scratch(layer, rng, rect, 120);
 }
 
 // ── Spherical layout helpers ─────────────────────────────────────────────
@@ -492,31 +522,34 @@ function drawPitchSlot(layer: Layer, rect: BandRect): void {
  *  ports, and the pitch slot the barrel assembly travels in. This band maps
  *  onto the sphere exactly once, so its horizontal axis is a latitude circle
  *  and round features must be compensated by `latitudeScale`. */
-function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
+function drawSensorDome(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
   // Panel courses. Horizontal here means a full ring around the head, so these
   // read the same from every direction and cost nothing at the poles.
-  const courses = 4;
+  const { columns, courses } = bandFeatureCounts(band);
+  const aspect = bandPixelAspect(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, 7 + Math.floor(rng() * 2), rng);
-    seamRow(layer, y, 2.5);
+    panelCourse(layer, y, courseHeight, columns, rng, { aspect });
+    seamRow(layer, y, 4);
   }
-  boltRow(layer, rect.y + courseHeight * 0.5, 10, 2.6);
-  boltRow(layer, rect.y + courseHeight * 3.5, 10, 2.6);
+  boltRow(layer, rect.y + courseHeight * 0.5, columns, 5, aspect);
+  boltRow(layer, rect.y + rect.height - courseHeight * 0.5, columns, 5, aspect);
 
   // Equatorial armoured ports. At the equator one unit of surface is this many
   // times wider in pixels than it is tall, so a circle must be drawn as an
   // ellipse stretched by that factor or it comes out as a smear on the sphere.
-  const ports = 6;
+  const ports = 5;
   const spacing = TRIM_SHEET_PIXELS / ports;
   const cy = rect.y + rect.height * 0.5;
   const equatorAspect = (TRIM_SHEET_PIXELS / (Math.PI * 2)) / (rect.height / Math.PI);
   // Sized from the HORIZONTAL budget, not the vertical one: the compensation
-  // multiplies the x radius by ~5, so picking a comfortable-looking vertical
-  // radius first produces ports wider than their own spacing and the ring
-  // merges into one black band around the head.
-  const portRx = spacing * 0.14;
+  // multiplies the x radius by the aspect, so picking a comfortable-looking
+  // vertical radius first produces ports wider than their own spacing and the
+  // ring merges into one black band around the head.
+  const portRx = spacing * 0.16;
   const portRy = portRx / equatorAspect;
   const ellipse = (
     ctx: CanvasRenderingContext2D,
@@ -536,10 +569,16 @@ function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
     ellipse(layer.bare, cx, portRx * 1.4, portRy * 1.4, gray(0.6));
     for (let b = 0; b < 4; b++) {
       const a = (b / 4) * Math.PI * 2 + 0.4;
-      rivet(layer, cx + Math.cos(a) * portRx * 1.9, cy + Math.sin(a) * portRy * 1.9, 1.5);
+      rivet(
+        layer,
+        cx + Math.cos(a) * portRx * 1.9,
+        cy + Math.sin(a) * portRy * 1.9,
+        4,
+        aspect,
+      );
     }
   }
-  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 28);
+  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 80);
 
   // Last, so nothing is drawn over the opening.
   drawPitchSlot(layer, rect);
@@ -548,43 +587,120 @@ function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
 /** Barrel: a bolted breech collar at each end, cooling fin stacks, and plated
  *  shaft between them. Horizontal features ring the barrel; the panel courses
  *  repeat many times around it, so nothing here depends on view direction. */
+/**
+ * Barrel: a pale machined tube, dirtied by use, with a bright muzzle rim and a
+ * black bore at the tip.
+ *
+ * The barrel is the one surface deliberately NOT showing much of the unit's
+ * colour: it reads as bare white-hot-worked metal, so `bare` runs high across
+ * the whole band and the albedo sits near white. Everything else on the unit
+ * goes the other way.
+ *
+ * ORIENTATION: TurretMesh3D aligns the cylinder's +Y with base->tip, and
+ * THREE.CylinderGeometry emits uv.y = 1 at +Y, so v = 1 — the LAST rows of this
+ * band — is the muzzle. The breech is the first rows.
+ *
+ * The flat end cap samples a disc around the band's centre rather than its
+ * edge, so the rim and bore below are authored on the tube wall where they are
+ * actually seen; at 2 units across, the cap itself is a couple of pixels.
+ */
 function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void {
-  layer.albedo.fillStyle = gray(0.05);
+  // Pale machined tube.
+  layer.albedo.fillStyle = gray(0.92);
   layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-  layer.height.fillStyle = gray(0.2);
+  layer.height.fillStyle = gray(0.62);
   layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.bare.fillStyle = gray(0.92);
+  layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
 
-  // Plated shaft.
-  panelCourse(layer, rect.y + rect.height * 0.24, rect.height * 0.52, 12, rng);
-
-  // Cooling fin stack inboard of the breech.
-  for (let i = 0; i < 6; i++) {
-    const y = rect.y + rect.height * 0.26 + i * 3.4;
-    layer.albedo.fillStyle = gray(0.02);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 1.6);
-    layer.albedo.fillStyle = gray(0.9);
-    layer.albedo.fillRect(0, y + 1.6, TRIM_SHEET_PIXELS, 1.0);
-    layer.height.fillStyle = gray(0.96);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 2.6);
+  // Used, not pristine: irregular blotches of duller metal along the tube.
+  // Wear runs ALONG the tube, as full rings of varying grime, rather than as
+  // patches around it. These barrels spin: a patch broad enough to vary across
+  // the circumference would sweep past as a rotating dark blotch, which is the
+  // same failure mode as a baked highlight even though the grime itself is a
+  // real surface feature. Rings are constant in u and so rotate invisibly.
+  for (let i = 0; i < 70; i++) {
+    const y = randIn(rng, rect.y, rect.y + rect.height);
+    const h = randIn(rng, 2, 9);
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.20).toFixed(3)})`;
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, h);
+  }
+  // A few small pits, kept narrow so they stay high-frequency around the tube.
+  for (let i = 0; i < 90; i++) {
+    const y = randIn(rng, rect.y, rect.y + rect.height);
+    const h = randIn(rng, 2, 6);
+    const x = randIn(rng, 0, TRIM_SHEET_PIXELS);
+    const w = randIn(rng, 14, 46);
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.08, 0.24).toFixed(3)})`;
+    layer.albedo.fillRect(x, y, w, h);
+    layer.albedo.fillRect(x - TRIM_SHEET_PIXELS, y, w, h);
+  }
+  // Machining marks: fine rings around the tube, high frequency along it.
+  for (let y = rect.y; y < rect.y + rect.height; y += 7) {
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.16).toFixed(3)})`;
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 1.4);
   }
 
-  const collar = (y: number, h: number) => {
-    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, h, 0.58, 0.96, 0.36);
-    layer.bare.fillStyle = gray(0.5);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, h);
-    boltRow(layer, y + h * 0.5, 16, 2.4);
-  };
-  collar(rect.y, rect.height * 0.2);
-  collar(rect.y + rect.height * 0.8, rect.height * 0.2);
+  // Breech collar and cooling fins at the root.
+  //
+  // No individual bolts here. The barrel is 2 world units across against 64
+  // long, so its band is ~70:1 in pixels per model unit; a bolt sized in model
+  // units comes out hundreds of pixels wide, and a row of them merges into one
+  // white band. A fastener that small would be sub-pixel on screen regardless,
+  // so the collar carries its detail as machined rings instead.
+  bevelRect(layer, 0, rect.y, TRIM_SHEET_PIXELS, rect.height * 0.1, 0.55, 0.96, 0.38);
+  for (let i = 0; i < 7; i++) {
+    const y = rect.y + rect.height * 0.12 + i * 9;
+    layer.albedo.fillStyle = gray(0.05);
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
+    layer.albedo.fillStyle = gray(0.98);
+    layer.albedo.fillRect(0, y + 3, TRIM_SHEET_PIXELS, 2);
+    layer.height.fillStyle = gray(0.98);
+    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 5);
+  }
 
-  // Muzzle soot: the outermost rows darken toward black and lose paint.
-  const sootRows = Math.floor(rect.height * 0.13);
+  // Muzzle soot creeping back from the tip.
+  const sootRows = Math.floor(rect.height * 0.16);
   for (let i = 0; i < sootRows; i++) {
     const t = 1 - i / sootRows;
-    layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * 0.85).toFixed(3)})`;
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * t * 0.75).toFixed(3)})`;
     layer.albedo.fillRect(0, rect.y + rect.height - 1 - i, TRIM_SHEET_PIXELS, 1);
   }
-  for (let i = 0; i < 18; i++) scratch(layer, rng, rect, 30);
+
+  // THE TIP: a bright machined rim, then the black bore at the very end.
+  //
+  // Sized as a fraction of the BARREL, not of the band. The band's 224 content
+  // rows span 64 world units, so a rim that looks generous in the sheet is
+  // under three units long on the model and vanishes at any real camera
+  // distance. These work out to roughly a 5-unit rim and a 4-unit bore on a
+  // barrel 2 units across, which is the proportion a real muzzle has.
+  const rimHeight = rect.height * 0.075;
+  const boreHeight = rect.height * 0.055;
+  const rimY = rect.y + rect.height - rimHeight - boreHeight;
+  // A hard shadow line where the rim steps proud of the tube, so the rim reads
+  // as a machined lip rather than as the tube simply going pale.
+  layer.albedo.fillStyle = gray(0.04);
+  layer.albedo.fillRect(0, rimY - 4, TRIM_SHEET_PIXELS, 4);
+  layer.height.fillStyle = gray(0.1);
+  layer.height.fillRect(0, rimY - 4, TRIM_SHEET_PIXELS, 4);
+  // Bore first, rim outermost. The rim has to be the LAST thing on the tube so
+  // it forms a bright lip right at the mouth with the dark bore inside it;
+  // drawn the other way round the tube simply ends in black and the rim is
+  // lost against the pale shaft.
+  layer.albedo.fillStyle = gray(0.01);
+  layer.albedo.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+  layer.height.fillStyle = gray(0.0);
+  layer.height.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+  // A bore is an opening: nothing shows through it, bare metal included.
+  layer.bare.fillStyle = gray(0);
+  layer.bare.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+
+  layer.albedo.fillStyle = gray(0.99);
+  layer.albedo.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
+  layer.height.fillStyle = gray(0.99);
+  layer.height.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
+  layer.bare.fillStyle = gray(1);
+  layer.bare.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
 }
 
 /** Leg strut: bolted end collars, a plated mid section, and hydraulic lines
@@ -597,47 +713,66 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
  *  looking at the back of the segment. Everything here is either constant
  *  around the circumference (collars, pipe rings) or repeats many times around
  *  it (panels, bolts), both of which look the same from every direction. */
-function drawHydraulicStrut(layer: Layer, rect: BandRect, rng: () => number): void {
+function drawHydraulicStrut(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const { columns, courses } = bandFeatureCounts(band);
+  const aspect = bandPixelAspect(band);
   layer.albedo.fillStyle = gray(0.04);
   layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
   layer.height.fillStyle = gray(0.18);
   layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
 
-  const shaftTop = rect.y + rect.height * 0.2;
-  const shaftHeight = rect.height * 0.6;
-  panelCourse(layer, shaftTop, shaftHeight, 10, rng);
-  // Bare-metal piston body under the plating.
-  layer.bare.fillStyle = gray(0.62);
+  const collarHeight = rect.height * 0.13;
+  const shaftTop = rect.y + collarHeight;
+  const shaftHeight = rect.height - collarHeight * 2;
+  const midCourses = Math.max(1, courses - 1);
+  const courseHeight = shaftHeight / midCourses;
+  for (let c = 0; c < midCourses; c++) {
+    const y = shaftTop + c * courseHeight;
+    panelCourse(layer, y, courseHeight, columns, rng, { aspect });
+    seamRow(layer, y, 5);
+  }
+  // Only the machined bits are unpainted. Painted plate keeps the unit's
+  // colour, which is what carries ownership at a glance.
+  layer.bare.fillStyle = gray(0.18);
   layer.bare.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
 
-  pipeRun(layer, shaftTop + shaftHeight * 0.22, 5, 8, 0.08);
-  pipeRun(layer, shaftTop + shaftHeight * 0.66, 4, 8, 0.08);
+  pipeRun(layer, shaftTop + shaftHeight * 0.34, 11, columns, 0.06);
+  pipeRun(layer, shaftTop + shaftHeight * 0.72, 9, columns, 0.06);
 
-  const collarHeight = rect.height * 0.2;
   for (const y of [rect.y, rect.y + rect.height - collarHeight]) {
     bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, collarHeight, 0.55, 0.97, 0.38);
-    layer.bare.fillStyle = gray(0.45);
+    layer.bare.fillStyle = gray(0.4);
     layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, collarHeight);
-    boltRow(layer, y + collarHeight * 0.5, 14, 2.8);
+    boltRow(layer, y + collarHeight * 0.5, columns * 2, 5.5, aspect);
   }
-  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 26);
+  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 70);
 }
 
 /** Bolt boss — joints. A heavy bolted flange ringing the middle with plated
  *  shoulders above and below, so a sphere reads as a machined knuckle. */
-function drawBoltBoss(layer: Layer, rect: BandRect, rng: () => number): void {
-  panelCourse(layer, rect.y, rect.height * 0.33, 14, rng);
-  panelCourse(layer, rect.y + rect.height * 0.67, rect.height * 0.33, 14, rng);
+function drawBoltBoss(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const { columns } = bandFeatureCounts(band);
+  const aspect = bandPixelAspect(band);
+  // Few panels around a small sphere, so per-panel value variation is held
+  // tight: with only a handful of columns it lands in the low harmonics and
+  // reads as a light baked into the knuckle rather than as plating.
+  const opts = { aspect, faceJitter: 0.05 };
+  panelCourse(layer, rect.y, rect.height * 0.32, columns, rng, opts);
+  panelCourse(layer, rect.y + rect.height * 0.68, rect.height * 0.32, columns, rng, opts);
 
-  const ringHeight = rect.height * 0.36;
+  const ringHeight = rect.height * 0.38;
   const ringY = rect.y + (rect.height - ringHeight) * 0.5;
   bevelRect(layer, 0, ringY, TRIM_SHEET_PIXELS, ringHeight, 0.6, 0.98, 0.38);
-  layer.bare.fillStyle = gray(0.5);
+  layer.bare.fillStyle = gray(0.42);
   layer.bare.fillRect(0, ringY, TRIM_SHEET_PIXELS, ringHeight);
-  boltRow(layer, ringY + ringHeight * 0.5, 12, 3.6);
-  seamRow(layer, ringY - 2, 2);
-  seamRow(layer, ringY + ringHeight, 2);
-  for (let i = 0; i < 14; i++) scratch(layer, rng, rect, 22);
+  boltRow(layer, ringY + ringHeight * 0.5, columns, 8, aspect);
+  seamRow(layer, ringY - 3, 3);
+  seamRow(layer, ringY + ringHeight, 3);
+  for (let i = 0; i < 14; i++) scratch(layer, rng, rect, 60);
 }
 
 /** Team piping — the strap kit's livery.
@@ -648,24 +783,24 @@ function drawBoltBoss(layer: Layer, rect: BandRect, rng: () => number): void {
  *  constraint on the MEAN, not on the range — full-black seams and near-white
  *  bolt heads are what give the team colour something to sit on, so long as
  *  they balance. */
-function drawLiveryPiping(layer: Layer, rect: BandRect, rng: () => number): void {
-  layer.albedo.fillStyle = gray(0.62);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-  layer.height.fillStyle = gray(0.74);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-
-  // Bolted plate segments along the run of the strap.
-  const plates = 10;
-  const spacing = TRIM_SHEET_PIXELS / plates;
-  for (let i = 0; i < plates; i++) {
-    const x = i * spacing;
-    layer.albedo.fillStyle = gray(0.02);
-    layer.albedo.fillRect(x, rect.y + 4, 4, rect.height - 8);
-    layer.height.fillStyle = gray(0.08);
-    layer.height.fillRect(x, rect.y + 4, 4, rect.height - 8);
-    bevelRect(layer, x + 4, rect.y + 5, spacing - 8, rect.height - 10, 0.62, 0.8, 0.34);
-    rivet(layer, x + 10, rect.y + rect.height * 0.5, 2.4);
-    rivet(layer, x + spacing - 10, rect.y + rect.height * 0.5, 2.4);
+function drawLiveryPiping(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const plateCount = bandFeatureCounts(band).columns;
+  const aspect = bandPixelAspect(band);
+  // Same bolted plating as everything else. Earlier passes drew the plates at
+  // the SAME value as the band base, so only the hairline separators showed
+  // and the strap read as flat colour — the one surface on the unit with no
+  // machinery on it at all.
+  const { courses } = bandFeatureCounts(band);
+  const courseHeight = rect.height / courses;
+  for (let c = 0; c < courses; c++) {
+    const y = rect.y + c * courseHeight;
+    panelCourse(layer, y, courseHeight, plateCount, rng, {
+      aspect,
+      faceJitter: 0.07,
+    });
+    seamRow(layer, y, 4);
   }
   // Piped edges: hard black shadow line with a bright machined lip.
   for (const y of [rect.y + 1, rect.y + rect.height - 5]) {
@@ -683,25 +818,21 @@ function drawLiveryPiping(layer: Layer, rect: BandRect, rng: () => number): void
 
 /** Team collar — the turret collar's livery. Same neutrality discipline as the
  *  piping band: bolted plates and hard seams rather than broad value shifts. */
-function drawLiveryChevron(layer: Layer, rect: BandRect, rng: () => number): void {
-  layer.albedo.fillStyle = gray(0.6);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-  layer.height.fillStyle = gray(0.66);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+function drawLiveryChevron(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const plateCount = bandFeatureCounts(band).columns;
+  const aspect = bandPixelAspect(band);
 
-  const plates = 12;
-  const spacing = TRIM_SHEET_PIXELS / plates;
-  for (let i = 0; i < plates; i++) {
-    const x = i * spacing;
-    layer.albedo.fillStyle = gray(0.02);
-    layer.albedo.fillRect(x, rect.y + 5, 3.5, rect.height - 10);
-    layer.height.fillStyle = gray(0.08);
-    layer.height.fillRect(x, rect.y + 5, 3.5, rect.height - 10);
-    bevelRect(layer, x + 3.5, rect.y + 6, spacing - 7, rect.height - 12, 0.6, 0.82, 0.34);
-    rivet(layer, x + 9, rect.y + rect.height * 0.30, 2.2);
-    rivet(layer, x + 9, rect.y + rect.height * 0.70, 2.2);
-    rivet(layer, x + spacing - 9, rect.y + rect.height * 0.30, 2.2);
-    rivet(layer, x + spacing - 9, rect.y + rect.height * 0.70, 2.2);
+  const { courses } = bandFeatureCounts(band);
+  const courseHeight = rect.height / courses;
+  for (let c = 0; c < courses; c++) {
+    const y = rect.y + c * courseHeight;
+    panelCourse(layer, y, courseHeight, plateCount, rng, {
+      aspect,
+      faceJitter: 0.07,
+    });
+    seamRow(layer, y, 4);
   }
   for (const y of [rect.y, rect.y + rect.height - 4]) {
     layer.albedo.fillStyle = gray(0.03);
@@ -720,13 +851,18 @@ const BAND_DRAWERS: Record<
   TrimBandId,
   {
     base: { albedo: number; height: number; bare: number };
-    draw: (layer: Layer, rect: BandRect, rng: () => number) => void;
+    draw: (
+      layer: Layer,
+      rect: BandRect,
+      rng: () => number,
+      band: TrimBandId,
+    ) => void;
   }
 > = {
   armorPlate: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawArmorPlate },
   noseFacet: { base: { albedo: 0.03, height: 0.12, bare: 0.06 }, draw: drawNoseFacet },
   sensorDome: { base: { albedo: 0.04, height: 0.15, bare: 0.10 }, draw: drawSensorDome },
-  barrelShaft: { base: { albedo: 0.05, height: 0.20, bare: 0.22 }, draw: drawBarrelShaft },
+  barrelShaft: { base: { albedo: 0.92, height: 0.62, bare: 0.92 }, draw: drawBarrelShaft },
   hydraulicStrut: { base: { albedo: 0.04, height: 0.18, bare: 0.15 }, draw: drawHydraulicStrut },
   boltBoss: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawBoltBoss },
   liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
@@ -743,12 +879,11 @@ function buildTrimSheetCanvas(): HTMLCanvasElement {
     bare: makeContext(TRIM_SHEET_PIXELS),
   };
 
-  for (let i = 0; i < TRIM_BAND_ORDER.length; i++) {
-    const band = TRIM_BAND_ORDER[i];
+  for (const band of TRIM_BAND_ORDER) {
     const spec = BAND_DRAWERS[band];
-    const rect = beginBand(layer, i, spec.base);
-    spec.draw(layer, rect, makeSeededRng(BAND_SEEDS[band]));
-    fillBandGutters(layer, i, rect);
+    const rect = beginBand(layer, band, spec.base);
+    spec.draw(layer, rect, makeSeededRng(BAND_SEEDS[band]), band);
+    fillBandGutters(layer, band, rect);
   }
 
   // Combine the three grayscale layers into the packed RGB sheet. Alpha stays

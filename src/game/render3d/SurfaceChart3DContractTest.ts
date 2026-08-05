@@ -13,11 +13,14 @@ import {
   FORMIK_BODY_PART_CHARTS,
   FORMIK_CHARTS,
   FORMIK_LEG_CHARTS,
+  BAND_SURFACE,
   TRIM_BAND_GUTTER_PIXELS,
+  TRIM_BAND_HEIGHTS,
   TRIM_BAND_ORDER,
-  TRIM_BAND_PIXELS,
   TRIM_SHEET_PIXELS,
   bandContentRange,
+  bandFeatureCounts,
+  bandPixelAspect,
   isLiveryChart,
   packChart,
   type SurfaceChartId,
@@ -44,14 +47,21 @@ function bandOf(chart: SurfaceChartId): TrimBandId | null {
 }
 
 function checkCatalog(): void {
-  assertContract(
-    TRIM_SHEET_PIXELS % TRIM_BAND_ORDER.length === 0,
-    'band count must divide the sheet evenly, or bands land on fractional rows',
+  const totalRows = TRIM_BAND_ORDER.reduce(
+    (sum, band) => sum + TRIM_BAND_HEIGHTS[band], 0,
   );
   assertContract(
-    TRIM_BAND_PIXELS > TRIM_BAND_GUTTER_PIXELS * 2 + 8,
-    'gutters must leave a usable content strip',
+    totalRows === TRIM_SHEET_PIXELS,
+    `band heights must fill the sheet exactly — got ${totalRows} of `
+      + `${TRIM_SHEET_PIXELS}. Bands are laid out by cumulative offset, so a `
+      + 'short total leaves dead rows and a long one runs off the sheet.',
   );
+  for (const band of TRIM_BAND_ORDER) {
+    assertContract(
+      TRIM_BAND_HEIGHTS[band] > TRIM_BAND_GUTTER_PIXELS * 2 + 16,
+      `${band} must leave a usable content strip inside its gutters`,
+    );
+  }
   assertContract(
     new Set(TRIM_BAND_ORDER).size === TRIM_BAND_ORDER.length,
     'every trim band must appear exactly once in the layout order',
@@ -257,6 +267,7 @@ function checkTrimSheet(): void {
   }
 
   checkNoBakedDirectionalShading(pixels);
+  checkBaseColourSurvives(pixels);
   checkPitchSlot(pixels);
 
   // Gutters must be a copy of the band's own edge row, not the neighbour's
@@ -371,17 +382,28 @@ function checkProgramCacheKeys(): void {
  * tried: the offending gradient covered only the middle 60% of the band, so
  * averaging the collars in with it diluted the signal below any threshold.
  */
+// A gradient trips BOTH of these; nothing else trips both.
+//
+// The share alone is not enough. A band that is almost perfectly uniform around
+// its circumference — which is the ideal, and what the barrel's axial wear
+// achieves — has almost no horizontal variance at all, so whatever little it
+// has lands in the low bins and the SHARE spikes while the actual deviation
+// stays invisible. The absolute amplitude alone is not enough either, for the
+// reason above. Requiring both is what separates "a light baked into the
+// surface" from "a nearly uniform surface" and from "honest plating".
 const MAX_LOW_HARMONIC_SHARE = 0.30;
+const MAX_LOW_HARMONIC_AMPLITUDE = 8;
 
-function lowHarmonicShare(
+function lowHarmonicStats(
   pixels: Uint8ClampedArray,
   band: TrimBandId,
-): number {
+): { share: number; amplitude: number } {
   const { v0, vSpan } = bandContentRange(band);
   const top = Math.round(v0 * TRIM_SHEET_PIXELS);
   const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
   let lowPower = 0;
   let totalPower = 0;
+  let peakAmplitude = 0;
   for (let y = top; y < bottom; y++) {
     let mean = 0;
     for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
@@ -403,9 +425,14 @@ function lowHarmonicShare(
       }
       // Parseval: a real bin's contribution to the sum of squared deviations.
       lowPower += (2 * (re * re + im * im)) / TRIM_SHEET_PIXELS;
+      const amplitude = (2 * Math.hypot(re, im)) / TRIM_SHEET_PIXELS;
+      if (amplitude > peakAmplitude) peakAmplitude = amplitude;
     }
   }
-  return totalPower > 0 ? lowPower / totalPower : 0;
+  return {
+    share: totalPower > 0 ? lowPower / totalPower : 0,
+    amplitude: peakAmplitude,
+  };
 }
 
 /** Bands that legitimately carry a feature at the circumference's own period.
@@ -420,13 +447,14 @@ const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set(['sensorDome']
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {
     if (DIRECTIONAL_EXEMPT_BANDS.has(band)) continue;
-    const share = lowHarmonicShare(pixels, band);
+    const { share, amplitude } = lowHarmonicStats(pixels, band);
     assertContract(
-      share < MAX_LOW_HARMONIC_SHARE,
+      share < MAX_LOW_HARMONIC_SHARE || amplitude < MAX_LOW_HARMONIC_AMPLITUDE,
       `${band} puts ${(share * 100).toFixed(0)}% of its horizontal variance in `
-        + 'the three lowest harmonics. That is a baked directional highlight: '
-        + 'it locks to the geometry and turns its dark side to the camera as '
-        + 'the part rotates, which reads as looking at the back of the surface.',
+        + `the three lowest harmonics, at amplitude ${amplitude.toFixed(1)}/255. `
+        + 'That is a baked directional highlight: it locks to the geometry and '
+        + 'turns its dark side to the camera as the part rotates, which reads '
+        + 'as looking at the back of the surface.',
     );
   }
 }
@@ -440,7 +468,8 @@ export function measureBandLowHarmonics(): Record<string, string> {
   const pixels = context.getImageData(0, 0, TRIM_SHEET_PIXELS, TRIM_SHEET_PIXELS).data;
   const out: Record<string, string> = {};
   for (const band of TRIM_BAND_ORDER) {
-    out[band] = `${(lowHarmonicShare(pixels, band) * 100).toFixed(1)}%`;
+    const { share, amplitude } = lowHarmonicStats(pixels, band);
+    out[band] = `${(share * 100).toFixed(1)}% @ ${amplitude.toFixed(1)}`;
   }
   return out;
 }
@@ -564,10 +593,103 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
   );
 }
 
+/**
+ * Features must land square and legible ON THE MODEL, not in the band.
+ *
+ * A band is roughly 9:1 in pixels while the surfaces it wraps are nearer 1:1,
+ * so a panel drawn square in the band becomes a tall thin sliver, and a
+ * "column" count chosen by eye against the band produces 3-unit panels on a
+ * 32-unit leg. Both were visible as texturing that read tight, stretched and
+ * gaudy. Counts are derived from BAND_SURFACE instead; this pins that the
+ * derivation stays inside sane physical bounds.
+ */
+const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set(['barrelShaft']);
+
+function checkFeatureScale(): void {
+  for (const band of TRIM_BAND_ORDER) {
+    const surface = BAND_SURFACE[band];
+    const { columns, courses } = bandFeatureCounts(band);
+    const panelWidth = surface.uExtent / columns;
+    const panelHeight = surface.vExtent / courses;
+
+    // The barrel is one continuous machined tube with a breech and a muzzle,
+    // not a plated surface; panel counts are meaningless for it.
+    if (NO_PANEL_GRID_BANDS.has(band)) continue;
+
+    assertContract(
+      panelWidth > 4 && panelHeight > 4,
+      `${band} panels are ${panelWidth.toFixed(1)}x${panelHeight.toFixed(1)} `
+        + 'world units — too small to read as plating rather than noise',
+    );
+    const ratio = Math.max(panelWidth / panelHeight, panelHeight / panelWidth);
+    assertContract(
+      ratio < 2.2,
+      `${band} panels land ${panelWidth.toFixed(1)}x${panelHeight.toFixed(1)} `
+        + `on the model (${ratio.toFixed(1)}:1). Features must not be stretched.`,
+    );
+
+    // Texel density on the weaker axis: enough that a panel edge and a bolt
+    // still resolve, or the sheet is being asked to cover more surface than it
+    // has pixels for.
+    const contentHeight = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
+    const pxPerUnitV = contentHeight / surface.vExtent;
+    const pxPerUnitU = TRIM_SHEET_PIXELS / surface.uExtent;
+    assertContract(
+      Math.min(pxPerUnitU, pxPerUnitV) > 2.5,
+      `${band} resolves only ${Math.min(pxPerUnitU, pxPerUnitV).toFixed(1)} `
+        + 'px per world unit on its weaker axis',
+    );
+    assertContract(
+      bandPixelAspect(band) > 0,
+      `${band} must expose a usable pixel aspect for drawing`,
+    );
+  }
+}
+
+/**
+ * The unit's own colour has to survive.
+ *
+ * `bare` lerps the instance colour toward neutral metal before the albedo
+ * multiplier, so a band that runs it high hides ownership — which is the one
+ * thing unit colour exists to communicate. Barrels are the deliberate
+ * exception: they read as bare worked metal by design.
+ */
+const BARE_METAL_BANDS: ReadonlySet<TrimBandId> = new Set(['barrelShaft']);
+
+function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
+  for (const band of TRIM_BAND_ORDER) {
+    const { v0, vSpan } = bandContentRange(band);
+    const top = Math.round(v0 * TRIM_SHEET_PIXELS);
+    const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
+    let sum = 0;
+    let count = 0;
+    for (let y = top; y < bottom; y++) {
+      for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+        sum += pixels[(y * TRIM_SHEET_PIXELS + x) * 4 + 2];
+        count++;
+      }
+    }
+    const meanBare = sum / count / 255;
+    if (BARE_METAL_BANDS.has(band)) {
+      assertContract(
+        meanBare > 0.6,
+        `${band} is meant to read as bare metal — mean bare ${meanBare.toFixed(2)}`,
+      );
+      continue;
+    }
+    assertContract(
+      meanBare < 0.32,
+      `${band} covers ${(meanBare * 100).toFixed(0)}% of itself in bare metal, `
+        + 'leaving too little of the unit colour showing',
+    );
+  }
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
   checkLiverySeparation();
   checkProgramCacheKeys();
+  checkFeatureScale();
   checkSheetOrientation();
   checkTrimSheet();
 }

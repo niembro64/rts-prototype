@@ -56,14 +56,101 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'liveryChevron',
 ];
 
-export const TRIM_SHEET_PIXELS = 1024;
-export const TRIM_BAND_PIXELS = TRIM_SHEET_PIXELS / TRIM_BAND_ORDER.length;
+export const TRIM_SHEET_PIXELS = 2048;
+
+/** Rows allotted to each band. NOT uniform: a band's height is the only lever
+ *  on its vertical texel density, and the surfaces differ by an order of
+ *  magnitude in how much of that they need. A leg strut is about as long as it
+ *  is round, so its band wants real height; a livery strap is a long thin
+ *  ribbon and needs almost none. Must sum to TRIM_SHEET_PIXELS. */
+export const TRIM_BAND_HEIGHTS: Record<TrimBandId, number> = {
+  armorPlate: 288,
+  noseFacet: 192,
+  sensorDome: 288,
+  barrelShaft: 256,
+  hydraulicStrut: 320,
+  boltBoss: 224,
+  liveryPiping: 256,
+  liveryChevron: 224,
+};
 
 /** Gutter at the top and bottom of every band, filled by extending the band's
  *  own edge content. Mip levels average neighbouring texels, so without a
  *  gutter the bottom of `armorPlate` bleeds into the top of `noseFacet` two or
  *  three mips down and a hull lobe picks up nose facets at distance. */
-export const TRIM_BAND_GUTTER_PIXELS = 12;
+export const TRIM_BAND_GUTTER_PIXELS = 16;
+
+/** First row of a band's slot, gutters included. */
+export function bandTopRow(band: TrimBandId): number {
+  let row = 0;
+  for (const other of TRIM_BAND_ORDER) {
+    if (other === band) return row;
+    row += TRIM_BAND_HEIGHTS[other];
+  }
+  throw new Error(`[surface chart] unknown trim band ${band}`);
+}
+
+/**
+ * World-space size of the patch ONE band repeat covers on its primary surface,
+ * for the Formik.
+ *
+ * This is what stops features being stretched or gaudy, and it cannot be
+ * eyeballed from the band image. A band is roughly 9:1 in pixels; a leg strut
+ * is roughly 1:1 in world space. Drawing a square in the band therefore puts a
+ * tall thin sliver on the leg, and ten "columns" around a 32-unit circumference
+ * makes 3-unit panels — which is exactly the too-tight, too-small look.
+ *
+ * Feature counts are derived from these instead: columns = uExtent / feature,
+ * courses = vExtent / feature. The result is square on the model at a chosen
+ * physical size, whatever the band's own aspect happens to be.
+ *
+ * Derived from the Formik: unit radius 40, head radius 32, barrel 64 long by 2
+ * across, leg segments ~36-42 long with ~5 radius, hip/knee spheres 5.5/7.5.
+ */
+export type BandSurface = {
+  /** Circumference (or arc length) one band repeat wraps, in world units. */
+  uExtent: number;
+  /** Extent along the other axis one band repeat covers, in world units. */
+  vExtent: number;
+  /** Target on-model size of one panel / plate, in world units. */
+  featureSize: number;
+};
+
+// `featureSize` is the main dial on how busy a unit reads. Panels roughly a
+// quarter to a third of the part they sit on look like plating; drop much
+// below that and the same construction turns into a rash of tiny bolted
+// squares, which reads as gaudy noise rather than machinery.
+export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
+  armorPlate: { uExtent: 214, vExtent: 53, featureSize: 24 },
+  noseFacet: { uExtent: 105, vExtent: 53, featureSize: 26 },
+  sensorDome: { uExtent: 201, vExtent: 100, featureSize: 22 },
+  barrelShaft: { uExtent: 6.3, vExtent: 64, featureSize: 6 },
+  hydraulicStrut: { uExtent: 32, vExtent: 39, featureSize: 11 },
+  boltBoss: { uExtent: 47, vExtent: 24, featureSize: 12 },
+  liveryPiping: { uExtent: 104, vExtent: 60, featureSize: 16 },
+  liveryChevron: { uExtent: 76, vExtent: 38, featureSize: 16 },
+};
+
+/** Panels across and courses down for a band, sized so each lands at
+ *  `featureSize` world units on the model rather than at a fixed pixel size. */
+export function bandFeatureCounts(band: TrimBandId): {
+  columns: number;
+  courses: number;
+} {
+  const surface = BAND_SURFACE[band];
+  return {
+    columns: Math.max(2, Math.round(surface.uExtent / surface.featureSize)),
+    courses: Math.max(1, Math.round(surface.vExtent / surface.featureSize)),
+  };
+}
+
+/** How many times wider than tall a band pixel is on the model. Drawing code
+ *  multiplies horizontal radii by this so circles come out round. */
+export function bandPixelAspect(band: TrimBandId): number {
+  const surface = BAND_SURFACE[band];
+  const contentHeight = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
+  return (TRIM_SHEET_PIXELS / surface.uExtent) / (contentHeight / surface.vExtent);
+}
 
 /** Charts a unit surface can be labelled with. `none` is the default and means
  *  "untextured" — it takes a branch in the shader that leaves the fragment
@@ -113,14 +200,14 @@ type SurfaceChartDef = {
 // the circumference — that is what turns the authored column rhythm into
 // fluting. Those keep tileU 1.
 const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
-  hullShell: { band: 'armorPlate', tileU: 1, tileV: 3, livery: false },
-  hullNose: { band: 'noseFacet', tileU: 1, tileV: 2, livery: false },
+  hullShell: { band: 'armorPlate', tileU: 1, tileV: 2, livery: false },
+  hullNose: { band: 'noseFacet', tileU: 1, tileV: 1, livery: false },
   // tileV MUST stay 1: the dome band carries the barrel pitch slot, which runs
   // pole to pole exactly once. Any repeat stacks several slots up the head.
   sensorDome: { band: 'sensorDome', tileU: 1, tileV: 1, livery: false },
   barrelShaft: { band: 'barrelShaft', tileU: 1, tileV: 1, livery: false },
   legStrut: { band: 'hydraulicStrut', tileU: 1, tileV: 1, livery: false },
-  legJoint: { band: 'boltBoss', tileU: 1, tileV: 2, livery: false },
+  legJoint: { band: 'boltBoss', tileU: 1, tileV: 1, livery: false },
   // The strap sweep parameterizes u by arc length and v across a narrow
   // cross-section, so one band repeat over the whole run is already close to
   // square — the authored clamp count becomes the clamp count on the strap.
@@ -138,9 +225,8 @@ export function bandIndex(band: TrimBandId): number {
  *  sample the gutter directly; it exists only so mip filtering has same-band
  *  texels to average into. */
 export function bandContentRange(band: TrimBandId): { v0: number; vSpan: number } {
-  const index = bandIndex(band);
-  const top = index * TRIM_BAND_PIXELS + TRIM_BAND_GUTTER_PIXELS;
-  const height = TRIM_BAND_PIXELS - TRIM_BAND_GUTTER_PIXELS * 2;
+  const top = bandTopRow(band) + TRIM_BAND_GUTTER_PIXELS;
+  const height = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
   return { v0: top / TRIM_SHEET_PIXELS, vSpan: height / TRIM_SHEET_PIXELS };
 }
 
