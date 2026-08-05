@@ -110,11 +110,41 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   armorPlate: { uExtent: 214, vExtent: 107, featureSize: 24 },
   noseFacet: { uExtent: 105, vExtent: 53, featureSize: 26 },
   sensorDome: { uExtent: 201, vExtent: 100, featureSize: 22 },
-  barrelShaft: { uExtent: 6.3, vExtent: 64, featureSize: 6 },
+  // vExtent covers the 64-unit tube PLUS a reserved zone for the end faces.
+  // The cap is a disc of radius 1, and its remapped v carries the radius from
+  // centre to rim (see ChartedCylinderUv3D), so 3 units of band is ample.
+  barrelShaft: { uExtent: 6.3, vExtent: 65, featureSize: 6 },
   hydraulicStrut: { uExtent: 32, vExtent: 39, featureSize: 11 },
   boltBoss: { uExtent: 47, vExtent: 24, featureSize: 12 },
   liveryPiping: { uExtent: 104, vExtent: 60, featureSize: 16 },
-  liveryChevron: { uExtent: 153, vExtent: 38, featureSize: 16 },
+  // 37.8-unit collar plus a reserved zone for its forward face, which is a
+  // 24.3-radius disc — big enough to be the first thing you see down the
+  // barrel line, so it gets real radial resolution rather than a scrap.
+  liveryChevron: { uExtent: 153, vExtent: 62.1, featureSize: 16 },
+};
+
+/**
+ * How a band splits between a cylinder's wall and its end faces.
+ *
+ * Only cylinders whose flat face is actually seen need this. The values are
+ * fractions of the band's v, and they are the single source of truth shared by
+ * the geometry's UV remap and the generator that paints the zone — if the two
+ * disagreed, a face would sample the wall or vice versa.
+ */
+export type CapZone = {
+  wallVEnd: number;
+  capCenterV: number;
+  capRimV: number;
+};
+
+// The cap zone is exactly the face's RADIUS worth of band, because the remap
+// puts the radius on v: 1 world unit of radius is 1 world unit of band, so the
+// face is textured at the sheet density like everything else.
+export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
+  // 64-unit tube, then a 1-unit-radius muzzle face.
+  barrelShaft: { wallVEnd: 64 / 65, capCenterV: 64 / 65, capRimV: 1 },
+  // 37.8-unit collar, then its 24.3-radius forward face.
+  liveryChevron: { wallVEnd: 37.8 / 62.1, capCenterV: 37.8 / 62.1, capRimV: 1 },
 };
 
 /** A band's pixel rectangle in the sheet, gutters included. */
@@ -135,21 +165,23 @@ function bandSlotSize(band: TrimBandId): { width: number; height: number } {
 }
 
 /**
- * Shelf packing, tallest first.
+ * Shelf packing, tallest first, placing each band on the first OPEN shelf with
+ * room rather than only the newest one.
  *
  * Deterministic and dependency-free, which matters more here than optimality:
  * the layout has to be identical every run or the charts and the generated
- * pixels disagree. It leaves slack, so `packedSheetHeight` below is the number
- * to watch when extents or density change.
+ * pixels disagree. Revisiting earlier shelves is worth the few extra lines —
+ * strictly-newest-shelf packing wasted the 700px left beside each of the two
+ * tallest bands and overflowed the sheet by 30 rows once the cylinder end
+ * faces needed room. Best-fit lands the same set in 1711 rows.
  */
 function packBands(): Record<TrimBandId, BandRectPx> {
-  const order = [...TRIM_BAND_ORDER].sort(
-    (a, b) => bandSlotSize(b).height - bandSlotSize(a).height,
-  );
+  const order = [...TRIM_BAND_ORDER].sort((a, b) => {
+    const delta = bandSlotSize(b).height - bandSlotSize(a).height;
+    return delta !== 0 ? delta : a.localeCompare(b);
+  });
   const rects = {} as Record<TrimBandId, BandRectPx>;
-  let shelfY = 0;
-  let shelfX = 0;
-  let shelfHeight = 0;
+  const shelves: { y: number; height: number; used: number }[] = [];
   for (const band of order) {
     const { width, height } = bandSlotSize(band);
     if (width > TRIM_SHEET_PIXELS) {
@@ -159,14 +191,18 @@ function packBands(): Record<TrimBandId, BandRectPx> {
         + `${TRIM_SHEET_PIXELS}px`,
       );
     }
-    if (shelfX + width > TRIM_SHEET_PIXELS) {
-      shelfY += shelfHeight;
-      shelfX = 0;
-      shelfHeight = 0;
+    const shelf = shelves.find(
+      (s) => s.used + width <= TRIM_SHEET_PIXELS && height <= s.height,
+    );
+    if (shelf !== undefined) {
+      rects[band] = { x: shelf.used, y: shelf.y, width, height };
+      shelf.used += width;
+      continue;
     }
-    rects[band] = { x: shelfX, y: shelfY, width, height };
-    shelfX += width;
-    if (height > shelfHeight) shelfHeight = height;
+    const last = shelves[shelves.length - 1];
+    const y = last === undefined ? 0 : last.y + last.height;
+    shelves.push({ y, height, used: width });
+    rects[band] = { x: 0, y, width, height };
   }
   return rects;
 }

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import { BAND_CAP_ZONES } from './SurfaceChart3D';
+import { remapChartedCylinderUvs } from './ChartedCylinderUv3D';
 
 /** The Formik and its rapid mortar are intentionally a matched visual kit. */
 export const FORMIK_UNIT_BLUEPRINT_ID = 'unitFormik';
@@ -303,6 +305,11 @@ export function createFormikTurretAnchorGeometry(
     1,
     false,
   );
+  // BEFORE the rotate. The cap remap identifies faces by their normal pointing
+  // along the cylinder's axis, and rotateZ turns that axis from +Y to +X — run
+  // it afterwards and every vertex looks like wall.
+  const capZone = BAND_CAP_ZONES.liveryChevron;
+  if (capZone !== undefined) remapChartedCylinderUvs(geometry, capZone);
   geometry.rotateZ(-Math.PI / 2);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();

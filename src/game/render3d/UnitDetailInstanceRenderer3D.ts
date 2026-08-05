@@ -9,7 +9,8 @@ import {
   type SurfaceChartAttribute,
   type SurfaceChartTierMode,
 } from './SurfaceChartMaterial3D';
-import type { SurfaceChartId } from './SurfaceChart3D';
+import { BAND_CAP_ZONES, type SurfaceChartId } from './SurfaceChart3D';
+import { remapChartedCylinderUvs } from './ChartedCylinderUv3D';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
 import type { TurretMesh } from './TurretMesh3D';
@@ -185,6 +186,19 @@ export type DyingUnitPartDelta = {
   drz: number;
 };
 
+/** Barrel geometry whose end caps address their own zone of the trim sheet
+ *  rather than duplicating the tube's coordinates. Untextured barrels are
+ *  unaffected — they never sample the sheet — so this is applied to the shared
+ *  pool geometry unconditionally rather than forked per chart. */
+function chartedBarrelGeometry(
+  tier: PrimitiveGeometryTier,
+): THREE.CylinderGeometry {
+  const geometry = createPrimitiveCylinderGeometry('turret', tier);
+  const zone = BAND_CAP_ZONES.barrelShaft;
+  if (zone !== undefined) remapChartedCylinderUvs(geometry, zone);
+  return geometry;
+}
+
 export class UnitDetailInstanceRenderer3D {
   private readonly world: THREE.Group;
   // One pool per geometry tier (close/mid/far); slots are tier-encoded.
@@ -286,7 +300,7 @@ export class UnitDetailInstanceRenderer3D {
       this.barrelPools.push(this.createTierPool(
         tierName === 'far'
           ? getSharedExtrudedEquilateralTriangleGeometry()
-          : createPrimitiveCylinderGeometry('turret', tierName),
+          : chartedBarrelGeometry(tierName),
         options.barrelMat.clone(),
         BARREL_TIER_CAPS[t],
         chartMode,

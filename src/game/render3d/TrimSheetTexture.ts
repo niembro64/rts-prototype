@@ -29,6 +29,7 @@
 
 import * as THREE from 'three';
 import {
+  BAND_CAP_ZONES,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
@@ -367,29 +368,6 @@ function panelCourse(
   }
 }
 
-/** Wear scratch: a bright streak that also writes the bare-metal mask, so it
- *  cuts through whatever paint (substance or livery) is beneath it. */
-function scratch(
-  layer: Layer,
-  rng: () => number,
-  rect: BandRect,
-  maxLength: number,
-): void {
-  const x = randIn(rng, rect.x, rect.x + rect.width);
-  const y = randIn(rng, rect.y + 2, rect.y + rect.height - 2);
-  const len = randIn(rng, maxLength * 0.3, maxLength);
-  const angle = randIn(rng, -0.25, 0.25);
-  const width = randIn(rng, 0.8, 1.8);
-  for (const ctx of [layer.albedo, layer.bare]) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.fillStyle = ctx === layer.albedo ? gray(0.9) : gray(0.85);
-    ctx.fillRect(-len / 2, -width / 2, len, width);
-    ctx.restore();
-  }
-}
-
 // ── Bands ────────────────────────────────────────────────────────────────
 
 /** Hull plating: three courses of bolted panels separated by recessed seams,
@@ -405,7 +383,6 @@ function drawArmorPlate(
     seamRow(layer, rect, y, 4);
   }
   pipeRun(layer, rect, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
-  for (let i = 0; i < 34; i++) scratch(layer, rng, rect, 90);
 }
 
 /** Nose armour: heavier, fewer, thicker-bolted plates than the hull, with a
@@ -428,7 +405,6 @@ function drawNoseFacet(
   layer.height.fillRect(rect.x, rect.y, rect.width, 5);
   layer.bare.fillStyle = gray(0.40);
   layer.bare.fillRect(rect.x, rect.y, rect.width, 5);
-  for (let i = 0; i < 24; i++) scratch(layer, rng, rect, 120);
 }
 
 // ── Spherical layout helpers ─────────────────────────────────────────────
@@ -512,7 +488,7 @@ function meridianRow(
  *  sheet and sub-pixel on screen at any real camera distance, so it is opened
  *  to roughly three barrel widths to stay readable. This is the knob to turn.
  */
-const PITCH_SLOT_ARC_HALF_WIDTH = 0.10;
+const PITCH_SLOT_ARC_HALF_WIDTH = 0.25;
 const PITCH_SLOT_CENTER_U = 0.5;
 
 function drawPitchSlot(layer: Layer, rect: BandRect): void {
@@ -595,7 +571,6 @@ function drawSensorDome(
         4);
     }
   }
-  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 80);
 
   // Last, so nothing is drawn over the opening.
   drawPitchSlot(layer, rect);
@@ -622,13 +597,20 @@ function drawSensorDome(
  * actually seen; at 2 units across, the cap itself is a couple of pixels.
  */
 function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void {
+  // The wall occupies only the lower slice of the band; the rest is the end
+  // face, painted after. See BAND_CAP_ZONES / ChartedCylinderUv3D.
+  const zone = BAND_CAP_ZONES.barrelShaft!;
+  const wall: BandRect = {
+    x: rect.x, y: rect.y,
+    width: rect.width, height: rect.height * zone.wallVEnd,
+  };
   // Pale machined tube.
   layer.albedo.fillStyle = gray(0.92);
-  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.albedo.fillRect(wall.x, wall.y, wall.width, wall.height);
   layer.height.fillStyle = gray(0.62);
-  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.height.fillRect(wall.x, wall.y, wall.width, wall.height);
   layer.bare.fillStyle = gray(0.92);
-  layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.bare.fillRect(wall.x, wall.y, wall.width, wall.height);
 
   // Used, not pristine: irregular blotches of duller metal along the tube.
   // Wear runs ALONG the tube, as full rings of varying grime, rather than as
@@ -643,10 +625,10 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // entire circumference.
   const px = TRIM_SHEET_TEXELS_PER_UNIT;
   for (let i = 0; i < 70; i++) {
-    const y = randIn(rng, rect.y, rect.y + rect.height);
+    const y = randIn(rng, wall.y, wall.y + wall.height);
     const h = randIn(rng, 0.3, 1.5) * px;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.20).toFixed(3)})`;
-    layer.albedo.fillRect(rect.x, y, rect.width, h);
+    layer.albedo.fillRect(wall.x, y, wall.width, h);
   }
   // A few small pits, kept narrow so they stay high-frequency around the tube.
   // Clipped to the band. Bands are packed rectangles in a shared atlas now, so
@@ -654,22 +636,22 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // these pits were landing on the sensor dome's gutter and breaking its seam.
   layer.albedo.save();
   layer.albedo.beginPath();
-  layer.albedo.rect(rect.x, rect.y, rect.width, rect.height);
+  layer.albedo.rect(wall.x, wall.y, wall.width, wall.height);
   layer.albedo.clip();
   for (let i = 0; i < 90; i++) {
-    const y = randIn(rng, rect.y, rect.y + rect.height);
+    const y = randIn(rng, wall.y, wall.y + wall.height);
     const h = randIn(rng, 0.3, 0.9) * px;
-    const x = rect.x + randIn(rng, 0, rect.width);
+    const x = wall.x + randIn(rng, 0, wall.width);
     const w = randIn(rng, 0.2, 0.5) * px;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.08, 0.24).toFixed(3)})`;
     layer.albedo.fillRect(x, y, w, h);
-    layer.albedo.fillRect(x - rect.width, y, w, h);
+    layer.albedo.fillRect(x - wall.width, y, w, h);
   }
   layer.albedo.restore();
   // Machining marks: fine rings around the tube, high frequency along it.
-  for (let y = rect.y; y < rect.y + rect.height; y += 1.2 * px) {
+  for (let y = wall.y; y < wall.y + wall.height; y += 1.2 * px) {
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.16).toFixed(3)})`;
-    layer.albedo.fillRect(rect.x, y, rect.width, 1.4);
+    layer.albedo.fillRect(wall.x, y, wall.width, 1.4);
   }
 
   // Breech collar and cooling fins at the root.
@@ -679,61 +661,85 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // units comes out hundreds of pixels wide, and a row of them merges into one
   // white band. A fastener that small would be sub-pixel on screen regardless,
   // so the collar carries its detail as machined rings instead.
-  bevelRect(layer, rect.x, rect.y, rect.width, rect.height * 0.1, 0.55, 0.96, 0.38);
+  bevelRect(layer, wall.x, wall.y, wall.width, wall.height * 0.1, 0.55, 0.96, 0.38);
   for (let i = 0; i < 7; i++) {
-    const y = rect.y + rect.height * 0.12 + i * 1.5 * px;
+    const y = wall.y + wall.height * 0.12 + i * 1.5 * px;
     layer.albedo.fillStyle = gray(0.05);
-    layer.albedo.fillRect(rect.x, y, rect.width, 0.5 * px);
+    layer.albedo.fillRect(wall.x, y, wall.width, 0.5 * px);
     layer.albedo.fillStyle = gray(0.98);
-    layer.albedo.fillRect(rect.x, y + 0.5 * px, rect.width, 0.34 * px);
+    layer.albedo.fillRect(wall.x, y + 0.5 * px, wall.width, 0.34 * px);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(rect.x, y, rect.width, 0.84 * px);
+    layer.height.fillRect(wall.x, y, wall.width, 0.84 * px);
   }
 
   // Muzzle soot creeping back from the tip.
-  const sootRows = Math.floor(rect.height * 0.16);
+  const sootRows = Math.floor(wall.height * 0.16);
   for (let i = 0; i < sootRows; i++) {
     const t = 1 - i / sootRows;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * t * 0.75).toFixed(3)})`;
-    layer.albedo.fillRect(rect.x, rect.y + rect.height - 1 - i, rect.width, 1);
+    layer.albedo.fillRect(wall.x, wall.y + wall.height - 1 - i, wall.width, 1);
   }
 
-  // THE TIP: a bright machined rim, then the black bore at the very end.
+  // THE TIP of the tube: a bright machined rim, then the bore.
   //
   // Sized as a fraction of the BARREL, not of the band. The band's 224 content
   // rows span 64 world units, so a rim that looks generous in the sheet is
   // under three units long on the model and vanishes at any real camera
   // distance. These work out to roughly a 5-unit rim and a 4-unit bore on a
   // barrel 2 units across, which is the proportion a real muzzle has.
-  const rimHeight = rect.height * 0.075;
-  const boreHeight = rect.height * 0.055;
-  const rimY = rect.y + rect.height - rimHeight - boreHeight;
+  const rimHeight = wall.height * 0.075;
+  const boreHeight = wall.height * 0.055;
+  const rimY = wall.y + wall.height - rimHeight - boreHeight;
   // A hard shadow line where the rim steps proud of the tube, so the rim reads
   // as a machined lip rather than as the tube simply going pale.
   layer.albedo.fillStyle = gray(0.04);
-  layer.albedo.fillRect(rect.x, rimY - 0.7 * px, rect.width, 0.7 * px);
+  layer.albedo.fillRect(wall.x, rimY - 0.7 * px, wall.width, 0.7 * px);
   layer.height.fillStyle = gray(0.1);
-  layer.height.fillRect(rect.x, rimY - 0.7 * px, rect.width, 0.7 * px);
+  layer.height.fillRect(wall.x, rimY - 0.7 * px, wall.width, 0.7 * px);
   // Bore first, rim outermost. The rim has to be the LAST thing on the tube so
   // it forms a bright lip right at the mouth with the dark bore inside it;
   // drawn the other way round the tube simply ends in black and the rim is
   // lost against the pale shaft.
   layer.albedo.fillStyle = gray(0.01);
-  layer.albedo.fillRect(rect.x, rimY, rect.width, boreHeight);
+  layer.albedo.fillRect(wall.x, rimY, wall.width, boreHeight);
   layer.height.fillStyle = gray(0.0);
-  layer.height.fillRect(rect.x, rimY, rect.width, boreHeight);
+  layer.height.fillRect(wall.x, rimY, wall.width, boreHeight);
   // A bore is an opening: nothing shows through it, bare metal included.
   layer.bare.fillStyle = gray(0);
-  layer.bare.fillRect(rect.x, rimY, rect.width, boreHeight);
+  layer.bare.fillRect(wall.x, rimY, wall.width, boreHeight);
 
   layer.albedo.fillStyle = gray(0.99);
-  layer.albedo.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
+  layer.albedo.fillRect(wall.x, rimY + boreHeight, wall.width, rimHeight);
   layer.height.fillStyle = gray(0.99);
-  layer.height.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
+  layer.height.fillRect(wall.x, rimY + boreHeight, wall.width, rimHeight);
   layer.bare.fillStyle = gray(1);
-  layer.bare.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
-}
+  layer.bare.fillRect(wall.x, rimY + boreHeight, wall.width, rimHeight);
 
+  // THE MUZZLE FACE. Its v is the radius from centre to rim, so these rows are
+  // concentric rings: a black bore in the middle and a thick white machined
+  // perimeter around it, which is what a barrel end actually looks like.
+  const faceY0 = rect.y + rect.height * zone.capCenterV;
+  const faceY1 = rect.y + rect.height * zone.capRimV;
+  const faceH = faceY1 - faceY0;
+  const boreFrac = 0.5;
+  layer.albedo.fillStyle = gray(0.01);
+  layer.albedo.fillRect(rect.x, faceY0, rect.width, faceH * boreFrac);
+  layer.height.fillStyle = gray(0.0);
+  layer.height.fillRect(rect.x, faceY0, rect.width, faceH * boreFrac);
+  layer.bare.fillStyle = gray(0);
+  layer.bare.fillRect(rect.x, faceY0, rect.width, faceH * boreFrac);
+  // Chamfer between bore and rim, then the rim itself.
+  layer.albedo.fillStyle = gray(0.35);
+  layer.albedo.fillRect(rect.x, faceY0 + faceH * boreFrac, rect.width, faceH * 0.1);
+  layer.height.fillStyle = gray(0.4);
+  layer.height.fillRect(rect.x, faceY0 + faceH * boreFrac, rect.width, faceH * 0.1);
+  layer.albedo.fillStyle = gray(0.99);
+  layer.albedo.fillRect(rect.x, faceY0 + faceH * 0.6, rect.width, faceH * 0.4);
+  layer.height.fillStyle = gray(0.97);
+  layer.height.fillRect(rect.x, faceY0 + faceH * 0.6, rect.width, faceH * 0.4);
+  layer.bare.fillStyle = gray(1);
+  layer.bare.fillRect(rect.x, faceY0 + faceH * 0.6, rect.width, faceH * 0.4);
+}
 /** Leg strut: bolted end collars, a plated mid section, and hydraulic lines
  *  ringing it.
  *
@@ -777,7 +783,6 @@ function drawHydraulicStrut(
     layer.bare.fillRect(rect.x, y, rect.width, collarHeight);
     boltRow(layer, rect, y + collarHeight * 0.5, columns * 2, 5.5);
   }
-  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 70);
 }
 
 /** Bolt boss — joints. A heavy bolted flange ringing the middle with plated
@@ -801,7 +806,6 @@ function drawBoltBoss(
   boltRow(layer, rect, ringY + ringHeight * 0.5, columns, 8);
   seamRow(layer, rect, ringY - 3, 3);
   seamRow(layer, rect, ringY + ringHeight, 3);
-  for (let i = 0; i < 14; i++) scratch(layer, rng, rect, 60);
 }
 
 /** Team piping — the strap kit's livery.
@@ -838,7 +842,6 @@ function drawLiveryPiping(
     layer.bare.fillStyle = gray(0.3);
     layer.bare.fillRect(rect.x, y, rect.width, 4);
   }
-  for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 18);
 }
 
 /** Team collar — the turret collar's livery. Same neutrality discipline as the
@@ -847,27 +850,93 @@ function drawLiveryChevron(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const plateCount = bandFeatureCounts(band).columns;
+  const zone = BAND_CAP_ZONES.liveryChevron!;
+  const wall: BandRect = {
+    x: rect.x, y: rect.y,
+    width: rect.width, height: rect.height * zone.wallVEnd,
+  };
 
   const { courses } = bandFeatureCounts(band);
-  const courseHeight = rect.height / courses;
+  const courseHeight = wall.height / courses;
   for (let c = 0; c < courses; c++) {
-    const y = rect.y + c * courseHeight;
+    const y = wall.y + c * courseHeight;
     panelCourse(layer, rect, y, courseHeight, plateCount, rng, { faceJitter: 0.07 });
     seamRow(layer, rect, y, 4);
   }
-  for (const y of [rect.y, rect.y + rect.height - 4]) {
+  for (const y of [wall.y, wall.y + wall.height - 4]) {
     layer.albedo.fillStyle = gray(0.03);
-    layer.albedo.fillRect(rect.x, y, rect.width, 2.5);
+    layer.albedo.fillRect(wall.x, y, wall.width, 2.5);
     layer.albedo.fillStyle = gray(0.95);
-    layer.albedo.fillRect(rect.x, y + 2.5, rect.width, 1.5);
+    layer.albedo.fillRect(wall.x, y + 2.5, wall.width, 1.5);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(rect.x, y, rect.width, 4);
+    layer.height.fillRect(wall.x, y, wall.width, 4);
     layer.bare.fillStyle = gray(0.35);
-    layer.bare.fillRect(rect.x, y, rect.width, 4);
+    layer.bare.fillRect(wall.x, y, wall.width, 4);
   }
-  for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 16);
-}
 
+  // THE COLLAR'S FORWARD FACE — the flat disc you look straight down the barrel
+  // line at, and previously just a plain slab of team colour.
+  //
+  // Its v is the radius from centre to rim, so rows are concentric rings; its u
+  // is the ANGLE around the face, so a bolt drawn at one u is a bolt at one
+  // o'clock rather than a smear all the way round. That is what lets this read
+  // as a machined flange instead of a painted circle.
+  const faceY0 = rect.y + rect.height * zone.capCenterV;
+  const faceY1 = rect.y + rect.height * zone.capRimV;
+  const faceH = faceY1 - faceY0;
+  const ring = (r0: number, r1: number, albedo: number, height: number, bare: number) => {
+    layer.albedo.fillStyle = gray(albedo);
+    layer.albedo.fillRect(rect.x, faceY0 + faceH * r0, rect.width, faceH * (r1 - r0));
+    layer.height.fillStyle = gray(height);
+    layer.height.fillRect(rect.x, faceY0 + faceH * r0, rect.width, faceH * (r1 - r0));
+    layer.bare.fillStyle = gray(bare);
+    layer.bare.fillRect(rect.x, faceY0 + faceH * r0, rect.width, faceH * (r1 - r0));
+  };
+  // Recessed centre where the barrel cluster emerges, stepping out to a raised
+  // bolted flange and a bright machined outer lip.
+  ring(0.00, 0.30, 0.02, 0.02, 0.0);
+  ring(0.30, 0.36, 0.92, 0.9, 0.55);
+  ring(0.36, 0.62, 0.5, 0.6, 0.06);
+  ring(0.62, 0.80, 0.62, 0.86, 0.3);
+  ring(0.80, 0.86, 0.03, 0.1, 0.0);
+  ring(0.86, 1.00, 0.66, 0.8, 0.12);
+  // Bolt circle: discrete heads at fixed angles, sitting on the raised flange.
+  //
+  // On a cap, v is the radius but u is the ANGLE, so a given band width spans
+  // the full circumference at the rim and proportionally less further in. A
+  // bolt drawn as a circle therefore comes out radially stretched by
+  // rim/radius; widening it by that factor puts it back round.
+  const bolts = 10;
+  const boltRadiusFrac = 0.71;
+  const boltY = faceY0 + faceH * boltRadiusFrac;
+  const boltR = Math.max(3, faceH * 0.055);
+  const boltStretch = 1 / boltRadiusFrac;
+  for (let i = 0; i < bolts; i++) {
+    const cx = rect.x + ((i + 0.5) / bolts) * rect.width;
+    layer.albedo.fillStyle = gray(0.03);
+    layer.albedo.beginPath();
+    layer.albedo.ellipse(cx, boltY + boltR * 0.2, (boltR + 1.3) * boltStretch, boltR + 1.3, 0, 0, Math.PI * 2);
+    layer.albedo.fill();
+    for (const [ctx, fill, scale] of [
+      [layer.albedo, gray(0.96), 1],
+      [layer.height, gray(0.96), 1],
+      [layer.bare, gray(0.75), 0.85],
+    ] as [CanvasRenderingContext2D, string, number][]) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.ellipse(cx, boltY, boltR * scale * boltStretch, boltR * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Radial ribs across the flange, one per bolt gap.
+  for (let i = 0; i < bolts; i++) {
+    const x = rect.x + (i / bolts) * rect.width;
+    layer.albedo.fillStyle = gray(0.05);
+    layer.albedo.fillRect(x, faceY0 + faceH * 0.62, 3, faceH * 0.18);
+    layer.height.fillStyle = gray(0.2);
+    layer.height.fillRect(x, faceY0 + faceH * 0.62, 3, faceH * 0.18);
+  }
+}
 const BAND_DRAWERS: Record<
   TrimBandId,
   {
