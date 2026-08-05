@@ -627,6 +627,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleLocomotionMarks"
         >LOCO</BarButton>
         <BarButton
+          :active="model.teamTrim"
+          title="Draw the extra TEAM-colored ornamentation bolted onto entities (a unit's fin, a building's roof band). Identity colors are unaffected either way: bodies stay player-colored and turret accents stay team-colored, since those recolor existing parts instead of adding geometry."
+          @click="model.toggleTeamTrim"
+        >TRIM</BarButton>
+        <BarButton
           :active="model.smokeTrails"
           title="Draw smoke-puff trails behind thrust-powered projectiles"
           @click="model.toggleSmokeTrails"

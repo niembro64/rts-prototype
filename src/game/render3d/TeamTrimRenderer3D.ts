@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getTeamTrim } from '@/clientBarConfig';
 import { disposeMesh } from './threeUtils';
 import {
   createDirtySlotSpan,
@@ -51,6 +52,9 @@ export class TeamTrimRenderer3D {
   private readonly scratchQuaternion = new THREE.Quaternion();
   private readonly scratchScale = new THREE.Vector3();
   private readonly scratchColor = new THREE.Color();
+  /** Read once per frame from the CLIENT bar. Ornamentation is a work in
+   *  progress, so it ships off and the player opts in. */
+  private enabled = false;
 
   constructor(private readonly world: THREE.Group) {
     // A box reads as painted trim from every angle and needs no LOD tier
@@ -85,6 +89,20 @@ export class TeamTrimRenderer3D {
     world.add(this.mesh);
   }
 
+  /** Latch this frame's CLIENT-bar toggle. Call once before any set().
+   *  Gating here rather than at each call site means every trim piece —
+   *  present and future — is covered by the one switch, and slots stay
+   *  allocated so toggling back on is immediate. */
+  beginFrame(): void {
+    this.enabled = getTeamTrim();
+    if (!this.enabled && this.mesh.visible) this.mesh.visible = false;
+    else if (this.enabled && !this.mesh.visible) this.mesh.visible = true;
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
   /** Take a slot, or -1 when the pool is full. */
   alloc(): number {
     const reused = this.free.pop();
@@ -108,6 +126,10 @@ export class TeamTrimRenderer3D {
     colorHex: number,
   ): void {
     if (slot < 0) return;
+    if (!this.enabled) {
+      this.hide(slot);
+      return;
+    }
     this.scratchPosition.set(x, y, z);
     this.scratchScale.set(sizeX, sizeY, sizeZ);
     this.scratchMatrix.compose(this.scratchPosition, quaternion, this.scratchScale);

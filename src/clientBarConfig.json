@@ -77,6 +77,10 @@
     "demoDefault": true,
     "realDefault": true
   },
+  "teamTrim": {
+    "demoDefault": false,
+    "realDefault": false
+  },
   "smokeTrails": {
     "demoDefault": true,
     "realDefault": true
@@ -439,6 +443,7 @@
     "burnMarks": "burn-marks-v2",
     "windParticles": "wind-particles",
     "locomotionMarks": "locomotion-marks",
+    "teamTrim": "team-trim",
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "entityShadows": "entity-shadows",

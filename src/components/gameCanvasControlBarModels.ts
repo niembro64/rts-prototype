@@ -215,6 +215,7 @@ export type GameCanvasClientControlBarModel = {
   readonly burnMarks: boolean;
   readonly windParticles: boolean;
   readonly locomotionMarks: boolean;
+  readonly teamTrim: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly entityShadows: boolean;
@@ -269,6 +270,7 @@ export type GameCanvasClientControlBarModel = {
   toggleBurnMarks(): void;
   toggleWindParticles(): void;
   toggleLocomotionMarks(): void;
+  toggleTeamTrim(): void;
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
   toggleEntityShadows(): void;

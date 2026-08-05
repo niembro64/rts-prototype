@@ -30,6 +30,7 @@ import {
   getLegsRadiusToggle,
   getLegsReachToggle,
   getLocomotionMarks,
+  getTeamTrim,
   getMasterVolume,
   getMetalMap,
   getRadarBoundary,
@@ -72,6 +73,7 @@ import {
   setLegsRadiusToggle,
   setLegsReachToggle,
   setLocomotionMarks,
+  setTeamTrim,
   setMasterVolume,
   setMetalMap,
   setRadarBoundary,
@@ -138,6 +140,7 @@ export function useGameCanvasClientSettings({
   const burnMarks = ref<boolean>(getBurnMarks());
   const windParticles = ref<boolean>(getWindParticles());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
+  const teamTrim = ref<boolean>(getTeamTrim());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const entityShadows = ref<boolean>(getEntityShadows());
@@ -226,6 +229,7 @@ export function useGameCanvasClientSettings({
     burnMarks.value = getBurnMarks();
     windParticles.value = getWindParticles();
     locomotionMarks.value = getLocomotionMarks();
+    teamTrim.value = getTeamTrim();
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     entityShadows.value = getEntityShadows();
@@ -407,6 +411,12 @@ export function useGameCanvasClientSettings({
     const newValue = !locomotionMarks.value;
     setLocomotionMarks(newValue);
     locomotionMarks.value = newValue;
+  }
+
+  function toggleTeamTrim(): void {
+    const newValue = !teamTrim.value;
+    setTeamTrim(newValue);
+    teamTrim.value = newValue;
   }
 
   function toggleSmokeTrails(): void {
@@ -599,6 +609,8 @@ export function useGameCanvasClientSettings({
     windParticles.value = cd.windParticles.default;
     setLocomotionMarks(cd.locomotionMarks.default);
     locomotionMarks.value = cd.locomotionMarks.default;
+    setTeamTrim(cd.teamTrim.default);
+    teamTrim.value = cd.teamTrim.default;
     setSmokeTrails(cd.smokeTrails.default);
     smokeTrails.value = cd.smokeTrails.default;
     setSmokeSoftEdges(cd.smokeSoftEdges.default);
@@ -691,6 +703,7 @@ export function useGameCanvasClientSettings({
     burnMarks,
     windParticles,
     locomotionMarks,
+    teamTrim,
     smokeTrails,
     smokeSoftEdges,
     entityShadows,
@@ -756,6 +769,7 @@ export function useGameCanvasClientSettings({
     toggleBurnMarks,
     toggleWindParticles,
     toggleLocomotionMarks,
+    toggleTeamTrim,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleEntityShadows,

@@ -133,6 +133,13 @@ export type ClientBarConfig = {
    *  unit movement. Default on — these decay quickly and read as
    *  part of the unit silhouettes' motion. */
   readonly locomotionMarks: BooleanSetting;
+  /** Team-colored ORNAMENTATION — the extra trim geometry bolted onto
+   *  entities to show their side (a unit's fin, a building's roof band).
+   *  Off by default while the shapes are still being designed. Identity
+   *  colors themselves are not gated by this: bodies stay player-colored
+   *  and turret accents stay team-colored either way, because those
+   *  recolor existing geometry rather than adding any. */
+  readonly teamTrim: BooleanSetting;
   /** Smoke-puff trails behind thrust-powered projectiles (rockets,
    *  missiles) rendered by SmokeTrail3D. Default on — toggle off to
    *  cut the visual clutter and the per-puff overdraw on heavy salvos. */

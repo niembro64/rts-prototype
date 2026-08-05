@@ -136,10 +136,20 @@ type PlayerColors = {
  *   2. That slice splits evenly by how many players the team holds. A
  *      player's color is the MIDDLE of its sub-slice.
  *
- * A one-player team makes step 2 a no-op: its sub-slice IS the team
- * slice, so player hue == team hue and all four colors collapse to two.
- * Free-for-all therefore reproduces the pre-team wheel exactly - six
- * seats over six sides still land on 0/60/120/180/240/300.
+ * COLLISIONS ARE EXPECTED, NOT SPECIAL CASES. Whenever a team holds an
+ * ODD number of players, its MIDDLE seat lands exactly on the team hue,
+ * so that seat's player color and team color are the same value:
+ *
+ *     hue(middle of P seats) = teamHue - W/2 + ((P-1)/2 + 0.5) * (W/P)
+ *                            = teamHue - W/2 + W/2
+ *                            = teamHue
+ *
+ * A one-player team is just the smallest case of that, and a three-player
+ * team does it to its second seat. Nothing branches on it: the formula
+ * produces the coincidence on its own, and a seat whose two colors match
+ * simply wears one color. Free-for-all is the same story at scale, which
+ * is why it reproduces the pre-team wheel exactly - six seats over six
+ * sides still land on 0/60/120/180/240/300.
  */
 type ColorTeamLayout = {
   sideIndexByPlayer: Map<PlayerId, number>;

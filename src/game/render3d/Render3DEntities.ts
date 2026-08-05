@@ -908,6 +908,7 @@ export class Render3DEntities {
     const poseOutput = this.unitRenderPose.compute(poseCount);
     const poseOutputStride = this.unitRenderPose.outputStride;
     this.chassisInstancePose.begin();
+    this.teamTrim?.beginFrame();
     this.turretPose.begin();
     this.shieldPanelPose.begin();
 
