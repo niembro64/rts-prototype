@@ -797,6 +797,32 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>AMB:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.ambientLight.options"
+            :key="opt.value"
+            :active="model.ambientLight === opt.value"
+            :title="`Ambient light at ${opt.value}% of the authored intensity. Ambient fills shadowed faces evenly, so raising it flattens the unit read and lowering it deepens contrast.`"
+            @click="model.changeAmbientLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>SUN:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.directionalLight.options"
+            :key="opt.value"
+            :active="model.directionalLight === opt.value"
+            :title="`Directional sun light at ${opt.value}% of the authored intensity. This is what shapes surfaces — panel bevels and the bump only read where the sun reaches.`"
+            @click="model.changeDirectionalLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>SOUNDS:</BarLabel>
         <BarButton
           :active="model.allSoundsActive"

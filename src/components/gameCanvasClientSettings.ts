@@ -31,6 +31,8 @@ import {
   getLegsReachToggle,
   getLocomotionMarks,
   getTeamTrim,
+  getAmbientLight,
+  getDirectionalLight,
   getSurfaceTexture,
   getMasterVolume,
   getMetalMap,
@@ -75,6 +77,8 @@ import {
   setLegsReachToggle,
   setLocomotionMarks,
   setTeamTrim,
+  setAmbientLight,
+  setDirectionalLight,
   setSurfaceTexture,
   setMasterVolume,
   setMetalMap,
@@ -114,6 +118,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  LightIntensityPercent,
   MasterVolumePercent,
   VolumeType,
   RangeType,
@@ -125,6 +130,10 @@ import type {
 } from '../types/client';
 import type { RenderMode } from '../types/graphics';
 import { setSurfaceChartEnabled } from '@/game/render3d/SurfaceChartMaterial3D';
+import {
+  setAmbientIntensityScale,
+  setDirectionalIntensityScale,
+} from '@/game/render3d/SunLighting';
 
 type UseGameCanvasClientSettingsOptions = {
   currentClientMode: Readonly<Ref<ClientMode>>;
@@ -139,6 +148,8 @@ export function useGameCanvasClientSettings({
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
   const masterVolume = ref<MasterVolumePercent>(getMasterVolume());
+  const ambientLight = ref<LightIntensityPercent>(getAmbientLight());
+  const directionalLight = ref<LightIntensityPercent>(getDirectionalLight());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const windParticles = ref<boolean>(getWindParticles());
@@ -213,6 +224,13 @@ export function useGameCanvasClientSettings({
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
   const waterBoundaryMode = ref<WaterBoundaryMode>(getWaterBoundaryMode());
 
+  /** Push the persisted light scales into the scene. Lights are plain scene
+   *  properties, so this is all it takes — no rebuild, no material touch. */
+  function applyLightRuntimeState(): void {
+    setAmbientIntensityScale(ambientLight.value / 100);
+    setDirectionalIntensityScale(directionalLight.value / 100);
+  }
+
   function applyAudioRuntimeState(): void {
     audioManager.setMasterVolume(masterVolume.value / 100);
     audioManager.setMuted(audioScope.value === 'off');
@@ -229,6 +247,9 @@ export function useGameCanvasClientSettings({
     renderMode.value = getRenderMode();
     audioScope.value = getAudioScope();
     masterVolume.value = getMasterVolume();
+    ambientLight.value = getAmbientLight();
+    directionalLight.value = getDirectionalLight();
+    applyLightRuntimeState();
     audioSmoothing.value = getAudioSmoothing();
     burnMarks.value = getBurnMarks();
     windParticles.value = getWindParticles();
@@ -301,6 +322,18 @@ export function useGameCanvasClientSettings({
     setMasterVolume(volume);
     masterVolume.value = volume;
     audioManager.setMasterVolume(volume / 100);
+  }
+
+  function changeAmbientLight(percent: LightIntensityPercent): void {
+    setAmbientLight(percent);
+    ambientLight.value = percent;
+    setAmbientIntensityScale(percent / 100);
+  }
+
+  function changeDirectionalLight(percent: LightIntensityPercent): void {
+    setDirectionalLight(percent);
+    directionalLight.value = percent;
+    setDirectionalIntensityScale(percent / 100);
   }
 
   function toggleRange(type: RangeType): void {
@@ -717,6 +750,8 @@ export function useGameCanvasClientSettings({
     renderMode,
     audioScope,
     masterVolume,
+    ambientLight,
+    directionalLight,
     audioSmoothing,
     burnMarks,
     windParticles,
@@ -771,6 +806,8 @@ export function useGameCanvasClientSettings({
     changeRenderMode,
     changeAudioScope,
     changeMasterVolume,
+    changeAmbientLight,
+    changeDirectionalLight,
     toggleRange,
     cycleAttackRangeDisplay,
     toggleVolume,

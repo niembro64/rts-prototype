@@ -79,6 +79,55 @@ export function writeSunDirectionThree(out: THREE.Vector3): THREE.Vector3 {
   return out.set(SUN_DIRECTION_SIM.x, SUN_DIRECTION_SIM.z, SUN_DIRECTION_SIM.y).normalize();
 }
 
+// LIVE INTENSITY TUNING.
+//
+// The two scene lights are retained so the CLIENT bar can scale them while the
+// game runs. They are stored as SCALES of the authored `worldRenderConfig`
+// intensities rather than as absolute values, so 100% is always whatever the
+// config says and the default stays meaningful when that config is retuned.
+//
+// Module-level because there is exactly one world scene (ThreeApp is the sole
+// caller of installSunLighting) and the bar has no handle on it. A rebuild
+// re-registers the lights and re-applies whatever scale is current, so tuning
+// survives a scene reload.
+let installedAmbient: THREE.AmbientLight | null = null;
+let installedSun: THREE.DirectionalLight | null = null;
+let ambientIntensityScale = 1;
+let directionalIntensityScale = 1;
+
+function applySunLightingIntensities(): void {
+  if (installedAmbient !== null) {
+    installedAmbient.intensity =
+      SUN_RENDER_CONFIG.ambientIntensity * ambientIntensityScale;
+  }
+  if (installedSun !== null) {
+    installedSun.intensity =
+      SUN_RENDER_CONFIG.directionalIntensity * directionalIntensityScale;
+  }
+}
+
+/** Scale the ambient light, as a fraction of the authored intensity. */
+export function setAmbientIntensityScale(scale: number): void {
+  ambientIntensityScale = Math.max(0, scale);
+  applySunLightingIntensities();
+}
+
+/** Scale the directional (sun) light, as a fraction of the authored intensity. */
+export function setDirectionalIntensityScale(scale: number): void {
+  directionalIntensityScale = Math.max(0, scale);
+  applySunLightingIntensities();
+}
+
+export function getSunLightingIntensities(): {
+  ambient: number;
+  directional: number;
+} {
+  return {
+    ambient: SUN_RENDER_CONFIG.ambientIntensity * ambientIntensityScale,
+    directional: SUN_RENDER_CONFIG.directionalIntensity * directionalIntensityScale,
+  };
+}
+
 export function installSunLighting(
   scene: THREE.Scene,
   mapWidth: number,
@@ -100,6 +149,10 @@ export function installSunLighting(
   sun.position.copy(target).addScaledVector(direction, SUN_RENDER_CONFIG.distance);
   scene.add(sun);
   scene.add(sun.target);
+
+  installedAmbient = ambient;
+  installedSun = sun;
+  applySunLightingIntensities();
 
   const diskCfg = SUN_RENDER_CONFIG.visibleSkyDisk;
   if (diskCfg.enabled) {

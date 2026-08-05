@@ -11,6 +11,7 @@ import type {
   EntityHudToggles,
   EntityHudType,
   LodMode,
+  LightIntensityPercent,
   MasterVolumePercent,
   PathingDebugMode,
   PathingDebugUnitId,
@@ -240,6 +241,8 @@ export type GameCanvasClientControlBarModel = {
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
   readonly masterVolume: MasterVolumePercent;
+  readonly ambientLight: LightIntensityPercent;
+  readonly directionalLight: LightIntensityPercent;
   readonly allSoundsActive: boolean;
   readonly soundToggles: Readonly<Record<SoundCategory, boolean>>;
   readonly sfxCategories: readonly SoundCategory[];
@@ -295,6 +298,8 @@ export type GameCanvasClientControlBarModel = {
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   changeMasterVolume(volume: MasterVolumePercent): void;
+  changeAmbientLight(percent: LightIntensityPercent): void;
+  changeDirectionalLight(percent: LightIntensityPercent): void;
   setGamePaused(paused: boolean): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;

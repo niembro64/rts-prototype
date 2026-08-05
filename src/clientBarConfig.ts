@@ -13,6 +13,7 @@ import type {
   EntityHudToggles,
   EntityHudType,
   LodMode,
+  LightIntensityPercent,
   MasterVolumePercent,
   PathingDebugMode,
   PathingDebugUnitId,
@@ -62,6 +63,8 @@ type ClientDefaults = {
   readonly render: RenderMode;
   readonly audio: Exclude<AudioScope, 'off'>;
   readonly masterVolume: MasterVolumePercent;
+  readonly ambientLight: LightIntensityPercent;
+  readonly directionalLight: LightIntensityPercent;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly windParticles: boolean;
@@ -138,6 +141,9 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     render: pickDefault(clientBarConfig.render, mode) as RenderMode,
     audio: pickDefault(clientBarConfig.audio, mode) as Exclude<AudioScope, 'off'>,
     masterVolume: pickDefault(clientBarConfig.masterVolume, mode) as MasterVolumePercent,
+    ambientLight: pickDefault(clientBarConfig.ambientLight, mode) as LightIntensityPercent,
+    directionalLight:
+      pickDefault(clientBarConfig.directionalLight, mode) as LightIntensityPercent,
     audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
     burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
     windParticles: pickDefault(clientBarConfig.windParticles, mode),
@@ -222,6 +228,15 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.masterVolume,
     options: clientBarConfig.masterVolume.options as OptionList<MasterVolumePercent>,
   },
+  ambientLight: {
+    default: DEMO_CLIENT_DEFAULTS.ambientLight,
+    options: clientBarConfig.ambientLight.options as OptionList<LightIntensityPercent>,
+  },
+  directionalLight: {
+    default: DEMO_CLIENT_DEFAULTS.directionalLight,
+    options:
+      clientBarConfig.directionalLight.options as OptionList<LightIntensityPercent>,
+  },
   audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
   windParticles: { default: DEMO_CLIENT_DEFAULTS.windParticles },
@@ -304,6 +319,11 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     render: { ...CLIENT_CONFIG.render, default: defaults.render },
     audio: { ...CLIENT_CONFIG.audio, default: defaults.audio },
     masterVolume: { ...CLIENT_CONFIG.masterVolume, default: defaults.masterVolume },
+    ambientLight: { ...CLIENT_CONFIG.ambientLight, default: defaults.ambientLight },
+    directionalLight: {
+      ...CLIENT_CONFIG.directionalLight,
+      default: defaults.directionalLight,
+    },
     audioSmoothing: { default: defaults.audioSmoothing },
     burnMarks: { default: defaults.burnMarks },
     windParticles: { default: defaults.windParticles },
@@ -368,6 +388,8 @@ type ClientStorageKeyName =
   | 'renderMode'
   | 'audioScope'
   | 'masterVolume'
+  | 'ambientLight'
+  | 'directionalLight'
   | 'audioSmoothing'
   | 'burnMarks'
   | 'windParticles'
@@ -415,6 +437,8 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'renderMode',
   'audioScope',
   'masterVolume',
+  'ambientLight',
+  'directionalLight',
   'audioSmoothing',
   'burnMarks',
   'windParticles',
@@ -510,6 +534,8 @@ let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentWaterBoundaryMode: WaterBoundaryMode = _cd.waterBoundaryMode.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
+let currentAmbientLight: LightIntensityPercent = _cd.ambientLight.default;
+let currentDirectionalLight: LightIntensityPercent = _cd.directionalLight.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentWindParticles: boolean = _cd.windParticles.default;
@@ -568,8 +594,18 @@ function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
   return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
+const MAX_LIGHT_INTENSITY_PERCENT = 300;
+
+function clampLightIntensityPercent(value: number): LightIntensityPercent {
+  return Math.max(0, Math.min(MAX_LIGHT_INTENSITY_PERCENT, Math.round(value)));
+}
+
 function isMasterVolumePercent(value: number): value is MasterVolumePercent {
   return Number.isFinite(value) && value >= 0 && value <= 200;
+}
+
+function isLightIntensityPercent(value: number): value is LightIntensityPercent {
+  return Number.isFinite(value) && value >= 0 && value <= MAX_LIGHT_INTENSITY_PERCENT;
 }
 
 function isCameraFollowMode(value: unknown): value is CameraFollowMode {
@@ -595,6 +631,8 @@ function applyClientDefaults(mode: ClientMode): void {
   currentWaterBoundaryMode = cd.waterBoundaryMode.default;
   currentAudioScope = cd.audio.default;
   currentMasterVolume = cd.masterVolume.default;
+  currentAmbientLight = cd.ambientLight.default;
+  currentDirectionalLight = cd.directionalLight.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
   currentBurnMarks = cd.burnMarks.default;
   currentWindParticles = cd.windParticles.default;
@@ -669,6 +707,16 @@ function loadFromStorage(mode: ClientMode): void {
     if (Number.isFinite(parsed) && isMasterVolumePercent(parsed)) {
       currentMasterVolume = parsed;
     }
+  }
+  const storedAmbientLight = readPersisted(keys.ambientLight);
+  if (storedAmbientLight !== null) {
+    const parsed = Number(storedAmbientLight);
+    if (isLightIntensityPercent(parsed)) currentAmbientLight = parsed;
+  }
+  const storedDirectionalLight = readPersisted(keys.directionalLight);
+  if (storedDirectionalLight !== null) {
+    const parsed = Number(storedDirectionalLight);
+    if (isLightIntensityPercent(parsed)) currentDirectionalLight = parsed;
   }
   const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
@@ -1040,6 +1088,29 @@ export function getMasterVolume(): MasterVolumePercent {
 export function setMasterVolume(volume: MasterVolumePercent): void {
   currentMasterVolume = Math.max(0, Math.min(200, Math.round(volume)));
   persist(activeStorageKeys().masterVolume, String(currentMasterVolume));
+}
+
+/** Ambient / directional light intensity, as a PERCENT of the authored
+ *  `worldRenderConfig` values. Live tuning knobs: lights are plain scene
+ *  properties, so changing these takes effect on the next frame with no
+ *  rebuild — which is why they belong on the CLIENT bar rather than the
+ *  battle bar. */
+export function getAmbientLight(): LightIntensityPercent {
+  return currentAmbientLight;
+}
+
+export function setAmbientLight(percent: LightIntensityPercent): void {
+  currentAmbientLight = clampLightIntensityPercent(percent);
+  persist(activeStorageKeys().ambientLight, String(currentAmbientLight));
+}
+
+export function getDirectionalLight(): LightIntensityPercent {
+  return currentDirectionalLight;
+}
+
+export function setDirectionalLight(percent: LightIntensityPercent): void {
+  currentDirectionalLight = clampLightIntensityPercent(percent);
+  persist(activeStorageKeys().directionalLight, String(currentDirectionalLight));
 }
 
 export function getAudioSmoothing(): boolean {

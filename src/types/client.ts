@@ -8,6 +8,10 @@ import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type MasterVolumePercent = number;
+/** Light intensity as a PERCENT of the authored `worldRenderConfig` intensity,
+ *  so 100 always means "whatever the config says" and stays meaningful if that
+ *  config is retuned. */
+export type LightIntensityPercent = number;
 /** Four-mode smoothing space used by the unit-ground-normal and camera controls. */
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
@@ -123,6 +127,8 @@ export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly masterVolume: LabeledOptionsConfig<MasterVolumePercent>;
+  readonly ambientLight: LabeledOptionsConfig<LightIntensityPercent>;
+  readonly directionalLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly audioSmoothing: BooleanSetting;
   /** Beam, laser, and dgun scorch trails drawn by BurnMark3D.
    *  Default off — scorches accumulate fast in long fights and the
