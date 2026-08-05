@@ -127,7 +127,10 @@ export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly masterVolume: LabeledOptionsConfig<MasterVolumePercent>;
+  readonly environmentLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly ambientLight: LabeledOptionsConfig<LightIntensityPercent>;
+  readonly skyLight: LabeledOptionsConfig<LightIntensityPercent>;
+  readonly exposure: LabeledOptionsConfig<LightIntensityPercent>;
   readonly directionalLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly audioSmoothing: BooleanSetting;
   /** Beam, laser, and dgun scorch trails drawn by BurnMark3D.

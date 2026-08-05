@@ -241,8 +241,11 @@ export type GameCanvasClientControlBarModel = {
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
   readonly masterVolume: MasterVolumePercent;
+  readonly environmentLight: LightIntensityPercent;
   readonly ambientLight: LightIntensityPercent;
   readonly directionalLight: LightIntensityPercent;
+  readonly skyLight: LightIntensityPercent;
+  readonly exposure: LightIntensityPercent;
   readonly allSoundsActive: boolean;
   readonly soundToggles: Readonly<Record<SoundCategory, boolean>>;
   readonly sfxCategories: readonly SoundCategory[];
@@ -298,8 +301,11 @@ export type GameCanvasClientControlBarModel = {
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   changeMasterVolume(volume: MasterVolumePercent): void;
+  changeEnvironmentLight(percent: LightIntensityPercent): void;
   changeAmbientLight(percent: LightIntensityPercent): void;
   changeDirectionalLight(percent: LightIntensityPercent): void;
+  changeSkyLight(percent: LightIntensityPercent): void;
+  changeExposure(percent: LightIntensityPercent): void;
   setGamePaused(paused: boolean): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;

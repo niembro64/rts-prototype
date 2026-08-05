@@ -1105,8 +1105,11 @@ const {
   renderMode,
   audioScope,
   masterVolume,
+  environmentLight,
   ambientLight,
   directionalLight,
+  skyLight,
+  exposure,
   audioSmoothing,
   burnMarks,
   windParticles,
@@ -1159,8 +1162,11 @@ const {
   changeRenderMode,
   changeAudioScope,
   changeMasterVolume,
+  changeEnvironmentLight,
   changeAmbientLight,
   changeDirectionalLight,
+  changeSkyLight,
+  changeExposure,
   toggleRange,
   cycleAttackRangeDisplay,
   toggleVolume,
@@ -2032,8 +2038,11 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   masterVolume: masterVolume.value,
+  environmentLight: environmentLight.value,
   ambientLight: ambientLight.value,
   directionalLight: directionalLight.value,
+  skyLight: skyLight.value,
+  exposure: exposure.value,
   allSoundsActive: allSoundsActive.value,
   soundToggles,
   sfxCategories: SFX_CATEGORIES,
@@ -2089,8 +2098,11 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeRenderMode,
   changeAudioScope,
   changeMasterVolume,
+  changeEnvironmentLight,
   changeAmbientLight,
   changeDirectionalLight,
+  changeSkyLight,
+  changeExposure,
   setGamePaused,
   toggleAllSounds,
   toggleSoundCategory,
@@ -2243,8 +2255,11 @@ watchEffect(() => {
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.masterVolume = masterVolume.value;
+  m.environmentLight = environmentLight.value;
   m.ambientLight = ambientLight.value;
   m.directionalLight = directionalLight.value;
+  m.skyLight = skyLight.value;
+  m.exposure = exposure.value;
   m.allSoundsActive = allSoundsActive.value;
   m.allRangesActive = allRangesActive.value;
   m.allVolumesActive = allVolumesActive.value;

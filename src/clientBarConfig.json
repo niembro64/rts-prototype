@@ -35,6 +35,52 @@
       }
     ]
   },
+  "environmentLight": {
+    "demoDefault": 100,
+    "realDefault": 100,
+    "options": [
+      {
+        "value": 0,
+        "label": "0"
+      },
+      {
+        "value": 25,
+        "label": "25"
+      },
+      {
+        "value": 50,
+        "label": "50"
+      },
+      {
+        "value": 75,
+        "label": "75"
+      },
+      {
+        "value": 100,
+        "label": "100"
+      },
+      {
+        "value": 125,
+        "label": "125"
+      },
+      {
+        "value": 150,
+        "label": "150"
+      },
+      {
+        "value": 200,
+        "label": "200"
+      },
+      {
+        "value": 250,
+        "label": "250"
+      },
+      {
+        "value": 300,
+        "label": "300"
+      }
+    ]
+  },
   "ambientLight": {
     "demoDefault": 100,
     "realDefault": 100,
@@ -82,6 +128,98 @@
     ]
   },
   "directionalLight": {
+    "demoDefault": 100,
+    "realDefault": 100,
+    "options": [
+      {
+        "value": 0,
+        "label": "0"
+      },
+      {
+        "value": 25,
+        "label": "25"
+      },
+      {
+        "value": 50,
+        "label": "50"
+      },
+      {
+        "value": 75,
+        "label": "75"
+      },
+      {
+        "value": 100,
+        "label": "100"
+      },
+      {
+        "value": 125,
+        "label": "125"
+      },
+      {
+        "value": 150,
+        "label": "150"
+      },
+      {
+        "value": 200,
+        "label": "200"
+      },
+      {
+        "value": 250,
+        "label": "250"
+      },
+      {
+        "value": 300,
+        "label": "300"
+      }
+    ]
+  },
+  "skyLight": {
+    "demoDefault": 100,
+    "realDefault": 100,
+    "options": [
+      {
+        "value": 0,
+        "label": "0"
+      },
+      {
+        "value": 25,
+        "label": "25"
+      },
+      {
+        "value": 50,
+        "label": "50"
+      },
+      {
+        "value": 75,
+        "label": "75"
+      },
+      {
+        "value": 100,
+        "label": "100"
+      },
+      {
+        "value": 125,
+        "label": "125"
+      },
+      {
+        "value": 150,
+        "label": "150"
+      },
+      {
+        "value": 200,
+        "label": "200"
+      },
+      {
+        "value": 250,
+        "label": "250"
+      },
+      {
+        "value": 300,
+        "label": "300"
+      }
+    ]
+  },
+  "exposure": {
     "demoDefault": 100,
     "realDefault": 100,
     "options": [
@@ -535,7 +673,10 @@
     "renderMode": "render-mode",
     "audioScope": "audio-scope",
     "masterVolume": "master-volume",
+    "environmentLight": "environment-light",
     "ambientLight": "ambient-light",
+    "skyLight": "sky-light",
+    "exposure": "exposure",
     "directionalLight": "directional-light",
     "audioSmoothing": "audio-smoothing",
     "burnMarks": "burn-marks-v2",

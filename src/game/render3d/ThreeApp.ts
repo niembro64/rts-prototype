@@ -12,6 +12,7 @@ import {
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
+import { registerLightingTargets } from './RenderLighting3D';
 import { configureSpriteTexture } from './threeUtils';
 import { registerBackdropTarget } from './presetBackdrops';
 import { ParallaxBackdropRenderer3D } from './ParallaxBackdropRenderer3D';
@@ -182,6 +183,9 @@ export class ThreeApp {
       ? THREE.ACESFilmicToneMapping
       : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = 1.0;
+    // Scene/renderer lighting knobs are driven from the CLIENT bar; register
+    // once so the persisted values apply from the first frame.
+    registerLightingTargets(this.scene, this.renderer);
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = this._runtimeProfile.dynamicPixelRatio;
     this._activePixelRatio = Math.min(

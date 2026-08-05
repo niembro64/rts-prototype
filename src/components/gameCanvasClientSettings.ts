@@ -32,6 +32,9 @@ import {
   getLocomotionMarks,
   getTeamTrim,
   getAmbientLight,
+  getEnvironmentLight,
+  getSkyLight,
+  getExposure,
   getDirectionalLight,
   getSurfaceTexture,
   getMasterVolume,
@@ -78,6 +81,9 @@ import {
   setLocomotionMarks,
   setTeamTrim,
   setAmbientLight,
+  setEnvironmentLight,
+  setSkyLight,
+  setExposure,
   setDirectionalLight,
   setSurfaceTexture,
   setMasterVolume,
@@ -132,8 +138,11 @@ import type { RenderMode } from '../types/graphics';
 import { setSurfaceChartEnabled } from '@/game/render3d/SurfaceChartMaterial3D';
 import {
   setAmbientIntensityScale,
+  setBackgroundIntensityScale,
   setDirectionalIntensityScale,
-} from '@/game/render3d/SunLighting';
+  setEnvironmentIntensityScale,
+  setExposureScale,
+} from '@/game/render3d/RenderLighting3D';
 
 type UseGameCanvasClientSettingsOptions = {
   currentClientMode: Readonly<Ref<ClientMode>>;
@@ -148,8 +157,11 @@ export function useGameCanvasClientSettings({
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
   const masterVolume = ref<MasterVolumePercent>(getMasterVolume());
+  const environmentLight = ref<LightIntensityPercent>(getEnvironmentLight());
   const ambientLight = ref<LightIntensityPercent>(getAmbientLight());
   const directionalLight = ref<LightIntensityPercent>(getDirectionalLight());
+  const skyLight = ref<LightIntensityPercent>(getSkyLight());
+  const exposure = ref<LightIntensityPercent>(getExposure());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const windParticles = ref<boolean>(getWindParticles());
@@ -227,8 +239,11 @@ export function useGameCanvasClientSettings({
   /** Push the persisted light scales into the scene. Lights are plain scene
    *  properties, so this is all it takes — no rebuild, no material touch. */
   function applyLightRuntimeState(): void {
+    setEnvironmentIntensityScale(environmentLight.value / 100);
     setAmbientIntensityScale(ambientLight.value / 100);
     setDirectionalIntensityScale(directionalLight.value / 100);
+    setBackgroundIntensityScale(skyLight.value / 100);
+    setExposureScale(exposure.value / 100);
   }
 
   function applyAudioRuntimeState(): void {
@@ -247,8 +262,11 @@ export function useGameCanvasClientSettings({
     renderMode.value = getRenderMode();
     audioScope.value = getAudioScope();
     masterVolume.value = getMasterVolume();
+    environmentLight.value = getEnvironmentLight();
     ambientLight.value = getAmbientLight();
     directionalLight.value = getDirectionalLight();
+    skyLight.value = getSkyLight();
+    exposure.value = getExposure();
     applyLightRuntimeState();
     audioSmoothing.value = getAudioSmoothing();
     burnMarks.value = getBurnMarks();
@@ -324,6 +342,12 @@ export function useGameCanvasClientSettings({
     audioManager.setMasterVolume(volume / 100);
   }
 
+  function changeEnvironmentLight(percent: LightIntensityPercent): void {
+    setEnvironmentLight(percent);
+    environmentLight.value = percent;
+    setEnvironmentIntensityScale(percent / 100);
+  }
+
   function changeAmbientLight(percent: LightIntensityPercent): void {
     setAmbientLight(percent);
     ambientLight.value = percent;
@@ -334,6 +358,18 @@ export function useGameCanvasClientSettings({
     setDirectionalLight(percent);
     directionalLight.value = percent;
     setDirectionalIntensityScale(percent / 100);
+  }
+
+  function changeSkyLight(percent: LightIntensityPercent): void {
+    setSkyLight(percent);
+    skyLight.value = percent;
+    setBackgroundIntensityScale(percent / 100);
+  }
+
+  function changeExposure(percent: LightIntensityPercent): void {
+    setExposure(percent);
+    exposure.value = percent;
+    setExposureScale(percent / 100);
   }
 
   function toggleRange(type: RangeType): void {
@@ -649,6 +685,11 @@ export function useGameCanvasClientSettings({
     changeRenderMode(cd.render.default);
     changeAudioScope(cd.audio.default);
     changeMasterVolume(cd.masterVolume.default);
+    changeEnvironmentLight(cd.environmentLight.default);
+    changeAmbientLight(cd.ambientLight.default);
+    changeDirectionalLight(cd.directionalLight.default);
+    changeSkyLight(cd.skyLight.default);
+    changeExposure(cd.exposure.default);
     setAudioSmoothing(cd.audioSmoothing.default);
     audioSmoothing.value = cd.audioSmoothing.default;
     setBurnMarks(cd.burnMarks.default);
@@ -750,8 +791,11 @@ export function useGameCanvasClientSettings({
     renderMode,
     audioScope,
     masterVolume,
+    environmentLight,
     ambientLight,
     directionalLight,
+    skyLight,
+    exposure,
     audioSmoothing,
     burnMarks,
     windParticles,
@@ -806,8 +850,11 @@ export function useGameCanvasClientSettings({
     changeRenderMode,
     changeAudioScope,
     changeMasterVolume,
+    changeEnvironmentLight,
     changeAmbientLight,
     changeDirectionalLight,
+    changeSkyLight,
+    changeExposure,
     toggleRange,
     cycleAttackRangeDisplay,
     toggleVolume,

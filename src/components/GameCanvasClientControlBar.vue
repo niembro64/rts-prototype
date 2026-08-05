@@ -784,14 +784,14 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>VOL:</BarLabel>
+        <BarLabel>ENV:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in CLIENT_CONFIG.masterVolume.options"
+            v-for="opt in CLIENT_CONFIG.environmentLight.options"
             :key="opt.value"
-            :active="model.masterVolume === opt.value"
-            :title="`Set master volume to ${opt.value}%`"
-            @click="model.changeMasterVolume(opt.value)"
+            :active="model.environmentLight === opt.value"
+            :title="`Image-based light from the RoomEnvironment cube, at ${opt.value}% of default. THE DOMINANT TERM: with this at 0 and the other lights off, lit surfaces including terrain go black.`"
+            @click="model.changeEnvironmentLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
@@ -803,7 +803,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.ambientLight.options"
             :key="opt.value"
             :active="model.ambientLight === opt.value"
-            :title="`Ambient light at ${opt.value}% of the authored intensity. Ambient fills shadowed faces evenly, so raising it flattens the unit read and lowering it deepens contrast.`"
+            :title="`AmbientLight at ${opt.value}% of the authored intensity. Flat fill — raising it flattens shading, lowering it deepens contrast. A trim on top of ENV, not a main light.`"
             @click="model.changeAmbientLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
@@ -816,8 +816,47 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.directionalLight.options"
             :key="opt.value"
             :active="model.directionalLight === opt.value"
-            :title="`Directional sun light at ${opt.value}% of the authored intensity. This is what shapes surfaces — panel bevels and the bump only read where the sun reaches.`"
+            :title="`DirectionalLight at ${opt.value}% of the authored intensity. Only reaches LIT materials — unit bodies, turret heads, buildings. Terrain bakes the sun in at build time and legs/effects are unlit, so zoom in on a unit to judge this one.`"
             @click="model.changeDirectionalLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>SKY:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.skyLight.options"
+            :key="opt.value"
+            :active="model.skyLight === opt.value"
+            :title="`Sky/backdrop brightness at ${opt.value}%. Pixels only — the backdrop contributes no light to the scene.`"
+            @click="model.changeSkyLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>EXPO:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.exposure.options"
+            :key="opt.value"
+            :active="model.exposure === opt.value"
+            :title="`Tone-mapping exposure at ${opt.value}%. Scales the final image, so it is the only knob here that can reach true black on its own. Inert on mobile-class runtime profiles, which disable tone mapping entirely.`"
+            @click="model.changeExposure(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>VOL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.masterVolume.options"
+            :key="opt.value"
+            :active="model.masterVolume === opt.value"
+            :title="`Set master volume to ${opt.value}%`"
+            @click="model.changeMasterVolume(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

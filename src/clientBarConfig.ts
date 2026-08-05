@@ -63,7 +63,10 @@ type ClientDefaults = {
   readonly render: RenderMode;
   readonly audio: Exclude<AudioScope, 'off'>;
   readonly masterVolume: MasterVolumePercent;
+  readonly environmentLight: LightIntensityPercent;
   readonly ambientLight: LightIntensityPercent;
+  readonly skyLight: LightIntensityPercent;
+  readonly exposure: LightIntensityPercent;
   readonly directionalLight: LightIntensityPercent;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
@@ -141,7 +144,11 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     render: pickDefault(clientBarConfig.render, mode) as RenderMode,
     audio: pickDefault(clientBarConfig.audio, mode) as Exclude<AudioScope, 'off'>,
     masterVolume: pickDefault(clientBarConfig.masterVolume, mode) as MasterVolumePercent,
+    environmentLight:
+      pickDefault(clientBarConfig.environmentLight, mode) as LightIntensityPercent,
     ambientLight: pickDefault(clientBarConfig.ambientLight, mode) as LightIntensityPercent,
+    skyLight: pickDefault(clientBarConfig.skyLight, mode) as LightIntensityPercent,
+    exposure: pickDefault(clientBarConfig.exposure, mode) as LightIntensityPercent,
     directionalLight:
       pickDefault(clientBarConfig.directionalLight, mode) as LightIntensityPercent,
     audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
@@ -228,9 +235,22 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.masterVolume,
     options: clientBarConfig.masterVolume.options as OptionList<MasterVolumePercent>,
   },
+  environmentLight: {
+    default: DEMO_CLIENT_DEFAULTS.environmentLight,
+    options:
+      clientBarConfig.environmentLight.options as OptionList<LightIntensityPercent>,
+  },
   ambientLight: {
     default: DEMO_CLIENT_DEFAULTS.ambientLight,
     options: clientBarConfig.ambientLight.options as OptionList<LightIntensityPercent>,
+  },
+  skyLight: {
+    default: DEMO_CLIENT_DEFAULTS.skyLight,
+    options: clientBarConfig.skyLight.options as OptionList<LightIntensityPercent>,
+  },
+  exposure: {
+    default: DEMO_CLIENT_DEFAULTS.exposure,
+    options: clientBarConfig.exposure.options as OptionList<LightIntensityPercent>,
   },
   directionalLight: {
     default: DEMO_CLIENT_DEFAULTS.directionalLight,
@@ -319,7 +339,13 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     render: { ...CLIENT_CONFIG.render, default: defaults.render },
     audio: { ...CLIENT_CONFIG.audio, default: defaults.audio },
     masterVolume: { ...CLIENT_CONFIG.masterVolume, default: defaults.masterVolume },
+    environmentLight: {
+      ...CLIENT_CONFIG.environmentLight,
+      default: defaults.environmentLight,
+    },
     ambientLight: { ...CLIENT_CONFIG.ambientLight, default: defaults.ambientLight },
+    skyLight: { ...CLIENT_CONFIG.skyLight, default: defaults.skyLight },
+    exposure: { ...CLIENT_CONFIG.exposure, default: defaults.exposure },
     directionalLight: {
       ...CLIENT_CONFIG.directionalLight,
       default: defaults.directionalLight,
@@ -388,7 +414,10 @@ type ClientStorageKeyName =
   | 'renderMode'
   | 'audioScope'
   | 'masterVolume'
+  | 'environmentLight'
   | 'ambientLight'
+  | 'skyLight'
+  | 'exposure'
   | 'directionalLight'
   | 'audioSmoothing'
   | 'burnMarks'
@@ -437,7 +466,10 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'renderMode',
   'audioScope',
   'masterVolume',
+  'environmentLight',
   'ambientLight',
+  'skyLight',
+  'exposure',
   'directionalLight',
   'audioSmoothing',
   'burnMarks',
@@ -534,7 +566,10 @@ let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentWaterBoundaryMode: WaterBoundaryMode = _cd.waterBoundaryMode.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
+let currentEnvironmentLight: LightIntensityPercent = _cd.environmentLight.default;
 let currentAmbientLight: LightIntensityPercent = _cd.ambientLight.default;
+let currentSkyLight: LightIntensityPercent = _cd.skyLight.default;
+let currentExposure: LightIntensityPercent = _cd.exposure.default;
 let currentDirectionalLight: LightIntensityPercent = _cd.directionalLight.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -631,7 +666,10 @@ function applyClientDefaults(mode: ClientMode): void {
   currentWaterBoundaryMode = cd.waterBoundaryMode.default;
   currentAudioScope = cd.audio.default;
   currentMasterVolume = cd.masterVolume.default;
+  currentEnvironmentLight = cd.environmentLight.default;
   currentAmbientLight = cd.ambientLight.default;
+  currentSkyLight = cd.skyLight.default;
+  currentExposure = cd.exposure.default;
   currentDirectionalLight = cd.directionalLight.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
   currentBurnMarks = cd.burnMarks.default;
@@ -707,6 +745,16 @@ function loadFromStorage(mode: ClientMode): void {
     if (Number.isFinite(parsed) && isMasterVolumePercent(parsed)) {
       currentMasterVolume = parsed;
     }
+  }
+  for (const [key, assign] of [
+    [keys.environmentLight, (v: LightIntensityPercent) => { currentEnvironmentLight = v; }],
+    [keys.skyLight, (v: LightIntensityPercent) => { currentSkyLight = v; }],
+    [keys.exposure, (v: LightIntensityPercent) => { currentExposure = v; }],
+  ] as [string, (v: LightIntensityPercent) => void][]) {
+    const stored = readPersisted(key);
+    if (stored === null) continue;
+    const parsed = Number(stored);
+    if (isLightIntensityPercent(parsed)) assign(parsed);
   }
   const storedAmbientLight = readPersisted(keys.ambientLight);
   if (storedAmbientLight !== null) {
@@ -1102,6 +1150,33 @@ export function getAmbientLight(): LightIntensityPercent {
 export function setAmbientLight(percent: LightIntensityPercent): void {
   currentAmbientLight = clampLightIntensityPercent(percent);
   persist(activeStorageKeys().ambientLight, String(currentAmbientLight));
+}
+
+export function getEnvironmentLight(): LightIntensityPercent {
+  return currentEnvironmentLight;
+}
+
+export function setEnvironmentLight(percent: LightIntensityPercent): void {
+  currentEnvironmentLight = clampLightIntensityPercent(percent);
+  persist(activeStorageKeys().environmentLight, String(currentEnvironmentLight));
+}
+
+export function getSkyLight(): LightIntensityPercent {
+  return currentSkyLight;
+}
+
+export function setSkyLight(percent: LightIntensityPercent): void {
+  currentSkyLight = clampLightIntensityPercent(percent);
+  persist(activeStorageKeys().skyLight, String(currentSkyLight));
+}
+
+export function getExposure(): LightIntensityPercent {
+  return currentExposure;
+}
+
+export function setExposure(percent: LightIntensityPercent): void {
+  currentExposure = clampLightIntensityPercent(percent);
+  persist(activeStorageKeys().exposure, String(currentExposure));
 }
 
 export function getDirectionalLight(): LightIntensityPercent {
