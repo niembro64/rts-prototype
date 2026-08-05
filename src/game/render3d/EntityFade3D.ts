@@ -142,9 +142,20 @@ export function patchInstancedFadeMaterial(material: THREE.Material): void {
       .replace('#include <common>', FADE_FRAGMENT_COMMON)
       .replace('#include <opaque_fragment>', FADE_FRAGMENT_ALPHA);
   };
-  // Share one program across every instanced-faded material, distinct
-  // from unpatched and per-object-faded materials.
-  material.customProgramCacheKey = () => 'entityFadeInstancedAlpha';
+  // Share one program across every instanced-faded material, distinct from
+  // unpatched and per-object-faded materials.
+  //
+  // COMPOSE, never clobber. Another patcher may already have contributed to
+  // this material's cache key (SurfaceChartMaterial3D does), and its injected
+  // shader is what makes that material's program structurally different.
+  // Overwriting the key with a constant made two materials with different
+  // shader source share one cache entry, so whichever compiled first silently
+  // won for both — which is exactly how the charted chassis pool ended up
+  // rendering the far tier's untextured program.
+  const previousKey = material.customProgramCacheKey;
+  material.customProgramCacheKey = previousKey
+    ? () => `${previousKey.call(material)}|entityFadeInstancedAlpha`
+    : () => 'entityFadeInstancedAlpha';
   material.needsUpdate = true;
 }
 

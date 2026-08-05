@@ -421,27 +421,39 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   for (let i = 0; i < 22; i++) scratch(layer, rng, rect, 34);
 }
 
-/** Leg strut. A polished mid shaft between two bolted collars, with hydraulic
- *  lines running along the strut (vertical in band space → axial on the
- *  cylinder is horizontal, so these lines run AROUND it as ribs; the polished
- *  shaft is what reads at range). */
+/** Leg strut. A machined shaft between two bolted collars, with hydraulic
+ *  lines running around it.
+ *
+ *  NO BAKED DIRECTIONAL SHADING. A band feature whose period is the FULL
+ *  circumference is a fake light source welded to the geometry: it lands at
+ *  fixed angles in the strut's own frame, so as the leg swings you see its
+ *  dark side facing the camera and its bright side facing away. That reads as
+ *  looking at the back of the segment. Legs are unlit (MeshBasicMaterial), so
+ *  there is no real shading to overpower the mistake either.
+ *
+ *  Everything here is therefore either constant around the circumference
+ *  (collars, hose rings) or repeats many times around it (flutes), both of
+ *  which look the same from every direction. */
 function drawHydraulicStrut(layer: Layer, rect: BandRect, rng: () => number): void {
-  // Polished shaft — a broad soft highlight around the circumference.
   const shaftTop = rect.y + rect.height * 0.2;
   const shaftHeight = rect.height * 0.6;
-  const gradient = layer.albedo.createLinearGradient(0, 0, TRIM_SHEET_PIXELS, 0);
-  gradient.addColorStop(0, gray(NEUTRAL - 0.14));
-  gradient.addColorStop(0.28, gray(NEUTRAL + 0.3));
-  gradient.addColorStop(0.5, gray(NEUTRAL + 0.02));
-  gradient.addColorStop(0.72, gray(NEUTRAL + 0.3));
-  gradient.addColorStop(1, gray(NEUTRAL - 0.14));
-  layer.albedo.fillStyle = gradient;
+  layer.albedo.fillStyle = gray(NEUTRAL + 0.06);
   layer.albedo.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
   layer.height.fillStyle = gray(0.6);
   layer.height.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
-  // A polished piston is bare steel, not painted bodywork.
+  // A machined piston is bare steel, not painted bodywork.
   layer.bare.fillStyle = gray(0.72);
   layer.bare.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
+  // Shallow flutes: high frequency around the circumference, so the rhythm is
+  // identical whichever facet faces the camera.
+  const flutes = 18;
+  const fluteWidth = TRIM_SHEET_PIXELS / flutes;
+  for (let i = 0; i < flutes; i++) {
+    layer.albedo.fillStyle = gray(NEUTRAL - 0.12);
+    layer.albedo.fillRect(i * fluteWidth, shaftTop, fluteWidth * 0.34, shaftHeight);
+    layer.height.fillStyle = gray(0.44);
+    layer.height.fillRect(i * fluteWidth, shaftTop, fluteWidth * 0.34, shaftHeight);
+  }
 
   // Hydraulic lines: raised tubes running around the strut.
   for (let i = 0; i < 3; i++) {

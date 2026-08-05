@@ -6,6 +6,9 @@
 // overlaps its neighbour, an alpha channel that silently premultiplies the
 // colour channels away, a livery band dark enough to kill the team read.
 
+import * as THREE from 'three';
+import { patchInstancedFadeMaterial } from './EntityFade3D';
+import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
   FORMIK_BODY_PART_CHARTS,
   FORMIK_CHARTS,
@@ -238,6 +241,8 @@ function checkTrimSheet(): void {
     );
   }
 
+  checkNoBakedDirectionalShading(pixels);
+
   // Gutters must be a copy of the band's own edge row, not the neighbour's
   // content. Sample the row just outside the content and compare to the row
   // just inside it.
@@ -265,8 +270,145 @@ function checkTrimSheet(): void {
   }
 }
 
+/**
+ * A charted material's shader source differs from an uncharted one's, so its
+ * program cache key MUST differ too. three.js caches compiled programs by that
+ * key: two materials that share a key share a program, and whichever compiles
+ * first silently wins for both.
+ *
+ * That is not hypothetical. The chassis/turret/barrel pools apply the chart
+ * patch and then the instanced-fade patch, and the fade patch used to
+ * OVERWRITE the key with a constant — so the charted close/mid pools and the
+ * uncharted far pool all reported the same key, and the body rendered with the
+ * far tier's untextured program. Both orders are asserted because pools use
+ * one and per-Mesh surfaces the other.
+ */
+function checkProgramCacheKeys(): void {
+  const orders: [string, () => THREE.Material][] = [
+    ['chart then fade (pool order)', () => {
+      const material = new THREE.MeshLambertMaterial();
+      patchSurfaceChartMaterial(material, { bump: true });
+      patchInstancedFadeMaterial(material);
+      return material;
+    }],
+    ['fade then chart', () => {
+      const material = new THREE.MeshLambertMaterial();
+      patchInstancedFadeMaterial(material);
+      patchSurfaceChartMaterial(material, { bump: true });
+      return material;
+    }],
+  ];
+  const keys: string[] = [];
+  for (const [label, build] of orders) {
+    const material = build();
+    const key = material.customProgramCacheKey?.() ?? '';
+    assertContract(
+      key.includes('chartBump'),
+      `${label}: chart patch must survive in the program cache key — got `
+        + `"${key}". A patcher that overwrites the key makes a charted and an `
+        + 'uncharted material share one compiled program.',
+    );
+    assertContract(
+      key.includes('entityFadeInstancedAlpha'),
+      `${label}: fade patch must survive in the program cache key — got "${key}"`,
+    );
+    keys.push(key);
+    material.dispose();
+  }
+
+  // An unpatched faded material — the far tier — must not collide with either.
+  const plain = new THREE.MeshLambertMaterial();
+  patchInstancedFadeMaterial(plain);
+  const plainKey = plain.customProgramCacheKey?.() ?? '';
+  for (const key of keys) {
+    assertContract(
+      key !== plainKey,
+      'a charted material must not share a program cache key with an '
+        + `uncharted faded one — both reported "${plainKey}"`,
+    );
+  }
+  plain.dispose();
+}
+
+/**
+ * No band may bake a directional highlight.
+ *
+ * A feature whose period is the FULL width of the band becomes, on a cylinder,
+ * a light source welded to the geometry: it sits at fixed angles in the
+ * surface's own frame, so as the part rotates you see its dark side facing the
+ * camera. Legs are unlit, so there is no real shading to cover for it — this
+ * is what made leg segments read as though you were looking at their backs.
+ *
+ * Structure must therefore be either constant across u or repeat MANY times
+ * across it; both look identical from every direction. So the test is a
+ * frequency one, not a brightness one: measure each row's lowest harmonics
+ * (period = the whole circumference, or half, or a third) and require them to
+ * be small. Authored structure lives far higher up — 18 flutes, 11 plate
+ * columns, 32 bolt ribs — and is untouched by this.
+ *
+ * A half-band mean comparison does NOT work here and was the first thing tried:
+ * the offending gradient covered only the middle 60% of the band, so averaging
+ * the collars in with it diluted the signal below any workable threshold.
+ */
+const MAX_LOW_HARMONIC_AMPLITUDE = 14;
+
+function lowHarmonicAmplitude(
+  pixels: Uint8ClampedArray,
+  band: TrimBandId,
+): { amplitude: number; row: number; harmonic: number } {
+  const { v0, vSpan } = bandContentRange(band);
+  const top = Math.round(v0 * TRIM_SHEET_PIXELS);
+  const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
+  let worst = { amplitude: 0, row: -1, harmonic: 0 };
+  for (let y = top; y < bottom; y++) {
+    for (let harmonic = 1; harmonic <= 3; harmonic++) {
+      let re = 0;
+      let im = 0;
+      for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+        const value = pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
+        const angle = (2 * Math.PI * harmonic * x) / TRIM_SHEET_PIXELS;
+        re += value * Math.cos(angle);
+        im -= value * Math.sin(angle);
+      }
+      const amplitude = (2 * Math.hypot(re, im)) / TRIM_SHEET_PIXELS;
+      if (amplitude > worst.amplitude) worst = { amplitude, row: y, harmonic };
+    }
+  }
+  return worst;
+}
+
+function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
+  for (const band of TRIM_BAND_ORDER) {
+    const worst = lowHarmonicAmplitude(pixels, band);
+    assertContract(
+      worst.amplitude < MAX_LOW_HARMONIC_AMPLITUDE,
+      `${band} carries a period-${worst.harmonic} variation across the `
+        + `circumference (amplitude ${worst.amplitude.toFixed(1)} at row `
+        + `${worst.row}). That is a baked directional highlight: it locks to `
+        + 'the geometry and turns its dark side to the camera as the part '
+        + 'rotates, which reads as looking at the back of the surface.',
+    );
+  }
+}
+
+/** Dev aid: the measured low-harmonic amplitude per band, for tuning the
+ *  threshold above against real content rather than guesswork. */
+export function measureBandLowHarmonics(): Record<string, string> {
+  const canvas = buildTrimSheetCanvasForTest();
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('no 2D context');
+  const pixels = context.getImageData(0, 0, TRIM_SHEET_PIXELS, TRIM_SHEET_PIXELS).data;
+  const out: Record<string, string> = {};
+  for (const band of TRIM_BAND_ORDER) {
+    const worst = lowHarmonicAmplitude(pixels, band);
+    out[band] = `${worst.amplitude.toFixed(1)} (h${worst.harmonic})`;
+  }
+  return out;
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
   checkLiverySeparation();
+  checkProgramCacheKeys();
   checkTrimSheet();
 }
