@@ -10,6 +10,7 @@ import {
   createFormikBodyOrnamentGeometry,
   createFormikTurretAnchorGeometry,
 } from './FormikOrnament3D';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 /**
  * TeamTrimRenderer3D — shared team-colored ornamentation.
@@ -29,6 +30,27 @@ const SLOT_CAP = 16384;
 const ZERO_SCALE = 0;
 
 type DirtySlotSpan = ReturnType<typeof createDirtySlotSpan>;
+
+/** Tier order must match trimTierIndex below. */
+const TRIM_TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
+const TRIM_TIER_SLOT_SHIFT = 20;
+const TRIM_TIER_SLOT_MASK = (1 << TRIM_TIER_SLOT_SHIFT) - 1;
+
+function trimTierIndex(tier: PrimitiveGeometryTier): number {
+  return tier === 'close' ? 0 : tier === 'mid' ? 1 : 2;
+}
+
+function encodeTrimTierSlot(tierIndex: number, index: number): number {
+  return (tierIndex << TRIM_TIER_SLOT_SHIFT) | index;
+}
+
+function trimSlotTier(slot: number): number {
+  return slot >>> TRIM_TIER_SLOT_SHIFT;
+}
+
+function trimSlotIndex(slot: number): number {
+  return slot & TRIM_TIER_SLOT_MASK;
+}
 
 type TrimPool = {
   mesh: THREE.InstancedMesh;
@@ -54,8 +76,11 @@ export class TeamTrimRenderer3D {
   private readonly material: THREE.MeshLambertMaterial;
   private readonly pools: TrimPool[];
   private readonly genericPool: TrimPool;
-  private readonly formikBodyPool: TrimPool;
-  private readonly formikTurretAnchorPool: TrimPool;
+  /** One pool per detail tier. The slot returned by alloc encodes which,
+   *  using the same packing UnitDetailInstanceRenderer3D uses for its own
+   *  tiered pools, so callers keep passing a single opaque number. */
+  private readonly formikBodyPools: TrimPool[];
+  private readonly formikTurretAnchorPools: TrimPool[];
   private readonly scratchMatrix = new THREE.Matrix4();
   private readonly scratchPosition = new THREE.Vector3();
   private readonly scratchQuaternion = new THREE.Quaternion();
@@ -73,18 +98,18 @@ export class TeamTrimRenderer3D {
       'TeamTrimRenderer3D.Generic',
       new THREE.BoxGeometry(1, 1, 1),
     );
-    this.formikBodyPool = this.createPool(
-      'TeamTrimRenderer3D.FormikBody',
-      createFormikBodyOrnamentGeometry(),
-    );
-    this.formikTurretAnchorPool = this.createPool(
-      'TeamTrimRenderer3D.FormikTurretAnchor',
-      createFormikTurretAnchorGeometry(),
-    );
+    this.formikBodyPools = TRIM_TIERS.map((tier) => this.createPool(
+      `TeamTrimRenderer3D.FormikBody.${tier}`,
+      createFormikBodyOrnamentGeometry(tier),
+    ));
+    this.formikTurretAnchorPools = TRIM_TIERS.map((tier) => this.createPool(
+      `TeamTrimRenderer3D.FormikTurretAnchor.${tier}`,
+      createFormikTurretAnchorGeometry(tier),
+    ));
     this.pools = [
       this.genericPool,
-      this.formikBodyPool,
-      this.formikTurretAnchorPool,
+      ...this.formikBodyPools,
+      ...this.formikTurretAnchorPools,
     ];
   }
 
@@ -141,12 +166,20 @@ export class TeamTrimRenderer3D {
     return this.allocFrom(this.genericPool);
   }
 
-  allocFormikBody(): number {
-    return this.allocFrom(this.formikBodyPool);
+  allocFormikBody(tier: PrimitiveGeometryTier = 'close'): number {
+    return this.allocTiered(this.formikBodyPools, tier);
   }
 
-  allocFormikTurretAnchor(): number {
-    return this.allocFrom(this.formikTurretAnchorPool);
+  allocFormikTurretAnchor(tier: PrimitiveGeometryTier = 'close'): number {
+    return this.allocTiered(this.formikTurretAnchorPools, tier);
+  }
+
+  /** Alloc from the tier's pool and pack the tier into the slot, so a
+   *  caller that later frees or writes only has to keep one number. */
+  private allocTiered(pools: TrimPool[], tier: PrimitiveGeometryTier): number {
+    const tierIndex = trimTierIndex(tier);
+    const index = this.allocFrom(pools[tierIndex]);
+    return index < 0 ? -1 : encodeTrimTierSlot(tierIndex, index);
   }
 
   private setPool(
@@ -230,8 +263,8 @@ export class TeamTrimRenderer3D {
     colorHex: number,
   ): void {
     this.setPool(
-      this.formikBodyPool,
-      slot,
+      this.formikBodyPools[trimSlotTier(slot)],
+      trimSlotIndex(slot),
       x,
       y,
       z,
@@ -255,8 +288,8 @@ export class TeamTrimRenderer3D {
     colorHex: number,
   ): void {
     this.setPool(
-      this.formikTurretAnchorPool,
-      slot,
+      this.formikTurretAnchorPools[trimSlotTier(slot)],
+      trimSlotIndex(slot),
       x,
       y,
       z,
@@ -287,11 +320,13 @@ export class TeamTrimRenderer3D {
   }
 
   hideFormikBody(slot: number): void {
-    this.hideIn(this.formikBodyPool, slot);
+    if (slot < 0) return;
+    this.hideIn(this.formikBodyPools[trimSlotTier(slot)], trimSlotIndex(slot));
   }
 
   hideFormikTurretAnchor(slot: number): void {
-    this.hideIn(this.formikTurretAnchorPool, slot);
+    if (slot < 0) return;
+    this.hideIn(this.formikTurretAnchorPools[trimSlotTier(slot)], trimSlotIndex(slot));
   }
 
   private releaseFrom(pool: TrimPool, slot: number): void {
@@ -305,11 +340,13 @@ export class TeamTrimRenderer3D {
   }
 
   releaseFormikBody(slot: number): void {
-    this.releaseFrom(this.formikBodyPool, slot);
+    if (slot < 0) return;
+    this.releaseFrom(this.formikBodyPools[trimSlotTier(slot)], trimSlotIndex(slot));
   }
 
   releaseFormikTurretAnchor(slot: number): void {
-    this.releaseFrom(this.formikTurretAnchorPool, slot);
+    if (slot < 0) return;
+    this.releaseFrom(this.formikTurretAnchorPools[trimSlotTier(slot)], trimSlotIndex(slot));
   }
 
   /** Upload every profile's dirty ranges once, after all host poses. */

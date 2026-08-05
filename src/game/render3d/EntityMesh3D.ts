@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import type { UnitBodyShape } from '@/types/blueprints';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { EntityBuildVisual } from './EntityFade3D';
@@ -86,6 +87,11 @@ export type EntityMesh = {
    *  bodyShape is the authored source; this key only identifies the
    *  matching instanced geometry pool. */
   bodyShapeKey: string;
+  /** Detail tier this mesh's geometry was built at. Bespoke ornament pools
+   *  allocate at the same tier, so a unit's trim always matches the body it
+   *  is bolted to — and a rung change rebuilds the mesh, which re-allocs
+   *  the trim into the new tier's pool. */
+  geometryTier?: PrimitiveGeometryTier;
   bodyShape?: UnitBodyShape | null;
   turrets: TurretMesh[];
   mirrors?: ShieldPanelMesh;

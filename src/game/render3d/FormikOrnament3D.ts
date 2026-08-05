@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 /** The Formik and its rapid mortar are intentionally a matched visual kit. */
 export const FORMIK_UNIT_BLUEPRINT_ID = 'unitFormik';
@@ -24,6 +24,33 @@ export const FORMIK_TURRET_BLUEPRINT_ID = 'turretMortarFast';
 const TURRET_ANCHOR_BACK_X_FRAC = 0;
 const TURRET_ANCHOR_FRONT_X_FRAC = 1.18;
 const TURRET_ANCHOR_RADIUS_FRAC = 0.76;
+
+/**
+ * Collar sides per detail tier. The collar is a plain cylinder, so its
+ * silhouette cost is entirely in this number and it can be tuned freely:
+ * 16 reads as round up close, 8 is the shape shipped before this ladder
+ * existed, and 4 is a square — which is all that survives a few pixels
+ * wide anyway. Triangles come out at 4n (2 per side quad, n per cap).
+ */
+const TURRET_ANCHOR_RADIAL_SEGMENTS: Record<PrimitiveGeometryTier, number> = {
+  close: 16,
+  mid: 8,
+  far: 4,
+};
+
+/**
+ * Strap detail per tier. `strap` is the full five-vertex section; `fin`
+ * collapses it to the bare spine triangle, which keeps the ornament's
+ * line and colour while shedding its thickness — the right trade once the
+ * unit is small enough that the thickness is sub-pixel. `far` also drops
+ * the cross-ribs, leaving the two rails that carry the team colour.
+ */
+type StrapTierPlan = { section: 'strap' | 'fin'; ribs: boolean; railSamples: number };
+const STRAP_TIER_PLAN: Record<PrimitiveGeometryTier, StrapTierPlan> = {
+  close: { section: 'strap', ribs: true, railSamples: 6 },
+  mid: { section: 'fin', ribs: true, railSamples: 6 },
+  far: { section: 'fin', ribs: false, railSamples: 3 },
+};
 
 export type FormikTurretAnchorProfile = {
   centerX: number;
@@ -85,7 +112,10 @@ function outwardAt(point: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
  * of what a round tube costs, and unlike a bare triangle it has visible
  * thickness from every angle instead of vanishing edge-on.
  */
-function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
+function ridge(
+  path: readonly THREE.Vector3[],
+  section: 'strap' | 'fin',
+): THREE.BufferGeometry {
   const rings: THREE.Vector3[][] = [];
   for (let i = 0; i < path.length; i++) {
     const point = path[i];
@@ -102,6 +132,18 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
     // Spine first, then around the section in one consistent cyclic order
     // so every quad below is wound the same way and normals face outward.
     const shoulder = RIDGE_STRAP_THICKNESS;
+    if (section === 'fin') {
+      // Spine plus the two sunk base corners: the strap's outline without
+      // its thickness, for tiers where that thickness is sub-pixel.
+      rings.push([
+        point.clone().addScaledVector(_outward, shoulder + RIDGE_SPIKE_HEIGHT),
+        point.clone().addScaledVector(_side, RIDGE_HALF_WIDTH)
+          .addScaledVector(_outward, -RIDGE_SINK),
+        point.clone().addScaledVector(_side, -RIDGE_HALF_WIDTH)
+          .addScaledVector(_outward, -RIDGE_SINK),
+      ]);
+      continue;
+    }
     rings.push([
       point.clone().addScaledVector(_outward, shoulder + RIDGE_SPIKE_HEIGHT),
       point.clone().addScaledVector(_side, RIDGE_HALF_WIDTH)
@@ -119,7 +161,7 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
   const push = (v: THREE.Vector3): void => {
     positions.push(v.x, v.y, v.z);
   };
-  const ringSize = 5;
+  const ringSize = rings[0].length;
   for (let i = 0; i + 1 < rings.length; i++) {
     const a = rings[i];
     const b = rings[i + 1];
@@ -152,8 +194,8 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
 
 /** Shoulder rail path for one side. The rib paths below reuse these exact
  *  points, which is what welds the frame into a single piece. */
-function railPath(side: -1 | 1): THREE.Vector3[] {
-  return [
+function railPath(side: -1 | 1, samples: number): THREE.Vector3[] {
+  const full = [
     new THREE.Vector3(-1.31, 1.40, side * 0.24),
     new THREE.Vector3(-0.86, 1.45, side * 0.45),
     new THREE.Vector3(-0.28, 1.02, side * 0.40),
@@ -161,6 +203,14 @@ function railPath(side: -1 | 1): THREE.Vector3[] {
     new THREE.Vector3(0.58, 1.01, side * 0.24),
     new THREE.Vector3(0.95, 0.76, side * 0.09),
   ];
+  if (samples >= full.length) return full;
+  // Keep both ends and drop interior samples evenly, so a coarser rail
+  // still spans abdomen to forward lobe on the same line.
+  const out: THREE.Vector3[] = [];
+  for (let i = 0; i < samples; i++) {
+    out.push(full[Math.round((i * (full.length - 1)) / (samples - 1))]);
+  }
+  return out;
 }
 
 /**
@@ -176,19 +226,27 @@ function railPath(side: -1 | 1): THREE.Vector3[] {
  * Authored in unit-radius-1 chassis space and instanced by
  * TeamTrimRenderer3D.
  */
-export function createFormikBodyOrnamentGeometry(): THREE.BufferGeometry {
-  const left = railPath(-1);
-  const right = railPath(1);
-  const pieces: THREE.BufferGeometry[] = [ridge(left), ridge(right)];
+export function createFormikBodyOrnamentGeometry(
+  tier: PrimitiveGeometryTier = 'close',
+): THREE.BufferGeometry {
+  const plan = STRAP_TIER_PLAN[tier];
+  const left = railPath(-1, plan.railSamples);
+  const right = railPath(1, plan.railSamples);
+  const pieces: THREE.BufferGeometry[] = [
+    ridge(left, plan.section),
+    ridge(right, plan.section),
+  ];
 
   // Cross-ribs over the rear and middle lobes. Index 1 and 3 are the rail
   // vertices they join, so the endpoints coincide exactly.
-  for (const [railIndex, apexY] of [[1, 1.66], [3, 1.38]] as const) {
-    pieces.push(ridge([
-      left[railIndex].clone(),
-      new THREE.Vector3(left[railIndex].x, apexY, 0),
-      right[railIndex].clone(),
-    ]));
+  if (plan.ribs) {
+    for (const [railIndex, apexY] of [[1, 1.66], [3, 1.38]] as const) {
+      pieces.push(ridge([
+        left[railIndex].clone(),
+        new THREE.Vector3(left[railIndex].x, apexY, 0),
+        right[railIndex].clone(),
+      ], plan.section));
+    }
   }
 
   const geometry = mergeGeometries(pieces, false);
@@ -201,14 +259,24 @@ export function createFormikBodyOrnamentGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Unit cylinder with its long axis along the turret/barrel +X direction. */
-export function createFormikTurretAnchorGeometry(): THREE.CylinderGeometry {
-  const geometry = createPrimitiveCylinderGeometry(
-    'turret',
-    'close',
+/**
+ * Unit cylinder with its long axis along the turret/barrel +X direction,
+ * at this tier's side count (see TURRET_ANCHOR_RADIAL_SEGMENTS).
+ *
+ * This deliberately does NOT go through the shared `turret` cylinder role:
+ * that role's counts are tuned for barrels, and the collar is a much larger
+ * silhouette that wants its own ladder — 16 up close where it reads as a
+ * ring around the head, down to a plain square once it is a few pixels
+ * wide.
+ */
+export function createFormikTurretAnchorGeometry(
+  tier: PrimitiveGeometryTier = 'close',
+): THREE.CylinderGeometry {
+  const geometry = new THREE.CylinderGeometry(
     1,
     1,
     1,
+    TURRET_ANCHOR_RADIAL_SEGMENTS[tier],
     1,
     false,
   );

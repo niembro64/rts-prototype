@@ -98,7 +98,7 @@ export class UnitChassisInstancePose3D {
     teamTrim: TeamTrimRenderer3D,
   ): void {
     if (mesh.formikBodyTrimSlot === undefined) {
-      const slot = teamTrim.allocFormikBody();
+      const slot = teamTrim.allocFormikBody(mesh.geometryTier ?? 'close');
       if (slot < 0) return;
       mesh.formikBodyTrimSlot = slot;
     }

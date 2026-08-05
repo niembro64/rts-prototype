@@ -31,6 +31,7 @@ import {
 } from './ConstructionEmitterMesh3D';
 import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import {
   getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveCylinderGeometry,
@@ -74,7 +75,12 @@ export type TurretMesh = {
   /** Formik rapid-mortar team-color collar. It is rendered through the
    *  shared TeamTrimRenderer3D pool; this record carries the authored local
    *  dimensions plus its lazily allocated instance slot. */
-  formikTeamTrimAnchor?: FormikTurretAnchorProfile & { slot?: number };
+  /** Formik-only team collar. `tier` is the detail tier the turret was built
+   *  at, so the collar allocates out of the matching LOD pool. */
+  formikTeamTrimAnchor?: FormikTurretAnchorProfile & {
+    tier: PrimitiveGeometryTier;
+    slot?: number;
+  };
   /** Slot index into Render3DEntities.barrelInstanced for each barrel
    *  in `barrels`, set after alloc by the caller (Render3DEntities).
    *  `barrelSlots[i]` is the slot for `barrels[i]`. Empty when no
@@ -375,7 +381,10 @@ export function buildTurretMesh3D(
   }
   const formikTeamTrimAnchor =
     turret.config.turretBlueprintId === FORMIK_TURRET_BLUEPRINT_ID
-      ? getFormikTurretAnchorProfile(headRadius)
+      ? {
+          ...getFormikTurretAnchorProfile(headRadius),
+          tier: geometryTierForDetail(detailLevel),
+        }
       : undefined;
 
   if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {

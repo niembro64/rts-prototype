@@ -260,6 +260,7 @@ export class UnitMeshBuilder3D {
       chassis,
       chassisMeshes,
       bodyShapeKey,
+      geometryTier,
       bodyShape,
       turrets: turretMeshes,
       geometryKey: unitRenderKey,

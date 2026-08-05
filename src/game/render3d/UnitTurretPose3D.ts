@@ -582,7 +582,7 @@ export class UnitTurretPose3D {
     const anchor = turretMesh.formikTeamTrimAnchor;
     if (anchor === undefined || teamTrim === null) return;
     if (anchor.slot === undefined) {
-      const slot = teamTrim.allocFormikTurretAnchor();
+      const slot = teamTrim.allocFormikTurretAnchor(anchor.tier);
       if (slot < 0) return;
       anchor.slot = slot;
     }
