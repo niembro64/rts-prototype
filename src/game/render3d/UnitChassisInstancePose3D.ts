@@ -9,6 +9,7 @@ import {
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import { entityTeamColorHex } from './EntityInstanceColor3D';
+import { FORMIK_UNIT_BLUEPRINT_ID } from './FormikOrnament3D';
 import {
   growFloat32Array,
   writePositionQuaternion,
@@ -83,6 +84,35 @@ export class UnitChassisInstancePose3D {
     );
   }
 
+  /**
+   * Place the Formik's bespoke rounded exoskeletal strokes. The merged kit is
+   * one instance in unit-radius-1 space, so its rails stay registered to all
+   * three smooth body lobes while the chassis tilts and yaws.
+   */
+  private updateFormikBodyOrnament(
+    entity: Entity,
+    mesh: EntityMesh,
+    radius: number,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    teamTrim: TeamTrimRenderer3D,
+  ): void {
+    if (mesh.formikBodyTrimSlot === undefined) {
+      const slot = teamTrim.allocFormikBody();
+      if (slot < 0) return;
+      mesh.formikBodyTrimSlot = slot;
+    }
+    teamTrim.setFormikBody(
+      mesh.formikBodyTrimSlot,
+      parentPosition.x,
+      parentPosition.y,
+      parentPosition.z,
+      parentQuaternion,
+      radius,
+      entityTeamColorHex(entity),
+    );
+  }
+
   begin(): void {
     this.count = 0;
     this.kinds.length = 0;
@@ -108,10 +138,32 @@ export class UnitChassisInstancePose3D {
       if (teamTrim !== null && mesh.teamTrimSlot !== undefined) {
         teamTrim.hide(mesh.teamTrimSlot);
       }
+      if (teamTrim !== null && mesh.formikBodyTrimSlot !== undefined) {
+        teamTrim.hideFormikBody(mesh.formikBodyTrimSlot);
+      }
       return;
     }
     if (teamTrim !== null) {
-      this.updateTeamFin(entity, mesh, bodyEntry, radius, parentPosition, parentQuaternion, teamTrim);
+      if (entity.unit?.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID) {
+        this.updateFormikBodyOrnament(
+          entity,
+          mesh,
+          radius,
+          parentPosition,
+          parentQuaternion,
+          teamTrim,
+        );
+      } else {
+        this.updateTeamFin(
+          entity,
+          mesh,
+          bodyEntry,
+          radius,
+          parentPosition,
+          parentQuaternion,
+          teamTrim,
+        );
+      }
     }
 
     if (mesh.smoothChassisSlots) {

@@ -37,6 +37,11 @@ import {
   getSharedPrimitiveSphereGeometry,
   getSharedPrimitiveTetrahedronGeometry,
 } from './PrimitiveGeometryQuality3D';
+import {
+  FORMIK_TURRET_BLUEPRINT_ID,
+  getFormikTurretAnchorProfile,
+  type FormikTurretAnchorProfile,
+} from './FormikOrnament3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -66,6 +71,10 @@ export type TurretMesh = {
    *  When `deps.skipBarrels` was false (cap exhausted on alloc), the
    *  Meshes are parented to spinGroup and render normally. */
   barrels: THREE.Mesh[];
+  /** Formik rapid-mortar team-color collar. It is rendered through the
+   *  shared TeamTrimRenderer3D pool; this record carries the authored local
+   *  dimensions plus its lazily allocated instance slot. */
+  formikTeamTrimAnchor?: FormikTurretAnchorProfile & { slot?: number };
   /** Slot index into Render3DEntities.barrelInstanced for each barrel
    *  in `barrels`, set after alloc by the caller (Render3DEntities).
    *  `barrelSlots[i]` is the slot for `barrels[i]`. Empty when no
@@ -364,6 +373,10 @@ export function buildTurretMesh3D(
       headOnly, barrelFollowsBeam: followsBeam,
     };
   }
+  const formikTeamTrimAnchor =
+    turret.config.turretBlueprintId === FORMIK_TURRET_BLUEPRINT_ID
+      ? getFormikTurretAnchorProfile(headRadius)
+      : undefined;
 
   if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
@@ -410,5 +423,6 @@ export function buildTurretMesh3D(
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
+    formikTeamTrimAnchor,
   };
 }

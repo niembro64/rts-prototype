@@ -4,6 +4,7 @@ import { getFactoryProductionPylonVisual } from '../sim/factoryProductionHold';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import {
+  entityTeamColorHex,
   entityHeadOnlyTurretHeadColorHex,
   entityHeadOnlyTurretHeadColorHexForStateCode,
   entityShieldSphereTurretHeadColorHex,
@@ -29,6 +30,7 @@ import {
   UnitTurretHeadMatrixBatch3D,
 } from './UnitTurretHeadMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
@@ -61,6 +63,10 @@ export class UnitTurretPose3D {
   private readonly aimColorOverrides: (number | undefined)[] = [];
   private readonly deferredParentPosition = new THREE.Vector3();
   private readonly deferredParentQuaternion = new THREE.Quaternion();
+  private readonly anchorPosition = new THREE.Vector3();
+  private readonly anchorQuaternion = new THREE.Quaternion();
+  private readonly scratchZeroPosition = new THREE.Vector3();
+  private readonly scratchIdentityQuaternion = new THREE.Quaternion();
 
   private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
   private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
@@ -112,6 +118,7 @@ export class UnitTurretPose3D {
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     turretBeamAimCache: TurretBeamAimCache3D,
     constructionVisuals: ConstructionVisualController3D,
+    teamTrim: TeamTrimRenderer3D | null,
   ): void {
     const stateViews = turretRows?.views;
     const stateStart = turretRows?.start ?? 0;
@@ -134,6 +141,9 @@ export class UnitTurretPose3D {
       setObjectVisibleIfChanged(turretMesh.root, visible);
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);
+        if (turretMesh.formikTeamTrimAnchor?.slot !== undefined) {
+          teamTrim?.hideFormikTurretAnchor(turretMesh.formikTeamTrimAnchor.slot);
+        }
         continue;
       }
 
@@ -324,6 +334,8 @@ export class UnitTurretPose3D {
         turretMesh,
         parentPosition,
         parentQuaternion,
+        entity,
+        teamTrim,
       );
     }
   }
@@ -331,13 +343,14 @@ export class UnitTurretPose3D {
   flush(
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     turretMountCache: TurretMountCache3D,
+    teamTrim: TeamTrimRenderer3D | null,
   ): void {
-    this.flushAimRecords();
+    this.flushAimRecords(teamTrim);
     this.flushHeadMounts(unitDetailInstances, turretMountCache);
     this.flushBarrels(unitDetailInstances);
   }
 
-  private flushAimRecords(): void {
+  private flushAimRecords(teamTrim: TeamTrimRenderer3D | null): void {
     const count = this.aimCount;
     if (count <= 0) return;
 
@@ -380,6 +393,8 @@ export class UnitTurretPose3D {
         turretMesh,
         this.deferredParentPosition,
         this.deferredParentQuaternion,
+        this.aimEntities[i],
+        teamTrim,
       );
     }
   }
@@ -525,7 +540,16 @@ export class UnitTurretPose3D {
     turretMesh: TurretMesh,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
+    entity: Entity,
+    teamTrim: TeamTrimRenderer3D | null,
   ): void {
+    this.writeFormikTeamTrimAnchor(
+      turretMesh,
+      parentPosition,
+      parentQuaternion,
+      entity,
+      teamTrim,
+    );
     if (
       !turretMesh.barrelSlots ||
       turretMesh.barrels.length === 0 ||
@@ -546,6 +570,47 @@ export class UnitTurretPose3D {
         turretMesh.barrels[barrelIdx],
       );
     }
+  }
+
+  private writeFormikTeamTrimAnchor(
+    turretMesh: TurretMesh,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    entity: Entity,
+    teamTrim: TeamTrimRenderer3D | null,
+  ): void {
+    const anchor = turretMesh.formikTeamTrimAnchor;
+    if (anchor === undefined || teamTrim === null) return;
+    if (anchor.slot === undefined) {
+      const slot = teamTrim.allocFormikTurretAnchor();
+      if (slot < 0) return;
+      anchor.slot = slot;
+    }
+
+    const pitchPosition = turretMesh.pitchGroup?.position;
+    const pitchQuaternion = turretMesh.pitchGroup?.quaternion;
+    this.anchorPosition
+      .set(anchor.centerX, 0, 0)
+      .applyQuaternion(pitchQuaternion ?? this.scratchIdentityQuaternion)
+      .add(pitchPosition ?? this.scratchZeroPosition)
+      .applyQuaternion(turretMesh.root.quaternion)
+      .add(turretMesh.root.position)
+      .applyQuaternion(parentQuaternion)
+      .add(parentPosition);
+    this.anchorQuaternion
+      .copy(parentQuaternion)
+      .multiply(turretMesh.root.quaternion)
+      .multiply(pitchQuaternion ?? this.scratchIdentityQuaternion);
+    teamTrim.setFormikTurretAnchor(
+      anchor.slot,
+      this.anchorPosition.x,
+      this.anchorPosition.y,
+      this.anchorPosition.z,
+      this.anchorQuaternion,
+      anchor.length,
+      anchor.radius,
+      entityTeamColorHex(entity),
+    );
   }
 
   private enqueueBarrel(

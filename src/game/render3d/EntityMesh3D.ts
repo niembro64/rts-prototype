@@ -106,10 +106,11 @@ export type EntityMesh = {
    *  when toggled off. All three parent to the unit group at local
    *  y = collision radius so the sphere center sits on the unit's sim
    *  sphere center and rides along with altitude changes. */
-  /** Slot in the shared team-trim pool for this entity's team-colored
-   *  trim piece (a unit's dorsal fin, a building's pylon). Undefined
-   *  until the first frame that draws trim for it. */
+  /** Slot in the shared generic team-trim pool (a unit's dorsal fin or a
+   *  building's roof band). Bespoke profiles use their own fields/pools. */
   teamTrimSlot?: number;
+  /** Formik-only slot containing the complete rounded body-stroke kit. */
+  formikBodyTrimSlot?: number;
   radiusRings?: RadiusRingMeshes;
   radiusRingsVisible?: boolean;
   /** Builder-unit BLD ground-plane circle. Build range is a 2D

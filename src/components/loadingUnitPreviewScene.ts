@@ -53,6 +53,7 @@ import type { PlayerId } from '@/game/sim/types';
 import { productionHoldRingRadiusForProducedUnit } from '@/game/sim/factoryProductionHold';
 import {
   entityBodyColorHexForPlayer,
+  entityTeamColorHexForPlayer,
   turretAccentColorHexForPlayer,
 } from '@/game/render3d/EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
@@ -74,6 +75,11 @@ import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
 import { buildConstructionHostMarking } from '@/game/render3d/ConstructionHostMarking3D';
+import {
+  FORMIK_UNIT_BLUEPRINT_ID,
+  createFormikBodyOrnamentGeometry,
+  createFormikTurretAnchorGeometry,
+} from '@/game/render3d/FormikOrnament3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -191,6 +197,8 @@ type PreviewUnitMaterials = {
   primary: THREE.MeshLambertMaterial;
   /** Turret accent + physical barrels — half player color, half white, lit. */
   turretAccent: THREE.MeshLambertMaterial;
+  /** Added ornamentation — side/team identity, lit. */
+  teamOrnament: THREE.MeshLambertMaterial;
   /** Shield-reflector panel surface. */
   mirrorShiny: THREE.Material;
   /** Legged-locomotion segments — base leg color tinted toward the team
@@ -202,6 +210,7 @@ function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
   return {
     primary: new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) }),
     turretAccent: new THREE.MeshLambertMaterial({ color: turretAccentColorHexForPlayer(playerId) }),
+    teamOrnament: new THREE.MeshLambertMaterial({ color: entityTeamColorHexForPlayer(playerId) }),
     mirrorShiny: createShieldFallbackPanelMaterial(),
     leg: new THREE.MeshBasicMaterial({ color: locomotionPieceColorHex(LEG_SEGMENT_COLOR, playerId) }),
   };
@@ -210,6 +219,7 @@ function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
 function disposePreviewUnitMaterials(materials: PreviewUnitMaterials): void {
   materials.primary.dispose();
   materials.turretAccent.dispose();
+  materials.teamOrnament.dispose();
   materials.mirrorShiny.dispose();
   materials.leg.dispose();
 }
@@ -265,6 +275,8 @@ const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
 const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
+const formikBodyOrnamentGeom = createFormikBodyOrnamentGeometry();
+const formikTurretAnchorGeom = createFormikTurretAnchorGeometry();
 const legSegmentGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
   close: createPrimitiveCylinderGeometry('locomotion', 'close'),
   mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
@@ -543,7 +555,7 @@ function buildPreviewUnitModel(
   yawGroup.add(liftGroup);
 
   const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
-  buildPreviewBody(liftGroup, blueprint, materials.primary, geometryTier);
+  buildPreviewBody(liftGroup, blueprint, materials, geometryTier);
   const markingProfile = getConstructionHostMarkingProfile(unitBlueprintId);
   if (markingProfile !== null) {
     liftGroup.add(buildConstructionHostMarking(markingProfile, radius, geometryTier));
@@ -592,9 +604,10 @@ function buildPreviewProductionRing(
 function buildPreviewBody(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  bodyMaterial: THREE.Material,
+  materials: PreviewUnitMaterials,
   geometryTier: PrimitiveGeometryTier,
 ): void {
+  const bodyMaterial = materials.primary;
   const chassis = new THREE.Group();
   if (blueprint.unitBlueprintId === 'unitAlbatros') {
     buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
@@ -610,6 +623,9 @@ function buildPreviewBody(
   }
   if (blueprint.unitBlueprintId === 'unitCommander') {
     chassis.add(previewCommanderVisualKit.buildKit(bodyMaterial, geometryTier));
+  }
+  if (blueprint.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID) {
+    chassis.add(new THREE.Mesh(formikBodyOrnamentGeom, materials.teamOrnament));
   }
   chassis.scale.setScalar(blueprint.radius.other);
   liftGroup.add(chassis);
@@ -675,6 +691,16 @@ function buildPreviewTurrets(
       mountZ,
     );
     applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
+    const anchor = turretMesh.formikTeamTrimAnchor;
+    if (anchor !== undefined && turretMesh.pitchGroup !== undefined) {
+      const anchorMesh = new THREE.Mesh(
+        formikTurretAnchorGeom,
+        materials.teamOrnament,
+      );
+      anchorMesh.position.set(anchor.centerX, 0, 0);
+      anchorMesh.scale.set(anchor.length, anchor.radius, anchor.radius);
+      turretMesh.pitchGroup.add(anchorMesh);
+    }
   }
 }
 

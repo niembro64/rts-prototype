@@ -560,6 +560,16 @@ export class Render3DEntities {
       this.teamTrim?.release(m.teamTrimSlot);
       m.teamTrimSlot = undefined;
     }
+    if (m.formikBodyTrimSlot !== undefined) {
+      this.teamTrim?.releaseFormikBody(m.formikBodyTrimSlot);
+      m.formikBodyTrimSlot = undefined;
+    }
+    for (const turret of m.turrets) {
+      const anchor = turret.formikTeamTrimAnchor;
+      if (anchor?.slot === undefined) continue;
+      this.teamTrim?.releaseFormikTurretAnchor(anchor.slot);
+      anchor.slot = undefined;
+    }
   }
 
   private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
@@ -578,6 +588,13 @@ export class Render3DEntities {
     // Trim is world-parented, so detaching the group does not hide it.
     // Park the slot instead or it keeps drawing where the unit was.
     if (m.teamTrimSlot !== undefined) this.teamTrim?.hide(m.teamTrimSlot);
+    if (m.formikBodyTrimSlot !== undefined) {
+      this.teamTrim?.hideFormikBody(m.formikBodyTrimSlot);
+    }
+    for (const turret of m.turrets) {
+      const slot = turret.formikTeamTrimAnchor?.slot;
+      if (slot !== undefined) this.teamTrim?.hideFormikTurretAnchor(slot);
+    }
   }
 
   private attachUnitMeshGroup(m: EntityMesh): void {
@@ -1046,6 +1063,7 @@ export class Render3DEntities {
         this.unitDetailInstances,
         this.turretBeamAimCache,
         this.constructionVisuals,
+        this.teamTrim,
       );
 
       if (m.mirrors) {
@@ -1166,8 +1184,12 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
     this.chassisInstancePose.flush(this.unitDetailInstances);
+    this.turretPose.flush(
+      this.unitDetailInstances,
+      this.turretMountCache,
+      this.teamTrim,
+    );
     this.teamTrim?.flush();
-    this.turretPose.flush(this.unitDetailInstances, this.turretMountCache);
     this.shieldPanelPose.flush(this.unitDetailInstances);
     this.airborneEmitterBatch.flush(this.hoverSmokeEmitters);
 
