@@ -1,6 +1,7 @@
 import { markRaw } from 'vue';
 import type { CameraViewBasis, MinimapData, MinimapEntity } from '@/types/ui';
 import type { Vec2 } from '@/types/vec2';
+import { assignCameraViewBasis, cloneCameraViewBasis } from '@/game/cameraViewBasis';
 
 const DEFAULT_CAMERA_PITCH = Math.PI * 0.25;
 const DEFAULT_CAMERA_VIEW: CameraViewBasis = {
@@ -8,26 +9,6 @@ const DEFAULT_CAMERA_VIEW: CameraViewBasis = {
   up: { x: 0, y: Math.cos(DEFAULT_CAMERA_PITCH), z: Math.sin(DEFAULT_CAMERA_PITCH) },
   towardCamera: { x: 0, y: -Math.sin(DEFAULT_CAMERA_PITCH), z: Math.cos(DEFAULT_CAMERA_PITCH) },
 };
-
-function createCameraViewBasis(source = DEFAULT_CAMERA_VIEW): CameraViewBasis {
-  return {
-    right: { ...source.right },
-    up: { ...source.up },
-    towardCamera: { ...source.towardCamera },
-  };
-}
-
-function applyCameraViewBasis(target: CameraViewBasis, source: CameraViewBasis): void {
-  target.right.x = source.right.x;
-  target.right.y = source.right.y;
-  target.right.z = source.right.z;
-  target.up.x = source.up.x;
-  target.up.y = source.up.y;
-  target.up.z = source.up.z;
-  target.towardCamera.x = source.towardCamera.x;
-  target.towardCamera.y = source.towardCamera.y;
-  target.towardCamera.z = source.towardCamera.z;
-}
 
 function cloneWind(source: MinimapData['wind']): MinimapData['wind'] {
   return source === undefined
@@ -54,7 +35,7 @@ export function createInitialMinimapData(
     ]),
     cameraYaw: 0,
     cameraPitch: DEFAULT_CAMERA_PITCH,
-    cameraView: createCameraViewBasis(),
+    cameraView: cloneCameraViewBasis(DEFAULT_CAMERA_VIEW),
     directionVersion: 0,
     showTerrain: true,
     wind: undefined,
@@ -71,7 +52,7 @@ export function applyMinimapContentData(
   target.mapHeight = source.mapHeight;
   target.cameraYaw = source.cameraYaw;
   target.cameraPitch = source.cameraPitch;
-  applyCameraViewBasis(target.cameraView, source.cameraView);
+  assignCameraViewBasis(target.cameraView, source.cameraView);
   target.directionVersion += 1;
   target.showTerrain = source.showTerrain;
   target.wind = cloneWind(source.wind);
@@ -87,7 +68,7 @@ export function applyMinimapCameraQuad(
   target.cameraQuad = markRaw(cameraQuad);
   if (cameraYaw !== undefined) target.cameraYaw = cameraYaw;
   if (cameraPitch !== undefined) target.cameraPitch = cameraPitch;
-  if (cameraView !== undefined) applyCameraViewBasis(target.cameraView, cameraView);
+  if (cameraView !== undefined) assignCameraViewBasis(target.cameraView, cameraView);
   target.directionVersion += 1;
 }
 

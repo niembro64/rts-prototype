@@ -1,7 +1,7 @@
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
 import type { UnitActionPlanCode } from './SimulationUnitActionPlanner';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 export const UNIT_ACTION_MOVEMENT_DECISION_THRUST = 0;
 export const UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH = 1;
@@ -119,16 +119,29 @@ export class SimulationUnitActionMovementPlanner {
 
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
-    const next = Math.max(required, this.slots.length * 2, 128);
-    this.plans = growTypedArray(this.plans, next);
-    this.slots = growTypedArray(this.slots, next);
-    this.targetX = growTypedArray(this.targetX, next);
-    this.targetY = growTypedArray(this.targetY, next);
-    this.threshold = growTypedArray(this.threshold, next);
-    this.finalPoint = growTypedArray(this.finalPoint, next);
-    this.dx = growTypedArray(this.dx, next);
-    this.dy = growTypedArray(this.dy, next);
-    this.distance = growTypedArray(this.distance, next);
-    this.decision = growTypedArray(this.decision, next);
+    const next = nextDoublingCapacity(this.slots.length, required, 128);
+    [
+      this.plans,
+      this.slots,
+      this.targetX,
+      this.targetY,
+      this.threshold,
+      this.finalPoint,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.decision,
+    ] = growTypedArrays([
+      this.plans,
+      this.slots,
+      this.targetX,
+      this.targetY,
+      this.threshold,
+      this.finalPoint,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.decision,
+    ] as const, next);
   }
 }

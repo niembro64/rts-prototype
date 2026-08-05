@@ -1,7 +1,7 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { ARRIVAL_RADIUS } from './SimulationArrivalController';
 import type { Entity } from './types';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 const STUCK_VEL_THRESHOLD = 5;
 const STUCK_TICK_THRESHOLD = 60;
@@ -105,12 +105,20 @@ export class SimulationStuckReplanController {
 
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
-    const next = Math.max(required, this.slots.length * 2, 128);
-    this.slots = growTypedArray(this.slots, next);
-    this.ticks = growTypedArray(this.ticks, next);
-    this.settlingDx = growTypedArray(this.settlingDx, next);
-    this.settlingDy = growTypedArray(this.settlingDy, next);
-    this.settlingFlags = growTypedArray(this.settlingFlags, next);
+    const next = nextDoublingCapacity(this.slots.length, required, 128);
+    [
+      this.slots,
+      this.ticks,
+      this.settlingDx,
+      this.settlingDy,
+      this.settlingFlags,
+    ] = growTypedArrays([
+      this.slots,
+      this.ticks,
+      this.settlingDx,
+      this.settlingDy,
+      this.settlingFlags,
+    ] as const, next);
     this.outTicks = new Int32Array(next);
     this.outReplan = new Uint8Array(next);
   }

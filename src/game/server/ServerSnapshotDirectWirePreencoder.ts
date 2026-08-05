@@ -5,8 +5,6 @@ import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
-import { writeAudioEventWireRowsDirect } from '../network/stateSerializerAudio';
-import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
   appendEntitySnapshotWireRowDirect,
   canUseTypedDeltaPlaceholder,
@@ -15,14 +13,8 @@ import {
   resetEntitySnapshotPool,
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
-import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
 import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerializerProjectiles';
-import { writeResourceMovementWireRowsDirect } from '../network/stateSerializerResourceMovements';
-import { writeSprayTargetWireRowsDirect } from '../network/stateSerializerSpray';
-import {
-  writeScanPulseWireRowsDirect,
-  type SnapshotVisibility,
-} from '../network/stateSerializerVisibility';
+import type { SnapshotVisibility } from '../network/stateSerializerVisibility';
 import type {
   SerializerAudioOverride,
   SerializerMinimapOverride,
@@ -54,12 +46,18 @@ import {
   tryAppendUnitSlabDeltaRowFromState,
 } from './snapshotSlabDeltaRows';
 import { resolveEntityFromSlotOrWorld } from '../sim/entitySlotResolution';
+import {
+  materializeSnapshotAudioEvents,
+  materializeSnapshotSupplementals,
+  type DirectSnapshotDelivery,
+  type SnapshotSupplementalBuffers,
+} from './ServerSnapshotSupplementalMaterializer';
 
 const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
-  wirePayload: SnapshotWirePayload;
+  wirePayload: SnapshotWirePayload | undefined;
   visibleEntityIds?: readonly EntityId[];
   visibleBaselineAddedIds?: readonly EntityId[];
   visibleBaselineRemovedIds?: readonly EntityId[];
@@ -85,6 +83,7 @@ type ServerSnapshotDirectWireInput = {
   buildability: TerrainBuildabilityGrid | undefined;
   serverMeta: NetworkServerSnapshotMeta;
   materializationStages: SnapshotMaterializationStageDurations | undefined;
+  delivery: DirectSnapshotDelivery;
 };
 
 type ServerSnapshotSparseDeltaDirectWireInput = {
@@ -95,6 +94,7 @@ type ServerSnapshotSparseDeltaDirectWireInput = {
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
   projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
   materializationStages: SnapshotMaterializationStageDurations | undefined;
+  delivery: DirectSnapshotDelivery;
 };
 
 type ServerSnapshotRichDeltaDirectWireInput = {
@@ -121,6 +121,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   minimapOverride: SerializerMinimapOverride | undefined;
   serverMeta: NetworkServerSnapshotMeta;
   materializationStages: SnapshotMaterializationStageDurations | undefined;
+  delivery: DirectSnapshotDelivery;
 };
 
 const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -151,6 +152,14 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly resourceMovementPlaceholders: NonNullable<NetworkServerSnapshot['resourceMovements']> = [];
   private readonly audioEventPlaceholders: NonNullable<NetworkServerSnapshot['audioEvents']> = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
+  private readonly supplementalBuffers: SnapshotSupplementalBuffers = {
+    minimap: this.minimapPlaceholders,
+    economy: this.economyPlaceholder,
+    resourceMovements: this.resourceMovementPlaceholders,
+    sprayTargets: this.sprayPlaceholders,
+    audioEvents: this.audioEventPlaceholders,
+    scanPulses: this.scanPulsePlaceholders,
+  };
   private readonly removedEntityIds: number[] = [];
   private readonly removedEntityIdSet = new IndexedEntityIdSet();
   private readonly emittedDeltaEntityIds = new IndexedEntityIdSet();
@@ -232,13 +241,15 @@ export class ServerSnapshotDirectWirePreencoder {
   }
 
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
-    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     this.fullVisibleEntityIds.length = 0;
     const state = this.materializeWireState(input);
-    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
-    if (wirePayload === undefined) return undefined;
+    const wirePayload = input.delivery.preencodeWire
+      ? this.encodeDirectWirePayload(state, input.materializationStages)
+      : undefined;
+    if (input.delivery.preencodeWire && wirePayload === undefined) return undefined;
     return {
       state,
       wirePayload,
@@ -249,21 +260,23 @@ export class ServerSnapshotDirectWirePreencoder {
   tryEncodeSparseDelta(
     input: ServerSnapshotSparseDeltaDirectWireInput,
   ): DirectSerializedListenerSnapshot | undefined {
-    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     const state = this.materializeSparseDeltaWireState(input);
     if (state === undefined) return undefined;
 
-    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
-    if (wirePayload === undefined) return undefined;
+    const wirePayload = input.delivery.preencodeWire
+      ? this.encodeDirectWirePayload(state, input.materializationStages)
+      : undefined;
+    if (input.delivery.preencodeWire && wirePayload === undefined) return undefined;
     return { state, wirePayload };
   }
 
   tryEncodeRichDelta(
     input: ServerSnapshotRichDeltaDirectWireInput,
   ): DirectSerializedListenerSnapshot | undefined {
-    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     this.visibleBaselineAddedIds.length = 0;
@@ -271,8 +284,10 @@ export class ServerSnapshotDirectWirePreencoder {
     const state = this.materializeRichDeltaWireState(input);
     if (state === undefined) return undefined;
 
-    const wirePayload = this.encodeDirectWirePayload(state, input.materializationStages);
-    if (wirePayload === undefined) return undefined;
+    const wirePayload = input.delivery.preencodeWire
+      ? this.encodeDirectWirePayload(state, input.materializationStages)
+      : undefined;
+    if (input.delivery.preencodeWire && wirePayload === undefined) return undefined;
     const includeVisibleBaselineDeltas = input.currentVisibleEntityIds !== undefined;
     return {
       state,
@@ -296,75 +311,19 @@ export class ServerSnapshotDirectWirePreencoder {
     this.entityPlaceholders.length = entityCount;
     registerEntitySnapshotWireSource(this.entityPlaceholders);
 
-    let netMinimapEntities: NetworkServerSnapshot['minimapEntities'];
-    if (input.minimapOverride !== undefined) {
-      netMinimapEntities = input.minimapOverride.value;
-    } else {
-      stageStart = performance.now();
-      netMinimapEntities = writeMinimapSnapshotWireRowsDirect(
-        input.world,
-        input.visibility,
-        this.minimapPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'minimap', stageStart);
-      }
-    }
-    stageStart = performance.now();
-    const netEconomy = writeEconomySnapshotWireRowsDirect(
-      input.world.playerCount,
-      input.recipientPlayerId,
-      this.economyPlaceholder,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
-    }
-    stageStart = performance.now();
-    const netResourceMovements = writeResourceMovementWireRowsDirect(
-      input.world,
-      input.visibility,
-      this.resourceMovementPlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'resources', stageStart);
-    }
-    let netSprayTargets: NetworkServerSnapshot['sprayTargets'];
-    if (input.sprayOverride !== undefined) {
-      netSprayTargets = input.sprayOverride.value;
-    } else {
-      stageStart = performance.now();
-      netSprayTargets = writeSprayTargetWireRowsDirect(
-        input.sprayTargets,
-        input.visibility,
-        this.sprayPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'spray', stageStart);
-      }
-    }
-    let netAudioEvents: NetworkServerSnapshot['audioEvents'];
-    if (input.audioOverride !== undefined) {
-      netAudioEvents = input.audioOverride.value;
-    } else {
-      stageStart = performance.now();
-      netAudioEvents = writeAudioEventWireRowsDirect(
-        input.audioEvents,
-        input.visibility,
-        this.audioEventPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
-      }
-    }
-    stageStart = performance.now();
-    const netScanPulses = writeScanPulseWireRowsDirect(
-      input.world,
-      input.visibility,
-      this.scanPulsePlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
-    }
+    const supplementals = materializeSnapshotSupplementals({
+      world: input.world,
+      recipientPlayerId: input.recipientPlayerId,
+      visibility: input.visibility,
+      sprayTargets: input.sprayTargets,
+      audioEvents: input.audioEvents,
+      audioOverride: input.audioOverride,
+      sprayOverride: input.sprayOverride,
+      minimapOverride: input.minimapOverride,
+      delivery: input.delivery,
+      stages,
+      buffers: this.supplementalBuffers,
+    });
     stageStart = performance.now();
     const netProjectiles = writeProjectileSnapshotWireRowsDirect({
       world: input.world,
@@ -388,12 +347,12 @@ export class ServerSnapshotDirectWirePreencoder {
     const state = this.state;
     state.tick = input.world.getTick();
     state.entities = this.entityPlaceholders;
-    state.minimapEntities = netMinimapEntities;
-    state.economy = netEconomy;
-    state.resourceMovements = netResourceMovements;
-    state.sprayTargets = netSprayTargets;
-    state.audioEvents = netAudioEvents;
-    state.scanPulses = netScanPulses;
+    state.minimapEntities = supplementals.minimapEntities;
+    state.economy = supplementals.economy;
+    state.resourceMovements = supplementals.resourceMovements;
+    state.sprayTargets = supplementals.sprayTargets;
+    state.audioEvents = supplementals.audioEvents;
+    state.scanPulses = supplementals.scanPulses;
     state.projectiles = netProjectiles;
     state.serverMeta = input.serverMeta;
     state.terrain = input.terrain;
@@ -435,15 +394,14 @@ export class ServerSnapshotDirectWirePreencoder {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
     }
 
-    stageStart = performance.now();
-    const netAudioEvents = writeAudioEventWireRowsDirect(
-      input.audioEvents,
-      input.visibility,
-      this.audioEventPlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
-    }
+    const netAudioEvents = materializeSnapshotAudioEvents({
+      audioEvents: input.audioEvents,
+      visibility: input.visibility,
+      audioOverride: undefined,
+      delivery: input.delivery,
+      stages,
+      buffers: this.supplementalBuffers,
+    });
 
     if (entityCount === 0 && netProjectiles === undefined && netAudioEvents === undefined) {
       return undefined;
@@ -485,80 +443,19 @@ export class ServerSnapshotDirectWirePreencoder {
     this.entityPlaceholders.length = entityCount;
     registerEntitySnapshotWireSource(this.entityPlaceholders);
 
-    let netMinimapEntities: NetworkServerSnapshot['minimapEntities'];
-    if (input.minimapOverride !== undefined) {
-      netMinimapEntities = input.minimapOverride.value;
-    } else {
-      stageStart = performance.now();
-      netMinimapEntities = writeMinimapSnapshotWireRowsDirect(
-        input.world,
-        input.visibility,
-        this.minimapPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'minimap', stageStart);
-      }
-    }
-
-    stageStart = performance.now();
-    const netEconomy = writeEconomySnapshotWireRowsDirect(
-      input.world.playerCount,
-      input.recipientPlayerId,
-      this.economyPlaceholder,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
-    }
-
-    stageStart = performance.now();
-    const netResourceMovements = writeResourceMovementWireRowsDirect(
-      input.world,
-      input.visibility,
-      this.resourceMovementPlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'resources', stageStart);
-    }
-
-    let netSprayTargets: NetworkServerSnapshot['sprayTargets'];
-    if (input.sprayOverride !== undefined) {
-      netSprayTargets = input.sprayOverride.value;
-    } else {
-      stageStart = performance.now();
-      netSprayTargets = writeSprayTargetWireRowsDirect(
-        input.sprayTargets,
-        input.visibility,
-        this.sprayPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'spray', stageStart);
-      }
-    }
-
-    let netAudioEvents: NetworkServerSnapshot['audioEvents'];
-    if (input.audioOverride !== undefined) {
-      netAudioEvents = input.audioOverride.value;
-    } else {
-      stageStart = performance.now();
-      netAudioEvents = writeAudioEventWireRowsDirect(
-        input.audioEvents,
-        input.visibility,
-        this.audioEventPlaceholders,
-      );
-      if (stages !== undefined) {
-        addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
-      }
-    }
-
-    stageStart = performance.now();
-    const netScanPulses = writeScanPulseWireRowsDirect(
-      input.world,
-      input.visibility,
-      this.scanPulsePlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
-    }
+    const supplementals = materializeSnapshotSupplementals({
+      world: input.world,
+      recipientPlayerId: input.recipientPlayerId,
+      visibility: input.visibility,
+      sprayTargets: input.sprayTargets,
+      audioEvents: input.audioEvents,
+      audioOverride: input.audioOverride,
+      sprayOverride: input.sprayOverride,
+      minimapOverride: input.minimapOverride,
+      delivery: input.delivery,
+      stages,
+      buffers: this.supplementalBuffers,
+    });
 
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
     const hasProjectileEvents =
@@ -604,12 +501,12 @@ export class ServerSnapshotDirectWirePreencoder {
     state.entities = this.entityPlaceholders;
     state.entityDeltaOnly = true;
     state.projectileDeltaOnly = undefined;
-    state.minimapEntities = netMinimapEntities;
-    state.economy = netEconomy;
-    state.resourceMovements = netResourceMovements;
-    state.sprayTargets = netSprayTargets;
-    state.audioEvents = netAudioEvents;
-    state.scanPulses = netScanPulses;
+    state.minimapEntities = supplementals.minimapEntities;
+    state.economy = supplementals.economy;
+    state.resourceMovements = supplementals.resourceMovements;
+    state.sprayTargets = supplementals.sprayTargets;
+    state.audioEvents = supplementals.audioEvents;
+    state.scanPulses = supplementals.scanPulses;
     state.projectiles = netProjectiles;
     state.serverMeta = input.serverMeta;
     state.terrain = undefined;

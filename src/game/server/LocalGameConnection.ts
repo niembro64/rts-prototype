@@ -18,8 +18,6 @@ import {
   refreshSnapshotEntityRowComposition,
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
-import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
-import { projectileSnapshotWireSourceHasDirectlyConsumableRows } from '../network/stateSerializerProjectiles';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
@@ -31,47 +29,6 @@ import type {
   SurfaceLiftProbeDebugFrame,
 } from '@/types/game';
 
-export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
-  const entityDeltaOnly = state.entityDeltaOnly === true;
-  const projectileDeltaOnly = state.projectileDeltaOnly === true;
-  if (!entityDeltaOnly && !projectileDeltaOnly) return false;
-  if (
-    state.minimapEntities !== undefined ||
-    state.resourceMovements !== undefined ||
-    state.sprayTargets !== undefined ||
-    state.audioEvents !== undefined ||
-    state.scanPulses !== undefined ||
-    state.serverMeta !== undefined ||
-    state.gameState !== undefined ||
-    state.removedEntityIds !== undefined
-  ) {
-    return false;
-  }
-
-  if (entityDeltaOnly) {
-    const entityWireSource = getEntitySnapshotWireSource(state.entities);
-    if (
-      entityWireSource === undefined ||
-      entityWireSource.count !== state.entities.length ||
-      entityWireSource.typedPlaceholderRows !== entityWireSource.count
-    ) {
-      return false;
-    }
-    for (let i = 0; i < state.entities.length; i++) {
-      if (state.entities[i] !== undefined) return false;
-    }
-  } else if (state.entities.length !== 0) {
-    return false;
-  }
-
-  if (state.projectiles !== undefined) {
-    if (!projectileSnapshotWireSourceHasDirectlyConsumableRows(state.projectiles)) return false;
-  } else if (projectileDeltaOnly) {
-    return false;
-  }
-  return true;
-}
-
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
   commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
@@ -80,11 +37,10 @@ export type LocalGameConnectionOptions = {
    *  byte accounting beyond the direct-local materialization path. */
   recordSnapshotWireCost?: boolean;
   loopbackSnapshotsThroughWire?: boolean;
-  /** Request direct Rust snapshot materialization for local presentation.
-   *  Pure typed entity deltas and projectile motion rows can then skip DTO
-   *  decode/materialization; full or detail-bearing snapshots still decode
-   *  from the preencoded bytes so entity creation and compatibility views
-   *  stay intact. */
+  /** Request directly consumable snapshot materialization for local
+   *  presentation. Typed entity/projectile rows stay typed while the smaller
+   *  compatibility views are materialized as DTOs, so no wire round trip is
+   *  needed. */
   directLocalSnapshotMaterialization?: boolean;
   sharesAuthoritativeState?: boolean;
 };
@@ -196,9 +152,8 @@ export class LocalGameConnection implements GameConnection {
         (deliveredState, releaseSnapshot) => this.receiveSnapshot(deliveredState, releaseSnapshot),
       );
     }, playerId, {
-      preencodeWire:
-        this.loopbackSnapshotsThroughWire ||
-        this.directLocalSnapshotMaterialization,
+      preencodeWire: this.loopbackSnapshotsThroughWire,
+      directMaterialization: this.directLocalSnapshotMaterialization,
     });
   }
 
@@ -208,18 +163,6 @@ export class LocalGameConnection implements GameConnection {
   ): NetworkServerSnapshot {
     if (!this.loopbackSnapshotsThroughWire) {
       this.recordLocalSnapshotWireCostIfNeeded(state, wirePayload);
-      if (
-        this.directLocalSnapshotMaterialization &&
-        wirePayload?.materializationKind === 'direct'
-      ) {
-        if (
-          this.canConsumeMetadataOnlySnapshotImmediately() &&
-          canDeliverDirectLocalSnapshotState(state)
-        ) {
-          return state;
-        }
-        return this.decodePreencodedLocalSnapshot(state, wirePayload);
-      }
       return state;
     }
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);

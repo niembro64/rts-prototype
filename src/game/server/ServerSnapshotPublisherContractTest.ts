@@ -100,6 +100,7 @@ function createListener(
   callback: SnapshotListenerEntry['callback'],
   visibleIds: readonly EntityId[] = [],
   preencodeWire = false,
+  directMaterialization = false,
 ): SnapshotListenerEntry {
   const visibleEntityIds = new IndexedEntityIdSet();
   for (let i = 0; i < visibleIds.length; i++) visibleEntityIds.add(visibleIds[i]);
@@ -109,6 +110,7 @@ function createListener(
     trackingKey: 'contract',
     cacheKey: 'contract',
     preencodeWire,
+    directMaterialization,
     lastStaticTerrainTileMap: undefined,
     lastStaticBuildabilityGrid: undefined,
     needsFullState: false,
@@ -182,6 +184,33 @@ export function runServerSnapshotPublisherContractTest(): void {
     'preencoded startup snapshot must not crash or fall back to malformed mixed entity metadata',
   );
 
+  const capturedDirectLocal: {
+    state: NetworkServerSnapshot | null;
+    wirePayloadPresent: boolean;
+  } = { state: null, wirePayloadPresent: false };
+  const directLocalListener = createListener((state, _releaseSnapshot, wirePayload) => {
+    capturedDirectLocal.state = state;
+    capturedDirectLocal.wirePayloadPresent = wirePayload !== undefined;
+  }, [], false, true);
+  new ServerSnapshotPublisher().emit(createPublisherInput(startupWorld, directLocalListener));
+  const directLocalSnapshot = capturedDirectLocal.state;
+  assertContract(directLocalSnapshot !== null, 'direct local startup snapshot must be emitted');
+  assertContract(
+    !capturedDirectLocal.wirePayloadPresent,
+    'direct local startup snapshot must not encode an unused wire payload',
+  );
+  assertContract(
+    directLocalSnapshot.minimapEntities?.every((entry) => entry !== undefined) === true,
+    'direct local startup snapshot must materialize its minimap compatibility view',
+  );
+  const directLocalClient = new ClientViewState();
+  directLocalClient.applyNetworkState(directLocalSnapshot, { syncEconomy: false });
+  assertContract(
+    directLocalClient.getEntity(startupBuilder.id) !== undefined &&
+      directLocalClient.getEntity(startupFighter.id) !== undefined,
+    'direct local startup snapshot must be consumable without a wire decode',
+  );
+
   entitySlotRegistry.clear();
   const world = new WorldState(9902, 512, 512);
   world.playerCount = 2;
@@ -203,6 +232,7 @@ export function runServerSnapshotPublisherContractTest(): void {
     trackingKey: 'contract',
     cacheKey: 'contract',
     preencodeWire: false,
+    directMaterialization: false,
     lastStaticTerrainTileMap: undefined,
     lastStaticBuildabilityGrid: undefined,
     needsFullState: false,

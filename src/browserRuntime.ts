@@ -3,6 +3,11 @@ export function isTauriRuntime(): boolean {
   return !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 }
 
+export async function closeCurrentTauriWindow(): Promise<void> {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  void getCurrentWindow().close();
+}
+
 export function isMobileLikeBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
 

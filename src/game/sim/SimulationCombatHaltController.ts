@@ -7,6 +7,7 @@ import { spatialGrid } from './SpatialGrid';
 import { getUnitBlueprint } from './blueprints';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 export class SimulationCombatHaltController {
   private readonly world: WorldState;
@@ -109,39 +110,39 @@ export class SimulationCombatHaltController {
 
   private ensureRowCapacity(required: number): void {
     if (this.slots.length >= required) return;
-    const next = Math.max(required, this.slots.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this.slots);
-    this.slots = slots;
-    const modes = new Uint8Array(next);
-    modes.set(this.modes);
-    this.modes = modes;
-    const priorityPoint = new Uint8Array(next);
-    priorityPoint.set(this.priorityPoint);
-    this.priorityPoint = priorityPoint;
-    const expectedTargetId = new Int32Array(next);
-    expectedTargetId.fill(-1);
-    expectedTargetId.set(this.expectedTargetId);
-    this.expectedTargetId = expectedTargetId;
+    const previousCapacity = this.slots.length;
+    const next = nextDoublingCapacity(previousCapacity, required, 128);
+    [
+      this.slots,
+      this.modes,
+      this.priorityPoint,
+      this.expectedTargetId,
+    ] = growTypedArrays([
+      this.slots,
+      this.modes,
+      this.priorityPoint,
+      this.expectedTargetId,
+    ] as const, next);
+    this.expectedTargetId.fill(-1, previousCapacity);
     this.out = new Uint8Array(next);
   }
 
   private ensureSlotCapacity(required: number): void {
     if (this.modeBySlot.length >= required) return;
-    const next = Math.max(required, this.modeBySlot.length * 2, 128);
-    const modes = new Uint8Array(next);
-    modes.set(this.modeBySlot);
-    this.modeBySlot = modes;
-    const priorityPoint = new Uint8Array(next);
-    priorityPoint.set(this.priorityPointBySlot);
-    this.priorityPointBySlot = priorityPoint;
-    const expectedTargetId = new Int32Array(next);
-    expectedTargetId.fill(-1);
-    expectedTargetId.set(this.expectedTargetIdBySlot);
-    this.expectedTargetIdBySlot = expectedTargetId;
-    const stop = new Uint8Array(next);
-    stop.set(this.stopBySlot);
-    this.stopBySlot = stop;
+    const previousCapacity = this.modeBySlot.length;
+    const next = nextDoublingCapacity(previousCapacity, required, 128);
+    [
+      this.modeBySlot,
+      this.priorityPointBySlot,
+      this.expectedTargetIdBySlot,
+      this.stopBySlot,
+    ] = growTypedArrays([
+      this.modeBySlot,
+      this.priorityPointBySlot,
+      this.expectedTargetIdBySlot,
+      this.stopBySlot,
+    ] as const, next);
+    this.expectedTargetIdBySlot.fill(-1, previousCapacity);
   }
 
   private clear(): void {

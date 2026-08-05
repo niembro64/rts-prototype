@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
-import { NEUTRAL_PLAYER_COLOR, PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
+import { NEUTRAL_PLAYER_COLOR, PLAYER_COLORS, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
@@ -18,6 +18,7 @@ import {
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
+import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -279,12 +280,7 @@ function commitLocalPlayerName(): void {
   nameModalOpen.value = false;
 }
 
-const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
-
-async function exitApp(): Promise<void> {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  getCurrentWindow().close();
-}
+const isTauri = isTauriRuntime();
 
 const joinCode = ref('');
 const codeCopied = ref(false);
@@ -342,16 +338,6 @@ function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? NEUTRAL_PLAYER_COLOR;
   return '#' + color.toString(16).padStart(6, '0');
 }
-
-/** Display name = derived from the rendered hue, so the label next to
- *  each player's color swatch is always the actual color the player
- *  sees. The server-assigned name (from NetworkManager) is ignored.
- *  Currently unused since the lobby roster shows the avatar as the
- *  color identifier; kept for future reuse / debugging. */
-function getColorName(playerId: PlayerId): string {
-  return getPlayerColors(playerId).name;
-}
-void getColorName; // suppress "unused" while we keep the helper around
 
 function handleHost() {
   emit('host');
@@ -462,7 +448,7 @@ const terrainSectionVars = computed(() =>
       <div v-if="error" class="error-message">{{ error }}</div>
 
       <div v-if="isTauri" class="footer-row">
-        <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+        <button class="lobby-btn exit-btn" @click="closeCurrentTauriWindow">Exit</button>
       </div>
     </div>
   </aside>
@@ -500,7 +486,7 @@ const terrainSectionVars = computed(() =>
         <div class="connecting-spinner"></div>
         <div class="footer-row">
           <button class="lobby-btn cancel-btn" @click="handleCancel">Cancel</button>
-          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+          <button v-if="isTauri" class="lobby-btn exit-btn" @click="closeCurrentTauriWindow">Exit</button>
         </div>
       </template>
 
@@ -869,7 +855,7 @@ const terrainSectionVars = computed(() =>
              show) so the lobby grid doesn't reserve a footer band for
              nothing. -->
         <div v-if="isTauri" class="footer-row">
-          <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+          <button class="lobby-btn exit-btn" @click="closeCurrentTauriWindow">Exit</button>
         </div>
       </template>
 

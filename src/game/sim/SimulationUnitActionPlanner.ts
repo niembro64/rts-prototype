@@ -1,7 +1,7 @@
 import { actionTypeToCode } from '@/types/network';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 const ACTION_TYPE_NONE = 255;
 
@@ -159,13 +159,23 @@ export class SimulationUnitActionPlanner {
 
   private ensureCapacity(required: number): void {
     if (this.actionTypes.length >= required) return;
-    const next = Math.max(required, this.actionTypes.length * 2, 128);
-    this.actionTypes = growTypedArray(this.actionTypes, next);
-    this.flags = growTypedArray(this.flags, next);
-    this.slots = growTypedArray(this.slots, next);
-    this.rangeKinds = growTypedArray(this.rangeKinds, next);
-    this.targetSlots = growTypedArray(this.targetSlots, next);
-    this.rangeParams = growTypedArray(this.rangeParams, next);
-    this.plans = growTypedArray(this.plans, next);
+    const next = nextDoublingCapacity(this.actionTypes.length, required, 128);
+    [
+      this.actionTypes,
+      this.flags,
+      this.slots,
+      this.rangeKinds,
+      this.targetSlots,
+      this.rangeParams,
+      this.plans,
+    ] = growTypedArrays([
+      this.actionTypes,
+      this.flags,
+      this.slots,
+      this.rangeKinds,
+      this.targetSlots,
+      this.rangeParams,
+      this.plans,
+    ] as const, next);
   }
 }

@@ -2,15 +2,11 @@
 import { computed } from 'vue';
 import { COLORS, RESOURCE_COLOR_CSS } from '@/colorsConfig';
 import WorldDirectionHud from './WorldDirectionHud.vue';
+import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 
 import type { EconomyInfo, MinimapData } from '@/types/ui';
 
-const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
-
-async function exitApp(): Promise<void> {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  getCurrentWindow().close();
-}
+const isTauri = isTauriRuntime();
 
 const props = defineProps<{
   economy: EconomyInfo;
@@ -149,7 +145,7 @@ const metalTempoDisplay = computed(() => resourceTempoLabel(
       v-if="isTauri"
       class="exit-btn"
       title="Exit game"
-      @click="exitApp"
+      @click="closeCurrentTauriWindow"
     >EXIT</button>
 
     <div

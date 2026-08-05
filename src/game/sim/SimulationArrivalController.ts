@@ -7,7 +7,7 @@ import {
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
 } from './pathfindingTuning';
 import { entitySlotRegistry } from './EntitySlotRegistry';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 /** Distance (world units) at which the movement controller considers a
  * waypoint reached. Path legality and physical clearance remain independent
@@ -261,16 +261,28 @@ export class SimulationArrivalController {
 
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
-    const next = Math.max(required, this.slots.length * 2, 128);
-    this.slots = growTypedArray(this.slots, next);
-    this.entitySlots = growTypedArray(this.entitySlots, next);
-    this.dx = growTypedArray(this.dx, next);
-    this.dy = growTypedArray(this.dy, next);
-    this.distance = growTypedArray(this.distance, next);
-    this.radiusPush = growTypedArray(this.radiusPush, next);
-    this.speedLimitFactor = growTypedArray(this.speedLimitFactor, next);
-    this.cornerBendCos = growTypedArray(this.cornerBendCos, next);
-    this.flags = growTypedArray(this.flags, next);
+    const next = nextDoublingCapacity(this.slots.length, required, 128);
+    [
+      this.slots,
+      this.entitySlots,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.radiusPush,
+      this.speedLimitFactor,
+      this.cornerBendCos,
+      this.flags,
+    ] = growTypedArrays([
+      this.slots,
+      this.entitySlots,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.radiusPush,
+      this.speedLimitFactor,
+      this.cornerBendCos,
+      this.flags,
+    ] as const, next);
     this.outX = new Float64Array(next);
     this.outY = new Float64Array(next);
     this.active = new Uint8Array(next);
@@ -278,14 +290,24 @@ export class SimulationArrivalController {
 
   private ensureCompletionCapacity(required: number): void {
     if (this.completionSlots.length >= required) return;
-    const next = Math.max(required, this.completionSlots.length * 2, 128);
-    this.completionSlots = growTypedArray(this.completionSlots, next);
-    this.completionDx = growTypedArray(this.completionDx, next);
-    this.completionDy = growTypedArray(this.completionDy, next);
-    this.completionFallbackVx = growTypedArray(this.completionFallbackVx, next);
-    this.completionFallbackVy = growTypedArray(this.completionFallbackVy, next);
-    this.completionFlags = growTypedArray(this.completionFlags, next);
-    this.completionFinalPoint = growTypedArray(this.completionFinalPoint, next);
+    const next = nextDoublingCapacity(this.completionSlots.length, required, 128);
+    [
+      this.completionSlots,
+      this.completionDx,
+      this.completionDy,
+      this.completionFallbackVx,
+      this.completionFallbackVy,
+      this.completionFlags,
+      this.completionFinalPoint,
+    ] = growTypedArrays([
+      this.completionSlots,
+      this.completionDx,
+      this.completionDy,
+      this.completionFallbackVx,
+      this.completionFallbackVy,
+      this.completionFlags,
+      this.completionFinalPoint,
+    ] as const, next);
     this.completionDistance = new Float64Array(next);
     this.completionArrived = new Uint8Array(next);
   }

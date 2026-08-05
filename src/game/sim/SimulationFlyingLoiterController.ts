@@ -3,7 +3,7 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, Unit, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { entitySlotRegistry } from './EntitySlotRegistry';
-import { growTypedArray } from '../memory/typedArrayGrowth';
+import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 export const SIMULATION_INVALID_BODY_SLOT = 0xffffffff;
 
@@ -150,17 +150,30 @@ export class SimulationFlyingLoiterController {
 
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
-    const next = Math.max(required, this.slots.length * 2, 128);
-    this.slots = growTypedArray(this.slots, next);
-    this.entitySlots = growTypedArray(this.entitySlots, next);
-    this.dx = growTypedArray(this.dx, next);
-    this.dy = growTypedArray(this.dy, next);
-    this.distance = growTypedArray(this.distance, next);
-    this.rotation = growTypedArray(this.rotation, next);
-    this.radius = growTypedArray(this.radius, next);
-    this.turnSign = growTypedArray(this.turnSign, next);
-    this.fallbackVx = growTypedArray(this.fallbackVx, next);
-    this.fallbackVy = growTypedArray(this.fallbackVy, next);
+    const next = nextDoublingCapacity(this.slots.length, required, 128);
+    [
+      this.slots,
+      this.entitySlots,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.rotation,
+      this.radius,
+      this.turnSign,
+      this.fallbackVx,
+      this.fallbackVy,
+    ] = growTypedArrays([
+      this.slots,
+      this.entitySlots,
+      this.dx,
+      this.dy,
+      this.distance,
+      this.rotation,
+      this.radius,
+      this.turnSign,
+      this.fallbackVx,
+      this.fallbackVy,
+    ] as const, next);
     this.outX = new Float64Array(next);
     this.outY = new Float64Array(next);
     this.outTurnSign = new Float64Array(next);

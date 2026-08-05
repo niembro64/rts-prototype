@@ -8,6 +8,7 @@ import type { SnapshotListenerEntry } from './ServerSnapshotPublisher';
 
 export type SnapshotListenerOptions = {
   preencodeWire?: boolean;
+  directMaterialization?: boolean;
 };
 
 export class ServerSnapshotListenerRegistry {
@@ -37,6 +38,7 @@ export class ServerSnapshotListenerRegistry {
       trackingKey,
       cacheKey,
       preencodeWire: options.preencodeWire === true,
+      directMaterialization: options.directMaterialization === true,
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
       needsFullState: false,

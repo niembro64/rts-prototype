@@ -101,6 +101,7 @@ export type SnapshotListenerEntry = {
   trackingKey: string;
   cacheKey: string;
   preencodeWire: boolean;
+  directMaterialization: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   /** This listener asked for recovery. Dynamic state is already full
@@ -394,7 +395,7 @@ export class ServerSnapshotPublisher {
       let minimapOverride: SerializerMinimapOverride | undefined = shouldEmitMinimap
         ? undefined
         : NO_MINIMAP_OVERRIDE;
-      if (listener.preencodeWire) {
+      if (listener.preencodeWire || listener.directMaterialization) {
         const directSnapshot = this.directWirePreencoder.tryEncode({
           world: input.world,
           removedEntities: this.removedEntitiesBuf,
@@ -415,6 +416,11 @@ export class ServerSnapshotPublisher {
           buildability: shouldSendStaticTerrain ? input.terrainBuildabilityGrid : undefined,
           serverMeta,
           materializationStages: stages,
+          delivery: {
+            preencodeWire: listener.preencodeWire,
+            materializeSupplementalDtos: listener.directMaterialization,
+            trackingKey: listener.cacheKey,
+          },
         });
         if (directSnapshot !== undefined) {
           stageStart = performance.now();
@@ -527,13 +533,20 @@ export class ServerSnapshotPublisher {
       return encoded;
     };
 
-    let sharedGlobalDynamicSnapshot: SerializedListenerSnapshot | undefined;
-    let sharedGlobalStaticSnapshot: SerializedListenerSnapshot | undefined;
+    const sharedGlobalDynamicSnapshots: Array<SerializedListenerSnapshot | undefined> = [];
+    const sharedGlobalStaticSnapshots: Array<SerializedListenerSnapshot | undefined> = [];
     for (const listener of input.listeners) {
       if (listener.playerId !== undefined) continue;
+      // A directly consumed local snapshot carries materialized supplemental
+      // DTOs, while a wire-only snapshot can retain typed placeholders. Keep
+      // one shared global snapshot per representation so listener order never
+      // hands a placeholder-only state to an in-process consumer.
+      const representationIndex = listener.directMaterialization ? 1 : 0;
       if (this.listenerNeedsStaticMap(listener, input)) {
+        let sharedGlobalStaticSnapshot = sharedGlobalStaticSnapshots[representationIndex];
         if (!sharedGlobalStaticSnapshot) {
           sharedGlobalStaticSnapshot = serializeForListener(listener);
+          sharedGlobalStaticSnapshots[representationIndex] = sharedGlobalStaticSnapshot;
         } else {
           this.markListenerStaticMapSent(listener, input);
           this.updateListenerVisibleBaseline(
@@ -548,8 +561,10 @@ export class ServerSnapshotPublisher {
           this.wirePreencoder.resolve(sharedGlobalStaticSnapshot, listener.preencodeWire),
         );
       } else {
+        let sharedGlobalDynamicSnapshot = sharedGlobalDynamicSnapshots[representationIndex];
         if (!sharedGlobalDynamicSnapshot) {
           sharedGlobalDynamicSnapshot = serializeForListener(listener);
+          sharedGlobalDynamicSnapshots[representationIndex] = sharedGlobalDynamicSnapshot;
         } else {
           this.updateListenerVisibleBaseline(
             listener,
@@ -648,7 +663,7 @@ export class ServerSnapshotPublisher {
         ? visibility.getVisibleEntitySlots()
         : undefined;
       addMaterializationStage(stages, 'visibility', stageStart);
-      if (listener.preencodeWire) {
+      if (listener.preencodeWire || listener.directMaterialization) {
         const directSnapshot = this.directWirePreencoder.tryEncodeRichDelta({
           world: input.world,
           removedEntities: this.removedEntitiesBuf,
@@ -673,6 +688,11 @@ export class ServerSnapshotPublisher {
           minimapOverride: undefined,
           serverMeta,
           materializationStages: stages,
+          delivery: {
+            preencodeWire: listener.preencodeWire,
+            materializeSupplementalDtos: listener.directMaterialization,
+            trackingKey: listener.cacheKey,
+          },
         });
         if (directSnapshot !== undefined) {
           stageStart = performance.now();
@@ -1102,7 +1122,7 @@ export class ServerSnapshotPublisher {
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       addMaterializationStage(stages, 'visibility', stageStart);
-      if (listener.preencodeWire) {
+      if (listener.preencodeWire || listener.directMaterialization) {
         const directSnapshot = this.directWirePreencoder.tryEncodeSparseDelta({
           world: input.world,
           visibility,
@@ -1111,6 +1131,11 @@ export class ServerSnapshotPublisher {
           projectileDespawns,
           projectileMotionUpdates: undefined,
           materializationStages: stages,
+          delivery: {
+            preencodeWire: listener.preencodeWire,
+            materializeSupplementalDtos: listener.directMaterialization,
+            trackingKey: listener.cacheKey,
+          },
         });
         if (directSnapshot !== undefined) {
           this.stampSnapshotMaterialization(
