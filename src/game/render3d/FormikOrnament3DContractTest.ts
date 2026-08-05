@@ -16,14 +16,16 @@ export function runFormikOrnament3DContractTest(): void {
     anchor.backX === 0,
     'turret collar must start at the turret centre, not partway along it',
   );
+  // Past the pole, not level with it: a cap sitting exactly on the sphere's
+  // forward pole is tangent to it, and two surfaces meeting at a point
+  // z-fight into the sphere appearing to poke through the collar face.
   assertContract(
-    Math.abs(anchor.frontX - headRadius) < 1e-6,
-    'turret collar must end flush with the head sphere pole — the shortest '
-      + 'length that still stops the sphere poking out of its front face',
+    anchor.frontX > headRadius * 1.05,
+    'turret collar must clear the head sphere pole, not sit tangent to it',
   );
   assertContract(
-    Math.abs(anchor.length - headRadius) < 1e-6 &&
-      Math.abs(anchor.centerX - headRadius * 0.5) < 1e-6,
+    Math.abs(anchor.length - (anchor.frontX - anchor.backX)) < 1e-6 &&
+      Math.abs(anchor.centerX - (anchor.frontX + anchor.backX) * 0.5) < 1e-6,
     'collar length and centre must follow from its two ends',
   );
   assertContract(
@@ -48,7 +50,7 @@ export function runFormikOrnament3DContractTest(): void {
     // A round-tube version of the same four strokes cost ~600.
     const triangleCount = body.getAttribute('position').count / 3;
     assertContract(
-      triangleCount > 0 && triangleCount <= 128,
+      triangleCount > 0 && triangleCount <= 256,
       `body ornament must stay a low-poly prism kit — got ${triangleCount} triangles`,
     );
     assertContract(
@@ -62,8 +64,16 @@ export function runFormikOrnament3DContractTest(): void {
     const railShoulderZ = 0.45;
     assertContract(
       bodyBounds.max.z >= railShoulderZ &&
-        bodyBounds.max.z <= railShoulderZ + 0.25,
+        bodyBounds.max.z <= railShoulderZ + 0.35,
       'ribs must meet the rails at the shoulder, not overhang past them',
+    );
+
+    // The straps must have real thickness — a flat ribbon reads as a decal
+    // from the RTS camera, which is the whole reason they are geometry.
+    const strapDepth = bodyBounds.max.y - bodyBounds.min.y;
+    assertContract(
+      strapDepth > 0.75,
+      `strap kit must stand off the hull with visible bulk — got ${strapDepth.toFixed(2)}`,
     );
 
     const collarBounds = collar.boundingBox;

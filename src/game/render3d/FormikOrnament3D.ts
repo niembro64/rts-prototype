@@ -10,16 +10,19 @@ export const FORMIK_TURRET_BLUEPRINT_ID = 'turretMortarFast';
  * The mortar collar runs from the turret's own centre out to the head
  * sphere's forward pole — one cylinder, no floating drum.
  *
- * Both ends are chosen for logical simplicity rather than styling. The back
- * sits at x = 0, so the barrels genuinely originate at the turret's centre
- * of rotation instead of appearing to start partway along it. The front
- * sits exactly at the sphere's pole (x = headRadius): that is the shortest
- * length for which the sphere never pokes out through the collar's forward
- * face, so the collar sticks out as little as it can while still containing
- * the head.
+ * The back sits at x = 0 — the head sphere's own centre, which is the
+ * turret's centre of rotation — so the barrels genuinely originate there
+ * instead of appearing to start partway along the axis.
+ *
+ * The front clears the sphere's forward pole rather than meeting it. Ending
+ * exactly AT the pole (x = headRadius) makes the cap tangent to the sphere:
+ * two surfaces touching at a single point, which z-fights and reads as the
+ * sphere poking through the collar's face. The margin below puts the cap in
+ * open air past the pole, so every bit of sphere surface inside the collar
+ * radius is genuinely covered by it.
  */
 const TURRET_ANCHOR_BACK_X_FRAC = 0;
-const TURRET_ANCHOR_FRONT_X_FRAC = 1;
+const TURRET_ANCHOR_FRONT_X_FRAC = 1.18;
 const TURRET_ANCHOR_RADIUS_FRAC = 0.76;
 
 export type FormikTurretAnchorProfile = {
@@ -48,10 +51,16 @@ export function getFormikTurretAnchorProfile(
  *  Every ridge's apex points away from this axis, so the frame reads as
  *  bolted onto the hull rather than laid flat across it. */
 const SPINE_Y = 0.5;
-/** Half-width of a ridge's base, and how far its apex stands off the hull. */
-const RIDGE_HALF_WIDTH = 0.10;
-const RIDGE_HEIGHT = 0.16;
-/** How far the base sinks under the surface, so the ridge looks seated. */
+/** Cross-section of a SPIKY STRAP: a broad band lifted off the hull with a
+ *  spine ridge running down it. A bare triangle read as a thin fin from the
+ *  RTS camera; the band gives the ornament real mass, and the spine keeps
+ *  the hard specular line that made the triangle read well up close. */
+const RIDGE_HALF_WIDTH = 0.16;
+/** How far the strap's flat shoulders stand off the hull — its thickness. */
+const RIDGE_STRAP_THICKNESS = 0.09;
+/** How far the spine rises above those shoulders. */
+const RIDGE_SPIKE_HEIGHT = 0.17;
+/** How far the base sinks under the surface, so the strap looks seated. */
 const RIDGE_SINK = 0.05;
 
 const _tangent = new THREE.Vector3();
@@ -66,10 +75,13 @@ function outwardAt(point: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
 }
 
 /**
- * Sweep a TRIANGULAR cross-section along `path`, apex pointing away from the
- * hull. Three quads per segment plus one triangle per end cap, which is a
- * fraction of what a round tube costs for a shape that reads sharper at RTS
- * distance: the apex catches a hard specular line instead of a soft gradient.
+ * Sweep the spiky-strap cross-section along `path`, spine pointing away from
+ * the hull.
+ *
+ * Five vertices per ring — spine, two shoulders, two sunk base corners — so
+ * five quads per segment plus a 3-triangle cap at each end. Still a fraction
+ * of what a round tube costs, and unlike a bare triangle it has visible
+ * thickness from every angle instead of vanishing edge-on.
  */
 function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
   const rings: THREE.Vector3[][] = [];
@@ -85,14 +97,19 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
     _side.crossVectors(_outward, _tangent);
     if (_side.lengthSq() < 1e-8) _side.set(0, 0, 1);
     _side.normalize();
+    // Spine first, then around the section in one consistent cyclic order
+    // so every quad below is wound the same way and normals face outward.
+    const shoulder = RIDGE_STRAP_THICKNESS;
     rings.push([
-      // Apex first; the two base corners follow in a fixed cyclic order so
-      // every quad below is wound the same way and normals face outward.
-      point.clone().addScaledVector(_outward, RIDGE_HEIGHT),
+      point.clone().addScaledVector(_outward, shoulder + RIDGE_SPIKE_HEIGHT),
+      point.clone().addScaledVector(_side, RIDGE_HALF_WIDTH)
+        .addScaledVector(_outward, shoulder),
       point.clone().addScaledVector(_side, RIDGE_HALF_WIDTH)
         .addScaledVector(_outward, -RIDGE_SINK),
       point.clone().addScaledVector(_side, -RIDGE_HALF_WIDTH)
         .addScaledVector(_outward, -RIDGE_SINK),
+      point.clone().addScaledVector(_side, -RIDGE_HALF_WIDTH)
+        .addScaledVector(_outward, shoulder),
     ]);
   }
 
@@ -100,11 +117,12 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
   const push = (v: THREE.Vector3): void => {
     positions.push(v.x, v.y, v.z);
   };
+  const ringSize = 5;
   for (let i = 0; i + 1 < rings.length; i++) {
     const a = rings[i];
     const b = rings[i + 1];
-    for (let k = 0; k < 3; k++) {
-      const k2 = (k + 1) % 3;
+    for (let k = 0; k < ringSize; k++) {
+      const k2 = (k + 1) % ringSize;
       push(a[k]); push(a[k2]); push(b[k]);
       push(a[k2]); push(b[k2]); push(b[k]);
     }
@@ -114,8 +132,10 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
   // visually.
   const first = rings[0];
   const last = rings[rings.length - 1];
-  push(first[0]); push(first[2]); push(first[1]);
-  push(last[0]); push(last[1]); push(last[2]);
+  for (let k = 1; k + 1 < ringSize; k++) {
+    push(first[0]); push(first[k + 1]); push(first[k]);
+    push(last[0]); push(last[k]); push(last[k + 1]);
+  }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
