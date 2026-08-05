@@ -30,12 +30,12 @@
 import * as THREE from 'three';
 import {
   TRIM_BAND_GUTTER_PIXELS,
-  TRIM_BAND_HEIGHTS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
+  TRIM_SHEET_TEXELS_PER_UNIT,
   bandFeatureCounts,
-  bandPixelAspect,
-  bandTopRow,
+  bandRectPx,
+  packedSheetHeight,
   type TrimBandId,
 } from './SurfaceChart3D';
 import {
@@ -69,6 +69,8 @@ type Layer = {
   bare: CanvasRenderingContext2D;
 };
 
+/** A band's CONTENT rect inside its gutters, in sheet pixels. Bands are packed
+ *  rectangles now, so `x` matters as much as `y`. */
 type BandRect = {
   x: number;
   y: number;
@@ -99,20 +101,22 @@ function beginBand(layer: Layer, band: TrimBandId, base: {
   height: number;
   bare: number;
 }): BandRect {
-  const slotY = bandTopRow(band);
-  const slotHeight = TRIM_BAND_HEIGHTS[band];
+  const slot = bandRectPx(band);
+  const g = TRIM_BAND_GUTTER_PIXELS;
   const rect: BandRect = {
-    x: 0,
-    y: slotY + TRIM_BAND_GUTTER_PIXELS,
-    width: TRIM_SHEET_PIXELS,
-    height: slotHeight - TRIM_BAND_GUTTER_PIXELS * 2,
+    x: slot.x + g,
+    y: slot.y + g,
+    width: slot.width - g * 2,
+    height: slot.height - g * 2,
   };
-  layer.albedo.fillStyle = gray(base.albedo);
-  layer.albedo.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
-  layer.height.fillStyle = gray(base.height);
-  layer.height.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
-  layer.bare.fillStyle = gray(base.bare);
-  layer.bare.fillRect(0, slotY, TRIM_SHEET_PIXELS, slotHeight);
+  for (const [ctx, value] of [
+    [layer.albedo, base.albedo],
+    [layer.height, base.height],
+    [layer.bare, base.bare],
+  ] as [CanvasRenderingContext2D, number][]) {
+    ctx.fillStyle = gray(value);
+    ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
+  }
   return rect;
 }
 
@@ -120,19 +124,33 @@ function beginBand(layer: Layer, band: TrimBandId, base: {
  *  levels average neighbouring rows; without this the bottom of one band
  *  bleeds into the top of the next two or three mips down, and a hull lobe
  *  starts showing nose facets at range. */
-function fillBandGutters(layer: Layer, band: TrimBandId, rect: BandRect): void {
-  const slotY = bandTopRow(band);
+function fillBandGutters(layer: Layer, rect: BandRect): void {
+  const g = TRIM_BAND_GUTTER_PIXELS;
   for (const ctx of [layer.albedo, layer.height, layer.bare]) {
-    // putImageData rather than drawImage. Stretching a one-pixel-tall source
-    // with drawImage runs it through the smoothing filter, which samples
-    // outside the source row and lays down a gradient instead of a copy — the
-    // gutter then no longer matches the edge it is supposed to extend.
-    // putImageData never filters.
-    const topRow = ctx.getImageData(0, rect.y, TRIM_SHEET_PIXELS, 1);
-    const bottomRow = ctx.getImageData(0, rect.y + rect.height - 1, TRIM_SHEET_PIXELS, 1);
-    for (let i = 0; i < TRIM_BAND_GUTTER_PIXELS; i++) {
-      ctx.putImageData(topRow, 0, slotY + i);
-      ctx.putImageData(bottomRow, 0, rect.y + rect.height + i);
+    // putImageData rather than drawImage. Stretching a one-pixel source with
+    // drawImage runs it through the smoothing filter, which samples outside
+    // the source and lays down a gradient instead of a copy — the gutter then
+    // no longer matches the edge it is meant to extend. putImageData never
+    // filters.
+    //
+    // The u gutters WRAP: a surface's u seam joins its right edge back to its
+    // left, so the left gutter is filled from the right content edge and vice
+    // versa, and mip filtering across the seam stays continuous. The v gutters
+    // just extend, since v runs pole to pole or breech to muzzle and its two
+    // ends are not the same place.
+    const left = ctx.getImageData(rect.x, rect.y, 1, rect.height);
+    const right = ctx.getImageData(rect.x + rect.width - 1, rect.y, 1, rect.height);
+    for (let i = 0; i < g; i++) {
+      ctx.putImageData(right, rect.x - g + i, rect.y);
+      ctx.putImageData(left, rect.x + rect.width + i, rect.y);
+    }
+    const top = ctx.getImageData(rect.x - g, rect.y, rect.width + g * 2, 1);
+    const bottom = ctx.getImageData(
+      rect.x - g, rect.y + rect.height - 1, rect.width + g * 2, 1,
+    );
+    for (let i = 0; i < g; i++) {
+      ctx.putImageData(top, rect.x - g, rect.y - g + i);
+      ctx.putImageData(bottom, rect.x - g, rect.y + rect.height + i);
     }
   }
 }
@@ -187,43 +205,42 @@ function bevelRect(
  *  RTS range — they survive to low mips as a value rhythm long after the
  *  individual heads stop resolving — which is why they get the sheet's only
  *  near-white values. */
-function rivet(
-  layer: Layer, cx: number, cy: number, r: number, aspect = 1,
-): void {
-  const rx = r * aspect;
-  const ellipse = (
+function rivet(layer: Layer, cx: number, cy: number, r: number): void {
+  const disc = (
     ctx: CanvasRenderingContext2D,
-    ox: number, oy: number, sx: number, sy: number, fill: string,
+    ox: number, oy: number, radius: number, fill: string,
   ) => {
     ctx.fillStyle = fill;
     ctx.beginPath();
-    ctx.ellipse(cx + ox, cy + oy, sx, sy, 0, 0, Math.PI * 2);
+    ctx.arc(cx + ox, cy + oy, radius, 0, Math.PI * 2);
     ctx.fill();
   };
-  ellipse(layer.albedo, 0, r * 0.22, rx + aspect * 1.3, r + 1.3, gray(0.03));
-  ellipse(layer.albedo, 0, 0, rx, r, gray(0.96));
-  ellipse(layer.albedo, rx * 0.22, r * 0.22, rx * 0.55, r * 0.55, gray(0.52));
-  ellipse(layer.height, 0, 0, rx, r, gray(0.96));
-  ellipse(layer.bare, 0, 0, rx * 0.85, r * 0.85, gray(0.75));
+  disc(layer.albedo, 0, r * 0.22, r + 1.3, gray(0.03));
+  disc(layer.albedo, 0, 0, r, gray(0.96));
+  disc(layer.albedo, r * 0.22, r * 0.22, r * 0.55, gray(0.52));
+  disc(layer.height, 0, 0, r, gray(0.96));
+  disc(layer.bare, 0, 0, r * 0.85, gray(0.75));
 }
 
-/** Evenly spaced bolts along a horizontal line, wrapping in u. */
+/** Evenly spaced bolts across a band's full width. */
 function boltRow(
-  layer: Layer, y: number, count: number, r: number, aspect = 1,
+  layer: Layer, rect: BandRect, y: number, count: number, r: number,
 ): void {
-  const spacing = TRIM_SHEET_PIXELS / count;
-  for (let i = 0; i < count; i++) rivet(layer, (i + 0.5) * spacing, y, r, aspect);
+  const spacing = rect.width / count;
+  for (let i = 0; i < count; i++) rivet(layer, rect.x + (i + 0.5) * spacing, y, r);
 }
 
 /** Recessed seam between panels: near-black gap with a lit lower lip. Runs the
  *  full width so it wraps in u without a seam of its own. */
-function seamRow(layer: Layer, y: number, thickness: number): void {
+function seamRow(
+  layer: Layer, rect: BandRect, y: number, thickness: number,
+): void {
   layer.albedo.fillStyle = gray(0.03);
-  layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.albedo.fillRect(rect.x, y, rect.width, thickness);
   layer.albedo.fillStyle = gray(0.86);
-  layer.albedo.fillRect(0, y + thickness, TRIM_SHEET_PIXELS, 1.2);
+  layer.albedo.fillRect(rect.x, y + thickness, rect.width, 1.2);
   layer.height.fillStyle = gray(0.05);
-  layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.height.fillRect(rect.x, y, rect.width, thickness);
 }
 
 /** A pipe or cable run: dark body, bright top highlight, hard shadow beneath,
@@ -232,24 +249,25 @@ function seamRow(layer: Layer, y: number, thickness: number): void {
  *  direction. */
 function pipeRun(
   layer: Layer,
+  rect: BandRect,
   y: number,
   thickness: number,
   clamps: number,
   bare: number,
 ): void {
   layer.albedo.fillStyle = gray(0.05);
-  layer.albedo.fillRect(0, y - 1, TRIM_SHEET_PIXELS, thickness + 2);
+  layer.albedo.fillRect(rect.x, y - 1, rect.width, thickness + 2);
   layer.albedo.fillStyle = gray(0.30);
-  layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.albedo.fillRect(rect.x, y, rect.width, thickness);
   layer.albedo.fillStyle = gray(0.92);
-  layer.albedo.fillRect(0, y + thickness * 0.16, TRIM_SHEET_PIXELS, thickness * 0.22);
+  layer.albedo.fillRect(rect.x, y + thickness * 0.16, rect.width, thickness * 0.22);
   layer.height.fillStyle = gray(0.94);
-  layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.height.fillRect(rect.x, y, rect.width, thickness);
   layer.bare.fillStyle = gray(bare);
-  layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
-  const spacing = TRIM_SHEET_PIXELS / clamps;
+  layer.bare.fillRect(rect.x, y, rect.width, thickness);
+  const spacing = rect.width / clamps;
   for (let i = 0; i < clamps; i++) {
-    const x = (i + 0.5) * spacing;
+    const x = rect.x + (i + 0.5) * spacing;
     bevelRect(layer, x - 4, y - 2, 8, thickness + 4, 0.62, 0.98, 0.3);
     layer.bare.fillStyle = gray(0.6);
     layer.bare.fillRect(x - 4, y - 2, 8, thickness + 4);
@@ -287,6 +305,7 @@ function ventBlock(layer: Layer, x: number, y: number, w: number, h: number): vo
  */
 function panelCourse(
   layer: Layer,
+  rect: BandRect,
   y: number,
   height: number,
   columns: number,
@@ -295,15 +314,12 @@ function panelCourse(
     bolts?: boolean;
     vents?: boolean;
     faceJitter?: number;
-    /** Band pixels per model unit horizontally over the same vertically, so
-     *  bolts stay round and insets stay square on the model. */
-    aspect?: number;
   } = {},
 ): void {
   layer.albedo.fillStyle = gray(0.03);
-  layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, height);
+  layer.albedo.fillRect(rect.x, y, rect.width, height);
   layer.height.fillStyle = gray(0.10);
-  layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, height);
+  layer.height.fillRect(rect.x, y, rect.width, height);
 
   // Widths are drawn at random and then NORMALIZED to sum to exactly the sheet
   // width, so the course tiles in u. Walking left to right with random widths
@@ -317,9 +333,9 @@ function panelCourse(
     weights.push((wide ? 2 : 1) * randIn(rng, 0.88, 1.12));
   }
   const totalWeight = weights.reduce((sum, value) => sum + value, 0);
-  let x = 0;
+  let x = rect.x;
   for (let index = 0; index < columns; index++) {
-    const w = (weights[index] / totalWeight) * TRIM_SHEET_PIXELS;
+    const w = (weights[index] / totalWeight) * rect.width;
     const wide = wideFlags[index];
     // Per-panel value variation leaks into the low harmonics when there are
     // few panels, so courses with big plates keep it tighter — see the
@@ -328,18 +344,21 @@ function panelCourse(
     const face = 0.53 + randIn(rng, -jitter, jitter);
     bevelRect(layer, x + 2, y + 2.5, w - 4, height - 5, face, 0.66, 0.30);
     if (options.bolts !== false) {
-      const aspect = options.aspect ?? 1;
-      // Inset is a MODEL distance, so it is wider in pixels horizontally by
-      // exactly the band's aspect — otherwise bolts crowd one axis.
-      const insetY = Math.min(height * 0.15, 14);
-      const insetX = insetY * aspect;
+      // No aspect correction anywhere in this file any more. The sheet has a
+      // single texel density on both axes, so a pixel IS a fixed world
+      // distance and a circle drawn round arrives round. Every compensation
+      // factor that used to be threaded through here existed only because the
+      // old strip layout let density differ per band and per axis.
+      const inset = Math.min(height * 0.15, 14);
+      const insetX = inset;
+      const insetY = inset;
       const r = Math.min(height * 0.075, 7);
       // TWO bolts per panel, on one diagonal. Four puts a bolt at every panel
       // corner, and since neighbouring panels share corners the surface ends
       // up ringed with doubled bolts — the single biggest contributor to the
       // busy, gaudy read.
-      rivet(layer, x + insetX, y + insetY, r, aspect);
-      rivet(layer, x + w - insetX, y + height - insetY, r, aspect);
+      rivet(layer, x + insetX, y + insetY, r);
+      rivet(layer, x + w - insetX, y + height - insetY, r);
     }
     if (options.vents === true && wide && height > 22) {
       ventBlock(layer, x + w * 0.3, y + height * 0.28, w * 0.4, height * 0.44);
@@ -356,7 +375,7 @@ function scratch(
   rect: BandRect,
   maxLength: number,
 ): void {
-  const x = randIn(rng, 0, TRIM_SHEET_PIXELS);
+  const x = randIn(rng, rect.x, rect.x + rect.width);
   const y = randIn(rng, rect.y + 2, rect.y + rect.height - 2);
   const len = randIn(rng, maxLength * 0.3, maxLength);
   const angle = randIn(rng, -0.25, 0.25);
@@ -382,13 +401,10 @@ function drawArmorPlate(
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, columns, rng, {
-      vents: c === 1,
-      aspect: bandPixelAspect(band),
-    });
-    seamRow(layer, y, 4);
+    panelCourse(layer, rect, y, courseHeight, columns, rng, { vents: c === 1 });
+    seamRow(layer, rect, y, 4);
   }
-  pipeRun(layer, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
+  pipeRun(layer, rect, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
   for (let i = 0; i < 34; i++) scratch(layer, rng, rect, 90);
 }
 
@@ -398,24 +414,20 @@ function drawNoseFacet(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const { columns, courses } = bandFeatureCounts(band);
-  const aspect = bandPixelAspect(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, columns, rng, {
-      faceJitter: 0.06,
-      aspect,
-    });
-    seamRow(layer, y, 5);
+    panelCourse(layer, rect, y, courseHeight, columns, rng, { faceJitter: 0.06 });
+    seamRow(layer, rect, y, 5);
   }
-  boltRow(layer, rect.y + courseHeight * 0.5, columns, 5, aspect);
+  boltRow(layer, rect, rect.y + courseHeight * 0.5, columns, 5);
   // Lit chine along the leading edge.
   layer.albedo.fillStyle = gray(0.97);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, 5);
   layer.height.fillStyle = gray(0.98);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
+  layer.height.fillRect(rect.x, rect.y, rect.width, 5);
   layer.bare.fillStyle = gray(0.40);
-  layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 5);
+  layer.bare.fillRect(rect.x, rect.y, rect.width, 5);
   for (let i = 0; i < 24; i++) scratch(layer, rng, rect, 120);
 }
 
@@ -450,27 +462,37 @@ function latitudeScale(f: number): number {
  * the band: the polar cap is entirely inside it, and the slot closes over the
  * pole as a rounded end rather than a point.
  */
-function meridianBandHalfWidthPx(f: number, arcHalf: number): number {
+function meridianBandHalfWidthPx(
+  f: number, arcHalf: number, bandWidth: number,
+): number {
   const s = latitudeScale(f);
   const sinArc = Math.sin(arcHalf);
-  if (s <= sinArc) return TRIM_SHEET_PIXELS * 0.5;
-  return (Math.asin(sinArc / s) / (Math.PI * 2)) * TRIM_SHEET_PIXELS;
+  if (s <= sinArc) return bandWidth * 0.5;
+  return (Math.asin(sinArc / s) / (Math.PI * 2)) * bandWidth;
 }
 
-/** Paint one row of a meridian band, wrapping horizontally. */
+/** Paint one row of a meridian band, wrapping across the band's own width. */
 function meridianRow(
   ctx: CanvasRenderingContext2D,
+  rect: BandRect,
   y: number,
   centerX: number,
   halfWidthPx: number,
 ): void {
-  if (halfWidthPx >= TRIM_SHEET_PIXELS * 0.5) {
-    ctx.fillRect(0, y, TRIM_SHEET_PIXELS, 1);
+  if (halfWidthPx >= rect.width * 0.5) {
+    ctx.fillRect(rect.x, y, rect.width, 1);
     return;
   }
-  for (const offset of [-TRIM_SHEET_PIXELS, 0, TRIM_SHEET_PIXELS]) {
+  // Clipped to the band: bands are packed side by side now, so a slot that
+  // wrapped past the edge would paint into whatever was packed next to it.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(rect.x, y, rect.width, 1);
+  ctx.clip();
+  for (const offset of [-rect.width, 0, rect.width]) {
     ctx.fillRect(centerX + offset - halfWidthPx, y, halfWidthPx * 2, 1);
   }
+  ctx.restore();
 }
 
 /** THE PITCH SLOT.
@@ -494,27 +516,27 @@ const PITCH_SLOT_ARC_HALF_WIDTH = 0.10;
 const PITCH_SLOT_CENTER_U = 0.5;
 
 function drawPitchSlot(layer: Layer, rect: BandRect): void {
-  const centerX = PITCH_SLOT_CENTER_U * TRIM_SHEET_PIXELS;
+  const centerX = rect.x + PITCH_SLOT_CENTER_U * rect.width;
   for (let i = 0; i < rect.height; i++) {
     const y = rect.y + i;
     const f = (i + 0.5) / rect.height;
-    const half = meridianBandHalfWidthPx(f, PITCH_SLOT_ARC_HALF_WIDTH);
+    const half = meridianBandHalfWidthPx(f, PITCH_SLOT_ARC_HALF_WIDTH, rect.width);
     // A machined lip just outside the opening, so the slot reads as a cut edge
     // rather than a painted stripe.
     layer.albedo.fillStyle = gray(0.93);
-    meridianRow(layer.albedo, y, centerX, half + 3);
+    meridianRow(layer.albedo, rect, y, centerX, half + 3);
     layer.height.fillStyle = gray(0.9);
-    meridianRow(layer.height, y, centerX, half + 3);
+    meridianRow(layer.height, rect, y, centerX, half + 3);
     layer.bare.fillStyle = gray(0.55);
-    meridianRow(layer.bare, y, centerX, half + 3);
+    meridianRow(layer.bare, rect, y, centerX, half + 3);
     // The opening itself: black, deeply recessed, and NOT bare metal — a hole
     // is an absence of surface, so nothing shows through it.
     layer.albedo.fillStyle = gray(0.02);
-    meridianRow(layer.albedo, y, centerX, half);
+    meridianRow(layer.albedo, rect, y, centerX, half);
     layer.height.fillStyle = gray(0.01);
-    meridianRow(layer.height, y, centerX, half);
+    meridianRow(layer.height, rect, y, centerX, half);
     layer.bare.fillStyle = gray(0);
-    meridianRow(layer.bare, y, centerX, half);
+    meridianRow(layer.bare, rect, y, centerX, half);
   }
 }
 
@@ -528,23 +550,22 @@ function drawSensorDome(
   // Panel courses. Horizontal here means a full ring around the head, so these
   // read the same from every direction and cost nothing at the poles.
   const { columns, courses } = bandFeatureCounts(band);
-  const aspect = bandPixelAspect(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, columns, rng, { aspect });
-    seamRow(layer, y, 4);
+    panelCourse(layer, rect, y, courseHeight, columns, rng);
+    seamRow(layer, rect, y, 4);
   }
-  boltRow(layer, rect.y + courseHeight * 0.5, columns, 5, aspect);
-  boltRow(layer, rect.y + rect.height - courseHeight * 0.5, columns, 5, aspect);
+  boltRow(layer, rect, rect.y + courseHeight * 0.5, columns, 5);
+  boltRow(layer, rect, rect.y + rect.height - courseHeight * 0.5, columns, 5);
 
   // Equatorial armoured ports. At the equator one unit of surface is this many
   // times wider in pixels than it is tall, so a circle must be drawn as an
   // ellipse stretched by that factor or it comes out as a smear on the sphere.
   const ports = 5;
-  const spacing = TRIM_SHEET_PIXELS / ports;
+  const spacing = rect.width / ports;
   const cy = rect.y + rect.height * 0.5;
-  const equatorAspect = (TRIM_SHEET_PIXELS / (Math.PI * 2)) / (rect.height / Math.PI);
+  const equatorAspect = (rect.width / (Math.PI * 2)) / (rect.height / Math.PI);
   // Sized from the HORIZONTAL budget, not the vertical one: the compensation
   // multiplies the x radius by the aspect, so picking a comfortable-looking
   // vertical radius first produces ports wider than their own spacing and the
@@ -561,7 +582,7 @@ function drawSensorDome(
     ctx.fill();
   };
   for (let i = 0; i < ports; i++) {
-    const cx = (i + 0.5) * spacing;
+    const cx = rect.x + (i + 0.5) * spacing;
     ellipse(layer.albedo, cx, portRx * 1.4, portRy * 1.4, gray(0.9));
     ellipse(layer.albedo, cx, portRx, portRy, gray(0.06));
     ellipse(layer.height, cx, portRx * 1.4, portRy * 1.4, gray(0.9));
@@ -569,13 +590,9 @@ function drawSensorDome(
     ellipse(layer.bare, cx, portRx * 1.4, portRy * 1.4, gray(0.6));
     for (let b = 0; b < 4; b++) {
       const a = (b / 4) * Math.PI * 2 + 0.4;
-      rivet(
-        layer,
-        cx + Math.cos(a) * portRx * 1.9,
+      rivet(layer, cx + Math.cos(a) * portRx * 1.9,
         cy + Math.sin(a) * portRy * 1.9,
-        4,
-        aspect,
-      );
+        4);
     }
   }
   for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 80);
@@ -607,11 +624,11 @@ function drawSensorDome(
 function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void {
   // Pale machined tube.
   layer.albedo.fillStyle = gray(0.92);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
   layer.height.fillStyle = gray(0.62);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
   layer.bare.fillStyle = gray(0.92);
-  layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
 
   // Used, not pristine: irregular blotches of duller metal along the tube.
   // Wear runs ALONG the tube, as full rings of varying grime, rather than as
@@ -619,26 +636,40 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // the circumference would sweep past as a rotating dark blotch, which is the
   // same failure mode as a baked highlight even though the grime itself is a
   // real surface feature. Rings are constant in u and so rotate invisibly.
+  //
+  // Sizes are in WORLD units scaled by the sheet's density, not in raw pixels.
+  // The barrel is 2 units across, so its band is only ~38 texels around; a
+  // "few pixel" pit authored against a full-width strip is wider here than the
+  // entire circumference.
+  const px = TRIM_SHEET_TEXELS_PER_UNIT;
   for (let i = 0; i < 70; i++) {
     const y = randIn(rng, rect.y, rect.y + rect.height);
-    const h = randIn(rng, 2, 9);
+    const h = randIn(rng, 0.3, 1.5) * px;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.20).toFixed(3)})`;
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, h);
+    layer.albedo.fillRect(rect.x, y, rect.width, h);
   }
   // A few small pits, kept narrow so they stay high-frequency around the tube.
+  // Clipped to the band. Bands are packed rectangles in a shared atlas now, so
+  // anything drawn in whole-sheet coordinates scatters across its neighbours —
+  // these pits were landing on the sensor dome's gutter and breaking its seam.
+  layer.albedo.save();
+  layer.albedo.beginPath();
+  layer.albedo.rect(rect.x, rect.y, rect.width, rect.height);
+  layer.albedo.clip();
   for (let i = 0; i < 90; i++) {
     const y = randIn(rng, rect.y, rect.y + rect.height);
-    const h = randIn(rng, 2, 6);
-    const x = randIn(rng, 0, TRIM_SHEET_PIXELS);
-    const w = randIn(rng, 14, 46);
+    const h = randIn(rng, 0.3, 0.9) * px;
+    const x = rect.x + randIn(rng, 0, rect.width);
+    const w = randIn(rng, 0.2, 0.5) * px;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.08, 0.24).toFixed(3)})`;
     layer.albedo.fillRect(x, y, w, h);
-    layer.albedo.fillRect(x - TRIM_SHEET_PIXELS, y, w, h);
+    layer.albedo.fillRect(x - rect.width, y, w, h);
   }
+  layer.albedo.restore();
   // Machining marks: fine rings around the tube, high frequency along it.
-  for (let y = rect.y; y < rect.y + rect.height; y += 7) {
+  for (let y = rect.y; y < rect.y + rect.height; y += 1.2 * px) {
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.16).toFixed(3)})`;
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 1.4);
+    layer.albedo.fillRect(rect.x, y, rect.width, 1.4);
   }
 
   // Breech collar and cooling fins at the root.
@@ -648,15 +679,15 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // units comes out hundreds of pixels wide, and a row of them merges into one
   // white band. A fastener that small would be sub-pixel on screen regardless,
   // so the collar carries its detail as machined rings instead.
-  bevelRect(layer, 0, rect.y, TRIM_SHEET_PIXELS, rect.height * 0.1, 0.55, 0.96, 0.38);
+  bevelRect(layer, rect.x, rect.y, rect.width, rect.height * 0.1, 0.55, 0.96, 0.38);
   for (let i = 0; i < 7; i++) {
-    const y = rect.y + rect.height * 0.12 + i * 9;
+    const y = rect.y + rect.height * 0.12 + i * 1.5 * px;
     layer.albedo.fillStyle = gray(0.05);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
+    layer.albedo.fillRect(rect.x, y, rect.width, 0.5 * px);
     layer.albedo.fillStyle = gray(0.98);
-    layer.albedo.fillRect(0, y + 3, TRIM_SHEET_PIXELS, 2);
+    layer.albedo.fillRect(rect.x, y + 0.5 * px, rect.width, 0.34 * px);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 5);
+    layer.height.fillRect(rect.x, y, rect.width, 0.84 * px);
   }
 
   // Muzzle soot creeping back from the tip.
@@ -664,7 +695,7 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   for (let i = 0; i < sootRows; i++) {
     const t = 1 - i / sootRows;
     layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * t * 0.75).toFixed(3)})`;
-    layer.albedo.fillRect(0, rect.y + rect.height - 1 - i, TRIM_SHEET_PIXELS, 1);
+    layer.albedo.fillRect(rect.x, rect.y + rect.height - 1 - i, rect.width, 1);
   }
 
   // THE TIP: a bright machined rim, then the black bore at the very end.
@@ -680,27 +711,27 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
   // A hard shadow line where the rim steps proud of the tube, so the rim reads
   // as a machined lip rather than as the tube simply going pale.
   layer.albedo.fillStyle = gray(0.04);
-  layer.albedo.fillRect(0, rimY - 4, TRIM_SHEET_PIXELS, 4);
+  layer.albedo.fillRect(rect.x, rimY - 0.7 * px, rect.width, 0.7 * px);
   layer.height.fillStyle = gray(0.1);
-  layer.height.fillRect(0, rimY - 4, TRIM_SHEET_PIXELS, 4);
+  layer.height.fillRect(rect.x, rimY - 0.7 * px, rect.width, 0.7 * px);
   // Bore first, rim outermost. The rim has to be the LAST thing on the tube so
   // it forms a bright lip right at the mouth with the dark bore inside it;
   // drawn the other way round the tube simply ends in black and the rim is
   // lost against the pale shaft.
   layer.albedo.fillStyle = gray(0.01);
-  layer.albedo.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+  layer.albedo.fillRect(rect.x, rimY, rect.width, boreHeight);
   layer.height.fillStyle = gray(0.0);
-  layer.height.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+  layer.height.fillRect(rect.x, rimY, rect.width, boreHeight);
   // A bore is an opening: nothing shows through it, bare metal included.
   layer.bare.fillStyle = gray(0);
-  layer.bare.fillRect(0, rimY, TRIM_SHEET_PIXELS, boreHeight);
+  layer.bare.fillRect(rect.x, rimY, rect.width, boreHeight);
 
   layer.albedo.fillStyle = gray(0.99);
-  layer.albedo.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
+  layer.albedo.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
   layer.height.fillStyle = gray(0.99);
-  layer.height.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
+  layer.height.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
   layer.bare.fillStyle = gray(1);
-  layer.bare.fillRect(0, rimY + boreHeight, TRIM_SHEET_PIXELS, rimHeight);
+  layer.bare.fillRect(rect.x, rimY + boreHeight, rect.width, rimHeight);
 }
 
 /** Leg strut: bolted end collars, a plated mid section, and hydraulic lines
@@ -717,11 +748,10 @@ function drawHydraulicStrut(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const { columns, courses } = bandFeatureCounts(band);
-  const aspect = bandPixelAspect(band);
   layer.albedo.fillStyle = gray(0.04);
-  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
   layer.height.fillStyle = gray(0.18);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
 
   const collarHeight = rect.height * 0.13;
   const shaftTop = rect.y + collarHeight;
@@ -730,22 +760,22 @@ function drawHydraulicStrut(
   const courseHeight = shaftHeight / midCourses;
   for (let c = 0; c < midCourses; c++) {
     const y = shaftTop + c * courseHeight;
-    panelCourse(layer, y, courseHeight, columns, rng, { aspect });
-    seamRow(layer, y, 5);
+    panelCourse(layer, rect, y, courseHeight, columns, rng);
+    seamRow(layer, rect, y, 5);
   }
   // Only the machined bits are unpainted. Painted plate keeps the unit's
   // colour, which is what carries ownership at a glance.
   layer.bare.fillStyle = gray(0.18);
-  layer.bare.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
+  layer.bare.fillRect(rect.x, shaftTop, rect.width, shaftHeight);
 
-  pipeRun(layer, shaftTop + shaftHeight * 0.34, 11, columns, 0.06);
-  pipeRun(layer, shaftTop + shaftHeight * 0.72, 9, columns, 0.06);
+  pipeRun(layer, rect, shaftTop + shaftHeight * 0.34, 11, columns, 0.06);
+  pipeRun(layer, rect, shaftTop + shaftHeight * 0.72, 9, columns, 0.06);
 
   for (const y of [rect.y, rect.y + rect.height - collarHeight]) {
-    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, collarHeight, 0.55, 0.97, 0.38);
+    bevelRect(layer, rect.x, y, rect.width, collarHeight, 0.55, 0.97, 0.38);
     layer.bare.fillStyle = gray(0.4);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, collarHeight);
-    boltRow(layer, y + collarHeight * 0.5, columns * 2, 5.5, aspect);
+    layer.bare.fillRect(rect.x, y, rect.width, collarHeight);
+    boltRow(layer, rect, y + collarHeight * 0.5, columns * 2, 5.5);
   }
   for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 70);
 }
@@ -756,22 +786,21 @@ function drawBoltBoss(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const { columns } = bandFeatureCounts(band);
-  const aspect = bandPixelAspect(band);
   // Few panels around a small sphere, so per-panel value variation is held
   // tight: with only a handful of columns it lands in the low harmonics and
   // reads as a light baked into the knuckle rather than as plating.
-  const opts = { aspect, faceJitter: 0.05 };
-  panelCourse(layer, rect.y, rect.height * 0.32, columns, rng, opts);
-  panelCourse(layer, rect.y + rect.height * 0.68, rect.height * 0.32, columns, rng, opts);
+  const opts = { faceJitter: 0.05 };
+  panelCourse(layer, rect, rect.y, rect.height * 0.32, columns, rng, opts);
+  panelCourse(layer, rect, rect.y + rect.height * 0.68, rect.height * 0.32, columns, rng, opts);
 
   const ringHeight = rect.height * 0.38;
   const ringY = rect.y + (rect.height - ringHeight) * 0.5;
-  bevelRect(layer, 0, ringY, TRIM_SHEET_PIXELS, ringHeight, 0.6, 0.98, 0.38);
+  bevelRect(layer, rect.x, ringY, rect.width, ringHeight, 0.6, 0.98, 0.38);
   layer.bare.fillStyle = gray(0.42);
-  layer.bare.fillRect(0, ringY, TRIM_SHEET_PIXELS, ringHeight);
-  boltRow(layer, ringY + ringHeight * 0.5, columns, 8, aspect);
-  seamRow(layer, ringY - 3, 3);
-  seamRow(layer, ringY + ringHeight, 3);
+  layer.bare.fillRect(rect.x, ringY, rect.width, ringHeight);
+  boltRow(layer, rect, ringY + ringHeight * 0.5, columns, 8);
+  seamRow(layer, rect, ringY - 3, 3);
+  seamRow(layer, rect, ringY + ringHeight, 3);
   for (let i = 0; i < 14; i++) scratch(layer, rng, rect, 60);
 }
 
@@ -787,7 +816,6 @@ function drawLiveryPiping(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const plateCount = bandFeatureCounts(band).columns;
-  const aspect = bandPixelAspect(band);
   // Same bolted plating as everything else. Earlier passes drew the plates at
   // the SAME value as the band base, so only the hairline separators showed
   // and the strap read as flat colour — the one surface on the unit with no
@@ -796,22 +824,19 @@ function drawLiveryPiping(
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, plateCount, rng, {
-      aspect,
-      faceJitter: 0.07,
-    });
-    seamRow(layer, y, 4);
+    panelCourse(layer, rect, y, courseHeight, plateCount, rng, { faceJitter: 0.07 });
+    seamRow(layer, rect, y, 4);
   }
   // Piped edges: hard black shadow line with a bright machined lip.
   for (const y of [rect.y + 1, rect.y + rect.height - 5]) {
     layer.albedo.fillStyle = gray(0.03);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 2.5);
+    layer.albedo.fillRect(rect.x, y, rect.width, 2.5);
     layer.albedo.fillStyle = gray(0.95);
-    layer.albedo.fillRect(0, y + 2.5, TRIM_SHEET_PIXELS, 1.5);
+    layer.albedo.fillRect(rect.x, y + 2.5, rect.width, 1.5);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.height.fillRect(rect.x, y, rect.width, 4);
     layer.bare.fillStyle = gray(0.3);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.bare.fillRect(rect.x, y, rect.width, 4);
   }
   for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 18);
 }
@@ -822,27 +847,23 @@ function drawLiveryChevron(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const plateCount = bandFeatureCounts(band).columns;
-  const aspect = bandPixelAspect(band);
 
   const { courses } = bandFeatureCounts(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, y, courseHeight, plateCount, rng, {
-      aspect,
-      faceJitter: 0.07,
-    });
-    seamRow(layer, y, 4);
+    panelCourse(layer, rect, y, courseHeight, plateCount, rng, { faceJitter: 0.07 });
+    seamRow(layer, rect, y, 4);
   }
   for (const y of [rect.y, rect.y + rect.height - 4]) {
     layer.albedo.fillStyle = gray(0.03);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 2.5);
+    layer.albedo.fillRect(rect.x, y, rect.width, 2.5);
     layer.albedo.fillStyle = gray(0.95);
-    layer.albedo.fillRect(0, y + 2.5, TRIM_SHEET_PIXELS, 1.5);
+    layer.albedo.fillRect(rect.x, y + 2.5, rect.width, 1.5);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.height.fillRect(rect.x, y, rect.width, 4);
     layer.bare.fillStyle = gray(0.35);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.bare.fillRect(rect.x, y, rect.width, 4);
   }
   for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 16);
 }
@@ -873,6 +894,14 @@ let cachedCanvas: HTMLCanvasElement | null = null;
 let cachedTexture: THREE.CanvasTexture | null = null;
 
 function buildTrimSheetCanvas(): HTMLCanvasElement {
+  const packedHeight = packedSheetHeight();
+  if (packedHeight > TRIM_SHEET_PIXELS) {
+    throw new Error(
+      `[trim sheet] band packing needs ${packedHeight} rows but the sheet is `
+      + `${TRIM_SHEET_PIXELS}. Lower TRIM_SHEET_TEXELS_PER_UNIT or shrink a `
+      + 'surface extent — do not let bands overlap, they would bleed.',
+    );
+  }
   const layer: Layer = {
     albedo: makeContext(TRIM_SHEET_PIXELS),
     height: makeContext(TRIM_SHEET_PIXELS),
@@ -883,7 +912,7 @@ function buildTrimSheetCanvas(): HTMLCanvasElement {
     const spec = BAND_DRAWERS[band];
     const rect = beginBand(layer, band, spec.base);
     spec.draw(layer, rect, makeSeededRng(BAND_SEEDS[band]), band);
-    fillBandGutters(layer, band, rect);
+    fillBandGutters(layer, rect);
   }
 
   // Combine the three grayscale layers into the packed RGB sheet. Alpha stays
@@ -913,7 +942,11 @@ export function getTrimSheetTexture(): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(cachedCanvas);
   // u tiles (bands are authored to wrap horizontally); v must clamp, or a
   // fragment at the edge of a band would filter into its neighbour.
-  texture.wrapS = THREE.RepeatWrapping;
+  // Clamp on BOTH axes: charts are rectangles inside a packed atlas and the
+  // shader maps uv straight into them, so nothing ever samples outside its own
+  // rectangle. Repeat wrapping here would let a chart at the sheet edge fetch
+  // from the opposite side.
+  texture.wrapS = THREE.ClampToEdgeWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
   // THE SHEET IS AUTHORED IN CANVAS-ROW SPACE. `bandContentRange` derives each
   // band's v range straight from the rows it was rasterized into, so row r must

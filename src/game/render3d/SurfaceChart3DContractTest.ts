@@ -15,12 +15,13 @@ import {
   FORMIK_LEG_CHARTS,
   BAND_SURFACE,
   TRIM_BAND_GUTTER_PIXELS,
-  TRIM_BAND_HEIGHTS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
-  bandContentRange,
+  TRIM_SHEET_TEXELS_PER_UNIT,
+  bandContentRect,
   bandFeatureCounts,
-  bandPixelAspect,
+  bandRectPx,
+  packedSheetHeight,
   isLiveryChart,
   packChart,
   type SurfaceChartId,
@@ -32,6 +33,21 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(`[surface chart contract] ${message}`);
 }
 
+/** A band's CONTENT bounds in sheet pixels. Bands are packed rectangles, so
+ *  every pixel scan below has to walk the band's own x range — scanning the
+ *  full sheet width would sample whatever was packed beside it. */
+function bandPixelBounds(band: TrimBandId): {
+  x0: number; x1: number; y0: number; y1: number; width: number; height: number;
+} {
+  const rect = bandRectPx(band);
+  const g = TRIM_BAND_GUTTER_PIXELS;
+  const x0 = rect.x + g;
+  const y0 = rect.y + g;
+  const width = rect.width - g * 2;
+  const height = rect.height - g * 2;
+  return { x0, x1: x0 + width, y0, y1: y0 + height, width, height };
+}
+
 /** Charts the Formik actually carries, in the order the catalog lists them. */
 const LIVERY_CHARTS: readonly SurfaceChartId[] = ['liveryStrap', 'liveryCollar'];
 
@@ -39,55 +55,76 @@ function bandOf(chart: SurfaceChartId): TrimBandId | null {
   if (chart === 'none') return null;
   const packed = new Float32Array(4);
   packChart(chart, packed, 0);
+  // Match on BOTH corners. Bands are packed side by side now, so several share
+  // a v0 and matching on that alone resolves to whichever was declared first.
   for (const band of TRIM_BAND_ORDER) {
-    const range = bandContentRange(band);
-    if (Math.abs(range.v0 - packed[0]) < 1e-9) return band;
+    const range = bandContentRect(band);
+    if (
+      Math.abs(range.u0 - packed[0]) < 1e-9 &&
+      Math.abs(range.v0 - packed[1]) < 1e-9
+    ) {
+      return band;
+    }
   }
   return null;
 }
 
 function checkCatalog(): void {
-  const totalRows = TRIM_BAND_ORDER.reduce(
-    (sum, band) => sum + TRIM_BAND_HEIGHTS[band], 0,
-  );
-  assertContract(
-    totalRows === TRIM_SHEET_PIXELS,
-    `band heights must fill the sheet exactly — got ${totalRows} of `
-      + `${TRIM_SHEET_PIXELS}. Bands are laid out by cumulative offset, so a `
-      + 'short total leaves dead rows and a long one runs off the sheet.',
-  );
-  for (const band of TRIM_BAND_ORDER) {
-    assertContract(
-      TRIM_BAND_HEIGHTS[band] > TRIM_BAND_GUTTER_PIXELS * 2 + 16,
-      `${band} must leave a usable content strip inside its gutters`,
-    );
-  }
   assertContract(
     new Set(TRIM_BAND_ORDER).size === TRIM_BAND_ORDER.length,
     'every trim band must appear exactly once in the layout order',
   );
 
-  // Content ranges must be disjoint AND separated, since the whole point of
-  // the gutter is that mip filtering never mixes two bands.
-  let previousEnd = -1;
+  // THE HEADLINE INVARIANT. Every charted surface is textured at one texel
+  // density, on both axes. Uniformity is what makes the set read as a single
+  // material system; a band sharper, softer, or stretched relative to its
+  // neighbours announces itself immediately on the model. The old full-width
+  // strip layout could not hold this — density there was 2048/uExtent, a 34x
+  // spread between bands and up to 93x skew within one.
   for (const band of TRIM_BAND_ORDER) {
-    const { v0, vSpan } = bandContentRange(band);
-    assertContract(vSpan > 0, `${band} must have content`);
-    assertContract(
-      v0 > previousEnd,
-      `${band} content overlaps the band above it`,
-    );
-    if (previousEnd >= 0) {
-      const gapPixels = (v0 - previousEnd) * TRIM_SHEET_PIXELS;
+    const surface = BAND_SURFACE[band];
+    const rect = bandRectPx(band);
+    const du = (rect.width - TRIM_BAND_GUTTER_PIXELS * 2) / surface.uExtent;
+    const dv = (rect.height - TRIM_BAND_GUTTER_PIXELS * 2) / surface.vExtent;
+    for (const [axis, density] of [['u', du], ['v', dv]] as [string, number][]) {
       assertContract(
-        gapPixels >= TRIM_BAND_GUTTER_PIXELS * 2 - 1e-6,
-        `${band} must be separated from its neighbour by both gutters — `
-          + `got ${gapPixels.toFixed(1)}px`,
+        Math.abs(density - TRIM_SHEET_TEXELS_PER_UNIT) < 0.35,
+        `${band} resolves ${density.toFixed(2)} texels per world unit along `
+          + `${axis}, not the sheet's ${TRIM_SHEET_TEXELS_PER_UNIT}`,
       );
     }
-    previousEnd = v0 + vSpan;
+    assertContract(
+      Math.abs(du / dv - 1) < 0.06,
+      `${band} is skewed ${(du / dv).toFixed(2)}:1 between its own axes`,
+    );
   }
-  assertContract(previousEnd <= 1 + 1e-9, 'the last band must fit in the sheet');
+
+  // The packing must fit, and no two bands may overlap — they would bleed into
+  // each other under mip filtering.
+  assertContract(
+    packedSheetHeight() <= TRIM_SHEET_PIXELS,
+    `band packing needs ${packedSheetHeight()} rows of a ${TRIM_SHEET_PIXELS} sheet`,
+  );
+  for (const a of TRIM_BAND_ORDER) {
+    const ra = bandRectPx(a);
+    for (const b of TRIM_BAND_ORDER) {
+      if (a === b) continue;
+      const rb = bandRectPx(b);
+      const overlaps = ra.x < rb.x + rb.width && rb.x < ra.x + ra.width
+        && ra.y < rb.y + rb.height && rb.y < ra.y + ra.height;
+      assertContract(!overlaps, `${a} and ${b} overlap in the packed sheet`);
+    }
+    assertContract(
+      ra.x + ra.width <= TRIM_SHEET_PIXELS && ra.y + ra.height <= TRIM_SHEET_PIXELS,
+      `${a} runs off the sheet`,
+    );
+    assertContract(
+      ra.width > TRIM_BAND_GUTTER_PIXELS * 2 + 16
+        && ra.height > TRIM_BAND_GUTTER_PIXELS * 2 + 16,
+      `${a} must leave a usable content area inside its gutters`,
+    );
+  }
+
 
   // 'none' must pack to all zeroes: the shader's active test is `vChart.y > 0`,
   // which is what makes a zero-filled (never-written) slot correctly untextured
@@ -158,17 +195,15 @@ type BandStats = {
 };
 
 function bandStats(pixels: Uint8ClampedArray, band: TrimBandId): BandStats {
-  const { v0, vSpan } = bandContentRange(band);
-  const top = Math.round(v0 * TRIM_SHEET_PIXELS);
-  const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
+  const b = bandPixelBounds(band);
   let sumR = 0;
   let sumG = 0;
   let sumB = 0;
   let minR = 255;
   let maxR = 0;
   let count = 0;
-  for (let y = top; y < bottom; y++) {
-    for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+  for (let y = b.y0; y < b.y1; y++) {
+    for (let x = b.x0; x < b.x1; x++) {
       const i = (y * TRIM_SHEET_PIXELS + x) * 4;
       const r = pixels[i];
       sumR += r;
@@ -270,28 +305,36 @@ function checkTrimSheet(): void {
   checkBaseColourSurvives(pixels);
   checkPitchSlot(pixels);
 
-  // Gutters must be a copy of the band's own edge row, not the neighbour's
-  // content. Sample the row just outside the content and compare to the row
-  // just inside it.
-  for (let index = 0; index < TRIM_BAND_ORDER.length; index++) {
-    const band = TRIM_BAND_ORDER[index];
-    const { v0, vSpan } = bandContentRange(band);
-    const contentTop = Math.round(v0 * TRIM_SHEET_PIXELS);
-    const contentBottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS) - 1;
+  // Gutters, all four sides. The v gutters extend the band's own edge rows;
+  // the u gutters WRAP — a surface's u seam joins its right edge to its left,
+  // so the left gutter is filled from the right content edge and vice versa.
+  // Both exist so mip filtering never averages in a neighbouring band.
+  for (const band of TRIM_BAND_ORDER) {
+    const b = bandPixelBounds(band);
+    const at = (x: number, y: number): number =>
+      pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
+
     for (const [outside, inside] of [
-      [contentTop - 2, contentTop],
-      [contentBottom + 2, contentBottom],
+      [b.y0 - 2, b.y0],
+      [b.y1 + 1, b.y1 - 1],
     ]) {
       let diff = 0;
-      for (let x = 0; x < TRIM_SHEET_PIXELS; x += 37) {
-        const a = (outside * TRIM_SHEET_PIXELS + x) * 4;
-        const b = (inside * TRIM_SHEET_PIXELS + x) * 4;
-        diff += Math.abs(pixels[a] - pixels[b]);
-      }
+      for (let x = b.x0; x < b.x1; x += 37) diff += Math.abs(at(x, outside) - at(x, inside));
       assertContract(
         diff === 0,
-        `${band} gutter at row ${outside} does not mirror its edge row `
-          + `${inside} — mip filtering will bleed the neighbouring band in`,
+        `${band} v gutter at row ${outside} does not extend its edge row ${inside}`,
+      );
+    }
+    for (const [outside, inside] of [
+      [b.x0 - 2, b.x1 - 1],
+      [b.x1 + 1, b.x0],
+    ]) {
+      let diff = 0;
+      for (let y = b.y0; y < b.y1; y += 37) diff += Math.abs(at(outside, y) - at(inside, y));
+      assertContract(
+        diff === 0,
+        `${band} u gutter at column ${outside} does not wrap from column `
+          + `${inside} — mip filtering across the surface's u seam will show it`,
       );
     }
   }
@@ -398,34 +441,32 @@ function lowHarmonicStats(
   pixels: Uint8ClampedArray,
   band: TrimBandId,
 ): { share: number; amplitude: number } {
-  const { v0, vSpan } = bandContentRange(band);
-  const top = Math.round(v0 * TRIM_SHEET_PIXELS);
-  const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
+  const b = bandPixelBounds(band);
   let lowPower = 0;
   let totalPower = 0;
   let peakAmplitude = 0;
-  for (let y = top; y < bottom; y++) {
+  for (let y = b.y0; y < b.y1; y++) {
     let mean = 0;
-    for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+    for (let x = b.x0; x < b.x1; x++) {
       mean += pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
     }
-    mean /= TRIM_SHEET_PIXELS;
-    for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
-      const d = pixels[(y * TRIM_SHEET_PIXELS + x) * 4] - mean;
-      totalPower += d * d;
+    mean /= b.width;
+    for (let x = b.x0; x < b.x1; x++) {
+      const dv = pixels[(y * TRIM_SHEET_PIXELS + x) * 4] - mean;
+      totalPower += dv * dv;
     }
     for (let harmonic = 1; harmonic <= 3; harmonic++) {
       let re = 0;
       let im = 0;
-      for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
-        const value = pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
-        const angle = (2 * Math.PI * harmonic * x) / TRIM_SHEET_PIXELS;
+      for (let x = 0; x < b.width; x++) {
+        const value = pixels[(y * TRIM_SHEET_PIXELS + b.x0 + x) * 4];
+        const angle = (2 * Math.PI * harmonic * x) / b.width;
         re += value * Math.cos(angle);
         im -= value * Math.sin(angle);
       }
       // Parseval: a real bin's contribution to the sum of squared deviations.
-      lowPower += (2 * (re * re + im * im)) / TRIM_SHEET_PIXELS;
-      const amplitude = (2 * Math.hypot(re, im)) / TRIM_SHEET_PIXELS;
+      lowPower += (2 * (re * re + im * im)) / b.width;
+      const amplitude = (2 * Math.hypot(re, im)) / b.width;
       if (amplitude > peakAmplitude) peakAmplitude = amplitude;
     }
   }
@@ -490,18 +531,18 @@ export function measureBandLowHarmonics(): Record<string, string> {
  *    "closing up" at the top and bottom of its travel.
  */
 function checkPitchSlot(pixels: Uint8ClampedArray): void {
-  const { v0, vSpan } = bandContentRange('sensorDome');
-  const top = Math.round(v0 * TRIM_SHEET_PIXELS);
-  const height = Math.round(vSpan * TRIM_SHEET_PIXELS);
+  const b = bandPixelBounds('sensorDome');
+  const top = b.y0;
+  const height = b.height;
   const DARK = 40;
 
   // The CONTIGUOUS dark run through the slot's centre, not every dark pixel in
   // the row: lenses and vents are dark too, and counting them would measure
   // the band's whole dark area rather than the slot.
-  const centerX = Math.round(0.5 * TRIM_SHEET_PIXELS);
+  const centerX = Math.round(b.x0 + 0.5 * b.width);
   const isDark = (y: number, x: number): boolean => {
-    const wrapped = ((x % TRIM_SHEET_PIXELS) + TRIM_SHEET_PIXELS) % TRIM_SHEET_PIXELS;
-    return pixels[(y * TRIM_SHEET_PIXELS + wrapped) * 4] <= DARK;
+    const local = (((x - b.x0) % b.width) + b.width) % b.width;
+    return pixels[(y * TRIM_SHEET_PIXELS + b.x0 + local) * 4] <= DARK;
   };
   const darkRun: number[] = [];
   for (let i = 0; i < height; i++) {
@@ -512,9 +553,9 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
         + 'barrels would leave the slot partway through their travel',
     );
     let run = 1;
-    for (let d = 1; d <= TRIM_SHEET_PIXELS / 2 && isDark(y, centerX - d); d++) run++;
-    for (let d = 1; d <= TRIM_SHEET_PIXELS / 2 && isDark(y, centerX + d); d++) run++;
-    darkRun.push(Math.min(run, TRIM_SHEET_PIXELS));
+    for (let d = 1; d <= b.width / 2 && isDark(y, centerX - d); d++) run++;
+    for (let d = 1; d <= b.width / 2 && isDark(y, centerX + d); d++) run++;
+    darkRun.push(Math.min(run, b.width));
   }
 
   // THE PIXEL WIDTH MUST NOT SHRINK TOWARD EITHER POLE. This is the direct
@@ -545,8 +586,8 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
   // over the pole, and asin() no longer recovers the width from the run.
   const arcWidths: number[] = [];
   for (let i = 0; i < height; i++) {
-    if (darkRun[i] > TRIM_SHEET_PIXELS / 3) continue;
-    const halfPhi = (Math.PI * darkRun[i]) / TRIM_SHEET_PIXELS;
+    if (darkRun[i] > b.width / 3) continue;
+    const halfPhi = (Math.PI * darkRun[i]) / b.width;
     const latitude = Math.sin((Math.PI * (i + 0.5)) / height);
     arcWidths.push(2 * Math.asin(Math.min(1, latitude * Math.sin(halfPhi))));
   }
@@ -574,8 +615,8 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
   const midRow = top + midIndex;
   const halfRun = Math.floor(darkRun[midIndex] / 2);
   for (let d = -halfRun; d <= halfRun; d++) {
-    const x = ((centerX + d) % TRIM_SHEET_PIXELS + TRIM_SHEET_PIXELS) % TRIM_SHEET_PIXELS;
-    const i = (midRow * TRIM_SHEET_PIXELS + x) * 4;
+    const local = (((centerX + d - b.x0) % b.width) + b.width) % b.width;
+    const i = (midRow * TRIM_SHEET_PIXELS + b.x0 + local) * 4;
     if (pixels[i] > DARK) continue;
     holeHeight += pixels[i + 1];
     holeBare += pixels[i + 2];
@@ -628,21 +669,8 @@ function checkFeatureScale(): void {
         + `on the model (${ratio.toFixed(1)}:1). Features must not be stretched.`,
     );
 
-    // Texel density on the weaker axis: enough that a panel edge and a bolt
-    // still resolve, or the sheet is being asked to cover more surface than it
-    // has pixels for.
-    const contentHeight = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
-    const pxPerUnitV = contentHeight / surface.vExtent;
-    const pxPerUnitU = TRIM_SHEET_PIXELS / surface.uExtent;
-    assertContract(
-      Math.min(pxPerUnitU, pxPerUnitV) > 2.5,
-      `${band} resolves only ${Math.min(pxPerUnitU, pxPerUnitV).toFixed(1)} `
-        + 'px per world unit on its weaker axis',
-    );
-    assertContract(
-      bandPixelAspect(band) > 0,
-      `${band} must expose a usable pixel aspect for drawing`,
-    );
+    // Density itself is asserted in checkCatalog; here we only care that the
+    // panel counts land at a sane physical size.
   }
 }
 
@@ -658,13 +686,11 @@ const BARE_METAL_BANDS: ReadonlySet<TrimBandId> = new Set(['barrelShaft']);
 
 function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {
-    const { v0, vSpan } = bandContentRange(band);
-    const top = Math.round(v0 * TRIM_SHEET_PIXELS);
-    const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
+    const b = bandPixelBounds(band);
     let sum = 0;
     let count = 0;
-    for (let y = top; y < bottom; y++) {
-      for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+    for (let y = b.y0; y < b.y1; y++) {
+      for (let x = b.x0; x < b.x1; x++) {
         sum += pixels[(y * TRIM_SHEET_PIXELS + x) * 4 + 2];
         count++;
       }

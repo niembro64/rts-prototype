@@ -102,17 +102,27 @@ const FRAGMENT_DECL = [
   'varying vec3 vChartViewPos;',
   '#endif',
   '',
-  // The chart's u tiles freely; its v is confined to the band. Sampling the
-  // wrapped coordinate directly would make the derivative explode across the
-  // fract() seam and select the smallest mip there, drawing a bright line
-  // around every tile. textureGrad lets us hand it the UNWRAPPED derivative,
-  // which is continuous.
+  // A chart is a rectangle in the sheet and the surface's own uv maps straight
+  // into it — no tiling, no fract, no wrap. That is what a single sheet-wide
+  // texel density buys: the band is exactly one wrap of its surface at exactly
+  // the right size, so there is nothing left to stretch, skew or zoom.
+  //
+  // Derivatives still have to be scaled by the rectangle, or the mip selection
+  // is taken from whole-sheet coordinates and every chart resolves at the
+  // wrong level. Clamped a half-texel inside so bilinear filtering at the
+  // extreme edge cannot reach the gutter.
   'vec3 sampleSurfaceChart(vec2 chartUv, vec4 chart) {',
-  '  vec2 tiled = chartUv * vec2(chart.z, chart.w);',
-  '  vec2 ddxTiled = dFdx(tiled) * vec2(1.0, chart.y);',
-  '  vec2 ddyTiled = dFdy(tiled) * vec2(1.0, chart.y);',
-  '  vec2 st = vec2(fract(tiled.x), chart.x + fract(tiled.y) * chart.y);',
-  '  return textureGrad(uTrimSheet, st, ddxTiled, ddyTiled).rgb;',
+  '  vec2 span = chart.zw;',
+  '  vec2 half_texel = 0.5 / vec2(textureSize(uTrimSheet, 0));',
+  '  vec2 local = clamp(chartUv, vec2(0.0), vec2(1.0));',
+  '  vec2 st = clamp(',
+  '    chart.xy + local * span,',
+  '    chart.xy + half_texel,',
+  '    chart.xy + span - half_texel',
+  '  );',
+  '  return textureGrad(',
+  '    uTrimSheet, st, dFdx(chartUv) * span, dFdy(chartUv) * span',
+  '  ).rgb;',
   '}',
   '',
   '#ifdef SURFACE_CHART_BUMP',
@@ -140,7 +150,8 @@ const FRAGMENT_DECL = [
 // the wear reveal lands on top of it rather than under it.
 const FRAGMENT_ALBEDO = [
   '#include <color_fragment>',
-  'float chartActive = step(1.0e-6, vChart.y) * uChartEnabled;',
+  // vChart.w is the rectangle's v span; zero means this instance has no chart.
+  'float chartActive = step(1.0e-6, vChart.w) * uChartEnabled;',
   'vec3 chartTexel = vec3(0.5, 0.5, 0.0);',
   'if (chartActive > 0.5) {',
   '  chartTexel = sampleSurfaceChart(vChartUv, vChart);',

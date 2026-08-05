@@ -58,100 +58,137 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
 
 export const TRIM_SHEET_PIXELS = 2048;
 
-/** Rows allotted to each band. NOT uniform: a band's height is the only lever
- *  on its vertical texel density, and the surfaces differ by an order of
- *  magnitude in how much of that they need. A leg strut is about as long as it
- *  is round, so its band wants real height; a livery strap is a long thin
- *  ribbon and needs almost none. Must sum to TRIM_SHEET_PIXELS. */
-export const TRIM_BAND_HEIGHTS: Record<TrimBandId, number> = {
-  armorPlate: 288,
-  noseFacet: 192,
-  sensorDome: 288,
-  barrelShaft: 256,
-  hydraulicStrut: 320,
-  boltBoss: 224,
-  liveryPiping: 256,
-  liveryChevron: 224,
-};
+/**
+ * TEXEL DENSITY — the constraint the whole layout exists to satisfy.
+ *
+ * Every charted surface is textured at exactly this many texels per world unit,
+ * on BOTH axes, with no exceptions. That single rule is what makes the
+ * texturing look like one material system instead of eight unrelated ones: no
+ * surface is sharper than its neighbour, nothing is stretched along one axis,
+ * and a panel seam is the same physical width wherever it appears.
+ *
+ * It is not automatic. The previous layout gave every band the full sheet width
+ * regardless of what it wrapped, which forced u-density to be 2048/uExtent —
+ * 9.6 texels per unit on a hull lobe and 325 on a barrel, a 34x spread between
+ * bands and up to 93x skew WITHIN one. Bands are packed rectangles now, each
+ * sized from its own surface, so density is uniform by construction rather than
+ * by tuning.
+ *
+ * Raising this sharpens everything at once and costs area quadratically; the
+ * packing assertion in the contract test is what tells you when it no longer
+ * fits.
+ */
+export const TRIM_SHEET_TEXELS_PER_UNIT = 6;
 
-/** Gutter at the top and bottom of every band, filled by extending the band's
- *  own edge content. Mip levels average neighbouring texels, so without a
- *  gutter the bottom of `armorPlate` bleeds into the top of `noseFacet` two or
- *  three mips down and a hull lobe picks up nose facets at distance. */
+/** Gutter around every side of a band, filled by extending (or wrapping) its
+ *  own edge content. Mip levels average neighbouring texels, so without it one
+ *  band bleeds into whatever was packed beside it a few mips down. */
 export const TRIM_BAND_GUTTER_PIXELS = 16;
 
-/** First row of a band's slot, gutters included. */
-export function bandTopRow(band: TrimBandId): number {
-  let row = 0;
-  for (const other of TRIM_BAND_ORDER) {
-    if (other === band) return row;
-    row += TRIM_BAND_HEIGHTS[other];
-  }
-  throw new Error(`[surface chart] unknown trim band ${band}`);
-}
-
 /**
- * World-space size of the patch ONE band repeat covers on its primary surface,
- * for the Formik.
+ * World-space size of the surface each band covers, for the Formik.
  *
- * This is what stops features being stretched or gaudy, and it cannot be
- * eyeballed from the band image. A band is roughly 9:1 in pixels; a leg strut
- * is roughly 1:1 in world space. Drawing a square in the band therefore puts a
- * tall thin sliver on the leg, and ten "columns" around a 32-unit circumference
- * makes 3-unit panels — which is exactly the too-tight, too-small look.
- *
- * Feature counts are derived from these instead: columns = uExtent / feature,
- * courses = vExtent / feature. The result is square on the model at a chosen
- * physical size, whatever the band's own aspect happens to be.
+ * These are FULL extents — one band is exactly one wrap of its surface, with no
+ * tiling. Tiling was previously how a band's aspect got reconciled with its
+ * surface's; sizing the rectangle from the surface itself removes the need, and
+ * with it the fract() seam and the per-chart repeat counts.
  *
  * Derived from the Formik: unit radius 40, head radius 32, barrel 64 long by 2
  * across, leg segments ~36-42 long with ~5 radius, hip/knee spheres 5.5/7.5.
+ * A sphere of radius R has circumference 2*pi*R around and pi*R pole to pole.
  */
 export type BandSurface = {
-  /** Circumference (or arc length) one band repeat wraps, in world units. */
+  /** Circumference or arc length the band wraps, in world units. */
   uExtent: number;
-  /** Extent along the other axis one band repeat covers, in world units. */
+  /** Extent along the other axis, in world units. */
   vExtent: number;
   /** Target on-model size of one panel / plate, in world units. */
   featureSize: number;
 };
 
-// `featureSize` is the main dial on how busy a unit reads. Panels roughly a
-// quarter to a third of the part they sit on look like plating; drop much
-// below that and the same construction turns into a rash of tiny bolted
-// squares, which reads as gaudy noise rather than machinery.
 export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
-  armorPlate: { uExtent: 214, vExtent: 53, featureSize: 24 },
+  armorPlate: { uExtent: 214, vExtent: 107, featureSize: 24 },
   noseFacet: { uExtent: 105, vExtent: 53, featureSize: 26 },
   sensorDome: { uExtent: 201, vExtent: 100, featureSize: 22 },
   barrelShaft: { uExtent: 6.3, vExtent: 64, featureSize: 6 },
   hydraulicStrut: { uExtent: 32, vExtent: 39, featureSize: 11 },
   boltBoss: { uExtent: 47, vExtent: 24, featureSize: 12 },
   liveryPiping: { uExtent: 104, vExtent: 60, featureSize: 16 },
-  liveryChevron: { uExtent: 76, vExtent: 38, featureSize: 16 },
+  liveryChevron: { uExtent: 153, vExtent: 38, featureSize: 16 },
 };
 
-/** Panels across and courses down for a band, sized so each lands at
- *  `featureSize` world units on the model rather than at a fixed pixel size. */
-export function bandFeatureCounts(band: TrimBandId): {
-  columns: number;
-  courses: number;
-} {
+/** A band's pixel rectangle in the sheet, gutters included. */
+export type BandRectPx = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function bandSlotSize(band: TrimBandId): { width: number; height: number } {
   const surface = BAND_SURFACE[band];
+  const pad = TRIM_BAND_GUTTER_PIXELS * 2;
   return {
-    columns: Math.max(2, Math.round(surface.uExtent / surface.featureSize)),
-    courses: Math.max(1, Math.round(surface.vExtent / surface.featureSize)),
+    width: Math.ceil(surface.uExtent * TRIM_SHEET_TEXELS_PER_UNIT) + pad,
+    height: Math.ceil(surface.vExtent * TRIM_SHEET_TEXELS_PER_UNIT) + pad,
   };
+}
+
+/**
+ * Shelf packing, tallest first.
+ *
+ * Deterministic and dependency-free, which matters more here than optimality:
+ * the layout has to be identical every run or the charts and the generated
+ * pixels disagree. It leaves slack, so `packedSheetHeight` below is the number
+ * to watch when extents or density change.
+ */
+function packBands(): Record<TrimBandId, BandRectPx> {
+  const order = [...TRIM_BAND_ORDER].sort(
+    (a, b) => bandSlotSize(b).height - bandSlotSize(a).height,
+  );
+  const rects = {} as Record<TrimBandId, BandRectPx>;
+  let shelfY = 0;
+  let shelfX = 0;
+  let shelfHeight = 0;
+  for (const band of order) {
+    const { width, height } = bandSlotSize(band);
+    if (width > TRIM_SHEET_PIXELS) {
+      throw new Error(
+        `[surface chart] ${band} needs ${width}px of sheet width at `
+        + `${TRIM_SHEET_TEXELS_PER_UNIT} texels/unit; the sheet is `
+        + `${TRIM_SHEET_PIXELS}px`,
+      );
+    }
+    if (shelfX + width > TRIM_SHEET_PIXELS) {
+      shelfY += shelfHeight;
+      shelfX = 0;
+      shelfHeight = 0;
+    }
+    rects[band] = { x: shelfX, y: shelfY, width, height };
+    shelfX += width;
+    if (height > shelfHeight) shelfHeight = height;
+  }
+  return rects;
+}
+
+const BAND_RECTS = packBands();
+
+export function bandRectPx(band: TrimBandId): BandRectPx {
+  return BAND_RECTS[band];
+}
+
+/** Total rows the packing actually consumes. Must stay within the sheet. */
+export function packedSheetHeight(): number {
+  let bottom = 0;
+  for (const band of TRIM_BAND_ORDER) {
+    const rect = BAND_RECTS[band];
+    if (rect.y + rect.height > bottom) bottom = rect.y + rect.height;
+  }
+  return bottom;
 }
 
 /** How many times wider than tall a band pixel is on the model. Drawing code
  *  multiplies horizontal radii by this so circles come out round. */
-export function bandPixelAspect(band: TrimBandId): number {
-  const surface = BAND_SURFACE[band];
-  const contentHeight = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
-  return (TRIM_SHEET_PIXELS / surface.uExtent) / (contentHeight / surface.vExtent);
-}
-
 /** Charts a unit surface can be labelled with. `none` is the default and means
  *  "untextured" — it takes a branch in the shader that leaves the fragment
  *  exactly as it was, which is what every non-Formik entity currently gets. */
@@ -168,51 +205,26 @@ export type SurfaceChartId =
 
 type SurfaceChartDef = {
   band: TrimBandId;
-  /** Repeats across the surface's own u axis (around a cylinder, around a
-   *  sphere's azimuth, along a sweep's arc length). */
-  tileU: number;
-  /** Repeats across v (along a cylinder's axis, pole-to-pole on a sphere,
-   *  across a sweep's cross-section). Usually 1: most bands are authored to
-   *  span their surface once so features land at a chosen place rather than
-   *  repeating into a stripe pattern. */
-  tileV: number;
   /** True for charts that carry team/player identity. Only these may be
    *  driven by a team color, and only these are counted toward the livery
    *  coverage budget. */
   livery: boolean;
 };
 
-// TILING RATES ARE AN ASPECT-RATIO PROBLEM, not a taste one.
-//
-// A band is TRIM_SHEET_PIXELS wide by roughly an eighth of that tall — about
-// 10:1. Mapping that onto a surface whose own parameterization is nearer 1:1
-// stretches every feature tenfold along u, and plates, facets and rivets all
-// smear into a vertical comb. The rates below undo that.
-//
-// For a SPHERE, u covers the circumference C and one v repeat covers the
-// half-meridian C/2, so texel densities are 1024/C across and
-// tileV·(band height)/(C/2) down. Square cells therefore want
-// tileV ≈ 1024 / (2 · bandHeight) ≈ 5. Values a little under that leave
-// plate courses slightly wider than tall, which is what real plating does.
-//
-// For a CYLINDER the ratio depends on radius against length, and thin
-// cylinders (barrels, leg struts) genuinely want the band compressed around
-// the circumference — that is what turns the authored column rhythm into
-// fluting. Those keep tileU 1.
+// No tiling rates. A band is exactly one wrap of its surface at the sheet's
+// single texel density, so a chart is a straight rectangle lookup: there is
+// nothing left to stretch, skew, or zoom. Every rate that used to live here
+// was compensation for a band whose aspect did not match its surface's, and
+// sizing the rectangle from the surface removes the mismatch at the source.
 const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
-  hullShell: { band: 'armorPlate', tileU: 1, tileV: 2, livery: false },
-  hullNose: { band: 'noseFacet', tileU: 1, tileV: 1, livery: false },
-  // tileV MUST stay 1: the dome band carries the barrel pitch slot, which runs
-  // pole to pole exactly once. Any repeat stacks several slots up the head.
-  sensorDome: { band: 'sensorDome', tileU: 1, tileV: 1, livery: false },
-  barrelShaft: { band: 'barrelShaft', tileU: 1, tileV: 1, livery: false },
-  legStrut: { band: 'hydraulicStrut', tileU: 1, tileV: 1, livery: false },
-  legJoint: { band: 'boltBoss', tileU: 1, tileV: 1, livery: false },
-  // The strap sweep parameterizes u by arc length and v across a narrow
-  // cross-section, so one band repeat over the whole run is already close to
-  // square — the authored clamp count becomes the clamp count on the strap.
-  liveryStrap: { band: 'liveryPiping', tileU: 1, tileV: 1, livery: true },
-  liveryCollar: { band: 'liveryChevron', tileU: 2, tileV: 1, livery: true },
+  hullShell: { band: 'armorPlate', livery: false },
+  hullNose: { band: 'noseFacet', livery: false },
+  sensorDome: { band: 'sensorDome', livery: false },
+  barrelShaft: { band: 'barrelShaft', livery: false },
+  legStrut: { band: 'hydraulicStrut', livery: false },
+  legJoint: { band: 'boltBoss', livery: false },
+  liveryStrap: { band: 'liveryPiping', livery: true },
+  liveryCollar: { band: 'liveryChevron', livery: true },
 };
 
 export function bandIndex(band: TrimBandId): number {
@@ -221,26 +233,35 @@ export function bandIndex(band: TrimBandId): number {
   return index;
 }
 
-/** The v range of a band's CONTENT — inside its gutters. Fragments never
- *  sample the gutter directly; it exists only so mip filtering has same-band
- *  texels to average into. */
-export function bandContentRange(band: TrimBandId): { v0: number; vSpan: number } {
-  const top = bandTopRow(band) + TRIM_BAND_GUTTER_PIXELS;
-  const height = TRIM_BAND_HEIGHTS[band] - TRIM_BAND_GUTTER_PIXELS * 2;
-  return { v0: top / TRIM_SHEET_PIXELS, vSpan: height / TRIM_SHEET_PIXELS };
+/** A band's CONTENT rectangle in normalized texture space — inside its
+ *  gutters. Fragments never sample the gutter directly; it exists only so mip
+ *  filtering has same-band texels to average into. */
+export function bandContentRect(band: TrimBandId): {
+  u0: number;
+  v0: number;
+  uSpan: number;
+  vSpan: number;
+} {
+  const rect = bandRectPx(band);
+  const g = TRIM_BAND_GUTTER_PIXELS;
+  return {
+    u0: (rect.x + g) / TRIM_SHEET_PIXELS,
+    v0: (rect.y + g) / TRIM_SHEET_PIXELS,
+    uSpan: (rect.width - g * 2) / TRIM_SHEET_PIXELS,
+    vSpan: (rect.height - g * 2) / TRIM_SHEET_PIXELS,
+  };
 }
 
 export function isLiveryChart(chart: SurfaceChartId): boolean {
   return chart !== 'none' && CHART_DEFS[chart].livery;
 }
 
-/** Per-instance shader payload: (v0, vSpan, tileU, tileV).
+/** Per-instance shader payload: the chart's rectangle (u0, v0, uSpan, vSpan).
  *
- *  Carrying the band's v range directly rather than an index into a uniform
- *  table means the shader needs no lookup and JS stays the sole owner of the
- *  sheet layout. `vSpan === 0` is the sentinel for "no chart" — the shader
- *  tests exactly that, so an unwritten (zero-filled) attribute slot is
- *  correctly untextured without any initialization pass. */
+ *  The shader maps the surface's own uv straight into this rectangle — no
+ *  tiling, no fract, no wrap. `vSpan === 0` is the sentinel for "no chart", so
+ *  an unwritten (zero-filled) attribute slot is correctly untextured without
+ *  any initialization pass. */
 export function packChart(chart: SurfaceChartId, out: Float32Array, offset: number): void {
   if (chart === 'none') {
     out[offset] = 0;
@@ -249,12 +270,25 @@ export function packChart(chart: SurfaceChartId, out: Float32Array, offset: numb
     out[offset + 3] = 0;
     return;
   }
-  const def = CHART_DEFS[chart];
-  const { v0, vSpan } = bandContentRange(def.band);
-  out[offset] = v0;
-  out[offset + 1] = vSpan;
-  out[offset + 2] = def.tileU;
-  out[offset + 3] = def.tileV;
+  const rect = bandContentRect(CHART_DEFS[chart].band);
+  out[offset] = rect.u0;
+  out[offset + 1] = rect.v0;
+  out[offset + 2] = rect.uSpan;
+  out[offset + 3] = rect.vSpan;
+}
+
+/** Panels across and courses down for a band, sized so each lands at
+ *  `featureSize` world units on the model. Because density is uniform the
+ *  result is square in texels as well as in world units. */
+export function bandFeatureCounts(band: TrimBandId): {
+  columns: number;
+  courses: number;
+} {
+  const surface = BAND_SURFACE[band];
+  return {
+    columns: Math.max(2, Math.round(surface.uExtent / surface.featureSize)),
+    courses: Math.max(1, Math.round(surface.vExtent / surface.featureSize)),
+  };
 }
 
 // ── Formik assignment ────────────────────────────────────────────────────
