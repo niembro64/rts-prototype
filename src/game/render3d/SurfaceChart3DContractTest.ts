@@ -356,27 +356,42 @@ function checkProgramCacheKeys(): void {
  * is what made leg segments read as though you were looking at their backs.
  *
  * Structure must therefore be either constant across u or repeat MANY times
- * across it; both look identical from every direction. So the test is a
- * frequency one, not a brightness one: measure each row's lowest harmonics
- * (period = the whole circumference, or half, or a third) and require them to
- * be small. Authored structure lives far higher up — 18 flutes, 11 plate
- * columns, 32 bolt ribs — and is untouched by this.
+ * across it; both look identical from every direction.
  *
- * A half-band mean comparison does NOT work here and was the first thing tried:
- * the offending gradient covered only the middle 60% of the band, so averaging
- * the collars in with it diluted the signal below any workable threshold.
+ * The test is a frequency one, and specifically a RATIO: what share of a band's
+ * horizontal variance sits in the three lowest harmonics (period = the whole
+ * circumference, or half, or a third). A smooth gradient puts essentially all
+ * of its energy there. Bolted plating puts almost none — its energy lives at
+ * the panel and bolt frequencies, an order of magnitude higher — even though
+ * irregular panel widths and per-panel value variation do leak a little
+ * downward. An absolute amplitude limit cannot separate those two: raise it
+ * enough to permit honest plating and it stops catching a gradient.
+ *
+ * A half-band mean comparison does not work either, and was the first thing
+ * tried: the offending gradient covered only the middle 60% of the band, so
+ * averaging the collars in with it diluted the signal below any threshold.
  */
-const MAX_LOW_HARMONIC_AMPLITUDE = 14;
+const MAX_LOW_HARMONIC_SHARE = 0.30;
 
-function lowHarmonicAmplitude(
+function lowHarmonicShare(
   pixels: Uint8ClampedArray,
   band: TrimBandId,
-): { amplitude: number; row: number; harmonic: number } {
+): number {
   const { v0, vSpan } = bandContentRange(band);
   const top = Math.round(v0 * TRIM_SHEET_PIXELS);
   const bottom = Math.round((v0 + vSpan) * TRIM_SHEET_PIXELS);
-  let worst = { amplitude: 0, row: -1, harmonic: 0 };
+  let lowPower = 0;
+  let totalPower = 0;
   for (let y = top; y < bottom; y++) {
+    let mean = 0;
+    for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+      mean += pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
+    }
+    mean /= TRIM_SHEET_PIXELS;
+    for (let x = 0; x < TRIM_SHEET_PIXELS; x++) {
+      const d = pixels[(y * TRIM_SHEET_PIXELS + x) * 4] - mean;
+      totalPower += d * d;
+    }
     for (let harmonic = 1; harmonic <= 3; harmonic++) {
       let re = 0;
       let im = 0;
@@ -386,11 +401,11 @@ function lowHarmonicAmplitude(
         re += value * Math.cos(angle);
         im -= value * Math.sin(angle);
       }
-      const amplitude = (2 * Math.hypot(re, im)) / TRIM_SHEET_PIXELS;
-      if (amplitude > worst.amplitude) worst = { amplitude, row: y, harmonic };
+      // Parseval: a real bin's contribution to the sum of squared deviations.
+      lowPower += (2 * (re * re + im * im)) / TRIM_SHEET_PIXELS;
     }
   }
-  return worst;
+  return totalPower > 0 ? lowPower / totalPower : 0;
 }
 
 /** Bands that legitimately carry a feature at the circumference's own period.
@@ -405,20 +420,19 @@ const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set(['sensorDome']
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {
     if (DIRECTIONAL_EXEMPT_BANDS.has(band)) continue;
-    const worst = lowHarmonicAmplitude(pixels, band);
+    const share = lowHarmonicShare(pixels, band);
     assertContract(
-      worst.amplitude < MAX_LOW_HARMONIC_AMPLITUDE,
-      `${band} carries a period-${worst.harmonic} variation across the `
-        + `circumference (amplitude ${worst.amplitude.toFixed(1)} at row `
-        + `${worst.row}). That is a baked directional highlight: it locks to `
-        + 'the geometry and turns its dark side to the camera as the part '
-        + 'rotates, which reads as looking at the back of the surface.',
+      share < MAX_LOW_HARMONIC_SHARE,
+      `${band} puts ${(share * 100).toFixed(0)}% of its horizontal variance in `
+        + 'the three lowest harmonics. That is a baked directional highlight: '
+        + 'it locks to the geometry and turns its dark side to the camera as '
+        + 'the part rotates, which reads as looking at the back of the surface.',
     );
   }
 }
 
-/** Dev aid: the measured low-harmonic amplitude per band, for tuning the
- *  threshold above against real content rather than guesswork. */
+/** Dev aid: the measured low-harmonic share per band, for tuning the threshold
+ *  above against real content rather than guesswork. */
 export function measureBandLowHarmonics(): Record<string, string> {
   const canvas = buildTrimSheetCanvasForTest();
   const context = canvas.getContext('2d');
@@ -426,8 +440,7 @@ export function measureBandLowHarmonics(): Record<string, string> {
   const pixels = context.getImageData(0, 0, TRIM_SHEET_PIXELS, TRIM_SHEET_PIXELS).data;
   const out: Record<string, string> = {};
   for (const band of TRIM_BAND_ORDER) {
-    const worst = lowHarmonicAmplitude(pixels, band);
-    out[band] = `${worst.amplitude.toFixed(1)} (h${worst.harmonic})`;
+    out[band] = `${(lowHarmonicShare(pixels, band) * 100).toFixed(1)}%`;
   }
   return out;
 }

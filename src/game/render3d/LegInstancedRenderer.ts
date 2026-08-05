@@ -142,7 +142,18 @@ function shouldDefrag(freeListLen: number, nextSlot: number): boolean {
  *    axis      = end - start
  *    up        = normalize(axis)             [maps local +Y here]
  *    right     = ⟂(world Y, up)              [maps local +X here]
- *    forward   = up × right                  [maps local +Z here]
+ *    forward   = right × up                  [maps local +Z here]
+ *
+ *  THE ORDER OF THAT LAST CROSS PRODUCT IS LOAD-BEARING. `up × right` gives
+ *  det[right, up, forward] = −1: a left-handed basis, which mirrors the
+ *  cylinder and reverses its triangle winding. Every outward-facing triangle
+ *  is then classified as back-facing and culled, leaving only the far inner
+ *  wall — the leg renders inside-out, showing the surface pointing away from
+ *  the camera instead of the one facing it.
+ *
+ *  It was invisible for as long as legs were flat-coloured, because the inside
+ *  of a uniformly shaded cylinder looks exactly like the outside. Surface
+ *  texturing is what made it obvious.
  *
  *  When |axis · world Y| ≈ 1 (cylinder near-vertical, parallel to
  *  world up) the cross with world Y degenerates; we fall back to
@@ -164,7 +175,7 @@ if (abs(_segUp.y) > 0.999) {
 } else {
   _segRight = normalize(cross(vec3(0.0, 1.0, 0.0), _segUp));
 }
-vec3 _segFwd = cross(_segUp, _segRight);
+vec3 _segFwd = cross(_segRight, _segUp);
 vec3 _segMid = (instStart + instEnd) * 0.5;
 vec3 transformed = _segMid
   + _segRight * position.x * instThickness

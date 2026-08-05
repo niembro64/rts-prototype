@@ -41,9 +41,11 @@ import {
   randIn,
 } from './detailTextureHelpers';
 
-/** Neutral albedo multiplier — R at this level leaves the instance colour
- *  untouched. Bands are authored as departures from it. */
-const NEUTRAL = 0.5;
+// R = 0.5 is the neutral albedo multiplier (the shader decodes x2), but bands
+// are no longer authored as small departures from it: recesses run to black and
+// machined edges to white, and it is the band's MEAN that should land near
+// neutral. Compressing everything around 0.5 was what made earlier passes read
+// as a flat wash rather than as plating.
 
 /** One deterministic seed per band so editing one band's generator cannot
  *  reshuffle the noise in every other band. */
@@ -131,9 +133,13 @@ function fillBandGutters(layer: Layer, index: number, rect: BandRect): void {
   }
 }
 
-/** Bevel a rectangle: bright along the top/left, dark along the bottom/right,
- *  with a matching height ramp. This single primitive is what makes plates,
- *  facets and collars read as raised solids rather than painted rectangles. */
+/** Bevelled panel face. Bright along the top/left, dark along the bottom/right,
+ *  with a matching height ramp.
+ *
+ *  Contrast here is deliberately extreme — recesses go near black and lit edges
+ *  near white — because the sheet's R channel is a MULTIPLIER (decoded x2), so
+ *  0 kills the unit's colour entirely and 1 doubles it. Timid mid-greys waste
+ *  most of that range and read as a flat wash on the model. */
 function bevelRect(
   layer: Layer,
   x: number,
@@ -150,60 +156,177 @@ function bevelRect(
   layer.height.fillRect(x, y, w, h);
 
   layer.albedo.fillStyle = gray(Math.min(1, face + bevel));
-  layer.albedo.fillRect(x, y, w, 1);
-  layer.albedo.fillRect(x, y, 1, h);
+  layer.albedo.fillRect(x, y, w, 1.4);
+  layer.albedo.fillRect(x, y, 1.4, h);
   layer.albedo.fillStyle = gray(Math.max(0, face - bevel));
-  layer.albedo.fillRect(x, y + h - 1, w, 1);
-  layer.albedo.fillRect(x + w - 1, y, 1, h);
+  layer.albedo.fillRect(x, y + h - 1.4, w, 1.4);
+  layer.albedo.fillRect(x + w - 1.4, y, 1.4, h);
 
   // The height ramp is what the bump actually reads; the albedo bevel above is
   // there so the edge survives at mip levels where the ramp has averaged out.
-  layer.height.fillStyle = gray(Math.min(1, faceHeight + 0.12));
-  layer.height.fillRect(x, y, w, 1);
-  layer.height.fillRect(x, y, 1, h);
-  layer.height.fillStyle = gray(Math.max(0, faceHeight - 0.12));
-  layer.height.fillRect(x, y + h - 1, w, 1);
-  layer.height.fillRect(x + w - 1, y, 1, h);
+  layer.height.fillStyle = gray(Math.min(1, faceHeight + 0.16));
+  layer.height.fillRect(x, y, w, 1.4);
+  layer.height.fillRect(x, y, 1.4, h);
+  layer.height.fillStyle = gray(Math.max(0, faceHeight - 0.16));
+  layer.height.fillRect(x, y + h - 1.4, w, 1.4);
+  layer.height.fillRect(x + w - 1.4, y, 1.4, h);
 }
 
-/** A rivet: bright dome with a dark contact shadow. Rivets are the cheapest
- *  read at RTS range — they survive to low mips as a value rhythm even after
- *  the individual heads stop resolving. */
+/** A bolt: bright dome, hard contact shadow, bare metal head. Bolts are the
+ *  cheapest read at RTS range — they survive to low mips as a value rhythm
+ *  long after the individual heads stop resolving. */
 function rivet(layer: Layer, cx: number, cy: number, r: number): void {
-  layer.albedo.fillStyle = gray(NEUTRAL - 0.16);
+  layer.albedo.fillStyle = gray(0.04);
   layer.albedo.beginPath();
-  layer.albedo.arc(cx, cy + 0.6, r + 0.8, 0, Math.PI * 2);
+  layer.albedo.arc(cx, cy + 0.7, r + 1.1, 0, Math.PI * 2);
   layer.albedo.fill();
-  layer.albedo.fillStyle = gray(NEUTRAL + 0.22);
+  layer.albedo.fillStyle = gray(0.95);
   layer.albedo.beginPath();
   layer.albedo.arc(cx, cy, r, 0, Math.PI * 2);
   layer.albedo.fill();
+  layer.albedo.fillStyle = gray(0.55);
+  layer.albedo.beginPath();
+  layer.albedo.arc(cx + r * 0.22, cy + r * 0.22, r * 0.55, 0, Math.PI * 2);
+  layer.albedo.fill();
 
-  layer.height.fillStyle = gray(0.86);
+  layer.height.fillStyle = gray(0.95);
   layer.height.beginPath();
   layer.height.arc(cx, cy, r, 0, Math.PI * 2);
   layer.height.fill();
 
-  // Rivet heads are unpainted fasteners.
-  layer.bare.fillStyle = gray(0.55);
+  layer.bare.fillStyle = gray(0.7);
   layer.bare.beginPath();
-  layer.bare.arc(cx, cy, r * 0.8, 0, Math.PI * 2);
+  layer.bare.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
   layer.bare.fill();
 }
 
-/** Horizontal seam: a recessed gap with a lit lower lip. Runs the full width
- *  so it tiles in u without a seam of its own. */
+/** Evenly spaced bolts along a horizontal line, wrapping in u. */
+function boltRow(layer: Layer, y: number, count: number, r: number): void {
+  const spacing = TRIM_SHEET_PIXELS / count;
+  for (let i = 0; i < count; i++) rivet(layer, (i + 0.5) * spacing, y, r);
+}
+
+/** Recessed seam between panels: near-black gap with a lit lower lip. Runs the
+ *  full width so it wraps in u without a seam of its own. */
 function seamRow(layer: Layer, y: number, thickness: number): void {
-  layer.albedo.fillStyle = gray(NEUTRAL - 0.3);
+  layer.albedo.fillStyle = gray(0.03);
   layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
-  layer.albedo.fillStyle = gray(NEUTRAL + 0.1);
-  layer.albedo.fillRect(0, y + thickness, TRIM_SHEET_PIXELS, 1);
-  layer.height.fillStyle = gray(0.22);
+  layer.albedo.fillStyle = gray(0.86);
+  layer.albedo.fillRect(0, y + thickness, TRIM_SHEET_PIXELS, 1.2);
+  layer.height.fillStyle = gray(0.05);
   layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
 }
 
-/** Wear scratch: a thin bright streak that also writes the bare-metal mask, so
- *  it cuts through whatever paint (substance or livery) is beneath it. */
+/** A pipe or cable run: dark body, bright top highlight, hard shadow beneath,
+ *  and periodic clamps. Horizontal, so on a cylinder it rings the part and on a
+ *  sphere it follows a latitude — either way it reads the same from every
+ *  direction. */
+function pipeRun(
+  layer: Layer,
+  y: number,
+  thickness: number,
+  clamps: number,
+  bare: number,
+): void {
+  layer.albedo.fillStyle = gray(0.05);
+  layer.albedo.fillRect(0, y - 1, TRIM_SHEET_PIXELS, thickness + 2);
+  layer.albedo.fillStyle = gray(0.30);
+  layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.albedo.fillStyle = gray(0.92);
+  layer.albedo.fillRect(0, y + thickness * 0.16, TRIM_SHEET_PIXELS, thickness * 0.22);
+  layer.height.fillStyle = gray(0.94);
+  layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  layer.bare.fillStyle = gray(bare);
+  layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  const spacing = TRIM_SHEET_PIXELS / clamps;
+  for (let i = 0; i < clamps; i++) {
+    const x = (i + 0.5) * spacing;
+    bevelRect(layer, x - 4, y - 2, 8, thickness + 4, 0.62, 0.98, 0.3);
+    layer.bare.fillStyle = gray(0.6);
+    layer.bare.fillRect(x - 4, y - 2, 8, thickness + 4);
+  }
+}
+
+/** A louvered vent block — machinery, not stripes: it is bounded, bolted, and
+ *  sits proud of the panel it is mounted on. */
+function ventBlock(layer: Layer, x: number, y: number, w: number, h: number): void {
+  bevelRect(layer, x, y, w, h, 0.46, 0.86, 0.34);
+  const slats = Math.max(3, Math.floor(h / 4));
+  for (let i = 0; i < slats; i++) {
+    const sy = y + 3 + (i * (h - 6)) / slats;
+    layer.albedo.fillStyle = gray(0.02);
+    layer.albedo.fillRect(x + 3, sy, w - 6, 1.8);
+    layer.albedo.fillStyle = gray(0.75);
+    layer.albedo.fillRect(x + 3, sy + 1.8, w - 6, 0.9);
+    layer.height.fillStyle = gray(0.06);
+    layer.height.fillRect(x + 3, sy, w - 6, 1.8);
+  }
+  rivet(layer, x + 3, y + 3, 1.5);
+  rivet(layer, x + w - 3, y + 3, 1.5);
+  rivet(layer, x + 3, y + h - 3, 1.5);
+  rivet(layer, x + w - 3, y + h - 3, 1.5);
+}
+
+/**
+ * One course of bolted panels across the full width.
+ *
+ * Column widths are jittered and occasionally doubled so the result reads as
+ * plating rather than as a grid or a stripe pattern: a uniform subdivision at a
+ * uniform value is exactly what makes procedural hard-surface work look like
+ * corrugation. Panels sit on a near-black recess, so every gap is a real dark
+ * line rather than a slightly darker grey.
+ */
+function panelCourse(
+  layer: Layer,
+  y: number,
+  height: number,
+  columns: number,
+  rng: () => number,
+  options: { bolts?: boolean; vents?: boolean; faceJitter?: number } = {},
+): void {
+  layer.albedo.fillStyle = gray(0.03);
+  layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, height);
+  layer.height.fillStyle = gray(0.10);
+  layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, height);
+
+  // Widths are drawn at random and then NORMALIZED to sum to exactly the sheet
+  // width, so the course tiles in u. Walking left to right with random widths
+  // instead leaves a part-width panel at the wrap, which shows up on the model
+  // as one mismatched plate edge running the length of the seam.
+  const weights: number[] = [];
+  const wideFlags: boolean[] = [];
+  for (let i = 0; i < columns; i++) {
+    const wide = rng() < 0.18;
+    wideFlags.push(wide);
+    weights.push((wide ? 2 : 1) * randIn(rng, 0.88, 1.12));
+  }
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  let x = 0;
+  for (let index = 0; index < columns; index++) {
+    const w = (weights[index] / totalWeight) * TRIM_SHEET_PIXELS;
+    const wide = wideFlags[index];
+    // Per-panel value variation leaks into the low harmonics when there are
+    // few panels, so courses with big plates keep it tighter — see the
+    // baked-directional-shading check.
+    const jitter = options.faceJitter ?? 0.13;
+    const face = 0.53 + randIn(rng, -jitter, jitter);
+    bevelRect(layer, x + 2, y + 2.5, w - 4, height - 5, face, 0.66, 0.30);
+    if (options.bolts !== false) {
+      const inset = 5;
+      rivet(layer, x + inset, y + inset, 1.8);
+      rivet(layer, x + w - inset, y + inset, 1.8);
+      rivet(layer, x + inset, y + height - inset, 1.8);
+      rivet(layer, x + w - inset, y + height - inset, 1.8);
+    }
+    if (options.vents === true && wide && height > 22) {
+      ventBlock(layer, x + w * 0.3, y + height * 0.28, w * 0.4, height * 0.44);
+    }
+    x += w;
+  }
+}
+
+/** Wear scratch: a bright streak that also writes the bare-metal mask, so it
+ *  cuts through whatever paint (substance or livery) is beneath it. */
 function scratch(
   layer: Layer,
   rng: () => number,
@@ -214,12 +337,12 @@ function scratch(
   const y = randIn(rng, rect.y + 2, rect.y + rect.height - 2);
   const len = randIn(rng, maxLength * 0.3, maxLength);
   const angle = randIn(rng, -0.25, 0.25);
-  const width = randIn(rng, 0.8, 2.0);
+  const width = randIn(rng, 0.8, 1.8);
   for (const ctx of [layer.albedo, layer.bare]) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.fillStyle = ctx === layer.albedo ? gray(NEUTRAL + 0.2) : gray(0.85);
+    ctx.fillStyle = ctx === layer.albedo ? gray(0.9) : gray(0.85);
     ctx.fillRect(-len / 2, -width / 2, len, width);
     ctx.restore();
   }
@@ -227,86 +350,43 @@ function scratch(
 
 // ── Bands ────────────────────────────────────────────────────────────────
 
-/** Hull plating. Rows of bevelled plates with jittered column widths so the
- *  grid does not read as a checkerboard, rivets along the row seams, and a
- *  scattering of wear. Maps onto a spheroid as plate courses running around
- *  the azimuth and stacking pole to pole. */
+/** Hull plating: three courses of bolted panels separated by recessed seams,
+ *  with a conduit run crossing the middle course. */
 function drawArmorPlate(layer: Layer, rect: BandRect, rng: () => number): void {
-  const rows = 3;
-  const rowHeight = rect.height / rows;
-  for (let row = 0; row < rows; row++) {
-    const y = rect.y + row * rowHeight;
-    // Column count varies per row so plate seams never line up vertically
-    // across the whole band — stacked seams read as a grid, offset seams read
-    // as plating.
-    const columns = 10 + Math.floor(rng() * 3);
-    const columnWidth = TRIM_SHEET_PIXELS / columns;
-    const phase = rng() * columnWidth;
-    for (let col = -1; col < columns + 1; col++) {
-      const x = col * columnWidth + phase;
-      const face = NEUTRAL + randIn(rng, -0.07, 0.07);
-      bevelRect(
-        layer,
-        x + 2, y + 2,
-        columnWidth - 4, rowHeight - 4,
-        face, 0.62, 0.16,
-      );
-    }
-    seamRow(layer, y, 2);
-    const rivetCount = Math.floor(columns * 1.5);
-    for (let i = 0; i < rivetCount; i++) {
-      rivet(
-        layer,
-        (i + 0.5) * (TRIM_SHEET_PIXELS / rivetCount),
-        y + 6,
-        1.9,
-      );
-    }
+  const courses = 3;
+  const courseHeight = rect.height / courses;
+  for (let c = 0; c < courses; c++) {
+    const y = rect.y + c * courseHeight;
+    panelCourse(layer, y, courseHeight, 9 + Math.floor(rng() * 3), rng, {
+      vents: c === 1,
+    });
+    seamRow(layer, y, 2.5);
   }
-  for (let i = 0; i < 40; i++) scratch(layer, rng, rect, 46);
+  pipeRun(layer, rect.y + courseHeight * 1.72, 5, 9, 0.12);
+  for (let i = 0; i < 34; i++) scratch(layer, rng, rect, 42);
 }
 
-/** Nose facets. Bigger, harder-edged, and directional: a leading bright edge
- *  with swept trapezoids behind it. The nose lobe is what the RTS camera sees
- *  first, so it carries the strongest read. */
+/** Nose armour: heavier, fewer, thicker-bolted plates than the hull, with a
+ *  bright lit chine along the leading course. */
 function drawNoseFacet(layer: Layer, rect: BandRect, rng: () => number): void {
-  const facets = 8;
-  const width = TRIM_SHEET_PIXELS / facets;
-  for (let i = 0; i < facets; i++) {
-    const x = i * width;
-    const face = NEUTRAL + randIn(rng, -0.05, 0.09);
-    // Swept quad — leading edge tall, trailing edge short.
-    layer.albedo.fillStyle = gray(face);
-    layer.height.fillStyle = gray(0.66);
-    // Facets butt against each other with only a seam between them: a wide
-    // gap makes them read as separate cards floating on a dark backing rather
-    // than as one faceted shell.
-    for (const ctx of [layer.albedo, layer.height]) {
-      ctx.beginPath();
-      ctx.moveTo(x + 1, rect.y + 1);
-      ctx.lineTo(x + width - 1, rect.y + rect.height * 0.18);
-      ctx.lineTo(x + width - 1, rect.y + rect.height - 1);
-      ctx.lineTo(x + 1, rect.y + rect.height * 0.82);
-      ctx.closePath();
-      ctx.fill();
-    }
-    layer.albedo.strokeStyle = gray(NEUTRAL + 0.26);
-    layer.albedo.lineWidth = 1.5;
-    layer.albedo.beginPath();
-    layer.albedo.moveTo(x + 1, rect.y + 1);
-    layer.albedo.lineTo(x + width - 1, rect.y + rect.height * 0.18);
-    layer.albedo.stroke();
-    rivet(layer, x + width * 0.5, rect.y + rect.height * 0.5, 2.6);
+  const courses = 2;
+  const courseHeight = rect.height / courses;
+  for (let c = 0; c < courses; c++) {
+    const y = rect.y + c * courseHeight;
+    panelCourse(layer, y, courseHeight, 8 + Math.floor(rng() * 2), rng, {
+      faceJitter: 0.06,
+    });
+    seamRow(layer, y, 3);
   }
-  // Bright leading strip along the top of the band — on a nose lobe this lands
-  // as a lit chine running around the front of the hull.
-  layer.albedo.fillStyle = gray(NEUTRAL + 0.18);
+  // Heavy corner bolts on the forward course.
+  boltRow(layer, rect.y + courseHeight * 0.5, 7, 3.4);
+  layer.albedo.fillStyle = gray(0.97);
   layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
-  layer.height.fillStyle = gray(0.9);
+  layer.height.fillStyle = gray(0.98);
   layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
-  layer.bare.fillStyle = gray(0.4);
+  layer.bare.fillStyle = gray(0.45);
   layer.bare.fillRect(0, rect.y, TRIM_SHEET_PIXELS, 3);
-  for (let i = 0; i < 26; i++) scratch(layer, rng, rect, 60);
+  for (let i = 0; i < 24; i++) scratch(layer, rng, rect, 56);
 }
 
 // ── Spherical layout helpers ─────────────────────────────────────────────
@@ -389,64 +469,55 @@ function drawPitchSlot(layer: Layer, rect: BandRect): void {
     const y = rect.y + i;
     const f = (i + 0.5) / rect.height;
     const half = meridianBandHalfWidthPx(f, PITCH_SLOT_ARC_HALF_WIDTH);
-    // A lit lip just outside the opening, so the slot reads as a cut edge
+    // A machined lip just outside the opening, so the slot reads as a cut edge
     // rather than a painted stripe.
-    layer.albedo.fillStyle = gray(NEUTRAL + 0.2);
-    meridianRow(layer.albedo, y, centerX, half + 2.5);
-    layer.height.fillStyle = gray(0.8);
-    meridianRow(layer.height, y, centerX, half + 2.5);
-    // The opening itself: near black, deeply recessed, and NOT bare metal —
-    // a hole is an absence of surface, so nothing shows through it.
-    layer.albedo.fillStyle = gray(0.045);
+    layer.albedo.fillStyle = gray(0.93);
+    meridianRow(layer.albedo, y, centerX, half + 3);
+    layer.height.fillStyle = gray(0.9);
+    meridianRow(layer.height, y, centerX, half + 3);
+    layer.bare.fillStyle = gray(0.55);
+    meridianRow(layer.bare, y, centerX, half + 3);
+    // The opening itself: black, deeply recessed, and NOT bare metal — a hole
+    // is an absence of surface, so nothing shows through it.
+    layer.albedo.fillStyle = gray(0.02);
     meridianRow(layer.albedo, y, centerX, half);
-    layer.height.fillStyle = gray(0.02);
+    layer.height.fillStyle = gray(0.01);
     meridianRow(layer.height, y, centerX, half);
     layer.bare.fillStyle = gray(0);
     meridianRow(layer.bare, y, centerX, half);
   }
 }
 
-/** Sensor housing. Ribbed collars at the poles, a lens row around the equator,
- *  a perforated vent patch, and the pitch slot the barrel assembly travels in.
- *  This band maps onto the sphere exactly once, so its horizontal axis is a
- *  latitude circle and features must be compensated by `latitudeScale`. */
+/** Sensor housing: bolted panel courses banding the head, small armoured
+ *  ports, and the pitch slot the barrel assembly travels in. This band maps
+ *  onto the sphere exactly once, so its horizontal axis is a latitude circle
+ *  and round features must be compensated by `latitudeScale`. */
 function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
-  // Latitude courses. Horizontal here means a full ring around the head, so
-  // these read the same from every direction and cost nothing at the poles.
-  const course = (f: number, thickness: number, albedo: number, height: number) => {
-    const y = rect.y + f * rect.height;
-    layer.albedo.fillStyle = gray(albedo);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
-    layer.height.fillStyle = gray(height);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
-  };
-  for (let i = 0; i < 3; i++) {
-    // Bolted collars capping both poles.
-    course(0.03 + i * 0.045, 3, NEUTRAL + (i % 2 === 0 ? 0.14 : -0.16), i % 2 === 0 ? 0.82 : 0.3);
-    course(0.94 - i * 0.045, 3, NEUTRAL + (i % 2 === 0 ? 0.14 : -0.16), i % 2 === 0 ? 0.82 : 0.3);
+  // Panel courses. Horizontal here means a full ring around the head, so these
+  // read the same from every direction and cost nothing at the poles.
+  const courses = 4;
+  const courseHeight = rect.height / courses;
+  for (let c = 0; c < courses; c++) {
+    const y = rect.y + c * courseHeight;
+    panelCourse(layer, y, courseHeight, 7 + Math.floor(rng() * 2), rng);
+    seamRow(layer, y, 2.5);
   }
-  course(0.30, 4, NEUTRAL - 0.24, 0.24);
-  course(0.70, 4, NEUTRAL - 0.24, 0.24);
+  boltRow(layer, rect.y + courseHeight * 0.5, 10, 2.6);
+  boltRow(layer, rect.y + courseHeight * 3.5, 10, 2.6);
 
-  // Equatorial sensor ring. Circles must be drawn as ellipses stretched by
-  // 1/latitudeScale horizontally and by the band's own pole-to-pole squash
-  // vertically, or a "round" lens comes out as a wide smear on the sphere.
-  const lenses = 6;
-  const spacing = TRIM_SHEET_PIXELS / lenses;
+  // Equatorial armoured ports. At the equator one unit of surface is this many
+  // times wider in pixels than it is tall, so a circle must be drawn as an
+  // ellipse stretched by that factor or it comes out as a smear on the sphere.
+  const ports = 6;
+  const spacing = TRIM_SHEET_PIXELS / ports;
   const cy = rect.y + rect.height * 0.5;
-  // At the equator the band is TRIM_SHEET_PIXELS across the circumference and
-  // rect.height across the half-meridian, so one unit of surface is this many
-  // times wider in pixels than it is tall.
   const equatorAspect = (TRIM_SHEET_PIXELS / (Math.PI * 2)) / (rect.height / Math.PI);
   // Sized from the HORIZONTAL budget, not the vertical one: the compensation
-  // multiplies the x radius by ~4.9, so picking a comfortable-looking vertical
-  // radius first produces lenses wider than their own spacing, and the ring
+  // multiplies the x radius by ~5, so picking a comfortable-looking vertical
+  // radius first produces ports wider than their own spacing and the ring
   // merges into one black band around the head.
-  // Small ports, not portholes. At lens-sized radii these read as craters and
-  // compete with the pitch slot for "this is an opening", which is the one
-  // thing on the head that has to be unambiguous.
-  const lensRx = spacing * 0.14;
-  const lensRy = lensRx / equatorAspect;
+  const portRx = spacing * 0.14;
+  const portRy = portRx / equatorAspect;
   const ellipse = (
     ctx: CanvasRenderingContext2D,
     cx: number, rx: number, ry: number, fill: string,
@@ -456,223 +527,193 @@ function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
   };
-  for (let i = 0; i < lenses; i++) {
+  for (let i = 0; i < ports; i++) {
     const cx = (i + 0.5) * spacing;
-    ellipse(layer.albedo, cx, lensRx * 1.35, lensRy * 1.35, gray(NEUTRAL + 0.24));
-    ellipse(layer.albedo, cx, lensRx, lensRy, gray(0.17));
-    ellipse(layer.height, cx, lensRx * 1.35, lensRy * 1.35, gray(0.85));
-    ellipse(layer.height, cx, lensRx, lensRy, gray(0.34));
-    // A lens is glass in a metal bezel, never painted.
-    ellipse(layer.bare, cx, lensRx * 1.24, lensRy * 1.24, gray(0.7));
-    for (let b = 0; b < 6; b++) {
-      const a = (b / 6) * Math.PI * 2 + 0.3;
-      rivet(
-        layer,
-        cx + Math.cos(a) * lensRx * 1.7,
-        cy + Math.sin(a) * lensRy * 1.7,
-        1.4,
-      );
+    ellipse(layer.albedo, cx, portRx * 1.4, portRy * 1.4, gray(0.9));
+    ellipse(layer.albedo, cx, portRx, portRy, gray(0.06));
+    ellipse(layer.height, cx, portRx * 1.4, portRy * 1.4, gray(0.9));
+    ellipse(layer.height, cx, portRx, portRy, gray(0.1));
+    ellipse(layer.bare, cx, portRx * 1.4, portRy * 1.4, gray(0.6));
+    for (let b = 0; b < 4; b++) {
+      const a = (b / 4) * Math.PI * 2 + 0.4;
+      rivet(layer, cx + Math.cos(a) * portRx * 1.9, cy + Math.sin(a) * portRy * 1.9, 1.5);
     }
   }
-  for (let i = 0; i < 18; i++) scratch(layer, rng, rect, 30);
+  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 28);
 
   // Last, so nothing is drawn over the opening.
   drawPitchSlot(layer, rect);
 }
 
-/** Barrel. Fluting runs the full band height (constant in v), so on a cylinder
- *  it becomes grooves running the length of the barrel; the horizontal collars
- *  land at fixed fractions along the axis. Both ends get a collar because the
- *  barrel's axial direction is not knowable here — symmetric reads correctly
- *  whichever end is the muzzle. */
+/** Barrel: a bolted breech collar at each end, cooling fin stacks, and plated
+ *  shaft between them. Horizontal features ring the barrel; the panel courses
+ *  repeat many times around it, so nothing here depends on view direction. */
 function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void {
-  const flutes = 24;
-  const width = TRIM_SHEET_PIXELS / flutes;
-  for (let i = 0; i < flutes; i++) {
-    const x = i * width;
-    layer.albedo.fillStyle = gray(NEUTRAL + 0.1);
-    layer.albedo.fillRect(x, rect.y, width * 0.62, rect.height);
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.22);
-    layer.albedo.fillRect(x + width * 0.62, rect.y, width * 0.38, rect.height);
-    layer.height.fillStyle = gray(0.72);
-    layer.height.fillRect(x, rect.y, width * 0.62, rect.height);
-    layer.height.fillStyle = gray(0.28);
-    layer.height.fillRect(x + width * 0.62, rect.y, width * 0.38, rect.height);
+  layer.albedo.fillStyle = gray(0.05);
+  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillStyle = gray(0.2);
+  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+
+  // Plated shaft.
+  panelCourse(layer, rect.y + rect.height * 0.24, rect.height * 0.52, 12, rng);
+
+  // Cooling fin stack inboard of the breech.
+  for (let i = 0; i < 6; i++) {
+    const y = rect.y + rect.height * 0.26 + i * 3.4;
+    layer.albedo.fillStyle = gray(0.02);
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 1.6);
+    layer.albedo.fillStyle = gray(0.9);
+    layer.albedo.fillRect(0, y + 1.6, TRIM_SHEET_PIXELS, 1.0);
+    layer.height.fillStyle = gray(0.96);
+    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 2.6);
   }
+
   const collar = (y: number, h: number) => {
-    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, h, NEUTRAL + 0.04, 0.92, 0.2);
+    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, h, 0.58, 0.96, 0.36);
     layer.bare.fillStyle = gray(0.5);
     layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, h);
-    const bolts = 20;
-    for (let i = 0; i < bolts; i++) {
-      rivet(layer, (i + 0.5) * (TRIM_SHEET_PIXELS / bolts), y + h * 0.5, 2.0);
-    }
+    boltRow(layer, y + h * 0.5, 16, 2.4);
   };
   collar(rect.y, rect.height * 0.2);
   collar(rect.y + rect.height * 0.8, rect.height * 0.2);
-  // Cooling fins inboard of the breech collar.
-  for (let i = 0; i < 5; i++) {
-    const y = rect.y + rect.height * 0.24 + i * 4;
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.12);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 2);
-    layer.height.fillStyle = gray(0.9);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 2);
-  }
-  // Muzzle soot: the outermost rows darken and lose paint.
-  const sootRows = Math.floor(rect.height * 0.12);
+
+  // Muzzle soot: the outermost rows darken toward black and lose paint.
+  const sootRows = Math.floor(rect.height * 0.13);
   for (let i = 0; i < sootRows; i++) {
     const t = 1 - i / sootRows;
-    layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * 0.55).toFixed(3)})`;
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${(t * 0.85).toFixed(3)})`;
     layer.albedo.fillRect(0, rect.y + rect.height - 1 - i, TRIM_SHEET_PIXELS, 1);
   }
-  for (let i = 0; i < 22; i++) scratch(layer, rng, rect, 34);
+  for (let i = 0; i < 18; i++) scratch(layer, rng, rect, 30);
 }
 
-/** Leg strut. A machined shaft between two bolted collars, with hydraulic
- *  lines running around it.
+/** Leg strut: bolted end collars, a plated mid section, and hydraulic lines
+ *  ringing it.
  *
  *  NO BAKED DIRECTIONAL SHADING. A band feature whose period is the FULL
  *  circumference is a fake light source welded to the geometry: it lands at
- *  fixed angles in the strut's own frame, so as the leg swings you see its
- *  dark side facing the camera and its bright side facing away. That reads as
- *  looking at the back of the segment. Legs are unlit (MeshBasicMaterial), so
- *  there is no real shading to overpower the mistake either.
- *
- *  Everything here is therefore either constant around the circumference
- *  (collars, hose rings) or repeats many times around it (flutes), both of
- *  which look the same from every direction. */
+ *  fixed angles in the strut's own frame, so as the leg swings you see its dark
+ *  side facing the camera and its bright side facing away. That reads as
+ *  looking at the back of the segment. Everything here is either constant
+ *  around the circumference (collars, pipe rings) or repeats many times around
+ *  it (panels, bolts), both of which look the same from every direction. */
 function drawHydraulicStrut(layer: Layer, rect: BandRect, rng: () => number): void {
+  layer.albedo.fillStyle = gray(0.04);
+  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillStyle = gray(0.18);
+  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+
   const shaftTop = rect.y + rect.height * 0.2;
   const shaftHeight = rect.height * 0.6;
-  layer.albedo.fillStyle = gray(NEUTRAL + 0.06);
-  layer.albedo.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
-  layer.height.fillStyle = gray(0.6);
-  layer.height.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
-  // A machined piston is bare steel, not painted bodywork.
-  layer.bare.fillStyle = gray(0.72);
+  panelCourse(layer, shaftTop, shaftHeight, 10, rng);
+  // Bare-metal piston body under the plating.
+  layer.bare.fillStyle = gray(0.62);
   layer.bare.fillRect(0, shaftTop, TRIM_SHEET_PIXELS, shaftHeight);
-  // Shallow flutes: high frequency around the circumference, so the rhythm is
-  // identical whichever facet faces the camera.
-  const flutes = 18;
-  const fluteWidth = TRIM_SHEET_PIXELS / flutes;
-  for (let i = 0; i < flutes; i++) {
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.12);
-    layer.albedo.fillRect(i * fluteWidth, shaftTop, fluteWidth * 0.34, shaftHeight);
-    layer.height.fillStyle = gray(0.44);
-    layer.height.fillRect(i * fluteWidth, shaftTop, fluteWidth * 0.34, shaftHeight);
-  }
 
-  // Hydraulic lines: raised tubes running around the strut.
-  for (let i = 0; i < 3; i++) {
-    const y = shaftTop + shaftHeight * (0.22 + i * 0.28);
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.26);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
-    layer.albedo.fillStyle = gray(NEUTRAL + 0.12);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 1.5);
-    layer.height.fillStyle = gray(0.9);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
-    layer.bare.fillStyle = gray(0.1);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
-  }
+  pipeRun(layer, shaftTop + shaftHeight * 0.22, 5, 8, 0.08);
+  pipeRun(layer, shaftTop + shaftHeight * 0.66, 4, 8, 0.08);
 
   const collarHeight = rect.height * 0.2;
   for (const y of [rect.y, rect.y + rect.height - collarHeight]) {
-    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, collarHeight, NEUTRAL - 0.02, 0.95, 0.22);
-    const bolts = 16;
-    for (let i = 0; i < bolts; i++) {
-      rivet(layer, (i + 0.5) * (TRIM_SHEET_PIXELS / bolts), y + collarHeight * 0.5, 2.4);
-    }
+    bevelRect(layer, 0, y, TRIM_SHEET_PIXELS, collarHeight, 0.55, 0.97, 0.38);
+    layer.bare.fillStyle = gray(0.45);
+    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, collarHeight);
+    boltRow(layer, y + collarHeight * 0.5, 14, 2.8);
   }
-  for (let i = 0; i < 20; i++) scratch(layer, rng, rect, 28);
+  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 26);
 }
 
-/** Bolt boss — joints and foot pads. A heavy bolt ring around the equator with
- *  radial ribs above and below, so a sphere reads as a machined knuckle. */
+/** Bolt boss — joints. A heavy bolted flange ringing the middle with plated
+ *  shoulders above and below, so a sphere reads as a machined knuckle. */
 function drawBoltBoss(layer: Layer, rect: BandRect, rng: () => number): void {
-  const ribs = 32;
-  const width = TRIM_SHEET_PIXELS / ribs;
-  for (let i = 0; i < ribs; i++) {
-    const x = i * width;
-    bevelRect(layer, x + 1, rect.y, width - 2, rect.height, NEUTRAL + randIn(rng, -0.05, 0.05), 0.58, 0.14);
-  }
-  const ringHeight = rect.height * 0.34;
+  panelCourse(layer, rect.y, rect.height * 0.33, 14, rng);
+  panelCourse(layer, rect.y + rect.height * 0.67, rect.height * 0.33, 14, rng);
+
+  const ringHeight = rect.height * 0.36;
   const ringY = rect.y + (rect.height - ringHeight) * 0.5;
-  bevelRect(layer, 0, ringY, TRIM_SHEET_PIXELS, ringHeight, NEUTRAL + 0.06, 0.94, 0.24);
-  layer.bare.fillStyle = gray(0.45);
+  bevelRect(layer, 0, ringY, TRIM_SHEET_PIXELS, ringHeight, 0.6, 0.98, 0.38);
+  layer.bare.fillStyle = gray(0.5);
   layer.bare.fillRect(0, ringY, TRIM_SHEET_PIXELS, ringHeight);
-  const bolts = 12;
-  for (let i = 0; i < bolts; i++) {
-    rivet(layer, (i + 0.5) * (TRIM_SHEET_PIXELS / bolts), ringY + ringHeight * 0.5, 3.4);
-  }
-  for (let i = 0; i < 16; i++) scratch(layer, rng, rect, 24);
+  boltRow(layer, ringY + ringHeight * 0.5, 12, 3.6);
+  seamRow(layer, ringY - 2, 2);
+  seamRow(layer, ringY + ringHeight, 2);
+  for (let i = 0; i < 14; i++) scratch(layer, rng, rect, 22);
 }
 
-/** Team piping — the strap kit's livery. Livery bands stay close to neutral on
- *  purpose: the whole job of these surfaces is to read as team colour at a
- *  glance, and a band that darkens them by 40% destroys exactly the signal it
- *  is there to carry. All the structure is in height and in narrow high-
- *  contrast edges, not in broad value shifts. */
+/** Team piping — the strap kit's livery.
+ *
+ *  Livery bands stay near neutral ON AVERAGE on purpose: the whole job of these
+ *  surfaces is to read as team colour at a glance, and a band that halves their
+ *  brightness destroys exactly the signal it exists to carry. That is a
+ *  constraint on the MEAN, not on the range — full-black seams and near-white
+ *  bolt heads are what give the team colour something to sit on, so long as
+ *  they balance. */
 function drawLiveryPiping(layer: Layer, rect: BandRect, rng: () => number): void {
-  // Raised centre spine, piped edges.
-  layer.height.fillStyle = gray(0.72);
+  layer.albedo.fillStyle = gray(0.62);
+  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillStyle = gray(0.74);
   layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-  for (const y of [rect.y + 2, rect.y + rect.height - 5]) {
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.24);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-    layer.height.fillStyle = gray(0.96);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-    layer.bare.fillStyle = gray(0.35);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-  }
-  // Periodic clamps along the run of the strap.
-  const clamps = 12;
-  const spacing = TRIM_SHEET_PIXELS / clamps;
-  for (let i = 0; i < clamps; i++) {
-    const x = i * spacing;
-    bevelRect(layer, x, rect.y + 6, spacing * 0.18, rect.height - 12, NEUTRAL - 0.1, 0.9, 0.2);
-    layer.bare.fillStyle = gray(0.5);
-    layer.bare.fillRect(x, rect.y + 6, spacing * 0.18, rect.height - 12);
-    rivet(layer, x + spacing * 0.09, rect.y + rect.height * 0.5, 2.2);
-  }
-  // A faint bright inner stripe keeps the team colour from reading flat.
-  layer.albedo.fillStyle = gray(NEUTRAL + 0.12);
-  layer.albedo.fillRect(0, rect.y + rect.height * 0.42, TRIM_SHEET_PIXELS, 2);
-  for (let i = 0; i < 12; i++) scratch(layer, rng, rect, 20);
-}
 
-/** Team chevrons — the turret collar's livery. Same neutrality discipline as
- *  the piping band, with directional chevrons that read as an aiming cue when
- *  they wrap the collar. */
-function drawLiveryChevron(layer: Layer, rect: BandRect, rng: () => number): void {
-  layer.height.fillStyle = gray(0.6);
-  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
-  const chevrons = 16;
-  const spacing = TRIM_SHEET_PIXELS / chevrons;
-  const midY = rect.y + rect.height * 0.5;
-  for (let i = 0; i < chevrons; i++) {
+  // Bolted plate segments along the run of the strap.
+  const plates = 10;
+  const spacing = TRIM_SHEET_PIXELS / plates;
+  for (let i = 0; i < plates; i++) {
     const x = i * spacing;
-    for (const ctx of [layer.albedo, layer.height]) {
-      ctx.fillStyle = ctx === layer.albedo ? gray(NEUTRAL - 0.2) : gray(0.92);
-      ctx.beginPath();
-      ctx.moveTo(x, rect.y + 4);
-      ctx.lineTo(x + spacing * 0.34, midY);
-      ctx.lineTo(x, rect.y + rect.height - 4);
-      ctx.lineTo(x - spacing * 0.16, rect.y + rect.height - 4);
-      ctx.lineTo(x + spacing * 0.18, midY);
-      ctx.lineTo(x - spacing * 0.16, rect.y + 4);
-      ctx.closePath();
-      ctx.fill();
-    }
+    layer.albedo.fillStyle = gray(0.02);
+    layer.albedo.fillRect(x, rect.y + 4, 4, rect.height - 8);
+    layer.height.fillStyle = gray(0.08);
+    layer.height.fillRect(x, rect.y + 4, 4, rect.height - 8);
+    bevelRect(layer, x + 4, rect.y + 5, spacing - 8, rect.height - 10, 0.62, 0.8, 0.34);
+    rivet(layer, x + 10, rect.y + rect.height * 0.5, 2.4);
+    rivet(layer, x + spacing - 10, rect.y + rect.height * 0.5, 2.4);
   }
-  for (const y of [rect.y, rect.y + rect.height - 3]) {
-    layer.albedo.fillStyle = gray(NEUTRAL - 0.28);
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
+  // Piped edges: hard black shadow line with a bright machined lip.
+  for (const y of [rect.y + 1, rect.y + rect.height - 5]) {
+    layer.albedo.fillStyle = gray(0.03);
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 2.5);
+    layer.albedo.fillStyle = gray(0.95);
+    layer.albedo.fillRect(0, y + 2.5, TRIM_SHEET_PIXELS, 1.5);
     layer.height.fillStyle = gray(0.98);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-    layer.bare.fillStyle = gray(0.4);
-    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
+    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.bare.fillStyle = gray(0.3);
+    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
   }
   for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 18);
+}
+
+/** Team collar — the turret collar's livery. Same neutrality discipline as the
+ *  piping band: bolted plates and hard seams rather than broad value shifts. */
+function drawLiveryChevron(layer: Layer, rect: BandRect, rng: () => number): void {
+  layer.albedo.fillStyle = gray(0.6);
+  layer.albedo.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+  layer.height.fillStyle = gray(0.66);
+  layer.height.fillRect(0, rect.y, TRIM_SHEET_PIXELS, rect.height);
+
+  const plates = 12;
+  const spacing = TRIM_SHEET_PIXELS / plates;
+  for (let i = 0; i < plates; i++) {
+    const x = i * spacing;
+    layer.albedo.fillStyle = gray(0.02);
+    layer.albedo.fillRect(x, rect.y + 5, 3.5, rect.height - 10);
+    layer.height.fillStyle = gray(0.08);
+    layer.height.fillRect(x, rect.y + 5, 3.5, rect.height - 10);
+    bevelRect(layer, x + 3.5, rect.y + 6, spacing - 7, rect.height - 12, 0.6, 0.82, 0.34);
+    rivet(layer, x + 9, rect.y + rect.height * 0.30, 2.2);
+    rivet(layer, x + 9, rect.y + rect.height * 0.70, 2.2);
+    rivet(layer, x + spacing - 9, rect.y + rect.height * 0.30, 2.2);
+    rivet(layer, x + spacing - 9, rect.y + rect.height * 0.70, 2.2);
+  }
+  for (const y of [rect.y, rect.y + rect.height - 4]) {
+    layer.albedo.fillStyle = gray(0.03);
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 2.5);
+    layer.albedo.fillStyle = gray(0.95);
+    layer.albedo.fillRect(0, y + 2.5, TRIM_SHEET_PIXELS, 1.5);
+    layer.height.fillStyle = gray(0.98);
+    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+    layer.bare.fillStyle = gray(0.35);
+    layer.bare.fillRect(0, y, TRIM_SHEET_PIXELS, 4);
+  }
+  for (let i = 0; i < 10; i++) scratch(layer, rng, rect, 16);
 }
 
 const BAND_DRAWERS: Record<
@@ -682,14 +723,14 @@ const BAND_DRAWERS: Record<
     draw: (layer: Layer, rect: BandRect, rng: () => number) => void;
   }
 > = {
-  armorPlate: { base: { albedo: NEUTRAL - 0.2, height: 0.3, bare: 0.04 }, draw: drawArmorPlate },
-  noseFacet: { base: { albedo: NEUTRAL - 0.22, height: 0.28, bare: 0.06 }, draw: drawNoseFacet },
-  sensorDome: { base: { albedo: NEUTRAL, height: 0.55, bare: 0.1 }, draw: drawSensorDome },
-  barrelShaft: { base: { albedo: NEUTRAL, height: 0.5, bare: 0.22 }, draw: drawBarrelShaft },
-  hydraulicStrut: { base: { albedo: NEUTRAL, height: 0.5, bare: 0.15 }, draw: drawHydraulicStrut },
-  boltBoss: { base: { albedo: NEUTRAL, height: 0.5, bare: 0.2 }, draw: drawBoltBoss },
-  liveryPiping: { base: { albedo: NEUTRAL + 0.04, height: 0.6, bare: 0.02 }, draw: drawLiveryPiping },
-  liveryChevron: { base: { albedo: NEUTRAL + 0.04, height: 0.6, bare: 0.02 }, draw: drawLiveryChevron },
+  armorPlate: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawArmorPlate },
+  noseFacet: { base: { albedo: 0.03, height: 0.12, bare: 0.06 }, draw: drawNoseFacet },
+  sensorDome: { base: { albedo: 0.04, height: 0.15, bare: 0.10 }, draw: drawSensorDome },
+  barrelShaft: { base: { albedo: 0.05, height: 0.20, bare: 0.22 }, draw: drawBarrelShaft },
+  hydraulicStrut: { base: { albedo: 0.04, height: 0.18, bare: 0.15 }, draw: drawHydraulicStrut },
+  boltBoss: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawBoltBoss },
+  liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
+  liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
 };
 
 let cachedCanvas: HTMLCanvasElement | null = null;
