@@ -44,6 +44,15 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import type { SurfaceChartId } from './SurfaceChart3D';
+import {
+  attachSurfaceChartAttribute,
+  copySurfaceChartSlot,
+  patchSurfaceChartMaterial,
+  uploadSurfaceChart,
+  writeSurfaceChart,
+  type SurfaceChartAttribute,
+} from './SurfaceChartMaterial3D';
 import {
   createDirtySlotSpan as createDirtySpan,
   markDirtySlot,
@@ -293,6 +302,7 @@ class CylinderPool {
   // than the spheres they connect to. See BurnMark3D for the same
   // pitfall documented in detail.
   private static readonly _scratchColor = new THREE.Color();
+  private readonly chart: SurfaceChartAttribute;
 
   constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
     this.startBuf = new THREE.InstancedBufferAttribute(
@@ -314,13 +324,17 @@ class CylinderPool {
       geometryTier,
     );
     const material = makeInstancedLegMaterial();
+    // Legs are unlit (MeshBasicMaterial), so they take the albedo half of the
+    // chart stack only — there is no `normal` in the fragment stage to bump.
+    patchSurfaceChartMaterial(material, { bump: false });
+    this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = LEG_RENDER_ORDER;
     parent.add(this.mesh);
   }
 
-  alloc(color: number, onRelocate: SlotRelocator): number {
+  alloc(color: number, onRelocate: SlotRelocator, chart: SurfaceChartId = 'none'): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -330,6 +344,7 @@ class CylinderPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    writeSurfaceChart(this.chart, slot, chart);
     (this.thickBuf.array as Float32Array)[slot] = 0;
     markDirtySlot(this.thickDirty, slot);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
@@ -352,6 +367,7 @@ class CylinderPool {
     markDirtySlot(this.thickDirty, slot);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
+    writeSurfaceChart(this.chart, slot, 'none');
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -377,6 +393,9 @@ class CylinderPool {
     ca[d3 + 2] = ca[s3 + 2];
     ta[src] = 0;
     fa[src] = 1;
+    // The chart is a property of the surface, so it must follow the instance
+    // through a defrag or a relocated strut silently loses its texturing.
+    copySurfaceChartSlot(this.chart, src, dst);
     markDirtySlot(this.startDirty, dst);
     markDirtySlot(this.endDirty, dst);
     markDirtySlot(this.thickDirty, dst);
@@ -465,6 +484,7 @@ class CylinderPool {
     uploadDirtySpan(this.thickBuf, this.thickDirty, 1);
     uploadDirtySpan(this.colorBuf, this.colorDirty, 3);
     uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
+    uploadSurfaceChart(this.chart);
     // Trim the GPU instance count to the high-water mark of allocated
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
@@ -511,6 +531,7 @@ class JointSpherePool {
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
+  private readonly chart: SurfaceChartAttribute;
 
   constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
     const geom = geometryTier === 'far'
@@ -519,6 +540,8 @@ class JointSpherePool {
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial();
+    patchSurfaceChartMaterial(material, { bump: false });
+    this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
@@ -532,7 +555,7 @@ class JointSpherePool {
     parent.add(this.mesh);
   }
 
-  alloc(color: number, onRelocate: SlotRelocator): number {
+  alloc(color: number, onRelocate: SlotRelocator, chart: SurfaceChartId = 'none'): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -542,6 +565,7 @@ class JointSpherePool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    writeSurfaceChart(this.chart, slot, chart);
     writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
@@ -562,6 +586,7 @@ class JointSpherePool {
     writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
+    writeSurfaceChart(this.chart, slot, 'none');
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -585,6 +610,7 @@ class JointSpherePool {
     // instanceCount keeps it off-screen but be defensive.
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
     fa[src] = 1;
+    copySurfaceChartSlot(this.chart, src, dst);
     markDirtySlot(this.matrixDirty, dst);
     markDirtySlot(this.matrixDirty, src);
     markDirtySlot(this.fadeDirty, dst);
@@ -633,6 +659,7 @@ class JointSpherePool {
     uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
     uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
     if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);
+    uploadSurfaceChart(this.chart);
   }
 
   destroy(): void {
@@ -672,17 +699,32 @@ export class LegInstancedRenderer {
    *  this slot is moved — the caller MUST update its stored slot
    *  index in the callback or subsequent updates will write the wrong
    *  buffer entries. */
-  allocUpper(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier).upper.alloc(color, onRelocate);
+  allocUpper(
+    color: number,
+    onRelocate: SlotRelocator,
+    tier: PrimitiveGeometryTier = 'close',
+    chart: SurfaceChartId = 'none',
+  ): number {
+    return this.pool(tier).upper.alloc(color, onRelocate, chart);
   }
-  allocLower(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier).lower.alloc(color, onRelocate);
+  allocLower(
+    color: number,
+    onRelocate: SlotRelocator,
+    tier: PrimitiveGeometryTier = 'close',
+    chart: SurfaceChartId = 'none',
+  ): number {
+    return this.pool(tier).lower.alloc(color, onRelocate, chart);
   }
   /** Allocate a joint-sphere slot (used by the full leg style for hips).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
-  allocJoint(color: number, onRelocate: SlotRelocator, tier: PrimitiveGeometryTier = 'close'): number {
-    return this.pool(tier).joints.alloc(color, onRelocate);
+  allocJoint(
+    color: number,
+    onRelocate: SlotRelocator,
+    tier: PrimitiveGeometryTier = 'close',
+    chart: SurfaceChartId = 'none',
+  ): number {
+    return this.pool(tier).joints.alloc(color, onRelocate, chart);
   }
   freeUpper(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).upper.free(slot); }
   freeLower(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).lower.free(slot); }

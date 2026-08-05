@@ -1,5 +1,15 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
+import {
+  attachSurfaceChartAttribute,
+  patchSurfaceChartMaterial,
+  surfaceChartTierMode,
+  uploadSurfaceChart,
+  writeSurfaceChart,
+  type SurfaceChartAttribute,
+  type SurfaceChartTierMode,
+} from './SurfaceChartMaterial3D';
+import type { SurfaceChartId } from './SurfaceChart3D';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
 import type { TurretMesh } from './TurretMesh3D';
@@ -90,6 +100,11 @@ type TierPool = {
   freeSlots: number[];
   nextSlot: number;
   readonly cap: number;
+  /** Per-instance surface chart. Present only on pools whose tier is
+   *  textured — the far rung deliberately has none, because a charted
+   *  fragment there costs a dependent texture fetch to resolve detail
+   *  smaller than the pixel it lands in. */
+  chart?: SurfaceChartAttribute;
 };
 
 function readInstanceMatrix(
@@ -253,10 +268,12 @@ export class UnitDetailInstanceRenderer3D {
 
     for (let t = 0; t < GEOMETRY_TIER_NAMES.length; t++) {
       const tierName = GEOMETRY_TIER_NAMES[t];
+      const chartMode = surfaceChartTierMode(tierName);
       this.smoothChassisPools.push(this.createTierPool(
         createPrimitiveSphereGeometry('unitBody', tierName),
         new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
         SMOOTH_CHASSIS_TIER_CAPS[t],
+        chartMode,
       ));
       this.turretHeadPools.push(this.createTierPool(
         tierName === 'far'
@@ -264,6 +281,7 @@ export class UnitDetailInstanceRenderer3D {
           : createPrimitiveSphereGeometry('turret', tierName),
         new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
         TURRET_HEAD_TIER_CAPS[t],
+        chartMode,
       ));
       this.barrelPools.push(this.createTierPool(
         tierName === 'far'
@@ -271,6 +289,7 @@ export class UnitDetailInstanceRenderer3D {
           : createPrimitiveCylinderGeometry('turret', tierName),
         options.barrelMat.clone(),
         BARREL_TIER_CAPS[t],
+        chartMode,
       ));
     }
 
@@ -370,6 +389,7 @@ export class UnitDetailInstanceRenderer3D {
       COLORS.units.turret.barrel.colorHex,
       pool.colorDirty,
     );
+    writeSurfaceChart(pool.chart, index, 'none');
     return encodeTierSlot(tierIndex, index);
   }
 
@@ -378,6 +398,7 @@ export class UnitDetailInstanceRenderer3D {
     if (!pool) return;
     const index = tierSlotIndex(slot);
     writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
+    writeSurfaceChart(pool.chart, index, 'none');
     pool.freeSlots.push(index);
   }
 
@@ -427,6 +448,31 @@ export class UnitDetailInstanceRenderer3D {
       pool.colorDirty,
     );
     return slot;
+  }
+
+  /** Label a smooth-chassis slot's surface. Charts are written once at mesh
+   *  build (they are a property of what the surface IS, not of its pose), and
+   *  reset to 'none' whenever the slot is recycled. */
+  setSmoothChassisChart(slot: number, chart: SurfaceChartId): void {
+    this.setTierChart(this.smoothChassisPools, slot, chart);
+  }
+
+  setTurretHeadChart(slot: number, chart: SurfaceChartId): void {
+    this.setTierChart(this.turretHeadPools, slot, chart);
+  }
+
+  setBarrelChart(slot: number, chart: SurfaceChartId): void {
+    this.setTierChart(this.barrelPools, slot, chart);
+  }
+
+  private setTierChart(
+    pools: TierPool[],
+    slot: number,
+    chart: SurfaceChartId,
+  ): void {
+    const pool = pools[tierSlotTier(slot)];
+    if (pool === undefined) return;
+    writeSurfaceChart(pool.chart, tierSlotIndex(slot), chart);
   }
 
   allocTurretHeadSlot(tier: PrimitiveGeometryTier = 'close'): number | null {
@@ -1035,18 +1081,30 @@ export class UnitDetailInstanceRenderer3D {
     this.fadeState.clear();
   }
 
+  /** `charted` opts a tier into surface texturing. It is deliberately a
+   *  per-tier decision rather than a global one: the LOD ladder for a chart is
+   *  "full detail, albedo only, nothing", and the third rung is expressed by
+   *  simply not giving that pool the machinery. */
   private createTierPool(
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
     capacity: number,
+    charted: SurfaceChartTierMode = 'off',
   ): TierPool {
+    if (charted !== 'off') {
+      patchSurfaceChartMaterial(material, { bump: charted === 'bump' });
+    }
+    const mesh = this.createPool(geometry, material, capacity);
     return {
-      mesh: this.createPool(geometry, material, capacity),
+      mesh,
       matrixDirty: createDirtySpan(),
       colorDirty: createDirtySpan(),
       freeSlots: [],
       nextSlot: 0,
       cap: capacity,
+      chart: charted === 'off'
+        ? undefined
+        : attachSurfaceChartAttribute(mesh.geometry, capacity),
     };
   }
 
@@ -1058,6 +1116,7 @@ export class UnitDetailInstanceRenderer3D {
       if (pool.mesh.instanceColor) {
         uploadDirtySpan(pool.mesh.instanceColor, pool.colorDirty, 3);
       }
+      uploadSurfaceChart(pool.chart);
     }
   }
 

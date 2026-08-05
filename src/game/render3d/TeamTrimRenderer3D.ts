@@ -11,6 +11,11 @@ import {
   createFormikTurretAnchorGeometry,
 } from './FormikOrnament3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import type { SurfaceChartId } from './SurfaceChart3D';
+import {
+  attachConstantSurfaceChart,
+  patchSurfaceChartMaterial,
+} from './SurfaceChartMaterial3D';
 
 /**
  * TeamTrimRenderer3D — shared team-colored ornamentation.
@@ -94,17 +99,22 @@ export class TeamTrimRenderer3D {
       color: 0xffffff,
       vertexColors: true,
     });
+    patchSurfaceChartMaterial(this.material, { bump: true });
     this.genericPool = this.createPool(
       'TeamTrimRenderer3D.Generic',
       new THREE.BoxGeometry(1, 1, 1),
     );
+    // Livery charts only at the two near rungs; the far rung's ornament is a
+    // few pixels of team colour and wants nothing between it and the eye.
     this.formikBodyPools = TRIM_TIERS.map((tier) => this.createPool(
       `TeamTrimRenderer3D.FormikBody.${tier}`,
       createFormikBodyOrnamentGeometry(tier),
+      tier === 'far' ? 'none' : 'liveryStrap',
     ));
     this.formikTurretAnchorPools = TRIM_TIERS.map((tier) => this.createPool(
       `TeamTrimRenderer3D.FormikTurretAnchor.${tier}`,
       createFormikTurretAnchorGeometry(tier),
+      tier === 'far' ? 'none' : 'liveryCollar',
     ));
     this.pools = [
       this.genericPool,
@@ -113,8 +123,17 @@ export class TeamTrimRenderer3D {
     ];
   }
 
-  private createPool(name: string, geometry: THREE.BufferGeometry): TrimPool {
+  private createPool(
+    name: string,
+    geometry: THREE.BufferGeometry,
+    chart: SurfaceChartId = 'none',
+  ): TrimPool {
     addWhiteVertexColors(geometry);
+    // Constant rather than per-instance: one geometry per ornament profile
+    // means every instance in this pool IS the same surface. The generic box
+    // pool writes 'none' through the same path — it shares this material, and
+    // an undefined attribute would leave its draws reading garbage.
+    attachConstantSurfaceChart(geometry, chart);
     const mesh = new THREE.InstancedMesh(geometry, this.material, SLOT_CAP);
     mesh.name = name;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

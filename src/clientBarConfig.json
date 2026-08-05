@@ -81,6 +81,10 @@
     "demoDefault": false,
     "realDefault": false
   },
+  "surfaceTexture": {
+    "demoDefault": true,
+    "realDefault": true
+  },
   "smokeTrails": {
     "demoDefault": true,
     "realDefault": true
@@ -444,6 +448,7 @@
     "windParticles": "wind-particles",
     "locomotionMarks": "locomotion-marks",
     "teamTrim": "team-trim",
+    "surfaceTexture": "surface-texture",
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "entityShadows": "entity-shadows",

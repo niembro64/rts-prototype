@@ -26,6 +26,7 @@ import type {
   LegConfig as BlueprintLegConfig,
   UnitBodyShape,
 } from '@/types/blueprints';
+import type { LegSurfaceCharts } from './SurfaceChart3D';
 import type { LegStyle } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
@@ -342,6 +343,7 @@ export function buildLegs(
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
+  charts: LegSurfaceCharts | undefined = undefined,
 ): LegMesh | undefined {
   if (legStyle === 'none') return undefined;
 
@@ -419,16 +421,16 @@ export function buildLegs(
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
     leg.upperSlot = legRenderer.allocUpper(
-      legColor, (s) => { leg.upperSlot = s; }, geometryTier,
+      legColor, (s) => { leg.upperSlot = s; }, geometryTier, charts?.upper,
     );
     if (legStyle === 'animated' || legStyle === 'full') {
       leg.lowerSlot = legRenderer.allocLower(
-        legColor, (s) => { leg.lowerSlot = s; }, geometryTier,
+        legColor, (s) => { leg.lowerSlot = s; }, geometryTier, charts?.lower,
       );
     }
     if (legStyle === 'full') {
       leg.hipJointSlot = legRenderer.allocJoint(
-        legColor, (s) => { leg.hipJointSlot = s; }, geometryTier,
+        legColor, (s) => { leg.hipJointSlot = s; }, geometryTier, charts?.joint,
       );
     }
 

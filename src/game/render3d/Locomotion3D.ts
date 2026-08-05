@@ -20,6 +20,8 @@ import type { UnitBlueprint } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
+import { FORMIK_UNIT_BLUEPRINT_ID } from './FormikOrnament3D';
+import { FORMIK_LEG_CHARTS } from './SurfaceChart3D';
 import {
   type LegMesh,
   type LegStateSnapshot,
@@ -414,6 +416,9 @@ export function buildLocomotion(
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
         legRenderer, ownerId,
         geometryTier,
+        bp.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID
+          ? FORMIK_LEG_CHARTS
+          : undefined,
       );
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;

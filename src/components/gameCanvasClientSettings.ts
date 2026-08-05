@@ -31,6 +31,7 @@ import {
   getLegsReachToggle,
   getLocomotionMarks,
   getTeamTrim,
+  getSurfaceTexture,
   getMasterVolume,
   getMetalMap,
   getRadarBoundary,
@@ -74,6 +75,7 @@ import {
   setLegsReachToggle,
   setLocomotionMarks,
   setTeamTrim,
+  setSurfaceTexture,
   setMasterVolume,
   setMetalMap,
   setRadarBoundary,
@@ -122,6 +124,7 @@ import type {
   PathingDebugUnitId,
 } from '../types/client';
 import type { RenderMode } from '../types/graphics';
+import { setSurfaceChartEnabled } from '@/game/render3d/SurfaceChartMaterial3D';
 
 type UseGameCanvasClientSettingsOptions = {
   currentClientMode: Readonly<Ref<ClientMode>>;
@@ -141,6 +144,7 @@ export function useGameCanvasClientSettings({
   const windParticles = ref<boolean>(getWindParticles());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const teamTrim = ref<boolean>(getTeamTrim());
+  const surfaceTexture = ref<boolean>(getSurfaceTexture());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const entityShadows = ref<boolean>(getEntityShadows());
@@ -230,6 +234,8 @@ export function useGameCanvasClientSettings({
     windParticles.value = getWindParticles();
     locomotionMarks.value = getLocomotionMarks();
     teamTrim.value = getTeamTrim();
+    surfaceTexture.value = getSurfaceTexture();
+    setSurfaceChartEnabled(surfaceTexture.value);
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     entityShadows.value = getEntityShadows();
@@ -417,6 +423,15 @@ export function useGameCanvasClientSettings({
     const newValue = !teamTrim.value;
     setTeamTrim(newValue);
     teamTrim.value = newValue;
+  }
+
+  function toggleSurfaceTexture(): void {
+    const newValue = !surfaceTexture.value;
+    setSurfaceTexture(newValue);
+    surfaceTexture.value = newValue;
+    // The charted materials read one shared uniform, so this reaches every
+    // pool without a walk and without a shader recompile.
+    setSurfaceChartEnabled(newValue);
   }
 
   function toggleSmokeTrails(): void {
@@ -611,6 +626,9 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = cd.locomotionMarks.default;
     setTeamTrim(cd.teamTrim.default);
     teamTrim.value = cd.teamTrim.default;
+    setSurfaceTexture(cd.surfaceTexture.default);
+    surfaceTexture.value = cd.surfaceTexture.default;
+    setSurfaceChartEnabled(cd.surfaceTexture.default);
     setSmokeTrails(cd.smokeTrails.default);
     smokeTrails.value = cd.smokeTrails.default;
     setSmokeSoftEdges(cd.smokeSoftEdges.default);
@@ -704,6 +722,7 @@ export function useGameCanvasClientSettings({
     windParticles,
     locomotionMarks,
     teamTrim,
+    surfaceTexture,
     smokeTrails,
     smokeSoftEdges,
     entityShadows,
@@ -770,6 +789,7 @@ export function useGameCanvasClientSettings({
     toggleWindParticles,
     toggleLocomotionMarks,
     toggleTeamTrim,
+    toggleSurfaceTexture,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleEntityShadows,

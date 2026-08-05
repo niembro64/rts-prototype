@@ -158,21 +158,43 @@ function ridge(
   }
 
   const positions: number[] = [];
-  const push = (v: THREE.Vector3): void => {
-    positions.push(v.x, v.y, v.z);
-  };
+  const uvs: number[] = [];
   const ringSize = rings[0].length;
+
+  // A swept ribbon carries its own parameterization for free: u is arc length
+  // along the path, v is position around the cross-section. That is exactly
+  // what SurfaceChart3D needs, so the livery band lands along the run of the
+  // strap without any unwrap step. Arc length rather than ring index keeps the
+  // piping evenly spaced when the rail's samples are not.
+  const arc: number[] = [0];
+  for (let i = 1; i < rings.length; i++) {
+    arc.push(arc[i - 1] + rings[i][0].distanceTo(rings[i - 1][0]));
+  }
+  const totalArc = arc[arc.length - 1] || 1;
+  const ringU = arc.map((value) => value / totalArc);
+  const ringV = (k: number): number => k / ringSize;
+
+  const push = (v: THREE.Vector3, u: number, vv: number): void => {
+    positions.push(v.x, v.y, v.z);
+    uvs.push(u, vv);
+  };
   for (let i = 0; i + 1 < rings.length; i++) {
     const a = rings[i];
     const b = rings[i + 1];
+    const ua = ringU[i];
+    const ub = ringU[i + 1];
     for (let k = 0; k < ringSize; k++) {
       const k2 = (k + 1) % ringSize;
+      const va = ringV(k);
+      // The wrap-around quad must not send v backwards to 0, or the band is
+      // sampled in reverse across that one facet.
+      const vb = k2 === 0 ? 1 : ringV(k2);
       // Wound so the face normal points AWAY from the sweep axis. Reversed,
       // the renderer culls the outside of every strap and leaves only the
       // interior back-faces, which reads as a set of flat planes rather
       // than a solid — see the signed-volume check in the contract test.
-      push(a[k]); push(b[k]); push(a[k2]);
-      push(a[k2]); push(b[k]); push(b[k2]);
+      push(a[k], ua, va); push(b[k], ub, va); push(a[k2], ua, vb);
+      push(a[k2], ua, vb); push(b[k], ub, va); push(b[k2], ub, vb);
     }
   }
   // End caps keep the ridge solid where it terminates in open air. Where a
@@ -182,12 +204,13 @@ function ridge(
   const last = rings[rings.length - 1];
   for (let k = 1; k + 1 < ringSize; k++) {
     // Start cap faces back along the sweep, end cap faces forward.
-    push(first[0]); push(first[k]); push(first[k + 1]);
-    push(last[0]); push(last[k + 1]); push(last[k]);
+    push(first[0], 0, ringV(0)); push(first[k], 0, ringV(k)); push(first[k + 1], 0, ringV(k + 1));
+    push(last[0], 1, ringV(0)); push(last[k + 1], 1, ringV(k + 1)); push(last[k], 1, ringV(k));
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.computeVertexNormals();
   return geometry;
 }

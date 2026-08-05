@@ -140,6 +140,7 @@ export type ClientBarConfig = {
    *  and turret accents stay team-colored either way, because those
    *  recolor existing geometry rather than adding any. */
   readonly teamTrim: BooleanSetting;
+  readonly surfaceTexture: BooleanSetting;
   /** Smoke-puff trails behind thrust-powered projectiles (rockets,
    *  missiles) rendered by SmokeTrail3D. Default on — toggle off to
    *  cut the visual clutter and the per-puff overdraw on heavy salvos. */

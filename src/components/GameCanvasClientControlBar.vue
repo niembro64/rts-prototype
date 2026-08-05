@@ -632,6 +632,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleTeamTrim"
         >TRIM</BarButton>
         <BarButton
+          :active="model.surfaceTexture"
+          title="Apply the procedural trim-sheet texturing to charted surfaces: hull plating, nose facets, sensor housings, barrel fluting, leg hydraulics, and team livery. Only units that have been through the charting pass are affected."
+          @click="model.toggleSurfaceTexture"
+        >TEX</BarButton>
+        <BarButton
           :active="model.smokeTrails"
           title="Draw smoke-puff trails behind thrust-powered projectiles"
           @click="model.toggleSmokeTrails"

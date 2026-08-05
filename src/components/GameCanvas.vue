@@ -1110,6 +1110,7 @@ const {
   windParticles,
   locomotionMarks,
   teamTrim,
+  surfaceTexture,
   smokeTrails,
   smokeSoftEdges,
   entityShadows,
@@ -1174,6 +1175,7 @@ const {
   toggleWindParticles,
   toggleLocomotionMarks,
   toggleTeamTrim,
+  toggleSurfaceTexture,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleEntityShadows,
@@ -2002,6 +2004,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   windParticles: windParticles.value,
   locomotionMarks: locomotionMarks.value,
   teamTrim: teamTrim.value,
+  surfaceTexture: surfaceTexture.value,
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
   entityShadows: entityShadows.value,
@@ -2056,6 +2059,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleBurnMarks,
   toggleWindParticles,
   toggleTeamTrim,
+  toggleSurfaceTexture,
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
@@ -2207,6 +2211,7 @@ watchEffect(() => {
   m.windParticles = windParticles.value;
   m.locomotionMarks = locomotionMarks.value;
   m.teamTrim = teamTrim.value;
+  m.surfaceTexture = surfaceTexture.value;
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
   m.entityShadows = entityShadows.value;

@@ -67,6 +67,7 @@ type ClientDefaults = {
   readonly windParticles: boolean;
   readonly locomotionMarks: boolean;
   readonly teamTrim: boolean;
+  readonly surfaceTexture: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly entityShadows: boolean;
@@ -142,6 +143,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     windParticles: pickDefault(clientBarConfig.windParticles, mode),
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     teamTrim: pickDefault(clientBarConfig.teamTrim, mode),
+    surfaceTexture: pickDefault(clientBarConfig.surfaceTexture, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     entityShadows: pickDefault(clientBarConfig.entityShadows, mode),
@@ -225,6 +227,7 @@ export const CLIENT_CONFIG = {
   windParticles: { default: DEMO_CLIENT_DEFAULTS.windParticles },
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   teamTrim: { default: DEMO_CLIENT_DEFAULTS.teamTrim },
+  surfaceTexture: { default: DEMO_CLIENT_DEFAULTS.surfaceTexture },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   entityShadows: { default: DEMO_CLIENT_DEFAULTS.entityShadows },
@@ -306,6 +309,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     windParticles: { default: defaults.windParticles },
     locomotionMarks: { default: defaults.locomotionMarks },
     teamTrim: { default: defaults.teamTrim },
+    surfaceTexture: { default: defaults.surfaceTexture },
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
     entityShadows: { default: defaults.entityShadows },
@@ -369,6 +373,7 @@ type ClientStorageKeyName =
   | 'windParticles'
   | 'locomotionMarks'
   | 'teamTrim'
+  | 'surfaceTexture'
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'entityShadows'
@@ -415,6 +420,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'windParticles',
   'locomotionMarks',
   'teamTrim',
+  'surfaceTexture',
   'smokeTrails',
   'smokeSoftEdges',
   'entityShadows',
@@ -509,6 +515,7 @@ let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentWindParticles: boolean = _cd.windParticles.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentTeamTrim: boolean = _cd.teamTrim.default;
+let currentSurfaceTexture: boolean = _cd.surfaceTexture.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentEntityShadows: boolean = _cd.entityShadows.default;
@@ -593,6 +600,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentWindParticles = cd.windParticles.default;
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentTeamTrim = cd.teamTrim.default;
+  currentSurfaceTexture = cd.surfaceTexture.default;
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentEntityShadows = cd.entityShadows.default;
@@ -677,6 +685,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedTeamTrim = readPersisted(keys.teamTrim);
   if (storedTeamTrim !== null) {
     currentTeamTrim = storedTeamTrim === 'true';
+  }
+  const storedSurfaceTexture = readPersisted(keys.surfaceTexture);
+  if (storedSurfaceTexture !== null) {
+    currentSurfaceTexture = storedSurfaceTexture === 'true';
   }
   const storedSmokeTrails = readPersisted(keys.smokeTrails);
   if (storedSmokeTrails !== null) {
@@ -1087,6 +1099,20 @@ export function getTeamTrim(): boolean {
 export function setTeamTrim(enabled: boolean): void {
   currentTeamTrim = enabled;
   persist(activeStorageKeys().teamTrim, String(enabled));
+}
+
+/** Surface-texture toggle: the procedural trim-sheet texturing applied to
+ *  charted surfaces (SurfaceChart3D). Off takes the same shader branch as an
+ *  unlabelled surface, so this is a true A/B against the flat-shaded look
+ *  rather than an approximation of it. Only units that have been through the
+ *  charting pass are affected at all — currently the Formik. */
+export function getSurfaceTexture(): boolean {
+  return currentSurfaceTexture;
+}
+
+export function setSurfaceTexture(enabled: boolean): void {
+  currentSurfaceTexture = enabled;
+  persist(activeStorageKeys().surfaceTexture, String(enabled));
 }
 
 /** Smoke-trail toggle: thrust-projectile smoke puffs rendered by
