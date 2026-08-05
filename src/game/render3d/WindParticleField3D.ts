@@ -4,6 +4,7 @@ import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import { registerExposureOnlyUniform } from './RenderLighting3D';
 
 type WindState = NonNullable<NetworkServerSnapshotMeta['wind']>;
 
@@ -114,9 +115,12 @@ void main() {
 
 const WIND_PARTICLE_FRAGMENT_SHADER = `
 uniform vec3 uColor;
+uniform float uBrightness;
 varying float vAlpha;
 void main() {
-  gl_FragColor = vec4(uColor, vAlpha);
+  // uBrightness carries the tone-mapping exposure by hand: this material sets
+  // toneMapped:false, so it has opted out of the stage that would apply it.
+  gl_FragColor = vec4(uColor * uBrightness, vAlpha);
   #include <colorspace_fragment>
 }
 `;
@@ -136,6 +140,7 @@ export class WindParticleField3D {
   private readonly mesh: THREE.Mesh;
   private readonly uniforms: {
     uColor: { value: THREE.Color };
+    uBrightness: { value: number };
     uWinMin: { value: THREE.Vector2 };
     uLatticeSpan: { value: number };
     uBandMin: { value: number };
@@ -206,6 +211,7 @@ export class WindParticleField3D {
 
     this.uniforms = {
       uColor: { value: new THREE.Color(this.config.colorHex) },
+      uBrightness: { value: 1 },
       uWinMin: { value: new THREE.Vector2() },
       uLatticeSpan: { value: LATTICE_SPAN_BASE },
       uBandMin: { value: this.lowerPlaneWorld },
@@ -231,6 +237,7 @@ export class WindParticleField3D {
       depthWrite: false,
       toneMapped: false,
     });
+    registerExposureOnlyUniform(this.uniforms.uBrightness as { value: number });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = 'WindParticleField3D';
     this.mesh.frustumCulled = false;

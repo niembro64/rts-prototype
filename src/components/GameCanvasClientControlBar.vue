@@ -836,6 +836,32 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>MSTR:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.masterLight.options"
+            :key="opt.value"
+            :active="model.masterLight === opt.value"
+            :title="`Master dimmer at ${opt.value}%. A black quad drawn last, which multiplies the finished frame — the only control that reaches self-lit content (hover fans, overlay lines, LOD glyphs, force fields) since those write gl_FragColor directly and never tone-map. At 0 the 3D view is black with no exceptions.`"
+            @click="model.changeMasterLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>BKDP:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.backdropLight.options"
+            :key="opt.value"
+            :active="model.backdropLight === opt.value"
+            :title="`Parallax backdrop panorama layers at ${opt.value}%. A separate surface from SKY — four meshes with their own shader, which is why scene background brightness never touched them.`"
+            @click="model.changeBackdropLight(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>EXPO:</BarLabel>
         <BarButtonGroup>
           <BarButton

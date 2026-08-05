@@ -34,6 +34,8 @@ import {
   getAmbientLight,
   getEnvironmentLight,
   getSkyLight,
+  getBackdropLight,
+  getMasterLight,
   getExposure,
   getDirectionalLight,
   getSurfaceTexture,
@@ -83,6 +85,8 @@ import {
   setAmbientLight,
   setEnvironmentLight,
   setSkyLight,
+  setBackdropLight,
+  setMasterLight,
   setExposure,
   setDirectionalLight,
   setSurfaceTexture,
@@ -141,6 +145,8 @@ import {
   setBackgroundIntensityScale,
   setDirectionalIntensityScale,
   setEnvironmentIntensityScale,
+  setBackdropIntensityScale,
+  setMasterDimmerScale,
   setExposureScale,
 } from '@/game/render3d/RenderLighting3D';
 
@@ -161,6 +167,8 @@ export function useGameCanvasClientSettings({
   const ambientLight = ref<LightIntensityPercent>(getAmbientLight());
   const directionalLight = ref<LightIntensityPercent>(getDirectionalLight());
   const skyLight = ref<LightIntensityPercent>(getSkyLight());
+  const masterLight = ref<LightIntensityPercent>(getMasterLight());
+  const backdropLight = ref<LightIntensityPercent>(getBackdropLight());
   const exposure = ref<LightIntensityPercent>(getExposure());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
@@ -243,6 +251,8 @@ export function useGameCanvasClientSettings({
     setAmbientIntensityScale(ambientLight.value / 100);
     setDirectionalIntensityScale(directionalLight.value / 100);
     setBackgroundIntensityScale(skyLight.value / 100);
+    setMasterDimmerScale(masterLight.value / 100);
+    setBackdropIntensityScale(backdropLight.value / 100);
     setExposureScale(exposure.value / 100);
   }
 
@@ -266,6 +276,8 @@ export function useGameCanvasClientSettings({
     ambientLight.value = getAmbientLight();
     directionalLight.value = getDirectionalLight();
     skyLight.value = getSkyLight();
+    masterLight.value = getMasterLight();
+    backdropLight.value = getBackdropLight();
     exposure.value = getExposure();
     applyLightRuntimeState();
     audioSmoothing.value = getAudioSmoothing();
@@ -364,6 +376,18 @@ export function useGameCanvasClientSettings({
     setSkyLight(percent);
     skyLight.value = percent;
     setBackgroundIntensityScale(percent / 100);
+  }
+
+  function changeMasterLight(percent: LightIntensityPercent): void {
+    setMasterLight(percent);
+    masterLight.value = percent;
+    setMasterDimmerScale(percent / 100);
+  }
+
+  function changeBackdropLight(percent: LightIntensityPercent): void {
+    setBackdropLight(percent);
+    backdropLight.value = percent;
+    setBackdropIntensityScale(percent / 100);
   }
 
   function changeExposure(percent: LightIntensityPercent): void {
@@ -689,6 +713,8 @@ export function useGameCanvasClientSettings({
     changeAmbientLight(cd.ambientLight.default);
     changeDirectionalLight(cd.directionalLight.default);
     changeSkyLight(cd.skyLight.default);
+    changeMasterLight(cd.masterLight.default);
+    changeBackdropLight(cd.backdropLight.default);
     changeExposure(cd.exposure.default);
     setAudioSmoothing(cd.audioSmoothing.default);
     audioSmoothing.value = cd.audioSmoothing.default;
@@ -795,6 +821,8 @@ export function useGameCanvasClientSettings({
     ambientLight,
     directionalLight,
     skyLight,
+    masterLight,
+    backdropLight,
     exposure,
     audioSmoothing,
     burnMarks,
@@ -854,6 +882,8 @@ export function useGameCanvasClientSettings({
     changeAmbientLight,
     changeDirectionalLight,
     changeSkyLight,
+    changeMasterLight,
+    changeBackdropLight,
     changeExposure,
     toggleRange,
     cycleAttackRangeDisplay,

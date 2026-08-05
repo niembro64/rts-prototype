@@ -7,6 +7,7 @@ import {
   type PresetBackdropLayerId,
   type PresetBackdropLayerUrls,
 } from './presetBackdrops';
+import { registerBackdropMaterial } from './RenderLighting3D';
 
 const BACKDROP_TERMINAL_RENDER_ORDER = -1004;
 const BACKDROP_TRANSPARENT_RENDER_ORDER_START = -1003;
@@ -49,6 +50,7 @@ uniform sampler2D uMap;
 uniform vec3 uSphereCenter;
 uniform float uSphereRadius;
 uniform float uVerticalOffsetTurns;
+uniform float uBrightness;
 varying vec3 vWorldDirection;
 
 const float BACKDROP_RECIPROCAL_PI = 0.3183098861837907;
@@ -78,6 +80,11 @@ void main() {
     * BACKDROP_RECIPROCAL_PI + 0.5;
   v = clamp(v - uVerticalOffsetTurns, 0.0, 1.0);
   gl_FragColor = texture2D(uMap, vec2(u, v));
+  // Applied BEFORE the colorspace convert, and applied at all because this
+  // material sets toneMapped:false — it has opted out of the stage that would
+  // otherwise scale it, so exposure has to be handed to it explicitly or no
+  // lighting control can ever darken the backdrop. See RenderLighting3D.
+  gl_FragColor.rgb *= uBrightness;
   #include <colorspace_fragment>
 }
 `;
@@ -214,6 +221,7 @@ export class ParallaxBackdropRenderer3D implements BackdropTarget {
           uSphereCenter: { value: center.clone() },
           uSphereRadius: { value: config.distanceWorldUnits },
           uVerticalOffsetTurns: { value: verticalOffsetTurns },
+          uBrightness: { value: 1 },
         },
         vertexShader: BACKDROP_VERTEX_SHADER,
         fragmentShader: BACKDROP_FRAGMENT_SHADER,
@@ -226,6 +234,7 @@ export class ParallaxBackdropRenderer3D implements BackdropTarget {
         fog: false,
         toneMapped: false,
       });
+      registerBackdropMaterial(material);
       const mesh = new THREE.Mesh(this.geometry, material);
       mesh.name = `PresetBackdrop-${config.id}`;
       mesh.frustumCulled = false;

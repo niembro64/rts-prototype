@@ -1109,6 +1109,8 @@ const {
   ambientLight,
   directionalLight,
   skyLight,
+  masterLight,
+  backdropLight,
   exposure,
   audioSmoothing,
   burnMarks,
@@ -1166,6 +1168,8 @@ const {
   changeAmbientLight,
   changeDirectionalLight,
   changeSkyLight,
+  changeMasterLight,
+  changeBackdropLight,
   changeExposure,
   toggleRange,
   cycleAttackRangeDisplay,
@@ -2042,6 +2046,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   ambientLight: ambientLight.value,
   directionalLight: directionalLight.value,
   skyLight: skyLight.value,
+  masterLight: masterLight.value,
+  backdropLight: backdropLight.value,
   exposure: exposure.value,
   allSoundsActive: allSoundsActive.value,
   soundToggles,
@@ -2102,6 +2108,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeAmbientLight,
   changeDirectionalLight,
   changeSkyLight,
+  changeMasterLight,
+  changeBackdropLight,
   changeExposure,
   setGamePaused,
   toggleAllSounds,
@@ -2259,6 +2267,8 @@ watchEffect(() => {
   m.ambientLight = ambientLight.value;
   m.directionalLight = directionalLight.value;
   m.skyLight = skyLight.value;
+  m.masterLight = masterLight.value;
+  m.backdropLight = backdropLight.value;
   m.exposure = exposure.value;
   m.allSoundsActive = allSoundsActive.value;
   m.allRangesActive = allRangesActive.value;

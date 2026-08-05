@@ -185,7 +185,31 @@ export class ThreeApp {
     this.renderer.toneMappingExposure = 1.0;
     // Scene/renderer lighting knobs are driven from the CLIENT bar; register
     // once so the persisted values apply from the first frame.
-    registerLightingTargets(this.scene, this.renderer);
+    registerLightingTargets(this.scene, this.renderer, {
+      // A quad in clip space: the vertex shader writes NDC directly, so it
+      // covers the viewport at any camera and needs no projection.
+      makeDimmerMaterial: () => {
+        const material = new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          transparent: true,
+          opacity: 0,
+          depthTest: false,
+          depthWrite: false,
+          toneMapped: false,
+          fog: false,
+        });
+        material.onBeforeCompile = (shader) => {
+          shader.vertexShader = shader.vertexShader.replace(
+            '#include <project_vertex>',
+            'gl_Position = vec4(position.xy, 0.0, 1.0);',
+          );
+        };
+        material.customProgramCacheKey = () => 'renderLightingMasterDimmer';
+        return material;
+      },
+      makeDimmerMesh: (material) =>
+        new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material),
+    });
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = this._runtimeProfile.dynamicPixelRatio;
     this._activePixelRatio = Math.min(
