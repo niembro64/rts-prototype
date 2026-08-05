@@ -309,68 +309,175 @@ function drawNoseFacet(layer: Layer, rect: BandRect, rng: () => number): void {
   for (let i = 0; i < 26; i++) scratch(layer, rng, rect, 60);
 }
 
-/** Sensor housing. Ribbed collars at the poles, a lens row around the equator,
- *  and a perforated vent patch. On a sphere the band's v runs pole to pole, so
- *  horizontal features here become latitude rings. */
-function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
-  for (let i = 0; i < 4; i++) {
-    const y = rect.y + 3 + i * 5;
-    layer.albedo.fillStyle = gray(NEUTRAL + (i % 2 === 0 ? 0.14 : -0.16));
-    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-    layer.height.fillStyle = gray(i % 2 === 0 ? 0.82 : 0.3);
-    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, 3);
-    const yb = rect.y + rect.height - 6 - i * 5;
-    layer.albedo.fillRect(0, yb, TRIM_SHEET_PIXELS, 3);
-    layer.height.fillRect(0, yb, TRIM_SHEET_PIXELS, 3);
+// ── Spherical layout helpers ─────────────────────────────────────────────
+//
+// The sensor dome band maps onto a sphere ONCE, pole to pole (chart tileV = 1),
+// which makes it the one band whose horizontal axis is not uniform: at
+// band-local fraction `f` the row represents a latitude circle whose
+// circumference is only sin(pi*f) of the equator's. Anything drawn at a fixed
+// pixel width therefore narrows toward the poles.
+//
+// f = 0 is the SOUTH pole and f = 1 the NORTH pole. THREE.SphereGeometry emits
+// uv.y = 1 at +Y and the shader maps uv.y linearly across the band, so the
+// band's first content row is -Y.
+
+/** Latitude scale at band-local fraction `f`: 1 at the equator, 0 at a pole. */
+function latitudeScale(f: number): number {
+  return Math.sin(Math.PI * f);
+}
+
+/**
+ * Half-width in pixels of a band of constant great-circle arc half-width
+ * `arcHalf` (radians), centred on a meridian, at band fraction `f`.
+ *
+ * A point at azimuth offset dPhi from the meridian lies at great-circle
+ * distance asin(sin(theta)*sin(dPhi)) from it, so holding that distance
+ * constant gives dPhi = asin(sin(arcHalf) / sin(theta)). The band therefore
+ * FLARES toward the poles — a constant pixel width would instead pinch to
+ * nothing there, which is exactly the wedge shape a naive stripe produces.
+ *
+ * Once sin(theta) drops below sin(arcHalf) the whole latitude circle is within
+ * the band: the polar cap is entirely inside it, and the slot closes over the
+ * pole as a rounded end rather than a point.
+ */
+function meridianBandHalfWidthPx(f: number, arcHalf: number): number {
+  const s = latitudeScale(f);
+  const sinArc = Math.sin(arcHalf);
+  if (s <= sinArc) return TRIM_SHEET_PIXELS * 0.5;
+  return (Math.asin(sinArc / s) / (Math.PI * 2)) * TRIM_SHEET_PIXELS;
+}
+
+/** Paint one row of a meridian band, wrapping horizontally. */
+function meridianRow(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  centerX: number,
+  halfWidthPx: number,
+): void {
+  if (halfWidthPx >= TRIM_SHEET_PIXELS * 0.5) {
+    ctx.fillRect(0, y, TRIM_SHEET_PIXELS, 1);
+    return;
   }
-  // Lens row.
+  for (const offset of [-TRIM_SHEET_PIXELS, 0, TRIM_SHEET_PIXELS]) {
+    ctx.fillRect(centerX + offset - halfWidthPx, y, halfWidthPx * 2, 1);
+  }
+}
+
+/** THE PITCH SLOT.
+ *
+ *  The barrel assembly pivots through the head's centre and sweeps the full
+ *  half-circle from straight up to straight down, so the head needs a channel
+ *  it can travel in. Without one the barrels and their team collar just slide
+ *  across an unbroken sphere with nothing to slide *in*.
+ *
+ *  Centred on local +X — SphereGeometry puts +X at u = 0.5 — because that is
+ *  the turret's forward axis and the plane the pitch group rotates in.
+ *
+ *  Width is authored, not derived, because the sheet is shared by every
+ *  charted surface and cannot know a particular turret's proportions. For
+ *  reference the Formik's head radius is 32 and its barrels are 2 across, so
+ *  one barrel subtends 2/32 = 0.0625 rad. A slot that narrow is ~10 px in the
+ *  sheet and sub-pixel on screen at any real camera distance, so it is opened
+ *  to roughly three barrel widths to stay readable. This is the knob to turn.
+ */
+const PITCH_SLOT_ARC_HALF_WIDTH = 0.10;
+const PITCH_SLOT_CENTER_U = 0.5;
+
+function drawPitchSlot(layer: Layer, rect: BandRect): void {
+  const centerX = PITCH_SLOT_CENTER_U * TRIM_SHEET_PIXELS;
+  for (let i = 0; i < rect.height; i++) {
+    const y = rect.y + i;
+    const f = (i + 0.5) / rect.height;
+    const half = meridianBandHalfWidthPx(f, PITCH_SLOT_ARC_HALF_WIDTH);
+    // A lit lip just outside the opening, so the slot reads as a cut edge
+    // rather than a painted stripe.
+    layer.albedo.fillStyle = gray(NEUTRAL + 0.2);
+    meridianRow(layer.albedo, y, centerX, half + 2.5);
+    layer.height.fillStyle = gray(0.8);
+    meridianRow(layer.height, y, centerX, half + 2.5);
+    // The opening itself: near black, deeply recessed, and NOT bare metal —
+    // a hole is an absence of surface, so nothing shows through it.
+    layer.albedo.fillStyle = gray(0.045);
+    meridianRow(layer.albedo, y, centerX, half);
+    layer.height.fillStyle = gray(0.02);
+    meridianRow(layer.height, y, centerX, half);
+    layer.bare.fillStyle = gray(0);
+    meridianRow(layer.bare, y, centerX, half);
+  }
+}
+
+/** Sensor housing. Ribbed collars at the poles, a lens row around the equator,
+ *  a perforated vent patch, and the pitch slot the barrel assembly travels in.
+ *  This band maps onto the sphere exactly once, so its horizontal axis is a
+ *  latitude circle and features must be compensated by `latitudeScale`. */
+function drawSensorDome(layer: Layer, rect: BandRect, rng: () => number): void {
+  // Latitude courses. Horizontal here means a full ring around the head, so
+  // these read the same from every direction and cost nothing at the poles.
+  const course = (f: number, thickness: number, albedo: number, height: number) => {
+    const y = rect.y + f * rect.height;
+    layer.albedo.fillStyle = gray(albedo);
+    layer.albedo.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+    layer.height.fillStyle = gray(height);
+    layer.height.fillRect(0, y, TRIM_SHEET_PIXELS, thickness);
+  };
+  for (let i = 0; i < 3; i++) {
+    // Bolted collars capping both poles.
+    course(0.03 + i * 0.045, 3, NEUTRAL + (i % 2 === 0 ? 0.14 : -0.16), i % 2 === 0 ? 0.82 : 0.3);
+    course(0.94 - i * 0.045, 3, NEUTRAL + (i % 2 === 0 ? 0.14 : -0.16), i % 2 === 0 ? 0.82 : 0.3);
+  }
+  course(0.30, 4, NEUTRAL - 0.24, 0.24);
+  course(0.70, 4, NEUTRAL - 0.24, 0.24);
+
+  // Equatorial sensor ring. Circles must be drawn as ellipses stretched by
+  // 1/latitudeScale horizontally and by the band's own pole-to-pole squash
+  // vertically, or a "round" lens comes out as a wide smear on the sphere.
   const lenses = 6;
   const spacing = TRIM_SHEET_PIXELS / lenses;
   const cy = rect.y + rect.height * 0.5;
+  // At the equator the band is TRIM_SHEET_PIXELS across the circumference and
+  // rect.height across the half-meridian, so one unit of surface is this many
+  // times wider in pixels than it is tall.
+  const equatorAspect = (TRIM_SHEET_PIXELS / (Math.PI * 2)) / (rect.height / Math.PI);
+  // Sized from the HORIZONTAL budget, not the vertical one: the compensation
+  // multiplies the x radius by ~4.9, so picking a comfortable-looking vertical
+  // radius first produces lenses wider than their own spacing, and the ring
+  // merges into one black band around the head.
+  // Small ports, not portholes. At lens-sized radii these read as craters and
+  // compete with the pitch slot for "this is an opening", which is the one
+  // thing on the head that has to be unambiguous.
+  const lensRx = spacing * 0.14;
+  const lensRy = lensRx / equatorAspect;
+  const ellipse = (
+    ctx: CanvasRenderingContext2D,
+    cx: number, rx: number, ry: number, fill: string,
+  ) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
   for (let i = 0; i < lenses; i++) {
     const cx = (i + 0.5) * spacing;
-    const r = rect.height * 0.2;
-    layer.albedo.fillStyle = gray(NEUTRAL + 0.24);
-    layer.albedo.beginPath();
-    layer.albedo.arc(cx, cy, r + 3, 0, Math.PI * 2);
-    layer.albedo.fill();
-    layer.albedo.fillStyle = gray(0.08);
-    layer.albedo.beginPath();
-    layer.albedo.arc(cx, cy, r, 0, Math.PI * 2);
-    layer.albedo.fill();
-    layer.height.fillStyle = gray(0.85);
-    layer.height.beginPath();
-    layer.height.arc(cx, cy, r + 3, 0, Math.PI * 2);
-    layer.height.fill();
-    layer.height.fillStyle = gray(0.2);
-    layer.height.beginPath();
-    layer.height.arc(cx, cy, r, 0, Math.PI * 2);
-    layer.height.fill();
+    ellipse(layer.albedo, cx, lensRx * 1.35, lensRy * 1.35, gray(NEUTRAL + 0.24));
+    ellipse(layer.albedo, cx, lensRx, lensRy, gray(0.17));
+    ellipse(layer.height, cx, lensRx * 1.35, lensRy * 1.35, gray(0.85));
+    ellipse(layer.height, cx, lensRx, lensRy, gray(0.34));
     // A lens is glass in a metal bezel, never painted.
-    layer.bare.fillStyle = gray(0.7);
-    layer.bare.beginPath();
-    layer.bare.arc(cx, cy, r + 3, 0, Math.PI * 2);
-    layer.bare.fill();
+    ellipse(layer.bare, cx, lensRx * 1.24, lensRy * 1.24, gray(0.7));
     for (let b = 0; b < 6; b++) {
       const a = (b / 6) * Math.PI * 2 + 0.3;
-      rivet(layer, cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6), 1.5);
-    }
-  }
-  // Vent perforations between lenses.
-  for (let i = 0; i < lenses; i++) {
-    const cx = (i + 1) * spacing;
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 4; col++) {
-        const hx = cx + (col - 1.5) * 5 + (row % 2) * 2.5;
-        const hy = cy + (row - 1.5) * 5;
-        layer.albedo.fillStyle = gray(NEUTRAL - 0.3);
-        layer.albedo.fillRect(hx, hy, 2.6, 2.6);
-        layer.height.fillStyle = gray(0.12);
-        layer.height.fillRect(hx, hy, 2.6, 2.6);
-      }
+      rivet(
+        layer,
+        cx + Math.cos(a) * lensRx * 1.7,
+        cy + Math.sin(a) * lensRy * 1.7,
+        1.4,
+      );
     }
   }
   for (let i = 0; i < 18; i++) scratch(layer, rng, rect, 30);
+
+  // Last, so nothing is drawn over the opening.
+  drawPitchSlot(layer, rect);
 }
 
 /** Barrel. Fluting runs the full band height (constant in v), so on a cylinder
@@ -632,6 +739,14 @@ export function getTrimSheetTexture(): THREE.CanvasTexture {
   // fragment at the edge of a band would filter into its neighbour.
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
+  // THE SHEET IS AUTHORED IN CANVAS-ROW SPACE. `bandContentRange` derives each
+  // band's v range straight from the rows it was rasterized into, so row r must
+  // land at v = r/size. three.js flips textures on upload by default, which
+  // maps row r to v = 1 - r/size instead — that MIRRORS the whole band stack,
+  // and every chart silently samples the band opposite its own (the hull drew
+  // chevrons, the collar drew hull plating). Nothing looks broken; it just
+  // looks like the wrong texture, which is far harder to spot.
+  texture.flipY = false;
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;

@@ -23,7 +23,7 @@ import {
   type SurfaceChartId,
   type TrimBandId,
 } from './SurfaceChart3D';
-import { buildTrimSheetCanvasForTest } from './TrimSheetTexture';
+import { buildTrimSheetCanvasForTest, getTrimSheetTexture } from './TrimSheetTexture';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[surface chart contract] ${message}`);
@@ -178,6 +178,21 @@ function bandStats(pixels: Uint8ClampedArray, band: TrimBandId): BandStats {
   };
 }
 
+/** The sheet is authored in canvas-row space, so row r must land at texture
+ *  v = r/size. three.js flips textures on upload by default, which mirrors the
+ *  whole band stack and makes every chart sample the band opposite its own —
+ *  the hull drawing chevrons, the collar drawing hull plating. Nothing renders
+ *  as obviously broken, so this is load-bearing and pinned. */
+function checkSheetOrientation(): void {
+  const texture = getTrimSheetTexture();
+  assertContract(
+    texture.flipY === false,
+    'the trim sheet must upload unflipped — bandContentRange derives each '
+      + 'band\'s v range from the canvas rows it was drawn into, and a flip '
+      + 'mirrors the entire band stack',
+  );
+}
+
 function checkTrimSheet(): void {
   const canvas = buildTrimSheetCanvasForTest();
   assertContract(
@@ -242,6 +257,7 @@ function checkTrimSheet(): void {
   }
 
   checkNoBakedDirectionalShading(pixels);
+  checkPitchSlot(pixels);
 
   // Gutters must be a copy of the band's own edge row, not the neighbour's
   // content. Sample the row just outside the content and compare to the row
@@ -377,8 +393,18 @@ function lowHarmonicAmplitude(
   return worst;
 }
 
+/** Bands that legitimately carry a feature at the circumference's own period.
+ *
+ *  The rule this check enforces is "do not bake LIGHTING into the surface",
+ *  not "do not vary around the circumference". A hole is part of the object and
+ *  is supposed to sit at a fixed azimuth in the object's frame; a highlight is
+ *  not part of the object and must not. `sensorDome` carries the barrel pitch
+ *  slot, which is a hole at local +X by construction. */
+const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set(['sensorDome']);
+
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {
+    if (DIRECTIONAL_EXEMPT_BANDS.has(band)) continue;
     const worst = lowHarmonicAmplitude(pixels, band);
     assertContract(
       worst.amplitude < MAX_LOW_HARMONIC_AMPLITUDE,
@@ -406,9 +432,129 @@ export function measureBandLowHarmonics(): Record<string, string> {
   return out;
 }
 
+/**
+ * The barrel pitch slot.
+ *
+ * Two things have to hold and neither is obvious from looking at the band:
+ *
+ * 1. It must run the FULL half-meridian, pole to pole. That is what lets the
+ *    barrels travel from +90 degrees to -90 degrees without ever leaving it,
+ *    and it is why `sensorDome` must keep tileV = 1 — any repeat stacks
+ *    several short slots up the head instead.
+ *
+ * 2. Its width must be constant in ARC, not in pixels. A stripe of fixed pixel
+ *    width narrows with sin(latitude) and comes out as a wedge that pinches
+ *    shut at both poles — the exact failure the user would see as the slot
+ *    "closing up" at the top and bottom of its travel.
+ */
+function checkPitchSlot(pixels: Uint8ClampedArray): void {
+  const { v0, vSpan } = bandContentRange('sensorDome');
+  const top = Math.round(v0 * TRIM_SHEET_PIXELS);
+  const height = Math.round(vSpan * TRIM_SHEET_PIXELS);
+  const DARK = 40;
+
+  // The CONTIGUOUS dark run through the slot's centre, not every dark pixel in
+  // the row: lenses and vents are dark too, and counting them would measure
+  // the band's whole dark area rather than the slot.
+  const centerX = Math.round(0.5 * TRIM_SHEET_PIXELS);
+  const isDark = (y: number, x: number): boolean => {
+    const wrapped = ((x % TRIM_SHEET_PIXELS) + TRIM_SHEET_PIXELS) % TRIM_SHEET_PIXELS;
+    return pixels[(y * TRIM_SHEET_PIXELS + wrapped) * 4] <= DARK;
+  };
+  const darkRun: number[] = [];
+  for (let i = 0; i < height; i++) {
+    const y = top + i;
+    assertContract(
+      isDark(y, centerX),
+      `pitch slot is absent at row ${i}/${height} of the sensor dome — the `
+        + 'barrels would leave the slot partway through their travel',
+    );
+    let run = 1;
+    for (let d = 1; d <= TRIM_SHEET_PIXELS / 2 && isDark(y, centerX - d); d++) run++;
+    for (let d = 1; d <= TRIM_SHEET_PIXELS / 2 && isDark(y, centerX + d); d++) run++;
+    darkRun.push(Math.min(run, TRIM_SHEET_PIXELS));
+  }
+
+  // THE PIXEL WIDTH MUST NOT SHRINK TOWARD EITHER POLE. This is the direct
+  // statement of the requirement: constant arc width on a sphere means the
+  // stripe has to FLARE in texture space, because a latitude circle near a
+  // pole is shorter. A stripe that instead holds its pixel width is the wedge
+  // that visibly pinches shut at the top and bottom of the barrel's travel.
+  const equator = Math.floor(height / 2);
+  const slack = 2;
+  for (let i = equator; i + 1 < height; i++) {
+    assertContract(
+      darkRun[i + 1] >= darkRun[i] - slack,
+      `pitch slot narrows toward the north pole (row ${i}: ${darkRun[i]}px, `
+        + `row ${i + 1}: ${darkRun[i + 1]}px)`,
+    );
+  }
+  for (let i = equator; i > 0; i--) {
+    assertContract(
+      darkRun[i - 1] >= darkRun[i] - slack,
+      `pitch slot narrows toward the south pole (row ${i}: ${darkRun[i]}px, `
+        + `row ${i - 1}: ${darkRun[i - 1]}px)`,
+    );
+  }
+
+  // Where the flare is still narrow enough to invert unambiguously, the arc
+  // width itself must be constant. Wide near-pole rows are excluded on
+  // purpose: once the band passes a quarter turn in azimuth it has wrapped
+  // over the pole, and asin() no longer recovers the width from the run.
+  const arcWidths: number[] = [];
+  for (let i = 0; i < height; i++) {
+    if (darkRun[i] > TRIM_SHEET_PIXELS / 3) continue;
+    const halfPhi = (Math.PI * darkRun[i]) / TRIM_SHEET_PIXELS;
+    const latitude = Math.sin((Math.PI * (i + 0.5)) / height);
+    arcWidths.push(2 * Math.asin(Math.min(1, latitude * Math.sin(halfPhi))));
+  }
+  assertContract(
+    arcWidths.length > height * 0.5,
+    `pitch slot must be narrow enough to measure over most of its run — only `
+      + `${arcWidths.length}/${height} rows qualified`,
+  );
+  const min = Math.min(...arcWidths);
+  const max = Math.max(...arcWidths);
+  assertContract(
+    max - min < 0.04,
+    `pitch slot must hold a constant ARC width — measured ${min.toFixed(3)} to `
+      + `${max.toFixed(3)} rad across the rows where it is directly measurable`,
+  );
+
+  // And it has to be a hole, not a dark stripe: recessed in height, and not
+  // reporting bare metal, because there is no surface there to be bare.
+  // Sampled across the slot's own run — the equatorial lenses are dark too,
+  // and including them measures glass rather than the opening.
+  let holeHeight = 0;
+  let holeBare = 0;
+  let samples = 0;
+  const midIndex = Math.floor(height / 2);
+  const midRow = top + midIndex;
+  const halfRun = Math.floor(darkRun[midIndex] / 2);
+  for (let d = -halfRun; d <= halfRun; d++) {
+    const x = ((centerX + d) % TRIM_SHEET_PIXELS + TRIM_SHEET_PIXELS) % TRIM_SHEET_PIXELS;
+    const i = (midRow * TRIM_SHEET_PIXELS + x) * 4;
+    if (pixels[i] > DARK) continue;
+    holeHeight += pixels[i + 1];
+    holeBare += pixels[i + 2];
+    samples++;
+  }
+  assertContract(samples > 0, 'pitch slot has width at the equator');
+  assertContract(
+    holeHeight / samples < 24,
+    `pitch slot must read as recessed — mean height ${(holeHeight / samples).toFixed(1)}`,
+  );
+  assertContract(
+    holeBare / samples < 8,
+    `pitch slot must not reveal bare metal — a hole is an absence of surface `
+      + `(mean ${(holeBare / samples).toFixed(1)})`,
+  );
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
   checkLiverySeparation();
   checkProgramCacheKeys();
+  checkSheetOrientation();
   checkTrimSheet();
 }

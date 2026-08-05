@@ -115,7 +115,9 @@ type SurfaceChartDef = {
 const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   hullShell: { band: 'armorPlate', tileU: 1, tileV: 3, livery: false },
   hullNose: { band: 'noseFacet', tileU: 1, tileV: 2, livery: false },
-  sensorDome: { band: 'sensorDome', tileU: 1, tileV: 3, livery: false },
+  // tileV MUST stay 1: the dome band carries the barrel pitch slot, which runs
+  // pole to pole exactly once. Any repeat stacks several slots up the head.
+  sensorDome: { band: 'sensorDome', tileU: 1, tileV: 1, livery: false },
   barrelShaft: { band: 'barrelShaft', tileU: 1, tileV: 1, livery: false },
   legStrut: { band: 'hydraulicStrut', tileU: 1, tileV: 1, livery: false },
   legJoint: { band: 'boltBoss', tileU: 1, tileV: 2, livery: false },
