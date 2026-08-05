@@ -76,6 +76,34 @@ export function runFormikOrnament3DContractTest(): void {
       `strap kit must stand off the hull with visible bulk — got ${strapDepth.toFixed(2)}`,
     );
 
+    // ENCLOSED VOLUME. This is the check that matters, and the one whose
+    // absence let a fully inverted kit ship: the shells were closed and the
+    // bounds were correct, but every triangle was wound backwards, so the
+    // renderer culled the outside of every strap and left only interior
+    // back-faces. On screen that reads as a set of flat planes, not a solid.
+    //
+    // Summing (1/6)·a·(b×c) over a closed, outward-wound shell yields its
+    // enclosed volume. Inverted winding makes it negative; a flattened
+    // ribbon makes it ~0. Both failures are caught by one number.
+    const positions = body.getAttribute('position').array;
+    let signedVolume = 0;
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      const ax = positions[i], ay = positions[i + 1], az = positions[i + 2];
+      const bx = positions[i + 3], by = positions[i + 4], bz = positions[i + 5];
+      const cx = positions[i + 6], cy = positions[i + 7], cz = positions[i + 8];
+      signedVolume += (
+        ax * (by * cz - bz * cy) -
+        ay * (bx * cz - bz * cx) +
+        az * (bx * cy - by * cx)
+      ) / 6;
+    }
+    assertContract(
+      signedVolume > 0.6,
+      'strap kit must enclose real outward-wound volume — got '
+        + `${signedVolume.toFixed(3)} (negative means inverted winding, `
+        + 'near zero means it collapsed to flat planes)',
+    );
+
     const collarBounds = collar.boundingBox;
     assertContract(collarBounds !== null, 'turret collar exposes bounds');
     const collarX = collarBounds.max.x - collarBounds.min.x;

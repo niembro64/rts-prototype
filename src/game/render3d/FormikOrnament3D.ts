@@ -55,13 +55,15 @@ const SPINE_Y = 0.5;
  *  spine ridge running down it. A bare triangle read as a thin fin from the
  *  RTS camera; the band gives the ornament real mass, and the spine keeps
  *  the hard specular line that made the triangle read well up close. */
-const RIDGE_HALF_WIDTH = 0.16;
-/** How far the strap's flat shoulders stand off the hull — its thickness. */
-const RIDGE_STRAP_THICKNESS = 0.09;
+const RIDGE_HALF_WIDTH = 0.22;
+/** How far the strap's flat shoulders stand off the hull — its thickness.
+ *  This is the number that decides whether the kit reads as armour plate or
+ *  as paint; it wants to be a real fraction of the spike, not a hairline. */
+const RIDGE_STRAP_THICKNESS = 0.16;
 /** How far the spine rises above those shoulders. */
-const RIDGE_SPIKE_HEIGHT = 0.17;
+const RIDGE_SPIKE_HEIGHT = 0.22;
 /** How far the base sinks under the surface, so the strap looks seated. */
-const RIDGE_SINK = 0.05;
+const RIDGE_SINK = 0.06;
 
 const _tangent = new THREE.Vector3();
 const _outward = new THREE.Vector3();
@@ -123,8 +125,12 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
     const b = rings[i + 1];
     for (let k = 0; k < ringSize; k++) {
       const k2 = (k + 1) % ringSize;
-      push(a[k]); push(a[k2]); push(b[k]);
-      push(a[k2]); push(b[k2]); push(b[k]);
+      // Wound so the face normal points AWAY from the sweep axis. Reversed,
+      // the renderer culls the outside of every strap and leaves only the
+      // interior back-faces, which reads as a set of flat planes rather
+      // than a solid — see the signed-volume check in the contract test.
+      push(a[k]); push(b[k]); push(a[k2]);
+      push(a[k2]); push(b[k]); push(b[k2]);
     }
   }
   // End caps keep the ridge solid where it terminates in open air. Where a
@@ -133,8 +139,9 @@ function ridge(path: readonly THREE.Vector3[]): THREE.BufferGeometry {
   const first = rings[0];
   const last = rings[rings.length - 1];
   for (let k = 1; k + 1 < ringSize; k++) {
-    push(first[0]); push(first[k + 1]); push(first[k]);
-    push(last[0]); push(last[k]); push(last[k + 1]);
+    // Start cap faces back along the sweep, end cap faces forward.
+    push(first[0]); push(first[k]); push(first[k + 1]);
+    push(last[0]); push(last[k + 1]); push(last[k]);
   }
 
   const geometry = new THREE.BufferGeometry();
