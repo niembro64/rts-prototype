@@ -113,14 +113,14 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   // vExtent covers the 64-unit tube PLUS a reserved zone for the end faces.
   // The cap is a disc of radius 1, and its remapped v carries the radius from
   // centre to rim (see ChartedCylinderUv3D), so 3 units of band is ample.
-  barrelShaft: { uExtent: 6.3, vExtent: 65, featureSize: 6 },
+  barrelShaft: { uExtent: 6.3, vExtent: 65.5, featureSize: 6 },
   hydraulicStrut: { uExtent: 32, vExtent: 39, featureSize: 11 },
   boltBoss: { uExtent: 47, vExtent: 24, featureSize: 12 },
   liveryPiping: { uExtent: 104, vExtent: 60, featureSize: 16 },
   // 37.8-unit collar plus a reserved zone for its forward face, which is a
   // 24.3-radius disc — big enough to be the first thing you see down the
   // barrel line, so it gets real radial resolution rather than a scrap.
-  liveryChevron: { uExtent: 153, vExtent: 62.1, featureSize: 16 },
+  liveryChevron: { uExtent: 153, vExtent: 62.7, featureSize: 16 },
 };
 
 /**
@@ -141,10 +141,15 @@ export type CapZone = {
 // puts the radius on v: 1 world unit of radius is 1 world unit of band, so the
 // face is textured at the sheet density like everything else.
 export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
-  // 64-unit tube, then a 1-unit-radius muzzle face.
-  barrelShaft: { wallVEnd: 64 / 65, capCenterV: 64 / 65, capRimV: 1 },
-  // 37.8-unit collar, then its 24.3-radius forward face.
-  liveryChevron: { wallVEnd: 37.8 / 62.1, capCenterV: 37.8 / 62.1, capRimV: 1 },
+  // A DEAD GAP separates wallVEnd from capCenterV. With the two equal, the
+  // face's centre row abuts the wall's last row, and bilinear filtering at the
+  // exact centre of the face pulls in the tube's bright machined lip — a white
+  // dot in the middle of the bore. Half a world unit of band is enough.
+  //
+  // 64-unit tube, 0.5 gap, then a 1-unit-radius muzzle face.
+  barrelShaft: { wallVEnd: 64 / 65.5, capCenterV: 64.5 / 65.5, capRimV: 1 },
+  // 37.8-unit collar, 0.6 gap, then its 24.3-radius forward face.
+  liveryChevron: { wallVEnd: 37.8 / 62.7, capCenterV: 38.4 / 62.7, capRimV: 1 },
 };
 
 /** A band's pixel rectangle in the sheet, gutters included. */
