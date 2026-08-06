@@ -141,8 +141,8 @@ export class UnitTurretPose3D {
       setObjectVisibleIfChanged(turretMesh.root, visible);
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);
-        if (turretMesh.formikTeamTrimAnchor?.slot !== undefined) {
-          teamTrim?.hideFormikTurretAnchor(turretMesh.formikTeamTrimAnchor.slot);
+        if (turretMesh.teamCollar?.slot !== undefined) {
+          teamTrim?.hide(turretMesh.teamCollar.slot);
         }
         continue;
       }
@@ -543,7 +543,7 @@ export class UnitTurretPose3D {
     entity: Entity,
     teamTrim: TeamTrimRenderer3D | null,
   ): void {
-    this.writeFormikTeamTrimAnchor(
+    this.writeTurretTeamCollar(
       turretMesh,
       parentPosition,
       parentQuaternion,
@@ -572,17 +572,17 @@ export class UnitTurretPose3D {
     }
   }
 
-  private writeFormikTeamTrimAnchor(
+  private writeTurretTeamCollar(
     turretMesh: TurretMesh,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     entity: Entity,
     teamTrim: TeamTrimRenderer3D | null,
   ): void {
-    const anchor = turretMesh.formikTeamTrimAnchor;
+    const anchor = turretMesh.teamCollar;
     if (anchor === undefined || teamTrim === null) return;
     if (anchor.slot === undefined) {
-      const slot = teamTrim.allocFormikTurretAnchor(anchor.tier);
+      const slot = teamTrim.allocTurretCollar(anchor.tier);
       if (slot < 0) return;
       anchor.slot = slot;
     }
@@ -601,7 +601,7 @@ export class UnitTurretPose3D {
       .copy(parentQuaternion)
       .multiply(turretMesh.root.quaternion)
       .multiply(pitchQuaternion ?? this.scratchIdentityQuaternion);
-    teamTrim.setFormikTurretAnchor(
+    teamTrim.setTurretCollar(
       anchor.slot,
       this.anchorPosition.x,
       this.anchorPosition.y,

@@ -21,14 +21,14 @@ import {
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
+import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
+import { hostOrnamentProfile } from './TeamOrnament3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import * as THREE_TRIM from 'three';
 import { entityTeamColorHexForPlayer } from './EntityInstanceColor3D';
 
 /** Roof band proportions. The band overhangs the footprint slightly so
  *  it reads as a lip rather than a decal painted on the roof. */
-const BUILDING_TRIM_SPAN = 1.06;
-const BUILDING_TRIM_THICKNESS = 0.12;
 const _buildingTrimQuat = new THREE_TRIM.Quaternion();
 const _buildingTrimUp = new THREE_TRIM.Vector3(0, 1, 0);
 import type { RenderFrameState3D } from './RenderFrameState3D';
@@ -290,9 +290,26 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
       positionBuildingTurretRoot(turretMesh, turret);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
+      // Same role table as a unit's turrets: a head is a sensor dome and a
+      // barrel is a barrel shaft whether a walker or a tower carries it.
+      if (turretMesh.head !== undefined && turretMesh.shieldEmitterCore !== true) {
+        applyChartToMesh(
+          turretMesh.head,
+          'sensorDome',
+          `turretHead:${geometryTierForDetail(detailLevel)}`,
+        );
+      }
       buildingTurretMeshes.push(turretMesh);
     }
   }
+
+  // Coverage backstop — see the matching call in UnitMeshBuilder3D. A
+  // building's art is spread across a dozen mesh modules (solar, wind,
+  // extractor, radar, converter, factory, tower) each holding its own
+  // structure materials; walking the finished assembly is what keeps every
+  // wall, strut, vane and platform made of the same metal as the units
+  // parked beside it.
+  patchSurfaceChartTree(group);
 
   world.add(group);
 
@@ -403,6 +420,15 @@ export class BuildingEntityRenderer3D {
   private turretAimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
   private turretAimCount = 0;
   private readonly turretAimMeshes: TurretMesh[] = [];
+  /** The host and colour each queued turret belongs to, so the team collar
+   *  can be composed from the building's freshly written pose in the same
+   *  pass that writes the turret's own aim. */
+  private readonly turretAimHosts: EntityMesh[] = [];
+  private readonly turretAimTeamColors: number[] = [];
+  private readonly collarPosition = new THREE_TRIM.Vector3();
+  private readonly collarQuaternion = new THREE_TRIM.Quaternion();
+  private readonly collarIdentity = new THREE_TRIM.Quaternion();
+  private readonly collarZero = new THREE_TRIM.Vector3();
   private readonly buildingPoseBatch = new BuildingPoseBatch3D();
   private buildingPoseInput = new Float32Array(BUILDING_POSE_INPUT_STRIDE * 256);
   private buildingPoseCount = 0;
@@ -669,6 +695,15 @@ export class BuildingEntityRenderer3D {
 
   private detachBuildingMeshGroup(mesh: EntityMesh): void {
     if (mesh.group.parent === this.world) this.world.remove(mesh.group);
+    // Ornamentation is world-parented (it lives in a shared instanced pool),
+    // so detaching the group does NOT take it with it. Park the slots or the
+    // kit and collars keep drawing where a building the player can no longer
+    // see used to be.
+    if (mesh.teamTrimSlot !== undefined) this.teamTrim?.hide(mesh.teamTrimSlot);
+    for (const turret of mesh.turrets) {
+      const slot = turret.teamCollar?.slot;
+      if (slot !== undefined) this.teamTrim?.hide(slot);
+    }
   }
 
   private attachBuildingMeshGroup(mesh: EntityMesh): void {
@@ -1096,7 +1131,7 @@ export class BuildingEntityRenderer3D {
       }
     }
 
-    this.updateTeamTrim(mesh, ownerId, x, y, buildingBaseY + height, width, depth);
+    this.updateTeamTrim(mesh, ownerId, x, y, buildingBaseY, width, height, depth);
 
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
@@ -1113,46 +1148,56 @@ export class BuildingEntityRenderer3D {
   }
 
   /**
-   * A structure's team trim: a band across the roof edge.
+   * A structure's team kit — the same rail-and-rib frame every unit wears,
+   * fitted to this building's own box.
    *
-   * Buildings are read from above in an RTS, so the roof is where the
-   * side has to be legible; a wall stripe would be hidden by the
-   * building's own footprint at normal camera pitch. The band is TEAM
-   * color while the structure body stays PLAYER color, so allies share
-   * the band and their hulls still tell them apart.
+   * Buildings are read from above in an RTS, so the rails run over the roof
+   * where they are legible; a wall stripe would be hidden by the building's
+   * own footprint at normal camera pitch. The kit is TEAM colour while the
+   * structure body stays PLAYER colour, so allies share the frame and their
+   * hulls still tell them apart.
+   *
+   * The profile is derived in WORLD units here rather than in a normalized
+   * body space, so the kit instances at scale 1 and the rails land on the
+   * real roof of a real box.
    */
   private updateTeamTrim(
     mesh: EntityMesh,
     ownerId: PlayerId | undefined,
     simX: number,
     simY: number,
-    roofY: number,
+    baseY: number,
     width: number,
+    height: number,
     depth: number,
   ): void {
     const trim = this.teamTrim;
     if (trim === null) return;
     if (mesh.teamTrimSlot === undefined) {
-      const slot = trim.alloc();
-      // A full pool just means no band on this structure, never a
-      // broken frame.
+      if (mesh.teamTrimProfile === undefined) {
+        mesh.teamTrimProfile = hostOrnamentProfile({
+          minX: -width * 0.5,
+          maxX: width * 0.5,
+          halfWidth: depth * 0.5,
+          topY: height,
+        });
+      }
+      const slot = trim.allocHostKit(mesh.teamTrimProfile, mesh.geometryTier ?? 'close');
+      // A full pool just means no kit on this structure, never a broken frame.
       if (slot < 0) return;
       mesh.teamTrimSlot = slot;
     }
-    const bandThickness = Math.max(2, Math.min(width, depth) * BUILDING_TRIM_THICKNESS);
     _buildingTrimQuat.setFromAxisAngle(_buildingTrimUp, mesh.buildingCachedRotation ?? 0);
-    // Sim (x, y) are both HORIZONTAL; three.js wants (simX, altitude,
-    // simY). `roofY` is the caller's already-composed roof altitude, so
-    // the band sits on the roof instead of hovering over the map.
-    trim.set(
+    // Sim (x, y) are both HORIZONTAL; three.js wants (simX, altitude, simY).
+    // The kit is authored from the structure's BASE upward, so it anchors at
+    // the base altitude and reaches its own roof.
+    trim.setHostKit(
       mesh.teamTrimSlot,
       simX,
-      roofY,
+      baseY,
       simY,
       _buildingTrimQuat,
-      width * BUILDING_TRIM_SPAN,
-      bandThickness,
-      depth * BUILDING_TRIM_SPAN,
+      1,
       entityTeamColorHexForPlayer(ownerId),
     );
   }
@@ -1170,6 +1215,7 @@ export class BuildingEntityRenderer3D {
     const underConstruction = rows.shellAt(row);
     const bodyVisible = rows.bodyOpacity[row] > 0;
     const ownerId = rows.ownerIdAt(row);
+    const teamColorHex = entityTeamColorHexForPlayer(ownerId);
     for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretState = turretStateFields(turretRows, turretIndex);
@@ -1197,6 +1243,8 @@ export class BuildingEntityRenderer3D {
           0,
           0,
           0,
+          mesh,
+          teamColorHex,
         );
         continue;
       }
@@ -1234,6 +1282,8 @@ export class BuildingEntityRenderer3D {
             beamDir.x,
             beamDir.y,
             beamDir.z,
+            mesh,
+            teamColorHex,
           );
         } else {
           this.enqueueTurretAim(
@@ -1245,6 +1295,8 @@ export class BuildingEntityRenderer3D {
             0,
             0,
             0,
+            mesh,
+            teamColorHex,
           );
         }
       } else {
@@ -1257,6 +1309,8 @@ export class BuildingEntityRenderer3D {
           0,
           0,
           0,
+          mesh,
+          teamColorHex,
         );
       }
       // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
@@ -1410,6 +1464,8 @@ export class BuildingEntityRenderer3D {
   private beginTurretAimFrame(): void {
     this.turretAimCount = 0;
     this.turretAimMeshes.length = 0;
+    this.turretAimHosts.length = 0;
+    this.turretAimTeamColors.length = 0;
   }
 
   private beginBuildingPoseFrame(): void {
@@ -1461,7 +1517,60 @@ export class BuildingEntityRenderer3D {
       if (turretMesh.pitchGroup) {
         setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
       }
+      this.writeTurretTeamCollar(
+        turretMesh,
+        this.turretAimHosts[i],
+        this.turretAimTeamColors[i],
+      );
     }
+  }
+
+  /**
+   * A tower turret's team collar, in the ornament pool's world space.
+   *
+   * Composed from the host's own pose rather than read off `matrixWorld`:
+   * the building pose was written moments ago in this same frame and three
+   * has not walked the graph yet, so a world matrix here would be one frame
+   * stale — which on a rotating turret reads as the collar lagging behind
+   * its own barrels.
+   */
+  private writeTurretTeamCollar(
+    turretMesh: TurretMesh,
+    host: EntityMesh | undefined,
+    teamColorHex: number,
+  ): void {
+    const collar = turretMesh.teamCollar;
+    const trim = this.teamTrim;
+    if (collar === undefined || trim === null || host === undefined) return;
+    if (collar.slot === undefined) {
+      const slot = trim.allocTurretCollar(collar.tier);
+      if (slot < 0) return;
+      collar.slot = slot;
+    }
+    const pitchPosition = turretMesh.pitchGroup?.position;
+    const pitchQuaternion = turretMesh.pitchGroup?.quaternion;
+    this.collarPosition
+      .set(collar.centerX, 0, 0)
+      .applyQuaternion(pitchQuaternion ?? this.collarIdentity)
+      .add(pitchPosition ?? this.collarZero)
+      .applyQuaternion(turretMesh.root.quaternion)
+      .add(turretMesh.root.position)
+      .applyQuaternion(host.group.quaternion)
+      .add(host.group.position);
+    this.collarQuaternion
+      .copy(host.group.quaternion)
+      .multiply(turretMesh.root.quaternion)
+      .multiply(pitchQuaternion ?? this.collarIdentity);
+    trim.setTurretCollar(
+      collar.slot,
+      this.collarPosition.x,
+      this.collarPosition.y,
+      this.collarPosition.z,
+      this.collarQuaternion,
+      collar.length,
+      collar.radius,
+      teamColorHex,
+    );
   }
 
   private enqueueTurretAim(
@@ -1473,6 +1582,8 @@ export class BuildingEntityRenderer3D {
     dirX: number,
     dirY: number,
     dirZ: number,
+    host: EntityMesh,
+    teamColorHex: number,
   ): void {
     const index = this.turretAimCount;
     this.turretAimCount++;
@@ -1493,6 +1604,8 @@ export class BuildingEntityRenderer3D {
     input[base + 10] = 1;
     input[base + 11] = 0;
     this.turretAimMeshes[index] = turretMesh;
+    this.turretAimHosts[index] = host;
+    this.turretAimTeamColors[index] = teamColorHex;
   }
 
   private enqueueBuildingPose(

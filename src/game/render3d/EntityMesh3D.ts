@@ -15,6 +15,7 @@ import type {
   WindTurbineRig,
 } from './BuildingShape3D';
 import type { SolarRig } from './SolarCollectorMesh3D';
+import type { HostOrnamentProfile } from './TeamOrnament3D';
 
 /** One wireframe per debug-volume category the host actually carries.
  *  Keys mirror the unified VOLUMES bar group (`VolumeType`) exactly —
@@ -112,11 +113,12 @@ export type EntityMesh = {
    *  when toggled off. All three parent to the unit group at local
    *  y = collision radius so the sphere center sits on the unit's sim
    *  sphere center and rides along with altitude changes. */
-  /** Slot in the shared generic team-trim pool (a unit's dorsal fin or a
-   *  building's roof band). Bespoke profiles use their own fields/pools. */
+  /** Slot in the team-ornament pools holding this host's rail-and-rib kit.
+   *  The slot encodes which pool, so one field covers every body profile. */
   teamTrimSlot?: number;
-  /** Formik-only slot containing the complete rounded body-stroke kit. */
-  formikBodyTrimSlot?: number;
+  /** The kit's fit for this host, derived from its body once and cached —
+   *  the pose pass runs every frame and the body's extents do not change. */
+  teamTrimProfile?: HostOrnamentProfile;
   radiusRings?: RadiusRingMeshes;
   radiusRingsVisible?: boolean;
   /** Builder-unit BLD ground-plane circle. Build range is a 2D

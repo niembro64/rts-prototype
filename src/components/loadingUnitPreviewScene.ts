@@ -17,7 +17,7 @@ import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { buildBuildingShape } from '@/game/render3d/BuildingShape3D';
 import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
-import { getBodyGeom } from '@/game/render3d/BodyShape3D';
+import { getBodyGeom, type BodyGeomEntry } from '@/game/render3d/BodyShape3D';
 import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
 import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
 import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
@@ -76,10 +76,12 @@ import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
 import { buildConstructionHostMarking } from '@/game/render3d/ConstructionHostMarking3D';
 import {
-  FORMIK_UNIT_BLUEPRINT_ID,
-  createFormikBodyOrnamentGeometry,
-  createFormikTurretAnchorGeometry,
-} from '@/game/render3d/FormikOrnament3D';
+  createHostOrnamentGeometry,
+  createTurretCollarGeometry,
+  hostOrnamentProfile,
+  ornamentProfileKey,
+} from '@/game/render3d/TeamOrnament3D';
+import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -207,13 +209,20 @@ type PreviewUnitMaterials = {
 };
 
 function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
-  return {
+  const materials: PreviewUnitMaterials = {
     primary: new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) }),
     turretAccent: new THREE.MeshLambertMaterial({ color: turretAccentColorHexForPlayer(playerId) }),
     teamOrnament: new THREE.MeshLambertMaterial({ color: entityTeamColorHexForPlayer(playerId) }),
     mirrorShiny: createShieldFallbackPanelMaterial(),
     leg: new THREE.MeshBasicMaterial({ color: locomotionPieceColorHex(LEG_SEGMENT_COLOR, playerId) }),
   };
+  // The card is a promise about what the unit looks like in the battle, so it
+  // is made of the same metal: same grain, same density, same livery.
+  patchSurfaceChartSurface(materials.primary);
+  patchSurfaceChartSurface(materials.turretAccent);
+  patchSurfaceChartSurface(materials.teamOrnament);
+  patchSurfaceChartSurface(materials.leg);
+  return materials;
 }
 
 function disposePreviewUnitMaterials(materials: PreviewUnitMaterials): void {
@@ -275,8 +284,11 @@ const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
 const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
-const formikBodyOrnamentGeom = createFormikBodyOrnamentGeometry();
-const formikTurretAnchorGeom = createFormikTurretAnchorGeometry();
+const turretCollarGeom = createTurretCollarGeometry();
+/** The preview builds one kit per body shape it is asked to draw, keyed the
+ *  same way the live renderer pools them, so the card shows exactly the kit
+ *  the unit wears in the battle. */
+const previewOrnamentGeoms = new Map<string, THREE.BufferGeometry>();
 const legSegmentGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
   close: createPrimitiveCylinderGeometry('locomotion', 'close'),
   mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
@@ -609,10 +621,10 @@ function buildPreviewBody(
 ): void {
   const bodyMaterial = materials.primary;
   const chassis = new THREE.Group();
+  const bodyEntry = getBodyGeom(blueprint.bodyShape, geometryTier);
   if (blueprint.unitBlueprintId === 'unitAlbatros') {
     buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
   } else if (blueprint.bodyShape !== null) {
-    const bodyEntry = getBodyGeom(blueprint.bodyShape, geometryTier);
     for (const part of bodyEntry.parts) {
       const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
       mesh.position.set(part.x, part.y, part.z);
@@ -624,11 +636,44 @@ function buildPreviewBody(
   if (blueprint.unitBlueprintId === 'unitCommander') {
     chassis.add(previewCommanderVisualKit.buildKit(bodyMaterial, geometryTier));
   }
-  if (blueprint.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID) {
-    chassis.add(new THREE.Mesh(formikBodyOrnamentGeom, materials.teamOrnament));
-  }
+  // Every host wears the kit, so every preview card shows it.
+  chassis.add(new THREE.Mesh(
+    previewOrnamentGeometry(bodyEntry),
+    materials.teamOrnament,
+  ));
   chassis.scale.setScalar(blueprint.radius.other);
   liftGroup.add(chassis);
+}
+
+/** The kit fitted to this body, cached by profile exactly as the live
+ *  renderer's pools are — two units of the same shape share one geometry. */
+function previewOrnamentGeometry(bodyEntry: BodyGeomEntry): THREE.BufferGeometry {
+  let minX = 0;
+  let maxX = 0;
+  let halfWidth = 0;
+  for (const part of bodyEntry.parts) {
+    minX = Math.min(minX, part.x - part.scaleX);
+    maxX = Math.max(maxX, part.x + part.scaleX);
+    halfWidth = Math.max(halfWidth, Math.abs(part.z) + part.scaleZ);
+  }
+  if (maxX - minX < 1e-3) {
+    minX = -1;
+    maxX = 1;
+  }
+  if (halfWidth < 1e-3) halfWidth = 1;
+  const profile = hostOrnamentProfile({
+    minX,
+    maxX,
+    halfWidth,
+    topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
+  });
+  const key = ornamentProfileKey(profile);
+  let geometry = previewOrnamentGeoms.get(key);
+  if (geometry === undefined) {
+    geometry = createHostOrnamentGeometry(profile);
+    previewOrnamentGeoms.set(key, geometry);
+  }
+  return geometry;
 }
 
 function buildPreviewTurrets(
@@ -691,10 +736,10 @@ function buildPreviewTurrets(
       mountZ,
     );
     applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
-    const anchor = turretMesh.formikTeamTrimAnchor;
+    const anchor = turretMesh.teamCollar;
     if (anchor !== undefined && turretMesh.pitchGroup !== undefined) {
       const anchorMesh = new THREE.Mesh(
-        formikTurretAnchorGeom,
+        turretCollarGeom,
         materials.teamOrnament,
       );
       anchorMesh.position.set(anchor.centerX, 0, 0);

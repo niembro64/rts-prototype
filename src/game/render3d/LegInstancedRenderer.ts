@@ -202,6 +202,25 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
+/** The segment's own frame, in world units — the substance grain's projection
+ *  space. It is exactly the scale INSTANCE_BEGIN_VERTEX applies above, which
+ *  is the point: the grain has to land at the same physical size on a leg as
+ *  on the hull the leg hangs off, and the only way to know that size here is
+ *  to read the same thickness and length the transform does. The normal takes
+ *  the inverse scale, as in INSTANCE_BEGIN_NORMAL. */
+const LEG_GRAIN_LOCAL = `
+vChartGrainPos = vec3(
+  position.x * instThickness,
+  position.y * _segLen,
+  position.z * instThickness
+);
+vChartGrainNormal = normalize(vec3(
+  normal.x / max(instThickness, 1.0e-4),
+  normal.y / max(_segLen, 1.0e-4),
+  normal.z / max(instThickness, 1.0e-4)
+));
+`;
+
 // ── Per-instance materialization alpha ────────────────────────────────
 // Mirrors EntityFade3D's instanced fade: a per-instance `aFade` scalar
 // drives `vFade`, which multiplies the fragment's `diffuseColor.a` before
@@ -359,7 +378,17 @@ class CylinderPool {
     const material = makeInstancedLegMaterial();
     // Lit now, so the chart's height-derived bump has a normal to perturb —
     // leg plating gets the same relief as the hull rather than albedo alone.
-    patchSurfaceChartMaterial(material, { bump: true });
+    //
+    // The grain's projection frame has to be supplied by hand here. This pool
+    // does its own instancing (INSTANCE_BEGIN_VERTEX above) and never writes
+    // an `instanceMatrix`, so the default derivation — which reads the scale
+    // out of modelMatrix * instanceMatrix — would find unit scale and grain
+    // every leg segment as though it were one world unit long.
+    patchSurfaceChartMaterial(material, {
+      bump: true,
+      variant: 'legSegment',
+      grainLocal: LEG_GRAIN_LOCAL,
+    });
     this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;

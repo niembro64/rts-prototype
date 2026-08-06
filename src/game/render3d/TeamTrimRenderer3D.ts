@@ -7,9 +7,11 @@ import {
   uploadDirtySlotSpan,
 } from './instancedBufferUpdate';
 import {
-  createFormikBodyOrnamentGeometry,
-  createFormikTurretAnchorGeometry,
-} from './FormikOrnament3D';
+  createHostOrnamentGeometry,
+  createTurretCollarGeometry,
+  ornamentProfileKey,
+  type HostOrnamentProfile,
+} from './TeamOrnament3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import type { SurfaceChartId } from './SurfaceChart3D';
 import {
@@ -18,48 +20,57 @@ import {
 } from './SurfaceChartMaterial3D';
 
 /**
- * TeamTrimRenderer3D — shared team-colored ornamentation.
+ * TeamTrimRenderer3D — shared team-coloured ornamentation.
  *
  * A seat has two identities (see src/game/sim/teamRoster.ts): the SIDE it
- * plays on and the seat itself. The body carries the player color; this
- * carries the side. Ornamentation is added geometry, not a recolor of the
+ * plays on and the seat itself. The body carries the player colour; this
+ * carries the side. Ornamentation is added geometry, not a recolour of the
  * body, so a unit reads as its alliance without giving up player identity.
  *
- * PERFORMANCE. Each ornament profile owns one InstancedMesh. The generic
- * box, the Formik's complete four-stroke body kit, and all Formik turret
- * collars therefore cost three draw calls total no matter how many entities
- * use them; no ornament adds a per-entity Object3D.
+ * ONE KIT, MANY FITS. Every host wears the same designed kit (TeamOrnament3D)
+ * fitted to its own body, and every turret wears the same collar sized from
+ * its own head radius. There is no "generic" fallback ornament, because a
+ * plain box is not ornamentation — it is the absence of it, wearing the team
+ * colour as an alibi.
+ *
+ * PERFORMANCE. Pools are keyed by PROFILE, not by entity: every host whose kit
+ * would be visually identical shares one InstancedMesh, so a hundred of the
+ * same unit type cost one draw call and no per-entity Object3D. Pools are
+ * created on first use and grow by doubling, so a roster of a dozen body
+ * shapes does not pay up front for a battle it may never have.
  */
 
-const SLOT_CAP = 16384;
+/** Initial per-pool capacity. Small on purpose — there is one pool per
+ *  (profile, tier) now, and reserving the old flat 16k slots in each would
+ *  have cost more than a megabyte per body shape for instances that mostly
+ *  never exist. */
+const INITIAL_SLOT_CAP = 256;
+const MAX_SLOT_CAP = 65536;
 const ZERO_SCALE = 0;
 
-type DirtySlotSpan = ReturnType<typeof createDirtySlotSpan>;
+/** Slot packing. The pool index rides in the slot so callers keep passing one
+ *  opaque number, exactly as they did when there were three fixed pools. */
+const TRIM_POOL_SHIFT = 16;
+const TRIM_INDEX_MASK = (1 << TRIM_POOL_SHIFT) - 1;
 
-/** Tier order must match trimTierIndex below. */
-const TRIM_TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
-const TRIM_TIER_SLOT_SHIFT = 20;
-const TRIM_TIER_SLOT_MASK = (1 << TRIM_TIER_SLOT_SHIFT) - 1;
-
-function trimTierIndex(tier: PrimitiveGeometryTier): number {
-  return tier === 'close' ? 0 : tier === 'mid' ? 1 : 2;
+function encodeTrimSlot(poolIndex: number, index: number): number {
+  return (poolIndex << TRIM_POOL_SHIFT) | index;
 }
 
-function encodeTrimTierSlot(tierIndex: number, index: number): number {
-  return (tierIndex << TRIM_TIER_SLOT_SHIFT) | index;
-}
-
-function trimSlotTier(slot: number): number {
-  return slot >>> TRIM_TIER_SLOT_SHIFT;
+function trimSlotPool(slot: number): number {
+  return slot >>> TRIM_POOL_SHIFT;
 }
 
 function trimSlotIndex(slot: number): number {
-  return slot & TRIM_TIER_SLOT_MASK;
+  return slot & TRIM_INDEX_MASK;
 }
+
+type DirtySlotSpan = ReturnType<typeof createDirtySlotSpan>;
 
 type TrimPool = {
   mesh: THREE.InstancedMesh;
   geometry: THREE.BufferGeometry;
+  capacity: number;
   free: number[];
   nextSlot: number;
   matrixDirty: DirtySlotSpan;
@@ -77,15 +88,16 @@ function addWhiteVertexColors(geometry: THREE.BufferGeometry): void {
   );
 }
 
+/** Livery charts at the two near rungs; the far rung's ornament is a few
+ *  pixels of team colour and wants nothing between it and the eye. */
+function liveryChartFor(chart: SurfaceChartId, tier: PrimitiveGeometryTier): SurfaceChartId {
+  return tier === 'far' ? 'none' : chart;
+}
+
 export class TeamTrimRenderer3D {
   private readonly material: THREE.MeshLambertMaterial;
-  private readonly pools: TrimPool[];
-  private readonly genericPool: TrimPool;
-  /** One pool per detail tier. The slot returned by alloc encodes which,
-   *  using the same packing UnitDetailInstanceRenderer3D uses for its own
-   *  tiered pools, so callers keep passing a single opaque number. */
-  private readonly formikBodyPools: TrimPool[];
-  private readonly formikTurretAnchorPools: TrimPool[];
+  private readonly pools: TrimPool[] = [];
+  private readonly poolsByKey = new Map<string, number>();
   private readonly scratchMatrix = new THREE.Matrix4();
   private readonly scratchPosition = new THREE.Vector3();
   private readonly scratchQuaternion = new THREE.Quaternion();
@@ -100,49 +112,42 @@ export class TeamTrimRenderer3D {
       vertexColors: true,
     });
     patchSurfaceChartMaterial(this.material, { bump: true });
-    this.genericPool = this.createPool(
-      'TeamTrimRenderer3D.Generic',
-      new THREE.BoxGeometry(1, 1, 1),
-    );
-    // Livery charts only at the two near rungs; the far rung's ornament is a
-    // few pixels of team colour and wants nothing between it and the eye.
-    this.formikBodyPools = TRIM_TIERS.map((tier) => this.createPool(
-      `TeamTrimRenderer3D.FormikBody.${tier}`,
-      createFormikBodyOrnamentGeometry(tier),
-      tier === 'far' ? 'none' : 'liveryStrap',
-    ));
-    this.formikTurretAnchorPools = TRIM_TIERS.map((tier) => this.createPool(
-      `TeamTrimRenderer3D.FormikTurretAnchor.${tier}`,
-      createFormikTurretAnchorGeometry(tier),
-      tier === 'far' ? 'none' : 'liveryCollar',
-    ));
-    this.pools = [
-      this.genericPool,
-      ...this.formikBodyPools,
-      ...this.formikTurretAnchorPools,
-    ];
+  }
+
+  private poolFor(
+    key: string,
+    name: string,
+    makeGeometry: () => THREE.BufferGeometry,
+    chart: SurfaceChartId,
+  ): number {
+    const existing = this.poolsByKey.get(key);
+    if (existing !== undefined) return existing;
+    const geometry = makeGeometry();
+    addWhiteVertexColors(geometry);
+    // Constant rather than per-instance: one geometry per ornament profile
+    // means every instance in this pool IS the same surface.
+    attachConstantSurfaceChart(geometry, chart);
+    const index = this.pools.length;
+    this.pools.push(this.createPool(name, geometry, INITIAL_SLOT_CAP));
+    this.poolsByKey.set(key, index);
+    return index;
   }
 
   private createPool(
     name: string,
     geometry: THREE.BufferGeometry,
-    chart: SurfaceChartId = 'none',
+    capacity: number,
   ): TrimPool {
-    addWhiteVertexColors(geometry);
-    // Constant rather than per-instance: one geometry per ornament profile
-    // means every instance in this pool IS the same surface. The generic box
-    // pool writes 'none' through the same path — it shares this material, and
-    // an undefined attribute would leave its draws reading garbage.
-    attachConstantSurfaceChart(geometry, chart);
-    const mesh = new THREE.InstancedMesh(geometry, this.material, SLOT_CAP);
+    const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     mesh.name = name;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
+    mesh.visible = this.enabled;
     // Ornamentation rides its host's visibility. Independent frustum culling
     // would pop a stroke/collar off a still-visible host near a screen edge.
     mesh.frustumCulled = false;
     const colors = new THREE.InstancedBufferAttribute(
-      new Float32Array(SLOT_CAP * 3),
+      new Float32Array(capacity * 3),
       3,
     );
     colors.setUsage(THREE.DynamicDrawUsage);
@@ -151,6 +156,7 @@ export class TeamTrimRenderer3D {
     return {
       mesh,
       geometry,
+      capacity,
       free: [],
       nextSlot: 0,
       matrixDirty: createDirtySlotSpan(),
@@ -158,12 +164,43 @@ export class TeamTrimRenderer3D {
     };
   }
 
+  /** Double a pool that has run out, carrying every live instance across.
+   *
+   *  An InstancedMesh's capacity is fixed at construction, so growth means a
+   *  new mesh. The alternative — reserving the worst case in every pool — is
+   *  what made a per-profile pool unaffordable in the first place. */
+  private growPool(pool: TrimPool): boolean {
+    if (pool.capacity >= MAX_SLOT_CAP) return false;
+    const capacity = Math.min(MAX_SLOT_CAP, pool.capacity * 2);
+    const next = this.createPool(pool.mesh.name, pool.geometry, capacity);
+    next.mesh.count = pool.mesh.count;
+    next.nextSlot = pool.nextSlot;
+    next.free.push(...pool.free);
+    (next.mesh.instanceMatrix.array as Float32Array)
+      .set(pool.mesh.instanceMatrix.array as Float32Array);
+    const colors = pool.mesh.instanceColor;
+    if (colors !== null && next.mesh.instanceColor !== null) {
+      (next.mesh.instanceColor.array as Float32Array).set(colors.array as Float32Array);
+    }
+    next.mesh.instanceMatrix.needsUpdate = true;
+    if (next.mesh.instanceColor !== null) next.mesh.instanceColor.needsUpdate = true;
+    this.world.remove(pool.mesh);
+    // The geometry is shared with the replacement and the material is shared
+    // with every pool, so only the mesh itself goes.
+    disposeMesh(pool.mesh, { material: false, geometry: false });
+    pool.mesh = next.mesh;
+    pool.capacity = capacity;
+    pool.matrixDirty = next.matrixDirty;
+    pool.colorDirty = next.colorDirty;
+    // createPool pushed nothing to this.pools; drop the temporary record.
+    return true;
+  }
+
   /** Latch this frame's CLIENT-bar toggle for every ornament profile. */
   beginFrame(): void {
     this.enabled = getTeamTrim();
     for (const pool of this.pools) {
-      if (!this.enabled && pool.mesh.visible) pool.mesh.visible = false;
-      else if (this.enabled && !pool.mesh.visible) pool.mesh.visible = true;
+      if (pool.mesh.visible !== this.enabled) pool.mesh.visible = this.enabled;
     }
   }
 
@@ -171,81 +208,51 @@ export class TeamTrimRenderer3D {
     return this.enabled;
   }
 
-  private allocFrom(pool: TrimPool): number {
+  private allocFrom(poolIndex: number): number {
+    const pool = this.pools[poolIndex];
     const reused = pool.free.pop();
-    if (reused !== undefined) return reused;
-    if (pool.nextSlot >= SLOT_CAP) return -1;
-    const slot = pool.nextSlot++;
+    if (reused !== undefined) return encodeTrimSlot(poolIndex, reused);
+    if (pool.nextSlot >= pool.capacity && !this.growPool(pool)) return -1;
+    const index = pool.nextSlot++;
     if (pool.mesh.count < pool.nextSlot) pool.mesh.count = pool.nextSlot;
-    return slot;
+    return encodeTrimSlot(poolIndex, index);
   }
 
-  /** Generic box trim retained for units/buildings without a bespoke kit. */
-  alloc(): number {
-    return this.allocFrom(this.genericPool);
+  /**
+   * A host's rail-and-rib kit, fitted to its own body.
+   *
+   * The profile decides both the geometry and which pool it lands in, so two
+   * hosts of the same shape share a draw call and a host of a new shape gets
+   * its own kit the first time one is built.
+   */
+  allocHostKit(
+    profile: HostOrnamentProfile,
+    tier: PrimitiveGeometryTier = 'close',
+  ): number {
+    const key = `host:${ornamentProfileKey(profile)}:${tier}`;
+    return this.allocFrom(this.poolFor(
+      key,
+      `TeamTrimRenderer3D.HostKit.${tier}`,
+      () => createHostOrnamentGeometry(profile, tier),
+      liveryChartFor('liveryStrap', tier),
+    ));
   }
 
-  allocFormikBody(tier: PrimitiveGeometryTier = 'close'): number {
-    return this.allocTiered(this.formikBodyPools, tier);
+  /** Every turret's collar. One geometry per tier — the collar is a unit
+   *  cylinder along +X and the turret's own head radius is instance scale. */
+  allocTurretCollar(tier: PrimitiveGeometryTier = 'close'): number {
+    const key = `collar:${tier}`;
+    return this.allocFrom(this.poolFor(
+      key,
+      `TeamTrimRenderer3D.TurretCollar.${tier}`,
+      () => createTurretCollarGeometry(tier),
+      liveryChartFor('liveryCollar', tier),
+    ));
   }
 
-  allocFormikTurretAnchor(tier: PrimitiveGeometryTier = 'close'): number {
-    return this.allocTiered(this.formikTurretAnchorPools, tier);
-  }
-
-  /** Alloc from the tier's pool and pack the tier into the slot, so a
-   *  caller that later frees or writes only has to keep one number. */
-  private allocTiered(pools: TrimPool[], tier: PrimitiveGeometryTier): number {
-    const tierIndex = trimTierIndex(tier);
-    const index = this.allocFrom(pools[tierIndex]);
-    return index < 0 ? -1 : encodeTrimTierSlot(tierIndex, index);
-  }
-
-  private setPool(
-    pool: TrimPool,
-    slot: number,
-    x: number,
-    y: number,
-    z: number,
-    quaternion: THREE.Quaternion,
-    sizeX: number,
-    sizeY: number,
-    sizeZ: number,
-    colorHex: number,
-  ): void {
-    if (slot < 0) return;
-    if (!this.enabled) {
-      this.hideIn(pool, slot);
-      return;
-    }
-    this.scratchPosition.set(x, y, z);
-    this.scratchScale.set(sizeX, sizeY, sizeZ);
-    this.scratchMatrix.compose(
-      this.scratchPosition,
-      quaternion,
-      this.scratchScale,
-    );
-    pool.mesh.setMatrixAt(slot, this.scratchMatrix);
-    markDirtySlot(pool.matrixDirty, slot);
-
-    const colors = pool.mesh.instanceColor;
-    if (colors === null) return;
-    this.scratchColor.setHex(colorHex);
-    const i3 = slot * 3;
-    const arr = colors.array as Float32Array;
-    if (
-      arr[i3] !== this.scratchColor.r ||
-      arr[i3 + 1] !== this.scratchColor.g ||
-      arr[i3 + 2] !== this.scratchColor.b
-    ) {
-      arr[i3] = this.scratchColor.r;
-      arr[i3 + 1] = this.scratchColor.g;
-      arr[i3 + 2] = this.scratchColor.b;
-      markDirtySlot(pool.colorDirty, slot);
-    }
-  }
-
-  /** Generic box sizes are full extents, matching BoxGeometry. */
+  /** Place an ornament instance. Sizes are the geometry's own axes: a host
+   *  kit is authored in its host's space and takes one uniform scale; a
+   *  collar is a unit cylinder along +X and takes (length, radius, radius). */
   set(
     slot: number,
     x: number,
@@ -257,46 +264,56 @@ export class TeamTrimRenderer3D {
     sizeZ: number,
     colorHex: number,
   ): void {
-    this.setPool(
-      this.genericPool,
-      slot,
-      x,
-      y,
-      z,
+    if (slot < 0) return;
+    const pool = this.pools[trimSlotPool(slot)];
+    if (pool === undefined) return;
+    const index = trimSlotIndex(slot);
+    if (!this.enabled) {
+      this.hideIn(pool, index);
+      return;
+    }
+    this.scratchPosition.set(x, y, z);
+    this.scratchScale.set(sizeX, sizeY, sizeZ);
+    this.scratchMatrix.compose(
+      this.scratchPosition,
       quaternion,
-      sizeX,
-      sizeY,
-      sizeZ,
-      colorHex,
+      this.scratchScale,
     );
+    pool.mesh.setMatrixAt(index, this.scratchMatrix);
+    markDirtySlot(pool.matrixDirty, index);
+
+    const colors = pool.mesh.instanceColor;
+    if (colors === null) return;
+    this.scratchColor.setHex(colorHex);
+    const i3 = index * 3;
+    const arr = colors.array as Float32Array;
+    if (
+      arr[i3] !== this.scratchColor.r ||
+      arr[i3 + 1] !== this.scratchColor.g ||
+      arr[i3 + 2] !== this.scratchColor.b
+    ) {
+      arr[i3] = this.scratchColor.r;
+      arr[i3 + 1] = this.scratchColor.g;
+      arr[i3 + 2] = this.scratchColor.b;
+      markDirtySlot(pool.colorDirty, index);
+    }
   }
 
-  /** The Formik body kit is authored in unit-radius-1 space. */
-  setFormikBody(
+  /** A host kit rides one uniform scale — the host's render radius for a
+   *  unit, 1 for a structure whose kit is authored in world units. */
+  setHostKit(
     slot: number,
     x: number,
     y: number,
     z: number,
     quaternion: THREE.Quaternion,
-    unitRadius: number,
+    scale: number,
     colorHex: number,
   ): void {
-    this.setPool(
-      this.formikBodyPools[trimSlotTier(slot)],
-      trimSlotIndex(slot),
-      x,
-      y,
-      z,
-      quaternion,
-      unitRadius,
-      unitRadius,
-      unitRadius,
-      colorHex,
-    );
+    this.set(slot, x, y, z, quaternion, scale, scale, scale, colorHex);
   }
 
-  /** Anchor geometry is a unit cylinder pre-aligned along local +X. */
-  setFormikTurretAnchor(
+  setTurretCollar(
     slot: number,
     x: number,
     y: number,
@@ -306,22 +323,10 @@ export class TeamTrimRenderer3D {
     radius: number,
     colorHex: number,
   ): void {
-    this.setPool(
-      this.formikTurretAnchorPools[trimSlotTier(slot)],
-      trimSlotIndex(slot),
-      x,
-      y,
-      z,
-      quaternion,
-      length,
-      radius,
-      radius,
-      colorHex,
-    );
+    this.set(slot, x, y, z, quaternion, length, radius, radius, colorHex);
   }
 
-  private hideIn(pool: TrimPool, slot: number): void {
-    if (slot < 0) return;
+  private hideIn(pool: TrimPool, index: number): void {
     this.scratchPosition.set(0, 0, 0);
     this.scratchQuaternion.identity();
     this.scratchScale.set(ZERO_SCALE, ZERO_SCALE, ZERO_SCALE);
@@ -330,42 +335,24 @@ export class TeamTrimRenderer3D {
       this.scratchQuaternion,
       this.scratchScale,
     );
-    pool.mesh.setMatrixAt(slot, this.scratchMatrix);
-    markDirtySlot(pool.matrixDirty, slot);
+    pool.mesh.setMatrixAt(index, this.scratchMatrix);
+    markDirtySlot(pool.matrixDirty, index);
   }
 
   hide(slot: number): void {
-    this.hideIn(this.genericPool, slot);
-  }
-
-  hideFormikBody(slot: number): void {
     if (slot < 0) return;
-    this.hideIn(this.formikBodyPools[trimSlotTier(slot)], trimSlotIndex(slot));
-  }
-
-  hideFormikTurretAnchor(slot: number): void {
-    if (slot < 0) return;
-    this.hideIn(this.formikTurretAnchorPools[trimSlotTier(slot)], trimSlotIndex(slot));
-  }
-
-  private releaseFrom(pool: TrimPool, slot: number): void {
-    if (slot < 0) return;
-    this.hideIn(pool, slot);
-    pool.free.push(slot);
+    const pool = this.pools[trimSlotPool(slot)];
+    if (pool === undefined) return;
+    this.hideIn(pool, trimSlotIndex(slot));
   }
 
   release(slot: number): void {
-    this.releaseFrom(this.genericPool, slot);
-  }
-
-  releaseFormikBody(slot: number): void {
     if (slot < 0) return;
-    this.releaseFrom(this.formikBodyPools[trimSlotTier(slot)], trimSlotIndex(slot));
-  }
-
-  releaseFormikTurretAnchor(slot: number): void {
-    if (slot < 0) return;
-    this.releaseFrom(this.formikTurretAnchorPools[trimSlotTier(slot)], trimSlotIndex(slot));
+    const pool = this.pools[trimSlotPool(slot)];
+    if (pool === undefined) return;
+    const index = trimSlotIndex(slot);
+    this.hideIn(pool, index);
+    pool.free.push(index);
   }
 
   /** Upload every profile's dirty ranges once, after all host poses. */
@@ -383,6 +370,8 @@ export class TeamTrimRenderer3D {
       disposeMesh(pool.mesh, { material: false, geometry: false });
       pool.geometry.dispose();
     }
+    this.pools.length = 0;
+    this.poolsByKey.clear();
     this.material.dispose();
   }
 }

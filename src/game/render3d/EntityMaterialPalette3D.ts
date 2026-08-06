@@ -6,17 +6,25 @@ import {
   turretAccentColorHexForPlayer,
 } from './EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
+import { patchSurfaceChartSurface } from './SurfaceChartMaterial3D';
+
+/** Every body surface in the game is made of the same metal, so every body
+ *  material is born textured. Doing it here rather than at each call site is
+ *  what makes coverage a property of the palette instead of a checklist:
+ *  hulls, building shells, turret heads and barrels all draw their material
+ *  from this class, and none of them can forget. */
+function surfaceMat(color: number): THREE.MeshLambertMaterial {
+  const material = new THREE.MeshLambertMaterial({ color });
+  patchSurfaceChartSurface(material);
+  return material;
+}
 
 export class EntityMaterialPalette3D {
   private readonly primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private readonly turretAccentMats = new Map<number, THREE.MeshLambertMaterial>();
-  private readonly neutralMat = new THREE.MeshLambertMaterial({
-    color: COLORS.units.neutral.colorHex,
-  });
+  private readonly neutralMat = surfaceMat(COLORS.units.neutral.colorHex);
   private readonly mirrorShinyNeutralMat = createShieldFallbackPanelMaterial();
-  private readonly barrelMat = new THREE.MeshLambertMaterial({
-    color: COLORS.units.turret.barrel.colorHex,
-  });
+  private readonly barrelMat = surfaceMat(COLORS.units.turret.barrel.colorHex);
 
   getBarrelMat(): THREE.MeshLambertMaterial {
     return this.barrelMat;
@@ -30,7 +38,7 @@ export class EntityMaterialPalette3D {
     if (playerId === undefined) return this.neutralMat;
     let mat = this.primaryMats.get(playerId);
     if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) });
+      mat = surfaceMat(entityBodyColorHexForPlayer(playerId));
       this.primaryMats.set(playerId, mat);
     }
     return mat;
@@ -40,7 +48,7 @@ export class EntityMaterialPalette3D {
     const color = turretAccentColorHexForPlayer(playerId);
     let mat = this.turretAccentMats.get(color);
     if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color });
+      mat = surfaceMat(color);
       this.turretAccentMats.set(color, mat);
     }
     return mat;

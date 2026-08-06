@@ -560,15 +560,11 @@ export class Render3DEntities {
       this.teamTrim?.release(m.teamTrimSlot);
       m.teamTrimSlot = undefined;
     }
-    if (m.formikBodyTrimSlot !== undefined) {
-      this.teamTrim?.releaseFormikBody(m.formikBodyTrimSlot);
-      m.formikBodyTrimSlot = undefined;
-    }
     for (const turret of m.turrets) {
-      const anchor = turret.formikTeamTrimAnchor;
-      if (anchor?.slot === undefined) continue;
-      this.teamTrim?.releaseFormikTurretAnchor(anchor.slot);
-      anchor.slot = undefined;
+      const collar = turret.teamCollar;
+      if (collar?.slot === undefined) continue;
+      this.teamTrim?.release(collar.slot);
+      collar.slot = undefined;
     }
   }
 
@@ -588,12 +584,9 @@ export class Render3DEntities {
     // Trim is world-parented, so detaching the group does not hide it.
     // Park the slot instead or it keeps drawing where the unit was.
     if (m.teamTrimSlot !== undefined) this.teamTrim?.hide(m.teamTrimSlot);
-    if (m.formikBodyTrimSlot !== undefined) {
-      this.teamTrim?.hideFormikBody(m.formikBodyTrimSlot);
-    }
     for (const turret of m.turrets) {
-      const slot = turret.formikTeamTrimAnchor?.slot;
-      if (slot !== undefined) this.teamTrim?.hideFormikTurretAnchor(slot);
+      const slot = turret.teamCollar?.slot;
+      if (slot !== undefined) this.teamTrim?.hide(slot);
     }
   }
 

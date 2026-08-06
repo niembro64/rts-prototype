@@ -1,43 +1,49 @@
 // SurfaceChart3D — the chart catalog: what each swath of a unit's surface IS,
 // and where its detail lives on the shared trim sheet.
 //
-// This is the "segmentation + labelling + parameterization" half of the
-// procedural texturing pipeline. In the general case those are hard problems:
-// you get an anonymous triangle soup and have to RECOVER its structure by
-// fitting primitives to triangle clusters and unwrapping charts.
+// Two different things get called "texture", and this file is where they are
+// kept apart. See "Every Surface Is Textured, At One World Texel Density" in
+// budget_design_philosophy.html.
 //
-// We never lose that structure. Every surface in this renderer is emitted by a
-// generator that knows exactly what it just made — a sphere for a hull lobe, a
-// cylinder for a barrel, a swept ribbon for a team strap — and each of those
-// primitives already ships its own natural parameterization as `uv`:
+//   SUBSTANCE GRAIN is what the surface is made OF — plating, panel breaks,
+//   rivet rhythm, weld seams, wear. It has no relationship to a part's size or
+//   shape, it tiles, and it is the term that carries the density invariant. It
+//   is projected (see SurfaceChartMaterial3D) rather than charted, so it
+//   reaches every face of every entity with no per-surface authoring at all:
+//   box faces, cylinder end caps, cones, swept ribbons, generated hulls.
+//
+//   PLACED CHARTS are structure at a known place on a known part — a turret
+//   head's pitch slot, a barrel's muzzle bore and breech collar, a strut's end
+//   flanges, a livery band's piped edges. These need the part's own
+//   parameterization, and they SCALE with the part: a bigger turret has a
+//   bigger slot, not more slots.
+//
+// Charting the placed half is cheap here for a reason worth keeping in mind:
+// in the general case you get an anonymous triangle soup and have to RECOVER
+// its structure by fitting primitives to triangle clusters and unwrapping
+// charts. We never lose that structure. Every surface in this renderer is
+// emitted by a generator that knows exactly what it just made, and each of
+// those primitives already ships its own natural parameterization as `uv`:
 //
 //   sphere    → (azimuth, polar)
 //   cylinder  → (circumference, axial)
-//   sweep     → (arc length, cross-section position)   [FormikOrnament3D]
+//   sweep     → (arc length, cross-section position)   [TeamOrnament3D]
 //
 // So segmentation collapses into bookkeeping: the call site that allocates an
 // instance also declares which chart that instance is. There is no fitting
 // tolerance to tune and no chart can ever be misassigned, because the label
 // comes from the generator rather than from an analysis of its output.
 //
-// A chart resolves to a horizontal BAND of the trim sheet plus a tiling rate.
-// That is the standard hard-surface trim-sheet workflow: one texture holds a
-// stack of reusable detail strips, and texturing a surface means choosing a
-// strip and a repeat. Several charts may name the same band at different
-// rates — a leg joint and a foot pad are both bolt bosses, just different
-// sizes.
-//
 // SUBSTANCE vs LIVERY is a hard split here, not a convention. Livery charts
 // are the only ones allowed to carry team/player identity, which makes team
 // color coverage a number this module can compute (see liveryAreaFraction in
 // the contract test) instead of something a human eyeballs.
 
-/** Bands of the trim sheet, top to bottom. The order IS the v layout — the
- *  generator rasterizes them in this order and the packing below derives each
- *  band's v range from its index, so the two can never disagree. */
+/** Bands of the trim sheet. Each is a packed rectangle; the packing below
+ *  derives every rectangle from this list, so the layout and the generator
+ *  can never disagree about where a band lives. */
 export type TrimBandId =
-  | 'armorPlate'
-  | 'noseFacet'
+  | 'substanceGrain'
   | 'sensorDome'
   | 'barrelShaft'
   | 'hydraulicStrut'
@@ -46,8 +52,7 @@ export type TrimBandId =
   | 'liveryChevron';
 
 export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
-  'armorPlate',
-  'noseFacet',
+  'substanceGrain',
   'sensorDome',
   'barrelShaft',
   'hydraulicStrut',
@@ -61,18 +66,23 @@ export const TRIM_SHEET_PIXELS = 2048;
 /**
  * TEXEL DENSITY — the constraint the whole layout exists to satisfy.
  *
- * Every charted surface is textured at exactly this many texels per world unit,
- * on BOTH axes, with no exceptions. That single rule is what makes the
- * texturing look like one material system instead of eight unrelated ones: no
- * surface is sharper than its neighbour, nothing is stretched along one axis,
- * and a panel seam is the same physical width wherever it appears.
+ * Every textured surface resolves at exactly this many texels per world unit,
+ * on BOTH axes, on every entity, with no per-blueprint override. That single
+ * rule is what makes the roster look like one faction built out of one stock
+ * of metal instead of a pile of unrelated models: no surface is sharper than
+ * its neighbour, nothing is stretched along one axis, and a panel seam is the
+ * same physical width wherever it appears.
  *
- * It is not automatic. The previous layout gave every band the full sheet width
+ * The consequence is deliberate: a large entity seen from far away carries
+ * more texture than a small entity seen from close up, even at the same
+ * on-screen size. Detail belongs to the object, not to the camera.
+ *
+ * It is not automatic. An earlier layout gave every band the full sheet width
  * regardless of what it wrapped, which forced u-density to be 2048/uExtent —
  * 9.6 texels per unit on a hull lobe and 325 on a barrel, a 34x spread between
  * bands and up to 93x skew WITHIN one. Bands are packed rectangles now, each
- * sized from its own surface, so density is uniform by construction rather than
- * by tuning.
+ * sized from the surface it describes, so density is uniform by construction
+ * rather than by tuning.
  *
  * Raising this sharpens everything at once and costs area quadratically; the
  * packing assertion in the contract test is what tells you when it no longer
@@ -86,16 +96,39 @@ export const TRIM_SHEET_TEXELS_PER_UNIT = 6;
 export const TRIM_BAND_GUTTER_PIXELS = 16;
 
 /**
- * World-space size of the surface each band covers, for the Formik.
+ * THE GRAIN TILE — the world footprint of one repeat of the substance band.
  *
- * These are FULL extents — one band is exactly one wrap of its surface, with no
- * tiling. Tiling was previously how a band's aspect got reconciled with its
- * surface's; sizing the rectangle from the surface itself removes the need, and
- * with it the fract() seam and the per-chart repeat counts.
+ * This is the only number that decides how big plating, seams and rivets are
+ * in the world, and it decides it for every entity at once. 128 world units is
+ * larger than most units, so the repeat is invisible on a unit and only starts
+ * to be a pattern across a large structure; at the sheet density it costs a
+ * 768px square, which the packing has room for.
  *
- * Derived from the Formik: unit radius 40, head radius 32, barrel 64 long by 2
- * across, leg segments ~36-42 long with ~5 radius, hip/knee spheres 5.5/7.5.
- * A sphere of radius R has circumference 2*pi*R around and pi*R pole to pole.
+ * Lowering it makes everything finer AND makes the tile repeat sooner. It is
+ * not a quality dial — the quality dial is TRIM_SHEET_TEXELS_PER_UNIT.
+ */
+export const GRAIN_TILE_WORLD_UNITS = 128;
+
+export const GRAIN_BAND: TrimBandId = 'substanceGrain';
+
+/**
+ * World-space size of the surface a band describes.
+ *
+ * For the grain this is literal: one band IS one 128-unit tile of material,
+ * and it repeats.
+ *
+ * For placed charts it is the REFERENCE PART — the size the band's structure
+ * was laid out against, which is what fixes the band's aspect ratio and how
+ * many texels the sheet spends on it. A placed chart maps a part's own uv
+ * across the whole rectangle, so mounting it on a part of a different size
+ * scales the structure with the part, which is the intended behaviour: a
+ * bigger turret has a bigger slot. The reference sizes below are the Formik's,
+ * because the Formik is where hull, head, barrel, strut, joint and both livery
+ * surfaces were authored together.
+ *
+ * Derived from the Formik: head radius 32, barrel 64 long by 2 across, leg
+ * segments ~36-42 long with ~5 radius, hip/knee spheres 5.5/7.5. A sphere of
+ * radius R has circumference 2*pi*R around and pi*R pole to pole.
  */
 export type BandSurface = {
   /** Circumference or arc length the band wraps, in world units. */
@@ -107,8 +140,15 @@ export type BandSurface = {
 };
 
 export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
-  armorPlate: { uExtent: 214, vExtent: 107, featureSize: 24 },
-  noseFacet: { uExtent: 105, vExtent: 53, featureSize: 26 },
+  substanceGrain: {
+    uExtent: GRAIN_TILE_WORLD_UNITS,
+    vExtent: GRAIN_TILE_WORLD_UNITS,
+    // 8 world units per plate. This is the number that decides how much
+    // texture a small unit gets: a radius-8 scout is 16 units across, so it
+    // reads as two plates wide, while a Queen reads as twenty-odd. That
+    // difference IS the density rule working.
+    featureSize: 8,
+  },
   sensorDome: { uExtent: 201, vExtent: 100, featureSize: 22 },
   // vExtent covers the 64-unit tube PLUS a reserved zone for the end faces.
   // The cap is a disc of radius 1, and its remapped v carries the radius from
@@ -124,6 +164,18 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
 };
 
 /**
+ * Bands whose v axis WRAPS as well as its u.
+ *
+ * A placed band's v runs pole to pole or breech to muzzle: its two ends are
+ * different places and must not be filtered into each other. The grain tile's
+ * v is just more material, so it wraps, and its gutters have to be filled from
+ * the opposite edge or the seam shows up as a line every 128 world units.
+ */
+export const BAND_WRAPS_V: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+  'substanceGrain',
+]);
+
+/**
  * How a band splits between a cylinder's wall and its end faces.
  *
  * Only cylinders whose flat face is actually seen need this. The values are
@@ -137,9 +189,9 @@ export type CapZone = {
   capRimV: number;
 };
 
-// The cap zone is exactly the face's RADIUS worth of band, because the remap
-// puts the radius on v: 1 world unit of radius is 1 world unit of band, so the
-// face is textured at the sheet density like everything else.
+// The cap zone is exactly the reference face's RADIUS worth of band, because
+// the remap puts the radius on v: 1 world unit of radius is 1 world unit of
+// band, so the face is laid out at the same rate as the tube it caps.
 export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
   // A DEAD GAP separates wallVEnd from capCenterV. With the two equal, the
   // face's centre row abuts the wall's last row, and bilinear filtering at the
@@ -178,7 +230,7 @@ function bandSlotSize(band: TrimBandId): { width: number; height: number } {
  * pixels disagree. Revisiting earlier shelves is worth the few extra lines —
  * strictly-newest-shelf packing wasted the 700px left beside each of the two
  * tallest bands and overflowed the sheet by 30 rows once the cylinder end
- * faces needed room. Best-fit lands the same set in 1711 rows.
+ * faces needed room.
  */
 function packBands(): Record<TrimBandId, BandRectPx> {
   const order = [...TRIM_BAND_ORDER].sort((a, b) => {
@@ -228,15 +280,16 @@ export function packedSheetHeight(): number {
   return bottom;
 }
 
-/** How many times wider than tall a band pixel is on the model. Drawing code
- *  multiplies horizontal radii by this so circles come out round. */
-/** Charts a unit surface can be labelled with. `none` is the default and means
- *  "untextured" — it takes a branch in the shader that leaves the fragment
- *  exactly as it was, which is what every non-Formik entity currently gets. */
+/** Charts a unit surface can be labelled with.
+ *
+ *  `none` is the default and means "no PLACED structure here" — not
+ *  "untextured". A surface with no chart still receives the substance grain,
+ *  which is projected rather than charted; there is no reachable state in
+ *  which a face renders as flat colour. Hull shells, building walls, wheels,
+ *  treads and ornament boxes are all deliberately chart-free: they are plain
+ *  material, and plain material is exactly what the grain describes. */
 export type SurfaceChartId =
   | 'none'
-  | 'hullShell'
-  | 'hullNose'
   | 'sensorDome'
   | 'barrelShaft'
   | 'legStrut'
@@ -252,14 +305,11 @@ type SurfaceChartDef = {
   livery: boolean;
 };
 
-// No tiling rates. A band is exactly one wrap of its surface at the sheet's
-// single texel density, so a chart is a straight rectangle lookup: there is
-// nothing left to stretch, skew, or zoom. Every rate that used to live here
-// was compensation for a band whose aspect did not match its surface's, and
-// sizing the rectangle from the surface removes the mismatch at the source.
+// No tiling rates on placed charts. A chart maps a part's own uv straight
+// across its rectangle, which is what makes it structure: one slot, one bore,
+// one pair of end flanges, however big the part is. Tiling belongs to the
+// grain, which is projected and has no chart at all.
 const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
-  hullShell: { band: 'armorPlate', livery: false },
-  hullNose: { band: 'noseFacet', livery: false },
   sensorDome: { band: 'sensorDome', livery: false },
   barrelShaft: { band: 'barrelShaft', livery: false },
   legStrut: { band: 'hydraulicStrut', livery: false },
@@ -267,12 +317,6 @@ const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   liveryStrap: { band: 'liveryPiping', livery: true },
   liveryCollar: { band: 'liveryChevron', livery: true },
 };
-
-export function bandIndex(band: TrimBandId): number {
-  const index = TRIM_BAND_ORDER.indexOf(band);
-  if (index < 0) throw new Error(`[surface chart] unknown trim band ${band}`);
-  return index;
-}
 
 /** A band's CONTENT rectangle in normalized texture space — inside its
  *  gutters. Fragments never sample the gutter directly; it exists only so mip
@@ -293,6 +337,13 @@ export function bandContentRect(band: TrimBandId): {
   };
 }
 
+/** The grain tile's rectangle, as the shader's uniform wants it. Uploaded
+ *  once; every surface in the game samples this one rectangle. */
+export function grainContentRect(): [number, number, number, number] {
+  const rect = bandContentRect(GRAIN_BAND);
+  return [rect.u0, rect.v0, rect.uSpan, rect.vSpan];
+}
+
 export function isLiveryChart(chart: SurfaceChartId): boolean {
   return chart !== 'none' && CHART_DEFS[chart].livery;
 }
@@ -300,9 +351,16 @@ export function isLiveryChart(chart: SurfaceChartId): boolean {
 /** Per-instance shader payload: the chart's rectangle (u0, v0, uSpan, vSpan).
  *
  *  The shader maps the surface's own uv straight into this rectangle — no
- *  tiling, no fract, no wrap. `vSpan === 0` is the sentinel for "no chart", so
- *  an unwritten (zero-filled) attribute slot is correctly untextured without
- *  any initialization pass. */
+ *  tiling, no fract, no wrap.
+ *
+ *  ZERO MEANS NO CHART, and it has to mean that under two different kinds of
+ *  "unwritten". A never-touched slot in a Float32Array is all zeroes; a
+ *  geometry that has no `aChart` attribute at all reads WebGL's default
+ *  generic vertex attribute, which is (0, 0, 0, 1). The shader's active test
+ *  is therefore on the two SPANS (z and w) together, and both are zero here,
+ *  so neither case can accidentally sample a garbage rectangle. That matters
+ *  now that the chart material is worn by every entity surface in the game,
+ *  most of which carry no per-instance chart buffer. */
 export function packChart(chart: SurfaceChartId, out: Float32Array, offset: number): void {
   if (chart === 'none') {
     out[offset] = 0;
@@ -319,8 +377,8 @@ export function packChart(chart: SurfaceChartId, out: Float32Array, offset: numb
 }
 
 /** Panels across and courses down for a band, sized so each lands at
- *  `featureSize` world units on the model. Because density is uniform the
- *  result is square in texels as well as in world units. */
+ *  `featureSize` world units on the reference part. Because density is uniform
+ *  the result is square in texels as well as in world units. */
 export function bandFeatureCounts(band: TrimBandId): {
   columns: number;
   courses: number;
@@ -332,32 +390,19 @@ export function bandFeatureCounts(band: TrimBandId): {
   };
 }
 
-// ── Formik assignment ────────────────────────────────────────────────────
+// ── Roster-wide assignment ───────────────────────────────────────────────
 //
-// The Formik is the first unit through the pipeline. Everything below is the
-// semantic labelling step for it, and it is deliberately a data table rather
-// than logic scattered across the builders: this is the file to read to learn
-// what the unit is made of.
+// Placed charts are assigned by SURFACE ROLE, never by blueprint. Every turret
+// head in the game is a sensor dome, every barrel is a barrel, every leg
+// segment is a strut and every joint a bolt boss, whichever unit or building
+// mounts it — so this is a role table rather than a per-unit one, and a new
+// blueprint cannot ship unlabelled because it never had to be listed.
 //
-// Body is a 3-part composite authored in units.json — abdomen oval, mid oval,
-// forward circle. The forward lobe is the nose and reads as the "face" of the
-// unit from the RTS camera, so it gets the harder-edged facet band while the
-// two body lobes share plated armour.
+// Hull shells, building walls, wheels, treads, fans and ornament boxes carry
+// no placed structure on purpose: they are plain material, and the projected
+// grain is what plain material looks like.
 
-export const FORMIK_BODY_PART_CHARTS: readonly SurfaceChartId[] = [
-  'hullShell',
-  'hullShell',
-  'hullNose',
-];
-
-/** Chart for a Formik body part by index, tolerant of a body shape that gains
- *  or loses parts — extra parts fall back to plated shell rather than throwing
- *  or silently going untextured. */
-export function formikBodyPartChart(partIndex: number): SurfaceChartId {
-  return FORMIK_BODY_PART_CHARTS[partIndex] ?? 'hullShell';
-}
-
-/** Charts for one legged unit's instanced locomotion slots. The leg pools are
+/** Charts for one unit's instanced locomotion slots. The leg pools are
  *  role-separated already (upper cylinder / lower cylinder / joint sphere), so
  *  this is a straight role → chart table rather than anything per-instance. */
 export type LegSurfaceCharts = {
@@ -366,22 +411,21 @@ export type LegSurfaceCharts = {
   joint: SurfaceChartId;
 };
 
-export const FORMIK_LEG_CHARTS: LegSurfaceCharts = {
+export const LEG_CHARTS: LegSurfaceCharts = {
   upper: 'legStrut',
   lower: 'legStrut',
   joint: 'legJoint',
 };
 
-/** Every surface the Formik carries, for coverage auditing. Kept beside the
- *  assignments above so a new Formik chart cannot be added without appearing
- *  in the audit. */
-export const FORMIK_CHARTS: readonly SurfaceChartId[] = [
-  ...FORMIK_BODY_PART_CHARTS,
+/** Every placed chart the roster can produce, for coverage auditing. Kept
+ *  beside the assignments above so a new chart cannot be added without
+ *  appearing in the audit. */
+export const ROSTER_CHARTS: readonly SurfaceChartId[] = [
   'sensorDome',
   'barrelShaft',
-  FORMIK_LEG_CHARTS.upper,
-  FORMIK_LEG_CHARTS.lower,
-  FORMIK_LEG_CHARTS.joint,
+  LEG_CHARTS.upper,
+  LEG_CHARTS.lower,
+  LEG_CHARTS.joint,
   'liveryStrap',
   'liveryCollar',
 ];

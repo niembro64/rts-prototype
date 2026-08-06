@@ -10,10 +10,12 @@ import * as THREE from 'three';
 import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
-  FORMIK_BODY_PART_CHARTS,
-  FORMIK_CHARTS,
-  FORMIK_LEG_CHARTS,
   BAND_SURFACE,
+  BAND_WRAPS_V,
+  GRAIN_BAND,
+  GRAIN_TILE_WORLD_UNITS,
+  LEG_CHARTS,
+  ROSTER_CHARTS,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
@@ -21,6 +23,7 @@ import {
   bandContentRect,
   bandFeatureCounts,
   bandRectPx,
+  grainContentRect,
   packedSheetHeight,
   isLiveryChart,
   packChart,
@@ -48,7 +51,7 @@ function bandPixelBounds(band: TrimBandId): {
   return { x0, x1: x0 + width, y0, y1: y0 + height, width, height };
 }
 
-/** Charts the Formik actually carries, in the order the catalog lists them. */
+/** The only two charts allowed to carry team identity. */
 const LIVERY_CHARTS: readonly SurfaceChartId[] = ['liveryStrap', 'liveryCollar'];
 
 function bandOf(chart: SurfaceChartId): TrimBandId | null {
@@ -126,9 +129,13 @@ function checkCatalog(): void {
   }
 
 
-  // 'none' must pack to all zeroes: the shader's active test is `vChart.y > 0`,
-  // which is what makes a zero-filled (never-written) slot correctly untextured
-  // and keeps every non-charted entity pixel-identical to before.
+  // 'none' must pack to all zeroes. The shader's active test is on BOTH spans
+  // (z and w) together, which is what makes two different kinds of "unwritten"
+  // resolve to "no placed chart": a never-touched Float32Array slot, and a
+  // geometry with no aChart attribute at all — WebGL hands the latter its
+  // default generic attribute (0, 0, 0, 1), so a test on w alone would read it
+  // as a real chart and sample a garbage rectangle. Most surfaces in the game
+  // now wear this material without a chart buffer.
   const packed = new Float32Array(4);
   packChart('none', packed, 0);
   assertContract(
@@ -136,16 +143,12 @@ function checkCatalog(): void {
     'the "none" chart must pack to all zeroes — an unwritten slot depends on it',
   );
 
-  const usedBands = new Set<TrimBandId>();
-  for (const chart of FORMIK_CHARTS) {
+  const usedBands = new Set<TrimBandId>([GRAIN_BAND]);
+  for (const chart of ROSTER_CHARTS) {
     packChart(chart, packed, 0);
     assertContract(
-      packed[1] > 0,
-      `${chart} is assigned to the Formik but packs as untextured`,
-    );
-    assertContract(
       packed[2] > 0 && packed[3] > 0,
-      `${chart} must tile at a positive rate on both axes`,
+      `${chart} must resolve to a rectangle with extent on both axes`,
     );
     const band = bandOf(chart);
     assertContract(band !== null, `${chart} must resolve to a real band`);
@@ -158,6 +161,30 @@ function checkCatalog(): void {
       `trim band ${band} is generated but no chart uses it`,
     );
   }
+
+  // THE GRAIN'S RECTANGLE is a uniform, uploaded once and sampled by every
+  // surface in the game. If it ever disagreed with the band it was rasterized
+  // into, every entity would show the wrong material at once.
+  const grainRect = grainContentRect();
+  const bandRect = bandContentRect(GRAIN_BAND);
+  assertContract(
+    grainRect[0] === bandRect.u0 && grainRect[1] === bandRect.v0 &&
+      grainRect[2] === bandRect.uSpan && grainRect[3] === bandRect.vSpan,
+    'the grain uniform must address the band the generator drew into',
+  );
+  // The grain TILES, so its band must be square in world terms: the projection
+  // divides both axes by one world size, and a non-square tile would grain one
+  // axis finer than the other on every surface at once.
+  const grain = BAND_SURFACE[GRAIN_BAND];
+  assertContract(
+    grain.uExtent === GRAIN_TILE_WORLD_UNITS && grain.vExtent === GRAIN_TILE_WORLD_UNITS,
+    'the grain tile must be square — the shader divides both axes by one '
+      + 'world size, so a non-square band skews every surface in the game',
+  );
+  assertContract(
+    BAND_WRAPS_V.has(GRAIN_BAND),
+    'the grain tile repeats in v as well as u, so its v gutters must wrap',
+  );
 }
 
 /** SUBSTANCE vs LIVERY is the split that makes team-colour coverage auditable
@@ -166,7 +193,9 @@ function checkLiverySeparation(): void {
   for (const chart of LIVERY_CHARTS) {
     assertContract(isLiveryChart(chart), `${chart} must be marked as livery`);
   }
-  const substance = FORMIK_CHARTS.filter((chart) => !LIVERY_CHARTS.includes(chart));
+  const substance = ROSTER_CHARTS.filter(
+    (chart: SurfaceChartId) => !LIVERY_CHARTS.includes(chart),
+  );
   for (const chart of substance) {
     assertContract(
       !isLiveryChart(chart),
@@ -175,13 +204,9 @@ function checkLiverySeparation(): void {
     );
   }
   assertContract(
-    FORMIK_BODY_PART_CHARTS.every((chart) => !isLiveryChart(chart)),
-    'the hull is player-coloured; no hull lobe may be a livery surface',
-  );
-  assertContract(
-    !isLiveryChart(FORMIK_LEG_CHARTS.upper) &&
-      !isLiveryChart(FORMIK_LEG_CHARTS.lower) &&
-      !isLiveryChart(FORMIK_LEG_CHARTS.joint),
+    !isLiveryChart(LEG_CHARTS.upper) &&
+      !isLiveryChart(LEG_CHARTS.lower) &&
+      !isLiveryChart(LEG_CHARTS.joint),
     'locomotion is substance, not livery',
   );
 }
@@ -268,6 +293,19 @@ function checkTrimSheet(): void {
     const stats = bandStats(pixels, band);
     const isLivery = band === 'liveryPiping' || band === 'liveryChevron';
 
+    // THE GRAIN MULTIPLIES EVERY SURFACE IN THE GAME. Its R channel decodes
+    // x2, so a mean away from 128 does not darken one part — it shifts the
+    // brightness of the entire roster, terrain excepted, and it does it in a
+    // way that reads as a lighting change rather than as a texture bug.
+    if (band === GRAIN_BAND) {
+      assertContract(
+        stats.meanR > 112 && stats.meanR < 144,
+        `the substance grain must average neutral — mean R ${stats.meanR.toFixed(1)} `
+          + '(128 is x1). It multiplies every surface in the game, so drifting '
+          + 'here re-lights the whole roster.',
+      );
+    }
+
     assertContract(
       stats.maxR - stats.minR > 40,
       `${band} has almost no albedo structure (range ${stats.maxR - stats.minR}) `
@@ -314,15 +352,22 @@ function checkTrimSheet(): void {
     const at = (x: number, y: number): number =>
       pixels[(y * TRIM_SHEET_PIXELS + x) * 4];
 
-    for (const [outside, inside] of [
-      [b.y0 - 2, b.y0],
-      [b.y1 + 1, b.y1 - 1],
-    ]) {
+    // A TILING band's v gutters wrap from the opposite edge, exactly as its u
+    // gutters do — its top and bottom are the same place on the surface. A
+    // PLACED band's v runs pole to pole and only extends. Getting this
+    // backwards on the grain would put a filtered line across every entity in
+    // the game once every tile.
+    const wrapsV = BAND_WRAPS_V.has(band);
+    for (const [outside, inside] of wrapsV
+      ? [[b.y0 - 2, b.y1 - 1], [b.y1 + 1, b.y0]]
+      : [[b.y0 - 2, b.y0], [b.y1 + 1, b.y1 - 1]]
+    ) {
       let diff = 0;
       for (let x = b.x0; x < b.x1; x += 37) diff += Math.abs(at(x, outside) - at(x, inside));
       assertContract(
         diff === 0,
-        `${band} v gutter at row ${outside} does not extend its edge row ${inside}`,
+        `${band} v gutter at row ${outside} does not ${wrapsV ? 'wrap from' : 'extend'} `
+          + `row ${inside}`,
       );
     }
     for (const [outside, inside] of [

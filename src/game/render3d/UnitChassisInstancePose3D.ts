@@ -9,7 +9,7 @@ import {
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import { entityTeamColorHex } from './EntityInstanceColor3D';
-import { FORMIK_UNIT_BLUEPRINT_ID } from './FormikOrnament3D';
+import { hostOrnamentProfile, type HostOrnamentProfile } from './TeamOrnament3D';
 import {
   growFloat32Array,
   writePositionQuaternion,
@@ -18,20 +18,44 @@ import {
 const WRITE_SMOOTH = 0;
 const WRITE_POLY = 1;
 
-// Dorsal fin — the unit's team trim. Proportions are in unit-radius-1
-// space, the same space BodyMeshPart uses, so every hull gets a fin
-// scaled to itself. It runs fore-aft along the spine because the RTS
-// camera looks down: a lateral stripe would be invisible from above,
-// which is exactly where the player needs to read alliance.
-const FIN_LENGTH = 1.15;
-const FIN_THICKNESS = 0.22;
-const FIN_HEIGHT = 0.30;
-/** How far the fin sinks into the hull, so it reads as mounted rather
- *  than floating above the body. */
-const FIN_EMBED = 0.10;
-
-/** Reused per fin write; the pose pass is a hot loop. */
-const _finOffset = new THREE.Vector3();
+/**
+ * Fit the shared team kit to whatever body this unit actually has.
+ *
+ * The bounds come from the body parts themselves, in the unit-radius-1 space
+ * they are authored in, so a new blueprint gets a fitted kit the first time
+ * one is built — there is no per-unit ornament table to keep in sync, and no
+ * unit can end up wearing the wrong shape because someone forgot to add a row.
+ *
+ * Cached on the mesh: the parts are immutable for a given body shape and tier,
+ * and this runs in the per-frame pose pass.
+ */
+function ornamentProfileFor(mesh: EntityMesh, bodyEntry: BodyGeomEntry): HostOrnamentProfile {
+  const cached = mesh.teamTrimProfile;
+  if (cached !== undefined) return cached;
+  let minX = 0;
+  let maxX = 0;
+  let halfWidth = 0;
+  for (const part of bodyEntry.parts) {
+    minX = Math.min(minX, part.x - part.scaleX);
+    maxX = Math.max(maxX, part.x + part.scaleX);
+    halfWidth = Math.max(halfWidth, Math.abs(part.z) + part.scaleZ);
+  }
+  // A bodyless host (shield emitters, turret-hosted visuals) still has to read
+  // as somebody's: fall back to the unit sphere the renderer would draw.
+  if (maxX - minX < 1e-3) {
+    minX = -1;
+    maxX = 1;
+  }
+  if (halfWidth < 1e-3) halfWidth = 1;
+  const profile = hostOrnamentProfile({
+    minX,
+    maxX,
+    halfWidth,
+    topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
+  });
+  mesh.teamTrimProfile = profile;
+  return profile;
+}
 
 export class UnitChassisInstancePose3D {
   private readonly batch = new UnitChassisMatrixBatch3D();
@@ -44,15 +68,18 @@ export class UnitChassisInstancePose3D {
   private readonly writeColors: boolean[] = [];
 
   /**
-   * Place this unit's dorsal fin. The fin sits on the chassis spine at
-   * the body's own top, oriented with the body, so it banks and tilts
-   * with the hull instead of sliding around on it.
+   * Place this unit's team kit — the rail-and-rib frame, fitted to its own
+   * hull.
    *
-   * The trim is TEAM color while the hull is PLAYER color — that pairing
-   * is the whole point: teammates share the fin, and their hulls tell
-   * them apart.
+   * The merged kit is one instance in unit-radius-1 space, so its rails stay
+   * registered to every body lobe while the chassis banks, tilts and yaws
+   * instead of sliding around on it.
+   *
+   * The trim is TEAM colour while the hull is PLAYER colour — that pairing is
+   * the whole point: teammates share the frame, and their hulls tell them
+   * apart.
    */
-  private updateTeamFin(
+  private updateTeamKit(
     entity: Entity,
     mesh: EntityMesh,
     bodyEntry: BodyGeomEntry,
@@ -62,48 +89,16 @@ export class UnitChassisInstancePose3D {
     teamTrim: TeamTrimRenderer3D,
   ): void {
     if (mesh.teamTrimSlot === undefined) {
-      const slot = teamTrim.alloc();
-      // A full pool just means no fin on this unit; never a broken frame.
+      const slot = teamTrim.allocHostKit(
+        ornamentProfileFor(mesh, bodyEntry),
+        mesh.geometryTier ?? 'close',
+      );
+      // A full pool just means no kit on this unit; never a broken frame.
       if (slot < 0) return;
       mesh.teamTrimSlot = slot;
     }
-    const height = FIN_HEIGHT * radius;
-    // Ride the body's top, sunk by FIN_EMBED so it looks mounted.
-    const localY = (bodyEntry.topY - FIN_EMBED) * radius + height * 0.5;
-    _finOffset.set(0, localY, 0).applyQuaternion(parentQuaternion);
-    teamTrim.set(
+    teamTrim.setHostKit(
       mesh.teamTrimSlot,
-      parentPosition.x + _finOffset.x,
-      parentPosition.y + _finOffset.y,
-      parentPosition.z + _finOffset.z,
-      parentQuaternion,
-      FIN_LENGTH * radius,
-      height,
-      FIN_THICKNESS * radius,
-      entityTeamColorHex(entity),
-    );
-  }
-
-  /**
-   * Place the Formik's bespoke rounded exoskeletal strokes. The merged kit is
-   * one instance in unit-radius-1 space, so its rails stay registered to all
-   * three smooth body lobes while the chassis tilts and yaws.
-   */
-  private updateFormikBodyOrnament(
-    entity: Entity,
-    mesh: EntityMesh,
-    radius: number,
-    parentPosition: THREE.Vector3,
-    parentQuaternion: THREE.Quaternion,
-    teamTrim: TeamTrimRenderer3D,
-  ): void {
-    if (mesh.formikBodyTrimSlot === undefined) {
-      const slot = teamTrim.allocFormikBody(mesh.geometryTier ?? 'close');
-      if (slot < 0) return;
-      mesh.formikBodyTrimSlot = slot;
-    }
-    teamTrim.setFormikBody(
-      mesh.formikBodyTrimSlot,
       parentPosition.x,
       parentPosition.y,
       parentPosition.z,
@@ -138,32 +133,18 @@ export class UnitChassisInstancePose3D {
       if (teamTrim !== null && mesh.teamTrimSlot !== undefined) {
         teamTrim.hide(mesh.teamTrimSlot);
       }
-      if (teamTrim !== null && mesh.formikBodyTrimSlot !== undefined) {
-        teamTrim.hideFormikBody(mesh.formikBodyTrimSlot);
-      }
       return;
     }
     if (teamTrim !== null) {
-      if (entity.unit?.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID) {
-        this.updateFormikBodyOrnament(
-          entity,
-          mesh,
-          radius,
-          parentPosition,
-          parentQuaternion,
-          teamTrim,
-        );
-      } else {
-        this.updateTeamFin(
-          entity,
-          mesh,
-          bodyEntry,
-          radius,
-          parentPosition,
-          parentQuaternion,
-          teamTrim,
-        );
-      }
+      this.updateTeamKit(
+        entity,
+        mesh,
+        bodyEntry,
+        radius,
+        parentPosition,
+        parentQuaternion,
+        teamTrim,
+      );
     }
 
     if (mesh.smoothChassisSlots) {

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { PlayerId } from '../sim/types';
 import { locomotionPieceColorHex } from './colorUtils';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { patchSurfaceChartSurface } from './SurfaceChartMaterial3D';
 export {
   growTypedArray as growFloat32Array,
   growTypedArray as growFloat64Array,
@@ -64,6 +65,12 @@ export function getLocomotionMatByCache(
     mat = side === undefined
       ? new THREE.MeshLambertMaterial({ color })
       : new THREE.MeshLambertMaterial({ color, side });
+    // Every locomotion rig that is not the instanced leg pool — wheels,
+    // treads, hover fans, wings, jets, fins, flippers — allocates through
+    // here, so this one line is what keeps a unit's movement hardware made of
+    // the same metal as the hull above it. Legs patch their own pool
+    // materials because they do their own instancing transform.
+    patchSurfaceChartSurface(mat);
     cache.set(color, mat);
   }
   return mat;

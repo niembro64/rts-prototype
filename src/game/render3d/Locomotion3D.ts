@@ -20,8 +20,7 @@ import type { UnitBlueprint } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
-import { FORMIK_UNIT_BLUEPRINT_ID } from './FormikOrnament3D';
-import { FORMIK_LEG_CHARTS } from './SurfaceChart3D';
+import { LEG_CHARTS } from './SurfaceChart3D';
 import {
   type LegMesh,
   type LegStateSnapshot,
@@ -416,9 +415,11 @@ export function buildLocomotion(
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
         legRenderer, ownerId,
         geometryTier,
-        bp.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID
-          ? FORMIK_LEG_CHARTS
-          : undefined,
+        // Every walker's legs, not one blueprint's. A leg segment is a
+        // hydraulic strut and a knuckle is a bolt boss whichever unit is
+        // standing on it, so the chart comes from the ROLE — see the roster
+        // assignment table in SurfaceChart3D.
+        LEG_CHARTS,
       );
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;

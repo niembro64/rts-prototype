@@ -1,13 +1,16 @@
 import type * as THREE from 'three';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import {
-  createFormikBodyOrnamentGeometry,
-  createFormikTurretAnchorGeometry,
-  getFormikTurretAnchorProfile,
-} from './FormikOrnament3D';
+  REFERENCE_ORNAMENT_PROFILE,
+  createHostOrnamentGeometry,
+  createTurretCollarGeometry,
+  getTurretCollarProfile,
+  hostOrnamentProfile,
+  ornamentProfileKey,
+} from './TeamOrnament3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`[formik ornament contract] ${message}`);
+  if (!condition) throw new Error(`[team ornament contract] ${message}`);
 }
 
 const TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
@@ -64,9 +67,9 @@ function signedVolume(geometry: THREE.BufferGeometry): number {
   return volume;
 }
 
-export function runFormikOrnament3DContractTest(): void {
+export function runTeamOrnament3DContractTest(): void {
   const headRadius = 32;
-  const anchor = getFormikTurretAnchorProfile(headRadius);
+  const anchor = getTurretCollarProfile(headRadius);
   // One cylinder, centre of the turret out to the head sphere's pole.
   assertContract(
     anchor.backX === 0,
@@ -86,7 +89,7 @@ export function runFormikOrnament3DContractTest(): void {
   );
   assertContract(
     anchor.radius >= headRadius * 0.7,
-    'turret collar must enclose the Formik three-barrel cluster',
+    'turret collar must enclose the barrel cluster it rings',
   );
 
   // The profile is tier-independent: only the side count changes with LOD, so
@@ -95,8 +98,8 @@ export function runFormikOrnament3DContractTest(): void {
   let previousCollarTriangles = Infinity;
 
   for (const tier of TIERS) {
-    const body = createFormikBodyOrnamentGeometry(tier);
-    const collar = createFormikTurretAnchorGeometry(tier);
+    const body = createHostOrnamentGeometry(REFERENCE_ORNAMENT_PROFILE, tier);
+    const collar = createTurretCollarGeometry(tier);
     try {
       const bodyBounds = body.boundingBox;
       assertContract(bodyBounds !== null, `body strokes expose bounds (${tier})`);
@@ -191,4 +194,77 @@ export function runFormikOrnament3DContractTest(): void {
       collar.dispose();
     }
   }
+
+  checkKitFitsEveryHost();
+}
+
+/**
+ * ONE KIT, MANY FITS.
+ *
+ * The kit is a design, not a model: the same rails and ribs have to land on a
+ * scout, a Queen and a factory, each time inside that host's own envelope. The
+ * failure this catches is a kit authored against one body and instanced onto
+ * every other — rails hanging off the nose of a short hull, or buried inside a
+ * long one — which is exactly what a single normalized kit stretched per
+ * instance produces.
+ */
+function checkKitFitsEveryHost(): void {
+  const hosts: { label: string; minX: number; maxX: number; halfWidth: number; topY: number }[] = [
+    { label: 'reference walker', minX: -1.6, maxX: 1.2, halfWidth: 0.68, topY: 1.45 },
+    { label: 'stubby scout', minX: -0.9, maxX: 0.9, halfWidth: 0.9, topY: 0.7 },
+    { label: 'long hull', minX: -2.4, maxX: 2.4, halfWidth: 0.6, topY: 0.9 },
+    { label: 'structure box', minX: -30, maxX: 30, halfWidth: 30, topY: 22 },
+  ];
+  const keys = new Set<string>();
+  for (const host of hosts) {
+    const profile = hostOrnamentProfile(host);
+    keys.add(ornamentProfileKey(profile));
+    const geometry = createHostOrnamentGeometry(profile, 'close');
+    try {
+      const bounds = geometry.boundingBox;
+      assertContract(bounds !== null, `${host.label} kit exposes bounds`);
+      // Inside the host's own silhouette, both ends and both shoulders. The
+      // slack is the strap's own section, which legitimately stands proud.
+      const slack = profile.section * 0.5;
+      assertContract(
+        bounds.min.x >= host.minX - slack && bounds.max.x <= host.maxX + slack,
+        `${host.label} kit runs past the hull it is bolted to `
+          + `(${bounds.min.x.toFixed(2)}..${bounds.max.x.toFixed(2)} against `
+          + `${host.minX}..${host.maxX})`,
+      );
+      assertContract(
+        Math.abs(bounds.min.z) <= host.halfWidth + slack &&
+          bounds.max.z <= host.halfWidth + slack,
+        `${host.label} kit overhangs the hull's shoulders`,
+      );
+      // It has to actually reach the roof — a kit that collapsed toward the
+      // spine would still pass the containment checks above.
+      assertContract(
+        bounds.max.y > host.topY * 0.7,
+        `${host.label} kit must ride the body's top, not sink into it `
+          + `(${bounds.max.y.toFixed(2)} against a top of ${host.topY})`,
+      );
+      // The straps keep a real section at every size, or the kit reads as
+      // paint on a big host and as a lump on a small one.
+      const strapDepth = bounds.max.y - bounds.min.y;
+      assertContract(
+        strapDepth > profile.section * 0.5,
+        `${host.label} kit lost its section (${strapDepth.toFixed(2)})`,
+      );
+    } finally {
+      geometry.dispose();
+    }
+  }
+  assertContract(
+    keys.size === hosts.length,
+    'distinct body shapes must resolve to distinct ornament pools — two '
+      + 'shapes sharing a key would wear each other\'s kit',
+  );
+  // ...and the converse: the same shape must land in ONE pool, or a roster of
+  // identical units becomes a roster of draw calls.
+  assertContract(
+    ornamentProfileKey(hostOrnamentProfile(hosts[0]))
+      === ornamentProfileKey(hostOrnamentProfile({ ...hosts[0] })),
+    'identical body extents must resolve to one ornament pool',
+  );
 }

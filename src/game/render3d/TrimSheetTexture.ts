@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import {
   BAND_CAP_ZONES,
+  BAND_WRAPS_V,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
@@ -54,8 +55,7 @@ import {
 /** One deterministic seed per band so editing one band's generator cannot
  *  reshuffle the noise in every other band. */
 const BAND_SEEDS: Record<TrimBandId, number> = {
-  armorPlate: 0x51a7e1,
-  noseFacet: 0x2c9b34,
+  substanceGrain: 0x51a7e1,
   sensorDome: 0x7f31d0,
   barrelShaft: 0x1de4a6,
   hydraulicStrut: 0x93b70c,
@@ -121,11 +121,15 @@ function beginBand(layer: Layer, band: TrimBandId, base: {
   return rect;
 }
 
-/** Extend the band's own top and bottom content rows into its gutters. Mip
- *  levels average neighbouring rows; without this the bottom of one band
- *  bleeds into the top of the next two or three mips down, and a hull lobe
- *  starts showing nose facets at range. */
-function fillBandGutters(layer: Layer, rect: BandRect): void {
+/** Extend the band's own edge rows and columns into its gutters. Mip levels
+ *  average neighbouring texels; without this the bottom of one band bleeds
+ *  into whatever was packed beside it two or three mips down, and a hull lobe
+ *  starts showing chevrons at range.
+ *
+ *  `wrapV` is for the grain tile, whose v repeats. A band that tiles has to
+ *  have BOTH gutters filled from the opposite edge, or every 128 world units
+ *  of surface shows the seam as a line. */
+function fillBandGutters(layer: Layer, rect: BandRect, wrapV: boolean): void {
   const g = TRIM_BAND_GUTTER_PIXELS;
   for (const ctx of [layer.albedo, layer.height, layer.bare]) {
     // putImageData rather than drawImage. Stretching a one-pixel source with
@@ -149,9 +153,14 @@ function fillBandGutters(layer: Layer, rect: BandRect): void {
     const bottom = ctx.getImageData(
       rect.x - g, rect.y + rect.height - 1, rect.width + g * 2, 1,
     );
+    // A tiling band's v seam is the same place, so its gutters come from the
+    // opposite edge exactly as the u gutters do. A placed band's v runs pole
+    // to pole and its two ends are different places, so it only extends.
+    const above = wrapV ? bottom : top;
+    const below = wrapV ? top : bottom;
     for (let i = 0; i < g; i++) {
-      ctx.putImageData(top, rect.x - g, rect.y - g + i);
-      ctx.putImageData(bottom, rect.x - g, rect.y + rect.height + i);
+      ctx.putImageData(above, rect.x - g, rect.y - g + i);
+      ctx.putImageData(below, rect.x - g, rect.y + rect.height + i);
     }
   }
 }
@@ -370,41 +379,72 @@ function panelCourse(
 
 // ── Bands ────────────────────────────────────────────────────────────────
 
-/** Hull plating: three courses of bolted panels separated by recessed seams,
- *  with a conduit run crossing the middle course. */
-function drawArmorPlate(
+/**
+ * THE SUBSTANCE GRAIN — the one band every surface in the game wears.
+ *
+ * This is not a chart. It is projected in the object's own frame at a fixed
+ * world size (GRAIN_TILE_WORLD_UNITS), so it lands on a hull lobe, a building
+ * wall, a box face, a cylinder end cap and a swept ornament rail at exactly
+ * the same texels per world unit, and it reaches every one of them without
+ * anyone unwrapping anything. It is what makes "every face is textured" true
+ * by construction rather than by a labelling campaign nobody can finish.
+ *
+ * Two properties are load-bearing and easy to lose:
+ *
+ *   SEAMLESS ON BOTH AXES. The tile abuts itself in u AND v, so the panel
+ *   widths are normalized to the full width (as everywhere in this file) and
+ *   the course seams are drawn at course STARTS — the last course's bottom
+ *   edge meets the next tile's top seam, giving exactly one seam there rather
+ *   than two or none.
+ *
+ *   MEAN NEAR NEUTRAL. This band multiplies every other surface in the game.
+ *   The R channel decodes x2, so the tile's mean has to sit near 0.5 or the
+ *   whole roster shifts brightness. That is a constraint on the MEAN only:
+ *   near-black recesses and near-white rivet heads are exactly what makes it
+ *   read as metal, so long as they balance.
+ */
+function drawSubstanceGrain(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
 ): void {
   const { columns, courses } = bandFeatureCounts(band);
   const courseHeight = rect.height / courses;
   for (let c = 0; c < courses; c++) {
     const y = rect.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, columns, rng, { vents: c === 1 });
-    seamRow(layer, rect, y, 4);
+    // Vents on every third course only. A vent on every course reads as
+    // corrugation once the tile repeats across a factory wall.
+    panelCourse(layer, rect, y, courseHeight, columns, rng, {
+      vents: c % 3 === 1,
+      faceJitter: 0.10,
+    });
+    seamRow(layer, rect, y, 3);
   }
-  pipeRun(layer, rect, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
-}
 
-/** Nose armour: heavier, fewer, thicker-bolted plates than the hull, with a
- *  bright lit chine along the leading course. */
-function drawNoseFacet(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
-): void {
-  const { columns, courses } = bandFeatureCounts(band);
-  const courseHeight = rect.height / courses;
-  for (let c = 0; c < courses; c++) {
-    const y = rect.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, columns, rng, { faceJitter: 0.06 });
-    seamRow(layer, rect, y, 5);
+  // Conduit runs, two per tile at irregular heights so the repeat does not
+  // land on a rhythm. Constant across u, so on a projected surface they read
+  // as a run of pipework rather than as a stripe pattern.
+  pipeRun(layer, rect, rect.y + rect.height * 0.17, 7, columns, 0.08);
+  pipeRun(layer, rect, rect.y + rect.height * 0.68, 6, columns, 0.08);
+
+  // Wear last: scuffing and grime sit ON the plating, not under it. Sized in
+  // world units times the sheet density so a scratch is a scratch on every
+  // entity that wears this tile, whatever size that entity is.
+  const px = TRIM_SHEET_TEXELS_PER_UNIT;
+  layer.albedo.save();
+  layer.albedo.beginPath();
+  layer.albedo.rect(rect.x, rect.y, rect.width, rect.height);
+  layer.albedo.clip();
+  for (let i = 0; i < 320; i++) {
+    const w = randIn(rng, 0.4, 3.2) * px;
+    const h = randIn(rng, 0.2, 0.7) * px;
+    const x = rect.x + randIn(rng, 0, rect.width);
+    const y = rect.y + randIn(rng, 0, rect.height);
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.10, 0.30).toFixed(3)})`;
+    // Drawn twice, offset by the tile width, so a scratch that runs off the
+    // right edge arrives back on the left instead of being clipped away.
+    layer.albedo.fillRect(x, y, w, h);
+    layer.albedo.fillRect(x - rect.width, y, w, h);
   }
-  boltRow(layer, rect, rect.y + courseHeight * 0.5, columns, 5);
-  // Lit chine along the leading edge.
-  layer.albedo.fillStyle = gray(0.97);
-  layer.albedo.fillRect(rect.x, rect.y, rect.width, 5);
-  layer.height.fillStyle = gray(0.98);
-  layer.height.fillRect(rect.x, rect.y, rect.width, 5);
-  layer.bare.fillStyle = gray(0.40);
-  layer.bare.fillRect(rect.x, rect.y, rect.width, 5);
+  layer.albedo.restore();
 }
 
 // ── Spherical layout helpers ─────────────────────────────────────────────
@@ -516,24 +556,33 @@ function drawPitchSlot(layer: Layer, rect: BandRect): void {
   }
 }
 
-/** Sensor housing: bolted panel courses banding the head, small armoured
- *  ports, and the pitch slot the barrel assembly travels in. This band maps
- *  onto the sphere exactly once, so its horizontal axis is a latitude circle
- *  and round features must be compensated by `latitudeScale`. */
+/** Sensor housing: the polar mounting collars, small armoured ports, and the
+ *  pitch slot the barrel assembly travels in. This band maps onto the sphere
+ *  exactly once, so its horizontal axis is a latitude circle and round
+ *  features must be compensated by `latitudeScale`.
+ *
+ *  PLACED STRUCTURE ONLY. The plating that used to fill this band is the
+ *  substance grain's job now, and the grain lands on the head at the same
+ *  world density as on everything else — drawing plates here as well put two
+ *  panel grids on one sphere at two different scales. What is left is the
+ *  structure that genuinely belongs to a turret head and nothing else. */
 function drawSensorDome(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+  layer: Layer, rect: BandRect, _rng: () => number, band: TrimBandId,
 ): void {
-  // Panel courses. Horizontal here means a full ring around the head, so these
-  // read the same from every direction and cost nothing at the poles.
   const { columns, courses } = bandFeatureCounts(band);
   const courseHeight = rect.height / courses;
-  for (let c = 0; c < courses; c++) {
-    const y = rect.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, columns, rng);
-    seamRow(layer, rect, y, 4);
+  // Polar mounting collars: a machined ring at each pole where the head seats
+  // into its mount. Horizontal here means a full ring around the head, so
+  // these read the same from every direction.
+  for (const y of [rect.y, rect.y + rect.height - courseHeight]) {
+    bevelRect(layer, rect.x, y, rect.width, courseHeight, 0.56, 0.95, 0.34);
+    layer.bare.fillStyle = gray(0.30);
+    layer.bare.fillRect(rect.x, y, rect.width, courseHeight);
+    boltRow(layer, rect, y + courseHeight * 0.5, columns, 5);
+    seamRow(layer, rect, y + courseHeight, 4);
   }
-  boltRow(layer, rect, rect.y + courseHeight * 0.5, columns, 5);
-  boltRow(layer, rect, rect.y + rect.height - courseHeight * 0.5, columns, 5);
+  seamRow(layer, rect, rect.y + courseHeight * 2, 4);
+  seamRow(layer, rect, rect.y + rect.height - courseHeight * 2, 4);
 
   // Equatorial armoured ports. At the equator one unit of surface is this many
   // times wider in pixels than it is tall, so a circle must be drawn as an
@@ -734,28 +783,24 @@ function drawBarrelShaft(layer: Layer, rect: BandRect, rng: () => number): void 
  *  around the circumference (collars, pipe rings) or repeats many times around
  *  it (panels, bolts), both of which look the same from every direction. */
 function drawHydraulicStrut(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+  layer: Layer, rect: BandRect, _rng: () => number, band: TrimBandId,
 ): void {
-  const { columns, courses } = bandFeatureCounts(band);
-  layer.albedo.fillStyle = gray(0.04);
-  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
-  layer.height.fillStyle = gray(0.18);
-  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
+  const { columns } = bandFeatureCounts(band);
 
   const collarHeight = rect.height * 0.13;
   const shaftTop = rect.y + collarHeight;
   const shaftHeight = rect.height - collarHeight * 2;
-  const midCourses = Math.max(1, courses - 1);
-  const courseHeight = shaftHeight / midCourses;
-  for (let c = 0; c < midCourses; c++) {
-    const y = shaftTop + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, columns, rng);
-    seamRow(layer, rect, y, 5);
-  }
+  // The shaft itself is left as plain material — the grain plates it, at the
+  // same world density as the hull it hangs off. What belongs to a STRUT and
+  // to nothing else is the pair of bolted end collars and the hydraulic lines
+  // running between them, and that is all this band draws.
+  //
   // Only the machined bits are unpainted. Painted plate keeps the unit's
   // colour, which is what carries ownership at a glance.
-  layer.bare.fillStyle = gray(0.18);
+  layer.bare.fillStyle = gray(0.14);
   layer.bare.fillRect(rect.x, shaftTop, rect.width, shaftHeight);
+  seamRow(layer, rect, shaftTop, 5);
+  seamRow(layer, rect, shaftTop + shaftHeight - 5, 5);
 
   pipeRun(layer, rect, shaftTop + shaftHeight * 0.34, 11, columns, 0.06);
   pipeRun(layer, rect, shaftTop + shaftHeight * 0.72, 9, columns, 0.06);
@@ -768,18 +813,14 @@ function drawHydraulicStrut(
   }
 }
 
-/** Bolt boss — joints. A heavy bolted flange ringing the middle with plated
- *  shoulders above and below, so a sphere reads as a machined knuckle. */
+/** Bolt boss — joints. A heavy bolted flange ringing the middle, with the
+ *  shoulders above and below left as plain material for the grain to plate, so
+ *  a sphere reads as a machined knuckle rather than as a second panel grid at
+ *  a joint-sized scale. */
 function drawBoltBoss(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+  layer: Layer, rect: BandRect, _rng: () => number, band: TrimBandId,
 ): void {
   const { columns } = bandFeatureCounts(band);
-  // Few panels around a small sphere, so per-panel value variation is held
-  // tight: with only a handful of columns it lands in the low harmonics and
-  // reads as a light baked into the knuckle rather than as plating.
-  const opts = { faceJitter: 0.05 };
-  panelCourse(layer, rect, rect.y, rect.height * 0.32, columns, rng, opts);
-  panelCourse(layer, rect, rect.y + rect.height * 0.68, rect.height * 0.32, columns, rng, opts);
 
   const ringHeight = rect.height * 0.38;
   const ringY = rect.y + (rect.height - ringHeight) * 0.5;
@@ -800,19 +841,20 @@ function drawBoltBoss(
  *  bolt heads are what give the team colour something to sit on, so long as
  *  they balance. */
 function drawLiveryPiping(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+  layer: Layer, rect: BandRect, _rng: () => number, band: TrimBandId,
 ): void {
-  const plateCount = bandFeatureCounts(band).columns;
-  // Same bolted plating as everything else. Earlier passes drew the plates at
-  // the SAME value as the band base, so only the hairline separators showed
-  // and the strap read as flat colour — the one surface on the unit with no
-  // machinery on it at all.
-  const { courses } = bandFeatureCounts(band);
+  // Livery is PAINT. Its structure is where the painted band starts and stops
+  // — the piped edges below — and the plating underneath it comes from the
+  // grain, exactly as it does on the hull the strap is bolted to. Drawing
+  // plates here as well gave the strap its own panel grid at a strap-sized
+  // scale, which is precisely what the density rule forbids.
+  const { columns, courses } = bandFeatureCounts(band);
   const courseHeight = rect.height / courses;
-  for (let c = 0; c < courses; c++) {
-    const y = rect.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, plateCount, rng, { faceJitter: 0.07 });
-    seamRow(layer, rect, y, 4);
+  // Transverse ribs: the strap is a structural member, so it carries fasteners
+  // along its run. Bolts repeat many times around the section, so they read
+  // the same from every direction.
+  for (let c = 1; c < courses; c++) {
+    boltRow(layer, rect, rect.y + c * courseHeight, columns, 4);
   }
   // Piped edges: hard black shadow line with a bright machined lip.
   for (const y of [rect.y + 1, rect.y + rect.height - 5]) {
@@ -830,21 +872,20 @@ function drawLiveryPiping(
 /** Team collar — the turret collar's livery. Same neutrality discipline as the
  *  piping band: bolted plates and hard seams rather than broad value shifts. */
 function drawLiveryChevron(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+  layer: Layer, rect: BandRect, _rng: () => number, band: TrimBandId,
 ): void {
-  const plateCount = bandFeatureCounts(band).columns;
   const zone = BAND_CAP_ZONES.liveryChevron!;
   const wall: BandRect = {
     x: rect.x, y: rect.y,
     width: rect.width, height: rect.height * zone.wallVEnd,
   };
 
-  const { courses } = bandFeatureCounts(band);
+  const { columns, courses } = bandFeatureCounts(band);
   const courseHeight = wall.height / courses;
-  for (let c = 0; c < courses; c++) {
-    const y = wall.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, plateCount, rng, { faceJitter: 0.07 });
-    seamRow(layer, rect, y, 4);
+  // Same discipline as the piping band: paint plus its own fasteners, and the
+  // plating under it comes from the grain at the world's one density.
+  for (let c = 1; c < courses; c++) {
+    boltRow(layer, wall, wall.y + c * courseHeight, columns, 4.5);
   }
   for (const y of [wall.y, wall.y + wall.height - 4]) {
     layer.albedo.fillStyle = gray(0.03);
@@ -932,14 +973,22 @@ const BAND_DRAWERS: Record<
     ) => void;
   }
 > = {
-  armorPlate: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawArmorPlate },
-  noseFacet: { base: { albedo: 0.03, height: 0.12, bare: 0.06 }, draw: drawNoseFacet },
-  sensorDome: { base: { albedo: 0.04, height: 0.15, bare: 0.10 }, draw: drawSensorDome },
+  // Bands that now carry PLACED STRUCTURE ONLY sit on a NEUTRAL base rather
+  // than a dark recess: their base is what the surface looks like where the
+  // band has nothing to say, and the grain has to be able to show through it
+  // unchanged. R = 0.5 decodes to a x1 multiplier, so neutral is literally
+  // "leave this fragment to the grain".
+  substanceGrain: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawSubstanceGrain },
+  sensorDome: { base: { albedo: 0.5, height: 0.5, bare: 0.06 }, draw: drawSensorDome },
   barrelShaft: { base: { albedo: 0.92, height: 0.62, bare: 0.92 }, draw: drawBarrelShaft },
-  hydraulicStrut: { base: { albedo: 0.04, height: 0.18, bare: 0.15 }, draw: drawHydraulicStrut },
-  boltBoss: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawBoltBoss },
-  liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
-  liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
+  hydraulicStrut: { base: { albedo: 0.5, height: 0.5, bare: 0.10 }, draw: drawHydraulicStrut },
+  boltBoss: { base: { albedo: 0.5, height: 0.5, bare: 0.12 }, draw: drawBoltBoss },
+  // Livery sits at exactly neutral: R = 0.5 decodes to a x1 multiplier, so
+  // the painted band shows the team colour at full strength and lets the
+  // grain plate it. Anything darker dims the one signal the band exists to
+  // carry, and the contract test pins the mean for that reason.
+  liveryPiping: { base: { albedo: 0.5, height: 0.5, bare: 0.02 }, draw: drawLiveryPiping },
+  liveryChevron: { base: { albedo: 0.5, height: 0.5, bare: 0.02 }, draw: drawLiveryChevron },
 };
 
 let cachedCanvas: HTMLCanvasElement | null = null;
@@ -964,7 +1013,7 @@ function buildTrimSheetCanvas(): HTMLCanvasElement {
     const spec = BAND_DRAWERS[band];
     const rect = beginBand(layer, band, spec.base);
     spec.draw(layer, rect, makeSeededRng(BAND_SEEDS[band]), band);
-    fillBandGutters(layer, rect);
+    fillBandGutters(layer, rect, BAND_WRAPS_V.has(band));
   }
 
   // Combine the three grayscale layers into the packed RGB sheet. Alpha stays

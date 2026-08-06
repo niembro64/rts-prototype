@@ -39,10 +39,9 @@ import {
   getSharedPrimitiveTetrahedronGeometry,
 } from './PrimitiveGeometryQuality3D';
 import {
-  FORMIK_TURRET_BLUEPRINT_ID,
-  getFormikTurretAnchorProfile,
-  type FormikTurretAnchorProfile,
-} from './FormikOrnament3D';
+  getTurretCollarProfile,
+  type TurretCollarProfile,
+} from './TeamOrnament3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -72,12 +71,13 @@ export type TurretMesh = {
    *  When `deps.skipBarrels` was false (cap exhausted on alloc), the
    *  Meshes are parented to spinGroup and render normally. */
   barrels: THREE.Mesh[];
-  /** Formik rapid-mortar team-color collar. It is rendered through the
-   *  shared TeamTrimRenderer3D pool; this record carries the authored local
-   *  dimensions plus its lazily allocated instance slot. */
-  /** Formik-only team collar. `tier` is the detail tier the turret was built
-   *  at, so the collar allocates out of the matching LOD pool. */
-  formikTeamTrimAnchor?: FormikTurretAnchorProfile & {
+  /** The turret's team-colour collar — the ring the barrels emerge through.
+   *  Every turret in the game wears one, sized from its own head radius; it
+   *  renders through the shared TeamTrimRenderer3D pool, and this record
+   *  carries the authored local dimensions plus its lazily allocated instance
+   *  slot. `tier` is the detail tier the turret was built at, so the collar
+   *  allocates out of the matching LOD pool. */
+  teamCollar?: TurretCollarProfile & {
     tier: PrimitiveGeometryTier;
     slot?: number;
   };
@@ -379,13 +379,14 @@ export function buildTurretMesh3D(
       headOnly, barrelFollowsBeam: followsBeam,
     };
   }
-  const formikTeamTrimAnchor =
-    turret.config.turretBlueprintId === FORMIK_TURRET_BLUEPRINT_ID
-      ? {
-          ...getFormikTurretAnchorProfile(headRadius),
-          tier: geometryTierForDetail(detailLevel),
-        }
-      : undefined;
+  // EVERY turret gets a collar, sized from its own head. The kit is one
+  // design worn by the whole roster (see TeamOrnament3D); a turret that
+  // opted out would be the one place on a unit where alliance stops being
+  // readable, which is the opposite of what the ornament is for.
+  const teamCollar = {
+    ...getTurretCollarProfile(headRadius),
+    tier: geometryTierForDetail(detailLevel),
+  };
 
   if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
@@ -432,6 +433,6 @@ export function buildTurretMesh3D(
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
-    formikTeamTrimAnchor,
+    teamCollar,
   };
 }

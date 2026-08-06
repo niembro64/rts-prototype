@@ -25,9 +25,7 @@ import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { setVector3IfChanged } from './threeTransformWriteUtils';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
-import { FORMIK_UNIT_BLUEPRINT_ID } from './FormikOrnament3D';
-import { formikBodyPartChart } from './SurfaceChart3D';
-import { applyChartToMesh } from './SurfaceChartMaterial3D';
+import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 
@@ -145,7 +143,6 @@ export class UnitMeshBuilder3D {
       : unitGfx.unitShape === 'circles'
         ? LOW_DETAIL_UNIT_BODY_SHAPE
         : authoredBodyShape;
-    const isFormik = entity.unit?.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID;
     const geometryTier = geometryTierForDetail(detailLevel);
     // Poly chassis pools own immutable geometry. Include the tier so a
     // Close bevelled body can never be reused by a Mid/Far instance (or
@@ -180,17 +177,11 @@ export class UnitMeshBuilder3D {
         bodyEntry.parts.length,
         geometryTier,
       ) ?? undefined;
-      // Semantic labelling. The generator knows exactly which lobe of the
-      // composite each slot is, so the chart comes from the build rather than
-      // from analysing the result — see SurfaceChart3D.
-      if (smoothChassisSlots !== undefined && isFormik) {
-        for (let i = 0; i < smoothChassisSlots.length; i++) {
-          this.unitDetailInstances.setSmoothChassisChart(
-            smoothChassisSlots[i],
-            formikBodyPartChart(i),
-          );
-        }
-      }
+      // No placed chart on a hull lobe. A hull is plain material, and plain
+      // material is what the projected substance grain describes — it lands on
+      // every lobe of every unit at the world's one texel density without a
+      // labelling step. Hull-shaped bands were how this used to work, and they
+      // could only ever fit the one unit they were measured against.
     } else if (
       useInstancedChassis &&
       !bodyEntry.isSmooth &&
@@ -315,6 +306,15 @@ export class UnitMeshBuilder3D {
       useDetailedUnitInstancing,
       detailLevel,
     );
+    // Coverage backstop. The palette materials are born textured, but a unit
+    // pulls in bespoke art from a dozen other modules — commander kits,
+    // construction emitters, Albatros canopies, shield frames, production
+    // rings — each with its own material const. Walking the finished assembly
+    // is what makes "every face of every entity" hold without a checklist that
+    // silently goes stale the next time someone adds a part. Materials are
+    // patched once and cached, so this is a build-time constant, not per-unit
+    // work.
+    patchSurfaceChartTree(group);
     return mesh;
   }
 
@@ -372,7 +372,6 @@ export class UnitMeshBuilder3D {
     const turretMeshes: TurretMesh[] = [];
     const turretOff = unitGfx.turretStyle === 'none';
     const isCommanderUnit = isCommander(entity);
-    const isFormik = entity.unit?.unitBlueprintId === FORMIK_UNIT_BLUEPRINT_ID;
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
       const isShield = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
@@ -397,7 +396,10 @@ export class UnitMeshBuilder3D {
           geometryTierForDetail(detailLevel),
         );
         if (allocated !== null) headSlot = allocated;
-        if (headSlot !== undefined && isFormik) {
+        // Every turret head in the game is a sensor dome: the pitch slot its
+        // barrels travel in, its polar mounting collars and its armoured
+        // ports belong to the ROLE, not to one blueprint.
+        if (headSlot !== undefined) {
           this.unitDetailInstances.setTurretHeadChart(headSlot, 'sensorDome');
         }
       }
@@ -419,11 +421,13 @@ export class UnitMeshBuilder3D {
       // The head is a per-Mesh sphere rather than an instanced slot, so it
       // adopts its chart by geometry/material swap instead of an attribute
       // write. Keyed by tier because each tier's head is a different sphere.
-      if (isFormik && turretMesh.head) {
+      // A shield emitter core is a glowing bubble, not a machined housing —
+      // it is light rather than matter, so it takes no placed structure.
+      if (turretMesh.head !== undefined && turretMesh.shieldEmitterCore !== true) {
         applyChartToMesh(
           turretMesh.head,
           'sensorDome',
-          `formikTurretHead:${geometryTierForDetail(detailLevel)}`,
+          `turretHead:${geometryTierForDetail(detailLevel)}`,
         );
       }
       if (isCommanderUnit && !hideHead) {
@@ -445,7 +449,10 @@ export class UnitMeshBuilder3D {
         );
         if (barrelSlots) {
           turretMesh.barrelSlots = barrelSlots;
-          if (isFormik && turretMesh.barrelUsesCone !== true) {
+          // Cone barrels are beam emitters — a glowing rig, not a machined
+          // tube — so they keep their wave material. Every real barrel is a
+          // barrel shaft whatever fires through it.
+          if (turretMesh.barrelUsesCone !== true) {
             for (const slot of barrelSlots) {
               this.unitDetailInstances.setBarrelChart(slot, 'barrelShaft');
             }
