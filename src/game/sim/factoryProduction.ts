@@ -171,6 +171,30 @@ function directFactoryRallyActions(
   return { actions, patrolStartIndex };
 }
 
+function assignProducedUnitGuardOrder(
+  world: WorldState,
+  factory: Entity,
+  unit: Entity,
+): void {
+  if (
+    unit.unit === null ||
+    factory.ownership === null ||
+    unit.ownership === null ||
+    !world.arePlayersAllied(factory.ownership.playerId, unit.ownership.playerId)
+  ) {
+    return;
+  }
+  const targetPoint = getEntityTargetPoint(factory);
+  setUnitActions(unit.unit, [{
+    type: 'guard',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: factory.id,
+  }]);
+  unit.unit.patrolStartIndex = null;
+}
+
 // Factory production system
 class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
@@ -545,25 +569,14 @@ class FactoryProductionSystem {
         unit.unit.moveState = factoryComp.moveState;
       }
 
+      const isQueenProducedUnit = factory.unit !== null;
       const hasOutputOrders = (factoryComp.defaultWaypoints?.length ?? 0) > 0;
       const factoryGuardEnabled = factoryComp.guardTargetId === factory.id;
       if (
-        !hasOutputOrders &&
-        factoryGuardEnabled &&
-        unit.builder !== null &&
-        factory.ownership !== null &&
-        unit.ownership !== null &&
-        world.arePlayersAllied(factory.ownership.playerId, unit.ownership.playerId)
+        isQueenProducedUnit ||
+        (!hasOutputOrders && factoryGuardEnabled && unit.builder !== null)
       ) {
-        const targetPoint = getEntityTargetPoint(factory);
-        setUnitActions(unit.unit, [{
-          type: 'guard',
-          x: targetPoint.x,
-          y: targetPoint.y,
-          z: targetPoint.z,
-          targetId: factory.id,
-        }]);
-        unit.unit.patrolStartIndex = null;
+        assignProducedUnitGuardOrder(world, factory, unit);
       } else {
         const route = factoryComp.defaultWaypoints !== null
           ? factoryComp.defaultWaypoints

@@ -41,6 +41,74 @@ import {
 } from './factoryProductionQueueWire';
 import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
+type NetworkFactorySnapshot = NonNullable<
+  NonNullable<NetworkServerSnapshotEntity['unit']>['factory']
+>;
+
+function applyNetworkFactorySnapshot(
+  entity: Entity,
+  snapshot: NetworkFactorySnapshot,
+  isFull: boolean,
+): void {
+  const factory = entity.factory;
+  if (factory === null) return;
+  const selectedUnitBlueprintId = snapshot.selectedUnitBlueprintCode === null
+    ? null
+    : codeToUnitBlueprintId(snapshot.selectedUnitBlueprintCode);
+  factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
+  factory.repeatProduction = snapshot.repeat !== false;
+  if (snapshot.paused !== undefined || isFull) {
+    factory.paused = snapshot.paused === true;
+  }
+  if (snapshot.moveState !== undefined || isFull) {
+    factory.moveState = snapshot.moveState ?? (entity.unit !== null ? 'maneuver' : 'holdPosition');
+  }
+  if (snapshot.airIdleState !== undefined || isFull) {
+    factory.airIdleState = snapshot.airIdleState ?? (entity.unit !== null ? 'fly' : 'land');
+  }
+  factory.productionQueue = decodeFactoryProductionQueueInto(
+    snapshot.queue,
+    factory.productionQueue,
+  );
+  decodeFactoryProductionQuotasInto(snapshot.quotas, factory.productionQuotas);
+  decodeFactoryProductionQuotaCountsInto(snapshot.quotaCounts, factory.productionQuotaCounts);
+  factory.currentShellId = null;
+  factory.currentBuildProgress = snapshot.progress;
+  factory.isProducing = snapshot.producing;
+  factory.energyRateFraction = snapshot.energyRate ?? 0;
+  factory.metalRateFraction = snapshot.metalRate ?? 0;
+  factory.guardTargetId = snapshot.guardTargetId ?? null;
+  if (snapshot.lowPriority !== undefined || isFull) {
+    factory.lowPriority = snapshot.lowPriority === true;
+  }
+  factory.rallyX = snapshot.rally.pos.x;
+  factory.rallyY = snapshot.rally.pos.y;
+  factory.rallyZ = snapshot.rally.posZ;
+  factory.rallyType = snapshot.rally.type as 'move' | 'fight' | 'patrol';
+
+  if (snapshot.route !== null && snapshot.route !== undefined) {
+    const existing = factory.defaultWaypoints;
+    const route = existing !== null && existing.length === snapshot.route.length
+      ? existing as FactoryDefaultWaypoint[]
+      : new Array<FactoryDefaultWaypoint>(snapshot.route.length);
+    for (let i = 0; i < snapshot.route.length; i++) {
+      const src = snapshot.route[i];
+      let dst = route[i];
+      if (dst === undefined) {
+        dst = { x: 0, y: 0, z: null, type: 'move' };
+        route[i] = dst;
+      }
+      dst.x = src.pos.x;
+      dst.y = src.pos.y;
+      dst.z = src.posZ;
+      dst.type = src.type as 'move' | 'fight' | 'patrol';
+    }
+    factory.defaultWaypoints = route;
+  } else {
+    factory.defaultWaypoints = null;
+  }
+}
+
 /**
  * Applies snapshot fields that should snap immediately instead of entering the
  * render-frame drift predictor: health, build progress, orders, targeting, and
@@ -112,6 +180,14 @@ export function snapClientNonVisualState(
       isFull
     )) {
       entity.factory.carrierSpawnEnabled = su.carrierSpawnEnabled !== false;
+    }
+    if (
+      entity.factory !== null &&
+      su.factory !== null &&
+      su.factory !== undefined &&
+      (isFull || cf! & ENTITY_CHANGED_FACTORY)
+    ) {
+      applyNetworkFactorySnapshot(entity, su.factory, isFull);
     }
   }
 
@@ -194,63 +270,7 @@ export function snapClientNonVisualState(
 
   const sf = sb !== null ? sb.factory : null;
   if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
-    const selectedUnitBlueprintId = sf.selectedUnitBlueprintCode === null
-      ? null
-      : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
-    entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
-    entity.factory.repeatProduction = sf.repeat !== false;
-    if (sf.paused !== undefined || isFull) {
-      entity.factory.paused = sf.paused === true;
-    }
-    if (sf.moveState !== undefined || isFull) {
-      entity.factory.moveState = sf.moveState ?? 'holdPosition';
-    }
-    if (sf.airIdleState !== undefined || isFull) {
-      entity.factory.airIdleState = sf.airIdleState ?? 'land';
-    }
-    entity.factory.productionQueue = decodeFactoryProductionQueueInto(
-      sf.queue,
-      entity.factory.productionQueue,
-    );
-    decodeFactoryProductionQuotasInto(sf.quotas, entity.factory.productionQuotas);
-    decodeFactoryProductionQuotaCountsInto(sf.quotaCounts, entity.factory.productionQuotaCounts);
-    entity.factory.currentShellId = null;
-    entity.factory.currentBuildProgress = sf.progress;
-    entity.factory.isProducing = sf.producing;
-    entity.factory.energyRateFraction = sf.energyRate ?? 0;
-    entity.factory.metalRateFraction = sf.metalRate ?? 0;
-    entity.factory.guardTargetId = sf.guardTargetId ?? null;
-    if (sf.lowPriority !== undefined || isFull) {
-      entity.factory.lowPriority = sf.lowPriority === true;
-    }
-    entity.factory.rallyX = sf.rally.pos.x;
-    entity.factory.rallyY = sf.rally.pos.y;
-    entity.factory.rallyZ = sf.rally.posZ;
-    entity.factory.rallyType = sf.rally.type as 'move' | 'fight' | 'patrol';
-    // Multi-leg default route (visualization only). Whenever the factory
-    // sub rides the snapshot it carries the full route consistently, so
-    // mirroring it straight onto the client component is safe.
-    if (sf.route !== null && sf.route !== undefined) {
-      const existing = entity.factory.defaultWaypoints;
-      const route = existing !== null && existing.length === sf.route.length
-        ? existing as FactoryDefaultWaypoint[]
-        : new Array<FactoryDefaultWaypoint>(sf.route.length);
-      for (let i = 0; i < sf.route.length; i++) {
-        const src = sf.route[i];
-        let dst = route[i];
-        if (dst === undefined) {
-          dst = { x: 0, y: 0, z: null, type: 'move' };
-          route[i] = dst;
-        }
-        dst.x = src.pos.x;
-        dst.y = src.pos.y;
-        dst.z = src.posZ;
-        dst.type = src.type as 'move' | 'fight' | 'patrol';
-      }
-      entity.factory.defaultWaypoints = route;
-    } else {
-      entity.factory.defaultWaypoints = null;
-    }
+    applyNetworkFactorySnapshot(entity, sf, isFull);
   }
 
   return cacheDirty;

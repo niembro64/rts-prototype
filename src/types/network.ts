@@ -926,6 +926,39 @@ export const ENTITY_CHANGED_NORMAL    = wireEnums.entityChanged.normal;
 /** Player-controlled combat mode such as fire/hold-fire changed. */
 export const ENTITY_CHANGED_COMBAT_MODE = wireEnums.entityChanged.combatMode;
 
+export type NetworkServerSnapshotFactory = {
+  /** Selected repeat-build unit blueprint wire code, or null for off. */
+  selectedUnitBlueprintCode: number | null;
+  /** Average fill of the factory's current shell, or zero while idle. */
+  progress: number;
+  producing: boolean;
+  /** False means the selected unit is a one-shot queue item. */
+  repeat?: boolean;
+  /** BAR Wait command state for factories/labs. */
+  paused?: boolean;
+  /** Finite production queue after the selected/current item. */
+  queue?: number[] | null;
+  /** Unit blueprint code/quota pairs for BAR factory quota mode. */
+  quotas?: number[] | null;
+  /** Unit blueprint code/current-count pairs for BAR factory quota mode. */
+  quotaCounts?: number[] | null;
+  /** Per-resource transfer-rate fractions for the current work tick. */
+  energyRate: number;
+  metalRate: number;
+  /** Friendly entity this factory will assign eligible output to guard. */
+  guardTargetId: number | null;
+  /** BAR builder-priority mirror for factory/lab resource priority. */
+  lowPriority?: boolean;
+  /** BAR MOVE_STATE for factories/labs. */
+  moveState?: UnitMoveState;
+  /** BAR air-plant LAND_AT state. */
+  airIdleState?: UnitAirIdleState;
+  /** Static rally point. */
+  rally: { pos: Vec2; posZ: number | null; type: string };
+  /** Visualization-only multi-leg output route. */
+  route: { pos: Vec2; posZ: number | null; type: string }[] | null;
+};
+
 export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
@@ -1002,6 +1035,9 @@ export type NetworkServerSnapshotEntity = {
      *  for mobile unit factories when disabled, and on deltas that
      *  explicitly toggle it. */
     carrierSpawnEnabled?: boolean | null;
+    /** Private host-owned production workflow for mobile queen factories.
+     *  Static Fabricators carry the identical shape on `building.factory`. */
+    factory: NetworkServerSnapshotFactory | null;
     /** Public active cloak state. Present when active and on deltas that
      *  explicitly clear it; filtered snapshots hide foreign cloaked units
      *  unless detector coverage reveals them. */
@@ -1051,53 +1087,7 @@ export type NetworkServerSnapshotEntity = {
     /** Building-mounted combat turrets use the same compact wire shape
      *  as unit turrets. Static authored data stays blueprint-derived. */
     turrets: NetworkServerSnapshotTurret[] | null;
-    factory: {
-      /** Selected repeat-build unit blueprint wire code, or null for off. */
-      selectedUnitBlueprintCode: number | null;
-      /** Average fill of the factory's currentShellId, or 0 if
-       *  the factory hasn't spawned a shell yet. The client re-derives
-       *  construction-progress bars from the shell entity itself; this field is
-       *  kept as a convenience for the production progress UI. */
-      progress: number;
-      producing: boolean;
-      /** False means the selected unit is a one-shot queue item; omitted/true
-       *  means the selected unit repeats after each completed shell. */
-      repeat?: boolean;
-      /** BAR Wait command state for factories/labs. True means production is
-       *  paused while selection, queue, quotas, and progress remain intact. */
-      paused?: boolean;
-      /** Finite production queue after the selected/current item. */
-      queue?: number[] | null;
-      /** Unit blueprint code/quota pairs for BAR factory quota mode. */
-      quotas?: number[] | null;
-      /** Unit blueprint code/current-count pairs for BAR factory quota mode. */
-      quotaCounts?: number[] | null;
-      /** Per-resource transfer rate this tick (0..1 fraction of the
-       *  factory's max rate cap). Drives the resource-ball flow at the
-       *  factory's pylons. */
-      energyRate: number;
-      metalRate: number;
-      /** Friendly entity this factory will assign produced units to guard. */
-      guardTargetId: number | null;
-      /** BAR builder-priority mirror for factory/lab resource priority. */
-      lowPriority?: boolean;
-      /** BAR MOVE_STATE for factories/labs. Omitted defaults to hold-position,
-       *  matching BAR's factory hold-position widget for local land labs. */
-      moveState?: UnitMoveState;
-      /** BAR air-plant LAND_AT state. Omitted defaults to `land`, matching
-       *  BAR's inserted air-factory command descriptor. */
-      airIdleState?: UnitAirIdleState;
-      /** Static rally point. `posZ` carries the click-altitude of the
-       *  player-issued rally; null falls back to terrain sample. */
-      rally: { pos: Vec2; posZ: number | null; type: string };
-      /** Full default-route the factory stamps onto produced units
-       *  (e.g. demo fabricators: a `fight` leg then a `patrol` loop).
-       *  `rally` is `route[0]`. Null when the factory has no multi-leg
-       *  route (player-set single rally) — clients then draw `rally`
-       *  alone. Used purely for the rally-line VISUALIZATION so players
-       *  can see the patrol legs produced units will follow. */
-      route: { pos: Vec2; posZ: number | null; type: string }[] | null;
-    } | null;
+    factory: NetworkServerSnapshotFactory | null;
   } | null;
 };
 

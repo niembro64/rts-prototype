@@ -860,7 +860,6 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitDuck',
     'unitAlbatros',
     'unitQueenBee',
-    'unitQueenTick',
     'unitTransport',
   ]);
   assertContract(

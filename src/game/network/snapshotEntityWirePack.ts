@@ -68,6 +68,7 @@ function createEmptyUnitSub(): UnitSub {
     wantCloak: null,
     builderPriorityLow: null,
     carrierSpawnEnabled: null,
+    factory: null,
     cloaked: null,
     isCommander: null,
     buildTargetId: null,
@@ -409,6 +410,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.wantCloak = null;
     u.builderPriorityLow = null;
     u.carrierSpawnEnabled = null;
+    u.factory = null;
     u.cloaked = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -632,6 +634,7 @@ export function normalizeRawWireEntity(e: NetworkServerSnapshotEntity): NetworkS
   if (e.rotation === undefined) e.rotation = null;
   if (e.changedFields === undefined) e.changedFields = null;
   if (e.unit === undefined) e.unit = null;
+  if (e.unit !== null && e.unit.factory === undefined) e.unit.factory = null;
   if (e.building === undefined) e.building = null;
   return e;
 }

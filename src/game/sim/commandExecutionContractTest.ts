@@ -1047,7 +1047,7 @@ export function runCommandExecutionContractTest(): void {
   const airTarget = bomberTargetWorld.createUnitFromBlueprint(160, 80, 2, 'unitTransport', {
     allocateSubEntityIds: false,
   });
-  const flyingAirTarget = bomberTargetWorld.createUnitFromBlueprint(200, 80, 2, 'unitQueenTick', {
+  const flyingAirTarget = bomberTargetWorld.createUnitFromBlueprint(200, 80, 2, 'unitQueenBee', {
     allocateSubEntityIds: false,
   });
   const groundTarget = bomberTargetWorld.createUnitFromBlueprint(160, 128, 2, 'unitJackal', {

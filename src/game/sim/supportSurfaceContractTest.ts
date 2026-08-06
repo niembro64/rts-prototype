@@ -33,9 +33,9 @@ import {
 } from './factoryProduction';
 import {
   getFactoryProductionHoldVisual,
-  getFactoryProductionPylonVisual,
   productionHoldRingRadiusForProducedUnit,
 } from './factoryProductionHold';
+import { MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED } from './factoryProductionLaunch';
 import { applyEntityHoldPose } from './entityHolds';
 import { commanderAbilitiesSystem } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
@@ -325,6 +325,10 @@ function factoryRepeatProduction(entity: Entity): boolean | undefined {
 
 function factoryResumeRepeatUnitBlueprintId(entity: Entity): string | null | undefined {
   return entity.factory?.resumeRepeatUnitBlueprintId;
+}
+
+function factoryProductionQueueLength(entity: Entity): number | undefined {
+  return entity.factory?.productionQueue.length;
 }
 
 function firstBlueprintIdByLocomotionType(): Map<UnitLocomotion['type'], string> {
@@ -996,37 +1000,149 @@ function assertQueenProductionRingMountContract(): void {
     const world = new WorldState(1240, 512, 512);
     const queenEntity = world.createUnitFromBlueprint(620, 256, TEST_PLAYER_ID, queenId);
     const queen = getUnitBlueprint(queenId);
-    const spawnMount = queen.turrets.find((mount) => mount.producedBlueprintId === producedId);
-    assertContract(spawnMount !== undefined, `${queenId} must have a spawn mount for ${producedId}`);
-    const constructionPylons = queen.turrets.filter((mount) =>
-      mount.turretBlueprintId === 'turretResourcePylonConstructionMetal' ||
-      mount.turretBlueprintId === 'turretResourcePylonConstructionEnergy');
-    assertContract(constructionPylons.length === 2, `${queenId} must have two production-ring pylons`);
+    const emitterPoint = queen.workEmitter?.points[0];
+    assertContract(emitterPoint !== undefined, `${queenId} must author a production emitter point`);
+    assertNear(emitterPoint.x, 0, `${queenId} production emitter must be centered on x`);
+    assertNear(emitterPoint.y, 0, `${queenId} production emitter must be centered on y`);
+    assertContract(emitterPoint.z > 1, `${queenId} production emitter must be above its body`);
     const holdVisual = getFactoryProductionHoldVisual(queenEntity, producedId);
     assertContract(holdVisual !== null, `${queenId} must have a production-ring visual`);
-    assertContract(holdVisual.ringOrientation === 'forward', `${queenId} production ring must face forward`);
-    assertNear(spawnMount.mount.y, 0, `${queenId} spawn mount must stay on airborne roll-axis y`);
-    assertNear(spawnMount.mount.z, 0, `${queenId} spawn mount must stay on airborne roll-axis z`);
-    const expectedRing = productionHoldRingRadiusForProducedUnit(producedId);
-    for (let i = 0; i < constructionPylons.length; i++) {
-      const pylon = constructionPylons[i];
-      const turretIndex = queen.turrets.indexOf(pylon);
-      const pylonVisual = getFactoryProductionPylonVisual(queenEntity, producedId, turretIndex);
-      assertContract(pylonVisual !== null, `${queenId} pylon ${i} must have production-ring visual placement`);
-      assertNear(pylon.mount.x, spawnMount.mount.x, `${queenId} pylon x must share the ring center`);
-      assertNear(pylon.mount.y, 0, `${queenId} pylon mount must stay on airborne roll-axis y`);
-      assertNear(pylon.mount.z, 0, `${queenId} pylon mount must stay on airborne roll-axis z`);
-      assertNear(
-        pylonVisual.localBaseZ,
-        queen.supportPointOffsetZ,
-        `${queenId} pylon visual must sit at queen support-point offset`,
-      );
-      assertNear(
-        Math.abs(pylonVisual.localOffsetY - spawnMount.mount.y * queen.radius.other),
-        expectedRing,
-        `${queenId} pylon visual must sit on the production ring radius`,
-      );
-    }
+    assertContract(
+      holdVisual.ringOrientation === 'horizontal',
+      `${queenId} production ring must point up`,
+    );
+    assertNear(holdVisual.localOffsetX, 0, `${queenId} production ring must be centered on x`);
+    assertNear(holdVisual.localOffsetY, 0, `${queenId} production ring must be centered on y`);
+    assertContract(
+      holdVisual.localBaseZ > queen.supportPointOffsetZ + queen.radius.other,
+      `${queenId} production ring must sit above the queen body`,
+    );
+    assertNear(
+      holdVisual.ringRadius,
+      productionHoldRingRadiusForProducedUnit(producedId),
+      `${queenId} production ring must fit ${producedId}`,
+    );
+  }
+}
+
+function assertQueenFactoryProductionContract(): void {
+  const cases = [
+    { queenId: 'unitQueenBee', producedId: 'unitBee' },
+    { queenId: 'unitQueenTick', producedId: 'unitTick' },
+  ] as const;
+  for (const { queenId, producedId } of cases) {
+    const world = new WorldState(1250, 1024, 1024);
+    const queen = world.createUnitFromBlueprint(512, 512, TEST_PLAYER_ID, queenId);
+    world.addEntity(queen);
+    assertContract(queen.unit !== null, `${queenId} fixture must create a unit`);
+    const factory = queen.factory;
+    assertContract(factory !== null, `${queenId} must initialize a mobile factory`);
+    assertContract(
+      factory.selectedUnitBlueprintId === producedId &&
+        factory.productionQueue.length === 0 &&
+        factory.repeatProduction === true &&
+        factory.isProducing === true,
+      `${queenId} must default to continuously building its authored child with Repeat On`,
+    );
+    const forceAccumulator = new ForceAccumulator();
+    const defaultSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
+    assertContract(
+      defaultSpawned.length === 1 && defaultSpawned[0].unit?.unitBlueprintId === producedId,
+      `${queenId} must begin its first authored child without a production command`,
+    );
+    assertContract(
+      factoryProductionSystem.stopProduction(queen, world),
+      `${queenId} default repeat workflow must remain stoppable`,
+    );
+
+    assertContract(
+      factoryProductionSystem.selectUnit(queen, producedId, world, false, 3),
+      `${queenId} must accept a finite three-unit production request`,
+    );
+    assertContract(
+      factory.selectedUnitBlueprintId === producedId &&
+        factory.productionQueue.join(',') === `${producedId},${producedId}` &&
+        factoryRepeatProduction(queen) === false,
+      `${queenId} must represent finite production as one active item plus a bounded queue`,
+    );
+
+    const finiteSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
+    assertContract(
+      finiteSpawned.length === 1 && finiteSpawned[0].unit?.unitBlueprintId === producedId,
+      `${queenId} must spawn its authored child from the shared production workflow`,
+    );
+    const finiteShell = finiteSpawned[0];
+    assertContract(finiteShell.buildable !== null, `${queenId} finite child must begin as a nanoframe`);
+    assertNear(finiteShell.transform.x, queen.transform.x, `${queenId} child hold must be centered on x`);
+    assertNear(finiteShell.transform.y, queen.transform.y, `${queenId} child hold must be centered on y`);
+    assertContract(
+      finiteShell.transform.z > queen.transform.z + queen.unit.radius.other,
+      `${queenId} child hold must be above the queen body`,
+    );
+    finiteShell.buildable.isComplete = true;
+    const finiteCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
+    assertContract(
+      finiteCompleted.length === 1 && finiteCompleted[0] === finiteShell,
+      `${queenId} must activate its completed finite child`,
+    );
+    const finiteChild = assertUnitActionCount(
+      finiteShell,
+      1,
+      `${queenId} child must receive one automatic Guard order`,
+    );
+    assertContract(
+      finiteChild.actions[0].type === 'guard' && finiteChild.actions[0].targetId === queen.id,
+      `${queenId} child Guard order must target the producing queen`,
+    );
+    assertNear(finiteChild.velocityX, 0, `${queenId} completed child must launch with no x velocity`);
+    assertNear(finiteChild.velocityY, 0, `${queenId} completed child must launch with no y velocity`);
+    assertNear(
+      finiteChild.velocityZ,
+      MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED,
+      `${queenId} completed child must launch straight up at the mobile-factory launch speed`,
+    );
+    assertContract(
+      factory.selectedUnitBlueprintId === producedId &&
+        factoryProductionQueueLength(queen) === 1 &&
+        factoryRepeatProduction(queen) === false,
+      `${queenId} must advance one item through its finite queue after completion`,
+    );
+
+    assertContract(
+      factoryProductionSystem.stopProduction(queen, world),
+      `${queenId} finite queue must support the shared Stop Production command`,
+    );
+    assertContract(
+      factoryProductionSystem.selectUnit(queen, producedId, world, true),
+      `${queenId} must accept Repeat On for its authored child`,
+    );
+    const repeatSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
+    assertContract(repeatSpawned.length === 1, `${queenId} Repeat On must spawn a child`);
+    const repeatShell = repeatSpawned[0];
+    assertContract(repeatShell.buildable !== null, `${queenId} repeat child must begin as a nanoframe`);
+    repeatShell.buildable.isComplete = true;
+    const repeatCompleted = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
+    assertContract(
+      repeatCompleted.length === 1 &&
+        factory.selectedUnitBlueprintId === producedId &&
+        factoryRepeatProduction(queen) === true,
+      `${queenId} Repeat On must retain its selected child after completion`,
+    );
+    const repeatChild = assertUnitActionCount(
+      repeatShell,
+      1,
+      `${queenId} repeated child must receive one automatic Guard order`,
+    );
+    assertContract(
+      repeatChild.actions[0].type === 'guard' && repeatChild.actions[0].targetId === queen.id,
+      `${queenId} repeated child Guard order must target the producing queen`,
+    );
+    const nextRepeatSpawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
+    assertContract(
+      nextRepeatSpawned.length === 1 && nextRepeatSpawned[0].unit?.unitBlueprintId === producedId,
+      `${queenId} Repeat On must begin the next child automatically`,
+    );
+    factoryProductionSystem.stopProduction(queen, world);
   }
 }
 
@@ -1188,6 +1304,7 @@ export function runSupportSurfaceContractTest(): void {
     assertUnitSupportContract();
     assertRenderLocomotionContract();
     assertFactoryShellContract();
+    assertQueenFactoryProductionContract();
     assertQueenProductionRingMountContract();
     assertFactoryGuardDefaultContract();
     assertFabricatorTerrainIndependentPlacementContract();
@@ -1197,4 +1314,11 @@ export function runSupportSurfaceContractTest(): void {
 
 export function runFabricatorProductionRingContractTest(): void {
   withKnownSupportSurfaceTerrain(assertFactoryShellContract);
+}
+
+export function runQueenFactoryProductionContractTest(): void {
+  withKnownSupportSurfaceTerrain(() => {
+    assertQueenProductionRingMountContract();
+    assertQueenFactoryProductionContract();
+  });
 }

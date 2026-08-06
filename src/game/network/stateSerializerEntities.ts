@@ -602,6 +602,86 @@ function createPooledEntry(): PooledEntry {
   };
 }
 
+function writeFactorySnapshotToPool(
+  poolEntry: PooledEntry,
+  entity: Entity,
+  world: WorldState,
+  isFull: boolean,
+  canReferenceEntityId: (id: number | undefined) => boolean,
+): FactorySub {
+  const factory = entity.factory!;
+  const snapshot = poolEntry.factorySub;
+  snapshot.selectedUnitBlueprintCode = factory.selectedUnitBlueprintId === null
+    ? null
+    : unitBlueprintIdToCode(factory.selectedUnitBlueprintId);
+
+  if (factory.currentShellId !== null) {
+    const shell = world.getEntity(factory.currentShellId);
+    snapshot.progress = shell !== undefined && shell.buildable !== null
+      ? getBuildFraction(shell.buildable)
+      : factory.currentBuildProgress;
+  } else {
+    snapshot.progress = factory.currentBuildProgress;
+  }
+  snapshot.producing = factory.isProducing;
+  snapshot.repeat = factory.repeatProduction;
+  snapshot.paused = factory.paused === true
+    ? true
+    : isFull
+      ? undefined
+      : false;
+  snapshot.moveState = factory.moveState !== 'holdPosition'
+    ? factory.moveState
+    : isFull
+      ? undefined
+      : 'holdPosition';
+  snapshot.airIdleState = factory.airIdleState !== 'land'
+    ? factory.airIdleState
+    : isFull
+      ? undefined
+      : 'land';
+  snapshot.queue = encodeFactoryProductionQueue(factory.productionQueue);
+  snapshot.quotas = encodeFactoryProductionQuotas(factory.productionQuotas);
+  snapshot.quotaCounts = encodeFactoryProductionQuotaCounts(
+    factory.productionQuotas,
+    factory.productionQuotaCounts,
+  );
+  snapshot.energyRate = factory.energyRateFraction;
+  snapshot.metalRate = factory.metalRateFraction;
+  snapshot.guardTargetId = canReferenceEntityId(factory.guardTargetId ?? undefined)
+    ? factory.guardTargetId
+    : null;
+  snapshot.lowPriority = factory.lowPriority === true
+    ? true
+    : isFull
+      ? undefined
+      : false;
+
+  poolEntry.rally.pos.x = factory.rallyX;
+  poolEntry.rally.pos.y = factory.rallyY;
+  poolEntry.rally.posZ = factory.rallyZ;
+  poolEntry.rally.type = factory.rallyType;
+  snapshot.rally = poolEntry.rally;
+
+  const defaultWaypoints = factory.defaultWaypoints;
+  if (defaultWaypoints !== null && defaultWaypoints.length > 1) {
+    const route = poolEntry.route;
+    route.length = defaultWaypoints.length;
+    for (let w = 0; w < defaultWaypoints.length; w++) {
+      const src = defaultWaypoints[w];
+      const dst = route[w] ?? (route[w] = createWaypointDto());
+      dst.pos.x = src.x;
+      dst.pos.y = src.y;
+      dst.posZ = src.z;
+      dst.type = src.type === 'guard' ? 'move' : src.type;
+    }
+    snapshot.route = route;
+  } else {
+    snapshot.route = null;
+  }
+  return snapshot;
+}
+
 const pool: PooledEntry[] = [];
 let poolIndex = 0;
 
@@ -734,9 +814,11 @@ export function unitFactoryPrivateSnapshotRequiresDto(
   if (entity.type !== 'unit' || entity.factory === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  // Mobile unit factories currently expose one private command bit,
-  // carrierSpawnEnabled, which rides the typed unit row.
-  return false;
+  // The compact unit row carries the carrier ON/OFF bit, but queen factories
+  // now expose the complete finite queue / Repeat workflow. Preserve that
+  // private variable-length state through the shared factory DTO until the
+  // typed row grows a generic factory side table.
+  return true;
 }
 
 export function entityPrivateSnapshotRequiresDto(
@@ -1574,6 +1656,7 @@ export function serializeEntitySnapshot(
       u.wantCloak = null;
       u.builderPriorityLow = null;
       u.carrierSpawnEnabled = null;
+      u.factory = null;
       u.cloaked = null;
 
       if (isFull) {
@@ -1693,6 +1776,13 @@ export function serializeEntitySnapshot(
           : isFull
             ? null
             : true;
+        u.factory = writeFactorySnapshotToPool(
+          poolEntry,
+          entity,
+          world,
+          isFull,
+          canReferenceEntityId,
+        );
       }
 
       u.turrets = null;
@@ -1797,84 +1887,18 @@ export function serializeEntitySnapshot(
       }
 
       b.factory = null;
-      if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_FACTORY))) {
-        if (entity.factory) {
-          const f = poolEntry.factorySub;
-          b.factory = f;
-
-          f.selectedUnitBlueprintCode = entity.factory.selectedUnitBlueprintId === null
-            ? null
-            : unitBlueprintIdToCode(entity.factory.selectedUnitBlueprintId);
-
-          if (entity.factory.currentShellId != null) {
-            const shell = world.getEntity(entity.factory.currentShellId);
-            f.progress = shell !== undefined && shell.buildable !== null
-              ? getBuildFraction(shell.buildable)
-              : entity.factory.currentBuildProgress;
-          } else {
-            f.progress = 0;
-          }
-          f.producing = entity.factory.isProducing;
-          f.repeat = entity.factory.repeatProduction;
-          f.paused = entity.factory.paused === true
-            ? true
-            : isFull
-              ? undefined
-              : false;
-          f.moveState = entity.factory.moveState !== 'holdPosition'
-            ? entity.factory.moveState
-            : isFull
-              ? undefined
-              : 'holdPosition';
-          f.airIdleState = entity.factory.airIdleState !== 'land'
-            ? entity.factory.airIdleState
-            : isFull
-              ? undefined
-              : 'land';
-          f.queue = encodeFactoryProductionQueue(entity.factory.productionQueue);
-          f.quotas = encodeFactoryProductionQuotas(entity.factory.productionQuotas);
-          f.quotaCounts = encodeFactoryProductionQuotaCounts(
-            entity.factory.productionQuotas,
-            entity.factory.productionQuotaCounts,
-          );
-          f.energyRate = entity.factory.energyRateFraction;
-          f.metalRate = entity.factory.metalRateFraction;
-          f.guardTargetId = canReferenceEntityId(entity.factory.guardTargetId ?? undefined)
-            ? entity.factory.guardTargetId
-            : null;
-          f.lowPriority = entity.factory.lowPriority === true
-            ? true
-            : isFull
-              ? undefined
-              : false;
-
-          poolEntry.rally.pos.x = entity.factory.rallyX;
-          poolEntry.rally.pos.y = entity.factory.rallyY;
-          poolEntry.rally.posZ = entity.factory.rallyZ;
-          poolEntry.rally.type = entity.factory.rallyType;
-          f.rally = poolEntry.rally;
-
-          // Multi-leg default route (demo fabricators: fight leg + patrol
-          // loop). Only the VISUALIZATION needs it, so it rides the
-          // snapshot solely when the factory has more than the single
-          // rally point. `null` keeps the client drawing `rally` alone.
-          const defaultWaypoints = entity.factory.defaultWaypoints;
-          if (defaultWaypoints !== null && defaultWaypoints.length > 1) {
-            const route = poolEntry.route;
-            route.length = defaultWaypoints.length;
-            for (let w = 0; w < defaultWaypoints.length; w++) {
-              const src = defaultWaypoints[w];
-              const dst = route[w] ?? (route[w] = createWaypointDto());
-              dst.pos.x = src.x;
-              dst.pos.y = src.y;
-              dst.posZ = src.z;
-              dst.type = src.type === 'guard' ? 'move' : src.type;
-            }
-            f.route = route;
-          } else {
-            f.route = null;
-          }
-        }
+      if (
+        canSeePrivateDetails &&
+        entity.factory !== null &&
+        (isFull || (changedFields! & ENTITY_CHANGED_FACTORY))
+      ) {
+        b.factory = writeFactorySnapshotToPool(
+          poolEntry,
+          entity,
+          world,
+          isFull,
+          canReferenceEntityId,
+        );
       }
     }
   }
@@ -1887,13 +1911,17 @@ export function serializeEntitySnapshot(
   return ne;
 }
 
-export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
+export function canUseTypedDeltaPlaceholder(
+  entity: Entity,
+  changedFields: number | undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+): boolean {
   if (changedFields === undefined || changedFields === 0) return false;
   const hasBasicTransformFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
   if (entity.type === 'unit' && entity.unit !== null) {
     if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
-    if (unitBuilderPrivateSnapshotRequiresDto(entity, changedFields)) return false;
-    if (unitFactoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
+    if (unitBuilderPrivateSnapshotRequiresDto(entity, changedFields, visibility)) return false;
+    if (unitFactoryPrivateSnapshotRequiresDto(entity, changedFields, visibility)) return false;
     if ((changedFields & ~TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS) !== 0) return false;
     const orientationTriggersTypedRow = entity.unit.orientation !== null &&
       (changedFields & (ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0;
@@ -1903,7 +1931,7 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
   }
   if ((entity.type === 'building') && entity.building !== null) {
     if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
-    if (factoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
+    if (factoryPrivateSnapshotRequiresDto(entity, changedFields, visibility)) return false;
     return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&
       ((changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0 ||
         hasBasicTransformFields);
@@ -1929,7 +1957,7 @@ export function serializeEntityDeltaSnapshot(
 ): NetworkServerSnapshotEntity | undefined | null {
   if (
     changedFields !== undefined &&
-    canUseTypedDeltaPlaceholder(entity, changedFields)
+    canUseTypedDeltaPlaceholder(entity, changedFields, visibility)
   ) {
     return serializeTypedDeltaPlaceholder(entity, changedFields, world, visibility);
   }

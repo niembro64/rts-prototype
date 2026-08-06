@@ -579,6 +579,7 @@ function hasGatherWaitAction(actions: readonly NetworkServerSnapshotAction[] | n
 
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
+    unit.factory !== null ||
     (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
     (unit.radius !== null && (
       !Number.isFinite(unit.radius.other) ||

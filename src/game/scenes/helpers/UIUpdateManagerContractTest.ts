@@ -1,6 +1,7 @@
 import type { Entity, PlayerId, StructureBlueprintId } from '../../sim/types';
 import type { UIEntitySource } from '../../../types/ui';
 import { WorldState } from '../../sim/WorldState';
+import { factoryProductionSystem } from '../../sim/factoryProduction';
 import { buildSelectionInfo } from './UIUpdateManager';
 
 function assertContract(condition: boolean, message: string): void {
@@ -96,6 +97,9 @@ export function runUIUpdateManagerContractTest(): void {
   const eagle = world.createUnitFromBlueprint(160, 64, 1, 'unitEagle', {
     allocateSubEntityIds: false,
   });
+  const queenBee = world.createUnitFromBlueprint(192, 64, 1, 'unitQueenBee', {
+    allocateSubEntityIds: false,
+  });
 
   const constructionDroneSelection = buildSelectionInfo(
     entitySourceForSelection([constructionDrone], []),
@@ -139,12 +143,35 @@ export function runUIUpdateManagerContractTest(): void {
     'unitEagle/armfig fighter analogue must expose BAR weapon controls for air-target attacks',
   );
 
+  assertContract(
+    factoryProductionSystem.selectUnit(queenBee, 'unitBee', world, false, 3),
+    'Queen Bee UI fixture must accept a finite three-Bee queue',
+  );
+  const queenBeeSelection = buildSelectionInfo(
+    entitySourceForSelection([queenBee], []),
+    undefined,
+  );
+  assertContract(
+    queenBeeSelection.hasFactory &&
+      queenBeeSelection.factoryHostKind === 'unit' &&
+      queenBeeSelection.factoryDisplayName === 'Queen Bee' &&
+      queenBeeSelection.factoryId === queenBee.id &&
+      queenBeeSelection.factoryAllowedUnitBlueprintIds.join(',') === 'unitBee' &&
+      queenBeeSelection.factorySelectedUnit?.unitBlueprintId === 'unitBee' &&
+      queenBeeSelection.factoryProductionQueue?.length === 2 &&
+      queenBeeSelection.factoryProductionQueue.every((item) => item.unitBlueprintId === 'unitBee') &&
+      queenBeeSelection.factoryRepeatsProduction === false,
+    'selected Queens must expose the shared finite queue and Repeat state for their single authored child',
+  );
+
   const fabricatorSelection = buildSelectionInfo(
     entitySourceForSelection([], [factoryBuildingEntity(10, 'towerFabricator')]),
     undefined,
   );
   assertContract(
     fabricatorSelection.hasFactory &&
+      fabricatorSelection.factoryHostKind === 'building' &&
+      fabricatorSelection.factoryDisplayName === 'Fabricator' &&
       fabricatorSelection.hasFactoryGuardControl &&
       fabricatorSelection.hasFactoryAirIdleControl &&
       fabricatorSelection.factoryAirIdleState === 'land' &&

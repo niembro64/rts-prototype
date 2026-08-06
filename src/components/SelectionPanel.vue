@@ -89,6 +89,14 @@ const hasMixedEntityTypes = computed(() => selectedEntityTypeCount.value > 1);
 // selected together.
 const showUnitActions = computed(() => props.selection.unitCount > 0);
 const showBuildingActions = computed(() => props.selection.buildingCount > 0);
+const showFactoryActions = computed(() =>
+  props.selection.hasFactory &&
+  props.selection.factoryId !== undefined &&
+  (
+    (props.selection.factoryHostKind === 'unit' && showUnitActions.value) ||
+    (props.selection.factoryHostKind === 'building' && showBuildingActions.value)
+  ),
+);
 const showCombatActions = computed(() => props.selection.hasFireControl);
 const isBarHotkeyPreset = computed(() => isBarCommandHotkeyPreset(props.hotkeyPreset));
 const showBarGridBuildCategories = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
@@ -314,7 +322,7 @@ const barOrderCommandCellCount = computed(() => {
     if (showTowerTargetClearButton.value) count += 1;
   }
 
-  if (props.selection.hasFactory && props.selection.factoryId && showBuildingActions.value) {
+  if (showFactoryActions.value) {
     if (showPrototypeOnly) count += 2; // prototype factory status spans two cells
     count += 3; // repeat, wait, stop production
     if (isBarHotkeyPreset.value && props.selection.hasMoveStateControl) count += 1;
@@ -1337,7 +1345,7 @@ function prefetchBuildButtonThumbnails(): void {
     }
   }
 
-  if (props.selection.hasFactory && showBuildingActions.value) {
+  if (showFactoryActions.value) {
     for (const option of unitOptions.value) {
       void requestEntityThumbnail('unit', option.unitBlueprintId as LoadingEntityBlueprintId);
     }
@@ -1361,7 +1369,7 @@ watch(
     buildingOptions.value.map((option) => option.buildingBlueprintId).join('|'),
     props.selection.selectedBuilderTypes.map((builderType) => builderType.unitBlueprintId).join('|'),
     props.selection.hasFactory,
-    showBuildingActions.value,
+    showFactoryActions.value,
     unitOptions.value.map((option) => option.unitBlueprintId).join('|'),
     props.selection.selectedEntityInfo?.blueprintKind ?? '',
     props.selection.selectedEntityInfo?.blueprintId ?? '',
@@ -1584,12 +1592,12 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     :style="selectionPanelStyle"
   >
     <!-- Selection header. The header reflects the host kind and mounted
-         capability: commanders read as Commander, factory buildings as
-         Fabricator, other static hosts as Building, otherwise N units. -->
+         capability: commanders read as Commander, producers use their host
+         name, other static hosts as Building, otherwise N units. -->
     <div v-if="showPrototypeOnlyCommandButtons" class="panel-header">
       <div class="selection-title">
         <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
-        <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
+        <span v-else-if="selection.hasFactory" class="unit-type factory">{{ selection.factoryDisplayName ?? 'Factory' }}</span>
         <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0" class="unit-type">
           {{ selection.buildingCount }} Building{{ selection.buildingCount > 1 ? 's' : '' }}
         </span>
@@ -2679,7 +2687,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Factory production control -->
-    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions" class="button-group">
+    <div v-if="showFactoryActions" class="button-group">
       <div class="group-label">Factory</div>
       <div
         v-if="showPrototypeOnlyCommandButtons"
@@ -2901,7 +2909,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions && showPrototypeOnlyCommandButtons" class="button-group factory-preset-group">
+    <div v-if="showFactoryActions && showPrototypeOnlyCommandButtons" class="button-group factory-preset-group">
       <div class="group-label">Presets</div>
       <div class="factory-preset-grid">
         <button
@@ -2986,9 +2994,10 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </button>
     </div>
 
-    <!-- Factory production (for fabricator buildings). BAR labs use a
-         fixed 3x4 unit grid with pages instead of separate long rows. -->
-    <div v-if="selection.hasFactory && selection.factoryId && showBuildingActions" class="button-group bar-menu-group">
+    <!-- Shared factory production for static Fabricators and mobile Queens.
+         BAR labs use a fixed 3x4 unit grid with pages instead of separate
+         long rows. -->
+    <div v-if="showFactoryActions" class="button-group bar-menu-group">
       <div class="group-label">Produce</div>
       <div class="bar-grid-menu">
         <div class="bar-option-grid">

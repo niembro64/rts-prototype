@@ -886,9 +886,17 @@ export function buildSelectionInfo(
     }
   }
 
-  // Factory affordances come from the building's factory component.
-  let factory: typeof selectedBuildings[number] | undefined;
+  // Factory affordances come from the host's factory component. Mobile queen
+  // factories and static Fabricators intentionally share this one workflow.
+  let factory: Entity | undefined;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (unit.factory === null) continue;
+    factory = unit;
+    break;
+  }
   for (let i = 0; i < selectedBuildings.length; i++) {
+    if (factory !== undefined) break;
     const building = selectedBuildings[i];
     if (building.factory === null) continue;
     factory = building;
@@ -1000,6 +1008,16 @@ export function buildSelectionInfo(
     }
     factoryGuardTargetId = f.guardTargetId;
   }
+  const factoryHostKind: SelectionInfo['factoryHostKind'] = factory === undefined
+    ? null
+    : factory.unit !== null
+      ? 'unit'
+      : 'building';
+  const factoryDisplayName = factory === undefined
+    ? null
+    : factory.unit !== null
+      ? unitLabel(factory.unit.unitBlueprintId)
+      : 'Fabricator';
 
   return {
     unitCount: selectedUnits.length,
@@ -1086,6 +1104,8 @@ export function buildSelectionInfo(
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),
     selectedEntityInfo: buildSelectionEntityInfo(selectedUnits, selectedBuildings),
     hasFactory: factory !== undefined,
+    factoryHostKind,
+    factoryDisplayName,
     factoryAllowedUnitBlueprintIds: getFactoryAllowedUnitBlueprintIds(factory),
     factoryId: factory?.id,
     factoryPresetOverlayVisible: inputState?.factoryPresetOverlayVisible ?? false,

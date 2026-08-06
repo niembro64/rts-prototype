@@ -84,6 +84,58 @@ import {
   unitMoveStateFromWireCode,
 } from '../unitCombatStateWireCodes';
 
+type NetworkFactorySnapshot = NonNullable<
+  NonNullable<NetworkServerSnapshotEntity['unit']>['factory']
+>;
+
+function createRuntimeFactoryFromNetwork(
+  factory: NetworkFactorySnapshot,
+  carrierSpawnEnabled: boolean,
+  defaultMoveState: 'maneuver' | 'holdPosition' | 'roam',
+  defaultAirIdleState: 'land' | 'fly',
+): NonNullable<Entity['factory']> {
+  const selectedUnitBlueprintId = factory.selectedUnitBlueprintCode === null
+    ? null
+    : codeToUnitBlueprintId(factory.selectedUnitBlueprintCode);
+  let defaultWaypoints: FactoryDefaultWaypoint[] | null = null;
+  if (factory.route !== null && factory.route !== undefined) {
+    defaultWaypoints = new Array<FactoryDefaultWaypoint>(factory.route.length);
+    for (let i = 0; i < factory.route.length; i++) {
+      const waypoint = factory.route[i];
+      defaultWaypoints[i] = {
+        x: waypoint.pos.x,
+        y: waypoint.pos.y,
+        z: waypoint.posZ,
+        type: waypoint.type as 'move' | 'fight' | 'patrol',
+      };
+    }
+  }
+  return {
+    selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
+    lowPriority: factory.lowPriority === true,
+    carrierSpawnEnabled,
+    moveState: factory.moveState ?? defaultMoveState,
+    airIdleState: factory.airIdleState ?? defaultAirIdleState,
+    repeatProduction: factory.repeat !== false,
+    paused: factory.paused === true,
+    productionQueue: decodeFactoryProductionQueue(factory.queue),
+    productionQuotas: decodeFactoryProductionQuotas(factory.quotas),
+    productionQuotaCounts: decodeFactoryProductionQuotaCounts(factory.quotaCounts),
+    resumeRepeatUnitBlueprintId: null,
+    currentShellId: null,
+    currentBuildProgress: factory.progress ?? 0,
+    defaultWaypoints,
+    rallyX: factory.rally.pos.x,
+    rallyY: factory.rally.pos.y,
+    rallyZ: factory.rally.posZ,
+    rallyType: factory.rally.type as 'move' | 'fight' | 'patrol',
+    guardTargetId: factory.guardTargetId ?? null,
+    isProducing: factory.producing ?? false,
+    energyRateFraction: factory.energyRate ?? 0,
+    metalRateFraction: factory.metalRate ?? 0,
+  };
+}
+
 function orientationFromYaw(yaw: number): { x: number; y: number; z: number; w: number } {
   const half = (Number.isFinite(yaw) ? yaw : 0) * 0.5;
   return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
@@ -562,30 +614,33 @@ function createUnitFromNetwork(
     const producedUnitBlueprintId =
       unitBlueprint.factoryProducedUnitBlueprintId ?? null;
     if (producedUnitBlueprintId !== null) {
-      entity.factory = {
-        selectedUnitBlueprintId: producedUnitBlueprintId,
-        lowPriority: false,
-        carrierSpawnEnabled: u?.carrierSpawnEnabled !== false,
-        moveState: 'maneuver',
-        airIdleState: 'fly',
-        repeatProduction: true,
-        paused: false,
-        productionQueue: [],
-        productionQuotas: {},
-        productionQuotaCounts: {},
-        resumeRepeatUnitBlueprintId: null,
-        currentShellId: null,
-        currentBuildProgress: 0,
-        defaultWaypoints: null,
-        rallyX: x,
-        rallyY: y,
-        rallyZ: null,
-        rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-        guardTargetId: null,
-        isProducing: u?.carrierSpawnEnabled !== false,
-        energyRateFraction: 0,
-        metalRateFraction: 0,
-      };
+      const carrierSpawnEnabled = u?.carrierSpawnEnabled !== false;
+      entity.factory = u?.factory !== null && u?.factory !== undefined
+        ? createRuntimeFactoryFromNetwork(u.factory, carrierSpawnEnabled, 'maneuver', 'fly')
+        : {
+            selectedUnitBlueprintId: producedUnitBlueprintId,
+            lowPriority: false,
+            carrierSpawnEnabled,
+            moveState: 'maneuver',
+            airIdleState: 'fly',
+            repeatProduction: true,
+            paused: false,
+            productionQueue: [],
+            productionQuotas: {},
+            productionQuotaCounts: {},
+            resumeRepeatUnitBlueprintId: null,
+            currentShellId: null,
+            currentBuildProgress: 0,
+            defaultWaypoints: null,
+            rallyX: x,
+            rallyY: y,
+            rallyZ: null,
+            rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+            guardTargetId: null,
+            isProducing: carrierSpawnEnabled,
+            energyRateFraction: 0,
+            metalRateFraction: 0,
+          };
     }
   }
   entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
@@ -787,10 +842,13 @@ function createUnitFromTypedFullWireRow(
     const producedUnitBlueprintId =
       unitBlueprint.factoryProducedUnitBlueprintId ?? null;
     if (producedUnitBlueprintId !== null) {
+      const carrierSpawnEnabled = values[base + 64] !== 0
+        ? values[base + 65] !== 0
+        : true;
       entity.factory = {
         selectedUnitBlueprintId: producedUnitBlueprintId,
         lowPriority: false,
-        carrierSpawnEnabled: values[base + 64] !== 0 ? values[base + 65] !== 0 : true,
+        carrierSpawnEnabled,
         moveState: 'maneuver',
         airIdleState: 'fly',
         repeatProduction: true,
@@ -807,7 +865,7 @@ function createUnitFromTypedFullWireRow(
         rallyZ: null,
         rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
         guardTargetId: null,
-        isProducing: values[base + 64] !== 0 ? values[base + 65] !== 0 : true,
+        isProducing: carrierSpawnEnabled,
         energyRateFraction: 0,
         metalRateFraction: 0,
       };
@@ -925,53 +983,7 @@ function createBuildingFromNetwork(
 
   const f = b.factory;
   if (f) {
-    const selectedUnitBlueprintId = f.selectedUnitBlueprintCode === null
-      ? null
-      : codeToUnitBlueprintId(f.selectedUnitBlueprintCode);
-    let defaultWaypoints: FactoryDefaultWaypoint[] | null = null;
-    if (f.route !== null && f.route !== undefined) {
-      defaultWaypoints = new Array<FactoryDefaultWaypoint>(f.route.length);
-      for (let i = 0; i < f.route.length; i++) {
-        const waypoint = f.route[i];
-        defaultWaypoints[i] = {
-          x: waypoint.pos.x,
-          y: waypoint.pos.y,
-          z: waypoint.posZ,
-          type: waypoint.type as 'move' | 'fight' | 'patrol',
-        };
-      }
-    }
-    entity.factory = {
-      selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
-      lowPriority: f.lowPriority === true,
-      carrierSpawnEnabled: true,
-      moveState: f.moveState ?? 'holdPosition',
-      airIdleState: f.airIdleState ?? 'land',
-      repeatProduction: f.repeat !== false,
-      paused: f.paused === true,
-      productionQueue: decodeFactoryProductionQueue(f.queue),
-      productionQuotas: decodeFactoryProductionQuotas(f.quotas),
-      productionQuotaCounts: decodeFactoryProductionQuotaCounts(f.quotaCounts),
-      resumeRepeatUnitBlueprintId: null,
-      // Client-side currentShellId stays null — the actual shell entity
-      // is in the world separately. currentBuildProgress mirrors the
-      // wire's avg-fill so the UI can draw the production progress
-      // without looking up the shell.
-      currentShellId: null,
-      currentBuildProgress: f.progress ?? 0,
-      // Visualization-only mirror of the server's multi-leg route so the
-      // rally line can draw the fight leg + patrol loop produced units
-      // follow. Null falls back to drawing the single rally point.
-      defaultWaypoints,
-      rallyX: f.rally.pos.x,
-      rallyY: f.rally.pos.y,
-      rallyZ: f.rally.posZ,
-      rallyType: f.rally.type as 'move' | 'fight' | 'patrol',
-      guardTargetId: f.guardTargetId ?? null,
-      isProducing: f.producing ?? false,
-      energyRateFraction: f.energyRate ?? 0,
-      metalRateFraction: f.metalRate ?? 0,
-    };
+    entity.factory = createRuntimeFactoryFromNetwork(f, true, 'holdPosition', 'land');
   }
 
   return entity;

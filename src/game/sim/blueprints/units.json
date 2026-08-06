@@ -2655,9 +2655,9 @@
     "workEmitter": {
       "points": [
         {
-          "x": 0.92,
+          "x": 0,
           "y": 0,
-          "z": 0
+          "z": 1.1
         }
       ],
       "particleTravelSpeed": 180,
@@ -2785,9 +2785,9 @@
     "workEmitter": {
       "points": [
         {
-          "x": 0.96,
+          "x": 0,
           "y": 0,
-          "z": 0
+          "z": 1.1
         }
       ],
       "particleTravelSpeed": 180,
@@ -2836,17 +2836,17 @@
       "$audio": "event.death.unitTick"
     },
     "unitLocomotion": {
-      "type": "flying",
-      "physicsPresetId": "flying",
+      "type": "legs",
+      "physicsPresetId": "legs",
       "physics": {
         "ground": {
-          "maxPropulsiveForce": 0
+          "maxPropulsiveForce": 160
         },
         "air": {
-          "maxPropulsiveForce": 160,
+          "maxPropulsiveForce": 0,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 10000,
-            "surfaceFollowingInverseForceFromWater": 20000
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
@@ -2858,27 +2858,49 @@
         }
       },
       "config": {
-        "wingSpan": 2.85,
-        "wingChord": 0.66,
-        "wingOffsetX": -0.12,
-        "wingHeight": 0.36,
-        "wingThickness": 0.045,
-        "wingDihedralDeg": 7,
-        "wingSweepFrac": 0.5,
-        "tailWingSpan": 1.08,
-        "tailWingChord": 0.32,
-        "tailWingOffsetX": -0.9,
-        "tailWingHeight": 0.34,
-        "tailWingThickness": 0.04,
-        "tailWingDihedralDeg": 15,
-        "tailWingSweepFrac": 0.75,
-        "tailWingMirrorX": true,
-        "jetOffsetX": -0.92,
-        "jetOffsetY": 0,
-        "jetOffsetZ": 0.24,
-        "jetRadius": 0.08,
-        "jetLength": 0.2,
-        "jetCount": 1
+        "upperThickness": 15,
+        "lowerThickness": 12,
+        "hipRadius": 10,
+        "kneeRadius": 13,
+        "lerpDuration": 420,
+        "segments": {
+          "upper": {
+            "lengthUnitRadiusRatio": 0.42
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 0.5
+          }
+        },
+        "footSphere": {
+          "originExtensionRatio": 0.5,
+          "radiusLegLengthRatio": 0.5
+        },
+        "choppingSphere": {
+          "radiusLegLengthRatio": 0.38
+        },
+        "snapRay": {
+          "originBoundarySpanRatio": 0.55
+        },
+        "leftSide": [
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": -0.36
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": -0.42
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.5,
+              "yUnitRadiusRatio": -0.36
+            }
+          }
+        ]
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 4700

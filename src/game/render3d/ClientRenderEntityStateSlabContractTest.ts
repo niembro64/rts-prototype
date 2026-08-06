@@ -71,6 +71,7 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
     moveState: null,
     holdPosition: null,
     wantCloak: null,
+    factory: null,
     cloaked: null,
     buildTargetId: null,
     buildTargetIdPresent: false,

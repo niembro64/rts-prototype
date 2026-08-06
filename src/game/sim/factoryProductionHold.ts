@@ -95,38 +95,46 @@ export function writeFabricatorProductionSprayOrigin(
   return out;
 }
 
-function productionHoldLocalBaseZ(factory: Entity, produced: UnitBlueprint): number {
+function productionHoldLocalBaseZ(
+  factory: Entity,
+  produced: UnitBlueprint,
+  hostOffsetZ: number,
+): number {
   if (factory.buildingBlueprintId === 'towerFabricator') {
     // EntityHold adds the produced unit's support-point offset when resolving
     // its transform. Subtract it here so the unit's actual body center, not
     // its footprint/support plane, is pinned to the torus center plane.
     return fabricatorTorusHoverHeight() - produced.supportPointOffsetZ;
   }
-  if (factory.unit !== null) return factory.unit.supportPointOffsetZ;
+  if (factory.unit !== null) {
+    return factory.unit.supportPointOffsetZ + hostOffsetZ;
+  }
   return getFactoryShellSpawnClearanceAboveSurface(produced);
 }
 
-function productionHoldRingOrientation(factory: Entity): FactoryProductionHoldRingOrientation {
-  return factory.unit !== null ? 'forward' : 'horizontal';
+function productionHoldRingOrientation(): FactoryProductionHoldRingOrientation {
+  return 'horizontal';
 }
 
 function productionHoldLocalOffset(factory: Entity, producedUnitBlueprintId: string): {
   x: number;
   y: number;
+  z: number;
   slotIndex: number;
   hostAnchored: boolean;
 } {
   const hostUnit = factory.unit;
-  if (hostUnit === null) return { x: 0, y: 0, slotIndex: 0, hostAnchored: false };
+  if (hostUnit === null) return { x: 0, y: 0, z: 0, slotIndex: 0, hostAnchored: false };
   const hostBp = getUnitBlueprint(hostUnit.unitBlueprintId);
   if (hostBp.factoryProducedUnitBlueprintId !== producedUnitBlueprintId) {
-    return { x: 0, y: 0, slotIndex: 0, hostAnchored: false };
+    return { x: 0, y: 0, z: 0, slotIndex: 0, hostAnchored: false };
   }
   const point = hostBp.workEmitter?.points[0] ?? { x: 0, y: 0, z: 0 };
   const radius = hostUnit.radius.other;
   return {
     x: point.x * radius,
     y: point.y * radius,
+    z: point.z * radius,
     slotIndex: 0,
     hostAnchored: true,
   };
@@ -144,7 +152,7 @@ export function createFactoryProductionHoldSpec(
     slotIndex: localOffset.slotIndex,
     localOffsetX: localOffset.x,
     localOffsetY: localOffset.y,
-    localBaseZ: productionHoldLocalBaseZ(factory, produced),
+    localBaseZ: productionHoldLocalBaseZ(factory, produced, localOffset.z),
     rotateWithHolder: isMobileFactory,
     inheritHolderRotation: isMobileFactory,
     inheritHolderVelocity: isMobileFactory,
@@ -161,9 +169,9 @@ export function getFactoryProductionHoldVisual(
   return {
     localOffsetX: localOffset.x,
     localOffsetY: localOffset.y,
-    localBaseZ: productionHoldLocalBaseZ(factory, produced),
+    localBaseZ: productionHoldLocalBaseZ(factory, produced, localOffset.z),
     ringRadius: productionHoldRingRadiusForProducedUnit(producedUnitBlueprintId),
-    ringOrientation: productionHoldRingOrientation(factory),
+    ringOrientation: productionHoldRingOrientation(),
   };
 }
 

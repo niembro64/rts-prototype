@@ -215,6 +215,27 @@ function createReusableBuilding(): ReusableEntityBuilding {
   };
 }
 
+function createReusableFactory(): ReusableFactory {
+  return {
+    selectedUnitBlueprintCode: null,
+    progress: 0,
+    producing: false,
+    repeat: true,
+    paused: false,
+    moveState: undefined,
+    airIdleState: undefined,
+    queue: null,
+    quotas: null,
+    quotaCounts: null,
+    energyRate: 0,
+    metalRate: 0,
+    guardTargetId: null,
+    lowPriority: false,
+    rally: createWaypointDto(),
+    route: null,
+  };
+}
+
 function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFactory {
   dst.selectedUnitBlueprintCode = src.selectedUnitBlueprintCode;
   dst.progress = src.progress;
@@ -281,26 +302,7 @@ function copyBuildingInto(
   }
   dst.turrets = copyTurretListInto(src.turrets, dst.turrets);
   if (src.factory) {
-    if (!dst.factory) {
-      dst.factory = {
-        selectedUnitBlueprintCode: null,
-        progress: 0,
-        producing: false,
-        repeat: true,
-        paused: false,
-        moveState: undefined,
-        airIdleState: undefined,
-        queue: null,
-        quotas: null,
-        quotaCounts: null,
-        energyRate: 0,
-        metalRate: 0,
-        guardTargetId: null,
-        lowPriority: false,
-        rally: createWaypointDto(),
-        route: null,
-      };
-    }
+    if (!dst.factory) dst.factory = createReusableFactory();
     copyFactoryInto(src.factory, dst.factory);
   } else {
     dst.factory = null;
@@ -325,9 +327,18 @@ function copyEntityInto(
   dst.rotation = src.rotation;
   dst.playerId = src.playerId;
   dst.changedFields = src.changedFields;
-  dst.unit = src.unit
-    ? copyNetworkUnitSnapshotInto(src.unit, dst.unit ?? createNetworkUnitSnapshot())
-    : null;
+  if (src.unit) {
+    const unit = copyNetworkUnitSnapshotInto(src.unit, dst.unit ?? createNetworkUnitSnapshot());
+    if (src.unit.factory !== null && src.unit.factory !== undefined) {
+      if (unit.factory === null) unit.factory = createReusableFactory();
+      copyFactoryInto(src.unit.factory, unit.factory);
+    } else {
+      unit.factory = null;
+    }
+    dst.unit = unit;
+  } else {
+    dst.unit = null;
+  }
   dst.building = src.building
     ? copyBuildingInto(src.building, dst.building ?? createReusableBuilding())
     : null;

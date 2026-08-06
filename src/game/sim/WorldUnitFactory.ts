@@ -188,13 +188,13 @@ export function createUnitFromBlueprintEntity(
   // build their bees/ticks this way; no spawn turret participates.
   const producedUnitBlueprintId = bp.factoryProducedUnitBlueprintId ?? null;
   if (producedUnitBlueprintId !== null) {
-      entity.factory = {
-        selectedUnitBlueprintId: producedUnitBlueprintId,
-        lowPriority: false,
-        carrierSpawnEnabled: true,
-        moveState: 'maneuver',
-        airIdleState: 'fly',
-        repeatProduction: true,
+    entity.factory = {
+      selectedUnitBlueprintId: producedUnitBlueprintId,
+      lowPriority: false,
+      carrierSpawnEnabled: true,
+      moveState: 'maneuver',
+      airIdleState: 'fly',
+      repeatProduction: true,
       paused: false,
       productionQueue: [],
       productionQuotas: {},
@@ -208,9 +208,8 @@ export function createUnitFromBlueprintEntity(
       rallyZ: null,
       rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       guardTargetId: null,
-      // A queen is a continuous producer: it creates a nanoframe and builds
-      // its bee/tick over time, with no player
-      // queue command -- unlike a fabricator, which a player toggles on.
+      // Queens continuously build their one authored child by default. The
+      // normal factory controls can still disable Repeat or stop production.
       isProducing: true,
       energyRateFraction: 0,
       metalRateFraction: 0,

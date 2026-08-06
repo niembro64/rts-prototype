@@ -7,6 +7,7 @@ import type {
   FireDGunCommand,
   GuardCommand,
   LoadTransportCommand,
+  QueueUnitCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
   SetBuilderPriorityCommand,
@@ -18,6 +19,8 @@ import type {
   SetFactoryOutputGuardCommand,
   SetTowerTargetCommand,
   SetUnitMoveStateCommand,
+  SetFactoryRepeatProductionCommand,
+  StopFactoryProductionCommand,
   WaitCommand,
 } from '../sim/commands';
 import { WorldState } from '../sim/WorldState';
@@ -1139,6 +1142,57 @@ export function runServerCommandAuthorizerContractTest(): void {
     authorizedFactoryOutputGuard?.type === 'setFactoryOutputGuard' &&
       authorizedFactoryOutputGuard.targetId === queen.id,
     'factory output Guard must authorize an allied target independently of Factory Guard state',
+  );
+
+  const queenFiniteQueueCommand: QueueUnitCommand = {
+    type: 'queueUnit',
+    tick: 1,
+    factoryId: queen.id,
+    unitBlueprintId: 'unitBee',
+    repeat: false,
+    count: 3,
+  };
+  const authorizedQueenFiniteQueue = authorizeGameServerGameplayCommand(
+    world,
+    queenFiniteQueueCommand,
+    { mode: 'player', playerId: 1 },
+  );
+  assertContract(
+    authorizedQueenFiniteQueue === queenFiniteQueueCommand,
+    'queueUnit must authorize an owned Queen finite queue for its single authored child',
+  );
+  const rejectedQueenWrongChild = authorizeGameServerGameplayCommand(world, {
+    ...queenFiniteQueueCommand,
+    unitBlueprintId: 'unitTick',
+  }, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    rejectedQueenWrongChild === null,
+    'queueUnit must reject a child outside the Queen factory roster',
+  );
+  const queenRepeatCommand: SetFactoryRepeatProductionCommand = {
+    type: 'setFactoryRepeatProduction',
+    tick: 1,
+    factoryId: queen.id,
+    enabled: true,
+  };
+  const queenStopCommand: StopFactoryProductionCommand = {
+    type: 'stopFactoryProduction',
+    tick: 1,
+    factoryId: queen.id,
+  };
+  assertContract(
+    authorizeGameServerGameplayCommand(world, queenRepeatCommand, {
+      mode: 'player',
+      playerId: 1,
+    }) === queenRepeatCommand &&
+      authorizeGameServerGameplayCommand(world, queenStopCommand, {
+        mode: 'player',
+        playerId: 1,
+      }) === queenStopCommand,
+    'Repeat On and Stop Production must authorize for an owned Queen factory',
   );
 
   const editFactoryQueueCommand: EditFactoryQueueCommand = {

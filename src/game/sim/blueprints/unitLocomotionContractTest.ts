@@ -70,7 +70,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitDuck: { type: 'dive', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitAlbatros: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitQueenBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitQueenTick: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitQueenTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitTransport: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitCommander: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
@@ -216,7 +216,7 @@ export function runUnitLocomotionContractTest(): void {
   const eagleMass = getUnitBlueprint('unitEagle').base.mass;
   const bee = getUnitLocomotion('unitBee');
   const beeMass = getUnitBlueprint('unitBee').base.mass;
-  for (const unitBlueprintId of ['unitAlbatros', 'unitQueenTick'] as const) {
+  for (const unitBlueprintId of ['unitAlbatros'] as const) {
     const heavyFlyer = getUnitLocomotion(unitBlueprintId);
     const heavyFlyerMass = getUnitBlueprint(unitBlueprintId).base.mass;
     assertContract(
@@ -225,6 +225,15 @@ export function runUnitLocomotionContractTest(): void {
       `${unitBlueprintId} authors enough air propulsion for at least Eagle-class acceleration`,
     );
   }
+  const queenTick = getUnitLocomotion('unitQueenTick');
+  assertContract(
+    queenTick.physicsPresetId === 'legs' &&
+      queenTick.physics.ground.maxPropulsiveForce > 0 &&
+      queenTick.physics.air.maxPropulsiveForce === 0 &&
+      queenTick.navigation.waypoint.allowOnGround &&
+      !queenTick.navigation.waypoint.allowInAir,
+    'Queen Tick walks on legs with ground propulsion and no flight capability',
+  );
   const queenBee = getUnitLocomotion('unitQueenBee');
   const queenBeeMass = getUnitBlueprint('unitQueenBee').base.mass;
   assertContract(

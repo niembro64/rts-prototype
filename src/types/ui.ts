@@ -145,6 +145,8 @@ export type SelectionInfo = {
   queueInsertOptions: QueueInsertOption[];
   selectedEntityInfo: SelectedEntityInfo | null;
   hasFactory: boolean;
+  factoryHostKind: 'unit' | 'building' | null;
+  factoryDisplayName: string | null;
   factoryAllowedUnitBlueprintIds: readonly string[];
   factoryId?: number;
   factoryPresetOverlayVisible: boolean;

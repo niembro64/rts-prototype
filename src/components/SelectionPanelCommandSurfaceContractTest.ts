@@ -622,9 +622,13 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       factoryQueueModeIndex > factoryGuardIndex &&
       factoryWaitIndex > factoryQueueModeIndex &&
       factoryStopIndex > factoryWaitIndex &&
+      /const showFactoryActions = computed\(\(\) =>\s*props\.selection\.hasFactory &&\s*props\.selection\.factoryId !== undefined &&\s*\(\s*\(props\.selection\.factoryHostKind === 'unit' && showUnitActions\.value\) \|\|\s*\(props\.selection\.factoryHostKind === 'building' && showBuildingActions\.value\)\s*\),\s*\);/.test(selectionPanelSource) &&
+      /<div v-if="showFactoryActions" class="button-group">/.test(selectionPanelSource) &&
+      !/selection\.hasFactory && selection\.factoryId && showBuildingActions/.test(selectionPanelSource) &&
+      /private getSelectedFactory\(\): Entity \| null \{\s*const selectedUnits = this\.entitySource\.getSelectedUnits\(\);[\s\S]{0,500}const selectedStatic = this\.entitySource\.getSelectedBuildings\(\);/.test(input3DManagerSource) &&
       /if \(props\.selection\.isWaiting\) return `\$\{modeLabel\} \$\{unitLabel\} waiting\$\{queuedLabel\}`;/.test(selectionPanelSource) &&
       /class="action-btn bar-order-wait"[\s\S]{0,220}:title="actionTitle\('Wait', 'command\.wait', 'Shift-click queues; Ctrl\/Cmd\+Shift-click inserts next'\)"[\s\S]{0,140}@click="toggleWaitFromClick"[\s\S]{0,260}binaryStateLights\(selection\.isWaiting\)/.test(selectionPanelSource),
-    'BAR factory command surface must use state-first gui_ordermenu.lua ordering, include factory Move State and air-plant LandAt before Wait, and show waiting status when factory production is paused',
+    'BAR factory command surface must serve both mobile Queens and static Fabricators, use state-first ordering, and show waiting status when production is paused',
   );
   assertContract(
     /\.options-panel\.bar-hotkey-preset[\s\S]{0,260}\.action-btn\.active:not\(\.bar-grid-cell\):not\(\.bar-order-state\)[\s\S]{0,260}background:\s*linear-gradient\(to top,\s*rgba\(168,\s*168,\s*168,\s*0\.75\),\s*rgba\(255,\s*255,\s*255,\s*0\.75\)\);[\s\S]{0,180}color:\s*rgb\(20,\s*20,\s*20\);[\s\S]{0,120}box-shadow:\s*none;/.test(selectionPanelSource) &&

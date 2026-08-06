@@ -177,7 +177,7 @@ export function runRightClickCommandsContractTest(): void {
   const enemyAir = combatant(33, 2, 100, 40, 40);
   enemyAir.unit!.unitBlueprintId = 'unitTransport';
   const enemyFlyingFactory = combatant(38, 2, 100, 40, 80);
-  enemyFlyingFactory.unit!.unitBlueprintId = 'unitQueenTick';
+  enemyFlyingFactory.unit!.unitBlueprintId = 'unitQueenBee';
   const dragonflyAttacker = combatant(34, 1, 100, 0, 40);
   dragonflyAttacker.unit!.unitBlueprintId = 'unitDragonfly';
   const albatrosAttacker = combatant(36, 1, 100, 0, 50);

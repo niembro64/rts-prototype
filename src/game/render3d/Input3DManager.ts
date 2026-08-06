@@ -2304,6 +2304,16 @@ export class Input3DManager {
   }
 
   private getSelectedFactory(): Entity | null {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const entity = selectedUnits[i];
+      if (
+        entity.factory !== null
+        && entity.ownership?.playerId === this.context.activePlayerId
+      ) {
+        return entity;
+      }
+    }
     const selectedStatic = this.entitySource.getSelectedBuildings();
     for (let i = 0; i < selectedStatic.length; i++) {
       const entity = selectedStatic[i];

@@ -99,6 +99,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     wantCloak: null,
     builderPriorityLow: null,
     carrierSpawnEnabled: null,
+    factory: null,
     cloaked: null,
     isCommander: null,
     buildTargetId: null,

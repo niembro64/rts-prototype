@@ -77,7 +77,6 @@ const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   // Local flying factory aircraft outside the T1 BAR production page still
   // count as air targets for BAR command restrictions when present in a scenario.
   'unitQueenBee',
-  'unitQueenTick',
 ]);
 const BAR_MANUAL_LAUNCH_UNIT_BLUEPRINT_IDS = new Set<string>();
 const BAR_CARRIER_SPAWN_UNIT_BLUEPRINT_IDS = new Set<string>();

@@ -135,6 +135,8 @@ export function useGameCanvasSceneUi({
     queueInsertOptions: [],
     selectedEntityInfo: null,
     hasFactory: false,
+    factoryHostKind: null,
+    factoryDisplayName: null,
     factoryAllowedUnitBlueprintIds: [],
     factoryId: undefined,
     factoryPresetOverlayVisible: false,

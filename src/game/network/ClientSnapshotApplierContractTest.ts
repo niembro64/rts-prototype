@@ -282,6 +282,7 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
     moveState: null,
     holdPosition: null,
     wantCloak: null,
+    factory: null,
     cloaked: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
@@ -680,6 +681,7 @@ export function runClientSnapshotApplierContractTest(): void {
       moveState: null,
       holdPosition: null,
       wantCloak: null,
+      factory: null,
       cloaked: null,
       buildTargetId: null,
       buildTargetIdPresent: false,
@@ -1054,6 +1056,18 @@ export function runClientSnapshotApplierContractTest(): void {
     throw new Error('[client snapshot applier contract] carrier fixture must have unit + factory');
   }
   carrierEntity.factory.carrierSpawnEnabled = false;
+  carrierEntity.factory.selectedUnitBlueprintId = 'unitBee';
+  carrierEntity.factory.repeatProduction = false;
+  carrierEntity.factory.paused = true;
+  carrierEntity.factory.productionQueue = ['unitBee', 'unitBee'];
+  carrierEntity.factory.currentBuildProgress = 0.375;
+  carrierEntity.factory.isProducing = true;
+  carrierEntity.factory.energyRateFraction = 0.6;
+  carrierEntity.factory.metalRateFraction = 0.4;
+  carrierEntity.factory.rallyX = 240;
+  carrierEntity.factory.rallyY = 280;
+  carrierEntity.factory.rallyZ = 18;
+  carrierEntity.factory.rallyType = 'fight';
   const carrierRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   registerEntitySnapshotWireSource(carrierRows);
@@ -1068,12 +1082,12 @@ export function runClientSnapshotApplierContractTest(): void {
   const carrierSource = getEntitySnapshotWireSource(carrierRows);
   assertContract(
     carrierRows.length === 1 &&
-      (carrierRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      carrierRows[0]?.unit?.factory !== null &&
+      carrierRows[0]?.unit?.factory !== undefined &&
       carrierSource !== undefined &&
-      carrierSource.rawEntityRows === 0 &&
-      carrierSource.typedPlaceholderRows === 1 &&
-      carrierSource.unitRows.count === 1,
-    'carrier-spawn unit factory rows must use DTO-free typed unit placeholders',
+      carrierSource.rawEntityRows === 1 &&
+      carrierSource.typedPlaceholderRows === 0,
+    'queen factory rows must preserve their variable-length private workflow in a raw DTO row',
   );
   const carrierView = new ClientViewState();
   carrierView.applyNetworkState(snapshot(1, [fullCarrierUnitEntity(carrierId)]));
@@ -1081,11 +1095,27 @@ export function runClientSnapshotApplierContractTest(): void {
   if (staleCarrierFactory === undefined || staleCarrierFactory === null) {
     throw new Error('[client snapshot applier contract] carrier fixture must hydrate a factory');
   }
+  assertContract(
+    staleCarrierFactory.selectedUnitBlueprintId === 'unitBee' &&
+      staleCarrierFactory.repeatProduction === true &&
+      staleCarrierFactory.isProducing === true,
+    'a full Queen snapshot without private factory state must hydrate its authored child with Repeat On',
+  );
   staleCarrierFactory.carrierSpawnEnabled = true;
   carrierView.applyNetworkState(deltaSnapshot(5, carrierRows));
+  const appliedCarrierFactory = carrierView.getEntity(carrierId)?.factory;
   assertContract(
-    carrierView.getEntity(carrierId)?.factory?.carrierSpawnEnabled === false,
-    'typed unit factory rows must apply carrier-spawn state without DTO fallback',
+    appliedCarrierFactory?.carrierSpawnEnabled === false &&
+      appliedCarrierFactory.selectedUnitBlueprintId === 'unitBee' &&
+      appliedCarrierFactory.repeatProduction === false &&
+      appliedCarrierFactory.paused === true &&
+      appliedCarrierFactory.productionQueue.join(',') === 'unitBee,unitBee' &&
+      appliedCarrierFactory.currentBuildProgress === 0.375 &&
+      appliedCarrierFactory.rallyX === 240 &&
+      appliedCarrierFactory.rallyY === 280 &&
+      appliedCarrierFactory.rallyZ === 18 &&
+      appliedCarrierFactory.rallyType === 'fight',
+    'queen factory DTO rows must apply carrier state, finite queue, progress, pause, and rally state',
   );
   const encodedPackedCarrier = encodeNetworkSnapshotWithRustFallback(
     deltaSnapshot(6, carrierRows),
@@ -1099,11 +1129,10 @@ export function runClientSnapshotApplierContractTest(): void {
   const decodedPackedCarrierSource = getEntitySnapshotWireSource(decodedPackedCarrier.entities);
   assertContract(
     decodedPackedCarrier.entities.length === 1 &&
-      decodedPackedCarrier.entities[0] === undefined &&
-      decodedPackedCarrierSource !== undefined &&
-      decodedPackedCarrierSource.typedPlaceholderRows === 1 &&
-      decodedPackedCarrierSource.unitRows.count === 1,
-    'packed carrier-spawn rows must reconstruct typed unit placeholders',
+      decodedPackedCarrier.entities[0]?.unit?.factory !== null &&
+      decodedPackedCarrier.entities[0]?.unit?.factory !== undefined &&
+      decodedPackedCarrierSource === undefined,
+    'packed queen factory rows must retain raw private workflow DTOs without inventing typed-row metadata',
   );
   const packedCarrierView = new ClientViewState();
   packedCarrierView.applyNetworkState(snapshot(1, [fullCarrierUnitEntity(carrierId)]));
@@ -1113,9 +1142,15 @@ export function runClientSnapshotApplierContractTest(): void {
   }
   stalePackedCarrierFactory.carrierSpawnEnabled = true;
   packedCarrierView.applyNetworkState(decodedPackedCarrier);
+  const appliedPackedCarrierFactory = packedCarrierView.getEntity(carrierId)?.factory;
   assertContract(
-    packedCarrierView.getEntity(carrierId)?.factory?.carrierSpawnEnabled === false,
-    'packed typed unit factory rows must apply carrier-spawn state after decode',
+    appliedPackedCarrierFactory?.carrierSpawnEnabled === false &&
+      appliedPackedCarrierFactory.selectedUnitBlueprintId === 'unitBee' &&
+      appliedPackedCarrierFactory.repeatProduction === false &&
+      appliedPackedCarrierFactory.paused === true &&
+      appliedPackedCarrierFactory.productionQueue.join(',') === 'unitBee,unitBee' &&
+      appliedPackedCarrierFactory.currentBuildProgress === 0.375,
+    'packed queen factory DTO rows must apply the complete workflow after decode',
   );
   resetEntitySnapshotPool();
 

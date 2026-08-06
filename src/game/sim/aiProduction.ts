@@ -1,7 +1,7 @@
 // AI auto-production: selects repeat-build units at idle factories for AI players
 
 import type { WorldState } from './WorldState';
-import type { PlayerId } from './types';
+import type { Entity, PlayerId } from './types';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
 import { getFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
@@ -70,6 +70,32 @@ function allowedUnitsForFactory(
   return allowed;
 }
 
+function updateAiFactoryProduction(
+  world: WorldState,
+  entity: Entity,
+  aiPlayerIds: ReadonlySet<PlayerId>,
+  allowedUnitBlueprintIds: ReadonlySet<string> | null,
+): void {
+  if (!entity.factory || !isEntityActive(entity)) return;
+  if (!entity.ownership) return;
+  if (!aiPlayerIds.has(entity.ownership.playerId)) return;
+  const factoryAllowedUnitBlueprintIds = allowedUnitsForFactory(entity, allowedUnitBlueprintIds);
+  if (factoryAllowedUnitBlueprintIds.size === 0) return;
+
+  if (
+    entity.factory.selectedUnitBlueprintId === null &&
+    world.canPlayerQueueUnit(entity.ownership.playerId)
+  ) {
+    if (factoryProductionSystem.selectUnit(
+      entity,
+      pickRandomUnit(world, entity.ownership.playerId, factoryAllowedUnitBlueprintIds),
+      world,
+    )) {
+      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
+    }
+  }
+}
+
 /**
  * For each AI player, find idle factories and select a random repeat-build unit.
  * Called once per tick from Simulation.update().
@@ -93,21 +119,9 @@ export function updateAiProduction(
   if (allowedUnitBlueprintIds && allowedUnitBlueprintIds.size === 0) return;
 
   for (const entity of world.getFactoryBuildings()) {
-    if (!entity.factory || !isEntityActive(entity)) continue;
-    if (!entity.ownership) continue;
-    if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
-    const factoryAllowedUnitBlueprintIds = allowedUnitsForFactory(entity, allowedUnitBlueprintIds);
-    if (factoryAllowedUnitBlueprintIds.size === 0) continue;
-
-    // Pick a repeat-build type for the factory if it has none set.
-    if (entity.factory.selectedUnitBlueprintId === null && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.selectUnit(
-        entity,
-        pickRandomUnit(world, entity.ownership.playerId, factoryAllowedUnitBlueprintIds),
-        world,
-      )) {
-        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
-      }
-    }
+    updateAiFactoryProduction(world, entity, aiPlayerIds, allowedUnitBlueprintIds);
+  }
+  for (const entity of world.getFactoryUnits()) {
+    updateAiFactoryProduction(world, entity, aiPlayerIds, allowedUnitBlueprintIds);
   }
 }

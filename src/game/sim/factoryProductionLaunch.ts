@@ -8,7 +8,8 @@ import { deterministicMath as DMath } from './deterministicMath';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
 
-const PRODUCTION_LAUNCH_SPEED = 520;
+export const MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED = 520;
+const PRODUCTION_LAUNCH_SPEED = MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED;
 const PRODUCTION_LAUNCH_MAX_TIME_SEC = 4.5;
 const PRODUCTION_LAUNCH_SEARCH_ITERATIONS = 14;
 const PRODUCTION_LAUNCH_MIN_DISTANCE = 24;
@@ -147,6 +148,21 @@ export function resolveFactoryProductionLaunchPlan(
   heldUnit: Entity,
 ): FactoryProductionLaunchPlan | null {
   if (heldUnit.unit === null) return null;
+  if (factory.unit !== null) {
+    // A mobile factory's horizontal hold ring faces world-up. Release its
+    // finished product along that normal instead of aiming a ballistic arc
+    // toward the queen's rally or combat target.
+    const yaw = factory.transform.rotation;
+    return {
+      yaw,
+      velocityX: 0,
+      velocityY: 0,
+      velocityZ: MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED,
+      targetX: heldUnit.transform.x,
+      targetY: heldUnit.transform.y,
+      targetZ: heldUnit.transform.z + MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED,
+    };
+  }
   const target = resolveLaunchDirectionTarget(world, factory);
   let dx = target.x - heldUnit.transform.x;
   let dy = target.y - heldUnit.transform.y;
