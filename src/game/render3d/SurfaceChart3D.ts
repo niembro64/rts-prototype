@@ -278,10 +278,12 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   // belt's whole loop on one and a single bar's depth on the other — two
   // world spans that share no scale and, drawn this way, never have to.
   trackRunning: { uExtent: 4, vExtent: 16, featureSize: 4 },
-  // THE GROUSERS — the bars that bite the ground. LIGHT against the belt:
-  // unpainted steel, polished where it grinds. The value gap between this
-  // band and the one above it is what makes a track read as a chain of
-  // separate cleats rather than as one extruded ribbon.
+  // THE GROUSERS — the bars that bite the ground. Lighter than the belt, but
+  // painted rather than scoured: the step up is taken in albedo, which
+  // brightens the owner's colour, instead of in wear, which replaces it with
+  // neutral metal. The value gap between this band and the one above is what
+  // makes a track read as a chain of separate cleats rather than as one
+  // extruded ribbon; it does not need to be a gap in SATURATION too.
   trackGrouser: { uExtent: 4, vExtent: 16, featureSize: 4 },
   // TRACK SIDE FRAME — the flat outer face of the track, and the ONE track
   // surface with real area facing the camera. u runs along the frame and

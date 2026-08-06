@@ -1176,42 +1176,50 @@ function drawTrackRunning(
 /**
  * THE GROUSERS — the bars that bite the ground.
  *
- * LIGHT against the belt: unpainted steel, polished bright down the strip
- * that actually grinds. Same discipline as the belt band — content on v only,
- * nothing along u — so the two differ in VALUE rather than in busyness, which
- * is what makes a track read as a chain of cleats at a distance where no
- * amount of drawn structure would survive.
+ * Lighter than the belt, but PAINTED rather than bare. Wear is what
+ * desaturates a surface here: `bare` lerps the instance's colour toward
+ * neutral metal before anything else happens, so a cleat run high on wear
+ * comes out as a grey chip with no owner. These stay low on it and take their
+ * step up in value from ALBEDO instead, which brightens the colour rather
+ * than replacing it — the bars end up both darker and more colourful than
+ * scoured steel, and the track still reads as a chain of them.
+ *
+ * Same discipline as the belt band otherwise: content on v only, nothing
+ * along u, so the two differ in value rather than in busyness at a distance
+ * where no amount of drawn structure would survive.
  */
 function drawTrackGrouser(
   layer: Layer, rect: BandRect, rng: () => number, _band: TrimBandId,
 ): void {
-  layer.albedo.fillStyle = gray(0.68);
+  layer.albedo.fillStyle = gray(0.52);
   layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
   layer.height.fillStyle = gray(0.72);
   layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
-  layer.bare.fillStyle = gray(0.70);
+  layer.bare.fillStyle = gray(0.16);
   layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
 
   // Cast ends where the bar meets the belt: darker, and NOT polished — the
   // ends are where mud packs in rather than where steel is worn back.
   const end = Math.max(2, rect.height * 0.16);
   for (const y of [rect.y, rect.y + rect.height - end]) {
-    layer.albedo.fillStyle = gray(0.44);
+    layer.albedo.fillStyle = gray(0.34);
     layer.albedo.fillRect(rect.x, y, rect.width, end);
     layer.height.fillStyle = gray(0.4);
     layer.height.fillRect(rect.x, y, rect.width, end);
-    layer.bare.fillStyle = gray(0.46);
+    layer.bare.fillStyle = gray(0.10);
     layer.bare.fillRect(rect.x, y, rect.width, end);
   }
 
   // The bright wear strip down the middle of the track's width.
   const crownY = rect.y + rect.height * 0.36;
   const crownH = rect.height * 0.28;
-  layer.albedo.fillStyle = gray(0.86);
+  // The strip that grinds is the ONE place wear is allowed to show, and even
+  // there it only takes the edge off the colour.
+  layer.albedo.fillStyle = gray(0.66);
   layer.albedo.fillRect(rect.x, crownY, rect.width, crownH);
   layer.height.fillStyle = gray(0.98);
   layer.height.fillRect(rect.x, crownY, rect.width, crownH);
-  layer.bare.fillStyle = gray(0.85);
+  layer.bare.fillStyle = gray(0.30);
   layer.bare.fillRect(rect.x, crownY, rect.width, crownH);
 
   // Scoring across the bar, off the polished strip.
@@ -1319,7 +1327,7 @@ const BAND_DRAWERS: Record<
   liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
   tyreTread: { base: { albedo: 0.36, height: 0.44, bare: 0.02 }, draw: drawTyreTread },
   trackRunning: { base: { albedo: 0.22, height: 0.38, bare: 0.05 }, draw: drawTrackRunning },
-  trackGrouser: { base: { albedo: 0.68, height: 0.72, bare: 0.70 }, draw: drawTrackGrouser },
+  trackGrouser: { base: { albedo: 0.52, height: 0.72, bare: 0.16 }, draw: drawTrackGrouser },
   trackBeltPlate: { base: { albedo: 0.40, height: 0.5, bare: 0.10 }, draw: drawTrackBeltPlate },
 };
 
