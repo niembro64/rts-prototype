@@ -44,7 +44,8 @@ import {
 } from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
 import { REFERENCE_TRACK_LENGTH } from './SurfaceChart3D';
-import { applyChartToMesh } from './SurfaceChartMaterial3D';
+import { applyChartToMesh, applyVertexChartsToMesh } from './SurfaceChartMaterial3D';
+import type { SurfaceChartId } from './SurfaceChart3D';
 import { type PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
@@ -297,7 +298,16 @@ export function buildTreads(
       const treadBox = new THREE.Mesh(treadBoxGeom, treadMat);
       treadBox.scale.set(length, TREAD_HEIGHT, width);
       treadBox.position.set(0, TREAD_Y, 0);
-      applyChartToMesh(treadBox, 'trackBelt', 'trackBeltEnvelope', beltChartScale);
+      // Only the box's two flat sides are the track's outward face; its top,
+      // bottom and ends are running gear. BoxGeometry lays out six unshared
+      // four-corner faces in +X, -X, +Y, -Y, +Z, -Z order, and the side group
+      // is offset along Z, so the flat sides are the last eight vertices.
+      applyVertexChartsToMesh(
+        treadBox,
+        'trackBeltEnvelope',
+        (i) => (i >= 16 ? 'trackBelt' : 'trackRun'),
+        beltChartScale,
+      );
       freezeStaticLocalTransform(treadBox);
       sideGroup.add(treadBox);
     } else {
@@ -310,14 +320,20 @@ export function buildTreads(
         treadMat,
       );
       shell.position.set(0, TREAD_Y, 0);
-      // The side frame the cleats ride on — link seams and road-wheel bosses
-      // repeating along the belt, not hull armour. The shell geometry is
-      // already cached per exact size, so the charted clone is too.
-      applyChartToMesh(
+      // ONE MESH, TWO SURFACES. The shell's flat outer faces are the track's
+      // face — the only part of it with real area square-on to the camera, and
+      // the one place a track's detail is legible. The extruded rim between
+      // them is running gear, glimpsed edge-on between the grousers, and takes
+      // the plain band the cleats do. Splitting them per-vertex says that
+      // without splitting the mesh and doubling the draw calls.
+      const shellNormal = shell.geometry.getAttribute('normal');
+      applyVertexChartsToMesh(
         shell,
-        'trackBelt',
         `trackBeltShell:${straightLength.toFixed(2)}:${treadRadius.toFixed(2)}`
           + `:${width.toFixed(2)}:${geometryTier}`,
+        (i): SurfaceChartId => (
+          Math.abs(shellNormal.getZ(i)) > 0.5 ? 'trackBelt' : 'trackRun'
+        ),
         beltChartScale,
       );
       freezeStaticLocalTransform(shell);
@@ -358,13 +374,12 @@ export function buildTreads(
       for (let i = 0; i < cleatsPerSide; i++) {
         const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
         cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
-        // Every cleat is the same bar, so every cleat carries the same chart
-        // at repeat 1: a chamfered grouser with a polished crown and its link
-        // pins, rather than whatever chip of hull plating happened to land on
-        // it. u runs along the belt (the bar's short axis, where its leading
-        // and trailing edges are) and v across the track's width, which is
-        // exactly how BoxGeometry lays out the face you see.
-        applyChartToMesh(cleat, 'trackCleat', 'trackCleat');
+        // Plain running gear, the same band the belt's rim wears: dark
+        // shoulders at the track's edges and a worn crown down its middle.
+        // A cleat is a bar a couple of world units deep — anything more
+        // detailed than that is detail nobody can resolve, and on a scrolling
+        // belt it is detail that flickers.
+        applyChartToMesh(cleat, 'trackRun', 'trackRun');
         layoutTreadCleat(cleat, i * cleatSpacing, straightLength, treadRadius);
         sideGroup.add(cleat);
         cleats.push(cleat);

@@ -514,13 +514,41 @@ export function attachConstantSurfaceChart(
   chart: SurfaceChartId,
   hostScale = 1,
 ): void {
+  attachSurfaceChartByVertex(geometry, () => chart, hostScale);
+}
+
+/**
+ * Label a geometry's vertices INDIVIDUALLY.
+ *
+ * One mesh is not always one surface. A track's belt shell is a flat outer
+ * face — the one part of a track with real area facing the camera — welded to
+ * a running rim that is only ever glimpsed edge-on between the grousers.
+ * Those are two different things and want two different bands, and splitting
+ * them into two meshes to say so would double the draw calls to express
+ * something the generator already knows at the vertex.
+ *
+ * Safe because the chart is a flat per-triangle property here: the geometries
+ * that use this are non-indexed (extrusions) or have unshared per-face corners
+ * (boxes), so a triangle's three vertices always agree and the varying never
+ * interpolates between two different bands.
+ */
+export function attachSurfaceChartByVertex(
+  geometry: THREE.BufferGeometry,
+  pick: (vertexIndex: number) => SurfaceChartId,
+  hostScale = 1,
+): void {
   const vertexCount = geometry.getAttribute('position').count;
-  const packed = new Float32Array(4);
-  packChart(chart, packed, 0, hostScale);
   const arr = new Float32Array(vertexCount * 4);
-  for (let i = 0; i < vertexCount; i++) arr.set(packed, i * 4);
+  const seen = new Set<SurfaceChartId>();
+  for (let i = 0; i < vertexCount; i++) {
+    const chart = pick(i);
+    packChart(chart, arr, i * 4, hostScale);
+    seen.add(chart);
+  }
   geometry.setAttribute('aChart', new THREE.BufferAttribute(arr, 4));
-  if (import.meta.env.DEV && chart !== 'none') countChartWrite(chart);
+  if (import.meta.env.DEV) {
+    for (const chart of seen) if (chart !== 'none') countChartWrite(chart);
+  }
 }
 
 // Charted per-Mesh surfaces.
@@ -547,16 +575,27 @@ export function applyChartToMesh(
   hostScale = 1,
 ): void {
   if (chart === 'none') return;
+  applyVertexChartsToMesh(mesh, `${geometryKey}:${chart}`, () => chart, hostScale);
+}
+
+/** Per-Mesh version of attachSurfaceChartByVertex — see applyChartToMesh for
+ *  why the geometry and material are cached rather than cloned per entity. */
+export function applyVertexChartsToMesh(
+  mesh: THREE.Mesh,
+  geometryKey: string,
+  pick: (vertexIndex: number) => SurfaceChartId,
+  hostScale = 1,
+): void {
   // The scale is part of the geometry's identity here, not just the chart's:
   // the label is baked per-vertex, so two parts of different sizes cannot
   // share one labelled geometry. Rounded into the key rather than used raw,
   // or every distinct wheel radius in the game would mint its own.
   const scaleKey = hostScale.toFixed(2);
-  const key = `${geometryKey}:${chart}:${scaleKey}`;
+  const key = `${geometryKey}:${scaleKey}`;
   let geometry = chartedGeometries.get(key);
   if (geometry === undefined) {
     geometry = mesh.geometry.clone();
-    attachConstantSurfaceChart(geometry, chart, Number(scaleKey));
+    attachSurfaceChartByVertex(geometry, pick, Number(scaleKey));
     chartedGeometries.set(key, geometry);
   }
   mesh.geometry = geometry;

@@ -586,14 +586,8 @@ function lowHarmonicStats(
  *  is supposed to sit at a fixed azimuth in the object's frame; a highlight is
  *  not part of the object and must not. `sensorDome` carries the barrel pitch
  *  slot, which is a hole at local +X by construction. */
-const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set([
+const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   'sensorDome',
-  // A grouser's crown, chamfers and guide notch are its own edges, placed
-  // along an axis the bar never rotates about — it translates along the belt
-  // and pitches over the end sprockets, but its short axis stays its short
-  // axis. The rule is "do not bake LIGHTING into a surface that turns", and
-  // a cleat has no such axis.
-  'trackCleat',
 ]);
 
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
@@ -755,12 +749,13 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
  * gaudy. Counts are derived from BAND_SURFACE instead; this pins that the
  * derivation stays inside sane physical bounds.
  */
-const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set([
+const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   'barrelShaft',
   // Neither of these is a plated surface: a tyre is a moulded carcass with
-  // lugs, a cleat is one cast bar. Panel counts are meaningless for both.
+  // lugs, and the running band is deliberately plain steel. Panel counts are
+  // meaningless for both.
   'tyreTread',
-  'trackCleat',
+  'trackRunning',
 ]);
 
 function checkFeatureScale(): void {

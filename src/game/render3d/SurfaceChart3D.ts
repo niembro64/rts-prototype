@@ -46,7 +46,7 @@ export type TrimBandId =
   | 'liveryPiping'
   | 'liveryChevron'
   | 'tyreTread'
-  | 'trackCleat'
+  | 'trackRunning'
   | 'trackBeltPlate';
 
 export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
@@ -60,7 +60,7 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'liveryPiping',
   'liveryChevron',
   'tyreTread',
-  'trackCleat',
+  'trackRunning',
   'trackBeltPlate',
 ];
 
@@ -173,11 +173,10 @@ export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
   liveryChevron: { u: true, v: false },
   // Lugs repeat around the crown; the shoulders and the hub zone are placed.
   tyreTread: { u: true, v: false },
-  // One bar. Both of its axes carry placed structure — the leading and
-  // trailing edges along u, the guide horn and pin bosses across v.
-  trackCleat: { u: false, v: false },
-  // Link seams repeat along the belt; the frame's top and bottom rails are
-  // placed at the v edges.
+  // Plain running gear. Nothing along u, and v's shoulders are its edges.
+  trackRunning: { u: false, v: false },
+  // Link seams repeat along the frame; its top and bottom rails are placed
+  // at the v edges.
   trackBeltPlate: { u: true, v: false },
 };
 
@@ -261,12 +260,23 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   // sidewall and hub, which on a wheel lying on its axle are the two faces
   // you actually see from an RTS camera.
   tyreTread: { uExtent: 27.65, vExtent: 12.4, featureSize: 4 },
-  // GROUSER. One track cleat: u runs along the belt (the bar's short axis,
-  // where its leading and trailing edges are), v spans the track's width.
-  // Both are placed, so this band never repeats — a cleat is one bar.
-  trackCleat: { uExtent: 4, vExtent: 16, featureSize: 4 },
-  // TRACK SIDE FRAME. u runs along the belt and repeats; v is the frame's
-  // height on the side plates and the track's width on the running rim.
+  // RUNNING GEAR — the belt's outer rim and the grousers riding on it.
+  //
+  // Deliberately plain. Every one of these surfaces is seen edge-on from an
+  // RTS camera: a cleat is a bar a couple of world units deep, and the rim is
+  // a strip you only ever catch between cleats. Detail drawn there is detail
+  // nobody can resolve, and on a moving track it is detail that flickers.
+  //
+  // Only v carries anything (worn crown down the middle, dark shoulders at
+  // the track's edges), which is what lets ONE band serve both pieces: v is
+  // the track's width on the rim and on the cleat alike. u is a don't-care by
+  // construction — it is the belt's whole loop on the rim and a single bar's
+  // depth on a cleat, two wildly different world spans that would otherwise
+  // have to be reconciled.
+  trackRunning: { uExtent: 4, vExtent: 16, featureSize: 4 },
+  // TRACK SIDE FRAME — the flat outer face of the track, and the ONE track
+  // surface with real area facing the camera. u runs along the frame and
+  // repeats; v is its height.
   trackBeltPlate: { uExtent: REFERENCE_TRACK_LENGTH, vExtent: 10, featureSize: 8 },
 };
 
@@ -403,7 +413,7 @@ export type SurfaceChartId =
   | 'liveryStrap'
   | 'liveryCollar'
   | 'wheelTyre'
-  | 'trackCleat'
+  | 'trackRun'
   | 'trackBelt';
 
 type SurfaceChartDef = {
@@ -429,7 +439,7 @@ const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   liveryStrap: { band: 'liveryPiping', livery: true },
   liveryCollar: { band: 'liveryChevron', livery: true },
   wheelTyre: { band: 'tyreTread', livery: false },
-  trackCleat: { band: 'trackCleat', livery: false },
+  trackRun: { band: 'trackRunning', livery: false },
   trackBelt: { band: 'trackBeltPlate', livery: false },
 };
 
@@ -592,6 +602,6 @@ export const ROSTER_CHARTS: readonly SurfaceChartId[] = [
   'liveryStrap',
   'liveryCollar',
   'wheelTyre',
-  'trackCleat',
+  'trackRun',
   'trackBelt',
 ];

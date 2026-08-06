@@ -66,7 +66,7 @@ const BAND_SEEDS: Record<TrimBandId, number> = {
   liveryPiping: 0xc16d21,
   liveryChevron: 0x38e5b9,
   tyreTread: 0x2f7ab4,
-  trackCleat: 0xd45e19,
+  trackRunning: 0xd45e19,
   trackBeltPlate: 0x8a1f63,
 };
 
@@ -1118,83 +1118,77 @@ function drawTyreTread(
 }
 
 /**
- * TRACK GROUSER — one cleat.
+ * TRACK RUNNING GEAR — the belt's outer rim and the grousers on it.
  *
- * u runs ALONG the belt, which on a cleat is its short axis: the leading and
- * trailing edges live at u = 0 and u = 1. v spans the track's full width.
- * Neither axis repeats, because a cleat is one bar and a bigger track has
- * bigger bars, not more of them per bar.
+ * SIMPLE ON PURPOSE, and the simplicity is the design rather than a shortcut.
+ * These are the parts of a track seen edge-on: a cleat is a bar a couple of
+ * world units deep, the rim is a strip glimpsed between cleats. Structure
+ * drawn there cannot be resolved from an RTS camera, and on a belt scrolling
+ * past at speed it does not sit still long enough to read as structure at all
+ * — it reads as noise. The flat side of the track is where a track earns its
+ * detail, and that is the band below this one.
  *
- * The crown is deliberately the brightest and barest thing here: this is the
- * face that grinds against the ground, and polished steel is what that looks
- * like. It is a band constant in v, so it never reads as a light.
+ * Everything here lives on v, which is the track's WIDTH on both pieces: dark
+ * shoulders at the track's edges, a worn crown down its middle. That is what
+ * lets one band dress both, and it is why nothing is drawn along u — u is the
+ * belt's entire loop on the rim and one bar's depth on a cleat, two spans
+ * that share no scale and need not.
  */
-function drawTrackCleat(
+function drawTrackRunning(
   layer: Layer, rect: BandRect, rng: () => number, _band: TrimBandId,
 ): void {
-  // Cast body.
-  layer.albedo.fillStyle = gray(0.38);
+  // Dark steel, uniform along the belt.
+  layer.albedo.fillStyle = gray(0.34);
   layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
-  layer.height.fillStyle = gray(0.55);
+  layer.height.fillStyle = gray(0.5);
   layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
-  // Steel that has been through mud, not chrome. Wear shows on the crown
-  // where the bar actually grinds; letting it cover the whole cleat washes
-  // the track out and takes the owner's colour with it.
-  layer.bare.fillStyle = gray(0.16);
+  layer.bare.fillStyle = gray(0.14);
   layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
 
-  // Chamfered leading and trailing edges, dark and recessed.
-  const chamfer = Math.max(2, rect.width * 0.17);
-  for (const x of [rect.x, rect.x + rect.width - chamfer]) {
-    layer.albedo.fillStyle = gray(0.10);
-    layer.albedo.fillRect(x, rect.y, chamfer, rect.height);
-    layer.height.fillStyle = gray(0.18);
-    layer.height.fillRect(x, rect.y, chamfer, rect.height);
+  // Shoulders: the track's two edges, darker and slightly recessed. Constant
+  // along u, so they cost nothing as the belt scrolls.
+  const shoulder = Math.max(2, rect.height * 0.13);
+  for (const y of [rect.y, rect.y + rect.height - shoulder]) {
+    layer.albedo.fillStyle = gray(0.16);
+    layer.albedo.fillRect(rect.x, y, rect.width, shoulder);
+    layer.height.fillStyle = gray(0.3);
+    layer.height.fillRect(rect.x, y, rect.width, shoulder);
     layer.bare.fillStyle = gray(0.06);
-    layer.bare.fillRect(x, rect.y, chamfer, rect.height);
+    layer.bare.fillRect(rect.x, y, rect.width, shoulder);
   }
 
-  // The worn crown, running the full width of the bar.
-  const crownX = rect.x + rect.width * 0.34;
-  const crownW = rect.width * 0.32;
-  layer.albedo.fillStyle = gray(0.74);
-  layer.albedo.fillRect(crownX, rect.y, crownW, rect.height);
-  layer.height.fillStyle = gray(0.99);
-  layer.height.fillRect(crownX, rect.y, crownW, rect.height);
-  layer.bare.fillStyle = gray(0.62);
-  layer.bare.fillRect(crownX, rect.y, crownW, rect.height);
+  // The crown down the centre of the track — the strip that actually grinds
+  // against the ground, polished back toward bare metal.
+  const crownY = rect.y + rect.height * 0.38;
+  const crownH = rect.height * 0.24;
+  layer.albedo.fillStyle = gray(0.50);
+  layer.albedo.fillRect(rect.x, crownY, rect.width, crownH);
+  layer.height.fillStyle = gray(0.72);
+  layer.height.fillRect(rect.x, crownY, rect.width, crownH);
+  layer.bare.fillStyle = gray(0.30);
+  layer.bare.fillRect(rect.x, crownY, rect.width, crownH);
 
-  // Link pins along the width, and a guide notch at the centre where the bar
-  // straddles the sprocket.
-  const pins = Math.max(2, Math.round(BAND_SURFACE.trackCleat.vExtent / 4));
-  for (let i = 0; i < pins; i++) {
-    const cy = rect.y + ((i + 0.5) / pins) * rect.height;
-    rivet(layer, rect.x + rect.width * 0.18, cy, Math.max(1.5, rect.width * 0.09));
-    rivet(layer, rect.x + rect.width * 0.82, cy, Math.max(1.5, rect.width * 0.09));
-  }
-  const notch = Math.max(2, rect.height * 0.06);
-  layer.albedo.fillStyle = gray(0.05);
-  layer.albedo.fillRect(rect.x, rect.y + rect.height * 0.5 - notch * 0.5, rect.width, notch);
-  layer.height.fillStyle = gray(0.12);
-  layer.height.fillRect(rect.x, rect.y + rect.height * 0.5 - notch * 0.5, rect.width, notch);
-
-  // Grit worked into the casting, away from the polished crown.
-  for (let i = 0; i < 60; i++) {
-    const x = randIn(rng, rect.x, rect.x + rect.width);
-    if (x > crownX && x < crownX + crownW) continue;
-    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.10, 0.3).toFixed(3)})`;
-    layer.albedo.fillRect(x, randIn(rng, rect.y, rect.y + rect.height), 1.4, 1.4);
+  // Grit worked into the casting, off the crown. Full-width strokes so the
+  // variation is in v only and the belt stays uniform along its run.
+  for (let i = 0; i < 40; i++) {
+    const y = randIn(rng, rect.y, rect.y + rect.height);
+    if (y > crownY && y < crownY + crownH) continue;
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.08, 0.22).toFixed(3)})`;
+    layer.albedo.fillRect(rect.x, y, rect.width, randIn(rng, 0.15, 0.5) * TRIM_SHEET_TEXELS_PER_UNIT);
   }
 }
 
 /**
- * TRACK SIDE FRAME — the belt shell the cleats ride on.
+ * TRACK SIDE FRAME — the flat outer face of the track.
  *
- * u runs along the belt and REPEATS, so link seams stay the same physical
- * distance apart on a Lynx and on a Mammoth. v is the frame's height on the
- * flat side plates and the track's width on the running rim, which is why
- * everything here is either a transverse seam or a rail at a v edge: both
- * read correctly whichever of the two surfaces they land on.
+ * THE ONE TRACK SURFACE WORTH DRAWING. It is the only part of a track with
+ * real area square-on to an RTS camera, it does not move relative to the
+ * hull, and it is what makes a tracked unit read as tracked from across the
+ * map. Everything else about a track — the rim, the grousers — is running
+ * gear seen edge-on and gets the plain band above.
+ *
+ * u runs along the frame and REPEATS, so link seams stay the same physical
+ * distance apart on a Lynx and on a Mammoth; v is the frame's height.
  */
 function drawTrackBeltPlate(
   layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
@@ -1279,7 +1273,7 @@ const BAND_DRAWERS: Record<
   liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
   liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
   tyreTread: { base: { albedo: 0.36, height: 0.44, bare: 0.02 }, draw: drawTyreTread },
-  trackCleat: { base: { albedo: 0.38, height: 0.55, bare: 0.16 }, draw: drawTrackCleat },
+  trackRunning: { base: { albedo: 0.34, height: 0.5, bare: 0.14 }, draw: drawTrackRunning },
   trackBeltPlate: { base: { albedo: 0.40, height: 0.5, bare: 0.10 }, draw: drawTrackBeltPlate },
 };
 
