@@ -55,8 +55,11 @@ import {
   type DirtySlotSpan,
 } from './instancedBufferUpdate';
 import {
+  GRAIN_BAND,
   GRAIN_TILE_WORLD_UNITS,
-  grainContentRect,
+  TRIM_BAND_ORDER,
+  bandContentRect,
+  bandRectUniformArray,
   packChart,
   type SurfaceChartId,
 } from './SurfaceChart3D';
@@ -72,11 +75,6 @@ const BARE_METAL_COLOR = new THREE.Color(0x9aa1a8);
  *  silhouette edge doesn't shimmer as the derivative flips. */
 const BUMP_SCALE = 0.55;
 
-/** How much of the bump comes from the grain rather than from a placed chart.
- *  The grain's relief is fine (plate lips, rivet heads) and lands on every
- *  surface in the game, so it is deliberately shallower than a chart's. */
-const GRAIN_RELIEF = 0.7;
-
 /** Shared uniform objects. three.js reads uniforms by reference, so assigning
  *  these same objects into every patched shader means the CLIENT-bar toggle
  *  flips one value and every charted pool follows — no per-material walk and
@@ -86,12 +84,15 @@ const SHARED_UNIFORMS = {
   uChartEnabled: { value: 1 },
   uChartBareMetal: { value: BARE_METAL_COLOR },
   uChartBumpScale: { value: BUMP_SCALE },
-  // The grain's rectangle in the sheet and the world size of one repeat. Both
-  // are constants of the layout, uploaded once — every surface in the game
-  // samples this one rectangle at this one rate, which is the whole point.
-  uChartGrainRect: { value: new THREE.Vector4(...grainContentRect()) },
+  // Every band's rectangle, indexed by the band code the chart attribute
+  // carries. Uploaded once; a new band changes this array and nothing else.
+  uChartBands: { value: bandRectUniformArray() },
+  // The grain's own rectangle and the world size of one repeat.
+  uChartGrainRect: { value: (() => {
+    const rect = bandContentRect(GRAIN_BAND);
+    return new THREE.Vector4(rect.u0, rect.v0, rect.uSpan, rect.vSpan);
+  })() },
   uChartGrainWorld: { value: GRAIN_TILE_WORLD_UNITS },
-  uChartGrainRelief: { value: GRAIN_RELIEF },
 };
 
 /** Enable/disable all surface charting at runtime. Disabled fragments take the
@@ -162,9 +163,9 @@ const FRAGMENT_DECL = [
   'uniform float uChartEnabled;',
   'uniform vec3 uChartBareMetal;',
   'uniform float uChartBumpScale;',
+  `uniform vec4 uChartBands[${TRIM_BAND_ORDER.length}];`,
   'uniform vec4 uChartGrainRect;',
   'uniform float uChartGrainWorld;',
-  'uniform float uChartGrainRelief;',
   'varying vec4 vChart;',
   'varying vec2 vChartUv;',
   'varying vec3 vChartGrainPos;',
@@ -217,26 +218,34 @@ const FRAGMENT_DECL = [
   '}',
   '#endif',
   '',
-  // A chart is a rectangle in the sheet and the surface's own uv maps straight
-  // into it — no tiling, no fract, no wrap. That is what a single sheet-wide
-  // texel density buys: the band is exactly one wrap of its surface at exactly
-  // the right size, so there is nothing left to stretch, skew or zoom.
+  // A chart is a band rectangle plus how many times that band REPEATS across
+  // the surface it is mounted on. The repeat is what generalizes one drawn
+  // band to a whole roster: a plate stays 24 world units on a scout and on a
+  // Queen because only the wrap count changes.
   //
-  // Derivatives still have to be scaled by the rectangle, or the mip selection
-  // is taken from whole-sheet coordinates and every chart resolves at the
-  // wrong level. Clamped a half-texel inside so bilinear filtering at the
-  // extreme edge cannot reach the gutter.
-  'vec3 sampleSurfaceChart(vec2 chartUv, vec4 chart) {',
-  '  vec2 span = chart.zw;',
+  // AT OR BELOW ONE REPEAT THE LOOKUP CLAMPS rather than wraps, which is not a
+  // detail — it is what makes the reference host bit-identical to the band as
+  // drawn, and what lets a part SMALLER than the reference show the first
+  // fraction of the band instead of a compressed copy of all of it.
+  //
+  // Derivatives are taken from the repeated coordinate and scaled by the
+  // rectangle, or the mip selection comes from whole-sheet coordinates and
+  // every chart resolves at the wrong level. Clamped a half-texel inside so
+  // bilinear filtering at the extreme edge cannot reach the gutter.
+  'vec3 sampleSurfaceChart(vec2 chartUv, vec4 rect, vec2 repeat) {',
+  '  vec2 span = rect.zw;',
+  '  vec2 tiles = step(vec2(1.0001), repeat);',
+  '  vec2 scaled = chartUv * repeat;',
+  '  vec2 local = mix(clamp(chartUv, vec2(0.0), vec2(1.0)), fract(scaled), tiles);',
+  '  vec2 grad = mix(chartUv, scaled, tiles);',
   '  vec2 half_texel = 0.5 / vec2(textureSize(uTrimSheet, 0));',
-  '  vec2 local = clamp(chartUv, vec2(0.0), vec2(1.0));',
   '  vec2 st = clamp(',
-  '    chart.xy + local * span,',
-  '    chart.xy + half_texel,',
-  '    chart.xy + span - half_texel',
+  '    rect.xy + local * span,',
+  '    rect.xy + half_texel,',
+  '    rect.xy + span - half_texel',
   '  );',
   '  return textureGrad(',
-  '    uTrimSheet, st, dFdx(chartUv) * span, dFdy(chartUv) * span',
+  '    uTrimSheet, st, dFdx(grad) * span, dFdy(grad) * span',
   '  ).rgb;',
   '}',
   '',
@@ -271,24 +280,30 @@ const FRAGMENT_DECL = [
 // without either one having to know whether the other fired.
 const FRAGMENT_ALBEDO = [
   '#include <color_fragment>',
-  // BOTH spans, not just one. An unwritten Float32Array slot is all zeroes,
-  // but a geometry with no `aChart` attribute at all reads WebGL's default
-  // generic attribute — (0, 0, 0, 1) — and testing only .w would take that for
-  // a real chart and sample a garbage rectangle. Most surfaces in the game now
-  // wear this material without a chart buffer, so this is load-bearing.
-  'float chartActive = step(1.0e-6, vChart.z * vChart.w) * uChartEnabled;',
-  'vec3 chartTexel = vec3(0.5, 0.5, 0.0);',
-  'if (chartActive > 0.5) chartTexel = sampleSurfaceChart(vChartUv, vChart);',
-  'vec3 grainTexel = vec3(0.5, 0.5, 0.0);',
-  'if (uChartEnabled > 0.5) {',
-  '  grainTexel = sampleSubstanceGrain(vChartGrainPos, vChartGrainNormal);',
+  // The BAND CODE, not a span. An unwritten Float32Array slot is all zeroes,
+  // and a geometry with no `aChart` attribute at all reads WebGL's default
+  // generic attribute — (0, 0, 0, 1) — so the code is zero in both cases and
+  // neither can be mistaken for a real chart. Most surfaces in the game wear
+  // this material without a chart buffer, so this is load-bearing.
+  'float chartBand = vChart.x;',
+  'float chartActive = step(0.5, chartBand) * uChartEnabled;',
+  'vec3 chartTexel;',
+  'if (chartActive > 0.5) {',
+  '  chartTexel = sampleSurfaceChart(',
+  '    vChartUv, uChartBands[int(chartBand) - 1], vChart.yz',
+  '  );',
+  '} else {',
+  // A surface no chart claimed is plain material, and the grain is what plain
+  // material looks like. The two are exclusive on purpose: a charted band
+  // already draws its own plating, and multiplying a second panel grid into it
+  // is how one material turns into visual mush.
+  '  chartTexel = uChartEnabled > 0.5',
+  '    ? sampleSubstanceGrain(vChartGrainPos, vChartGrainNormal)',
+  '    : vec3(0.5, 0.5, 0.0);',
   '}',
-  // Wear composites rather than adds: a chart that has already stripped a
-  // patch to bare metal cannot be stripped further by the grain.
-  'float chartBare = chartTexel.b + grainTexel.b * (1.0 - chartTexel.b);',
-  'diffuseColor.rgb = mix(diffuseColor.rgb, uChartBareMetal, chartBare);',
-  'diffuseColor.rgb *= (chartTexel.r * 2.0) * (grainTexel.r * 2.0);',
-  'float chartHeight = chartTexel.g + (grainTexel.g - 0.5) * uChartGrainRelief;',
+  'diffuseColor.rgb = mix(diffuseColor.rgb, uChartBareMetal, chartTexel.b);',
+  'diffuseColor.rgb *= chartTexel.r * 2.0;',
+  'float chartHeight = chartTexel.g;',
 ].join('\n');
 
 const FRAGMENT_BUMP = [
@@ -361,9 +376,9 @@ export function patchSurfaceChartMaterial(
     shader.uniforms.uChartEnabled = SHARED_UNIFORMS.uChartEnabled;
     shader.uniforms.uChartBareMetal = SHARED_UNIFORMS.uChartBareMetal;
     shader.uniforms.uChartBumpScale = SHARED_UNIFORMS.uChartBumpScale;
+    shader.uniforms.uChartBands = SHARED_UNIFORMS.uChartBands;
     shader.uniforms.uChartGrainRect = SHARED_UNIFORMS.uChartGrainRect;
     shader.uniforms.uChartGrainWorld = SHARED_UNIFORMS.uChartGrainWorld;
-    shader.uniforms.uChartGrainRelief = SHARED_UNIFORMS.uChartGrainRelief;
 
     const define = options.bump ? '#define SURFACE_CHART_BUMP\n' : '';
     shader.vertexShader = shader.vertexShader
@@ -452,14 +467,21 @@ export function attachSurfaceChartAttribute(
   return { arr, attr, dirty: createDirtySlotSpan() };
 }
 
+/** Label one instance's surface.
+ *
+ *  `hostScale` is the part's size as a multiple of the reference host's, and
+ *  it is what holds the band's features at the size they were drawn at on a
+ *  part of any size — see chartRepeat. Leaving it at 1 is correct only for a
+ *  part the same size as the Formik's. */
 export function writeSurfaceChart(
   state: SurfaceChartAttribute | undefined,
   slot: number,
   chart: SurfaceChartId,
+  hostScale = 1,
 ): void {
   if (state === undefined) return;
   const offset = slot * 4;
-  packChart(chart, state.arr, offset);
+  packChart(chart, state.arr, offset, hostScale);
   markDirtySlot(state.dirty, slot);
   if (import.meta.env.DEV && chart !== 'none') countChartWrite(chart);
 }
@@ -490,10 +512,11 @@ function countChartWrite(chart: SurfaceChartId): void {
 export function attachConstantSurfaceChart(
   geometry: THREE.BufferGeometry,
   chart: SurfaceChartId,
+  hostScale = 1,
 ): void {
   const vertexCount = geometry.getAttribute('position').count;
   const packed = new Float32Array(4);
-  packChart(chart, packed, 0);
+  packChart(chart, packed, 0, hostScale);
   const arr = new Float32Array(vertexCount * 4);
   for (let i = 0; i < vertexCount; i++) arr.set(packed, i * 4);
   geometry.setAttribute('aChart', new THREE.BufferAttribute(arr, 4));

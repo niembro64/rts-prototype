@@ -25,6 +25,7 @@ import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { setVector3IfChanged } from './threeTransformWriteUtils';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
+import { REFERENCE_HOST_RADIUS, bodyLobeChart } from './SurfaceChart3D';
 import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
@@ -177,11 +178,29 @@ export class UnitMeshBuilder3D {
         bodyEntry.parts.length,
         geometryTier,
       ) ?? undefined;
-      // No placed chart on a hull lobe. A hull is plain material, and plain
-      // material is what the projected substance grain describes — it lands on
-      // every lobe of every unit at the world's one texel density without a
-      // labelling step. Hull-shaped bands were how this used to work, and they
-      // could only ever fit the one unit they were measured against.
+      // Semantic labelling. The generator knows exactly which lobe of the
+      // composite each slot is, so the chart comes from the build rather than
+      // from analysing the result — see SurfaceChart3D.
+      //
+      // The FORWARD-MOST lobe is the unit's face from the RTS camera and takes
+      // the harder-edged facet band; everything behind it shares plated
+      // armour. That is the split the reference host's three lobes were drawn
+      // with, applied by geometry rather than by blueprint id, so a new hull
+      // is charted because of what it is.
+      if (smoothChassisSlots !== undefined) {
+        let forwardPart = 0;
+        for (let i = 1; i < bodyEntry.parts.length; i++) {
+          if (bodyEntry.parts[i].x > bodyEntry.parts[forwardPart].x) forwardPart = i;
+        }
+        const hostScale = radius / REFERENCE_HOST_RADIUS;
+        for (let i = 0; i < smoothChassisSlots.length; i++) {
+          this.unitDetailInstances.setSmoothChassisChart(
+            smoothChassisSlots[i],
+            bodyLobeChart(i === forwardPart),
+            hostScale,
+          );
+        }
+      }
     } else if (
       useInstancedChassis &&
       !bodyEntry.isSmooth &&

@@ -396,7 +396,12 @@ class CylinderPool {
     parent.add(this.mesh);
   }
 
-  alloc(color: number, onRelocate: SlotRelocator, chart: SurfaceChartId = 'none'): number {
+  alloc(
+    color: number,
+    onRelocate: SlotRelocator,
+    chart: SurfaceChartId = 'none',
+    hostScale = 1,
+  ): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -406,7 +411,7 @@ class CylinderPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
-    writeSurfaceChart(this.chart, slot, chart);
+    writeSurfaceChart(this.chart, slot, chart, hostScale);
     (this.thickBuf.array as Float32Array)[slot] = 0;
     markDirtySlot(this.thickDirty, slot);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
@@ -617,7 +622,12 @@ class JointSpherePool {
     parent.add(this.mesh);
   }
 
-  alloc(color: number, onRelocate: SlotRelocator, chart: SurfaceChartId = 'none'): number {
+  alloc(
+    color: number,
+    onRelocate: SlotRelocator,
+    chart: SurfaceChartId = 'none',
+    hostScale = 1,
+  ): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -627,7 +637,7 @@ class JointSpherePool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
-    writeSurfaceChart(this.chart, slot, chart);
+    writeSurfaceChart(this.chart, slot, chart, hostScale);
     writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
@@ -766,16 +776,18 @@ export class LegInstancedRenderer {
     onRelocate: SlotRelocator,
     tier: PrimitiveGeometryTier = 'close',
     chart: SurfaceChartId = 'none',
+    hostScale = 1,
   ): number {
-    return this.pool(tier).upper.alloc(color, onRelocate, chart);
+    return this.pool(tier).upper.alloc(color, onRelocate, chart, hostScale);
   }
   allocLower(
     color: number,
     onRelocate: SlotRelocator,
     tier: PrimitiveGeometryTier = 'close',
     chart: SurfaceChartId = 'none',
+    hostScale = 1,
   ): number {
-    return this.pool(tier).lower.alloc(color, onRelocate, chart);
+    return this.pool(tier).lower.alloc(color, onRelocate, chart, hostScale);
   }
   /** Allocate a joint-sphere slot (used by the full leg style for hips).
    *  Returns -1 if the pool is full. See allocUpper for relocator
@@ -785,8 +797,9 @@ export class LegInstancedRenderer {
     onRelocate: SlotRelocator,
     tier: PrimitiveGeometryTier = 'close',
     chart: SurfaceChartId = 'none',
+    hostScale = 1,
   ): number {
-    return this.pool(tier).joints.alloc(color, onRelocate, chart);
+    return this.pool(tier).joints.alloc(color, onRelocate, chart, hostScale);
   }
   freeUpper(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).upper.free(slot); }
   freeLower(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).lower.free(slot); }

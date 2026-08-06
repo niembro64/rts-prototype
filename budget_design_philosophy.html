@@ -3095,52 +3095,91 @@
         <li>Screen-space resolution is the camera&rsquo;s business, and the detail ladder&rsquo;s. It never feeds back into how much texture a surface owns.</li>
       </ul>
 
-      <h3>Substance grain versus placed charts</h3>
+      <h3>One reference host, and a repeat</h3>
       <p>
-        Two different things are wrongly called &ldquo;texture&rdquo;, and
-        separating them is what lets one density rule hold across a roster
-        whose parts differ in size by more than an order of magnitude.
+        Every band on the trim sheet is drawn against <em>one</em> host &mdash;
+        its hull lobes fix the plate, its head the sensor dome, its barrel the
+        tube, its legs the strut and knuckle, its kit the livery. That host is
+        the reference, and its charts are exactly <strong>one wrap</strong> of
+        their surfaces, so it renders precisely as the bands were drawn.
+      </p>
+      <p>
+        Every other host wears the same bands, repeated by its own size against
+        the reference&rsquo;s. A hull twice as big wraps the plate band twice,
+        so the plate is still the same number of world units across; a hull
+        half as big shows half the band rather than a squeezed copy of all of
+        it. The band never changes &mdash; only the wrap count does. That is
+        the entire mechanism by which one drawn sheet dresses a roster whose
+        parts differ in size by more than an order of magnitude, and it is why
+        the reference host is a fixed point in the code rather than a special
+        case.
+      </p>
+
+      <h3>Which axes may repeat, and why</h3>
+      <p>
+        Repetition is decided per band and per axis, by what that band draws on
+        that axis. Two different things are wrongly called &ldquo;texture&rdquo;
+        and this is where they separate.
       </p>
       <ul class="rule-list">
-        <li><strong>Substance grain</strong> is what the surface is made of &mdash; plating, panel breaks, weld seams, rivet rhythm, wear, grime. It has no relationship to the part&rsquo;s size or shape. It tiles, it is authored once per material, and it is the term that carries the density invariant. It applies to <em>every</em> face of <em>every</em> entity with no per-surface authoring at all.</li>
-        <li><strong>Placed charts</strong> are structure at a known location on a known part &mdash; a turret head&rsquo;s pitch slot, a barrel&rsquo;s muzzle bore and breech collar, a strut&rsquo;s end flanges, a livery band&rsquo;s piped edges. These use the part&rsquo;s own parameterization, are authored once per role, and scale with the part, because a bigger turret has a bigger slot, not more slots.</li>
+        <li>An axis carrying only <strong>material</strong> &mdash; panel columns, plate courses, bolt rhythm &mdash; repeats. That is what holds a plate at its authored world size on anything it is bolted to.</li>
+        <li>An axis carrying a <strong>placed feature</strong> cannot. A sensor dome&rsquo;s pitch slot is one opening at one azimuth running one full meridian; repeat either of its axes and the head grows a ring of slots or a stack of them. A barrel&rsquo;s breech is at one end and its bore at the other. A strut&rsquo;s collars are at its two ends, a knuckle&rsquo;s flange across its middle, a livery band&rsquo;s piping along its two edges. Those axes hold one wrap and let the structure scale with the part, because a bigger turret has a bigger slot, not more slots.</li>
       </ul>
       <p>
-        Structure scales; substance does not. A Queen&rsquo;s collar is a
-        larger collar than a scout&rsquo;s, and the plating, bolts, and wear
-        on both are the same physical size. Stating it that way is what makes
-        the invariant implementable instead of aspirational: a placed feature
-        cannot be tiled without repeating structure that exists once on the
-        real object, and substance cannot be fitted to a part without
+        Structure scales; material repeats. Stating it per axis is what makes
+        the invariant implementable instead of aspirational &mdash; a placed
+        feature cannot be tiled without duplicating something that exists once
+        on the real object, and material cannot be fitted to a part without
         breaking density the moment two parts differ in size.
       </p>
 
+      <h3>Surfaces no chart claimed</h3>
+      <p>
+        Not every surface has a natural parameterization to chart against: a
+        building&rsquo;s walls, a wheel, a fan, a cone, an end cap, a generated
+        ribbon. Those carry a <strong>projected substance grain</strong>
+        instead &mdash; the same plating vocabulary at the same authored plate
+        size, read from the fragment&rsquo;s own position in the object&rsquo;s
+        frame rather than through a uv. Nothing has to be unwrapped or
+        labelled, which is what makes total coverage reachable rather than a
+        labelling campaign nobody finishes.
+      </p>
+      <ul class="rule-list">
+        <li>The grain&rsquo;s plate is the hull&rsquo;s plate. A structure and the unit parked beside it must be visibly the same stock of metal; a grain drawn at its own scale would be a second material pretending to be the first.</li>
+        <li>Grain and chart are <strong>exclusive</strong>. A charted band already draws its own plating, and multiplying a second panel grid into it turns one material into mush.</li>
+        <li>&ldquo;Untextured&rdquo; is not a reachable state. A surface with no chart is not bare; it is plain material, and the grain is what plain material looks like.</li>
+      </ul>
+
       <h3>The grain projects in the object&rsquo;s own frame, corrected for scale</h3>
       <p>
-        Grain is projected rather than unwrapped. This is
-        <strong>Materials Are Independent Of Shape</strong> made literal: the
-        same steel lands identically on a sphere, a box, a swept ribbon, and a
-        cone, because the projection reads position and normal rather than a
-        chart. It is what makes total coverage achievable &mdash; a box&rsquo;s
-        six faces, a cylinder&rsquo;s end caps, and a generated ribbon&rsquo;s
-        cross-section are all textured without anyone unwrapping them.
+        This is <strong>Materials Are Independent Of Shape</strong> made
+        literal: the same steel lands identically on a sphere, a box, a swept
+        ribbon, and a cone, because the projection reads position and normal
+        rather than a chart.
       </p>
       <ul class="rule-list">
         <li>The projection frame is the <strong>object&rsquo;s</strong>, not the world&rsquo;s. World-space projection makes a moving unit swim through its own texture and a turning unit rotate inside it. Object space is welded to the model.</li>
         <li>The projection coordinate is scaled into world units by the instance&rsquo;s own scale, including non-uniform scale. A barrel stretched to (radius, length, radius) must not show the grain stretched with it; that stretch is exactly the density violation this section exists to forbid.</li>
-        <li>Coverage is total by construction. A surface that no one labelled still receives grain, so &ldquo;untextured&rdquo; is not a reachable state and cannot be shipped by omission.</li>
       </ul>
 
       <h3>The Formik is the reference model, not a special case</h3>
       <p>
-        The Formik &mdash; its hull lobes, its legged locomotion, and its
-        rapid mortar &mdash; is the worked example every other entity is held
+        The Formik &mdash; its hull lobes, its legged locomotion, its rapid
+        mortar, and its team kit &mdash; is the host every band was drawn
         against, because it is the one place where hull, nose, sensor head,
-        barrel, strut, joint, and both livery surfaces were authored
-        together. It is a reference, not a privileged blueprint: no code path
-        may branch on the Formik&rsquo;s blueprint id to decide whether a
-        surface gets textured or ornamented. Whatever the Formik demonstrates,
-        the roster receives.
+        barrel, strut, joint, and both livery surfaces were authored together.
+        It is therefore the host whose charts resolve to exactly one wrap, and
+        it must keep rendering exactly as drawn while everything else is
+        derived from it.
+      </p>
+      <p>
+        That makes it a reference, not a privileged blueprint. No code path may
+        branch on the Formik&rsquo;s blueprint id to decide whether a surface
+        gets textured or ornamented; charts are assigned by what a part
+        <em>is</em> &mdash; a lobe, a nose, a head, a barrel, a strut, a
+        knuckle, a strap, a collar &mdash; so a new unit is charted because it
+        has those parts, not because somebody listed it. Whatever the Formik
+        demonstrates, the roster receives, at the Formik&rsquo;s scale.
       </p>
 
       <h3>Team ornamentation is one kit vocabulary on every host</h3>
@@ -3706,7 +3745,7 @@
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
-        <li>Texture every face of every unit, building, turret, locomotion part, and ornament at one world texel density &mdash; the same texels per world unit, on both axes, on every entity, with no per-blueprint override. Split the work into tiling <strong>substance grain</strong> projected in the object&rsquo;s own scale-corrected frame (total coverage, carries the density invariant, needs no unwrap) and <strong>placed charts</strong> on a part&rsquo;s own parameterization (slots, bores, collars, livery edges) that scale with the part. Accept the consequence that a big entity at range reads as more detailed than a small entity up close. Dress every host in the Formik&rsquo;s rail-and-rib team kit fitted to its own body and every turret in a collar sized from its head radius; never a bare box, stripe, or fin, and never a branch on the Formik&rsquo;s blueprint id.</li>
+        <li>Texture every face of every unit, building, turret, locomotion part, and ornament at one world texel density &mdash; the same texels per world unit, on both axes, on every entity, with no per-blueprint override. Draw every band against ONE reference host whose charts are exactly one wrap, then mount those same bands everywhere else repeated by the host&rsquo;s own size, so a plate is the same physical size on a scout and on a Queen. Repeat only the axes carrying material; an axis carrying a placed feature (a pitch slot, a bore, an end collar, a piped edge) holds one wrap and scales with the part. Surfaces with no natural parameterization take a projected substance grain in the object&rsquo;s own scale-corrected frame, drawn from the same vocabulary at the same plate size, so &ldquo;untextured&rdquo; is unreachable. Accept the consequence that a big entity at range reads as more detailed than a small entity up close. Dress every host in the reference host&rsquo;s rail-and-rib team kit fitted to its own body and every turret in a collar sized from its head radius; never a bare box, stripe, or fin, and never a branch on a blueprint id.</li>
         <li>Route every stockpile change through one typed resource-movement ledger carrying <code>(resource, amount, direction, source, optional target, reason)</code>. Keep that accounting/UI/debug truth independent from presentation. The normal battlefield view uses localized economy animation; a conserved pylon-ball view is an optional overlay. Builders and factories instead emit one team-coloured work stream whose density follows realized construction or repair work. Construction pays metal and energy as one coupled step; completed-entity repair pays neither.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>

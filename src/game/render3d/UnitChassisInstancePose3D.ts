@@ -91,6 +91,7 @@ export class UnitChassisInstancePose3D {
     if (mesh.teamTrimSlot === undefined) {
       const slot = teamTrim.allocHostKit(
         ornamentProfileFor(mesh, bodyEntry),
+        radius,
         mesh.geometryTier ?? 'close',
       );
       // A full pool just means no kit on this unit; never a broken frame.

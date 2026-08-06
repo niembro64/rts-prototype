@@ -26,7 +26,7 @@ import type {
   LegConfig as BlueprintLegConfig,
   UnitBodyShape,
 } from '@/types/blueprints';
-import type { LegSurfaceCharts } from './SurfaceChart3D';
+import { REFERENCE_HOST_RADIUS, type LegSurfaceCharts } from './SurfaceChart3D';
 import type { LegStyle } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
@@ -420,17 +420,24 @@ export function buildLegs(
     // LegInstancedRenderer pools. Each alloc registers a relocator
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
+    // Leg charts repeat by the HOST's size, not the segment's: a bigger
+    // walker's legs are thicker and longer in proportion, so one scale keeps
+    // the strut's plating and the knuckle's bolts at the size they were drawn.
+    const legChartScale = r / REFERENCE_HOST_RADIUS;
     leg.upperSlot = legRenderer.allocUpper(
       legColor, (s) => { leg.upperSlot = s; }, geometryTier, charts?.upper,
+      legChartScale,
     );
     if (legStyle === 'animated' || legStyle === 'full') {
       leg.lowerSlot = legRenderer.allocLower(
         legColor, (s) => { leg.lowerSlot = s; }, geometryTier, charts?.lower,
+        legChartScale,
       );
     }
     if (legStyle === 'full') {
       leg.hipJointSlot = legRenderer.allocJoint(
         legColor, (s) => { leg.hipJointSlot = s; }, geometryTier, charts?.joint,
+        legChartScale,
       );
     }
 

@@ -8,15 +8,20 @@ import {
 } from './instancedBufferUpdate';
 import {
   createHostOrnamentGeometry,
+  collarChartScale,
   createTurretCollarGeometry,
+  ornamentChartScale,
   ornamentProfileKey,
   type HostOrnamentProfile,
 } from './TeamOrnament3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import type { SurfaceChartId } from './SurfaceChart3D';
 import {
-  attachConstantSurfaceChart,
+  attachSurfaceChartAttribute,
   patchSurfaceChartMaterial,
+  uploadSurfaceChart,
+  writeSurfaceChart,
+  type SurfaceChartAttribute,
 } from './SurfaceChartMaterial3D';
 
 /**
@@ -70,6 +75,11 @@ type DirtySlotSpan = ReturnType<typeof createDirtySlotSpan>;
 type TrimPool = {
   mesh: THREE.InstancedMesh;
   geometry: THREE.BufferGeometry;
+  /** The livery chart this pool's geometry wears. Per-INSTANCE rather than
+   *  baked into the geometry, because the band's repeat depends on the host's
+   *  size and two hosts of the same body shape can be different sizes. */
+  chartId: SurfaceChartId;
+  chart: SurfaceChartAttribute;
   capacity: number;
   free: number[];
   nextSlot: number;
@@ -124,11 +134,8 @@ export class TeamTrimRenderer3D {
     if (existing !== undefined) return existing;
     const geometry = makeGeometry();
     addWhiteVertexColors(geometry);
-    // Constant rather than per-instance: one geometry per ornament profile
-    // means every instance in this pool IS the same surface.
-    attachConstantSurfaceChart(geometry, chart);
     const index = this.pools.length;
-    this.pools.push(this.createPool(name, geometry, INITIAL_SLOT_CAP));
+    this.pools.push(this.createPool(name, geometry, INITIAL_SLOT_CAP, chart));
     this.poolsByKey.set(key, index);
     return index;
   }
@@ -137,6 +144,7 @@ export class TeamTrimRenderer3D {
     name: string,
     geometry: THREE.BufferGeometry,
     capacity: number,
+    chartId: SurfaceChartId,
   ): TrimPool {
     const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     mesh.name = name;
@@ -156,6 +164,8 @@ export class TeamTrimRenderer3D {
     return {
       mesh,
       geometry,
+      chartId,
+      chart: attachSurfaceChartAttribute(geometry, capacity),
       capacity,
       free: [],
       nextSlot: 0,
@@ -172,7 +182,13 @@ export class TeamTrimRenderer3D {
   private growPool(pool: TrimPool): boolean {
     if (pool.capacity >= MAX_SLOT_CAP) return false;
     const capacity = Math.min(MAX_SLOT_CAP, pool.capacity * 2);
-    const next = this.createPool(pool.mesh.name, pool.geometry, capacity);
+    // Snapshot the charts BEFORE the replacement attaches its own attribute:
+    // the geometry is shared between the two meshes, so createPool overwrites
+    // the label buffer on the way past and the copy has to come first.
+    const charts = pool.chart.arr.slice(0, pool.capacity * 4);
+    const next = this.createPool(pool.mesh.name, pool.geometry, capacity, pool.chartId);
+    next.chart.arr.set(charts);
+    next.chart.attr.needsUpdate = true;
     next.mesh.count = pool.mesh.count;
     next.nextSlot = pool.nextSlot;
     next.free.push(...pool.free);
@@ -190,6 +206,7 @@ export class TeamTrimRenderer3D {
     disposeMesh(pool.mesh, { material: false, geometry: false });
     pool.mesh = next.mesh;
     pool.capacity = capacity;
+    pool.chart = next.chart;
     pool.matrixDirty = next.matrixDirty;
     pool.colorDirty = next.colorDirty;
     // createPool pushed nothing to this.pools; drop the temporary record.
@@ -208,13 +225,15 @@ export class TeamTrimRenderer3D {
     return this.enabled;
   }
 
-  private allocFrom(poolIndex: number): number {
+  private allocFrom(poolIndex: number, hostScale: number): number {
     const pool = this.pools[poolIndex];
-    const reused = pool.free.pop();
-    if (reused !== undefined) return encodeTrimSlot(poolIndex, reused);
-    if (pool.nextSlot >= pool.capacity && !this.growPool(pool)) return -1;
-    const index = pool.nextSlot++;
-    if (pool.mesh.count < pool.nextSlot) pool.mesh.count = pool.nextSlot;
+    let index = pool.free.pop();
+    if (index === undefined) {
+      if (pool.nextSlot >= pool.capacity && !this.growPool(pool)) return -1;
+      index = pool.nextSlot++;
+      if (pool.mesh.count < pool.nextSlot) pool.mesh.count = pool.nextSlot;
+    }
+    writeSurfaceChart(pool.chart, index, pool.chartId, hostScale);
     return encodeTrimSlot(poolIndex, index);
   }
 
@@ -227,27 +246,34 @@ export class TeamTrimRenderer3D {
    */
   allocHostKit(
     profile: HostOrnamentProfile,
+    instanceScale: number,
     tier: PrimitiveGeometryTier = 'close',
   ): number {
     const key = `host:${ornamentProfileKey(profile)}:${tier}`;
-    return this.allocFrom(this.poolFor(
-      key,
-      `TeamTrimRenderer3D.HostKit.${tier}`,
-      () => createHostOrnamentGeometry(profile, tier),
-      liveryChartFor('liveryStrap', tier),
-    ));
+    return this.allocFrom(
+      this.poolFor(
+        key,
+        `TeamTrimRenderer3D.HostKit.${tier}`,
+        () => createHostOrnamentGeometry(profile, tier),
+        liveryChartFor('liveryStrap', tier),
+      ),
+      ornamentChartScale(profile, instanceScale),
+    );
   }
 
   /** Every turret's collar. One geometry per tier — the collar is a unit
    *  cylinder along +X and the turret's own head radius is instance scale. */
-  allocTurretCollar(tier: PrimitiveGeometryTier = 'close'): number {
+  allocTurretCollar(collarRadius: number, tier: PrimitiveGeometryTier = 'close'): number {
     const key = `collar:${tier}`;
-    return this.allocFrom(this.poolFor(
-      key,
-      `TeamTrimRenderer3D.TurretCollar.${tier}`,
-      () => createTurretCollarGeometry(tier),
-      liveryChartFor('liveryCollar', tier),
-    ));
+    return this.allocFrom(
+      this.poolFor(
+        key,
+        `TeamTrimRenderer3D.TurretCollar.${tier}`,
+        () => createTurretCollarGeometry(tier),
+        liveryChartFor('liveryCollar', tier),
+      ),
+      collarChartScale(collarRadius),
+    );
   }
 
   /** Place an ornament instance. Sizes are the geometry's own axes: a host
@@ -352,6 +378,7 @@ export class TeamTrimRenderer3D {
     if (pool === undefined) return;
     const index = trimSlotIndex(slot);
     this.hideIn(pool, index);
+    writeSurfaceChart(pool.chart, index, 'none');
     pool.free.push(index);
   }
 
@@ -361,6 +388,7 @@ export class TeamTrimRenderer3D {
       uploadDirtySlotSpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
       const colors = pool.mesh.instanceColor;
       if (colors !== null) uploadDirtySlotSpan(colors, pool.colorDirty, 3);
+      uploadSurfaceChart(pool.chart);
     }
   }
 

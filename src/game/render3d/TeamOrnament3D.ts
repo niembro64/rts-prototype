@@ -24,7 +24,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
-import { BAND_CAP_ZONES } from './SurfaceChart3D';
+import {
+  BAND_CAP_ZONES,
+  REFERENCE_HOST_RADIUS,
+  REFERENCE_TURRET_HEAD_RADIUS,
+} from './SurfaceChart3D';
 import { remapChartedCylinderUvs } from './ChartedCylinderUv3D';
 
 /**
@@ -213,6 +217,35 @@ export function ornamentProfileKey(profile: HostOrnamentProfile): string {
   const q = (value: number): string => value.toFixed(2);
   return `${q(profile.backX)}/${q(profile.frontX)}/${q(profile.topY)}`
     + `/${q(profile.halfWidth)}/${q(profile.section)}`;
+}
+
+/** The reference kit's rail length in world units — the Formik's rail on the
+ *  Formik. A host's livery chart repeats by its own rail length against this,
+ *  which is what keeps the piping's plates and bolts the size they were drawn
+ *  whether they run along a scout or around a factory. */
+const REFERENCE_RAIL_SPAN_WORLD =
+  (REFERENCE_ORNAMENT_PROFILE.frontX - REFERENCE_ORNAMENT_PROFILE.backX)
+  * REFERENCE_HOST_RADIUS;
+
+/** How many reference rails' worth of strap this host carries.
+ *
+ *  `instanceScale` is what the kit is instanced at — a unit's render radius
+ *  for a kit authored in unit-radius-1 space, 1 for a structure's kit authored
+ *  in world units. The reference host comes out at exactly 1 and therefore
+ *  renders its livery band exactly as drawn. */
+export function ornamentChartScale(
+  profile: HostOrnamentProfile,
+  instanceScale: number,
+): number {
+  return ((profile.frontX - profile.backX) * instanceScale) / REFERENCE_RAIL_SPAN_WORLD;
+}
+
+/** How many reference collars' worth of circumference this turret's collar
+ *  has. The livery chevron band was drawn against the reference turret's
+ *  collar, so this is what keeps its flange bolts the size they were drawn on
+ *  a turret of any size — and it is exactly 1 on the reference turret. */
+export function collarChartScale(collarRadius: number): number {
+  return collarRadius / (REFERENCE_TURRET_HEAD_RADIUS * TURRET_COLLAR_RADIUS_FRAC);
 }
 
 const _tangent = new THREE.Vector3();

@@ -466,27 +466,31 @@ export class UnitDetailInstanceRenderer3D {
 
   /** Label a smooth-chassis slot's surface. Charts are written once at mesh
    *  build (they are a property of what the surface IS, not of its pose), and
-   *  reset to 'none' whenever the slot is recycled. */
-  setSmoothChassisChart(slot: number, chart: SurfaceChartId): void {
-    this.setTierChart(this.smoothChassisPools, slot, chart);
+   *  reset to 'none' whenever the slot is recycled.
+   *
+   *  `hostScale` is the host's size as a multiple of the reference host's; it
+   *  is what keeps a plate 24 world units across on every hull in the game. */
+  setSmoothChassisChart(slot: number, chart: SurfaceChartId, hostScale = 1): void {
+    this.setTierChart(this.smoothChassisPools, slot, chart, hostScale);
   }
 
-  setTurretHeadChart(slot: number, chart: SurfaceChartId): void {
-    this.setTierChart(this.turretHeadPools, slot, chart);
+  setTurretHeadChart(slot: number, chart: SurfaceChartId, hostScale = 1): void {
+    this.setTierChart(this.turretHeadPools, slot, chart, hostScale);
   }
 
-  setBarrelChart(slot: number, chart: SurfaceChartId): void {
-    this.setTierChart(this.barrelPools, slot, chart);
+  setBarrelChart(slot: number, chart: SurfaceChartId, hostScale = 1): void {
+    this.setTierChart(this.barrelPools, slot, chart, hostScale);
   }
 
   private setTierChart(
     pools: TierPool[],
     slot: number,
     chart: SurfaceChartId,
+    hostScale: number,
   ): void {
     const pool = pools[tierSlotTier(slot)];
     if (pool === undefined) return;
-    writeSurfaceChart(pool.chart, tierSlotIndex(slot), chart);
+    writeSurfaceChart(pool.chart, tierSlotIndex(slot), chart, hostScale);
   }
 
   allocTurretHeadSlot(tier: PrimitiveGeometryTier = 'close'): number | null {

@@ -582,7 +582,7 @@ export class UnitTurretPose3D {
     const anchor = turretMesh.teamCollar;
     if (anchor === undefined || teamTrim === null) return;
     if (anchor.slot === undefined) {
-      const slot = teamTrim.allocTurretCollar(anchor.tier);
+      const slot = teamTrim.allocTurretCollar(anchor.radius, anchor.tier);
       if (slot < 0) return;
       anchor.slot = slot;
     }

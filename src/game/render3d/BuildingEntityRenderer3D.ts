@@ -1182,7 +1182,9 @@ export class BuildingEntityRenderer3D {
           topY: height,
         });
       }
-      const slot = trim.allocHostKit(mesh.teamTrimProfile, mesh.geometryTier ?? 'close');
+      // Authored in world units, so the kit instances at scale 1 and its
+      // livery repeat follows the rails' real length on this structure.
+      const slot = trim.allocHostKit(mesh.teamTrimProfile, 1, mesh.geometryTier ?? 'close');
       // A full pool just means no kit on this structure, never a broken frame.
       if (slot < 0) return;
       mesh.teamTrimSlot = slot;
@@ -1543,7 +1545,7 @@ export class BuildingEntityRenderer3D {
     const trim = this.teamTrim;
     if (collar === undefined || trim === null || host === undefined) return;
     if (collar.slot === undefined) {
-      const slot = trim.allocTurretCollar(collar.tier);
+      const slot = trim.allocTurretCollar(collar.radius, collar.tier);
       if (slot < 0) return;
       collar.slot = slot;
     }

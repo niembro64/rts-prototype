@@ -11,11 +11,13 @@ import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
   BAND_SURFACE,
+  BAND_TILE_AXES,
   BAND_WRAPS_V,
   GRAIN_BAND,
   GRAIN_TILE_WORLD_UNITS,
   LEG_CHARTS,
   ROSTER_CHARTS,
+  chartRepeat,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
   TRIM_SHEET_PIXELS,
@@ -23,7 +25,7 @@ import {
   bandContentRect,
   bandFeatureCounts,
   bandRectPx,
-  grainContentRect,
+  bandRectUniformArray,
   packedSheetHeight,
   isLiveryChart,
   packChart,
@@ -58,18 +60,7 @@ function bandOf(chart: SurfaceChartId): TrimBandId | null {
   if (chart === 'none') return null;
   const packed = new Float32Array(4);
   packChart(chart, packed, 0);
-  // Match on BOTH corners. Bands are packed side by side now, so several share
-  // a v0 and matching on that alone resolves to whichever was declared first.
-  for (const band of TRIM_BAND_ORDER) {
-    const range = bandContentRect(band);
-    if (
-      Math.abs(range.u0 - packed[0]) < 1e-9 &&
-      Math.abs(range.v0 - packed[1]) < 1e-9
-    ) {
-      return band;
-    }
-  }
-  return null;
+  return TRIM_BAND_ORDER[Math.round(packed[0]) - 1] ?? null;
 }
 
 function checkCatalog(): void {
@@ -146,13 +137,44 @@ function checkCatalog(): void {
   const usedBands = new Set<TrimBandId>([GRAIN_BAND]);
   for (const chart of ROSTER_CHARTS) {
     packChart(chart, packed, 0);
-    assertContract(
-      packed[2] > 0 && packed[3] > 0,
-      `${chart} must resolve to a rectangle with extent on both axes`,
-    );
+    assertContract(packed[0] >= 1, `${chart} must resolve to a real band code`);
     const band = bandOf(chart);
     assertContract(band !== null, `${chart} must resolve to a real band`);
     usedBands.add(band);
+
+    // THE REFERENCE HOST IS NOT A SPECIAL CASE, and this is what keeps that
+    // true without letting it drift. A host the same size as the one every
+    // band was drawn against must resolve to exactly one wrap on both axes,
+    // which is what makes its charts identical to the band as drawn — the
+    // shader clamps rather than wraps at or below one repeat, so 1 means "as
+    // authored". Everything else here is the generalization; this is the fixed
+    // point it generalizes FROM.
+    const [refU, refV] = chartRepeat(chart, 1);
+    assertContract(
+      refU === 1 && refV === 1,
+      `${chart} must be exactly one wrap at reference scale — got ${refU}x${refV}`,
+    );
+
+    // ...and a host twice the size must repeat on every axis the band allows,
+    // because that is the only thing holding its features at the size they
+    // were drawn. An axis that refuses to tile is stating that it carries a
+    // PLACED feature (see BAND_TILE_AXES); one that tiles must actually do it.
+    const axes = BAND_TILE_AXES[band];
+    const [bigU, bigV] = chartRepeat(chart, 2);
+    assertContract(
+      bigU === (axes.u ? 2 : 1) && bigV === (axes.v ? 2 : 1),
+      `${chart} repeats ${bigU}x${bigV} at twice reference scale, which does `
+        + `not match its band's declared tiling (${axes.u}, ${axes.v})`,
+    );
+  }
+
+  // A tiling v axis has to have wrapping v gutters, or the repeat shows up as
+  // a filtered line every time the band comes round.
+  for (const band of TRIM_BAND_ORDER) {
+    assertContract(
+      BAND_WRAPS_V.has(band) === BAND_TILE_AXES[band].v,
+      `${band}'s v gutters and its v tiling disagree`,
+    );
   }
   // A band nothing references is a band nobody will notice is broken.
   for (const band of TRIM_BAND_ORDER) {
@@ -162,28 +184,38 @@ function checkCatalog(): void {
     );
   }
 
-  // THE GRAIN'S RECTANGLE is a uniform, uploaded once and sampled by every
-  // surface in the game. If it ever disagreed with the band it was rasterized
-  // into, every entity would show the wrong material at once.
-  const grainRect = grainContentRect();
-  const bandRect = bandContentRect(GRAIN_BAND);
-  assertContract(
-    grainRect[0] === bandRect.u0 && grainRect[1] === bandRect.v0 &&
-      grainRect[2] === bandRect.uSpan && grainRect[3] === bandRect.vSpan,
-    'the grain uniform must address the band the generator drew into',
-  );
-  // The grain TILES, so its band must be square in world terms: the projection
-  // divides both axes by one world size, and a non-square tile would grain one
-  // axis finer than the other on every surface at once.
+  // THE BAND RECTANGLE UNIFORM is what the chart attribute's band code indexes
+  // into. If the array and the packing ever disagreed, every charted surface
+  // in the game would sample a neighbouring band at once — and it would look
+  // like the wrong texture rather than like a bug.
+  const uniforms = bandRectUniformArray();
+  for (let i = 0; i < TRIM_BAND_ORDER.length; i++) {
+    const rect = bandContentRect(TRIM_BAND_ORDER[i]);
+    assertContract(
+      uniforms[i * 4] === rect.u0 && uniforms[i * 4 + 1] === rect.v0 &&
+        uniforms[i * 4 + 2] === rect.uSpan && uniforms[i * 4 + 3] === rect.vSpan,
+      `band uniform ${i} does not address ${TRIM_BAND_ORDER[i]}`,
+    );
+  }
+
+  // The grain is PROJECTED, not charted, so its band must be square in world
+  // terms: the projection divides both axes by one world size, and a
+  // non-square band would grain one axis finer than the other everywhere.
   const grain = BAND_SURFACE[GRAIN_BAND];
   assertContract(
     grain.uExtent === GRAIN_TILE_WORLD_UNITS && grain.vExtent === GRAIN_TILE_WORLD_UNITS,
     'the grain tile must be square — the shader divides both axes by one '
       + 'world size, so a non-square band skews every surface in the game',
   );
+  // And its plate must be the HULL's plate. The grain is what an uncharted
+  // surface — a building wall, a wheel, a fan — is made of, and if its plate
+  // were a different size from the charted hull's, a structure and the unit
+  // parked beside it would visibly be different stock.
   assertContract(
-    BAND_WRAPS_V.has(GRAIN_BAND),
-    'the grain tile repeats in v as well as u, so its v gutters must wrap',
+    grain.featureSize === BAND_SURFACE.armorPlate.featureSize,
+    `the grain's plate is ${grain.featureSize} world units against the hull's `
+      + `${BAND_SURFACE.armorPlate.featureSize} — uncharted surfaces must be `
+      + 'made of the same metal at the same scale as charted ones',
   );
 }
 
@@ -203,6 +235,10 @@ function checkLiverySeparation(): void {
         + 'livery is the only thing allowed to carry team identity',
     );
   }
+  assertContract(
+    !isLiveryChart('hullShell') && !isLiveryChart('hullNose'),
+    'the hull is player-coloured; no hull lobe may be a livery surface',
+  );
   assertContract(
     !isLiveryChart(LEG_CHARTS.upper) &&
       !isLiveryChart(LEG_CHARTS.lower) &&
