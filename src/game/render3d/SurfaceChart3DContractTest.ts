@@ -756,6 +756,7 @@ const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   // meaningless for both.
   'tyreTread',
   'trackRunning',
+  'trackGrouser',
 ]);
 
 function checkFeatureScale(): void {
@@ -794,7 +795,13 @@ function checkFeatureScale(): void {
  * thing unit colour exists to communicate. Barrels are the deliberate
  * exception: they read as bare worked metal by design.
  */
-const BARE_METAL_BANDS: ReadonlySet<TrimBandId> = new Set(['barrelShaft']);
+const BARE_METAL_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+  'barrelShaft',
+  // Grousers are unpainted steel, polished by the ground they bite. Being
+  // near-neutral is exactly what makes them read against the dark, team-
+  // coloured belt they are bolted to — the contrast is the design.
+  'trackGrouser',
+]);
 
 function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {

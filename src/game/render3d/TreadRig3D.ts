@@ -374,12 +374,12 @@ export function buildTreads(
       for (let i = 0; i < cleatsPerSide; i++) {
         const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
         cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
-        // Plain running gear, the same band the belt's rim wears: dark
-        // shoulders at the track's edges and a worn crown down its middle.
-        // A cleat is a bar a couple of world units deep — anything more
-        // detailed than that is detail nobody can resolve, and on a scrolling
-        // belt it is detail that flickers.
-        applyChartToMesh(cleat, 'trackRun', 'trackRun');
+        // Bright unpainted steel against the belt's dark band. Both bands are
+        // equally plain — they differ in VALUE, not in busyness, because what
+        // a track reads as in motion is the rhythm of light bars crossing a
+        // dark ribbon, and a cleat drawn at the belt's own value is a cleat
+        // nobody can see.
+        applyChartToMesh(cleat, 'trackCleat', 'trackCleat');
         layoutTreadCleat(cleat, i * cleatSpacing, straightLength, treadRadius);
         sideGroup.add(cleat);
         cleats.push(cleat);

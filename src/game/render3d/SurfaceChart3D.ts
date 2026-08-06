@@ -47,6 +47,7 @@ export type TrimBandId =
   | 'liveryChevron'
   | 'tyreTread'
   | 'trackRunning'
+  | 'trackGrouser'
   | 'trackBeltPlate';
 
 export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
@@ -61,6 +62,7 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'liveryChevron',
   'tyreTread',
   'trackRunning',
+  'trackGrouser',
   'trackBeltPlate',
 ];
 
@@ -175,6 +177,7 @@ export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
   tyreTread: { u: true, v: false },
   // Plain running gear. Nothing along u, and v's shoulders are its edges.
   trackRunning: { u: false, v: false },
+  trackGrouser: { u: false, v: false },
   // Link seams repeat along the frame; its top and bottom rails are placed
   // at the v edges.
   trackBeltPlate: { u: true, v: false },
@@ -260,20 +263,26 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   // sidewall and hub, which on a wheel lying on its axle are the two faces
   // you actually see from an RTS camera.
   tyreTread: { uExtent: 27.65, vExtent: 12.4, featureSize: 4 },
-  // RUNNING GEAR — the belt's outer rim and the grousers riding on it.
+  // THE BELT — the rubber-and-steel band the grousers are bolted to. DARK,
+  // and dark is the point: a cleat sitting on a belt of the same value is a
+  // cleat nobody can see, and the two together are most of what a track reads
+  // as in motion.
   //
-  // Deliberately plain. Every one of these surfaces is seen edge-on from an
-  // RTS camera: a cleat is a bar a couple of world units deep, and the rim is
-  // a strip you only ever catch between cleats. Detail drawn there is detail
-  // nobody can resolve, and on a moving track it is detail that flickers.
+  // Deliberately plain otherwise. Both this and the grouser band dress
+  // surfaces seen edge-on from an RTS camera — a cleat is a bar a couple of
+  // world units deep, the belt is a strip glimpsed between cleats. Detail
+  // there is detail nobody can resolve, and on a moving track it flickers.
   //
-  // Only v carries anything (worn crown down the middle, dark shoulders at
-  // the track's edges), which is what lets ONE band serve both pieces: v is
-  // the track's width on the rim and on the cleat alike. u is a don't-care by
-  // construction — it is the belt's whole loop on the rim and a single bar's
-  // depth on a cleat, two wildly different world spans that would otherwise
-  // have to be reconciled.
+  // Only v carries anything, which is what lets these bands stay legible at
+  // any track size: v is the track's WIDTH on both pieces, while u is the
+  // belt's whole loop on one and a single bar's depth on the other — two
+  // world spans that share no scale and, drawn this way, never have to.
   trackRunning: { uExtent: 4, vExtent: 16, featureSize: 4 },
+  // THE GROUSERS — the bars that bite the ground. LIGHT against the belt:
+  // unpainted steel, polished where it grinds. The value gap between this
+  // band and the one above it is what makes a track read as a chain of
+  // separate cleats rather than as one extruded ribbon.
+  trackGrouser: { uExtent: 4, vExtent: 16, featureSize: 4 },
   // TRACK SIDE FRAME — the flat outer face of the track, and the ONE track
   // surface with real area facing the camera. u runs along the frame and
   // repeats; v is its height.
@@ -414,6 +423,7 @@ export type SurfaceChartId =
   | 'liveryCollar'
   | 'wheelTyre'
   | 'trackRun'
+  | 'trackCleat'
   | 'trackBelt';
 
 type SurfaceChartDef = {
@@ -440,6 +450,7 @@ const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   liveryCollar: { band: 'liveryChevron', livery: true },
   wheelTyre: { band: 'tyreTread', livery: false },
   trackRun: { band: 'trackRunning', livery: false },
+  trackCleat: { band: 'trackGrouser', livery: false },
   trackBelt: { band: 'trackBeltPlate', livery: false },
 };
 
@@ -603,5 +614,6 @@ export const ROSTER_CHARTS: readonly SurfaceChartId[] = [
   'liveryCollar',
   'wheelTyre',
   'trackRun',
+  'trackCleat',
   'trackBelt',
 ];
