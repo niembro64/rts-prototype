@@ -32,6 +32,9 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
+import { BAND_CAP_ZONES, REFERENCE_WHEEL_RADIUS } from './SurfaceChart3D';
+import { applyChartToMesh } from './SurfaceChartMaterial3D';
+import { remapChartedCylinderUvs } from './ChartedCylinderUv3D';
 import {
   createPrimitiveCylinderGeometry,
   getOrCreate,
@@ -56,11 +59,23 @@ const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
 const wheelGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  return getOrCreate(wheelGeomByTier, tier, () => tier === 'far'
-    // A square-prism tire is cheap, but its cross-section must retain the
-    // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
-    ? new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI))
-    : createPrimitiveCylinderGeometry('locomotion', tier));
+  return getOrCreate(wheelGeomByTier, tier, () => {
+    if (tier === 'far') {
+      // A square-prism tire is cheap, but its cross-section must retain the
+      // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
+      return new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI));
+    }
+    const geometry = createPrimitiveCylinderGeometry('locomotion', tier);
+    // A wheel's two flat faces are its SIDEWALL AND HUB, and on a wheel lying
+    // on its axle they are most of what an RTS camera sees. CylinderGeometry
+    // gives both of them the tread band's own coordinates, so without this
+    // remap the hub can only ever show whatever is halfway across the tread.
+    // Applied to the shared pool geometry: an unwired wheel never samples the
+    // sheet, so the remap costs it nothing.
+    const zone = BAND_CAP_ZONES.tyreTread;
+    if (zone !== undefined) remapChartedCylinderUvs(geometry, zone);
+    return geometry;
+  });
 }
 const wheelMats = new Map<number, THREE.MeshLambertMaterial>();
 
@@ -164,6 +179,16 @@ export function buildWheels(
         getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId),
       );
       tire.scale.set(wheelR, tireWidth, wheelR);
+      // The tyre is rubber with lugs and a bolted hub, not hull plate. The
+      // lug count follows the wheel's real circumference, so a big wheel gets
+      // MORE lugs rather than bigger ones — and the repeat is rounded whole
+      // by the chart so the tread pattern meets itself at the wrap.
+      applyChartToMesh(
+        tire,
+        'wheelTyre',
+        `wheelTyre:${geometryTier}`,
+        wheelR / REFERENCE_WHEEL_RADIUS,
+      );
       wheelGroup.add(tire);
       group.add(wheelGroup);
       wheelGroups.push(wheelGroup);

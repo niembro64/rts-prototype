@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import {
   BAND_CAP_ZONES,
+  BAND_SURFACE,
   BAND_WRAPS_V,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
@@ -64,6 +65,9 @@ const BAND_SEEDS: Record<TrimBandId, number> = {
   boltBoss: 0x4a2f88,
   liveryPiping: 0xc16d21,
   liveryChevron: 0x38e5b9,
+  tyreTread: 0x2f7ab4,
+  trackCleat: 0xd45e19,
+  trackBeltPlate: 0x8a1f63,
 };
 
 type Layer = {
@@ -961,6 +965,298 @@ function drawSubstanceGrain(
   pipeRun(layer, rect, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
 }
 
+
+// ── Locomotion ───────────────────────────────────────────────────────────
+//
+// Wheels and tracks are not armour and must not be plated like it. A tyre is
+// a moulded rubber carcass — lugs around its crown, a smooth shoulder, a
+// bolted metal hub on its face. A track is a chain of steel grousers running
+// over a plated side frame. The three bands below say exactly that, and they
+// are the reason locomotion stopped wearing hull plate at hull scale.
+
+/**
+ * TYRE. u is the crown's circumference, v runs across the tread face and then
+ * into the reserved zone for the wheel's flat sides.
+ *
+ * THE LUGS MUST REPEAT MANY TIMES AROUND u. A wheel spins, so anything whose
+ * period is the whole circumference is a light welded to the geometry: it
+ * turns its dark side to the camera as the wheel rolls, which reads as
+ * looking at the back of the tyre. Directional tread is achieved by SHEARING
+ * each lug rather than by shading it, so the pattern has a direction without
+ * having a bright side.
+ */
+function drawTyreTread(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  const zone = BAND_CAP_ZONES.tyreTread!;
+  const px = TRIM_SHEET_TEXELS_PER_UNIT;
+  const crown: BandRect = {
+    x: rect.x, y: rect.y,
+    width: rect.width, height: rect.height * zone.wallVEnd,
+  };
+
+  // Rubber: dark, matte, and NOT bare metal — a worn tyre shows more rubber,
+  // not steel. The albedo multiplier sits below neutral so the crown reads
+  // darker than the hub whatever colour the instance carries.
+  layer.albedo.fillStyle = gray(0.36);
+  layer.albedo.fillRect(crown.x, crown.y, crown.width, crown.height);
+  layer.height.fillStyle = gray(0.44);
+  layer.height.fillRect(crown.x, crown.y, crown.width, crown.height);
+  layer.bare.fillStyle = gray(0.02);
+  layer.bare.fillRect(crown.x, crown.y, crown.width, crown.height);
+
+  // Shoulder ribs: a raised band at each edge of the tread face, so the tyre
+  // reads as having a crown rather than as a painted cylinder. Constant
+  // around u, so they cost nothing as the wheel turns.
+  const shoulder = Math.max(2, crown.height * 0.14);
+  for (const y of [crown.y, crown.y + crown.height - shoulder]) {
+    bevelRect(layer, crown.x, y, crown.width, shoulder, 0.44, 0.86, 0.22);
+  }
+
+  // The lug blocks. Sized in WORLD units so a big wheel gets more of them
+  // rather than bigger ones, and sheared so the pattern has a handedness.
+  const lugWorldPitch = 2.2;
+  const lugs = Math.max(6, Math.round(BAND_SURFACE[band].uExtent / lugWorldPitch));
+  const pitch = crown.width / lugs;
+  const faceY = crown.y + shoulder;
+  const faceH = crown.height - shoulder * 2;
+  const shear = pitch * 0.45;
+  for (let i = 0; i < lugs; i++) {
+    const x = crown.x + i * pitch;
+    for (const half of [0, 1]) {
+      // Two half-lugs per pitch, sheared opposite ways from the centre line:
+      // a chevron tread. Drawn as a parallelogram via a clipped fill so the
+      // groove between them stays a real dark channel.
+      const y0 = faceY + (faceH / 2) * half;
+      const h = faceH / 2;
+      layer.albedo.save();
+      layer.albedo.beginPath();
+      layer.albedo.rect(crown.x, y0, crown.width, h);
+      layer.albedo.clip();
+      layer.height.save();
+      layer.height.beginPath();
+      layer.height.rect(crown.x, y0, crown.width, h);
+      layer.height.clip();
+      const lean = half === 0 ? shear : -shear;
+      for (const offset of [-crown.width, 0, crown.width]) {
+        const bx = x + offset;
+        const poly = (ctx: CanvasRenderingContext2D, fill: string) => {
+          ctx.fillStyle = fill;
+          ctx.beginPath();
+          ctx.moveTo(bx, y0);
+          ctx.lineTo(bx + pitch * 0.62, y0);
+          ctx.lineTo(bx + pitch * 0.62 + lean, y0 + h);
+          ctx.lineTo(bx + lean, y0 + h);
+          ctx.closePath();
+          ctx.fill();
+        };
+        poly(layer.albedo, gray(0.68 + randIn(rng, -0.05, 0.05)));
+        poly(layer.height, gray(0.9));
+      }
+      layer.albedo.restore();
+      layer.height.restore();
+    }
+  }
+
+  // Scuffing along the crown: rings, not patches. The wheel rotates, so a
+  // patch broad enough to vary around the circumference sweeps past as a
+  // rotating blotch.
+  layer.albedo.save();
+  layer.albedo.beginPath();
+  layer.albedo.rect(crown.x, crown.y, crown.width, crown.height);
+  layer.albedo.clip();
+  for (let i = 0; i < 40; i++) {
+    const y = randIn(rng, crown.y, crown.y + crown.height);
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.05, 0.16).toFixed(3)})`;
+    layer.albedo.fillRect(crown.x, y, crown.width, randIn(rng, 0.15, 0.6) * px);
+  }
+  layer.albedo.restore();
+
+  // THE WHEEL FACE. Its v is the radius from centre to rim, so rows are
+  // concentric rings: a machined hub with a bolt circle, a dished web, and
+  // the rubber sidewall out at the rim.
+  const faceY0 = rect.y + rect.height * zone.capCenterV;
+  const faceY1 = rect.y + rect.height * zone.capRimV;
+  const faceHeight = faceY1 - faceY0;
+  const ring = (r0: number, r1: number, a: number, h: number, b: number) => {
+    layer.albedo.fillStyle = gray(a);
+    layer.albedo.fillRect(rect.x, faceY0 + faceHeight * r0, rect.width, faceHeight * (r1 - r0));
+    layer.height.fillStyle = gray(h);
+    layer.height.fillRect(rect.x, faceY0 + faceHeight * r0, rect.width, faceHeight * (r1 - r0));
+    layer.bare.fillStyle = gray(b);
+    layer.bare.fillRect(rect.x, faceY0 + faceHeight * r0, rect.width, faceHeight * (r1 - r0));
+  };
+  // FEW AND FAT. A wheel face is a disc on a low-segment cap, so v — the
+  // radius — is interpolated across a handful of big fan triangles. Thin
+  // rings turn into moire under that; wide ones survive it.
+  ring(-0.2, 0.30, 0.60, 0.92, 0.5);   // machined hub
+  ring(0.30, 0.40, 0.05, 0.28, 0.08);  // recess around it
+  ring(0.40, 0.70, 0.52, 0.70, 0.26);  // bolted web
+  ring(0.70, 0.80, 0.80, 0.86, 0.4);   // rim lip
+  ring(0.80, 1.0, 0.32, 0.5, 0.03);    // rubber sidewall
+  // Bolt circle on the web. On a cap u is the ANGLE, so a bolt drawn here is
+  // a bolt at one o'clock rather than a smear all the way round; the radial
+  // stretch is rim/radius, so widening by that puts it back round.
+  const bolts = 6;
+  const boltRadiusFrac = 0.55;
+  const boltY = faceY0 + faceHeight * boltRadiusFrac;
+  const boltR = Math.max(2, faceHeight * 0.075);
+  const stretch = 1 / boltRadiusFrac;
+  for (let i = 0; i < bolts; i++) {
+    const cx = rect.x + ((i + 0.5) / bolts) * rect.width;
+    for (const [ctx, fill, scale] of [
+      [layer.albedo, gray(0.95), 1],
+      [layer.height, gray(0.95), 1],
+      [layer.bare, gray(0.7), 0.85],
+    ] as [CanvasRenderingContext2D, string, number][]) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.ellipse(cx, boltY, boltR * scale * stretch, boltR * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/**
+ * TRACK GROUSER — one cleat.
+ *
+ * u runs ALONG the belt, which on a cleat is its short axis: the leading and
+ * trailing edges live at u = 0 and u = 1. v spans the track's full width.
+ * Neither axis repeats, because a cleat is one bar and a bigger track has
+ * bigger bars, not more of them per bar.
+ *
+ * The crown is deliberately the brightest and barest thing here: this is the
+ * face that grinds against the ground, and polished steel is what that looks
+ * like. It is a band constant in v, so it never reads as a light.
+ */
+function drawTrackCleat(
+  layer: Layer, rect: BandRect, rng: () => number, _band: TrimBandId,
+): void {
+  // Cast body.
+  layer.albedo.fillStyle = gray(0.38);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.height.fillStyle = gray(0.55);
+  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
+  // Steel that has been through mud, not chrome. Wear shows on the crown
+  // where the bar actually grinds; letting it cover the whole cleat washes
+  // the track out and takes the owner's colour with it.
+  layer.bare.fillStyle = gray(0.16);
+  layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+  // Chamfered leading and trailing edges, dark and recessed.
+  const chamfer = Math.max(2, rect.width * 0.17);
+  for (const x of [rect.x, rect.x + rect.width - chamfer]) {
+    layer.albedo.fillStyle = gray(0.10);
+    layer.albedo.fillRect(x, rect.y, chamfer, rect.height);
+    layer.height.fillStyle = gray(0.18);
+    layer.height.fillRect(x, rect.y, chamfer, rect.height);
+    layer.bare.fillStyle = gray(0.06);
+    layer.bare.fillRect(x, rect.y, chamfer, rect.height);
+  }
+
+  // The worn crown, running the full width of the bar.
+  const crownX = rect.x + rect.width * 0.34;
+  const crownW = rect.width * 0.32;
+  layer.albedo.fillStyle = gray(0.74);
+  layer.albedo.fillRect(crownX, rect.y, crownW, rect.height);
+  layer.height.fillStyle = gray(0.99);
+  layer.height.fillRect(crownX, rect.y, crownW, rect.height);
+  layer.bare.fillStyle = gray(0.62);
+  layer.bare.fillRect(crownX, rect.y, crownW, rect.height);
+
+  // Link pins along the width, and a guide notch at the centre where the bar
+  // straddles the sprocket.
+  const pins = Math.max(2, Math.round(BAND_SURFACE.trackCleat.vExtent / 4));
+  for (let i = 0; i < pins; i++) {
+    const cy = rect.y + ((i + 0.5) / pins) * rect.height;
+    rivet(layer, rect.x + rect.width * 0.18, cy, Math.max(1.5, rect.width * 0.09));
+    rivet(layer, rect.x + rect.width * 0.82, cy, Math.max(1.5, rect.width * 0.09));
+  }
+  const notch = Math.max(2, rect.height * 0.06);
+  layer.albedo.fillStyle = gray(0.05);
+  layer.albedo.fillRect(rect.x, rect.y + rect.height * 0.5 - notch * 0.5, rect.width, notch);
+  layer.height.fillStyle = gray(0.12);
+  layer.height.fillRect(rect.x, rect.y + rect.height * 0.5 - notch * 0.5, rect.width, notch);
+
+  // Grit worked into the casting, away from the polished crown.
+  for (let i = 0; i < 60; i++) {
+    const x = randIn(rng, rect.x, rect.x + rect.width);
+    if (x > crownX && x < crownX + crownW) continue;
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.10, 0.3).toFixed(3)})`;
+    layer.albedo.fillRect(x, randIn(rng, rect.y, rect.y + rect.height), 1.4, 1.4);
+  }
+}
+
+/**
+ * TRACK SIDE FRAME — the belt shell the cleats ride on.
+ *
+ * u runs along the belt and REPEATS, so link seams stay the same physical
+ * distance apart on a Lynx and on a Mammoth. v is the frame's height on the
+ * flat side plates and the track's width on the running rim, which is why
+ * everything here is either a transverse seam or a rail at a v edge: both
+ * read correctly whichever of the two surfaces they land on.
+ */
+function drawTrackBeltPlate(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  layer.albedo.fillStyle = gray(0.40);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.height.fillStyle = gray(0.5);
+  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.bare.fillStyle = gray(0.16);
+  layer.bare.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+  // Top and bottom rails: the frame's edges, machined and worn.
+  const rail = Math.max(2, rect.height * 0.16);
+  for (const y of [rect.y, rect.y + rect.height - rail]) {
+    bevelRect(layer, rect.x, y, rect.width, rail, 0.52, 0.9, 0.26);
+    layer.bare.fillStyle = gray(0.24);
+    layer.bare.fillRect(rect.x, y, rect.width, rail);
+  }
+
+  // Link seams across the frame, repeating along the belt at a fixed world
+  // pitch so a longer track gets more of them rather than wider ones.
+  const seamWorldPitch = 6;
+  const seams = Math.max(4, Math.round(BAND_SURFACE[band].uExtent / seamWorldPitch));
+  const pitch = rect.width / seams;
+  for (let i = 0; i < seams; i++) {
+    const x = rect.x + i * pitch;
+    layer.albedo.fillStyle = gray(0.05);
+    layer.albedo.fillRect(x, rect.y, 2.5, rect.height);
+    layer.albedo.fillStyle = gray(0.82);
+    layer.albedo.fillRect(x + 2.5, rect.y, 1.2, rect.height);
+    layer.height.fillStyle = gray(0.14);
+    layer.height.fillRect(x, rect.y, 2.5, rect.height);
+    // A road-wheel boss between each pair of seams, on the frame's centre
+    // line: constant in u period, so it repeats with the seams instead of
+    // reading as one baked highlight.
+    const cx = x + pitch * 0.5;
+    const cy = rect.y + rect.height * 0.5;
+    const bossR = Math.min(pitch * 0.22, rect.height * 0.22);
+    for (const [ctx, fill, scale] of [
+      [layer.albedo, gray(0.62), 1],
+      [layer.height, gray(0.8), 1],
+      [layer.bare, gray(0.26), 0.9],
+    ] as [CanvasRenderingContext2D, string, number][]) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(cx, cy, bossR * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    rivet(layer, cx, cy, Math.max(1.5, bossR * 0.34));
+  }
+
+  // Mud and scoring worked along the frame.
+  for (let i = 0; i < 90; i++) {
+    const y = randIn(rng, rect.y, rect.y + rect.height);
+    const w = randIn(rng, 0.5, 3) * TRIM_SHEET_TEXELS_PER_UNIT;
+    const x = randIn(rng, rect.x, rect.x + rect.width);
+    layer.albedo.fillStyle = `rgba(0, 0, 0, ${randIn(rng, 0.08, 0.24).toFixed(3)})`;
+    layer.albedo.fillRect(x, y, w, randIn(rng, 0.2, 0.6) * TRIM_SHEET_TEXELS_PER_UNIT);
+    layer.albedo.fillRect(x - rect.width, y, w, randIn(rng, 0.2, 0.6) * TRIM_SHEET_TEXELS_PER_UNIT);
+  }
+}
+
 const BAND_DRAWERS: Record<
   TrimBandId,
   {
@@ -982,6 +1278,9 @@ const BAND_DRAWERS: Record<
   boltBoss: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawBoltBoss },
   liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
   liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
+  tyreTread: { base: { albedo: 0.36, height: 0.44, bare: 0.02 }, draw: drawTyreTread },
+  trackCleat: { base: { albedo: 0.38, height: 0.55, bare: 0.16 }, draw: drawTrackCleat },
+  trackBeltPlate: { base: { albedo: 0.40, height: 0.5, bare: 0.10 }, draw: drawTrackBeltPlate },
 };
 
 let cachedCanvas: HTMLCanvasElement | null = null;

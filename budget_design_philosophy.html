@@ -3123,7 +3123,8 @@
       </p>
       <ul class="rule-list">
         <li>An axis carrying only <strong>material</strong> &mdash; panel columns, plate courses, bolt rhythm &mdash; repeats. That is what holds a plate at its authored world size on anything it is bolted to.</li>
-        <li>An axis carrying a <strong>placed feature</strong> cannot. A sensor dome&rsquo;s pitch slot is one opening at one azimuth running one full meridian; repeat either of its axes and the head grows a ring of slots or a stack of them. A barrel&rsquo;s breech is at one end and its bore at the other. A strut&rsquo;s collars are at its two ends, a knuckle&rsquo;s flange across its middle, a livery band&rsquo;s piping along its two edges. Those axes hold one wrap and let the structure scale with the part, because a bigger turret has a bigger slot, not more slots.</li>
+        <li>An axis carrying a <strong>placed feature</strong> cannot. A sensor dome&rsquo;s pitch slot is one opening at one azimuth running one full meridian; repeat either of its axes and the head grows a ring of slots or a stack of them. A barrel&rsquo;s breech is at one end and its bore at the other. A strut&rsquo;s collars are at its two ends, a knuckle&rsquo;s flange across its middle, a livery band&rsquo;s piping along its two edges, a track grouser&rsquo;s chamfers along both of its own. Those axes hold one wrap and let the structure scale with the part, because a bigger turret has a bigger slot, not more slots.</li>
+        <li>A repeating axis that <strong>wraps around a closed surface</strong> &mdash; a sphere&rsquo;s azimuth, a cylinder&rsquo;s circumference, a track&rsquo;s loop &mdash; must repeat a WHOLE number of times. Band content is authored continuous across its own edge, so a fractional repeat lands the surface&rsquo;s seam mid-band and mismatches the plating along one meridian. Rounding costs at most half a repeat of feature size and removes the seam entirely.</li>
       </ul>
       <p>
         Structure scales; material repeats. Stating it per axis is what makes
@@ -3146,6 +3147,7 @@
       </p>
       <ul class="rule-list">
         <li>The grain&rsquo;s plate is the hull&rsquo;s plate. A structure and the unit parked beside it must be visibly the same stock of metal; a grain drawn at its own scale would be a second material pretending to be the first.</li>
+        <li>It is a fallback, not a default. Anything that is <em>not</em> plated armour &mdash; a barrel, a tyre, a track &mdash; gets its own band rather than the grain, because dressing rubber and running gear in hull plate reads as a unit built from one material and then cut into parts.</li>
         <li>Grain and chart are <strong>exclusive</strong>. A charted band already draws its own plating, and multiplying a second panel grid into it turns one material into mush.</li>
         <li>&ldquo;Untextured&rdquo; is not a reachable state. A surface with no chart is not bare; it is plain material, and the grain is what plain material looks like.</li>
       </ul>
@@ -3177,8 +3179,9 @@
         branch on the Formik&rsquo;s blueprint id to decide whether a surface
         gets textured or ornamented; charts are assigned by what a part
         <em>is</em> &mdash; a lobe, a nose, a head, a barrel, a strut, a
-        knuckle, a strap, a collar &mdash; so a new unit is charted because it
-        has those parts, not because somebody listed it. Whatever the Formik
+        knuckle, a tyre, a track grouser, a track frame, a strap, a collar
+        &mdash; so a new unit is charted because it has those parts, not
+        because somebody listed it. Whatever the Formik
         demonstrates, the roster receives, at the Formik&rsquo;s scale.
       </p>
 

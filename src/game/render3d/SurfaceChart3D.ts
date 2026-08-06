@@ -44,7 +44,10 @@ export type TrimBandId =
   | 'hydraulicStrut'
   | 'boltBoss'
   | 'liveryPiping'
-  | 'liveryChevron';
+  | 'liveryChevron'
+  | 'tyreTread'
+  | 'trackCleat'
+  | 'trackBeltPlate';
 
 export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'substanceGrain',
@@ -56,6 +59,9 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'boltBoss',
   'liveryPiping',
   'liveryChevron',
+  'tyreTread',
+  'trackCleat',
+  'trackBeltPlate',
 ];
 
 export const TRIM_SHEET_PIXELS = 2048;
@@ -105,6 +111,21 @@ export const TRIM_BAND_GUTTER_PIXELS = 16;
 export const REFERENCE_HOST_RADIUS = 40;
 export const REFERENCE_TURRET_HEAD_RADIUS = 32;
 
+/**
+ * Reference locomotion hardware — the Mammoth's track and the Mongoose's
+ * wheel, because those are the largest of each and therefore the ones whose
+ * detail has to survive being looked at.
+ *
+ * Wheels and tracks get their own bands rather than the hull's plating for
+ * the same reason a barrel does: they are not armour. A tyre is a moulded
+ * rubber carcass with lugs around its crown and a bolted hub on its face; a
+ * track is a chain of steel grousers running over a plated side frame.
+ * Dressing either in bolted hull plate reads as a unit built out of one
+ * material and then chopped into parts.
+ */
+export const REFERENCE_WHEEL_RADIUS = 4.4;
+export const REFERENCE_TRACK_LENGTH = 48;
+
 /** World footprint of one repeat of the projected grain. Four plates across
  *  at the hull's own 24-unit plate size. */
 export const GRAIN_TILE_WORLD_UNITS = 96;
@@ -150,7 +171,39 @@ export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
   liveryPiping: { u: true, v: false },
   // u is around the collar; v carries the reserved forward-face zone.
   liveryChevron: { u: true, v: false },
+  // Lugs repeat around the crown; the shoulders and the hub zone are placed.
+  tyreTread: { u: true, v: false },
+  // One bar. Both of its axes carry placed structure — the leading and
+  // trailing edges along u, the guide horn and pin bosses across v.
+  trackCleat: { u: false, v: false },
+  // Link seams repeat along the belt; the frame's top and bottom rails are
+  // placed at the v edges.
+  trackBeltPlate: { u: true, v: false },
 };
+
+/**
+ * Bands whose u axis is CLOSED — it wraps around the surface and meets
+ * itself: a sphere's azimuth, a cylinder's circumference, a belt's loop.
+ *
+ * A closed u must repeat a WHOLE number of times or the wrap does not line
+ * up. The band's content is authored to be continuous across its own edge,
+ * so at 2.35 repeats the surface's seam lands 35% into the band and the
+ * plating visibly mismatches along one meridian. Rounding to the nearest
+ * whole repeat moves the feature size by at most half a repeat — invisible —
+ * and removes the seam entirely.
+ *
+ * An OPEN u has two real ends and needs no rounding: the livery strap runs
+ * from the hull's tail to its nose and terminates in caps at both.
+ */
+export const BAND_CLOSED_U: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+  'armorPlate',
+  'noseFacet',
+  'hydraulicStrut',
+  'boltBoss',
+  'liveryChevron',
+  'tyreTread',
+  'trackBeltPlate',
+]);
 
 /** Bands whose v repeats, and whose v gutters must therefore WRAP rather than
  *  extend — a tiling axis' two ends are the same place. */
@@ -203,6 +256,18 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
   // 24.3-radius disc — big enough to be the first thing you see down the
   // barrel line, so it gets real radial resolution rather than a scrap.
   liveryChevron: { uExtent: 153, vExtent: 62.7, featureSize: 16 },
+  // TYRE. u is the crown's circumference (2*pi*4.4), v runs across the tread
+  // face and then into a reserved zone for the wheel's flat sides — the
+  // sidewall and hub, which on a wheel lying on its axle are the two faces
+  // you actually see from an RTS camera.
+  tyreTread: { uExtent: 27.65, vExtent: 12.4, featureSize: 4 },
+  // GROUSER. One track cleat: u runs along the belt (the bar's short axis,
+  // where its leading and trailing edges are), v spans the track's width.
+  // Both are placed, so this band never repeats — a cleat is one bar.
+  trackCleat: { uExtent: 4, vExtent: 16, featureSize: 4 },
+  // TRACK SIDE FRAME. u runs along the belt and repeats; v is the frame's
+  // height on the side plates and the track's width on the running rim.
+  trackBeltPlate: { uExtent: REFERENCE_TRACK_LENGTH, vExtent: 10, featureSize: 8 },
 };
 
 /**
@@ -232,6 +297,16 @@ export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
   barrelShaft: { wallVEnd: 64 / 65.5, capCenterV: 64.5 / 65.5, capRimV: 1 },
   // 37.8-unit collar, 0.6 gap, then its 24.3-radius forward face.
   liveryChevron: { wallVEnd: 37.8 / 62.7, capCenterV: 38.4 / 62.7, capRimV: 1 },
+  // 6-unit-wide tread face, a 2-unit dead gap, then the wheel's own
+  // 4.4-radius side. Unlike a barrel, BOTH of a wheel's faces are seen — they
+  // are the sidewall and hub you look straight at from an RTS camera — and
+  // they share the zone.
+  //
+  // The gap is four times the barrel's on purpose. A wheel's face is a large
+  // disc on a low-segment cap, so its centre resolves at a coarse mip; with
+  // the barrel's half-unit gap the hub filtered in the tread's lug pattern
+  // and the face came out striped.
+  tyreTread: { wallVEnd: 6 / 12.4, capCenterV: 8 / 12.4, capRimV: 1 },
 };
 
 /** A band's pixel rectangle in the sheet, gutters included. */
@@ -326,7 +401,10 @@ export type SurfaceChartId =
   | 'legStrut'
   | 'legJoint'
   | 'liveryStrap'
-  | 'liveryCollar';
+  | 'liveryCollar'
+  | 'wheelTyre'
+  | 'trackCleat'
+  | 'trackBelt';
 
 type SurfaceChartDef = {
   band: TrimBandId;
@@ -350,6 +428,9 @@ const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   legJoint: { band: 'boltBoss', livery: false },
   liveryStrap: { band: 'liveryPiping', livery: true },
   liveryCollar: { band: 'liveryChevron', livery: true },
+  wheelTyre: { band: 'tyreTread', livery: false },
+  trackCleat: { band: 'trackCleat', livery: false },
+  trackBelt: { band: 'trackBeltPlate', livery: false },
 };
 
 /** A band's CONTENT rectangle in normalized texture space — inside its
@@ -391,8 +472,13 @@ export function isLiveryChart(chart: SurfaceChartId): boolean {
  */
 export function chartRepeat(chart: SurfaceChartId, hostScale: number): [number, number] {
   if (chart === 'none') return [1, 1];
-  const axes = BAND_TILE_AXES[CHART_DEFS[chart].band];
-  return [axes.u ? hostScale : 1, axes.v ? hostScale : 1];
+  const band = CHART_DEFS[chart].band;
+  const axes = BAND_TILE_AXES[band];
+  let repeatU = axes.u ? hostScale : 1;
+  // A closed u has to come out whole, or the surface's own seam lands
+  // mid-band and the wrap mismatches along one meridian. See BAND_CLOSED_U.
+  if (axes.u && BAND_CLOSED_U.has(band)) repeatU = Math.max(1, Math.round(repeatU));
+  return [repeatU, axes.v ? hostScale : 1];
 }
 
 /** Every band's rectangle, in TRIM_BAND_ORDER, as the shader's uniform array
@@ -505,4 +591,7 @@ export const ROSTER_CHARTS: readonly SurfaceChartId[] = [
   LEG_CHARTS.joint,
   'liveryStrap',
   'liveryCollar',
+  'wheelTyre',
+  'trackCleat',
+  'trackBelt',
 ];

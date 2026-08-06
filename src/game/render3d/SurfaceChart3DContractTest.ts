@@ -11,6 +11,7 @@ import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
   BAND_SURFACE,
+  BAND_CLOSED_U,
   BAND_TILE_AXES,
   BAND_WRAPS_V,
   GRAIN_BAND,
@@ -175,6 +176,27 @@ function checkCatalog(): void {
       BAND_WRAPS_V.has(band) === BAND_TILE_AXES[band].v,
       `${band}'s v gutters and its v tiling disagree`,
     );
+  }
+
+  // A CLOSED u MUST REPEAT A WHOLE NUMBER OF TIMES. The band's content is
+  // authored continuous across its own edge, so on a sphere's azimuth or a
+  // cylinder's circumference a fractional repeat lands the surface's seam
+  // mid-band and the plating mismatches along one meridian — a hairline of
+  // wrong texture running pole to pole, which reads as a modelling error
+  // rather than a texturing one. Rounding costs at most half a repeat of
+  // feature size and removes it entirely.
+  for (const chart of ROSTER_CHARTS) {
+    packChart(chart, packed, 0);
+    const band = bandOf(chart);
+    if (band === null || !BAND_CLOSED_U.has(band)) continue;
+    for (const scale of [0.4, 1, 1.37, 2.35, 6.8]) {
+      const [repeatU] = chartRepeat(chart, scale);
+      assertContract(
+        repeatU >= 1 && Number.isInteger(repeatU),
+        `${chart} wraps a closed surface, so its u repeat must be a whole `
+          + `number — at host scale ${scale} it is ${repeatU}`,
+      );
+    }
   }
   // A band nothing references is a band nobody will notice is broken.
   for (const band of TRIM_BAND_ORDER) {
@@ -564,7 +586,15 @@ function lowHarmonicStats(
  *  is supposed to sit at a fixed azimuth in the object's frame; a highlight is
  *  not part of the object and must not. `sensorDome` carries the barrel pitch
  *  slot, which is a hole at local +X by construction. */
-const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set(['sensorDome']);
+const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set([
+  'sensorDome',
+  // A grouser's crown, chamfers and guide notch are its own edges, placed
+  // along an axis the bar never rotates about — it translates along the belt
+  // and pitches over the end sprockets, but its short axis stays its short
+  // axis. The rule is "do not bake LIGHTING into a surface that turns", and
+  // a cleat has no such axis.
+  'trackCleat',
+]);
 
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
   for (const band of TRIM_BAND_ORDER) {
@@ -725,7 +755,13 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
  * gaudy. Counts are derived from BAND_SURFACE instead; this pins that the
  * derivation stays inside sane physical bounds.
  */
-const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set(['barrelShaft']);
+const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set([
+  'barrelShaft',
+  // Neither of these is a plated surface: a tyre is a moulded carcass with
+  // lugs, a cleat is one cast bar. Panel counts are meaningless for both.
+  'tyreTread',
+  'trackCleat',
+]);
 
 function checkFeatureScale(): void {
   for (const band of TRIM_BAND_ORDER) {

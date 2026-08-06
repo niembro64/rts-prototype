@@ -43,6 +43,8 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
+import { REFERENCE_TRACK_LENGTH } from './SurfaceChart3D';
+import { applyChartToMesh } from './SurfaceChartMaterial3D';
 import { type PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
@@ -99,10 +101,78 @@ function getTreadShellGeom(
       curveSegments: arcSegs,
     });
     geom.translate(0, 0, -width / 2); // centre the extrusion across the belt width
+    remapTreadShellUvs(geom, hs, treadRadius, width);
     treadShellGeoms.set(key, geom);
   }
   return geom;
 }
+
+/**
+ * Give the belt shell a parameterization a track band can actually use.
+ *
+ * THREE's extrude UV generator hands the flat side plates the shape's own
+ * (x, y) and the running rim an (axis, z) pair, both in raw local units. A
+ * chart maps uv across its rectangle, so raw units peg the whole surface at
+ * one edge of the band; and even normalized, "x across the plate" and "z
+ * across the rim" are not the same axis, so one band could not serve both.
+ *
+ * Rewritten, both surfaces agree on what u and v MEAN:
+ *
+ *   u  along the belt — arc position around the stadium for the rim, and
+ *      length along the frame for the side plates.
+ *   v  across the belt — the frame's height on the plates, the track's
+ *      width on the rim.
+ *
+ * That is what lets one band draw link seams that run transversely on both,
+ * and it is what makes the u repeat (which follows the belt's real length)
+ * mean the same thing on either surface.
+ */
+function remapTreadShellUvs(
+  geometry: THREE.ExtrudeGeometry,
+  halfStraight: number,
+  treadRadius: number,
+  width: number,
+): void {
+  const position = geometry.getAttribute('position');
+  const normal = geometry.getAttribute('normal');
+  const uv = geometry.getAttribute('uv');
+  if (position === undefined || normal === undefined || uv === undefined) return;
+
+  const straight = halfStraight * 2;
+  const perimeter = 2 * straight + 2 * Math.PI * treadRadius;
+  const totalLength = straight + 2 * treadRadius;
+
+  for (let i = 0; i < uv.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    if (Math.abs(normal.getZ(i)) > 0.5) {
+      // Flat side plate: straight along the frame, up its height.
+      uv.setXY(
+        i,
+        (x + totalLength / 2) / totalLength,
+        (y + treadRadius) / (2 * treadRadius),
+      );
+      continue;
+    }
+    // Running rim: walk the stadium outline from the bottom-straight's rear
+    // end, so u is a true arc fraction and wraps continuously.
+    let arc: number;
+    if (x >= halfStraight) {
+      arc = straight * 0.5 + treadRadius * (Math.atan2(y, x - halfStraight) + Math.PI / 2);
+    } else if (x <= -halfStraight) {
+      arc = straight * 1.5 + Math.PI * treadRadius
+        + treadRadius * (Math.atan2(y, x + halfStraight) - Math.PI / 2);
+    } else if (y >= 0) {
+      arc = straight + Math.PI * treadRadius + (halfStraight - x);
+    } else {
+      arc = x + halfStraight;
+    }
+    uv.setXY(i, arc / perimeter, (z + width / 2) / width);
+  }
+  uv.needsUpdate = true;
+}
+
 const treadMats = new Map<number, THREE.MeshLambertMaterial>();
 const cleatMats = new Map<number, THREE.MeshLambertMaterial>();
 
@@ -204,6 +274,10 @@ export function buildTreads(
   let cleatSpacing = 0;
   const cleatLoopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
   const treadMat = getLocomotionMatByCache(treadMats, TREAD_COLOR, ownerId);
+  // How many reference tracks' worth of belt this one is. Link seams then
+  // stay the same physical distance apart on a Lynx and on a Mammoth; the
+  // chart rounds it whole so the belt's loop still meets itself.
+  const beltChartScale = length / REFERENCE_TRACK_LENGTH;
   const cleatMat = getLocomotionMatByCache(
     cleatMats,
     COLORS.units.locomotion.tread.cleat.colorHex,
@@ -223,6 +297,7 @@ export function buildTreads(
       const treadBox = new THREE.Mesh(treadBoxGeom, treadMat);
       treadBox.scale.set(length, TREAD_HEIGHT, width);
       treadBox.position.set(0, TREAD_Y, 0);
+      applyChartToMesh(treadBox, 'trackBelt', 'trackBeltEnvelope', beltChartScale);
       freezeStaticLocalTransform(treadBox);
       sideGroup.add(treadBox);
     } else {
@@ -235,6 +310,16 @@ export function buildTreads(
         treadMat,
       );
       shell.position.set(0, TREAD_Y, 0);
+      // The side frame the cleats ride on — link seams and road-wheel bosses
+      // repeating along the belt, not hull armour. The shell geometry is
+      // already cached per exact size, so the charted clone is too.
+      applyChartToMesh(
+        shell,
+        'trackBelt',
+        `trackBeltShell:${straightLength.toFixed(2)}:${treadRadius.toFixed(2)}`
+          + `:${width.toFixed(2)}:${geometryTier}`,
+        beltChartScale,
+      );
       freezeStaticLocalTransform(shell);
       sideGroup.add(shell);
     }
@@ -273,6 +358,13 @@ export function buildTreads(
       for (let i = 0; i < cleatsPerSide; i++) {
         const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
         cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
+        // Every cleat is the same bar, so every cleat carries the same chart
+        // at repeat 1: a chamfered grouser with a polished crown and its link
+        // pins, rather than whatever chip of hull plating happened to land on
+        // it. u runs along the belt (the bar's short axis, where its leading
+        // and trailing edges are) and v across the track's width, which is
+        // exactly how BoxGeometry lays out the face you see.
+        applyChartToMesh(cleat, 'trackCleat', 'trackCleat');
         layoutTreadCleat(cleat, i * cleatSpacing, straightLength, treadRadius);
         sideGroup.add(cleat);
         cleats.push(cleat);

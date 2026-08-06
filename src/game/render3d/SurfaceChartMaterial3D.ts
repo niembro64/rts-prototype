@@ -544,13 +544,19 @@ export function applyChartToMesh(
   mesh: THREE.Mesh,
   chart: SurfaceChartId,
   geometryKey: string,
+  hostScale = 1,
 ): void {
   if (chart === 'none') return;
-  const key = `${geometryKey}:${chart}`;
+  // The scale is part of the geometry's identity here, not just the chart's:
+  // the label is baked per-vertex, so two parts of different sizes cannot
+  // share one labelled geometry. Rounded into the key rather than used raw,
+  // or every distinct wheel radius in the game would mint its own.
+  const scaleKey = hostScale.toFixed(2);
+  const key = `${geometryKey}:${chart}:${scaleKey}`;
   let geometry = chartedGeometries.get(key);
   if (geometry === undefined) {
     geometry = mesh.geometry.clone();
-    attachConstantSurfaceChart(geometry, chart);
+    attachConstantSurfaceChart(geometry, chart, Number(scaleKey));
     chartedGeometries.set(key, geometry);
   }
   mesh.geometry = geometry;
