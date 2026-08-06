@@ -81,6 +81,7 @@ export class ServerBootstrap {
     const playerIds = normalizePlayerIds(config.playerIds);
     const teamRoster = resolveTeamRoster(playerIds, {
       allyTeamCount: config.allyTeamCount,
+      allyTeamSeats: config.allyTeamSeats,
       allyTeamByPlayerId: config.allyTeamByPlayerId,
     });
     const gameGenerationSeed = normalizeGameGenerationSeed(
@@ -261,6 +262,7 @@ export class ServerBootstrap {
     const playerIds = normalizePlayerIds(config.playerIds);
     const teamRoster = resolveTeamRoster(playerIds, {
       allyTeamCount: config.allyTeamCount,
+      allyTeamSeats: config.allyTeamSeats,
       allyTeamByPlayerId: config.allyTeamByPlayerId,
     });
     const gameGenerationSeed = normalizeGameGenerationSeed(

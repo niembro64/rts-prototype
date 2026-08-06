@@ -92,6 +92,62 @@ export function buildTeamRoster(
 }
 
 /**
+ * Build a roster from an explicit SEATS-PER-SIDE list — `[2, 2, 2]` is a
+ * 2v2v2, `[0, 1, 4]` is three sides where the first has nobody on it.
+ *
+ * The array's length is the number of sides and each entry is that side's
+ * seat count, taken from the seat list in order. This is the only builder
+ * that can express an EMPTY side, and empty sides are the reason it exists:
+ * everything downstream carves the map from `allyTeamIds.length` — terrain
+ * dividers, metal-deposit phase, spawn angles — so a side with no seats
+ * still gets its slice, and that slice is simply unoccupied ground. Deriving
+ * sides from the seats themselves, as the two builders around it do, can
+ * never produce one.
+ *
+ * Counts are clamped, not rejected: a roster is presentation-adjacent input
+ * and must never be able to throw the game start. Seats left over once every
+ * declared side is filled go onto the LAST side rather than being dropped,
+ * because losing a seat silently would lose a player.
+ */
+export function buildTeamRosterFromSeatCounts(
+  playerIds: readonly PlayerId[],
+  seatsPerAllyTeam: readonly number[],
+): TeamRoster {
+  const seats = normalizePlayerIds(playerIds);
+  const counts: number[] = [];
+  for (const value of seatsPerAllyTeam) {
+    counts.push(Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+  }
+  if (counts.length === 0) return buildTeamRoster(seats, 1);
+
+  const allyTeamIds: AllyTeamId[] = [];
+  const allyTeamByPlayer = new Map<PlayerId, AllyTeamId>();
+  const playersByAllyTeam = new Map<AllyTeamId, PlayerId[]>();
+  for (let side = 0; side < counts.length; side++) {
+    const id = FIRST_ALLY_TEAM_ID + side;
+    allyTeamIds.push(id);
+    playersByAllyTeam.set(id, []);
+  }
+
+  let seat = 0;
+  for (let side = 0; side < counts.length; side++) {
+    // The last side sweeps up whatever the declared counts did not cover, so
+    // a config that under-counts its own seat list still seats everyone.
+    const take = side === counts.length - 1
+      ? Math.max(counts[side], seats.length - seat)
+      : counts[side];
+    const id = allyTeamIds[side];
+    const members = playersByAllyTeam.get(id) as PlayerId[];
+    for (let i = 0; i < take && seat < seats.length; i++, seat++) {
+      members.push(seats[seat]);
+      allyTeamByPlayer.set(seats[seat], id);
+    }
+  }
+
+  return { playerIds: seats, allyTeamIds, allyTeamByPlayer, playersByAllyTeam };
+}
+
+/**
  * Build a roster from an EXPLICIT per-seat assignment — what a lobby
  * produces once players start moving themselves between sides. Seats with
  * no assignment fall back to their own side, so a half-filled lobby is
@@ -192,13 +248,16 @@ export function getAllyTeamIndex(roster: TeamRoster, allyTeamId: AllyTeamId): nu
  * call this with the same inputs so their terrain slices, spawn angles,
  * and alliances cannot disagree.
  *
- * An explicit lobby assignment wins; otherwise seats are split into
- * `allyTeamCount` contiguous blocks; otherwise it is free-for-all.
+ * Precedence, most specific first: an explicit per-seat lobby assignment;
+ * then a seats-per-side list (the only form that can declare an EMPTY side);
+ * then a plain side count splitting seats into contiguous blocks; then
+ * free-for-all.
  */
 export function resolveTeamRoster(
   playerIds: readonly PlayerId[],
   options: {
     allyTeamCount?: number;
+    allyTeamSeats?: readonly number[];
     allyTeamByPlayerId?: Readonly<Record<number, number>>;
   } = {},
 ): TeamRoster {
@@ -213,5 +272,8 @@ export function resolveTeamRoster(
     if (map.size > 0) return buildTeamRosterFromAssignment(playerIds, map);
   }
   const seats = normalizePlayerIds(playerIds);
+  if (options.allyTeamSeats !== undefined && options.allyTeamSeats.length > 0) {
+    return buildTeamRosterFromSeatCounts(seats, options.allyTeamSeats);
+  }
   return buildTeamRoster(seats, options.allyTeamCount ?? seats.length);
 }

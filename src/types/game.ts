@@ -17,6 +17,10 @@ export type GameConfig = {
    *  The client rebuilds the same roster from this so its terrain
    *  dividers and camera pre-framing match the host’s layout exactly. */
   allyTeamCount?: number;
+  /** Seats per side, one entry per ally team; see
+   *  GameServerConfig.allyTeamSeats. Takes precedence over
+   *  `allyTeamCount` and is the only form that can declare an empty side. */
+  allyTeamSeats?: readonly number[];
   /** Explicit per-seat side assignment from the lobby, when players have
    *  moved themselves between teams. Takes precedence over
    *  `allyTeamCount`. Seats missing here fall back to their own side. */
@@ -167,6 +171,12 @@ export type GameServerConfig = {
    *  dividers carve one slice per side, and a side’s seats share that
    *  slice. See src/game/sim/teamRoster.ts. */
   allyTeamCount?: number;
+  /** Seats per side, one entry per ally team, filled in lobby order —
+   *  `[2, 2, 2]` is a 2v2v2. Takes precedence over `allyTeamCount`, and is
+   *  the only form that can declare an EMPTY side: a zero still carves that
+   *  side’s terrain slice, deposits and spawn arc, and leaves it unoccupied.
+   *  See src/game/sim/teamRoster.ts. */
+  allyTeamSeats?: readonly number[];
   /** Explicit per-seat side assignment from the lobby, when players have
    *  moved themselves between teams. Takes precedence over
    *  `allyTeamCount`. Seats missing here fall back to their own side. */

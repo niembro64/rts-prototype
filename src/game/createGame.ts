@@ -38,6 +38,7 @@ export function createGame(config: GameConfig): GameInstance {
       new RtsScene3D(app!, {
         playerIds,
         allyTeamCount: config.allyTeamCount,
+        allyTeamSeats: config.allyTeamSeats,
         allyTeamByPlayerId: config.allyTeamByPlayerId,
         localPlayerId,
         gameConnection: config.gameConnection,

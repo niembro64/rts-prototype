@@ -116,7 +116,10 @@ type RtsScene3DConfig = {
    *  Omitted means free-for-all. The scene rebuilds the host's roster from
    *  this so terrain dividers and camera framing agree with the sim. */
   allyTeamCount?: number;
-  /** Explicit lobby side assignment; takes precedence over allyTeamCount. */
+  /** Seats per side, one entry per ally team; the only form that can declare
+   *  an empty side. Takes precedence over allyTeamCount. */
+  allyTeamSeats?: readonly number[];
+  /** Explicit lobby side assignment; takes precedence over both. */
   allyTeamByPlayerId?: Readonly<Record<number, number>>;
   localPlayerId: PlayerId;
   gameConnection: GameConnection;
@@ -318,6 +321,7 @@ export class RtsScene3D {
     this.playerIds = config.playerIds;
     this.teamRoster = resolveTeamRoster(this.playerIds, {
       allyTeamCount: config.allyTeamCount,
+      allyTeamSeats: config.allyTeamSeats,
       allyTeamByPlayerId: config.allyTeamByPlayerId,
     });
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;

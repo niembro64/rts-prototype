@@ -44,15 +44,58 @@ function validatedInitialUnitSpawnHeightAboveSurface(): number {
   return value;
 }
 
-export const DEMO_CONFIG = {
-  /** Number of players in the demo game */
-  playerCount: demoConfig.playerCount,
+/**
+ * SEATS PER SIDE — the demo's roster shape, and the single place it is
+ * declared.
+ *
+ * One array entry per ALLY TEAM, holding that side's seat count, filled from
+ * the seat list in lobby order. `[2, 2, 2]` is the 2v2v2 the demo ships with;
+ * `[3, 3]` is a 3v3; `[1, 1, 1, 1]` is a four-way free-for-all.
+ *
+ * A ZERO IS LEGAL AND MEANINGFUL. `[0, 1, 4]` declares three sides where the
+ * first has nobody on it — the map is still carved into three slices, with
+ * three metal-deposit phases and three spawn arcs, and one of them is simply
+ * empty ground. That is the only way to ask for open space on the map as a
+ * first-class part of the layout rather than as a coincidence of seat count,
+ * and it is why the shape is an array rather than the player/side counts it
+ * replaced.
+ */
+function validatedAllyTeamSeats(): number[] {
+  const seats = demoConfig.allyTeamSeats;
+  if (!Array.isArray(seats) || seats.length === 0) {
+    throw new Error('demoConfig.allyTeamSeats must be a non-empty array of seat counts');
+  }
+  const out: number[] = [];
+  for (const value of seats) {
+    if (!Number.isFinite(value) || value < 0 || Math.floor(value) !== value) {
+      throw new Error(
+        `demoConfig.allyTeamSeats entries must be non-negative integers — got ${value}`,
+      );
+    }
+    out.push(value);
+  }
+  const total = out.reduce((sum, value) => sum + value, 0);
+  if (total < 1) {
+    throw new Error('demoConfig.allyTeamSeats must seat at least one player');
+  }
+  return out;
+}
 
-  /** Number of ALLY TEAMS (sides) the demo’s seats are split into, in
-   *  contiguous lobby order. 6 players across 3 sides is 2v2v2: three
-   *  terrain slices, two commanders sharing each slice. See
-   *  src/game/sim/teamRoster.ts. */
-  allyTeamCount: demoConfig.allyTeamCount,
+const ALLY_TEAM_SEATS = validatedAllyTeamSeats();
+
+export const DEMO_CONFIG = {
+  /** Seats per ALLY TEAM; see validatedAllyTeamSeats above. Everything else
+   *  about the demo's roster is derived from this one array. */
+  allyTeamSeats: ALLY_TEAM_SEATS as readonly number[],
+
+  /** Total seats — the sum of the sides. Derived, never authored: a
+   *  player count that disagreed with the per-side counts would be two
+   *  sources of truth for one roster. */
+  playerCount: ALLY_TEAM_SEATS.reduce((sum, value) => sum + value, 0),
+
+  /** Number of ALLY TEAMS (sides), including any declared empty. Terrain
+   *  dividers carve one slice per side. See src/game/sim/teamRoster.ts. */
+  allyTeamCount: ALLY_TEAM_SEATS.length,
 
   /** Number of solar collectors per player on the dedicated solar arc. */
   buildingSolarCount: demoConfig.buildingSolarCount,

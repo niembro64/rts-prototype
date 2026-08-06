@@ -103,9 +103,17 @@ export async function createBackgroundBattle(
     demoPlayerIds = [];
     for (let i = 1; i <= fallbackCount; i++) demoPlayerIds.push(i as PlayerId);
   }
-  // Sides. The demo runs 2v2v2 by default; a lobby preview inherits the
-  // demo's side count so the previewed slices match what the real battle
-  // will carve, clamped to the seat count for small rosters.
+  // Sides. The demo's shape is authored as SEATS PER SIDE (DEMO_CONFIG
+  // .allyTeamSeats), which is what lets it declare a side with nobody on it
+  // — that side still gets its terrain slice, deposits and spawn arc, and
+  // the ground is simply left open.
+  //
+  // The per-side list only applies when the seat list is the demo's own. A
+  // lobby preview passes real lobby seats, and pinning those to the demo's
+  // per-side counts would seat live players on the wrong sides; it falls
+  // back to the side COUNT, clamped to however many seats it actually has.
+  const usingDemoSeats = !(playerIds && playerIds.length > 0);
+  const demoAllyTeamSeats = usingDemoSeats ? DEMO_CONFIG.allyTeamSeats : undefined;
   const demoAllyTeamCount = Math.max(
     1,
     Math.min(demoPlayerIds.length, Math.floor(DEMO_CONFIG.allyTeamCount) || 1),
@@ -203,6 +211,7 @@ export async function createBackgroundBattle(
     {
       playerIds: demoPlayerIds,
       allyTeamCount: demoAllyTeamCount,
+      allyTeamSeats: demoAllyTeamSeats,
       gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
@@ -268,6 +277,7 @@ export async function createBackgroundBattle(
     height: rect.height || window.innerHeight,
     playerIds: demoPlayerIds,
     allyTeamCount: demoAllyTeamCount,
+    allyTeamSeats: demoAllyTeamSeats,
     localPlayerId: resolvedLocalPlayerId,
     gameConnection: connection,
     clientViewState,

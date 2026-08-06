@@ -16,8 +16,10 @@ import {
   buildAlliesByPlayer,
   buildFreeForAllRoster,
   buildTeamRoster,
+  buildTeamRosterFromSeatCounts,
   getAllyTeamId,
   getAllyTeamMembers,
+  resolveTeamRoster,
 } from './teamRoster';
 import {
   getAllyTeamBaseAngle,
@@ -162,5 +164,90 @@ export function runTeamRosterContractTest(): void {
   assertContract(
     sizes.reduce((a, b) => a + b, 0) === 5,
     'every seat lands on exactly one side',
+  );
+
+  checkSeatCountRosters();
+}
+
+/**
+ * SEATS PER SIDE — the form that can declare an EMPTY side.
+ *
+ * This is the only builder whose side count does not come from the seats
+ * themselves, and that is the whole point: a zero entry still carves that
+ * side's terrain slice, deposit phase and spawn arc, and leaves the ground
+ * unoccupied. Deriving sides from seats can express "nobody is here" only by
+ * shrinking the map.
+ */
+function checkSeatCountRosters(): void {
+  const evenly = buildTeamRosterFromSeatCounts(seats(6), [2, 2, 2]);
+  assertContract(
+    evenly.allyTeamIds.length === 3 &&
+      evenly.allyTeamIds.every(
+        (id) => (evenly.playersByAllyTeam.get(id) ?? []).length === 2,
+      ),
+    '[2,2,2] over six seats is a 2v2v2',
+  );
+  assertContract(
+    getAllyTeamId(evenly, 1 as PlayerId) === getAllyTeamId(evenly, 2 as PlayerId) &&
+      getAllyTeamId(evenly, 2 as PlayerId) !== getAllyTeamId(evenly, 3 as PlayerId),
+    'seats fill the sides in lobby order',
+  );
+
+  // THE EMPTY SIDE. Five seats declared as [0, 1, 4]: three sides exist, the
+  // first has nobody, and every seat still lands on exactly one of them.
+  const withEmpty = buildTeamRosterFromSeatCounts(seats(5), [0, 1, 4]);
+  const withEmptySizes = withEmpty.allyTeamIds.map(
+    (id) => (withEmpty.playersByAllyTeam.get(id) ?? []).length,
+  );
+  assertContract(
+    withEmptySizes.join(',') === '0,1,4',
+    `[0,1,4] must seat 0,1,4 — got ${withEmptySizes.join(',')}`,
+  );
+  assertContract(
+    withEmpty.allyTeamIds.length === 3,
+    'an empty side still exists, so the map is still carved into three slices',
+  );
+  assertContract(
+    withEmpty.allyTeamByPlayer.size === 5,
+    'every declared seat is assigned even when a side is empty',
+  );
+  assertContract(
+    getAllyTeamId(withEmpty, 1 as PlayerId) === withEmpty.allyTeamIds[1],
+    'the first seat skips the empty side rather than filling it',
+  );
+
+  // Counts that disagree with the seat list must not lose a player: the last
+  // side sweeps up the remainder. Losing a seat silently loses a commander.
+  const under = buildTeamRosterFromSeatCounts(seats(5), [1, 1]);
+  assertContract(
+    under.allyTeamByPlayer.size === 5 && under.allyTeamIds.length === 2,
+    'under-counted sides still seat every player on the declared sides',
+  );
+  // ...and counts larger than the seat list simply run out, leaving the
+  // trailing sides empty rather than inventing seats.
+  const over = buildTeamRosterFromSeatCounts(seats(2), [1, 1, 4]);
+  assertContract(
+    over.allyTeamIds.length === 3 && over.allyTeamByPlayer.size === 2,
+    'over-counted sides run out of seats instead of inventing them',
+  );
+
+  // Precedence: an explicit per-seat lobby assignment still wins, because a
+  // player who moved themselves between sides must not be overridden by a
+  // config-authored shape.
+  const assigned = resolveTeamRoster(seats(4), {
+    allyTeamSeats: [2, 2],
+    allyTeamByPlayerId: { 1: 1, 2: 1, 3: 1, 4: 1 },
+  });
+  assertContract(
+    assigned.allyTeamIds.length === 1,
+    'an explicit per-seat assignment outranks a seats-per-side list',
+  );
+  assertContract(
+    resolveTeamRoster(seats(4), { allyTeamSeats: [1, 3], allyTeamCount: 2 })
+      .allyTeamIds.map((id) => (
+        resolveTeamRoster(seats(4), { allyTeamSeats: [1, 3], allyTeamCount: 2 })
+          .playersByAllyTeam.get(id) ?? []
+      ).length).join(',') === '1,3',
+    'a seats-per-side list outranks a plain side count',
   );
 }
