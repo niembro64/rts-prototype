@@ -40,21 +40,30 @@ export function clamp01(value: number): number {
   return value;
 }
 
-/** Look up (or create + cache) the team-tinted MeshBasicMaterial for a
- *  locomotion piece. The cache is keyed by the resolved tinted color so
- *  units sharing an owner share one material. */
+/**
+ * THE locomotion surface material, and the only definition of it.
+ *
+ * Cached by resolved tinted colour, so units sharing an owner share one
+ * material.
+ *
+ * MeshLambertMaterial, matching the unit chassis and turret pools, so treads,
+ * wheels, legs, flippers, wings and hover fans shade under the same lights as
+ * the body they are bolted to. They were MeshBasicMaterial — unlit — which made
+ * locomotion the one part of a unit that ignored the scene entirely: flat, full
+ * brightness from every angle, and untouched by every lighting control.
+ */
 export function getLocomotionMatByCache(
-  cache: Map<number, THREE.MeshBasicMaterial>,
+  cache: Map<number, THREE.MeshLambertMaterial>,
   baseColor: number,
   ownerId: PlayerId | undefined,
   side?: THREE.Side,
-): THREE.MeshBasicMaterial {
+): THREE.MeshLambertMaterial {
   const color = locomotionPieceColorHex(baseColor, ownerId);
   let mat = cache.get(color);
   if (!mat) {
     mat = side === undefined
-      ? new THREE.MeshBasicMaterial({ color })
-      : new THREE.MeshBasicMaterial({ color, side });
+      ? new THREE.MeshLambertMaterial({ color })
+      : new THREE.MeshLambertMaterial({ color, side });
     cache.set(color, mat);
   }
   return mat;

@@ -62,7 +62,7 @@ function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
     ? new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI))
     : createPrimitiveCylinderGeometry('locomotion', tier));
 }
-const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
+const wheelMats = new Map<number, THREE.MeshLambertMaterial>();
 
 /** Per-tire chassis-local mount, plus the four canonical visual state
  *  channels carried across every frame:

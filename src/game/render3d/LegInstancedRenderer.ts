@@ -165,7 +165,10 @@ attribute vec3 instEnd;
 attribute float instThickness;
 `;
 
-const INSTANCE_BEGIN_VERTEX = `
+// The basis is built in the NORMAL chunk, not the position chunk, because
+// three.js emits the normal chunks first and the position chunk needs the same
+// vectors. Everything below is in scope for the rest of main().
+const INSTANCE_BEGIN_NORMAL = `
 vec3 _segAxis = instEnd - instStart;
 float _segLen = length(_segAxis);
 vec3 _segUp = _segLen > 0.001 ? _segAxis / _segLen : vec3(0.0, 1.0, 0.0);
@@ -176,6 +179,22 @@ if (abs(_segUp.y) > 0.999) {
   _segRight = normalize(cross(vec3(0.0, 1.0, 0.0), _segUp));
 }
 vec3 _segFwd = cross(_segRight, _segUp);
+// The instance scale is non-uniform — thickness across, length along — so the
+// normal cannot simply be rotated with the position. It has to go through the
+// inverse scale first, which for a diagonal scale is a component-wise divide;
+// multiplying through by (thickness * length) gives the same direction without
+// a division, so a zero-thickness (empty) slot cannot produce a NaN.
+vec3 _segNormal = vec3(
+  normal.x * _segLen,
+  normal.y * instThickness,
+  normal.z * _segLen
+);
+vec3 objectNormal = normalize(
+  _segRight * _segNormal.x + _segUp * _segNormal.y + _segFwd * _segNormal.z
+);
+`;
+
+const INSTANCE_BEGIN_VERTEX = `
 vec3 _segMid = (instStart + instEnd) * 0.5;
 vec3 transformed = _segMid
   + _segRight * position.x * instThickness
@@ -206,8 +225,10 @@ function makeFadeAttribute(): THREE.InstancedBufferAttribute {
   ).setUsage(THREE.DynamicDrawUsage);
 }
 
-function makeInstancedLegMaterial(): THREE.MeshBasicMaterial {
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+function makeInstancedLegMaterial(): THREE.MeshLambertMaterial {
+  // Lambert, matching the chassis and turret pools. Legs used to be unlit, which
+  // is why locomotion was the one part of a unit that ignored the scene.
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
   // Alpha-fade in the transparent pass while still writing depth, so a
   // finished (aFade=1) leg self-occludes like a solid body — identical to
   // the unit body/turret instanced pools (see EntityFade3D).
@@ -219,6 +240,7 @@ function makeInstancedLegMaterial(): THREE.MeshBasicMaterial {
         '#include <common>',
         `${INSTANCE_HEADER}\n${FADE_VERTEX_DECL}\n#include <common>`,
       )
+      .replace('#include <beginnormal_vertex>', INSTANCE_BEGIN_NORMAL)
       .replace(
         '#include <begin_vertex>',
         `${INSTANCE_BEGIN_VERTEX}\n${FADE_VERTEX_ASSIGN}`,
@@ -227,15 +249,15 @@ function makeInstancedLegMaterial(): THREE.MeshBasicMaterial {
   };
   // Distinct from the body's 'entityFadeInstancedAlpha' program and from
   // the joint/pad program below — the cylinder vertex shader is unique.
-  material.customProgramCacheKey = () => 'legInstancedFadeCylinder';
+  material.customProgramCacheKey = () => 'legInstancedFadeCylinderLit';
   return material;
 }
 
 /** Joint spheres and foot pads ride on a stock InstancedMesh, so their
  *  vertex shader keeps the standard `begin_vertex` and only needs the
  *  fade varying appended. */
-function makeInstancedSphereMaterial(): THREE.MeshBasicMaterial {
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+function makeInstancedSphereMaterial(): THREE.MeshLambertMaterial {
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
   material.transparent = true;
   material.depthWrite = true;
   material.onBeforeCompile = (shader) => {
@@ -249,7 +271,7 @@ function makeInstancedSphereMaterial(): THREE.MeshBasicMaterial {
   };
   // Joint and pad materials produce identical shader source, so they may
   // share one compiled program; distinct from the cylinder program.
-  material.customProgramCacheKey = () => 'legInstancedFadeSphere';
+  material.customProgramCacheKey = () => 'legInstancedFadeSphereLit';
   return material;
 }
 
@@ -335,9 +357,9 @@ class CylinderPool {
       geometryTier,
     );
     const material = makeInstancedLegMaterial();
-    // Legs are unlit (MeshBasicMaterial), so they take the albedo half of the
-    // chart stack only — there is no `normal` in the fragment stage to bump.
-    patchSurfaceChartMaterial(material, { bump: false });
+    // Lit now, so the chart's height-derived bump has a normal to perturb —
+    // leg plating gets the same relief as the hull rather than albedo alone.
+    patchSurfaceChartMaterial(material, { bump: true });
     this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
@@ -551,7 +573,7 @@ class JointSpherePool {
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial();
-    patchSurfaceChartMaterial(material, { bump: false });
+    patchSurfaceChartMaterial(material, { bump: true });
     this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

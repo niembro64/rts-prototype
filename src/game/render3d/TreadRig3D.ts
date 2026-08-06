@@ -103,8 +103,8 @@ function getTreadShellGeom(
   }
   return geom;
 }
-const treadMats = new Map<number, THREE.MeshBasicMaterial>();
-const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
+const treadMats = new Map<number, THREE.MeshLambertMaterial>();
+const cleatMats = new Map<number, THREE.MeshLambertMaterial>();
 
 /**
  * Belt slabs and rounded end caps never change in their side-local space.

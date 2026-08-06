@@ -27,7 +27,7 @@ const WATER_NEUTRAL_DIHEDRAL_DEG = 7;
 const WATER_SWEEP_DEG = 8;
 const FLIPPER_BLEND_SETTLED_EPSILON = 0.002;
 
-const flipperMaterials = new Map<number, THREE.MeshBasicMaterial>();
+const flipperMaterials = new Map<number, THREE.MeshLambertMaterial>();
 const flipperGeometries = new Map<string, THREE.BufferGeometry>();
 
 type FlipperPanel = {

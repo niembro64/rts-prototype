@@ -62,9 +62,39 @@ function getHubGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
     ? getSharedPrimitiveTetrahedronGeometry()
     : createPrimitiveSphereGeometry('locomotion', tier));
 }
-const ringMats = new Map<number, THREE.MeshBasicMaterial>();
-const hubMats = new Map<number, THREE.MeshBasicMaterial>();
-const bladeRotorMats = new Map<string, THREE.ShaderMaterial>();
+const ringMats = new Map<number, THREE.MeshLambertMaterial>();
+const hubMats = new Map<number, THREE.MeshLambertMaterial>();
+/** Rotor blades keep their spin in a vertex injection rather than a bespoke
+ *  ShaderMaterial, so they can be Lambert like every other locomotion piece.
+ *  The time uniform is retained per material because a Lambert material has no
+ *  `.uniforms` of its own to write through. */
+type RotorBladeMaterial = {
+  material: THREE.MeshLambertMaterial;
+  timeUniform: { value: number };
+};
+const bladeRotorMats = new Map<string, RotorBladeMaterial>();
+
+// The normal chunk runs first and computes the rotation, which the position
+// chunk below reuses. Rotating the normal is what makes a spinning blade catch
+// the light as it turns instead of looking like a flat disc.
+const ROTOR_DECL = 'uniform float uTimeSec;\nuniform float uSpinRadPerSec;';
+const ROTOR_BEGIN_NORMAL = `
+float _rotA = -uTimeSec * uSpinRadPerSec;
+float _rotC = cos(_rotA);
+float _rotS = sin(_rotA);
+vec3 objectNormal = vec3(
+  _rotC * normal.x + _rotS * normal.z,
+  normal.y,
+  -_rotS * normal.x + _rotC * normal.z
+);
+`;
+const ROTOR_BEGIN_VERTEX = `
+vec3 transformed = vec3(
+  _rotC * position.x + _rotS * position.z,
+  position.y,
+  -_rotS * position.x + _rotC * position.z
+);
+`;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
@@ -252,46 +282,37 @@ function getRotorBladeMat(
   baseColor: number,
   ownerId: PlayerId | undefined,
   spinRadPerSec: number,
-): THREE.ShaderMaterial {
+): THREE.MeshLambertMaterial {
   const color = locomotionPieceColorHex(baseColor, ownerId);
   const speedKey = Math.round(spinRadPerSec * 1000) / 1000;
   const key = `${color}:${speedKey}`;
-  let mat = bladeRotorMats.get(key);
-  if (!mat) {
-    mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(color) },
-        uTimeSec: { value: 0 },
-        uSpinRadPerSec: { value: spinRadPerSec },
-      },
-      vertexShader: `
-        uniform float uTimeSec;
-        uniform float uSpinRadPerSec;
-        void main() {
-          float a = -uTimeSec * uSpinRadPerSec;
-          float c = cos(a);
-          float s = sin(a);
-          vec3 p = position;
-          p = vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColor;
-        void main() {
-          gl_FragColor = vec4(uColor, 1.0);
-        }
-      `,
-      side: THREE.DoubleSide,
-    });
-    bladeRotorMats.set(key, mat);
-  }
-  return mat;
+  const existing = bladeRotorMats.get(key);
+  if (existing !== undefined) return existing.material;
+
+  const timeUniform = { value: 0 };
+  const spinUniform = { value: spinRadPerSec };
+  const material = new THREE.MeshLambertMaterial({
+    color,
+    side: THREE.DoubleSide,
+  });
+  material.onBeforeCompile = (shader) => {
+    // Assigned by reference, so setHoverFanAnimationTime keeps working without
+    // reaching into a material that no longer owns its uniforms.
+    shader.uniforms.uTimeSec = timeUniform;
+    shader.uniforms.uSpinRadPerSec = spinUniform;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `${ROTOR_DECL}\n#include <common>`)
+      .replace('#include <beginnormal_vertex>', ROTOR_BEGIN_NORMAL)
+      .replace('#include <begin_vertex>', ROTOR_BEGIN_VERTEX);
+  };
+  material.customProgramCacheKey = () => 'hoverRotorBladeLambert';
+  bladeRotorMats.set(key, { material, timeUniform });
+  return material;
 }
 
 export function setHoverFanAnimationTime(timeSec: number): void {
-  for (const mat of bladeRotorMats.values()) {
-    mat.uniforms.uTimeSec.value = timeSec;
+  for (const entry of bladeRotorMats.values()) {
+    entry.timeUniform.value = timeSec;
   }
 }
 

@@ -24,7 +24,7 @@ import {
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 const DEG_TO_RAD = Math.PI / 180;
-const swimMaterials = new Map<number, THREE.MeshBasicMaterial>();
+const swimMaterials = new Map<number, THREE.MeshLambertMaterial>();
 const panelGeometries = new Map<string, THREE.BufferGeometry>();
 
 export type SwimMesh = {

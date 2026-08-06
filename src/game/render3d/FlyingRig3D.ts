@@ -70,8 +70,8 @@ function getJetGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
     return geometry;
   });
 }
-const wingMats = new Map<number, THREE.MeshBasicMaterial>();
-const jetMats = new Map<number, THREE.MeshBasicMaterial>();
+const wingMats = new Map<number, THREE.MeshLambertMaterial>();
+const jetMats = new Map<number, THREE.MeshLambertMaterial>();
 const _jetWorldPos = new THREE.Vector3();
 const _jetWorldQuat = new THREE.Quaternion();
 const _jetWorldDir = new THREE.Vector3();

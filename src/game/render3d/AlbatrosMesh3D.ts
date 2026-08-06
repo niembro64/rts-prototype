@@ -36,7 +36,10 @@ const neckGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 const noseConeGeomByTier = new Map<PrimitiveGeometryTier, THREE.ConeGeometry>();
 const finGeom = new THREE.BoxGeometry(1, 1, 1);
 
-const canopyMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
+// Lambert like every other unit surface. It was the one piece of chassis still
+// unlit, which at any lighting setting made it read as a flat black hole rather
+// than dark glass catching the sky.
+const canopyMat = new THREE.MeshLambertMaterial({ color: 0x050607 });
 
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
