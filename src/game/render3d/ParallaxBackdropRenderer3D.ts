@@ -7,7 +7,7 @@ import {
   type PresetBackdropLayerId,
   type PresetBackdropLayerUrls,
 } from './presetBackdrops';
-import { registerBackdropMaterial } from './RenderLighting3D';
+import { getBackdropBrightnessUniform } from './RenderLighting3D';
 
 const BACKDROP_TERMINAL_RENDER_ORDER = -1004;
 const BACKDROP_TRANSPARENT_RENDER_ORDER_START = -1003;
@@ -221,7 +221,7 @@ export class ParallaxBackdropRenderer3D implements BackdropTarget {
           uSphereCenter: { value: center.clone() },
           uSphereRadius: { value: config.distanceWorldUnits },
           uVerticalOffsetTurns: { value: verticalOffsetTurns },
-          uBrightness: { value: 1 },
+          uBrightness: getBackdropBrightnessUniform(),
         },
         vertexShader: BACKDROP_VERTEX_SHADER,
         fragmentShader: BACKDROP_FRAGMENT_SHADER,
@@ -234,7 +234,6 @@ export class ParallaxBackdropRenderer3D implements BackdropTarget {
         fog: false,
         toneMapped: false,
       });
-      registerBackdropMaterial(material);
       const mesh = new THREE.Mesh(this.geometry, material);
       mesh.name = `PresetBackdrop-${config.id}`;
       mesh.frustumCulled = false;

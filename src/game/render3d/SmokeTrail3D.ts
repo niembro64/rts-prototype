@@ -60,6 +60,7 @@ import {
   geometryTierForDetail,
   smokeSpawnScaleForDetail,
 } from './EntityDetailLevel3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
 const MAX_PARTICLES = getSmokePoolMaxParticles();
@@ -221,6 +222,9 @@ export class SmokeTrail3D {
       transparent: true,
       depthWrite: false,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.matSphere);
     this.matSoft = new THREE.ShaderMaterial({
       vertexShader: SMOKE_SOFT_VERTEX_SHADER,
       fragmentShader: SMOKE_SOFT_FRAGMENT_SHADER,
@@ -230,6 +234,9 @@ export class SmokeTrail3D {
       transparent: true,
       depthWrite: false,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.matSoft);
     this.softEdges = getSmokeSoftEdges();
 
     this.pools = {

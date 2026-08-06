@@ -26,6 +26,7 @@ import {
 import { clamp01 } from './RenderUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
@@ -75,6 +76,9 @@ class InstancedSpherePool {
       transparent: true,
       depthWrite: false,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.mat);
     const pool = createInstancedColorAlphaPool(parent, this.geom, cap, this.mat, renderOrder);
     this.mesh = pool.mesh;
     this.alphaArr = pool.alphaArr;

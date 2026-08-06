@@ -21,6 +21,7 @@
 // overlays this replaces, so authored hex values render as-authored.
 
 import * as THREE from 'three';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 export type ScreenSpaceLineMaterialOptions = {
   /** Initial viewport size in device pixels (kept in sync via setResolution). */
@@ -42,7 +43,7 @@ export function createScreenSpaceLineMaterial(
   const feather = options.feather ?? 0.16;
   const depthTest = options.depthTest ?? true;
 
-  return new THREE.ShaderMaterial({
+  const material = new THREE.ShaderMaterial({
     uniforms: {
       uResolution: { value: resolution },
       uFeather: { value: feather },
@@ -102,6 +103,10 @@ export function createScreenSpaceLineMaterial(
       }
     `,
   });
+  // Raw shader: it writes gl_FragColor itself, so it never tone-maps
+  // and is invisible to exposure without this.
+  applyExposureToRawShader(material);
+  return material;
 }
 
 /** The unit segment quad shared by every instanced line geometry. position.x

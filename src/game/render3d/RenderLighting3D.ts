@@ -19,10 +19,12 @@
 //                shading at build time and legs/effects are unlit, so this
 //                moves ~1.5% of a wide frame while being the main shaper of
 //                the surfaces the texturing work targets.
-//   background   scene.background brightness. Pixels only, no light.
-//   backdrop     The parallax preset-panorama layers. A SEPARATE surface from
-//                scene.background — four meshes with their own shader — so
-//                `backgroundIntensity` never touched them.
+//   background   Sky brightness, covering BOTH paths: three's own
+//                scene.background AND the parallax preset-panorama layers, which
+//                are separate meshes with their own shader. They are alternative
+//                implementations of the same visual — which one you see depends
+//                on the preset — so they share one control rather than two that
+//                are never both meaningful at once. Pixels only, no light.
 //   exposure     Tone-mapping exposure. Scales the final image, so it is the
 //                one knob that can reach true black on its own.
 //                CAVEAT: `toneMappingExposure` only does anything when tone
@@ -32,15 +34,17 @@
 //                inert — it is not broken, there is simply no tone-mapping
 //                stage for it to scale.
 //
-// MATERIALS THAT SET `toneMapped: false` HAVE OPTED OUT OF EXPOSURE, so no
-// knob here can darken them unless it is handed to them by hand. That is why
-// "everything at zero" did not give a black screen: an inventory of the live
-// scene with all five knobs at 0 found exactly two such things — the four
-// parallax backdrop layers and the wind particle field — against 3266
-// MeshBasicMaterial meshes and 320 ShaderMaterials that DO tone-map and so were
-// already going black. Both now receive the exposure scale through a
-// `uBrightness` uniform, which makes EXPO a true master: at 0 the 3D view is
-// black, with no exceptions left.
+// SHADERS THAT WRITE gl_FragColor DIRECTLY DO NOT TONE-MAP. three only injects
+// the tone-mapping chunk where a shader includes it, so `material.toneMapped`
+// proves nothing about a custom ShaderMaterial. Any such shader is invisible to
+// exposure unless it is handed the scale by hand, which is what
+// `applyExposureToRawShader` below does — one call at the material's creation
+// site adds a `uBrightness` uniform bound to the SHARED exposure object and
+// multiplies it into the shader's output.
+//
+// With every one of them wired, EXPO alone reaches the whole 3D view: at 0 the
+// screen is black with no exceptions. That is what let the separate master
+// dimmer be removed rather than kept as a second control doing the same job.
 //
 // EVERY ONE OF THESE IS LIVE. They are scene/renderer properties, so a change
 // takes effect on the next frame with no scene rebuild and no material touch —
@@ -61,9 +65,7 @@ type LightingScales = {
   directional: number;
   environment: number;
   background: number;
-  backdrop: number;
   exposure: number;
-  master: number;
 };
 
 const scales: LightingScales = {
@@ -71,36 +73,43 @@ const scales: LightingScales = {
   directional: 1,
   environment: 1,
   background: 1,
-  backdrop: 1,
   exposure: 1,
-  master: 1,
 };
 
-// THE MASTER DIMMER.
-//
-// A full-screen black quad drawn last, at opacity (1 - master). Normal blending
-// makes that an exact multiply of the framebuffer: dst*(1-a) = dst*master. At 0
-// the 3D view is black, with nothing able to escape.
-//
-// It exists because per-source knobs cannot cover self-lit content. An inventory
-// of the live scene with every physical knob at zero found 242 distinct
-// materials in 8 shader families that never tone-map — they are custom
-// ShaderMaterials writing gl_FragColor directly, so three never injects the
-// tone-mapping chunk and `toneMappingExposure` cannot touch them. By mesh count:
-// HoverRig3D fan blades (297), ScreenSpaceLineMaterial overlay lines,
-// EntityLodProxyRenderer3D glyphs, ShieldRenderer3D force fields, and three
-// smaller effect families.
-//
-// Wiring each of those by hand would work today and silently break the next
-// time someone adds a custom shader. The dimmer is one object that cannot be
-// forgotten, which is the property worth having for a control whose entire job
-// is "guarantee black".
-let dimmerMesh: THREE.Mesh | null = null;
-let dimmerMaterial: THREE.MeshBasicMaterial | null = null;
+// SHARED uniform objects, not registries. Every raw shader that needs one binds
+// this same object by reference, so there is no list to append to and nothing to
+// leak when materials churn.
+const exposureBrightnessUniform = { value: 1 };
+const backdropBrightnessUniform = { value: 1 };
 
-/** Uniforms on materials that opted out of tone mapping. */
-const backdropBrightnessUniforms: { value: number }[] = [];
-const exposureOnlyUniforms: { value: number }[] = [];
+/** Bind into a raw shader that should follow the tone-mapping exposure. */
+export function getExposureBrightnessUniform(): { value: number } {
+  return exposureBrightnessUniform;
+}
+
+/** Bind into the parallax backdrop layers: sky brightness times exposure. */
+export function getBackdropBrightnessUniform(): { value: number } {
+  return backdropBrightnessUniform;
+}
+
+/**
+ * Make a custom ShaderMaterial obey exposure.
+ *
+ * Adds `uBrightness`, bound to the shared exposure uniform, and multiplies it
+ * into the shader's output just before main() closes. Call it once at the
+ * material's creation site; without it the material is simply invisible to every
+ * lighting control, which is the failure mode this whole mechanism exists for.
+ */
+export function applyExposureToRawShader(material: THREE.ShaderMaterial): void {
+  if (material.uniforms.uBrightness !== undefined) return;
+  material.uniforms.uBrightness = exposureBrightnessUniform;
+  const source = material.fragmentShader;
+  const close = source.lastIndexOf('}');
+  if (close < 0) return;
+  material.fragmentShader = `uniform float uBrightness;\n${source.slice(0, close)}`
+    + `  gl_FragColor.rgb *= uBrightness;\n${source.slice(close)}`;
+  material.needsUpdate = true;
+}
 
 // Module-level because there is exactly one world scene and the CLIENT bar has
 // no handle on it. Registration re-applies whatever scale is current, so tuning
@@ -125,74 +134,18 @@ function apply(): void {
   if (renderer !== null) {
     renderer.toneMappingExposure = scales.exposure;
   }
-  if (dimmerMaterial !== null && dimmerMesh !== null) {
-    const master = Math.min(1, scales.master);
-    dimmerMaterial.opacity = 1 - master;
-    // Skip the draw entirely at full brightness.
-    dimmerMesh.visible = master < 0.999;
-  }
-  // Hand the exposure to everything that opted out of tone mapping, or those
-  // surfaces stay lit no matter what any knob is set to.
-  for (const uniform of backdropBrightnessUniforms) {
-    uniform.value = scales.backdrop * scales.exposure;
-  }
-  for (const uniform of exposureOnlyUniforms) {
-    uniform.value = scales.exposure;
-  }
-}
-
-/** A parallax backdrop layer's brightness uniform. Scaled by BOTH its own knob
- *  and the exposure. */
-export function registerBackdropMaterial(material: {
-  uniforms: Record<string, { value: unknown }>;
-}): void {
-  const uniform = material.uniforms.uBrightness as { value: number } | undefined;
-  if (uniform === undefined) return;
-  backdropBrightnessUniforms.push(uniform);
-  apply();
-}
-
-/** A `toneMapped: false` material that should still obey exposure. */
-export function registerExposureOnlyUniform(uniform: { value: number }): void {
-  exposureOnlyUniforms.push(uniform);
-  apply();
-}
-
-export function setMasterDimmerScale(scale: number): void {
-  scales.master = Math.max(0, scale);
-  apply();
-}
-
-export function setBackdropIntensityScale(scale: number): void {
-  scales.backdrop = Math.max(0, scale);
-  apply();
+  // Hand the exposure to every raw shader that cannot tone-map itself.
+  exposureBrightnessUniform.value = scales.exposure;
+  backdropBrightnessUniform.value = scales.background * scales.exposure;
 }
 
 /** Called by ThreeApp once its scene and renderer exist. */
-/** The dimmer's THREE objects are built by the caller so this module can stay a
- *  type-only importer of three. */
-export type DimmerFactory = {
-  makeDimmerMaterial: () => THREE.MeshBasicMaterial;
-  makeDimmerMesh: (material: THREE.MeshBasicMaterial) => THREE.Mesh;
-};
-
 export function registerLightingTargets(
   targetScene: THREE.Scene,
   targetRenderer: THREE.WebGLRenderer,
-  dimmer: DimmerFactory,
 ): void {
   scene = targetScene;
   renderer = targetRenderer;
-  if (dimmerMesh === null) {
-    dimmerMaterial = dimmer.makeDimmerMaterial();
-    dimmerMesh = dimmer.makeDimmerMesh(dimmerMaterial);
-    dimmerMesh.frustumCulled = false;
-    // After everything: transparent objects already sort last, and a very high
-    // renderOrder keeps anything from landing on top of it.
-    dimmerMesh.renderOrder = 1e6;
-    dimmerMesh.visible = false;
-  }
-  if (dimmerMesh.parent !== targetScene) targetScene.add(dimmerMesh);
   apply();
 }
 
@@ -221,6 +174,9 @@ export function setEnvironmentIntensityScale(scale: number): void {
   apply();
 }
 
+/** Sky brightness. Drives BOTH sky paths — three's `scene.background` and the
+ *  parallax panorama layers — because they are alternative implementations of
+ *  the same visual and are never both meaningful at once. */
 export function setBackgroundIntensityScale(scale: number): void {
   scales.background = Math.max(0, scale);
   apply();
@@ -249,7 +205,6 @@ export function getRenderLightingState(): {
   backgroundIntensity: number;
   backdropBrightness: number;
   toneMappingExposure: number;
-  masterDimmer: number;
 } {
   return {
     ambientIntensity: SUN_RENDER_CONFIG.ambientIntensity * scales.ambient,
@@ -257,8 +212,7 @@ export function getRenderLightingState(): {
       SUN_RENDER_CONFIG.directionalIntensity * scales.directional,
     environmentIntensity: scales.environment,
     backgroundIntensity: scales.background,
-    backdropBrightness: scales.backdrop * scales.exposure,
+    backdropBrightness: scales.background * scales.exposure,
     toneMappingExposure: scales.exposure,
-    masterDimmer: scales.master,
   };
 }

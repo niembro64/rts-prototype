@@ -52,6 +52,7 @@ import {
   uploadDirtySlotSpan as uploadDirtySpan,
   writeInstancedMatrix as writeMatrixAt,
 } from './instancedBufferUpdate';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -738,7 +739,7 @@ export class ShieldRenderer3D {
   }
 
   private createImplicitFieldMaterial(): THREE.ShaderMaterial {
-    return new THREE.ShaderMaterial({
+    const material = new THREE.ShaderMaterial({
       vertexShader: IMPLICIT_SHIELD_SURFACE_VS,
       fragmentShader: IMPLICIT_SHIELD_SURFACE_FS,
       uniforms: {
@@ -755,6 +756,10 @@ export class ShieldRenderer3D {
       depthTest: true,
       depthWrite: false,
     });
+    // Raw shader: it writes gl_FragColor itself, so it never tone-maps
+    // and is invisible to exposure without this.
+    applyExposureToRawShader(material);
+    return material;
   }
 
   private acquire(key: FieldKey): FieldMesh {

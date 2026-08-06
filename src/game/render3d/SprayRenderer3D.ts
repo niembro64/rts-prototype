@@ -55,6 +55,7 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -172,6 +173,9 @@ export class SprayRenderer3D {
       transparent: true,
       depthWrite: false,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.mat);
 
     this.pools = {
       close: this.createPool('close'),

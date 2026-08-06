@@ -245,8 +245,6 @@ export type GameCanvasClientControlBarModel = {
   readonly ambientLight: LightIntensityPercent;
   readonly directionalLight: LightIntensityPercent;
   readonly skyLight: LightIntensityPercent;
-  readonly masterLight: LightIntensityPercent;
-  readonly backdropLight: LightIntensityPercent;
   readonly exposure: LightIntensityPercent;
   readonly allSoundsActive: boolean;
   readonly soundToggles: Readonly<Record<SoundCategory, boolean>>;
@@ -307,8 +305,6 @@ export type GameCanvasClientControlBarModel = {
   changeAmbientLight(percent: LightIntensityPercent): void;
   changeDirectionalLight(percent: LightIntensityPercent): void;
   changeSkyLight(percent: LightIntensityPercent): void;
-  changeMasterLight(percent: LightIntensityPercent): void;
-  changeBackdropLight(percent: LightIntensityPercent): void;
   changeExposure(percent: LightIntensityPercent): void;
   setGamePaused(paused: boolean): void;
   toggleAllSounds(): void;

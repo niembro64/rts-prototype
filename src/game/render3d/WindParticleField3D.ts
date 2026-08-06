@@ -4,7 +4,7 @@ import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
-import { registerExposureOnlyUniform } from './RenderLighting3D';
+import { getExposureBrightnessUniform } from './RenderLighting3D';
 
 type WindState = NonNullable<NetworkServerSnapshotMeta['wind']>;
 
@@ -211,7 +211,7 @@ export class WindParticleField3D {
 
     this.uniforms = {
       uColor: { value: new THREE.Color(this.config.colorHex) },
-      uBrightness: { value: 1 },
+      uBrightness: getExposureBrightnessUniform(),
       uWinMin: { value: new THREE.Vector2() },
       uLatticeSpan: { value: LATTICE_SPAN_BASE },
       uBandMin: { value: this.lowerPlaneWorld },
@@ -237,7 +237,6 @@ export class WindParticleField3D {
       depthWrite: false,
       toneMapped: false,
     });
-    registerExposureOnlyUniform(this.uniforms.uBrightness as { value: number });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = 'WindParticleField3D';
     this.mesh.frustumCulled = false;

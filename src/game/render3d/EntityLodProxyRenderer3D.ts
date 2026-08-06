@@ -14,6 +14,7 @@ import {
   type DirtySlotSpan as DirtySpan,
   uploadDirtySlotSpan as uploadDirty,
 } from './instancedBufferUpdate';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 const ENTITY_LOD_PROXY_CAP = 32768;
 const ENTITY_LOD_PROXY_OPACITY = 1;
@@ -163,7 +164,7 @@ type EntityLodProxyRenderer3DOptions = {
 };
 
 function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+  const material = new THREE.ShaderMaterial({
     uniforms: {
       uViewportHeight: { value: 1 },
       uOpacity: { value: Math.max(0, Math.min(1, ENTITY_LOD_PROXY_OPACITY)) },
@@ -179,6 +180,10 @@ function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
       ? ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE
       : ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
   });
+  // Raw shader: it writes gl_FragColor itself, so it never tone-maps
+  // and is invisible to exposure without this.
+  applyExposureToRawShader(material);
+  return material;
 }
 
 function createProxyPointBatch(transition: boolean): ProxyPointBatch {

@@ -30,6 +30,7 @@ import {
 import { disposeMesh } from './threeUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 const FS = `
 uniform vec3 uColor;
@@ -90,6 +91,9 @@ export class WaterSplash3D {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.mat);
 
     this.pools = {
       close: this.createPool('close', cfg.pool.maxDroplets),

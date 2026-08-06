@@ -130,8 +130,6 @@ export type ClientBarConfig = {
   readonly environmentLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly ambientLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly skyLight: LabeledOptionsConfig<LightIntensityPercent>;
-  readonly masterLight: LabeledOptionsConfig<LightIntensityPercent>;
-  readonly backdropLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly exposure: LabeledOptionsConfig<LightIntensityPercent>;
   readonly directionalLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly audioSmoothing: BooleanSetting;

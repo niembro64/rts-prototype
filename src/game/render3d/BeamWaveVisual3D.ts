@@ -16,6 +16,7 @@ import { COLORS } from '@/colorsConfig';
 import beamConfig from '@/beamConfig.json';
 import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 export type BeamVisualConfig = {
   color: readonly number[];
@@ -213,6 +214,9 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
     depthWrite: false,
     depthTest: true,
   });
+  // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+  // invisible to exposure without this.
+  applyExposureToRawShader(material);
   material.customProgramCacheKey = () => `beamEmitterWave:inst:${layer}`;
   return material;
 }

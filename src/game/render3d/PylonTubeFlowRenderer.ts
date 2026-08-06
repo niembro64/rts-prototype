@@ -31,6 +31,7 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -109,6 +110,9 @@ export class PylonTubeFlowRenderer {
       transparent: true,
       depthWrite: false,
     });
+    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
+    // invisible to exposure without this.
+    applyExposureToRawShader(this.mat);
 
     this.pools = {
       close: this.createPool('close'),

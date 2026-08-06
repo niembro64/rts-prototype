@@ -829,34 +829,8 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.skyLight.options"
             :key="opt.value"
             :active="model.skyLight === opt.value"
-            :title="`Sky/backdrop brightness at ${opt.value}%. Pixels only — the backdrop contributes no light to the scene.`"
+            :title="`Sky brightness at ${opt.value}%, covering both sky paths: three's scene background and the parallax panorama layers. Which one you see depends on the preset, so they share one control. Pixels only — the sky contributes no light to surfaces.`"
             @click="model.changeSkyLight(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>MSTR:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.masterLight.options"
-            :key="opt.value"
-            :active="model.masterLight === opt.value"
-            :title="`Master dimmer at ${opt.value}%. A black quad drawn last, which multiplies the finished frame — the only control that reaches self-lit content (hover fans, overlay lines, LOD glyphs, force fields) since those write gl_FragColor directly and never tone-map. At 0 the 3D view is black with no exceptions.`"
-            @click="model.changeMasterLight(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>BKDP:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.backdropLight.options"
-            :key="opt.value"
-            :active="model.backdropLight === opt.value"
-            :title="`Parallax backdrop panorama layers at ${opt.value}%. A separate surface from SKY — four meshes with their own shader, which is why scene background brightness never touched them.`"
-            @click="model.changeBackdropLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
@@ -868,7 +842,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.exposure.options"
             :key="opt.value"
             :active="model.exposure === opt.value"
-            :title="`Tone-mapping exposure at ${opt.value}%. Scales the final image, so it is the only knob here that can reach true black on its own. Inert on mobile-class runtime profiles, which disable tone mapping entirely.`"
+            :title="`Tone-mapping exposure at ${opt.value}%. Scales everything in the 3D view, including the custom shaders that cannot tone-map themselves and are handed the scale by hand — so at 0 the screen is black with no exceptions. Inert on mobile-class runtime profiles, which disable tone mapping entirely.`"
             @click="model.changeExposure(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
