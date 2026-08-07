@@ -36,8 +36,8 @@
     ]
   },
   "environmentLight": {
-    "demoDefault": 100,
-    "realDefault": 100,
+    "demoDefault": 25,
+    "realDefault": 25,
     "options": [
       {
         "value": 0,
@@ -82,8 +82,8 @@
     ]
   },
   "ambientLight": {
-    "demoDefault": 100,
-    "realDefault": 100,
+    "demoDefault": 300,
+    "realDefault": 300,
     "options": [
       {
         "value": 0,
@@ -128,8 +128,8 @@
     ]
   },
   "directionalLight": {
-    "demoDefault": 100,
-    "realDefault": 100,
+    "demoDefault": 300,
+    "realDefault": 300,
     "options": [
       {
         "value": 0,
@@ -174,8 +174,8 @@
     ]
   },
   "skyLight": {
-    "demoDefault": 100,
-    "realDefault": 100,
+    "demoDefault": 25,
+    "realDefault": 25,
     "options": [
       {
         "value": 0,
@@ -220,8 +220,8 @@
     ]
   },
   "exposure": {
-    "demoDefault": 100,
-    "realDefault": 100,
+    "demoDefault": 150,
+    "realDefault": 150,
     "options": [
       {
         "value": 0,
