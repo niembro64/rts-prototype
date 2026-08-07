@@ -24,10 +24,7 @@ import {
   getChassisLiftY,
 } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
-import {
-  resolveLegSnapSphereLocal,
-  type LegSnapSphereLocal,
-} from './LegGait3D';
+import { resolveLegOutwardGroundPointLocal } from './LegGait3D';
 import {
   LEG_ATTACHMENT_RADIUS_MULTIPLIER,
   LEG_FOOT_RADIUS_MULTIPLIER,
@@ -203,13 +200,7 @@ export function getDebrisUnitProfile(
     // Debris cylinders are uniform, so approximate the tapered upper segment
     // at the mean of its 2x attachment and 1x knee radii.
     const upperDebrisRadius = legRadius * (LEG_ATTACHMENT_RADIUS_MULTIPLIER + 1) * 0.5;
-    const snapSphere: LegSnapSphereLocal = {
-      centerX: 0,
-      centerZ: 0,
-      outwardX: 0,
-      outwardZ: 0,
-      radius: 0,
-    };
+    const snapSphere = { x: 0, z: 0 };
     const lowerTaperStart = { x: 0, y: 0, z: 0 };
     for (const lc of all) {
       const hipX = lc.attachOffsetX;
@@ -217,16 +208,17 @@ export function getDebrisUnitProfile(
       // Same authored attachment the live rig uses — see LegRig3D. Three
       // files used to re-derive this number and had to agree.
       const hipY = lc.attachOffsetZ;
-      resolveLegSnapSphereLocal(
+      // The leg's rest STATION — how far out along its own outward ray a leg
+      // likes to stand. Unchanged in meaning; it is the reach ENVELOPE that
+      // stopped being a horizontal disc, not this.
+      resolveLegOutwardGroundPointLocal(
         hipX,
         hipZ,
-        lc.upperLegLength + lc.lowerLegLength,
-        lc.footSphereOriginExtensionRatio,
-        lc.footSphereRadiusLegLengthRatio,
+        (lc.upperLegLength + lc.lowerLegLength) * lc.footSphereOriginExtensionRatio,
         snapSphere,
       );
-      const footX = snapSphere.centerX;
-      const footZ = snapSphere.centerZ;
+      const footX = snapSphere.x;
+      const footZ = snapSphere.z;
       // Approximate knee at the midpoint of hip↔foot, lifted up — matches
       // the visible "knee bends upward" pose from Locomotion3D.
       const kneeX = (hipX + footX) / 2;

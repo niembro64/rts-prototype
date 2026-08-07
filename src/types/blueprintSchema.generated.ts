@@ -502,7 +502,6 @@ export type LegSegments = {
 
 export type LegFootSphere = {
   originExtensionRatio: number;
-  radiusLegLengthRatio: number;
 };
 
 export type LegLayoutEntry = {

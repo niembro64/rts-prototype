@@ -326,30 +326,70 @@ export function transformChassisRootToWorld(
  *
  *  upX/upY/upZ MUST be a unit vector (the caller computes it once
  *  per unit per frame via the surface-normal sampler). */
+export type LegIkSolution = {
+  /** Knee, at exactly `upperLen` from the hip. */
+  x: number; y: number; z: number;
+  /** Foot, at exactly `lowerLen` from the knee. */
+  footX: number; footY: number; footZ: number;
+  /** True when the requested foot was out of reach and had to be pulled in. */
+  clamped: boolean;
+};
+
 export function kneeFromIK(
   hipX: number, hipY: number, hipZ: number,
   footX: number, footY: number, footZ: number,
   upperLen: number, lowerLen: number,
   upX: number, upY: number, upZ: number,
-): { x: number; y: number; z: number } {
+): LegIkSolution {
   const dx = footX - hipX;
   const dy = footY - hipY;
   const dz = footZ - hipZ;
-  const dist = Math.max(1e-3, Math.hypot(dx, dy, dz));
-  const clampedDist = Math.min(dist, upperLen + lowerLen * 0.98);
+  const rawDist = Math.hypot(dx, dy, dz);
+  // Normalize by the TRUE distance. Flooring it first and then dividing by the
+  // floor produced a hip→foot vector shorter than unit length for any foot
+  // within a millimetre of the hip, and every length below is measured along
+  // it — so the upper bone came out short instead of rigid. A foot exactly on
+  // the hip has no direction at all, so the leg hangs down the chassis.
+  const degenerate = !(rawDist > 1e-9);
+  const dist = degenerate ? 1 : rawDist;
+  // NEITHER BONE MAY STRETCH. The knee is placed at exactly `upperLen` from
+  // the hip, so the only way the lower bone can come out longer than
+  // `lowerLen` is if the foot is further away than the two together — and the
+  // caller draws knee→foot, so a solve for a shorter distance than the foot
+  // actually sits at IS a stretched bone.
+  //
+  // This used to solve the knee angle for `upperLen + lowerLen * 0.98` while
+  // the foot stayed wherever it was, which quietly lengthened the lower bone
+  // by up to 2% of its length at full extension and without limit past it.
+  // Clamping to the true reach and reporting the effective foot lets the
+  // caller draw a leg that is straight instead of one that is stretched.
+  // The shell, both ends. Past `upperLen + lowerLen` the leg would have to
+  // stretch; inside `|upperLen - lowerLen|` it would have to fold through
+  // itself, and the cosine rule below silently returns a knee whose lower bone
+  // does not close on the foot at all. Clamping to both is what makes the two
+  // bone lengths exact for EVERY input rather than for the reachable ones.
+  const reach = upperLen + lowerLen;
+  const fold = Math.abs(upperLen - lowerLen);
+  const clampedDist = Math.min(Math.max(rawDist, fold), reach);
 
   const a = upperLen;
   const b = lowerLen;
   const c = clampedDist;
-  let cosB = (a * a + c * c - b * b) / (2 * a * c);
+  // Equal bones with the foot on the hip is the one configuration the cosine
+  // rule cannot answer — 0/0, and any knee on the sphere of radius `a` is a
+  // valid fold. Taking cosB = 0 folds it square to the chassis-up axis, which
+  // keeps both bones exact and is the pose a knee actually makes.
+  const denominator = 2 * a * c;
+  let cosB = denominator > 1e-12 ? (a * a + c * c - b * b) / denominator : 0;
   cosB = Math.max(-1, Math.min(1, cosB));
   // sin(B) positive → knee bends along the chassis-up direction.
   const sinB = Math.sqrt(Math.max(0, 1 - cosB * cosB));
 
-  // Unit vector hip → foot
-  const nx = dx / dist;
-  const ny = dy / dist;
-  const nz = dz / dist;
+  // Unit vector hip → foot, or straight down the chassis when there is no
+  // direction to be had.
+  const nx = degenerate ? -upX : dx / dist;
+  const ny = degenerate ? -upY : dy / dist;
+  const nz = degenerate ? -upZ : dz / dist;
 
   // In-plane "up" = chassis-up (passed in) with its component along
   // `n` removed, then normalized. This keeps the knee in the
@@ -373,6 +413,13 @@ export function kneeFromIK(
     x: hipX + upperLen * (cosB * nx + sinB * ux),
     y: hipY + upperLen * (cosB * ny + sinB * uy),
     z: hipZ + upperLen * (cosB * nz + sinB * uz),
+    // Where the foot ACTUALLY ends up once the leg refuses to stretch. Equal
+    // to the requested foot whenever it was reachable; pulled in along the hip
+    // ray when it was not. Callers draw to this, never to the request.
+    footX: hipX + nx * clampedDist,
+    footY: hipY + ny * clampedDist,
+    footZ: hipZ + nz * clampedDist,
+    clamped: Math.abs(clampedDist - rawDist) > 1e-9,
   };
 }
 

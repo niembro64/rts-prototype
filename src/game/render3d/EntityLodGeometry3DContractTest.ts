@@ -24,9 +24,15 @@ import {
   getRayBlueprint,
   SHIELD_BLUEPRINTS,
   getShotBlueprint,
+  TURRET_BLUEPRINTS,
   getUnitBlueprint,
 } from '../sim/blueprints';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import {
+  getTurretBarrelCenterToTipLength,
+  getTurretBarrelDiameter,
+  getTurretHeadRadius,
+} from '../math/BarrelGeometry';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Turret } from '../sim/types';
@@ -114,6 +120,12 @@ const DETAIL_LEVELS = [
   detailLevelForRung(DETAIL_RUNG_MID),
   detailLevelForRung(DETAIL_RUNG_FAR),
 ] as const;
+const BEAM_TURRET_IDS: ReadonlySet<string> = new Set([
+  'turretBeam',
+  'turretBeamMini',
+  'turretBeamMega',
+  'turretBeamLong',
+]);
 
 /**
  * Canonical side-by-side visual-regression roster. Keeping this sourced from
@@ -830,6 +842,47 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
         builds.every((build) => build.mesh.barrels.length === 6),
         'Anti-Air retains all six aimed tubes at H/M/L',
       );
+    }
+    if (BEAM_TURRET_IDS.has(turretId)) {
+      const blueprint = TURRET_BLUEPRINTS[turretId];
+      const config = getTurretConfig(turretId);
+      const barrel = config.barrel;
+      assertContract(!config.headOnly, `${turretId} is an ordinary full-barrel turret`);
+      assertContract(
+        barrel?.type === 'singleConeBarrel',
+        `${turretId} uses one aimed focusing-cone barrel`,
+      );
+      assertContract(config.shot?.type === 'beam', `${turretId} emits a beam ray`);
+      assertContract(
+        !Object.prototype.hasOwnProperty.call(blueprint.barrel, 'barrelThickness'),
+        `${turretId} derives barrel width from its beam instead of an arbitrary override`,
+      );
+
+      const headRadius = getTurretHeadRadius(config);
+      const barrelDiameter = getTurretBarrelDiameter(config);
+      const centerToTipLength = getTurretBarrelCenterToTipLength(config);
+      assertRelativeNear(`${turretId} barrel/beam width`, barrelDiameter, config.shot.width);
+      assertContract(
+        barrelDiameter <= headRadius * 2,
+        `${turretId} barrel base fits within its turret head silhouette`,
+      );
+      assertContract(
+        centerToTipLength > barrelDiameter,
+        `${turretId} barrel is longer than its base is wide`,
+      );
+      assertContract(
+        builds.every((build) => (
+          build.mesh.barrelUsesCone === true &&
+          build.mesh.pitchGroup !== undefined &&
+          build.mesh.barrels.length === 1
+        )),
+        `${turretId} retains one pitched cone barrel at H/M/L`,
+      );
+      for (const build of builds) {
+        const meshBarrel = build.mesh.barrels[0];
+        assertRelativeNear(`${turretId} mesh barrel radius`, meshBarrel.scale.x, barrelDiameter / 2);
+        assertRelativeNear(`${turretId} mesh barrel length`, meshBarrel.scale.y, centerToTipLength);
+      }
     }
     const counts = builds.map((build) => build.count);
     assertDescending(turretId, counts);

@@ -794,9 +794,9 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     lockOnRequiresTargetLockedOntoSelfMode: lockOn.reciprocal,
   };
 
-  // Derive barrelThickness from shot size, scaled by global multiplier.
-  // Skip the barrel-less shield emitters (sphere + panel): they
-  // carry no gun barrel to thicken.
+  // Resolve an absolute barrel thickness from the emitted shot/ray size when
+  // the blueprint does not intentionally override it. Skip the barrel-less
+  // shield emitters (sphere + panel): they carry no gun barrel to thicken.
   if (
     turretBlueprint.emissionKind !== null &&
     turretBlueprint.emissionBlueprintId !== null &&

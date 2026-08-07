@@ -838,8 +838,7 @@
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 1.2,
-      "barrelThickness": 10
+      "barrelLength": 1.2
     },
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -922,8 +921,7 @@
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 1.5,
-      "barrelThickness": 5.5
+      "barrelLength": 1.5
     },
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1006,8 +1004,7 @@
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 1.1,
-      "barrelThickness": 29
+      "barrelLength": 1.1
     },
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1276,8 +1273,7 @@
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 0.8,
-      "barrelThickness": 30
+      "barrelLength": 0.8
     },
     "passive": false,
     "requiresNonObstructedLineOfSight": true,

@@ -63,14 +63,17 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import {
-  legChoppedSphereNeedsStep,
+  clampPointToLegShell,
+  legFootNeedsStep,
   legSurfaceWithinReach,
-  resolveLegChoppingSphereRadius,
-  resolveLegChoppedSphereVelocityTarget,
-  resolveLegSnapRayOrigin,
+  resolveLegGroundAnnulus,
+  resolveLegGroundRayOrigin,
+  resolveLegGroundStepTarget,
+  resolveLegOutwardGroundPointLocal,
+  resolveLegReachShell,
   resolveLegSnapRayPointVelocity,
-  resolveLegSnapSphereLocal,
-  type LegSnapSphereLocal,
+  type LegGroundAnnulus,
+  type LegReachShell,
 } from './LegGait3D';
 
 /** Per-leg phase pattern. Each leg starts on either boundary reached by
@@ -157,6 +160,20 @@ const reachSphereMat = new THREE.LineBasicMaterial({
   opacity: COLORS.units.locomotion.leg.debugReachSphere.opacity,
   depthWrite: false,
 });
+/** Unit circle in the XZ plane, as line segments. The gait's ground envelope
+ *  is an annulus, and an annulus draws as two rings — a sphere sitting at the
+ *  ground point drew a volume the leg was never able to sweep. */
+const groundRingGeom = (() => {
+  const points: THREE.Vector3[] = [];
+  const segments = 64;
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    points.push(new THREE.Vector3(Math.cos(a0), 0, Math.sin(a0)));
+    points.push(new THREE.Vector3(Math.cos(a1), 0, Math.sin(a1)));
+  }
+  return new THREE.BufferGeometry().setFromPoints(points);
+})();
 const restDirectionGeom = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
   new THREE.Vector3(1, 0, 0),
@@ -250,6 +267,7 @@ export type LegInstance = {
   /** LEG-REACH debug viz: the exact hip-centered maximum extension
    *  sphere plus a spoke to the derived outer point. */
   reachSphere?: THREE.LineSegments;
+  foldSphere?: THREE.LineSegments;
   restDirection?: THREE.Line;
 };
 
@@ -620,22 +638,16 @@ export function updateLegs(
 
   for (const leg of mesh.legs) {
     const c = leg.config;
-    const tl = totalLegLength(c);
-    const choppingSphereRadius = resolveLegChoppingSphereRadius(
-      tl,
+    // THE SHELL: hard outer bound is the leg straight, inner is the authored
+    // gait margin floored at the fold limit. Neither is a horizontal number.
+    const shell = resolveLegReachShell(
+      c.upperLegLength,
+      c.lowerLegLength,
       mesh.config.choppingSphere.radiusLegLengthRatio,
     );
     const hipLocalX = c.attachOffsetX;
     const hipLocalY = leg.hipY;
     const hipLocalZ = c.attachOffsetY;
-    resolveLegSnapSphereLocal(
-      hipLocalX,
-      hipLocalZ,
-      tl,
-      c.footSphereOriginExtensionRatio,
-      c.footSphereRadiusLegLengthRatio,
-      _snapSphereLocal,
-    );
 
     transformLegPointToWorld(
       mesh,
@@ -645,38 +657,35 @@ export function updateLegs(
     const hipWorldX = _worldOut.x;
     const hipWorldY = _worldOut.y;
     const hipWorldZ = _worldOut.z;
-    const innerSphereWorldX = hipWorldX;
-    const innerSphereWorldZ = hipWorldZ;
-    const innerSphereWorldY = getLocomotionSurfaceHeight(
-      innerSphereWorldX,
-      innerSphereWorldZ,
-      mapWidth,
-      mapHeight,
-      entity.id,
-      terrainMode,
-    );
-    _innerSphereCenterPoint.x = innerSphereWorldX;
-    _innerSphereCenterPoint.y = innerSphereWorldY;
-    _innerSphereCenterPoint.z = innerSphereWorldZ;
 
-    transformLegPointToWorld(
-      mesh,
-      _snapSphereLocal.centerX, FOOT_Y, _snapSphereLocal.centerZ,
-      pose, _worldOut,
-    );
-    const sphereWorldX = _worldOut.x;
-    const sphereWorldZ = _worldOut.z;
-    const sphereWorldY = getLocomotionSurfaceHeight(
-      sphereWorldX,
-      sphereWorldZ,
+    // The ground under the hip, and how far the hip stands above it. That
+    // drop is exactly what the planar envelope used to throw away, and it is
+    // what turns a reach sphere into the ring of ground this leg can stand on.
+    const hipGroundY = getLocomotionSurfaceHeight(
+      hipWorldX,
+      hipWorldZ,
       mapWidth,
       mapHeight,
       entity.id,
       terrainMode,
     );
+    const annulus = resolveLegGroundAnnulus(shell, hipWorldY - hipGroundY);
+    // Both circles are concentric on the hip now, so one centre serves the
+    // trigger, the target and the debug draw.
+    _snapSphereCenterPoint.x = hipWorldX;
+    _snapSphereCenterPoint.y = hipGroundY;
+    _snapSphereCenterPoint.z = hipWorldZ;
+    _innerSphereCenterPoint.x = hipWorldX;
+    _innerSphereCenterPoint.y = hipGroundY;
+    _innerSphereCenterPoint.z = hipWorldZ;
+
+    // Which WAY the leg faces is still authored by where it is bolted on.
+    resolveLegOutwardGroundPointLocal(
+      hipLocalX, hipLocalZ, annulus.outerRadius, _outwardLocal,
+    );
     transformLegPointToWorld(
       mesh,
-      _snapSphereLocal.outwardX, FOOT_Y, _snapSphereLocal.outwardZ,
+      _outwardLocal.x, FOOT_Y, _outwardLocal.z,
       pose, _worldOut,
     );
     const outwardWorldX = _worldOut.x;
@@ -689,18 +698,15 @@ export function updateLegs(
       entity.id,
       terrainMode,
     );
-    const sphereRadius = _snapSphereLocal.radius;
-    _snapSphereCenterPoint.x = sphereWorldX;
-    _snapSphereCenterPoint.y = sphereWorldY;
-    _snapSphereCenterPoint.z = sphereWorldZ;
     _snapSphereOutwardPoint.x = outwardWorldX;
     _snapSphereOutwardPoint.y = outwardWorldY;
     _snapSphereOutwardPoint.z = outwardWorldZ;
-    resolveLegSnapRayOrigin(
-      _snapSphereCenterPoint,
-      sphereRadius,
-      _innerSphereCenterPoint,
-      choppingSphereRadius,
+    resolveLegGroundRayOrigin(
+      hipWorldX,
+      hipWorldZ,
+      outwardWorldX,
+      outwardWorldZ,
+      annulus,
       mesh.config.snapRay.originBoundarySpanRatio,
       _snapRayOriginPoint,
     );
@@ -728,38 +734,39 @@ export function updateLegs(
     leg.lastSnapRayOriginZ = _snapRayOriginPoint.z;
     leg.snapRayOriginInitialized = true;
 
-    // LEG-RAD viz: exact ground-centered sphere used by both trigger and target.
+    // LEG-RAD viz: the GROUND ANNULUS — where the reach shell actually meets
+    // the terrain under this hip. Both rings are concentric on the hip and
+    // both shrink as the body stands taller, which is the correction this
+    // whole rework is: the old draw was a fixed-radius sphere sitting on the
+    // ground, which showed a reach the leg only has when lying flat.
     if (showViz) {
       if (!leg.restSphere) {
-        leg.restSphere = new THREE.LineSegments(restSphereGeom, restSphereMat);
+        leg.restSphere = new THREE.LineSegments(groundRingGeom, restSphereMat);
         mesh.group.add(leg.restSphere);
       }
-      leg.restSphere.visible = true;
-      leg.restSphere.position.set(sphereWorldX, sphereWorldY, sphereWorldZ);
-      leg.restSphere.scale.setScalar(sphereRadius);
+      leg.restSphere.visible = annulus.reachable;
+      leg.restSphere.position.set(hipWorldX, hipGroundY, hipWorldZ);
+      leg.restSphere.scale.set(annulus.outerRadius, 1, annulus.outerRadius);
       if (!leg.choppingSphere) {
         leg.choppingSphere = new THREE.LineSegments(
-          restSphereGeom,
+          groundRingGeom,
           choppingSphereMat,
         );
         mesh.group.add(leg.choppingSphere);
       }
-      leg.choppingSphere.visible = true;
-      leg.choppingSphere.position.set(
-        innerSphereWorldX,
-        innerSphereWorldY,
-        innerSphereWorldZ,
-      );
-      leg.choppingSphere.scale.setScalar(choppingSphereRadius);
-      resolveLegChoppedSphereVelocityTarget(
-        _snapRayOriginPoint,
-        _snapSphereCenterPoint,
-        sphereRadius,
-        _innerSphereCenterPoint,
-        choppingSphereRadius,
+      leg.choppingSphere.visible = annulus.reachable && annulus.innerRadius > 0;
+      leg.choppingSphere.position.set(hipWorldX, hipGroundY, hipWorldZ);
+      leg.choppingSphere.scale.set(annulus.innerRadius, 1, annulus.innerRadius);
+      resolveLegGroundStepTarget(
+        _snapRayOriginPoint.x,
+        _snapRayOriginPoint.z,
+        hipWorldX,
+        hipWorldZ,
+        annulus,
         _snapRayVelocity.x,
         _snapRayVelocity.z,
-        _snapSphereOutwardPoint,
+        _snapSphereOutwardPoint.x,
+        _snapSphereOutwardPoint.z,
         _snapSphereTargetPoint,
       );
       const debugTargetY = getLocomotionSurfaceHeight(
@@ -788,7 +795,7 @@ export function updateLegs(
         _snapRayOriginPoint.z,
       );
       leg.snapRayOriginPoint.scale.setScalar(
-        Math.max(0.6, Math.min(2.5, sphereRadius * 0.06)),
+        Math.max(0.6, Math.min(2.5, annulus.outerRadius * 0.06)),
       );
       leg.snapBoundaryRay.visible = true;
       leg.snapBoundaryRay.position.set(
@@ -825,7 +832,18 @@ export function updateLegs(
       }
       leg.reachSphere.visible = true;
       leg.reachSphere.position.set(hipWorldX, hipWorldY, hipWorldZ);
-      leg.reachSphere.scale.setScalar(tl);
+      leg.reachSphere.scale.setScalar(shell.outerRadius);
+
+      // ...and the inner bound, which was never drawn at all. A foot inside it
+      // is as impossible as one outside the outer bound — the leg would have
+      // to fold through itself — and it is half of what decides a step.
+      if (!leg.foldSphere) {
+        leg.foldSphere = new THREE.LineSegments(restSphereGeom, choppingSphereMat);
+        mesh.group.add(leg.foldSphere);
+      }
+      leg.foldSphere.visible = shell.innerRadius > 0;
+      leg.foldSphere.position.set(hipWorldX, hipWorldY, hipWorldZ);
+      leg.foldSphere.scale.setScalar(shell.innerRadius);
 
       if (!leg.restDirection) {
         leg.restDirection = new THREE.Line(restDirectionGeom, reachSphereMat);
@@ -848,26 +866,23 @@ export function updateLegs(
       }
     } else {
       if (leg.reachSphere) leg.reachSphere.visible = false;
+      if (leg.foldSphere) leg.foldSphere.visible = false;
       if (leg.restDirection) leg.restDirection.visible = false;
     }
 
     if (!leg.initialized) {
       initializeLegOnSnapSphere(
         leg,
-        sphereWorldX,
-        sphereWorldY,
-        sphereWorldZ,
+        hipWorldX,
+        hipGroundY,
+        hipWorldZ,
         outwardWorldX,
         outwardWorldY,
         outwardWorldZ,
-        sphereRadius,
+        annulus,
         _snapRayOriginPoint.x,
         _snapRayOriginPoint.y,
         _snapRayOriginPoint.z,
-        innerSphereWorldX,
-        innerSphereWorldY,
-        innerSphereWorldZ,
-        choppingSphereRadius,
         entity.id,
         mapWidth,
         mapHeight,
@@ -879,20 +894,16 @@ export function updateLegs(
     if (touchingDown) {
       beginLegStepToChoppedSphereBoundary(
         leg,
-        sphereWorldX,
-        sphereWorldY,
-        sphereWorldZ,
+        hipWorldX,
+        hipGroundY,
+        hipWorldZ,
         outwardWorldX,
         outwardWorldY,
         outwardWorldZ,
-        sphereRadius,
+        annulus,
         _snapRayOriginPoint.x,
         _snapRayOriginPoint.y,
         _snapRayOriginPoint.z,
-        innerSphereWorldX,
-        innerSphereWorldY,
-        innerSphereWorldZ,
-        choppingSphereRadius,
         _snapRayVelocity.x,
         _snapRayVelocity.z,
         entity.id,
@@ -909,41 +920,33 @@ export function updateLegs(
       advanceGroundedLegSlide(leg, dtMs);
     }
 
-    const outerDx = leg.worldX - sphereWorldX;
-    const outerDy = leg.worldY - sphereWorldY;
-    const outerDz = leg.worldZ - sphereWorldZ;
-    const outerDistSq = outerDx * outerDx + outerDy * outerDy + outerDz * outerDz;
-    const innerDx = leg.worldX - innerSphereWorldX;
-    const innerDy = leg.worldY - innerSphereWorldY;
-    const innerDz = leg.worldZ - innerSphereWorldZ;
-    const innerDistSq = innerDx * innerDx + innerDy * innerDy + innerDz * innerDz;
+    // A leg steps when its foot has left the shell — measured from the HIP,
+    // in three dimensions. The old test measured from two points projected
+    // down onto the terrain, which for a foot standing on that same terrain
+    // cancelled the vertical term and made the whole thing a flat circle test.
+    const hipToFootX = leg.worldX - hipWorldX;
+    const hipToFootY = leg.worldY - hipWorldY;
+    const hipToFootZ = leg.worldZ - hipWorldZ;
+    const hipToFootDistSq =
+      hipToFootX * hipToFootX + hipToFootY * hipToFootY + hipToFootZ * hipToFootZ;
 
     if (
       !startedTouchdownStep
       && leg.contactState === 'planted'
-      && legChoppedSphereNeedsStep(
-        outerDistSq,
-        sphereRadius,
-        innerDistSq,
-        choppingSphereRadius,
-      )
+      && legFootNeedsStep(hipToFootDistSq, shell)
     ) {
       beginLegStepToChoppedSphereBoundary(
         leg,
-        sphereWorldX,
-        sphereWorldY,
-        sphereWorldZ,
+        hipWorldX,
+        hipGroundY,
+        hipWorldZ,
         outwardWorldX,
         outwardWorldY,
         outwardWorldZ,
-        sphereRadius,
+        annulus,
         _snapRayOriginPoint.x,
         _snapRayOriginPoint.y,
         _snapRayOriginPoint.z,
-        innerSphereWorldX,
-        innerSphereWorldY,
-        innerSphereWorldZ,
-        choppingSphereRadius,
         _snapRayVelocity.x,
         _snapRayVelocity.z,
         entity.id,
@@ -953,22 +956,19 @@ export function updateLegs(
       );
     }
 
-    // Clamp the rendered leg to physical reach. This does not move the stored
-    // planted point; it only prevents an impossible visual extension.
-    const clampDx = leg.worldX - hipWorldX;
-    const clampDy = leg.worldY - hipWorldY;
-    const clampDz = leg.worldZ - hipWorldZ;
-    const clampDistSq = clampDx * clampDx + clampDy * clampDy + clampDz * clampDz;
-    let footX = leg.worldX;
-    let footY = leg.worldY;
-    let footZ = leg.worldZ;
-    if (clampDistSq > tl * tl) {
-      const clampDist = Math.sqrt(clampDistSq);
-      const scale = tl / clampDist;
-      footX = hipWorldX + clampDx * scale;
-      footY = hipWorldY + clampDy * scale;
-      footZ = hipWorldZ + clampDz * scale;
-    }
+    // Clamp the rendered leg into the shell. This does not move the stored
+    // planted point; it only prevents an impossible visual pose. BOTH bounds
+    // are enforced — a foot that has crept inside the fold limit is as
+    // impossible as one past full extension, and only the outer one used to
+    // be caught.
+    clampPointToLegShell(
+      hipWorldX, hipWorldY, hipWorldZ,
+      leg.worldX, leg.worldY, leg.worldZ,
+      shell, _shellClampPoint,
+    );
+    const footX = _shellClampPoint.x;
+    const footY = _shellClampPoint.y;
+    const footZ = _shellClampPoint.z;
 
     // The gait foot remains terrain-planted. A two-segment leg ends at the
     // hemisphere's flat origin plane, so only the small z-fighting clearance
@@ -1103,20 +1103,16 @@ function beginGroundedLegSlideTo(
 
 function beginLegStepToChoppedSphereBoundary(
   leg: LegInstance,
-  sphereX: number,
-  sphereY: number,
-  sphereZ: number,
+  hipGroundX: number,
+  hipGroundY: number,
+  hipGroundZ: number,
   outwardX: number,
   outwardY: number,
   outwardZ: number,
-  sphereRadius: number,
+  annulus: LegGroundAnnulus,
   rayOriginX: number,
   rayOriginY: number,
   rayOriginZ: number,
-  innerSphereX: number,
-  innerSphereY: number,
-  innerSphereZ: number,
-  innerSphereRadius: number,
   velocityX: number,
   velocityZ: number,
   entityId: number,
@@ -1124,27 +1120,25 @@ function beginLegStepToChoppedSphereBoundary(
   mapHeight: number,
   terrainMode: LocomotionTerrainMode,
 ): void {
-  _snapSphereCenterPoint.x = sphereX;
-  _snapSphereCenterPoint.y = sphereY;
-  _snapSphereCenterPoint.z = sphereZ;
-  _innerSphereCenterPoint.x = innerSphereX;
-  _innerSphereCenterPoint.y = innerSphereY;
-  _innerSphereCenterPoint.z = innerSphereZ;
+  _snapSphereCenterPoint.x = hipGroundX;
+  _snapSphereCenterPoint.y = hipGroundY;
+  _snapSphereCenterPoint.z = hipGroundZ;
   _snapSphereOutwardPoint.x = outwardX;
   _snapSphereOutwardPoint.y = outwardY;
   _snapSphereOutwardPoint.z = outwardZ;
   _snapRayOriginPoint.x = rayOriginX;
   _snapRayOriginPoint.y = rayOriginY;
   _snapRayOriginPoint.z = rayOriginZ;
-  resolveLegChoppedSphereVelocityTarget(
-    _snapRayOriginPoint,
-    _snapSphereCenterPoint,
-    sphereRadius,
-    _innerSphereCenterPoint,
-    innerSphereRadius,
+  resolveLegGroundStepTarget(
+    _snapRayOriginPoint.x,
+    _snapRayOriginPoint.z,
+    hipGroundX,
+    hipGroundZ,
+    annulus,
     velocityX,
     velocityZ,
-    _snapSphereOutwardPoint,
+    _snapSphereOutwardPoint.x,
+    _snapSphereOutwardPoint.z,
     _snapSphereTargetPoint,
   );
   const targetX = _snapSphereTargetPoint.x;
@@ -1242,13 +1236,11 @@ function hasReachableGroundAtRest(
   for (const leg of mesh.legs) {
     const c = leg.config;
     const totalLength = totalLegLength(c);
-    resolveLegSnapSphereLocal(
+    resolveLegOutwardGroundPointLocal(
       c.attachOffsetX,
       c.attachOffsetY,
-      totalLength,
-      c.footSphereOriginExtensionRatio,
-      c.footSphereRadiusLegLengthRatio,
-      _snapSphereLocal,
+      totalLength * c.footSphereOriginExtensionRatio,
+      _outwardLocal,
     );
     transformLegPointToWorld(
       mesh,
@@ -1263,9 +1255,9 @@ function hasReachableGroundAtRest(
     const hipWorldZ = _worldOut.z;
     transformLegPointToWorld(
       mesh,
-      _snapSphereLocal.centerX,
+      _outwardLocal.x,
       FOOT_Y,
-      _snapSphereLocal.centerZ,
+      _outwardLocal.z,
       pose,
       _worldOut,
     );
@@ -1315,13 +1307,9 @@ function transformLegPointToWorld(
 const _worldOut = { x: 0, y: 0, z: 0 };
 const _chassisUp = { x: 0, y: 1, z: 0 };
 const _localVelocity = { x: 0, y: 0, z: 0 };
-const _snapSphereLocal: LegSnapSphereLocal = {
-  centerX: 0,
-  centerZ: 0,
-  outwardX: 0,
-  outwardZ: 0,
-  radius: 0,
-};
+const _outwardLocal = { x: 0, z: 0 };
+const _shellClampPoint = { x: 0, y: 0, z: 0 };
+const _airborneShell: LegReachShell = { outerRadius: 0, innerRadius: 0 };
 const _snapSphereCenterPoint = { x: 0, y: 0, z: 0 };
 const _innerSphereCenterPoint = { x: 0, y: 0, z: 0 };
 const _snapSphereOutwardPoint = { x: 0, y: 0, z: 0 };
@@ -1380,18 +1368,14 @@ function updateUnsupportedLegPose(
     const hipLocalX = c.attachOffsetX;
     const hipLocalY = leg.hipY;
     const hipLocalZ = c.attachOffsetY;
-    resolveLegSnapSphereLocal(
-      hipLocalX,
-      hipLocalZ,
-      tl,
-      c.footSphereOriginExtensionRatio,
-      c.footSphereRadiusLegLengthRatio,
-      _snapSphereLocal,
+    resolveLegOutwardGroundPointLocal(
+      hipLocalX, hipLocalZ, tl * c.footSphereOriginExtensionRatio, _outwardLocal,
     );
-    const touchdownLocalX = _snapSphereLocal.centerX;
-    const touchdownLocalZ = _snapSphereLocal.centerZ;
-    const rayX = (_snapSphereLocal.outwardX - hipLocalX) / Math.max(1e-6, tl);
-    const rayZ = (_snapSphereLocal.outwardZ - hipLocalZ) / Math.max(1e-6, tl);
+    const touchdownLocalX = _outwardLocal.x;
+    const touchdownLocalZ = _outwardLocal.z;
+    const attachDistance = Math.max(1e-6, Math.hypot(hipLocalX, hipLocalZ));
+    const rayX = hipLocalX / attachDistance;
+    const rayZ = hipLocalZ / attachDistance;
     const localPlanarSpeed = Math.hypot(vLocalForward, vLocalLateral);
     const trailDistance = tl * WATERBORNE_TRAIL_DISTANCE_MULT;
     const waterTrailX = localPlanarSpeed > 1e-6
@@ -1438,7 +1422,17 @@ function updateUnsupportedLegPose(
       unsupportedLocalX - hipLocalX,
       unsupportedLocalZ - hipLocalZ,
     );
-    const maxReach = tl * AIRBORNE_MAX_REACH_FRACTION;
+    const airborneShell = resolveLegReachShell(
+      c.upperLegLength,
+      c.lowerLegLength,
+      mesh.config.choppingSphere.radiusLegLengthRatio,
+    );
+    const maxReach = Math.min(
+      airborneShell.outerRadius,
+      tl * AIRBORNE_MAX_REACH_FRACTION,
+    );
+    _airborneShell.outerRadius = maxReach;
+    _airborneShell.innerRadius = Math.min(maxReach, airborneShell.innerRadius);
     const verticalReach = Math.sqrt(
       Math.max(0, maxReach * maxReach - horizontalReach * horizontalReach),
     );
@@ -1500,15 +1494,16 @@ function updateUnsupportedLegPose(
       needsFrame = true;
     }
 
-    const reachDx = leg.worldX - hipWorldX;
-    const reachDy = leg.worldY - hipWorldY;
-    const reachDz = leg.worldZ - hipWorldZ;
-    const reachDistance = Math.hypot(reachDx, reachDy, reachDz);
-    if (reachDistance > maxReach && Number.isFinite(reachDistance)) {
-      const reachScale = maxReach / reachDistance;
-      leg.worldX = hipWorldX + reachDx * reachScale;
-      leg.worldY = hipWorldY + reachDy * reachScale;
-      leg.worldZ = hipWorldZ + reachDz * reachScale;
+    // Same shell in the air, with the airborne working fraction as its outer
+    // bound. A tucked leg must still respect the fold limit.
+    if (clampPointToLegShell(
+      hipWorldX, hipWorldY, hipWorldZ,
+      leg.worldX, leg.worldY, leg.worldZ,
+      _airborneShell, _shellClampPoint,
+    )) {
+      leg.worldX = _shellClampPoint.x;
+      leg.worldY = _shellClampPoint.y;
+      leg.worldZ = _shellClampPoint.z;
     }
 
     const footSurface = sampleLocomotionFootSurface(
@@ -1678,6 +1673,12 @@ function writeLegRenderPose(
       c.upperLegLength, c.lowerLegLength,
       chassisUpX, chassisUpY, chassisUpZ,
     );
+    // Draw to the foot the SOLVER reached, never to the one requested. They
+    // differ only when the request was out of reach, and drawing to the
+    // request is precisely how the lower bone got stretched.
+    footX = knee.footX;
+    footY = knee.footY;
+    footZ = knee.footZ;
     legRenderer.updateUpper(
       leg.upperSlot,
       hipWorldX, hipWorldY, hipWorldZ,
@@ -1864,47 +1865,41 @@ export function resolveContactLockedFootOrientation(
 
 function initializeLegOnSnapSphere(
   leg: LegInstance,
-  sphereX: number,
-  sphereY: number,
-  sphereZ: number,
+  hipGroundX: number,
+  hipGroundY: number,
+  hipGroundZ: number,
   outwardX: number,
   outwardY: number,
   outwardZ: number,
-  sphereRadius: number,
+  annulus: LegGroundAnnulus,
   rayOriginX: number,
   rayOriginY: number,
   rayOriginZ: number,
-  innerSphereX: number,
-  innerSphereY: number,
-  innerSphereZ: number,
-  innerSphereRadius: number,
   entityId: number,
   mapWidth: number,
   mapHeight: number,
   terrainMode: LocomotionTerrainMode,
 ): void {
   const side = leg.phaseShift01 === 0 ? 1 : -1;
-  _snapSphereCenterPoint.x = sphereX;
-  _snapSphereCenterPoint.y = sphereY;
-  _snapSphereCenterPoint.z = sphereZ;
-  _innerSphereCenterPoint.x = innerSphereX;
-  _innerSphereCenterPoint.y = innerSphereY;
-  _innerSphereCenterPoint.z = innerSphereZ;
+  _snapSphereCenterPoint.x = hipGroundX;
+  _snapSphereCenterPoint.y = hipGroundY;
+  _snapSphereCenterPoint.z = hipGroundZ;
   _snapSphereOutwardPoint.x = outwardX;
   _snapSphereOutwardPoint.y = outwardY;
   _snapSphereOutwardPoint.z = outwardZ;
   _snapRayOriginPoint.x = rayOriginX;
   _snapRayOriginPoint.y = rayOriginY;
   _snapRayOriginPoint.z = rayOriginZ;
-  resolveLegChoppedSphereVelocityTarget(
-    _snapRayOriginPoint,
-    _snapSphereCenterPoint,
-    sphereRadius,
-    _innerSphereCenterPoint,
-    innerSphereRadius,
-    (outwardX - sphereX) * side,
-    (outwardZ - sphereZ) * side,
-    _snapSphereOutwardPoint,
+  resolveLegGroundStepTarget(
+    _snapRayOriginPoint.x,
+    _snapRayOriginPoint.z,
+    hipGroundX,
+    hipGroundZ,
+    annulus,
+    (outwardX - hipGroundX) * side,
+    (outwardZ - hipGroundZ) * side,
+    _snapSphereOutwardPoint.x,
+    _snapSphereOutwardPoint.z,
     _snapSphereTargetPoint,
   );
   leg.worldX = _snapSphereTargetPoint.x;

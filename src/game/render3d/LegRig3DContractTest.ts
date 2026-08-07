@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import {
-  legChoppedSphereNeedsStep,
+  clampPointToLegShell,
+  legFootNeedsStep,
   legSurfaceWithinReach,
-  resolveLegChoppingSphereRadius,
-  resolveLegChoppedSphereVelocityTarget,
-  resolveLegSnapRayOrigin,
+  resolveLegGroundAnnulus,
+  resolveLegGroundRayOrigin,
+  resolveLegGroundStepTarget,
+  resolveLegOutwardGroundPointLocal,
+  resolveLegReachShell,
   resolveLegSnapRayPointVelocity,
-  resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
 import { WATER_LEVEL } from '../sim/Terrain';
@@ -77,6 +79,73 @@ export function runLegRig3DContractTest(): void {
     18, 20,
     chassisUp.x, chassisUp.y, chassisUp.z,
   );
+  // ── NO BONE MAY EVER STRETCH ───────────────────────────────────────────
+  //
+  // The architecture has always assumed a leg segment is the length it was
+  // authored. The solver honoured that for the UPPER bone — the knee is placed
+  // at exactly `upperLen` — and quietly broke it for the lower one: it solved
+  // the knee angle for `upperLen + lowerLen * 0.98` while the caller went on
+  // drawing knee-to-the-requested-foot, so the lower bone absorbed the whole
+  // difference. Two percent at full extension, and unbounded past it.
+  //
+  // Swept over reachable, exactly-straight and far-out-of-reach requests,
+  // through the fold limit, and straight up the chassis-up axis where the
+  // in-plane basis degenerates.
+  for (const [upperLen, lowerLen] of [[18, 20], [20, 18], [10, 10], [4, 9]] as const) {
+    for (const request of [
+      { x: 18, y: 1, z: 9 },
+      { x: 2, y: 15 - (upperLen + lowerLen), z: -4 },
+      { x: 2 + (upperLen + lowerLen), y: 15, z: -4 },
+      { x: 400, y: -300, z: 250 },
+      { x: 2.0001, y: 15.0001, z: -4 },
+      { x: 2, y: 15 + upperLen + lowerLen, z: -4 },
+      { x: 2 + Math.abs(upperLen - lowerLen) * 0.5, y: 15, z: -4 },
+    ]) {
+      const solved = kneeFromIK(
+        hip.x, hip.y, hip.z,
+        request.x, request.y, request.z,
+        upperLen, lowerLen,
+        chassisUp.x, chassisUp.y, chassisUp.z,
+      );
+      const upperDrawn = Math.hypot(
+        solved.x - hip.x, solved.y - hip.y, solved.z - hip.z,
+      );
+      const lowerDrawn = Math.hypot(
+        solved.footX - solved.x, solved.footY - solved.y, solved.footZ - solved.z,
+      );
+      const label = `${upperLen}/${lowerLen} -> (${request.x},${request.y},${request.z})`;
+      assertContract(
+        Math.abs(upperDrawn - upperLen) < 1e-6,
+        `upper bone drawn at ${upperDrawn.toFixed(4)}, authored ${upperLen} (${label})`,
+      );
+      assertContract(
+        Math.abs(lowerDrawn - lowerLen) < 1e-6,
+        `lower bone drawn at ${lowerDrawn.toFixed(4)}, authored ${lowerLen} (${label})`,
+      );
+      // ...and the foot it reports is on the hip ray at a reachable distance,
+      // so a caller that draws to it can never place the foot out of reach.
+      const reach = Math.hypot(
+        solved.footX - hip.x, solved.footY - hip.y, solved.footZ - hip.z,
+      );
+      assertContract(
+        reach <= upperLen + lowerLen + 1e-6,
+        `solved foot ${reach.toFixed(4)} past full extension (${label})`,
+      );
+      const requested = Math.hypot(
+        request.x - hip.x, request.y - hip.y, request.z - hip.z,
+      );
+      const fold = Math.abs(upperLen - lowerLen);
+      assertContract(
+        solved.clamped === (requested > upperLen + lowerLen + 1e-9 || requested < fold - 1e-9),
+        `clamped flag must report exactly when the request left the shell (${label})`,
+      );
+      assertContract(
+        reach >= fold - 1e-6,
+        `solved foot ${reach.toFixed(4)} inside the fold limit ${fold} (${label})`,
+      );
+    }
+  }
+
   const segmentRight = { x: 0, y: 0, z: 0 };
   resolveLegSegmentRight(
     hip.x, hip.y, hip.z,
@@ -258,88 +327,126 @@ export function runLegRig3DContractTest(): void {
   resolveLegSnapRayPointVelocity(13, 24, 10, 20, 500, pointVelocity);
   assertContract(pointVelocity.x === 6 && pointVelocity.z === 8,
     'snap targeting measures the ray-origin point own frame-to-frame velocity');
+  // ── REACH IS A SHELL, NOT A CYLINDER ───────────────────────────────────
+  //
+  // A two-segment leg reaches [|A - B|, A + B] from its hip and nothing else.
+  // The old envelope was horizontal discs on the ground with the hip's own
+  // height discarded, which claimed a full leg length of sideways reach no
+  // matter how tall the body stood.
+  const shell = resolveLegReachShell(4, 6, 0.3);
   assertContract(
-    resolveLegChoppingSphereRadius(15, 0.4) === 6,
-    'chopping radius is the authored ratio of total leg length',
+    shell.outerRadius === 10,
+    'the outer bound is the leg straight — the two bones added, nothing else',
   );
-  const sphere = {
-    centerX: 0,
-    centerZ: 0,
-    outwardX: 0,
-    outwardZ: 0,
-    radius: 0,
-  };
-  resolveLegSnapSphereLocal(3, 4, 10, 0.5, 0.5, sphere);
-  assertContract(sphere.centerX === 6 && sphere.centerZ === 8,
-    'sphere center is halfway from the attachment to full extension');
-  assertContract(sphere.outwardX === 9 && sphere.outwardZ === 12,
-    'outward sphere surface is one total leg length beyond the attachment');
-  assertContract(sphere.radius === 5,
-    'sphere radius is half of total leg length');
-  resolveLegSnapSphereLocal(3, 4, 10, 0.25, 0.2, sphere);
   assertContract(
-    Math.abs(sphere.centerX - 4.5) < 1e-9 && Math.abs(sphere.centerZ - 6) < 1e-9,
-    'authored origin ratio positions the sphere along the attachment-to-extension ray');
+    shell.innerRadius === 3,
+    'the authored gait margin sets the inner bound when it clears the fold limit',
+  );
+  const foldFloored = resolveLegReachShell(4, 9, 0.1);
   assertContract(
-    sphere.outwardX === 9 && sphere.outwardZ === 12 && Math.abs(sphere.radius - 2) < 1e-9,
-    'authored radius ratio does not change the maximum-extension point');
+    foldFloored.innerRadius === 5,
+    'the authored margin may shrink the envelope but never reach inside the '
+      + 'fold limit |A - B|, which is a pose the knee cannot make',
+  );
+
+  // The correction itself: the reachable GROUND shrinks as the hip rises.
+  const flat = resolveLegGroundAnnulus(shell, 0);
+  assertContract(
+    flat.reachable && Math.abs(flat.outerRadius - 10) < 1e-9,
+    'a hip at ground level reaches a full leg length along the ground',
+  );
+  const raised = resolveLegGroundAnnulus(shell, 6);
+  assertContract(
+    raised.reachable && Math.abs(raised.outerRadius - 8) < 1e-9,
+    'a hip 6 above the ground reaches sqrt(10^2 - 6^2) = 8 along it, not 10 — '
+      + 'this is the cylinder-to-sphere fix in one number',
+  );
+  assertContract(
+    raised.outerRadius < shell.outerRadius,
+    'ground reach is strictly inside shell reach whenever the hip is raised',
+  );
+  assertContract(
+    raised.innerRadius === 0,
+    'once the vertical drop alone exceeds the fold limit the annulus has no '
+      + 'hole — every horizontal offset is already far enough out',
+  );
+  assertContract(
+    !resolveLegGroundAnnulus(shell, 10.0001).reachable,
+    'ground further from the hip than the leg is long is NOT reachable, and '
+      + 'must be reported as such rather than answered with a target',
+  );
+
+  // The trigger is a 3D shell test from the hip, both bounds.
+  assertContract(
+    !legFootNeedsStep(9.99 * 9.99, shell) && !legFootNeedsStep(3.01 * 3.01, shell),
+    'a foot inside the shell stays planted',
+  );
+  assertContract(
+    !legFootNeedsStep(100, shell) && !legFootNeedsStep(9, shell),
+    'both shell boundaries remain valid planting sites',
+  );
+  assertContract(
+    legFootNeedsStep(10.01 * 10.01, shell),
+    'a foot past full extension starts a step',
+  );
+  assertContract(
+    legFootNeedsStep(2.99 * 2.99, shell),
+    'a foot folded inside the inner bound starts a step — the half of this '
+      + 'test that a ground-projected disc could never see',
+  );
+
+  // Clamping puts a point back on the shell, from either side.
+  const clamped = { x: 0, y: 0, z: 0 };
+  assertContract(
+    clampPointToLegShell(0, 0, 0, 30, 0, 0, shell, clamped)
+      && Math.abs(clamped.x - 10) < 1e-9,
+    'a foot past full extension is pulled back to the outer bound',
+  );
+  assertContract(
+    clampPointToLegShell(0, 0, 0, 1, 0, 0, shell, clamped)
+      && Math.abs(clamped.x - 3) < 1e-9,
+    'a foot inside the fold limit is pushed back out to the inner bound',
+  );
+  assertContract(
+    !clampPointToLegShell(0, 0, 0, 0, -5, 0, shell, clamped) && clamped.y === -5,
+    'a foot already inside the shell is left exactly where it is',
+  );
+  for (const [x, y, z] of [[7, -7, 3], [0.4, -0.2, 0.1], [-20, 5, 12], [0, -10, 0]]) {
+    clampPointToLegShell(0, 0, 0, x, y, z, shell, clamped);
+    const d = Math.hypot(clamped.x, clamped.y, clamped.z);
+    assertContract(
+      d <= shell.outerRadius + 1e-9 && d >= shell.innerRadius - 1e-9,
+      `clamping must land inside the shell — ${d.toFixed(4)} from (${x},${y},${z})`,
+    );
+  }
+
+  // The station is still authored; only the envelope stopped being flat.
+  const station = { x: 0, z: 0 };
+  resolveLegOutwardGroundPointLocal(3, 4, 5, station);
+  assertContract(
+    Math.abs(station.x - 6) < 1e-9 && Math.abs(station.z - 8) < 1e-9,
+    'the outward station runs along the attachment ray from the attachment',
+  );
+
+  const groundRayOrigin = { x: 0, y: 0, z: 0 };
+  resolveLegGroundRayOrigin(0, 0, 1, 0, { reachable: true, innerRadius: 4, outerRadius: 8 }, 0.5, groundRayOrigin);
+  assertContract(
+    Math.abs(groundRayOrigin.x - 6) < 1e-9 && groundRayOrigin.z === 0,
+    'the ray origin spans the annulus along the outward ray',
+  );
   const velocityTarget = { x: 0, y: 0, z: 0 };
-  const fallbackTarget = { x: 0, y: 0, z: 0 };
-  const rayOrigin = { x: 0, y: 0, z: 0 };
-  resolveLegSnapRayOrigin(
-    { x: 10, y: 0, z: 0 },
-    5,
-    { x: 0, y: 0, z: 0 },
-    8,
-    0.9,
-    rayOrigin,
-  );
-  assertContract(Math.abs(rayOrigin.x - 14.3) < 1e-9 && rayOrigin.z === 0,
-    'snap-ray origin is 90% from the chopping boundary to the outer foot boundary');
-  resolveLegChoppedSphereVelocityTarget(
-    rayOrigin,
-    { x: 10, y: 0, z: 0 },
-    5,
-    { x: 0, y: 0, z: 0 },
-    8,
-    1,
-    0,
-    { x: 15, y: 0, z: 0 },
-    velocityTarget,
-  );
+  const annulus = { reachable: true, innerRadius: 4, outerRadius: 8 };
+  resolveLegGroundStepTarget(6, 0, 0, 0, annulus, 1, 0, 8, 0, velocityTarget);
   assertContract(
-    velocityTarget.x === 15 && velocityTarget.y === 0 && velocityTarget.z === 0,
-    'an outward velocity ray reaches the outer foot-sphere boundary',
+    Math.abs(velocityTarget.x - 8) < 1e-9,
+    'an outward velocity ray reaches the annulus outer edge',
   );
-  resolveLegChoppedSphereVelocityTarget(
-    rayOrigin,
-    { x: 10, y: 0, z: 0 },
-    5,
-    { x: 0, y: 0, z: 0 },
-    8,
-    -1,
-    0,
-    { x: 15, y: 0, z: 0 },
-    fallbackTarget,
-  );
-  assertContract(fallbackTarget.x === 8 && fallbackTarget.y === 0 && fallbackTarget.z === 0,
-    'an inward velocity ray stops at the central exclusion boundary');
+  resolveLegGroundStepTarget(6, 0, 0, 0, annulus, -1, 0, 8, 0, velocityTarget);
   assertContract(
-    !legChoppedSphereNeedsStep(9.99 * 9.99, 10, 10.01 * 10.01, 10),
-    'a foot inside the outer sphere and outside the inner sphere remains planted',
+    Math.abs(velocityTarget.x - 4) < 1e-9,
+    'an inward velocity ray stops at the annulus inner edge',
   );
-  assertContract(
-    !legChoppedSphereNeedsStep(10 * 10, 10, 10 * 10, 10),
-    'both chopped-envelope boundaries remain valid planting sites',
-  );
-  assertContract(
-    legChoppedSphereNeedsStep(10.01 * 10.01, 10, 10.01 * 10.01, 10),
-    'a foot outside its outer sphere starts a grounded step',
-  );
-  assertContract(
-    legChoppedSphereNeedsStep(9.99 * 9.99, 10, 9.99 * 9.99, 10),
-    'a foot inside the central exclusion sphere starts a grounded step',
-  );
+
   assertContract(
     legSurfaceWithinReach(9.98 * 9.98, 10, 0.999),
     'a nearly straight leg can reacquire reachable terrain',

@@ -263,7 +263,6 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
       ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
       ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
-      ['footSphere.radiusLegLengthRatio', config.footSphere.radiusLegLengthRatio],
       ['snapRay.originBoundarySpanRatio', config.snapRay.originBoundarySpanRatio],
     ] as const;
     for (const [name, value] of globalValues) {
@@ -290,9 +289,13 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
         `Invalid leg layout for ${bp.unitBlueprintId}: footSphere.originExtensionRatio must be between 0 and 1`,
       );
     }
-    if (config.footSphere.radiusLegLengthRatio <= 0) {
+    // The chopping ratio is a WORKING margin inside the leg's own fold limit,
+    // so it may shrink the envelope but never define it — resolveLegReachShell
+    // floors it at |upper - lower|. Anything at or past 1 would ask the leg to
+    // hold its foot further out than it can while calling it the inner bound.
+    if (choppingRatio >= 1) {
       throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: footSphere.radiusLegLengthRatio must be positive`,
+        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be below 1`,
       );
     }
     if (

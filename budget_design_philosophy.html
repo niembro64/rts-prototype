@@ -1854,6 +1854,16 @@
         reserved for bare utility mounts with no orientable barrel; those mounts may
         omit aim motion because there is no combat pose to present.
       </p>
+      <p>
+        Beam barrels also use the roster&rsquo;s ordinary sizing vocabulary.
+        <code>barrelLength</code> is a protrusion fraction of the turret head radius,
+        so Mini, Medium, Mega, and Long emitters scale with their own mounts instead
+        of using host-specific world dimensions. Their base width is derived from
+        the authored beam width through the same emission-to-barrel rule used by
+        other weapons; beam turrets do not carry arbitrary thickness overrides. A
+        geometry contract keeps every beam barrel visible at all detail tiers, no
+        wider than its head, and longer from center to tip than its base is wide.
+      </p>
     </section>
 
     <section>

@@ -737,7 +737,6 @@ pub struct LegSegments {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegFootSphere {
     pub originExtensionRatio: f64,
-    pub radiusLegLengthRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

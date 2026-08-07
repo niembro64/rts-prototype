@@ -2082,18 +2082,15 @@
     "LegFootSphere": {
       "type": "object",
       "required": [
-        "originExtensionRatio",
-        "radiusLegLengthRatio"
+        "originExtensionRatio"
       ],
       "properties": {
         "originExtensionRatio": {
           "type": "number"
-        },
-        "radiusLegLengthRatio": {
-          "type": "number"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Where along its own outward reach a leg likes to stand, as a fraction of total segment length. This is the rest STATION only. How far the leg can reach is not authored \u2014 it is the two segment lengths, measured from the hip in three dimensions (see LegGait3D)."
     },
     "LegLayoutEntry": {
       "type": "object",
