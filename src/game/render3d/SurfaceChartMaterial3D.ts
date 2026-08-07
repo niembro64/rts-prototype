@@ -57,6 +57,7 @@ import {
 import {
   GRAIN_BAND,
   GRAIN_TILE_WORLD_UNITS,
+  TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
   bandContentRect,
   bandRectUniformArray,
@@ -93,6 +94,9 @@ const SHARED_UNIFORMS = {
     return new THREE.Vector4(rect.u0, rect.v0, rect.uSpan, rect.vSpan);
   })() },
   uChartGrainWorld: { value: GRAIN_TILE_WORLD_UNITS },
+  // The widest step, in texels per screen pixel, the sampler is allowed to
+  // take. See clampChartGrad in the fragment source.
+  uChartMaxGradTexels: { value: TRIM_BAND_GUTTER_PIXELS },
 };
 
 /** Enable/disable all surface charting at runtime. Disabled fragments take the
@@ -166,6 +170,7 @@ const FRAGMENT_DECL = [
   `uniform vec4 uChartBands[${TRIM_BAND_ORDER.length}];`,
   'uniform vec4 uChartGrainRect;',
   'uniform float uChartGrainWorld;',
+  'uniform float uChartMaxGradTexels;',
   'varying vec4 vChart;',
   'varying vec2 vChartUv;',
   'varying vec3 vChartGrainPos;',
@@ -185,13 +190,34 @@ const FRAGMENT_DECL = [
   // coordinate and scaled by the rectangle, because fract's derivative spikes
   // at the wrap and would otherwise drop the mip to the bottom of the chain
   // in a one-pixel line every tile.
+  // THE SHEET IS AN ATLAS, AND AN ATLAS HAS A FLOOR ON HOW COARSE IT MAY BE
+  // SAMPLED. Bands are separated by a gutter of TRIM_BAND_GUTTER_PIXELS, so
+  // mip levels above log2(gutter) average across band boundaries: a leg strut
+  // starts pulling in the nose facet's near-white chine packed beside it.
+  //
+  // Worse, the gradient is not always a smooth function of screen position. At
+  // a cylinder's uv wrap seam, or a sphere's, dFdx jumps by a whole revolution
+  // across ONE pixel; feeding that to textureGrad selects the bottom of the
+  // mip chain and paints that column with the average of the WHOLE sheet. On a
+  // moving leg that column sweeps around, which is exactly what a sparkle is.
+  //
+  // Clamping the step to the gutter's own width fixes both: the sampler can
+  // never reach a mip the gutter does not protect, and a seam degrades to
+  // slightly-too-sharp rather than to whole-atlas grey.
+  'vec2 clampChartGrad(vec2 d, vec2 texels) {',
+  '  vec2 inTexels = d * texels;',
+  '  float len = max(abs(inTexels.x), abs(inTexels.y));',
+  '  return len > uChartMaxGradTexels ? d * (uChartMaxGradTexels / len) : d;',
+  '}',
+  '',
   'vec3 sampleGrainPlane(vec2 worldUv) {',
+  '  vec2 texels = vec2(textureSize(uTrimSheet, 0));',
   '  vec2 tile = worldUv / uChartGrainWorld;',
   '  vec2 st = uChartGrainRect.xy + fract(tile) * uChartGrainRect.zw;',
   '  return textureGrad(',
   '    uTrimSheet, st,',
-  '    dFdx(tile) * uChartGrainRect.zw,',
-  '    dFdy(tile) * uChartGrainRect.zw',
+  '    clampChartGrad(dFdx(tile) * uChartGrainRect.zw, texels),',
+  '    clampChartGrad(dFdy(tile) * uChartGrainRect.zw, texels)',
   '  ).rgb;',
   '}',
   '',
@@ -238,14 +264,17 @@ const FRAGMENT_DECL = [
   '  vec2 scaled = chartUv * repeat;',
   '  vec2 local = mix(clamp(chartUv, vec2(0.0), vec2(1.0)), fract(scaled), tiles);',
   '  vec2 grad = mix(chartUv, scaled, tiles);',
-  '  vec2 half_texel = 0.5 / vec2(textureSize(uTrimSheet, 0));',
+  '  vec2 texels = vec2(textureSize(uTrimSheet, 0));',
+  '  vec2 half_texel = 0.5 / texels;',
   '  vec2 st = clamp(',
   '    rect.xy + local * span,',
   '    rect.xy + half_texel,',
   '    rect.xy + span - half_texel',
   '  );',
   '  return textureGrad(',
-  '    uTrimSheet, st, dFdx(grad) * span, dFdy(grad) * span',
+  '    uTrimSheet, st,',
+  '    clampChartGrad(dFdx(grad) * span, texels),',
+  '    clampChartGrad(dFdy(grad) * span, texels)',
   '  ).rgb;',
   '}',
   '',
@@ -264,7 +293,26 @@ const FRAGMENT_DECL = [
   '  float dHdx = dFdx(height) * scale;',
   '  float dHdy = dFdy(height) * scale;',
   '  vec3 gradient = sign(det) * (dHdx * r1 + dHdy * r2);',
-  '  return normalize(abs(det) * surfNormal - gradient);',
+  // BOUND THE TILT.
+  //
+  // gradient/|det| is the surface slope the height field implies, and the two
+  // halves of that ratio fail together. |det| is the area one pixel covers in
+  // view space, so it collapses toward zero wherever a surface turns edge-on —
+  // the silhouette of a thin cylinder, which is most of a leg. The numerator
+  // does not collapse with it: `height` is a TEXTURE SAMPLE, and a band steps
+  // from a 0.03 recess to a 0.96 bolt head, so one pixel can still register a
+  // full-range change right where the denominator has gone.
+  //
+  // The result is a normal pointing somewhere unrelated to the surface, which
+  // is what a sparkle IS. It never triggered the guard above, because the
+  // ratio explodes orders of magnitude before |det| reaches 1e-8, and it is
+  // GPU-dependent because vendors disagree about derivative granularity at a
+  // silhouette. Relief cannot legitimately tilt a normal past 45 degrees, so
+  // clamp there and let genuine bump through untouched.
+  '  vec3 slope = gradient / abs(det);',
+  '  float slopeLen = length(slope);',
+  '  if (slopeLen > 1.0) slope *= 1.0 / slopeLen;',
+  '  return normalize(surfNormal - slope);',
   '}',
   '#endif',
 ].join('\n');
