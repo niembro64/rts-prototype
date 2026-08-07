@@ -114,9 +114,24 @@ function pushHorizontalGrid(
   }
 }
 
-/** Emits one vertical curtain strip whose top edge runs along `edgePoints`
- *  ([x, z] pairs). The points come from the same breakpoints as the surface
- *  grid so the surface↔curtain seam has no T-junctions. */
+/**
+ * Emits one vertical curtain strip whose top edge runs along `edgePoints`
+ * ([x, z] pairs). The points come from the same breakpoints as the surface
+ * grid so the surface↔curtain seam has no T-junctions.
+ *
+ * SUBDIVIDED VERTICALLY, for exactly the reason the surface is subdivided
+ * horizontally (see WATER_SURFACE_GRID_STEPS). Depth at a pixel is
+ * interpolated from its own triangle's vertices, so a triangle spanning a
+ * huge distance carries float32 interpolation noise of several depth ULPs —
+ * which is more than the whole polygon offset this material leans on.
+ *
+ * The surface was tessellated into map-scale cells to keep that noise under
+ * one ULP; the curtains were left one quad tall, and they are the TALLEST
+ * geometry in the scene — floor depth is a quarter of the map's average axis
+ * plus the water's overhang, so a 16k map hangs a single 4200-unit quad off
+ * every edge against 1000-unit surface cells. Rows are capped at the surface
+ * cell size so both axes of this mesh carry the same interpolation error.
+ */
 function pushCurtainStrip(
   positions: number[],
   normals: number[],
@@ -126,23 +141,26 @@ function pushCurtainStrip(
   topY: number,
   nx: number,
   nz: number,
+  maxRowHeight: number,
 ): void {
   const base = positions.length / 3;
-  for (const [x, z] of edgePoints) {
-    positions.push(x, bottomY, z);
-    normals.push(nx, 0, nz);
-  }
-  for (const [x, z] of edgePoints) {
-    positions.push(x, topY, z);
-    normals.push(nx, 0, nz);
+  const span = Math.abs(topY - bottomY);
+  const rows = Math.max(1, Math.ceil(span / Math.max(1e-3, maxRowHeight)));
+  for (let r = 0; r <= rows; r++) {
+    const y = bottomY + ((topY - bottomY) * r) / rows;
+    for (const [x, z] of edgePoints) {
+      positions.push(x, y, z);
+      normals.push(nx, 0, nz);
+    }
   }
   const cols = edgePoints.length;
-  for (let i = 0; i < cols - 1; i++) {
-    const a = base + i;
-    const b = a + 1;
-    const c = base + cols + i + 1;
-    const d = base + cols + i;
-    indices.push(a, b, c, a, c, d);
+  for (let r = 0; r < rows; r++) {
+    const row = base + r * cols;
+    const next = row + cols;
+    for (let i = 0; i < cols - 1; i++) {
+      indices.push(row + i, row + i + 1, next + i + 1);
+      indices.push(row + i, next + i + 1, next + i);
+    }
   }
 }
 
@@ -267,10 +285,14 @@ export class WaterRenderer3D {
     const east = zs.map((z): readonly [number, number] => [x1, z]);
     const south = [...xs].reverse().map((x): readonly [number, number] => [x, z1]);
     const west = [...zs].reverse().map((z): readonly [number, number] => [x0, z]);
-    pushCurtainStrip(positions, normals, indices, north, bottomY, topY, 0, -1);
-    pushCurtainStrip(positions, normals, indices, east, bottomY, topY, 1, 0);
-    pushCurtainStrip(positions, normals, indices, south, bottomY, topY, 0, 1);
-    pushCurtainStrip(positions, normals, indices, west, bottomY, topY, -1, 0);
+    // Same cell size the surface grid uses, so the two halves of this mesh
+    // carry the same depth-interpolation error rather than the curtains
+    // carrying several ULPs more than the offset can cover.
+    const cell = Math.max(x1 - x0, z1 - z0) / WATER_SURFACE_GRID_STEPS;
+    pushCurtainStrip(positions, normals, indices, north, bottomY, topY, 0, -1, cell);
+    pushCurtainStrip(positions, normals, indices, east, bottomY, topY, 1, 0, cell);
+    pushCurtainStrip(positions, normals, indices, south, bottomY, topY, 0, 1, cell);
+    pushCurtainStrip(positions, normals, indices, west, bottomY, topY, -1, 0, cell);
     this.setGeometry(positions, normals, indices);
   }
 
