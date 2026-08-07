@@ -197,7 +197,7 @@ function freezeStaticLocalTransform(mesh: THREE.Mesh): void {
 export type TreadSide = {
   /** -1 for the left rail, +1 for the right rail. */
   side: -1 | 1;
-  /** Lateral offset from chassis center (= side * cfg.treadOffset). */
+  /** Lateral offset from chassis center, from this belt's authored mount. */
   lateralOffset: number;
   group: THREE.Group;
   /** Movement-position channel: side group local Y offset above the

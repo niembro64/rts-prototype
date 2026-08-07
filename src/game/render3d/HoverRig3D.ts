@@ -16,7 +16,6 @@ import {
 } from '@/smokeConfig';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
-import { ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS } from './AlbatrosMesh3D';
 import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
@@ -46,12 +45,8 @@ const FAN_RING_COLOR = COLORS.units.locomotion.hover.fanRing.colorHex;
 const FAN_BLADE_COLOR = COLORS.units.locomotion.hover.fanBlade.colorHex;
 const FAN_HUB_COLOR = COLORS.units.locomotion.hover.fanHub.colorHex;
 const HOVER_SMOKE_COLOR = COLORS.units.locomotion.hover.smoke.colorHex;
-const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
-const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
-const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
-const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
 const ringGeomByTubeRatio = new Map<string, THREE.BufferGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
@@ -324,13 +319,17 @@ export type HoverFan = {
 };
 
 /** Shared rear-facing duct geometry for watercraft and hovercraft. The fan
- * is visual only: locomotion physics never depends on it. */
+ *  is visual only: locomotion physics never depends on it.
+ *
+ *  Mirrors the blueprint's `SwimRearFan` — an authored mount plus the duct's
+ *  own dimensions — rather than the flat `rearFan*`-prefixed scalars it used
+ *  to take, so the one rig that mounts it speaks the same {x, y, z} every
+ *  other locomotion piece does. */
 export type RearPropulsionFanConfig = {
-  rearFanOffsetXFrac: number;
-  rearFanHeightFrac: number;
-  rearFanRadius: number;
-  rearFanRingTubeRadius: number;
-  rearFanSpinRadPerSec: number;
+  offset: { xUnitRadiusRatio: number; yUnitRadiusRatio: number; zUnitRadiusRatio: number };
+  radius: number;
+  ringTubeRadius: number;
+  spinRadPerSec: number;
 };
 
 export type HoverMesh = {
@@ -480,13 +479,13 @@ export function buildRearPropulsionFan(
   return buildFan(
     parent,
     {
-      localX: unitRadius * cfg.rearFanOffsetXFrac,
-      localY: unitRadius * cfg.rearFanHeightFrac,
-      localZ: 0,
-      fanRadius: Math.max(1, unitRadius * cfg.rearFanRadius),
-      ringTubeRadius: Math.max(0.35, unitRadius * cfg.rearFanRingTubeRadius),
+      localX: unitRadius * cfg.offset.xUnitRadiusRatio,
+      localY: unitRadius * cfg.offset.zUnitRadiusRatio,
+      localZ: unitRadius * cfg.offset.yUnitRadiusRatio,
+      fanRadius: Math.max(1, unitRadius * cfg.radius),
+      ringTubeRadius: Math.max(0.35, unitRadius * cfg.ringTubeRadius),
       outwardAngleRad: 0,
-      fanSpinRadPerSec: cfg.rearFanSpinRadPerSec,
+      fanSpinRadPerSec: cfg.spinRadPerSec,
       exhaustDirection: REARWARD_EXHAUST_DIR,
       smokeProfile: getSmokeProfile('locomotionHovercraft'),
     },
@@ -515,56 +514,6 @@ export function appendHoverFanSmoke(
   smokeOut.push(fan.smoke);
 }
 
-export function buildAlbatrosHoverFans(
-  unitGroup: THREE.Group,
-  unitRadius: number,
-  cfg: HoverConfig,
-  smokeUseId: HoverSmokeUseId,
-  entityId: number,
-  ownerId: PlayerId | undefined,
-  geometryTier: PrimitiveGeometryTier = 'close',
-): HoverMesh {
-  const group = new THREE.Group();
-  const fanPositionRadius = cfg.fanPositionRadius ?? ALBATROS_FAN_POSITION_RADIUS_FRAC;
-  const fanDistance = unitRadius * fanPositionRadius;
-  const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
-  const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
-  const fanSpinRadPerSec = cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC;
-  const smokeProfile = getSmokeProfile(smokeUseId);
-  const fans: HoverFan[] = [];
-
-  for (const direction of ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS) {
-    fans.push(buildFan(
-      group,
-      {
-        localX: direction.x * fanDistance,
-        localY: direction.y * fanDistance,
-        localZ: direction.z * fanDistance,
-        fanRadius,
-        ringTubeRadius,
-        outwardAngleRad: 0,
-        fanSpinRadPerSec,
-        exhaustDirection: direction,
-        smokeProfile,
-      },
-      entityId,
-      fans.length,
-      ownerId,
-      geometryTier,
-    ));
-  }
-
-  unitGroup.add(group);
-  return {
-    type: 'hover',
-    group,
-    fans,
-    clearance: 0,
-    fanSpinRadPerSec,
-    geometryKey: '',
-  };
-}
-
 export function buildHoverFans(
   unitGroup: THREE.Group,
   unitRadius: number,
@@ -575,140 +524,36 @@ export function buildHoverFans(
   geometryTier: PrimitiveGeometryTier = 'close',
 ): HoverMesh {
   const group = new THREE.Group();
-  const mainFanRadius = Math.max(1, unitRadius * cfg.fanRadius);
-  const mainRingTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
-  const fanSpinRadPerSec = cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC;
-  const outwardAngleRad = THREE.MathUtils.degToRad(
-    Math.max(0, Math.min(35, cfg.fanOutwardAngleDeg ?? DEFAULT_FAN_OUTWARD_ANGLE_DEG)),
-  );
+  const fanSpinRadPerSec = cfg.fanSpinRadPerSec;
   const fans: HoverFan[] = [];
   const smokeProfile = getSmokeProfile(smokeUseId);
 
-  const useDragonflyLayout = cfg.tailFanOffsetX !== undefined;
-  const hasTailFan =
-    useDragonflyLayout && cfg.tailFanRadius !== undefined && cfg.tailFanRadius > 0;
-
-  if (useDragonflyLayout) {
-    // Dragonfly layout: two large "wing" fans at body center forward,
-    // spread laterally; optionally one small fan at the tail tip. The
-    // wing fans sit on the lateral axis (localX = 0) so they read as
-    // wings, not corner thrusters. Smoke shape/cadence comes from the
-    // locomotionDragonflyHovercraft smokeConfig entry.
-    const lateral = unitRadius * cfg.fanDistY;
-    for (const sz of [-1, 1]) {
-      fans.push(buildFan(
-        group,
-        {
-          localX: 0,
-          localZ: sz * lateral,
-          fanRadius: mainFanRadius,
-          ringTubeRadius: mainRingTubeRadius,
-          outwardAngleRad,
-          fanSpinRadPerSec,
-          smokeProfile,
-        },
-        entityId,
-        fans.length,
-        ownerId,
-        geometryTier,
-      ));
-    }
-    if (hasTailFan) {
-      const tailFanRadius = Math.max(0.6, unitRadius * cfg.tailFanRadius!);
-      const tailRingTubeRadius = Math.max(
-        0.18,
-        unitRadius * (cfg.tailFanRingTubeRadius ?? cfg.fanRingTubeRadius),
-      );
-      // The tail fan sits at (x=tailFanOffsetX*r, z=0) so its
-      // center-to-fan radial vector is exactly the unit's −X axis. Feeding
-      // that direction into buildFan's outwardAngleRad therefore tilts
-      // the duct rearward — which is the visual the user wants for
-      // "the tail fan angled back."
-      const tailBackAngleRad = THREE.MathUtils.degToRad(
-        Math.max(0, Math.min(90, cfg.tailFanBackAngleDeg ?? 0)),
-      );
-      fans.push(buildFan(
-        group,
-        {
-          localX: unitRadius * (cfg.tailFanOffsetX ?? 0),
-          localZ: 0,
-          fanRadius: tailFanRadius,
-          ringTubeRadius: tailRingTubeRadius,
-          outwardAngleRad: tailBackAngleRad,
-          fanSpinRadPerSec,
-          smokeProfile,
-        },
-        entityId,
-        fans.length,
-        ownerId,
-        geometryTier,
-      ));
-    }
-  } else if (cfg.fanLayout === 'twin') {
-    // Twin layout: two fans on the lateral axis (localX = 0), one to each
-    // side, like a two-rotor lift. Used by the Bee.
-    const lateral = unitRadius * cfg.fanDistY;
-    for (const sz of [-1, 1]) {
-      fans.push(buildFan(
-        group,
-        {
-          localX: 0,
-          localZ: sz * lateral,
-          fanRadius: mainFanRadius,
-          ringTubeRadius: mainRingTubeRadius,
-          outwardAngleRad,
-          fanSpinRadPerSec,
-          smokeProfile,
-        },
-        entityId,
-        fans.length,
-        ownerId,
-        geometryTier,
-      ));
-    }
-  } else if (cfg.fanLayout === 'triFront') {
-    const fanDist = unitRadius * Math.hypot(cfg.fanDistX, cfg.fanDistY);
-    for (const angle of TRI_FRONT_FAN_ANGLES_RAD) {
-      fans.push(buildFan(
-        group,
-        {
-          localX: Math.cos(angle) * fanDist,
-          localZ: Math.sin(angle) * fanDist,
-          fanRadius: mainFanRadius,
-          ringTubeRadius: mainRingTubeRadius,
-          outwardAngleRad,
-          fanSpinRadPerSec,
-          smokeProfile,
-        },
-        entityId,
-        fans.length,
-        ownerId,
-        geometryTier,
-      ));
-    }
-  } else {
-    const fx = unitRadius * cfg.fanDistX;
-    const fz = unitRadius * cfg.fanDistY;
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        fans.push(buildFan(
-          group,
-          {
-            localX: sx * fx,
-            localZ: sz * fz,
-            fanRadius: mainFanRadius,
-            ringTubeRadius: mainRingTubeRadius,
-            outwardAngleRad,
-            fanSpinRadPerSec,
-            smokeProfile,
-          },
-          entityId,
-          fans.length,
-          ownerId,
-          geometryTier,
-        ));
-      }
-    }
+  // ONE AUTHORED MOUNT PER FAN. This used to be four layout branches — twin,
+  // quad, triFront, and a dragonfly special case with its own tail fan — each
+  // deriving positions from a (fanDistX, fanDistY) pair. A layout enum can
+  // only ever name arrangements someone already thought of, and every new one
+  // meant another branch here; a list of mounts names all of them, needs no
+  // branch, and lets one fan differ from its neighbours in size or tilt.
+  for (const mount of cfg.mounts) {
+    fans.push(buildFan(
+      group,
+      {
+        localX: unitRadius * mount.offset.xUnitRadiusRatio,
+        localY: unitRadius * mount.offset.zUnitRadiusRatio,
+        localZ: unitRadius * mount.offset.yUnitRadiusRatio,
+        fanRadius: Math.max(1, unitRadius * mount.radiusFrac),
+        ringTubeRadius: Math.max(0.35, unitRadius * mount.ringTubeRadiusFrac),
+        outwardAngleRad: THREE.MathUtils.degToRad(
+          Math.max(0, Math.min(35, mount.outwardAngleDeg)),
+        ),
+        fanSpinRadPerSec,
+        smokeProfile,
+      },
+      entityId,
+      fans.length,
+      ownerId,
+      geometryTier,
+    ));
   }
 
   unitGroup.add(group);

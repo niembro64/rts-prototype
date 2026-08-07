@@ -769,12 +769,7 @@ pub struct LegConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlipperConfig {
-    pub frontOffsetXFrac: f64,
-    pub rearOffsetXFrac: f64,
-    pub lateralOffsetFrac: f64,
-    pub rootHeightFrac: f64,
-    pub frontLengthFrac: f64,
-    pub rearLengthFrac: f64,
+    pub mounts: Vec<FlipperMount>,
     pub rootChordFrac: f64,
     pub tipChordFrac: f64,
     pub thicknessFrac: f64,
@@ -786,17 +781,11 @@ pub struct FlipperConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SwimConfig {
-    pub pectoralOffsetXFrac: f64,
-    pub pectoralLateralOffsetFrac: f64,
-    pub pectoralHeightFrac: f64,
+    pub pectorals: Vec<SwimPectoralMount>,
+    pub rearFan: SwimRearFan,
     pub pectoralSpanFrac: f64,
     pub pectoralRootChordFrac: f64,
     pub pectoralTipChordFrac: f64,
-    pub rearFanOffsetXFrac: f64,
-    pub rearFanHeightFrac: f64,
-    pub rearFanRadius: f64,
-    pub rearFanRingTubeRadius: f64,
-    pub rearFanSpinRadPerSec: f64,
     pub thicknessFrac: f64,
     pub strokeAngleDeg: f64,
     pub cycleDistanceFrac: f64,
@@ -845,44 +834,17 @@ pub struct UnitLocomotionEnvironmentalHazardPolicy {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HoverConfig {
-    pub fanDistX: f64,
-    pub fanDistY: f64,
-    pub fanPositionRadius: Option<f64>,
-    pub fanLayout: Option<String>,
-    pub fanRadius: f64,
-    pub fanRingTubeRadius: f64,
-    pub fanOutwardAngleDeg: Option<f64>,
-    pub fanSpinRadPerSec: Option<f64>,
-    pub tailFanOffsetX: Option<f64>,
-    pub tailFanRadius: Option<f64>,
-    pub tailFanRingTubeRadius: Option<f64>,
-    pub tailFanBackAngleDeg: Option<f64>,
+    pub mounts: Vec<HoverFanMount>,
+    pub fanSpinRadPerSec: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlyingConfig {
-    pub wingEnabled: Option<bool>,
-    pub wingSpan: Option<f64>,
-    pub wingChord: Option<f64>,
-    pub wingOffsetX: Option<f64>,
-    pub wingHeight: Option<f64>,
-    pub wingThickness: Option<f64>,
-    pub wingDihedralDeg: Option<f64>,
-    pub wingSweepFrac: Option<f64>,
-    pub tailWingSpan: Option<f64>,
-    pub tailWingChord: Option<f64>,
-    pub tailWingOffsetX: Option<f64>,
-    pub tailWingHeight: Option<f64>,
-    pub tailWingThickness: Option<f64>,
-    pub tailWingDihedralDeg: Option<f64>,
-    pub tailWingSweepFrac: Option<f64>,
-    pub tailWingMirrorX: Option<bool>,
-    pub jetOffsetX: f64,
-    pub jetOffsetY: f64,
-    pub jetOffsetZ: f64,
+    pub wing: Option<FlyingSurface>,
+    pub tailWing: Option<FlyingSurface>,
+    pub jets: Vec<FlyingJetMount>,
     pub jetRadius: f64,
     pub jetLength: f64,
-    pub jetCount: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1282,4 +1244,47 @@ pub struct LocomotionMount {
     pub xUnitRadiusRatio: f64,
     pub yUnitRadiusRatio: f64,
     pub zUnitRadiusRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlipperMount {
+    pub offset: LocomotionMount,
+    pub lengthFrac: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct HoverFanMount {
+    pub offset: LocomotionMount,
+    pub radiusFrac: f64,
+    pub ringTubeRadiusFrac: f64,
+    pub outwardAngleDeg: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlyingSurface {
+    pub offset: LocomotionMount,
+    pub span: f64,
+    pub chord: f64,
+    pub thickness: f64,
+    pub dihedralDeg: f64,
+    pub sweepFrac: f64,
+    pub mirrorX: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlyingJetMount {
+    pub offset: LocomotionMount,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwimPectoralMount {
+    pub offset: LocomotionMount,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwimRearFan {
+    pub offset: LocomotionMount,
+    pub radius: f64,
+    pub ringTubeRadius: f64,
+    pub spinRadPerSec: f64,
 }

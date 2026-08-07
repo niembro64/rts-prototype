@@ -2177,12 +2177,7 @@
     "FlipperConfig": {
       "type": "object",
       "required": [
-        "frontOffsetXFrac",
-        "rearOffsetXFrac",
-        "lateralOffsetFrac",
-        "rootHeightFrac",
-        "frontLengthFrac",
-        "rearLengthFrac",
+        "mounts",
         "rootChordFrac",
         "tipChordFrac",
         "thicknessFrac",
@@ -2192,25 +2187,12 @@
         "cycleDistanceFrac"
       ],
       "properties": {
-        "frontOffsetXFrac": {
-          "type": "number"
-        },
-        "rearOffsetXFrac": {
-          "type": "number"
-        },
-        "lateralOffsetFrac": {
-          "type": "number"
-        },
-        "rootHeightFrac": {
-          "type": "number"
-        },
-        "frontLengthFrac": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "rearLengthFrac": {
-          "type": "number",
-          "exclusiveMinimum": 0
+        "mounts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/FlipperMount"
+          }
         },
         "rootChordFrac": {
           "type": "number",
@@ -2243,30 +2225,25 @@
     "SwimConfig": {
       "type": "object",
       "required": [
-        "pectoralOffsetXFrac",
-        "pectoralLateralOffsetFrac",
-        "pectoralHeightFrac",
+        "pectorals",
+        "rearFan",
         "pectoralSpanFrac",
         "pectoralRootChordFrac",
         "pectoralTipChordFrac",
-        "rearFanOffsetXFrac",
-        "rearFanHeightFrac",
-        "rearFanRadius",
-        "rearFanRingTubeRadius",
-        "rearFanSpinRadPerSec",
         "thicknessFrac",
         "strokeAngleDeg",
         "cycleDistanceFrac"
       ],
       "properties": {
-        "pectoralOffsetXFrac": {
-          "type": "number"
+        "pectorals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SwimPectoralMount"
+          }
         },
-        "pectoralLateralOffsetFrac": {
-          "type": "number"
-        },
-        "pectoralHeightFrac": {
-          "type": "number"
+        "rearFan": {
+          "$ref": "#/$defs/SwimRearFan"
         },
         "pectoralSpanFrac": {
           "type": "number",
@@ -2279,23 +2256,6 @@
         "pectoralTipChordFrac": {
           "type": "number",
           "exclusiveMinimum": 0
-        },
-        "rearFanOffsetXFrac": {
-          "type": "number"
-        },
-        "rearFanHeightFrac": {
-          "type": "number"
-        },
-        "rearFanRadius": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "rearFanRingTubeRadius": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "rearFanSpinRadPerSec": {
-          "type": "number"
         },
         "thicknessFrac": {
           "type": "number",
@@ -2434,50 +2394,18 @@
     "HoverConfig": {
       "type": "object",
       "required": [
-        "fanDistX",
-        "fanDistY",
-        "fanRadius",
-        "fanRingTubeRadius"
+        "mounts",
+        "fanSpinRadPerSec"
       ],
       "properties": {
-        "fanDistX": {
-          "type": "number"
-        },
-        "fanDistY": {
-          "type": "number"
-        },
-        "fanPositionRadius": {
-          "type": "number"
-        },
-        "fanLayout": {
-          "enum": [
-            "quad",
-            "triFront",
-            "twin"
-          ]
-        },
-        "fanRadius": {
-          "type": "number"
-        },
-        "fanRingTubeRadius": {
-          "type": "number"
-        },
-        "fanOutwardAngleDeg": {
-          "type": "number"
+        "mounts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/HoverFanMount"
+          }
         },
         "fanSpinRadPerSec": {
-          "type": "number"
-        },
-        "tailFanOffsetX": {
-          "type": "number"
-        },
-        "tailFanRadius": {
-          "type": "number"
-        },
-        "tailFanRingTubeRadius": {
-          "type": "number"
-        },
-        "tailFanBackAngleDeg": {
           "type": "number"
         }
       },
@@ -2486,81 +2414,45 @@
     "FlyingConfig": {
       "type": "object",
       "required": [
-        "jetOffsetX",
-        "jetOffsetY",
-        "jetOffsetZ",
+        "wing",
+        "tailWing",
+        "jets",
         "jetRadius",
         "jetLength"
       ],
       "properties": {
-        "wingEnabled": {
-          "type": "boolean"
+        "wing": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FlyingSurface"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "wingSpan": {
-          "type": "number"
+        "tailWing": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FlyingSurface"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "wingChord": {
-          "type": "number"
-        },
-        "wingOffsetX": {
-          "type": "number"
-        },
-        "wingHeight": {
-          "type": "number"
-        },
-        "wingThickness": {
-          "type": "number"
-        },
-        "wingDihedralDeg": {
-          "type": "number"
-        },
-        "wingSweepFrac": {
-          "type": "number"
-        },
-        "tailWingSpan": {
-          "type": "number"
-        },
-        "tailWingChord": {
-          "type": "number"
-        },
-        "tailWingOffsetX": {
-          "type": "number"
-        },
-        "tailWingHeight": {
-          "type": "number"
-        },
-        "tailWingThickness": {
-          "type": "number"
-        },
-        "tailWingDihedralDeg": {
-          "type": "number"
-        },
-        "tailWingSweepFrac": {
-          "type": "number"
-        },
-        "tailWingMirrorX": {
-          "type": "boolean"
-        },
-        "jetOffsetX": {
-          "type": "number"
-        },
-        "jetOffsetY": {
-          "type": "number"
-        },
-        "jetOffsetZ": {
-          "type": "number"
+        "jets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/FlyingJetMount"
+          }
         },
         "jetRadius": {
           "type": "number"
         },
         "jetLength": {
           "type": "number"
-        },
-        "jetCount": {
-          "enum": [
-            1,
-            2
-          ]
         }
       },
       "additionalProperties": false
@@ -3843,6 +3735,130 @@
           "type": "number"
         },
         "zUnitRadiusRatio": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FlipperMount": {
+      "type": "object",
+      "required": [
+        "offset",
+        "lengthFrac"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        },
+        "lengthFrac": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "HoverFanMount": {
+      "type": "object",
+      "required": [
+        "offset",
+        "radiusFrac",
+        "ringTubeRadiusFrac",
+        "outwardAngleDeg"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        },
+        "radiusFrac": {
+          "type": "number"
+        },
+        "ringTubeRadiusFrac": {
+          "type": "number"
+        },
+        "outwardAngleDeg": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FlyingSurface": {
+      "type": "object",
+      "required": [
+        "offset",
+        "span",
+        "chord",
+        "thickness",
+        "dihedralDeg",
+        "sweepFrac",
+        "mirrorX"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        },
+        "span": {
+          "type": "number"
+        },
+        "chord": {
+          "type": "number"
+        },
+        "thickness": {
+          "type": "number"
+        },
+        "dihedralDeg": {
+          "type": "number"
+        },
+        "sweepFrac": {
+          "type": "number"
+        },
+        "mirrorX": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FlyingJetMount": {
+      "type": "object",
+      "required": [
+        "offset"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SwimPectoralMount": {
+      "type": "object",
+      "required": [
+        "offset"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SwimRearFan": {
+      "type": "object",
+      "required": [
+        "offset",
+        "radius",
+        "ringTubeRadius",
+        "spinRadPerSec"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/LocomotionMount"
+        },
+        "radius": {
+          "type": "number"
+        },
+        "ringTubeRadius": {
+          "type": "number"
+        },
+        "spinRadPerSec": {
           "type": "number"
         }
       },

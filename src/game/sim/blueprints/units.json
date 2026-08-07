@@ -1477,12 +1477,40 @@
         }
       },
       "config": {
-        "frontOffsetXFrac": 0.46,
-        "rearOffsetXFrac": -0.43,
-        "lateralOffsetFrac": 0.34,
-        "rootHeightFrac": 0.34,
-        "frontLengthFrac": 1.05,
-        "rearLengthFrac": 0.74,
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          }
+        ],
         "rootChordFrac": 0.42,
         "tipChordFrac": 0.18,
         "thicknessFrac": 0.07,
@@ -1615,17 +1643,35 @@
         }
       },
       "config": {
-        "pectoralOffsetXFrac": 0.12,
-        "pectoralLateralOffsetFrac": 0.32,
-        "pectoralHeightFrac": 0.02,
+        "pectorals": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.12,
+              "yUnitRadiusRatio": -0.32,
+              "zUnitRadiusRatio": 0.02
+            }
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.12,
+              "yUnitRadiusRatio": 0.32,
+              "zUnitRadiusRatio": 0.02
+            }
+          }
+        ],
+        "rearFan": {
+          "offset": {
+            "xUnitRadiusRatio": -1.12,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0
+          },
+          "radius": 0.3,
+          "ringTubeRadius": 0.035,
+          "spinRadPerSec": 26
+        },
         "pectoralSpanFrac": 0.68,
         "pectoralRootChordFrac": 0.38,
         "pectoralTipChordFrac": 0.16,
-        "rearFanOffsetXFrac": -1.12,
-        "rearFanHeightFrac": 0,
-        "rearFanRadius": 0.3,
-        "rearFanRingTubeRadius": 0.035,
-        "rearFanSpinRadPerSec": 26,
         "thicknessFrac": 0.055,
         "strokeAngleDeg": 13,
         "cycleDistanceFrac": 1.9
@@ -2002,12 +2048,28 @@
         }
       },
       "config": {
-        "fanDistX": 0.58,
-        "fanDistY": 0.62,
-        "fanLayout": "twin",
-        "fanRadius": 0.32,
-        "fanRingTubeRadius": 0.035,
-        "fanOutwardAngleDeg": 14,
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": -0.62,
+              "zUnitRadiusRatio": -0.04444
+            },
+            "radiusFrac": 0.32,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 14
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": 0.62,
+              "zUnitRadiusRatio": -0.04444
+            },
+            "radiusFrac": 0.32,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 14
+          }
+        ],
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
@@ -2133,13 +2195,29 @@
         }
       },
       "config": {
-        "fanDistX": 0,
-        "fanDistY": 2,
-        "fanRadius": 1.4,
-        "fanRingTubeRadius": 0.1,
-        "fanOutwardAngleDeg": 18,
-        "fanSpinRadPerSec": -10,
-        "tailFanOffsetX": -4.7
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": -2,
+              "zUnitRadiusRatio": -0.09
+            },
+            "radiusFrac": 1.4,
+            "ringTubeRadiusFrac": 0.1,
+            "outwardAngleDeg": 18
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": 2,
+              "zUnitRadiusRatio": -0.09
+            },
+            "radiusFrac": 1.4,
+            "ringTubeRadiusFrac": 0.1,
+            "outwardAngleDeg": 18
+          }
+        ],
+        "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 0
@@ -2278,12 +2356,38 @@
         }
       },
       "config": {
-        "fanDistX": 0.58,
-        "fanDistY": 0.58,
-        "fanLayout": "triFront",
-        "fanRadius": 0.26,
-        "fanRingTubeRadius": 0.035,
-        "fanOutwardAngleDeg": 12,
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.41012,
+              "yUnitRadiusRatio": -0.71035,
+              "zUnitRadiusRatio": -0.0315
+            },
+            "radiusFrac": 0.26,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.41012,
+              "yUnitRadiusRatio": 0.71035,
+              "zUnitRadiusRatio": -0.0315
+            },
+            "radiusFrac": 0.26,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.82024,
+              "yUnitRadiusRatio": 0.0,
+              "zUnitRadiusRatio": -0.0315
+            },
+            "radiusFrac": 0.26,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 12
+          }
+        ],
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
@@ -2388,21 +2492,38 @@
         }
       },
       "config": {
-        "wingEnabled": false,
-        "tailWingSpan": 2.9,
-        "tailWingChord": 1.18,
-        "tailWingOffsetX": -0.92,
-        "tailWingHeight": 0.2,
-        "tailWingThickness": 0.055,
-        "tailWingDihedralDeg": 9,
-        "tailWingSweepFrac": 0.92,
-        "tailWingMirrorX": true,
-        "jetOffsetX": -1.5,
-        "jetOffsetY": 0,
-        "jetOffsetZ": 0.32,
+        "wing": null,
+        "tailWing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.92,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.2
+          },
+          "span": 2.9,
+          "chord": 1.18,
+          "thickness": 0.055,
+          "dihedralDeg": 9,
+          "sweepFrac": 0.92,
+          "mirrorX": true
+        },
+        "jets": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": -1.5,
+              "yUnitRadiusRatio": -0.264,
+              "zUnitRadiusRatio": 0.32
+            }
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -1.5,
+              "yUnitRadiusRatio": 0.264,
+              "zUnitRadiusRatio": 0.32
+            }
+          }
+        ],
         "jetRadius": 0.22,
-        "jetLength": 0.6,
-        "jetCount": 2
+        "jetLength": 0.6
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 180
@@ -2507,28 +2628,43 @@
         }
       },
       "config": {
-        "wingEnabled": true,
-        "wingSpan": 2.1,
-        "wingChord": 0.62,
-        "wingOffsetX": -0.05,
-        "wingHeight": 0.28,
-        "wingThickness": 0.06,
-        "wingDihedralDeg": 8,
-        "wingSweepFrac": 0.35,
-        "tailWingSpan": 0.9,
-        "tailWingChord": 0.3,
-        "tailWingOffsetX": -0.78,
-        "tailWingHeight": 0.28,
-        "tailWingThickness": 0.05,
-        "tailWingDihedralDeg": 14,
-        "tailWingSweepFrac": 0.7,
-        "tailWingMirrorX": true,
-        "jetOffsetX": -1,
-        "jetOffsetY": 0,
-        "jetOffsetZ": 0.2,
+        "wing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.05,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.28
+          },
+          "span": 2.1,
+          "chord": 0.62,
+          "thickness": 0.06,
+          "dihedralDeg": 8,
+          "sweepFrac": 0.35,
+          "mirrorX": false
+        },
+        "tailWing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.78,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.28
+          },
+          "span": 0.9,
+          "chord": 0.3,
+          "thickness": 0.05,
+          "dihedralDeg": 14,
+          "sweepFrac": 0.7,
+          "mirrorX": true
+        },
+        "jets": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": -1,
+              "yUnitRadiusRatio": 0.0,
+              "zUnitRadiusRatio": 0.2
+            }
+          }
+        ],
         "jetRadius": 0.12,
-        "jetLength": 0.3,
-        "jetCount": 1
+        "jetLength": 0.3
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 0
@@ -2657,27 +2793,31 @@
         }
       },
       "config": {
-        "wingSpan": 2.8,
-        "wingChord": 0.62,
-        "wingOffsetX": -0.08,
-        "wingHeight": 0.36,
-        "wingThickness": 0.045,
-        "wingDihedralDeg": 7,
-        "wingSweepFrac": 0.48,
-        "tailWingSpan": 1.05,
-        "tailWingChord": 0.32,
-        "tailWingOffsetX": -0.86,
-        "tailWingHeight": 0.34,
-        "tailWingThickness": 0.04,
-        "tailWingDihedralDeg": 15,
-        "tailWingSweepFrac": 0.75,
-        "tailWingMirrorX": true,
-        "jetOffsetX": -0.9,
-        "jetOffsetY": 0,
-        "jetOffsetZ": 0.24,
+        "wing": null,
+        "tailWing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.86,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.34
+          },
+          "span": 1.05,
+          "chord": 0.32,
+          "thickness": 0.04,
+          "dihedralDeg": 15,
+          "sweepFrac": 0.75,
+          "mirrorX": true
+        },
+        "jets": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.9,
+              "yUnitRadiusRatio": 0.0,
+              "zUnitRadiusRatio": 0.24
+            }
+          }
+        ],
         "jetRadius": 0.08,
-        "jetLength": 0.2,
-        "jetCount": 1
+        "jetLength": 0.2
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 3800
@@ -2801,12 +2941,38 @@
         }
       },
       "config": {
-        "fanDistX": 0.56,
-        "fanDistY": 0.62,
-        "fanLayout": "triFront",
-        "fanRadius": 0.16,
-        "fanRingTubeRadius": 0.04,
-        "fanOutwardAngleDeg": 12,
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.41773,
+              "yUnitRadiusRatio": -0.72353,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.16,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.41773,
+              "yUnitRadiusRatio": 0.72353,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.16,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.83546,
+              "yUnitRadiusRatio": 0.0,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.16,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          }
+        ],
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
@@ -3091,12 +3257,48 @@
         }
       },
       "config": {
-        "fanDistX": 0.72,
-        "fanDistY": 0.8,
-        "fanLayout": "quad",
-        "fanRadius": 0.34,
-        "fanRingTubeRadius": 0.04,
-        "fanOutwardAngleDeg": 12,
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.72,
+              "yUnitRadiusRatio": -0.8,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.34,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.72,
+              "yUnitRadiusRatio": 0.8,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.34,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.72,
+              "yUnitRadiusRatio": -0.8,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.34,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.72,
+              "yUnitRadiusRatio": 0.8,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.34,
+            "ringTubeRadiusFrac": 0.04,
+            "outwardAngleDeg": 12
+          }
+        ],
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
@@ -3430,17 +3632,35 @@
         }
       },
       "config": {
-        "pectoralOffsetXFrac": 0.1,
-        "pectoralLateralOffsetFrac": 0.34,
-        "pectoralHeightFrac": 0.02,
+        "pectorals": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.1,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.02
+            }
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.1,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.02
+            }
+          }
+        ],
+        "rearFan": {
+          "offset": {
+            "xUnitRadiusRatio": -1.08,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0
+          },
+          "radius": 0.28,
+          "ringTubeRadius": 0.035,
+          "spinRadPerSec": 22
+        },
         "pectoralSpanFrac": 0.64,
         "pectoralRootChordFrac": 0.4,
         "pectoralTipChordFrac": 0.16,
-        "rearFanOffsetXFrac": -1.08,
-        "rearFanHeightFrac": 0,
-        "rearFanRadius": 0.28,
-        "rearFanRingTubeRadius": 0.035,
-        "rearFanSpinRadPerSec": 22,
         "thicknessFrac": 0.06,
         "strokeAngleDeg": 12,
         "cycleDistanceFrac": 2

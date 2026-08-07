@@ -529,12 +529,7 @@ export type LegConfig = {
 };
 
 export type FlipperConfig = {
-  frontOffsetXFrac: number;
-  rearOffsetXFrac: number;
-  lateralOffsetFrac: number;
-  rootHeightFrac: number;
-  frontLengthFrac: number;
-  rearLengthFrac: number;
+  mounts: FlipperMount[];
   rootChordFrac: number;
   tipChordFrac: number;
   thicknessFrac: number;
@@ -545,17 +540,11 @@ export type FlipperConfig = {
 };
 
 export type SwimConfig = {
-  pectoralOffsetXFrac: number;
-  pectoralLateralOffsetFrac: number;
-  pectoralHeightFrac: number;
+  pectorals: SwimPectoralMount[];
+  rearFan: SwimRearFan;
   pectoralSpanFrac: number;
   pectoralRootChordFrac: number;
   pectoralTipChordFrac: number;
-  rearFanOffsetXFrac: number;
-  rearFanHeightFrac: number;
-  rearFanRadius: number;
-  rearFanRingTubeRadius: number;
-  rearFanSpinRadPerSec: number;
   thicknessFrac: number;
   strokeAngleDeg: number;
   cycleDistanceFrac: number;
@@ -596,43 +585,16 @@ export type UnitLocomotionEnvironmentalHazardPolicy = {
 };
 
 export type HoverConfig = {
-  fanDistX: number;
-  fanDistY: number;
-  fanPositionRadius?: number;
-  fanLayout?: 'quad' | 'triFront' | 'twin';
-  fanRadius: number;
-  fanRingTubeRadius: number;
-  fanOutwardAngleDeg?: number;
-  fanSpinRadPerSec?: number;
-  tailFanOffsetX?: number;
-  tailFanRadius?: number;
-  tailFanRingTubeRadius?: number;
-  tailFanBackAngleDeg?: number;
+  mounts: HoverFanMount[];
+  fanSpinRadPerSec: number;
 };
 
 export type FlyingConfig = {
-  wingEnabled?: boolean;
-  wingSpan?: number;
-  wingChord?: number;
-  wingOffsetX?: number;
-  wingHeight?: number;
-  wingThickness?: number;
-  wingDihedralDeg?: number;
-  wingSweepFrac?: number;
-  tailWingSpan?: number;
-  tailWingChord?: number;
-  tailWingOffsetX?: number;
-  tailWingHeight?: number;
-  tailWingThickness?: number;
-  tailWingDihedralDeg?: number;
-  tailWingSweepFrac?: number;
-  tailWingMirrorX?: boolean;
-  jetOffsetX: number;
-  jetOffsetY: number;
-  jetOffsetZ: number;
+  wing: FlyingSurface | null;
+  tailWing: FlyingSurface | null;
+  jets: FlyingJetMount[];
   jetRadius: number;
   jetLength: number;
-  jetCount?: 1 | 2;
 };
 
 export type UnitLocomotionBlueprintWheels = {
@@ -943,4 +905,41 @@ export type LocomotionMount = {
   xUnitRadiusRatio: number;
   yUnitRadiusRatio: number;
   zUnitRadiusRatio: number;
+};
+
+export type FlipperMount = {
+  offset: LocomotionMount;
+  lengthFrac: number;
+};
+
+export type HoverFanMount = {
+  offset: LocomotionMount;
+  radiusFrac: number;
+  ringTubeRadiusFrac: number;
+  outwardAngleDeg: number;
+};
+
+export type FlyingSurface = {
+  offset: LocomotionMount;
+  span: number;
+  chord: number;
+  thickness: number;
+  dihedralDeg: number;
+  sweepFrac: number;
+  mirrorX: boolean;
+};
+
+export type FlyingJetMount = {
+  offset: LocomotionMount;
+};
+
+export type SwimPectoralMount = {
+  offset: LocomotionMount;
+};
+
+export type SwimRearFan = {
+  offset: LocomotionMount;
+  radius: number;
+  ringTubeRadius: number;
+  spinRadPerSec: number;
 };

@@ -26,7 +26,6 @@ const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
 const JET_SMOKE_COLOR = COLORS.units.locomotion.flying.smoke.colorHex;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
-const DEFAULT_WING_SWEEP_FRAC = 0.35;
 const DEFAULT_WING_TIP_HALF_CHORD_FRAC = 0.12;
 
 // Wing panel geometry: tapered, swept-back planform for one side only.
@@ -112,42 +111,22 @@ export function buildFlyingRig(
   const group = new THREE.Group();
   const smokeProfile = getSmokeProfile(smokeUseId);
 
-  if (
-    cfg.wingEnabled !== false &&
-    cfg.wingSpan !== undefined &&
-    cfg.wingChord !== undefined &&
-    cfg.wingOffsetX !== undefined &&
-    cfg.wingHeight !== undefined
-  ) {
+  // Each lifting surface is one authored object with its own mount, so
+  // "does this unit have a main wing" is `wing !== null` rather than five
+  // optional scalars that had to be present together and a separate
+  // `wingEnabled` flag that could disagree with them.
+  for (const surface of [cfg.wing, cfg.tailWing]) {
+    if (surface === null) continue;
     addWingPanels(group, unitRadius, {
-      spanFrac: cfg.wingSpan,
-      chordFrac: cfg.wingChord,
-      offsetXFrac: cfg.wingOffsetX,
-      heightFrac: cfg.wingHeight,
-      thicknessFrac: cfg.wingThickness ?? 0.04,
-      dihedralDeg: cfg.wingDihedralDeg ?? 0,
-      sweepFrac: cfg.wingSweepFrac ?? DEFAULT_WING_SWEEP_FRAC,
-      mirrorX: false,
-      ownerId,
-      geometryTier,
-    });
-  }
-
-  if (
-    cfg.tailWingSpan !== undefined &&
-    cfg.tailWingChord !== undefined &&
-    cfg.tailWingOffsetX !== undefined &&
-    cfg.tailWingHeight !== undefined
-  ) {
-    addWingPanels(group, unitRadius, {
-      spanFrac: cfg.tailWingSpan,
-      chordFrac: cfg.tailWingChord,
-      offsetXFrac: cfg.tailWingOffsetX,
-      heightFrac: cfg.tailWingHeight,
-      thicknessFrac: cfg.tailWingThickness ?? cfg.wingThickness ?? 0.04,
-      dihedralDeg: cfg.tailWingDihedralDeg ?? 0,
-      sweepFrac: cfg.tailWingSweepFrac ?? cfg.wingSweepFrac ?? DEFAULT_WING_SWEEP_FRAC,
-      mirrorX: cfg.tailWingMirrorX ?? false,
+      spanFrac: surface.span,
+      chordFrac: surface.chord,
+      offsetXFrac: surface.offset.xUnitRadiusRatio,
+      heightFrac: surface.offset.zUnitRadiusRatio,
+      lateralFrac: surface.offset.yUnitRadiusRatio,
+      thicknessFrac: surface.thickness,
+      dihedralDeg: surface.dihedralDeg,
+      sweepFrac: surface.sweepFrac,
+      mirrorX: surface.mirrorX,
       ownerId,
       geometryTier,
     });
@@ -155,16 +134,20 @@ export function buildFlyingRig(
 
   const jetRadius = Math.max(0.4, unitRadius * cfg.jetRadius);
   const jetLength = Math.max(1, unitRadius * cfg.jetLength);
-  const jetX = unitRadius * cfg.jetOffsetX;
-  const jetY = unitRadius * cfg.jetOffsetZ;
-  const jetZ = unitRadius * cfg.jetOffsetY;
-  const jetLateralOffsets = cfg.jetCount === 1 ? [0] : [-jetZ, jetZ];
   const jets: FlyingJet[] = [];
   const smokeFramesSkip = Math.max(0, smokeProfile.emitFramesSkip);
 
-  for (const lateralOffset of jetLateralOffsets) {
+  // One authored mount per nozzle. A `jetCount` with a single lateral scalar
+  // meant a twin-jet unit put both nozzles at ±that scalar — and every
+  // twin-jet unit in the roster authored it as 0, so the pair rendered
+  // exactly coincident: one nozzle wearing two.
+  for (const jet of cfg.jets) {
     const jetGroup = new THREE.Group();
-    jetGroup.position.set(jetX, jetY, lateralOffset);
+    jetGroup.position.set(
+      unitRadius * jet.offset.xUnitRadiusRatio,
+      unitRadius * jet.offset.zUnitRadiusRatio,
+      unitRadius * jet.offset.yUnitRadiusRatio,
+    );
 
     const nozzle = new THREE.Mesh(
       getJetGeom(geometryTier),
@@ -222,6 +205,7 @@ function addWingPanels(
     chordFrac: number;
     offsetXFrac: number;
     heightFrac: number;
+    lateralFrac: number;
     thicknessFrac: number;
     dihedralDeg: number;
     sweepFrac: number;
@@ -235,6 +219,7 @@ function addWingPanels(
   const thickness = Math.max(0.2, unitRadius * spec.thicknessFrac);
   const offsetX = unitRadius * spec.offsetXFrac;
   const height = unitRadius * spec.heightFrac;
+  const lateral = unitRadius * spec.lateralFrac;
   const dihedralRad = spec.dihedralDeg * Math.PI / 180;
   const sweepFrac = Math.max(0, spec.sweepFrac);
   // mirrorX flips the wing front-to-back so a panel placed at the rear
@@ -245,7 +230,7 @@ function addWingPanels(
 
   for (const side of [-1, 1] as const) {
     const panelGroup = new THREE.Group();
-    panelGroup.position.set(offsetX, height, 0);
+    panelGroup.position.set(offsetX, height, lateral);
     panelGroup.rotation.x = -side * dihedralRad;
 
     const panel = new THREE.Mesh(

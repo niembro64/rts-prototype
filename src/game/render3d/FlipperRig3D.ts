@@ -96,32 +96,39 @@ export function buildFlippers(
     ownerId,
   );
 
-  for (const front of [true, false]) {
-    const rootX = radius * (front ? cfg.frontOffsetXFrac : cfg.rearOffsetXFrac);
-    const length = radius * (front ? cfg.frontLengthFrac : cfg.rearLengthFrac);
-    for (const side of [-1, 1] as const) {
-      const hinge = new THREE.Group();
-      hinge.position.set(
-        rootX,
-        radius * cfg.rootHeightFrac,
-        side * radius * cfg.lateralOffsetFrac,
-      );
-      const panel = new THREE.Mesh(geometry, material);
-      panel.scale.set(rootChord, thickness, side * length);
-      hinge.add(panel);
-      group.add(hinge);
+  // One authored mount per panel. The four corners used to be derived from a
+  // front/rear x pair crossed with a single lateral scalar, so every panel
+  // shared one shoulder height and no panel could be moved on its own.
+  for (const mount of cfg.mounts) {
+    const offset = mount.offset;
+    const side: -1 | 1 = offset.yUnitRadiusRatio < 0 ? -1 : 1;
+    // Which end of the body a panel hangs off is a property of where it IS,
+    // not a separate flag: the gait reads it back off the mount.
+    const front = offset.xUnitRadiusRatio >= 0;
+    const length = radius * mount.lengthFrac;
+    const hinge = new THREE.Group();
+    hinge.position.set(
+      radius * offset.xUnitRadiusRatio,
+      radius * offset.zUnitRadiusRatio,
+      radius * offset.yUnitRadiusRatio,
+    );
+    const panel = new THREE.Mesh(geometry, material);
+    panel.scale.set(rootChord, thickness, side * length);
+    hinge.add(panel);
+    group.add(hinge);
 
-      // Front-left + rear-right move together; the opposite diagonal
-      // receives π. This preserves a leg-like diagonal gait on land.
-      const phaseOffset = (front ? 0 : Math.PI) + (side === 1 ? Math.PI : 0);
-      const authoredDown = Math.max(0, cfg.groundDownAngleDeg * DEG_TO_RAD);
-      const lengthFrac = front ? cfg.frontLengthFrac : cfg.rearLengthFrac;
-      const groundDownAngle = Math.min(
-        authoredDown,
-        Math.asin(Math.min(1, cfg.rootHeightFrac / Math.max(0.001, lengthFrac))),
-      );
-      panels.push({ hinge, side, front, phaseOffset, groundDownAngle });
-    }
+    // Front-left + rear-right move together; the opposite diagonal
+    // receives π. This preserves a leg-like diagonal gait on land.
+    const phaseOffset = (front ? 0 : Math.PI) + (side === 1 ? Math.PI : 0);
+    const authoredDown = Math.max(0, cfg.groundDownAngleDeg * DEG_TO_RAD);
+    const groundDownAngle = Math.min(
+      authoredDown,
+      Math.asin(Math.min(
+        1,
+        offset.zUnitRadiusRatio / Math.max(0.001, mount.lengthFrac),
+      )),
+    );
+    panels.push({ hinge, side, front, phaseOffset, groundDownAngle });
   }
 
   unitGroup.add(group);

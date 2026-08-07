@@ -87,13 +87,16 @@ export function buildSwimRig(
   );
   const pectoralHinges: [THREE.Group, THREE.Group] = [new THREE.Group(), new THREE.Group()];
 
+  // One authored mount per fin. The pair used to share a single lateral
+  // scalar reflected by index, so neither fin could be moved on its own.
   for (let index = 0; index < pectoralHinges.length; index++) {
-    const side = index === 0 ? -1 : 1;
+    const offset = cfg.pectorals[index].offset;
+    const side = offset.yUnitRadiusRatio < 0 ? -1 : 1;
     const hinge = pectoralHinges[index];
     hinge.position.set(
-      radius * cfg.pectoralOffsetXFrac,
-      radius * cfg.pectoralHeightFrac,
-      side * radius * cfg.pectoralLateralOffsetFrac,
+      radius * offset.xUnitRadiusRatio,
+      radius * offset.zUnitRadiusRatio,
+      radius * offset.yUnitRadiusRatio,
     );
     const fin = new THREE.Mesh(pectoralGeometry, material);
     fin.scale.set(pectoralRootChord, thickness, side * pectoralSpan);
@@ -102,7 +105,7 @@ export function buildSwimRig(
   }
 
   const rearFan = buildRearPropulsionFan(
-    group, radius, cfg, entityId, ownerId, geometryTier,
+    group, radius, cfg.rearFan, entityId, ownerId, geometryTier,
   );
 
   unitGroup.add(group);

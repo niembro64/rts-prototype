@@ -22,7 +22,6 @@ import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
 import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
 import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
 import {
-  buildAlbatrosHoverFans,
   buildHoverFans,
   setHoverFanAnimationTime,
   type HoverMesh,
@@ -827,20 +826,6 @@ function buildPreviewLocomotion(
         mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
     case 'hover':
-      if (blueprint.unitBlueprintId === 'unitAlbatros') {
-        return {
-          type: 'hover',
-          mesh: buildAlbatrosHoverFans(
-            yawGroup,
-            radius,
-            locomotion.config,
-            'locomotionAlbatrosHoverFans',
-            SHELL_ENTITY_ID,
-            HOST_PLAYER_ID,
-            geometryTier,
-          ),
-        };
-      }
       return {
         type: 'hover',
         mesh: buildHoverFans(

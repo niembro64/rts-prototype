@@ -11,6 +11,7 @@ import {
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import { getAllUnitBlueprints } from './units';
 import { getBodyHalfWidthFrac } from '../../math/BodyDimensions';
+import type { LocomotionMount } from '@/types/blueprintSchema.generated';
 import { UNIT_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import rawLocomotionConfig from '../unitLocomotionConfig.json';
 import {
@@ -129,68 +130,50 @@ function checkLegAttachmentPoints(): void {
 }
 
 
+
 /**
- * EVERY LOCOMOTION PIECE IS PLACED BY AN AUTHORED {x, y, z}, AND CLEARS THE
- * HULL.
+ * SIDE-MOUNTED pieces must clear the hull laterally.
  *
- * Both halves are the point. Placement used to be derived from a scalar pair
- * reflected into corners — `wheelDistX`/`wheelDistY`, `treadOffset` — which
- * could only describe one symmetric arrangement and, more importantly, said
- * nothing about where the hull actually ends. Every tracked unit in the
- * roster had its belts buried inside its own body as a result, because
- * nothing in the data related the two.
+ * A wheel or a track IS at its mount and hangs off the side, so its inner
+ * face is what has to clear the body. This is the check the roster actually
+ * failed: nothing related a mount to where the hull ends, so every tracked
+ * unit shipped with its belts inside its own body — Mammoth's inner face sat
+ * at 0.60 against a body reaching 0.85.
  *
- * A mount is authored now, and the clearance it must leave is a number this
- * test checks: the piece's own half-width plus a shared standoff, measured
- * against the body's real half-extent. That is what makes "disconnected" a
- * property of the roster rather than of whoever last looked at it.
+ * It deliberately does NOT cover every locomotion type. A hover duct hangs
+ * BELOW the hull and a tri-layout puts one fan directly astern; both clear on
+ * an axis this test does not measure, and asserting the lateral one against
+ * them would only teach people to weaken the rule. Legs and flipper shoulders
+ * are attachments by design — the limb hanging off them is what reads as
+ * separated, not the root. What every type does share is checked below.
  */
 const LOCOMOTION_PIECE_CLEARANCE = 0.1;
 
-function pieceHalfWidthUnitRadius(
-  locomotion: UnitLocomotionBlueprint,
-): number {
+function sideMountedPieces(
+  blueprint: ReturnType<typeof getAllUnitBlueprints>[number],
+): { mounts: readonly LocomotionMount[]; halfWidth: number } | null {
+  const locomotion = blueprint.unitLocomotion;
   switch (locomotion.type) {
     case 'wheels':
-      return locomotion.config.treadWidth / 2;
     case 'treads':
     case 'amphibious-treads':
-      return locomotion.config.treadWidth / 2;
+      return { mounts: locomotion.config.mounts, halfWidth: locomotion.config.treadWidth / 2 };
     default:
-      return 0;
+      return null;
   }
 }
 
 function checkLocomotionMountClearance(): void {
   for (const blueprint of getAllUnitBlueprints()) {
-    const locomotion = blueprint.unitLocomotion;
-    if (
-      locomotion.type !== 'wheels' &&
-      locomotion.type !== 'treads' &&
-      locomotion.type !== 'amphibious-treads'
-    ) {
-      continue;
-    }
+    const sideMounted = sideMountedPieces(blueprint);
+    if (sideMounted === null) continue;
     const unitBlueprintId = blueprint.unitBlueprintId;
-    const mounts = locomotion.config.mounts;
-    assertContract(
-      mounts.length > 0,
-      `${unitBlueprintId} must author at least one locomotion mount`,
-    );
-    const halfWidth = pieceHalfWidthUnitRadius(locomotion);
     const bodyHalfWidth = getBodyHalfWidthFrac(blueprint.bodyShape);
-    for (let i = 0; i < mounts.length; i++) {
-      const mount = mounts[i];
-      for (const axis of ['xUnitRadiusRatio', 'yUnitRadiusRatio', 'zUnitRadiusRatio'] as const) {
-        assertContract(
-          Number.isFinite(mount[axis]),
-          `${unitBlueprintId} mount ${i} must author a finite ${axis}`,
-        );
-      }
-      // The piece hangs off the side, so its inner face is what has to clear
-      // the hull. A mount that merely puts the CENTRE outside the body still
-      // buries half the track.
-      const inner = Math.abs(mount.yUnitRadiusRatio) - halfWidth;
+    for (let i = 0; i < sideMounted.mounts.length; i++) {
+      // The piece hangs off the side, so its INNER FACE is what has to clear.
+      // A mount that merely puts the centre outside the body still buries
+      // half the track.
+      const inner = Math.abs(sideMounted.mounts[i].yUnitRadiusRatio) - sideMounted.halfWidth;
       assertContract(
         inner >= bodyHalfWidth + LOCOMOTION_PIECE_CLEARANCE - 1e-6,
         `${unitBlueprintId} mount ${i} sits ${inner.toFixed(3)} out but the body `
@@ -198,16 +181,82 @@ function checkLocomotionMountClearance(): void {
           + `${LOCOMOTION_PIECE_CLEARANCE} unit-radius, or it renders buried in `
           + 'the hull it is supposed to be carrying',
       );
+    }
+  }
+}
+
+/**
+ * EVERY locomotion piece, of every type, is placed by a finite {x, y, z} —
+ * and no two pieces of one unit share a point.
+ *
+ * The second half is not hypothetical. Jets were authored as a `jetCount`
+ * plus one lateral scalar, and every twin-jet unit in the roster authored
+ * that scalar as 0, so the pair rendered exactly coincident: one nozzle
+ * wearing another, at twice the draw cost and no visual difference. Two
+ * pieces at one point is always a mistake, and it only becomes visible once
+ * the offsets are written down.
+ */
+function allLocomotionMounts(
+  blueprint: ReturnType<typeof getAllUnitBlueprints>[number],
+): readonly LocomotionMount[] {
+  const locomotion = blueprint.unitLocomotion;
+  switch (locomotion.type) {
+    case 'wheels':
+    case 'treads':
+    case 'amphibious-treads':
+      return locomotion.config.mounts;
+    case 'hover':
+    case 'flippers':
+      return locomotion.config.mounts.map((mount) => mount.offset);
+    case 'submarine':
+      return [
+        ...locomotion.config.pectorals.map((mount) => mount.offset),
+        locomotion.config.rearFan.offset,
+      ];
+    case 'flying':
+    case 'dive':
+      return locomotion.config.jets.map((jet) => jet.offset);
+    case 'legs':
+      return locomotion.config.leftSide.map((leg) => leg.attachmentPoint);
+    default:
+      return [];
+  }
+}
+
+function checkLocomotionMountsAuthored(): void {
+  for (const blueprint of getAllUnitBlueprints()) {
+    const unitBlueprintId = blueprint.unitBlueprintId;
+    const mounts = allLocomotionMounts(blueprint);
+    assertContract(
+      mounts.length > 0,
+      `${unitBlueprintId} moves, so it must author at least one locomotion mount`,
+    );
+    const seen = new Set<string>();
+    for (let i = 0; i < mounts.length; i++) {
+      const mount = mounts[i];
+      for (const axis of ['xUnitRadiusRatio', 'yUnitRadiusRatio', 'zUnitRadiusRatio'] as const) {
+        assertContract(
+          Number.isFinite(mount[axis]),
+          `${unitBlueprintId} mount ${i} must author a finite ${axis} — a missing `
+            + 'axis reads as 0, which silently drops the piece to the unit origin',
+        );
+      }
+      const key = [
+        mount.xUnitRadiusRatio, mount.yUnitRadiusRatio, mount.zUnitRadiusRatio,
+      ].join(',');
       assertContract(
-        mount.zUnitRadiusRatio > 0,
-        `${unitBlueprintId} mount ${i} sits at or below the unit origin`,
+        !seen.has(key),
+        `${unitBlueprintId} mounts two locomotion pieces at (${key}) — one piece `
+          + 'wearing another, at twice the cost and no visual difference',
       );
+      seen.add(key);
     }
   }
 }
 
 export function runUnitLocomotionContractTest(): void {
   checkLegAttachmentPoints();
+  checkLocomotionMountsAuthored();
   checkLocomotionMountClearance();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
