@@ -824,8 +824,51 @@ function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
   }
 }
 
+/**
+ * EVERY UNIFORM THE SHADER DECLARES MUST ALSO BE UPLOADED.
+ *
+ * three only sends what is in `shader.uniforms`; anything declared in the
+ * source but missing there is left at GL's default of ZERO. That is silent —
+ * the program links, the material renders, and the value is simply wrong.
+ *
+ * It has already bitten once: `uChartMaxGradTexels` shipped declared and used
+ * but unassigned, so the sampler's gradient ceiling was zero, every gradient
+ * scaled to nothing, and the whole sheet pinned to mip 0 — the exact inverse
+ * of the fix it belonged to, and visible only as worse aliasing on the one
+ * machine already reporting aliasing.
+ */
+function checkShaderUniformsUploaded(): void {
+  const material = new THREE.MeshLambertMaterial();
+  patchSurfaceChartMaterial(material, { bump: true });
+  const shader = {
+    uniforms: {} as Record<string, unknown>,
+    vertexShader: '#include <common>\n#include <project_vertex>',
+    fragmentShader:
+      '#include <common>\n#include <color_fragment>\n#include <normal_fragment_begin>',
+  };
+  material.onBeforeCompile(
+    shader as unknown as THREE.WebGLProgramParametersWithUniforms,
+    null as unknown as THREE.WebGLRenderer,
+  );
+  const declared = [...shader.fragmentShader.matchAll(/^uniform\s+\w+\s+(\w+)/gm)]
+    .map((match) => match[1]);
+  assertContract(
+    declared.length > 0,
+    'the chart fragment source must declare its uniforms where this can see them',
+  );
+  for (const name of declared) {
+    assertContract(
+      shader.uniforms[name] !== undefined,
+      `${name} is declared in the chart fragment shader but never uploaded — `
+        + 'GL will leave it at zero and the material will render wrong silently',
+    );
+  }
+  material.dispose();
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
+  checkShaderUniformsUploaded();
   checkLiverySeparation();
   checkProgramCacheKeys();
   checkFeatureScale();

@@ -76,6 +76,11 @@ const BARE_METAL_COLOR = new THREE.Color(0x9aa1a8);
  *  silhouette edge doesn't shimmer as the derivative flips. */
 const BUMP_SCALE = 0.55;
 
+/** The steepest slope the height field is allowed to imply — tan(45 degrees).
+ *  Relief cannot legitimately tilt a normal further; anything past this is a
+ *  filtering artifact. See perturbSurfaceChartNormal. */
+const MAX_BUMP_SLOPE = 1.0;
+
 /** Shared uniform objects. three.js reads uniforms by reference, so assigning
  *  these same objects into every patched shader means the CLIENT-bar toggle
  *  flips one value and every charted pool follows — no per-material walk and
@@ -97,7 +102,66 @@ const SHARED_UNIFORMS = {
   // The widest step, in texels per screen pixel, the sampler is allowed to
   // take. See clampChartGrad in the fragment source.
   uChartMaxGradTexels: { value: TRIM_BAND_GUTTER_PIXELS },
+  // The steepest slope the height field may imply. See the tilt bound in
+  // perturbSurfaceChartNormal.
+  uChartMaxBumpSlope: { value: MAX_BUMP_SLOPE },
 };
+
+/**
+ * Runtime knobs for the two artifact ceilings, for bisecting a GPU-specific
+ * rendering fault from the machine that actually shows it.
+ *
+ * Both ceilings exist to bound something that misbehaves only on some drivers,
+ * which makes them exactly the kind of fix nobody can verify by looking at the
+ * machine they were written on. Raising one to infinity restores the old
+ * unbounded behaviour for that term alone, so "does this clamp fix it" becomes
+ * a question the person in front of the broken GPU can answer in one line
+ * instead of a rebuild-and-guess loop.
+ *
+ * DEV only, and deliberately mutable at the uniform: no recompile, no reload,
+ * effective on the next frame.
+ */
+function installSurfaceChartDevKnobs(): void {
+  if (!import.meta.env.DEV) return;
+  if (typeof window === 'undefined') return;
+  const w = window as unknown as Record<string, unknown>;
+  if (w.__surfaceChart !== undefined) return;
+  w.__surfaceChart = {
+    /** Ceiling on the sampler's step, in texels per pixel. Infinity restores
+     *  the unbounded gradient (a uv seam can then reach the 1x1 mip). */
+    gradClamp(texels: number = TRIM_BAND_GUTTER_PIXELS): number {
+      SHARED_UNIFORMS.uChartMaxGradTexels.value = texels;
+      return texels;
+    },
+    /** Ceiling on the slope the bump may imply. Infinity restores the
+     *  unbounded tilt; 0 pins the normal to the geometry. */
+    bumpClamp(slope: number = MAX_BUMP_SLOPE): number {
+      SHARED_UNIFORMS.uChartMaxBumpSlope.value = slope;
+      return slope;
+    },
+    /** Bump strength. 0 removes the height-derived normal entirely, which
+     *  isolates "is it the bump at all" from "is it the sampler". */
+    bump(scale: number = BUMP_SCALE): number {
+      SHARED_UNIFORMS.uChartBumpScale.value = scale;
+      return scale;
+    },
+    reset(): void {
+      SHARED_UNIFORMS.uChartMaxGradTexels.value = TRIM_BAND_GUTTER_PIXELS;
+      SHARED_UNIFORMS.uChartMaxBumpSlope.value = MAX_BUMP_SLOPE;
+      SHARED_UNIFORMS.uChartBumpScale.value = BUMP_SCALE;
+    },
+    state(): Record<string, number> {
+      return {
+        maxGradTexels: SHARED_UNIFORMS.uChartMaxGradTexels.value,
+        maxBumpSlope: SHARED_UNIFORMS.uChartMaxBumpSlope.value,
+        bumpScale: SHARED_UNIFORMS.uChartBumpScale.value,
+        enabled: SHARED_UNIFORMS.uChartEnabled.value,
+      };
+    },
+  };
+}
+
+installSurfaceChartDevKnobs();
 
 /** Enable/disable all surface charting at runtime. Disabled fragments take the
  *  same branch as an unlabelled instance, so this is a true A/B against the
@@ -171,6 +235,7 @@ const FRAGMENT_DECL = [
   'uniform vec4 uChartGrainRect;',
   'uniform float uChartGrainWorld;',
   'uniform float uChartMaxGradTexels;',
+  'uniform float uChartMaxBumpSlope;',
   'varying vec4 vChart;',
   'varying vec2 vChartUv;',
   'varying vec3 vChartGrainPos;',
@@ -311,7 +376,7 @@ const FRAGMENT_DECL = [
   // clamp there and let genuine bump through untouched.
   '  vec3 slope = gradient / abs(det);',
   '  float slopeLen = length(slope);',
-  '  if (slopeLen > 1.0) slope *= 1.0 / slopeLen;',
+  '  if (slopeLen > uChartMaxBumpSlope) slope *= uChartMaxBumpSlope / slopeLen;',
   '  return normalize(surfNormal - slope);',
   '}',
   '#endif',
@@ -420,13 +485,18 @@ export function patchSurfaceChartMaterial(
   const grainLocal = options.grainLocal ?? GRAIN_LOCAL_DEFAULT;
   material.onBeforeCompile = (shader, renderer) => {
     if (previousCompile) previousCompile.call(material, shader, renderer);
-    shader.uniforms.uTrimSheet = SHARED_UNIFORMS.uTrimSheet;
-    shader.uniforms.uChartEnabled = SHARED_UNIFORMS.uChartEnabled;
-    shader.uniforms.uChartBareMetal = SHARED_UNIFORMS.uChartBareMetal;
-    shader.uniforms.uChartBumpScale = SHARED_UNIFORMS.uChartBumpScale;
-    shader.uniforms.uChartBands = SHARED_UNIFORMS.uChartBands;
-    shader.uniforms.uChartGrainRect = SHARED_UNIFORMS.uChartGrainRect;
-    shader.uniforms.uChartGrainWorld = SHARED_UNIFORMS.uChartGrainWorld;
+    // EVERY shared uniform, by iteration rather than by hand.
+    //
+    // Listing them one per line is how `uChartMaxGradTexels` shipped declared
+    // and used in the fragment source but never assigned: three only uploads
+    // what is in `shader.uniforms`, and GL defaults the rest to ZERO. A zero
+    // ceiling scaled every sampler gradient to nothing, which pins the whole
+    // sheet to mip 0 — the exact opposite of the fix it was part of, and
+    // invisible except as worse aliasing on the machine already complaining
+    // about aliasing. Iterating makes the omission unrepresentable.
+    for (const name of Object.keys(SHARED_UNIFORMS) as (keyof typeof SHARED_UNIFORMS)[]) {
+      shader.uniforms[name] = SHARED_UNIFORMS[name];
+    }
 
     const define = options.bump ? '#define SURFACE_CHART_BUMP\n' : '';
     shader.vertexShader = shader.vertexShader
