@@ -176,7 +176,23 @@ export function isSurfaceChartEnabled(): boolean {
 
 const VERTEX_DECL = [
   'attribute vec4 aChart;',
-  'varying vec4 vChart;',
+  // FLAT. vChart carries a band CODE and two repeat counts — per-primitive
+  // constants, not a field to interpolate across a triangle. Interpolating
+  // them is what produced the sparkle:
+  //
+  // All three vertices of a triangle hold the same code, so a perspective-
+  // correct interpolator "should" return it exactly. It does not have to. A
+  // fragment can land on 5.99999, `int()` truncates toward zero, and that
+  // fragment decodes band 5 instead of 6 — a DIFFERENT BAND, sampled at a
+  // completely unrelated place in the atlas. For a leg strut (code 6) the
+  // neighbour it falls into is `barrelShaft`, the whitest thing on the sheet,
+  // so the miss reads as a bright white speck.
+  //
+  // Whether it happens at all is a property of the GPU's interpolation
+  // precision, which is why this was invisible on one machine and obvious on
+  // another. `flat` removes the interpolation, so there is no value to land
+  // between two codes.
+  'flat varying vec4 vChart;',
   'varying vec2 vChartUv;',
   'varying vec3 vChartGrainPos;',
   'varying vec3 vChartGrainNormal;',
@@ -236,7 +252,9 @@ const FRAGMENT_DECL = [
   'uniform float uChartGrainWorld;',
   'uniform float uChartMaxGradTexels;',
   'uniform float uChartMaxBumpSlope;',
-  'varying vec4 vChart;',
+  // flat — see VERTEX_DECL. The two declarations must agree or the program
+  // will not link.
+  'flat varying vec4 vChart;',
   'varying vec2 vChartUv;',
   'varying vec3 vChartGrainPos;',
   'varying vec3 vChartGrainNormal;',
@@ -402,9 +420,12 @@ const FRAGMENT_ALBEDO = [
   'float chartActive = step(0.5, chartBand) * uChartEnabled;',
   'vec3 chartTexel;',
   'if (chartActive > 0.5) {',
-  '  chartTexel = sampleSurfaceChart(',
-  '    vChartUv, uChartBands[int(chartBand) - 1], vChart.yz',
-  '  );',
+  // ROUND, do not truncate. Belt and braces against the varying above: with
+  // `flat` there is nothing to land between two codes, but `int()` on a float
+  // one ulp low silently reads the neighbouring band rather than failing, and
+  // a silent wrong band is what this whole comment is about.
+  '  int band = int(floor(chartBand + 0.5)) - 1;',
+  '  chartTexel = sampleSurfaceChart(vChartUv, uChartBands[band], vChart.yz);',
   '} else {',
   // A surface no chart claimed is plain material, and the grain is what plain
   // material looks like. The two are exclusive on purpose: a charted band

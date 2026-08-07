@@ -825,6 +825,10 @@ function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
 }
 
 /**
+ * The chart shader's interface contract: what it declares must match what the
+ * TypeScript side actually supplies, and the band code must not be a value the
+ * hardware is free to reinterpolate.
+ *
  * EVERY UNIFORM THE SHADER DECLARES MUST ALSO BE UPLOADED.
  *
  * three only sends what is in `shader.uniforms`; anything declared in the
@@ -837,7 +841,7 @@ function checkBaseColourSurvives(pixels: Uint8ClampedArray): void {
  * of the fix it belonged to, and visible only as worse aliasing on the one
  * machine already reporting aliasing.
  */
-function checkShaderUniformsUploaded(): void {
+function checkShaderInterfaceContract(): void {
   const material = new THREE.MeshLambertMaterial();
   patchSurfaceChartMaterial(material, { bump: true });
   const shader = {
@@ -850,6 +854,22 @@ function checkShaderUniformsUploaded(): void {
     shader as unknown as THREE.WebGLProgramParametersWithUniforms,
     null as unknown as THREE.WebGLRenderer,
   );
+  // THE BAND CODE MUST NOT BE INTERPOLATED. It selects which rectangle of the
+  // atlas a fragment reads, so a value that lands one ulp below its integer
+  // decodes to the NEIGHBOURING band and samples somewhere unrelated. For a
+  // leg strut that neighbour is `barrelShaft`, the whitest band on the sheet,
+  // which is why the symptom was white specks on legged units — and it only
+  // appeared on some GPUs, because whether interpolation returns the exact
+  // integer is a property of the hardware, not of the shader.
+  for (const source of [shader.vertexShader, shader.fragmentShader]) {
+    assertContract(
+      /flat\s+varying\s+vec4\s+vChart\s*;/.test(source),
+      'vChart must be declared flat in BOTH stages — it carries a band code '
+        + 'and repeat counts, which are per-primitive constants, and '
+        + 'interpolating them lets a fragment decode the wrong band',
+    );
+  }
+
   const declared = [...shader.fragmentShader.matchAll(/^uniform\s+\w+\s+(\w+)/gm)]
     .map((match) => match[1]);
   assertContract(
@@ -868,7 +888,7 @@ function checkShaderUniformsUploaded(): void {
 
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
-  checkShaderUniformsUploaded();
+  checkShaderInterfaceContract();
   checkLiverySeparation();
   checkProgramCacheKeys();
   checkFeatureScale();
