@@ -59,6 +59,7 @@ uniform float uFogOfWarRadarDarkness;
 uniform float uFogOfWarUnseenDesaturation;
 uniform float uFogOfWarRadarDesaturation;
 uniform float uEntityShadowEnabled;
+uniform float uEntityShadowDarkness;
 `;
 
 /** Applies full-sight, radar, unseen, and optional entity-shadow coverage from
@@ -106,7 +107,37 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     radarOnlyCoverage * uFogOfWarRadarDesaturation +
     unseenCoverage * uFogOfWarUnseenDesaturation
   );
-  float entityShadowDarkness = ${receiveEntityShadows ? 'uEntityShadowEnabled * smoothstep(0.02, 0.98, texture2D(uWorldShadowMap, worldShadeUv).r) * uFogOfWarRadarDarkness' : '0.0'};
+  // OCCLUSION, SHAPED EXACTLY ONCE. The region pass already wrote the authored
+  // penumbra (1 - smoothstep across the soft edge) and MAX-composited it, so
+  // this is a lookup plus a tail clamp — NOT a second smoothstep. Running the
+  // curve twice steepened the penumbra to roughly a third of its authored
+  // width and, worse, amplified the gradient crease that MAX leaves wherever
+  // two shadows meet. That crease is a moving seam: as two units pass each
+  // other it sweeps across the ground between them, which is what made nearby
+  // shadows look like they were crawling.
+  //
+  // The clamp keeps what the old smoothstep's endpoints were for — snapping
+  // the near-zero tail to zero so a faint haze does not cover the map — and
+  // drops the reshaping it was doing by accident.
+  float entityOcclusion = ${receiveEntityShadows ? 'clamp((texture2D(uWorldShadowMap, worldShadeUv).r - 0.02) / 0.96, 0.0, 1.0)' : '0.0'};
+  float entityShadowDarkness =
+    ${receiveEntityShadows ? 'uEntityShadowEnabled * entityOcclusion * uEntityShadowDarkness' : '0.0'};
+
+  // LIGHT FIRST, KNOWLEDGE SECOND. These are different things and used to be
+  // combined with max(), which meant whichever was darker won outright: a
+  // shadow inside radar fog vanished completely, so a unit's shadow popped out
+  // of existence as it walked across a fog boundary and back in as it left.
+  //
+  // A shadow is a fact about the world — less sun reaches that ground — so it
+  // applies to the surface. Fog is a fact about the PLAYER — less is known
+  // about that ground — so it veils whatever the lighting produced. Ordering
+  // them that way makes a shadow survive fog at proportional strength and
+  // removes the discontinuity at the fog line entirely.
+  diffuseColor.rgb = mix(
+    diffuseColor.rgb,
+    uWorldShadeColor,
+    clamp(entityShadowDarkness, 0.0, 1.0)
+  );
   float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
   diffuseColor.rgb = mix(
     diffuseColor.rgb,
@@ -116,7 +147,7 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
   diffuseColor.rgb = mix(
     diffuseColor.rgb,
     uWorldShadeColor,
-    clamp(max(fogDarkness, entityShadowDarkness), 0.0, 1.0)
+    clamp(fogDarkness, 0.0, 1.0)
   );
 }
 `;
@@ -173,6 +204,12 @@ export class WorldShade3D {
   private readonly radarDesaturationUniform = { value: 0 };
   private readonly entityShadowEnabledUniform = {
     value: ENTITY_SHADOW_RENDER_CONFIG.enabled ? 1 : 0,
+  };
+  // The contact shadow's OWN strength. It used to reuse the fog's radar
+  // darkness, so one number set how dark radar contacts looked AND how dark
+  // every unit's shadow was.
+  private readonly entityShadowDarknessUniform = {
+    value: ENTITY_SHADOW_RENDER_CONFIG.darknessPercent / 100,
   };
   private readonly patchedMaterials = new WeakSet<THREE.Material>();
   private readonly previousClearColor = new THREE.Color();
@@ -340,6 +377,7 @@ void main() {
     shader.uniforms.uFogOfWarUnseenDesaturation = this.unseenDesaturationUniform;
     shader.uniforms.uFogOfWarRadarDesaturation = this.radarDesaturationUniform;
     shader.uniforms.uEntityShadowEnabled = this.entityShadowEnabledUniform;
+    shader.uniforms.uEntityShadowDarkness = this.entityShadowDarknessUniform;
   }
 
   /** Environment props consume fog/radar from the shared field, but entity

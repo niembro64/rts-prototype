@@ -4,7 +4,7 @@
   "worldBox": {
     "waterExtensionWorldUnits": 200,
     "depthAverageAxisFraction": 0.25,
-    "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
+    "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction \u00d7 ((map width + map length) / 2)."
   },
   "horizonRenderExtend": 180000,
   "presetBackdrop": {
@@ -107,27 +107,73 @@
   },
   "entityShadow": {
     "enabled": true,
+    "darknessPercent": 35,
     "maxInstances": 16000,
     "unitHitboxRadiusMultiplier": 2,
     "unitSunStretch": 1.35,
     "buildingRadiusMultiplier": 2,
     "minBuildingRadius": 22,
-    "buildingSunStretch": 1.35
+    "buildingSunStretch": 1.35,
+    "detail": "darknessPercent is the contact shadow's OWN strength. It used to borrow fogConfig radarDarknessPercent, so changing how dark radar contacts look also changed how dark unit shadows were. 35 is that value, so the look is unchanged and the coupling is gone."
   },
   "overlayLines": {
     "feather": 0.16,
     "kinds": {
-      "selection": { "widthPx": 3, "groundLift": 0.8, "renderOrder": 22 },
-      "rangeEngage": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "rangeTrack": { "widthPx": 2, "groundLift": 6, "renderOrder": 20 },
-      "build": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "radar": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "reclaim": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 21 },
-      "projectileEnvelope": { "widthPx": 2.5, "groundLift": 9, "renderOrder": 22 },
-      "sight": { "widthPx": 2, "groundLift": 9, "renderOrder": 25 },
-      "radarBoundary": { "widthPx": 2, "groundLift": 9, "renderOrder": 24 },
-      "waypoint": { "widthPx": 2.5, "groundLift": 18, "renderOrder": 4.25 },
-      "drag": { "widthPx": 3.5, "groundLift": 1, "renderOrder": 16 }
+      "selection": {
+        "widthPx": 3,
+        "groundLift": 0.8,
+        "renderOrder": 22
+      },
+      "rangeEngage": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "rangeTrack": {
+        "widthPx": 2,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "build": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "radar": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "reclaim": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 21
+      },
+      "projectileEnvelope": {
+        "widthPx": 2.5,
+        "groundLift": 9,
+        "renderOrder": 22
+      },
+      "sight": {
+        "widthPx": 2,
+        "groundLift": 9,
+        "renderOrder": 25
+      },
+      "radarBoundary": {
+        "widthPx": 2,
+        "groundLift": 9,
+        "renderOrder": 24
+      },
+      "waypoint": {
+        "widthPx": 2.5,
+        "groundLift": 18,
+        "renderOrder": 4.25
+      },
+      "drag": {
+        "widthPx": 3.5,
+        "groundLift": 1,
+        "renderOrder": 16
+      }
     }
   }
 }
