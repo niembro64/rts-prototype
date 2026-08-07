@@ -193,10 +193,14 @@ export class UnitMeshBuilder3D {
           if (bodyEntry.parts[i].x > bodyEntry.parts[forwardPart].x) forwardPart = i;
         }
         const hostScale = radius / REFERENCE_HOST_RADIUS;
+        // A body of ONE lobe has no nose to distinguish from its body, and
+        // dressing the whole hull in the facet band is a degenerate reading of
+        // a rule about composites. One lobe is a hull, and a hull is plate.
+        const hasDistinctNose = bodyEntry.parts.length > 1;
         for (let i = 0; i < smoothChassisSlots.length; i++) {
           this.unitDetailInstances.setSmoothChassisChart(
             smoothChassisSlots[i],
-            bodyLobeChart(i === forwardPart),
+            bodyLobeChart(hasDistinctNose && i === forwardPart),
             hostScale,
           );
         }

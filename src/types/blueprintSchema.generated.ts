@@ -716,7 +716,6 @@ export type UnitBodyShapePolygon = {
   radiusFrac: number;
   heightFrac: number;
   rotation: number;
-  bevelEnabled?: boolean;
 };
 
 export type UnitBodyShapeRect = {

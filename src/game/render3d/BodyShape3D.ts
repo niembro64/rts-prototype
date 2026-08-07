@@ -149,63 +149,84 @@ function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFr
   };
 }
 
-function bodyExtrudeOptions(depth: number): THREE.ExtrudeGeometryOptions {
-  // Polygon, rectangle and rhombus bodies are authored as boxy prisms. Keep
-  // their hard planar faces at every rung: beveling only rounds a deliberately
-  // simple silhouette, adds triangles, and changes volume between LODs.
-  return { depth, bevelEnabled: false, steps: 1 };
+
+/**
+ * The 2D footprint an authored prism shape occupies, in unit-radius-1 space.
+ *
+ * These shapes are authored as a FOOTPRINT plus a height — a hexagon 0.55
+ * across, a rectangle 1.6 wide — and that footprint is what every other system
+ * already reasons about: the turret's mount height, the locomotion's lateral
+ * clearance, the team kit's fit. Reading the extents back off the authored
+ * numbers is what keeps the rounded body agreeing with all of them.
+ */
+function shapeFootprint(spec: UnitBodyShape): {
+  minX: number; maxX: number; minZ: number; maxZ: number;
+} {
+  if (spec.kind === 'polygon') {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < spec.sides; i++) {
+      const a = spec.rotation + (i / spec.sides) * Math.PI * 2;
+      const x = Math.cos(a);
+      const y = Math.sin(a);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    // The extrusion put the shape's XY on the world XZ plane with y negated
+    // (rotateX(-PI/2)), and scaled both axes by radiusFrac.
+    const r = spec.radiusFrac;
+    return { minX: minX * r, maxX: maxX * r, minZ: -maxY * r, maxZ: -minY * r };
+  }
+  // Rect and rhombus share a bounding box: the rhombus is the rect's diagonals.
+  // Its corners are cut, which a spheroid rounds off anyway.
+  const halfLength = spec.kind === 'rect' || spec.kind === 'rhombus'
+    ? spec.lengthFrac / 2
+    : 0;
+  const halfWidth = spec.kind === 'rect' || spec.kind === 'rhombus'
+    ? spec.widthFrac / 2
+    : 0;
+  return { minX: -halfLength, maxX: halfLength, minZ: -halfWidth, maxZ: halfWidth };
 }
 
+/**
+ * The prism shapes, rendered as SPHEROIDS.
+ *
+ * A body authored as "hexagon, 0.55 across, 0.3 tall" describes how much room
+ * the hull takes up, not that it is faceted. Extruding it literally gave six
+ * flat walls and a flat lid, which is a different object from everything else
+ * in the roster: every composite hull is already spheres and ovoids, and a
+ * prism parked next to one reads as a placeholder that never got finished.
+ *
+ * The spheroid INSCRIBES the authored footprint's bounding box and spans its
+ * full height exactly. That is the conservative fit on purpose — the body
+ * never grows past the extents the blueprint declares, so the turret still
+ * mounts at the same height, the treads still clear the same hull, and the
+ * team kit still fits the same box. It does round the corners off, and between
+ * a polygon's vertices it stands slightly proud of the old flat wall; both are
+ * inherent in asking for a rounded body and neither moves the silhouette's
+ * extremes, which is what size reads from.
+ *
+ * The win is not only that it looks like the rest of the roster. A spheroid is
+ * the shared unit sphere, so these bodies join the smooth chassis instancing
+ * pool, pick up the hull charts, and get a real LOD ladder — a prism had one
+ * geometry at every rung because there was nothing in it to simplify.
+ */
 function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomEntry {
   const topY = getBodyTopFrac(spec);
-  if (spec.kind === 'polygon') {
-    const h = spec.heightFrac;
-    const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
-    const geom = new THREE.ExtrudeGeometry(
-      shape,
-      bodyExtrudeOptions(h),
-    );
-    // Extrusion along +Z with shape in XY → rotate so the shape lands on
-    // the XZ plane and extrude direction becomes +Y.
-    geom.rotateX(-Math.PI / 2);
+  if (spec.kind === 'polygon' || spec.kind === 'rect' || spec.kind === 'rhombus') {
+    const footprint = shapeFootprint(spec);
+    const halfHeight = Math.max(1e-3, spec.heightFrac / 2);
     return {
       parts: [{
-        geometry: geom,
-        x: 0, y: 0, z: 0,
-        scaleX: spec.radiusFrac, scaleY: 1, scaleZ: spec.radiusFrac,
+        geometry: getUnitSphere(tier),
+        x: (footprint.minX + footprint.maxX) / 2,
+        y: halfHeight,
+        z: (footprint.minZ + footprint.maxZ) / 2,
+        scaleX: Math.max(1e-3, (footprint.maxX - footprint.minX) / 2),
+        scaleY: halfHeight,
+        scaleZ: Math.max(1e-3, (footprint.maxZ - footprint.minZ) / 2),
       }],
       topY,
-      isSmooth: false,
-    };
-  }
-  if (spec.kind === 'rect') {
-    const h = spec.heightFrac;
-    const shape = buildRectShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h));
-    geom.rotateX(-Math.PI / 2);
-    return {
-      parts: [{
-        geometry: geom,
-        x: 0, y: 0, z: 0,
-        scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
-      }],
-      topY,
-      isSmooth: false,
-    };
-  }
-  if (spec.kind === 'rhombus') {
-    const h = spec.heightFrac;
-    const shape = buildRhombusShape(1, 1);
-    const geom = new THREE.ExtrudeGeometry(shape, bodyExtrudeOptions(h));
-    geom.rotateX(-Math.PI / 2);
-    return {
-      parts: [{
-        geometry: geom,
-        x: 0, y: 0, z: 0,
-        scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
-      }],
-      topY,
-      isSmooth: false,
+      isSmooth: true,
     };
   }
   if (spec.kind === 'circle') {
@@ -263,37 +284,8 @@ export function getBodyGeom(
   return entry;
 }
 
-function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {
-  // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π.
-  const pts: THREE.Vector2[] = [];
-  for (let i = 0; i < sides; i++) {
-    const a = rotation + (i / sides) * Math.PI * 2;
-    pts.push(new THREE.Vector2(Math.cos(a) * radius, Math.sin(a) * radius));
-  }
-  return new THREE.Shape(pts);
-}
 
-function buildRectShape(width: number, length: number): THREE.Shape {
-  const hw = width / 2;
-  const hl = length / 2;
-  return new THREE.Shape([
-    new THREE.Vector2(-hl, -hw),
-    new THREE.Vector2( hl, -hw),
-    new THREE.Vector2( hl,  hw),
-    new THREE.Vector2(-hl,  hw),
-  ]);
-}
 
-function buildRhombusShape(width: number, length: number): THREE.Shape {
-  const hw = width / 2;
-  const hl = length / 2;
-  return new THREE.Shape([
-    new THREE.Vector2( hl, 0),
-    new THREE.Vector2(0,  hw),
-    new THREE.Vector2(-hl, 0),
-    new THREE.Vector2(0, -hw),
-  ]);
-}
 
 /** One 3D edge slab that represents a side of the unit's extruded body.
  *  Centered at (x, z) in unit-local coords, `length` along the edge

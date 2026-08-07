@@ -384,29 +384,53 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
       assertDescending(`${unitId} body`, counts);
       assertRelativeNear(`${unitId} body High/Medium volume`, volumes[0], volumes[1]);
       assertRelativeNear(`${unitId} body Medium/Low volume`, volumes[1], volumes[2]);
-      if (!entries[0].isSmooth) {
-        for (const [tierIndex, entry] of entries.entries()) {
-          for (const part of entry.parts) {
-            if (part.geometry.type !== 'ExtrudeGeometry') continue;
-            const options = (part.geometry as THREE.ExtrudeGeometry).parameters?.options;
-            assertContract(
-              options?.bevelEnabled === false,
-              `${unitId}/${TIERS[tierIndex]} boxy body keeps hard unbeveled faces`,
-            );
-          }
-        }
-      }
     }
-    if (unitId === 'unitMongoose') {
+    // PRISM-AUTHORED BODIES ARE SPHEROIDS. A blueprint saying "hexagon, 0.55
+    // across, 0.3 tall" is describing the room the hull takes up, not that it
+    // is faceted, and it is rendered as one squashed sphere fitted to that
+    // footprint. Checked against the AUTHORED numbers rather than against the
+    // fitting code, so this fails if the fit drifts rather than agreeing with
+    // whatever the fit currently does.
+    const shape = blueprint.bodyShape;
+    if (shape !== null
+      && (shape.kind === 'polygon' || shape.kind === 'rect' || shape.kind === 'rhombus')) {
+      const halfX = shape.kind === 'polygon' ? shape.radiusFrac : shape.lengthFrac / 2;
+      const halfZ = shape.kind === 'polygon' ? shape.radiusFrac : shape.widthFrac / 2;
+      for (const [tierIndex, entry] of entries.entries()) {
+        const label = `${unitId}/${TIERS[tierIndex]}`;
+        assertContract(
+          entry.isSmooth && entry.parts.length === 1,
+          `${label} prism-authored body must render as one smooth spheroid`,
+        );
+        const part = entry.parts[0];
+        // Never past the footprint it was authored with: the turret's mount
+        // height, the locomotion's lateral clearance and the team kit's fit
+        // are all derived from these same numbers, and a body that outgrew
+        // them would leave every one of them wrong in a different way.
+        assertContract(
+          Math.abs(part.x) + part.scaleX <= halfX + 1e-9
+            && Math.abs(part.z) + part.scaleZ <= halfZ + 1e-9,
+          `${label} spheroid body grows past its authored footprint`,
+        );
+        // ...but it does have to fill it, or the unit visibly shrank.
+        assertContract(
+          part.scaleX > halfX * 0.4 && part.scaleZ > halfZ * 0.4,
+          `${label} spheroid body collapsed inside its footprint`,
+        );
+        // Seated on the ground and reaching exactly the authored top, which is
+        // where the turret mounts.
+        assertContract(
+          Math.abs(part.y - part.scaleY) < 1e-9
+            && Math.abs(part.y + part.scaleY - shape.heightFrac) < 1e-9,
+          `${label} spheroid body must span 0..heightFrac exactly`,
+        );
+      }
+      // And it must genuinely simplify between rungs. This is the thing a
+      // prism could not do — there was nothing in a hexagonal extrusion to
+      // take away, so all three rungs shared one geometry.
       assertContract(
-        blueprint.bodyShape !== null &&
-          blueprint.bodyShape.kind === 'polygon' &&
-          blueprint.bodyShape.bevelEnabled === false,
-        'Mongoose explicitly disables polygon body bevels',
-      );
-      assertContract(
-        counts[0] === counts[1] && counts[1] === counts[2],
-        'Mongoose High/Medium/Low bodies stay on the same unbeveled hexagonal prism',
+        counts[0] > counts[2],
+        `${unitId} spheroid body must shed triangles between High and Low`,
       );
     }
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
