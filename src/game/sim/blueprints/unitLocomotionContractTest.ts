@@ -75,7 +75,60 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitCommander: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
 
+
+/**
+ * A LEG ATTACHMENT IS A FULL {x, y, z} IN THE UNIT'S OWN FRAME.
+ *
+ * The height used to be derived — the lifted mid-point of whichever body
+ * segment the leg sat under, with a unit-wide `legAttachHeightFrac` override
+ * for hulls whose visible body is a turret. Three separate files re-derived
+ * it and had to agree, a bodyless hull could not have legs at all, and no leg
+ * could sit at a different height from its neighbours on the same unit.
+ *
+ * Now it is authored per leg, which means it can also be authored WRONG in a
+ * way nothing else notices: a missing axis reads as 0 and drops the hip to
+ * the unit's origin. Pin all three.
+ */
+function checkLegAttachmentPoints(): void {
+  for (const blueprint of getAllUnitBlueprints()) {
+    const unitBlueprintId = blueprint.unitBlueprintId;
+    const locomotion = blueprint.unitLocomotion;
+    if (locomotion.type !== 'legs') continue;
+    const legs = locomotion.config.leftSide;
+    assertContract(
+      legs.length > 0,
+      `${unitBlueprintId} walks, so it must author at least one leg`,
+    );
+    for (let i = 0; i < legs.length; i++) {
+      const point = legs[i].attachmentPoint;
+      for (const axis of ['xUnitRadiusRatio', 'yUnitRadiusRatio', 'zUnitRadiusRatio'] as const) {
+        assertContract(
+          Number.isFinite(point[axis]),
+          `${unitBlueprintId} leg ${i} must author a finite ${axis} — a missing `
+            + 'axis reads as 0, which silently drops the hip to the unit origin',
+        );
+      }
+      // The lateral axis is the MIRROR axis: resolveMirroredLegConfigs negates
+      // it and nothing else, so a leg authored on the centreline produces two
+      // legs in the same place rather than a pair.
+      assertContract(
+        Math.abs(point.yUnitRadiusRatio) > 1e-6,
+        `${unitBlueprintId} leg ${i} sits on the centreline, so its mirror `
+          + 'lands on top of it',
+      );
+      // Height is up from the unit's own origin, so a hip at or below zero is
+      // a leg attached underneath the body rather than to it.
+      assertContract(
+        point.zUnitRadiusRatio > 0,
+        `${unitBlueprintId} leg ${i} attaches at or below the unit origin `
+          + `(z = ${point.zUnitRadiusRatio})`,
+      );
+    }
+  }
+}
+
 export function runUnitLocomotionContractTest(): void {
+  checkLegAttachmentPoints();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
   const manySamples: Array<{ x: number; y: number }> = [];

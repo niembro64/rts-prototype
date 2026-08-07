@@ -412,7 +412,7 @@ export function buildLocomotion(
       const chassisLiftY = getChassisLift(bp, unitRadius);
       const mesh = buildLegs(
         worldGroup, unitRadius, loc.config,
-        gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
+        gfx.legs, chassisLiftY,
         legRenderer, ownerId,
         geometryTier,
         // Every walker's legs, not one blueprint's. A leg segment is a

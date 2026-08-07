@@ -18,6 +18,7 @@ function resolveLeftSideLegConfigs(
     legs[i] = {
       attachOffsetX: leg.attachmentPoint.xUnitRadiusRatio * radius,
       attachOffsetY: leg.attachmentPoint.yUnitRadiusRatio * radius,
+      attachOffsetZ: leg.attachmentPoint.zUnitRadiusRatio * radius,
       upperLegLength: config.segments.upper.lengthUnitRadiusRatio * radius,
       lowerLegLength: config.segments.lower.lengthUnitRadiusRatio * radius,
       footSphereOriginExtensionRatio: config.footSphere.originExtensionRatio,
@@ -36,6 +37,8 @@ export function resolveMirroredLegConfigs(
   const right = new Array<ArachnidLegConfig>(left.length);
   for (let i = 0; i < left.length; i++) {
     const leg = left[i];
+    // Mirroring flips the LATERAL axis and nothing else: a mirrored leg
+    // attaches at the same station along the body and at the same height.
     right[i] = {
       ...leg,
       attachOffsetY: -leg.attachOffsetY,

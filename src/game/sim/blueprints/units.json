@@ -42,7 +42,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -148,7 +147,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -258,7 +256,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": 3.769230769231,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -313,13 +310,15 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 3.769230769231
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 3.769230769231
             }
           }
         ]
@@ -393,7 +392,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -499,7 +497,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -603,7 +600,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -658,13 +654,15 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.22,
-              "yUnitRadiusRatio": -0.22
+              "yUnitRadiusRatio": -0.22,
+              "zUnitRadiusRatio": 0.8
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.22,
-              "yUnitRadiusRatio": -0.22
+              "yUnitRadiusRatio": -0.22,
+              "zUnitRadiusRatio": 0.8
             }
           }
         ]
@@ -738,7 +736,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -861,7 +858,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -916,19 +912,22 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.42,
-              "yUnitRadiusRatio": -0.28
+              "yUnitRadiusRatio": -0.28,
+              "zUnitRadiusRatio": 0.92
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.02,
-              "yUnitRadiusRatio": -0.36
+              "yUnitRadiusRatio": -0.36,
+              "zUnitRadiusRatio": 1.22
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.48,
-              "yUnitRadiusRatio": -0.3
+              "yUnitRadiusRatio": -0.3,
+              "zUnitRadiusRatio": 1.35
             }
           }
         ]
@@ -1095,7 +1094,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1150,13 +1148,15 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.4,
-              "yUnitRadiusRatio": -0.4
+              "yUnitRadiusRatio": -0.4,
+              "zUnitRadiusRatio": 1.05
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.4,
-              "yUnitRadiusRatio": -0.4
+              "yUnitRadiusRatio": -0.4,
+              "zUnitRadiusRatio": 1.05
             }
           }
         ]
@@ -1229,7 +1229,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1367,7 +1366,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1506,7 +1504,6 @@
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1631,7 +1628,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1686,13 +1682,15 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 1.05
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 1.275
             }
           }
         ]
@@ -1781,7 +1779,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -1883,7 +1880,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2015,7 +2011,6 @@
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2159,7 +2154,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {
       "buildRange": 170
@@ -2272,7 +2266,6 @@
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2392,7 +2385,6 @@
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2543,7 +2535,6 @@
     "hud": {
       "barsOffsetAboveTop": 22
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2688,7 +2679,6 @@
     "hud": {
       "barsOffsetAboveTop": 22
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2818,7 +2808,6 @@
     "hud": {
       "barsOffsetAboveTop": 22
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -2873,19 +2862,22 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.46,
-              "yUnitRadiusRatio": -0.36
+              "yUnitRadiusRatio": -0.36,
+              "zUnitRadiusRatio": 0.44446808510638297
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0,
-              "yUnitRadiusRatio": -0.42
+              "yUnitRadiusRatio": -0.42,
+              "zUnitRadiusRatio": 0.574468085106383
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.36
+              "yUnitRadiusRatio": -0.36,
+              "zUnitRadiusRatio": 0.574468085106383
             }
           }
         ]
@@ -2977,7 +2969,6 @@
     "hud": {
       "barsOffsetAboveTop": 13
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
     "dgun": null,
@@ -3136,7 +3127,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {
       "buildRange": 150
@@ -3196,13 +3186,15 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 0.92
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.5
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 1.08
             }
           }
         ]
@@ -3314,7 +3306,6 @@
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {
       "buildRange": 170

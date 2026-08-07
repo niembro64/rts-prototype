@@ -729,6 +729,7 @@ pub struct TreadConfig {
 pub struct LegAttachmentPoint {
     pub xUnitRadiusRatio: f64,
     pub yUnitRadiusRatio: f64,
+    pub zUnitRadiusRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1143,7 +1144,6 @@ pub struct UnitBlueprint {
     pub turrets: Vec<TurretMount>,
     pub bodyShape: Option<UnitBodyShape>,
     pub hud: EntityHudBlueprint,
-    pub legAttachHeightFrac: Option<f64>,
     pub unitLocomotion: UnitLocomotionBlueprint,
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,

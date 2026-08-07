@@ -22,7 +22,6 @@ import { getBodyEdgeTemplates } from './BodyShape3D';
 import {
   TREAD_CHASSIS_LIFT_Y,
   getChassisLiftY,
-  getSegmentMidYAt,
 } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -215,17 +214,9 @@ export function getDebrisUnitProfile(
     for (const lc of all) {
       const hipX = lc.attachOffsetX;
       const hipZ = lc.attachOffsetY;
-      // Hip Y matches Locomotion3D: either an authored absolute
-      // attach height or the lifted midpoint of the body segment.
-      let hipY: number;
-      if (bp.legAttachHeightFrac !== null) {
-        hipY = bp.legAttachHeightFrac * r;
-      } else {
-        if (bp.bodyShape === null) {
-          throw new Error('A legged bodyless unit requires legAttachHeightFrac.');
-        }
-        hipY = chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
-      }
+      // Same authored attachment the live rig uses — see LegRig3D. Three
+      // files used to re-derive this number and had to agree.
+      const hipY = lc.attachOffsetZ;
       resolveLegSnapSphereLocal(
         hipX,
         hipZ,

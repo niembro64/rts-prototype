@@ -664,14 +664,12 @@ function runLegLocomotionStateContract(): void {
   const lowRenderer = new LegInstancedRenderer(lowPoolRoot);
   const radius = blueprint.radius.other;
   const high = buildLegs(
-    new THREE.Group(), radius, locomotion.config, 'full', blueprint.bodyShape,
-    getChassisLift(blueprint, radius), blueprint.legAttachHeightFrac,
-    highRenderer, undefined, 'close',
+    new THREE.Group(), radius, locomotion.config, 'full',
+    getChassisLift(blueprint, radius), highRenderer, undefined, 'close',
   );
   const low = buildLegs(
-    new THREE.Group(), radius, locomotion.config, 'full', blueprint.bodyShape,
-    getChassisLift(blueprint, radius), blueprint.legAttachHeightFrac,
-    lowRenderer, undefined, 'far',
+    new THREE.Group(), radius, locomotion.config, 'full',
+    getChassisLift(blueprint, radius), lowRenderer, undefined, 'far',
   );
   assertContract(high !== undefined && low !== undefined, 'walking unit resolves High/Low leg rigs');
   try {

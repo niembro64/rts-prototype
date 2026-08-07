@@ -496,6 +496,7 @@ export type TreadConfig = {
 export type LegAttachmentPoint = {
   xUnitRadiusRatio: number;
   yUnitRadiusRatio: number;
+  zUnitRadiusRatio: number;
 };
 
 export type LegSegment = {
@@ -838,7 +839,6 @@ export type UnitBlueprint = {
   turrets: TurretMount[];
   bodyShape: UnitBodyShape | null;
   hud: EntityHudBlueprint;
-  legAttachHeightFrac: number | null;
   unitLocomotion: UnitLocomotionBlueprint;
   suspension: UnitSuspensionConfig | null;
   builder: UnitBuilderConfig | null;

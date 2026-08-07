@@ -2055,13 +2055,17 @@
       "type": "object",
       "required": [
         "xUnitRadiusRatio",
-        "yUnitRadiusRatio"
+        "yUnitRadiusRatio",
+        "zUnitRadiusRatio"
       ],
       "properties": {
         "xUnitRadiusRatio": {
           "type": "number"
         },
         "yUnitRadiusRatio": {
+          "type": "number"
+        },
+        "zUnitRadiusRatio": {
           "type": "number"
         }
       },
@@ -3267,7 +3271,6 @@
         "turrets",
         "bodyShape",
         "hud",
-        "legAttachHeightFrac",
         "unitLocomotion",
         "suspension",
         "builder",
@@ -3327,16 +3330,6 @@
         },
         "hud": {
           "$ref": "#/$defs/EntityHudBlueprint"
-        },
-        "legAttachHeightFrac": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "unitLocomotion": {
           "$ref": "#/$defs/UnitLocomotionBlueprint"

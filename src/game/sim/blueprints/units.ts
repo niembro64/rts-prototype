@@ -36,7 +36,6 @@ type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
-  'legAttachHeightFrac',
   'suspension',
   'builder',
   'dgun',

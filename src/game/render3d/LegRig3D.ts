@@ -24,12 +24,10 @@ import { COLORS } from '@/colorsConfig';
 import { getLegsRadiusToggle, getLegsReachToggle } from '@/clientBarConfig';
 import type {
   LegConfig as BlueprintLegConfig,
-  UnitBodyShape,
 } from '@/types/blueprints';
 import { REFERENCE_HOST_RADIUS, type LegSurfaceCharts } from './SurfaceChart3D';
 import type { LegStyle } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
-import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import type { Entity, PlayerId } from '../sim/types';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -375,9 +373,7 @@ export function buildLegs(
   r: number,
   cfg: BlueprintLegConfig,
   legStyle: LegStyle,
-  bodyShape: UnitBodyShape | null,
   chassisLiftY: number,
-  legAttachHeightFrac: number | null,
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
@@ -413,19 +409,12 @@ export function buildLegs(
     const kneeJointRadius = legRadius * LEG_KNEE_SPHERE_RADIUS_MULTIPLIER;
     const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;
 
-    // Hip Y defaults to the lifted vertical mid-point of whichever
-    // body segment the leg sits under. Units whose visible body is a
-    // turret can author legAttachHeightFrac as an absolute terrain-up
-    // height fraction, in the same coordinate system as turret mount.z.
-    let hipY: number;
-    if (legAttachHeightFrac !== null) {
-      hipY = legAttachHeightFrac * r;
-    } else {
-      if (bodyShape === null) {
-        throw new Error('A legged bodyless unit requires legAttachHeightFrac.');
-      }
-      hipY = chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
-    }
+    // Where the leg meets the body, straight off the blueprint. This used to
+    // be derived — the lifted mid-point of whichever body segment the leg sat
+    // under, with a unit-wide override for hulls whose visible body is a
+    // turret — and the derivation was copied into three files that all had to
+    // agree. The attachment point carries its own height now.
+    const hipY = legCfg.attachOffsetZ;
 
     // Build the leg object with placeholder slot indices first, then
     // alloc — the alloc relocator callbacks need to write back to

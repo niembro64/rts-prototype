@@ -6,7 +6,7 @@ import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
-import { getChassisLiftY, getSegmentMidYAt } from '@/game/math/BodyDimensions';
+import { getChassisLiftY } from '@/game/math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '@/game/math/LegLayout';
 import {
   resolveLegSnapSphereLocal,
@@ -917,7 +917,6 @@ function buildPreviewLegs(
   const locomotion = blueprint.unitLocomotion;
   if (locomotion.type !== 'legs') return new THREE.Group();
   const radius = blueprint.radius.other;
-  const chassisLift = getChassisLiftY(blueprint, radius);
   const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
   const legRadius = Math.max(locomotion.config.radius, 1) * 0.6;
   const hipJointRadius = legRadius * LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER;
@@ -936,15 +935,8 @@ function buildPreviewLegs(
   for (const leg of all) {
     const legGroup = new THREE.Group();
     group.add(legGroup);
-    let hipY: number;
-    if (blueprint.legAttachHeightFrac !== null) {
-      hipY = blueprint.legAttachHeightFrac * radius;
-    } else {
-      if (blueprint.bodyShape === null) {
-        throw new Error('A legged bodyless preview requires legAttachHeightFrac.');
-      }
-      hipY = chassisLift + getSegmentMidYAt(blueprint.bodyShape, radius, leg.attachOffsetX);
-    }
+    // Authored, same as the live rig — see LegRig3D.
+    const hipY = leg.attachOffsetZ;
     const upperLen = leg.upperLegLength;
     const lowerLen = leg.lowerLegLength;
     resolveLegSnapSphereLocal(
