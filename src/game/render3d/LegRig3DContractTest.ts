@@ -9,7 +9,11 @@ import {
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
-import { resolveKneeJointQuaternion, resolveLegSegmentRight } from './LegRig3D';
+import {
+  resolveContactLockedFootYaw,
+  resolveKneeJointQuaternion,
+  resolveLegSegmentRight,
+} from './LegRig3D';
 import {
   kneeFromIK,
   LEG_ATTACHMENT_RADIUS_MULTIPLIER,
@@ -111,11 +115,43 @@ export function runLegRig3DContractTest(): void {
   const footLocalDown = new THREE.Vector3(0, -1, 0).applyQuaternion(footQuaternion);
   assertContract(
     footLocalRight.dot(expectedHorizontalRight) > 1 - 1e-9,
-    'the foot yaw follows the leg segments shared horizontal roll axis',
+    'the swinging-foot yaw candidate follows the leg segments shared horizontal roll axis',
   );
   assertContract(
     footLocalDown.y < -1 + 1e-9 && Math.abs(footLocalDown.x) < 1e-9 && Math.abs(footLocalDown.z) < 1e-9,
     'the yawed foot keeps its flat cap normal pointing world-down',
+  );
+  const footYawState = {
+    contactState: 'stepping' as 'planted' | 'stepping' | 'free',
+    footYaw: 0,
+    plantedFootYawLocked: false,
+  };
+  assertContract(
+    resolveContactLockedFootYaw(footYawState, 0.25) === 0.25 &&
+      !footYawState.plantedFootYawLocked,
+    'a stepping foot follows the current leg yaw without locking',
+  );
+  footYawState.contactState = 'planted';
+  assertContract(
+    resolveContactLockedFootYaw(footYawState, 0.5) === 0.5 &&
+      footYawState.plantedFootYawLocked,
+    'touchdown captures the foot world yaw',
+  );
+  assertContract(
+    resolveContactLockedFootYaw(footYawState, 1.25) === 0.5,
+    'a planted foot ignores later leg yaw changes',
+  );
+  footYawState.contactState = 'stepping';
+  assertContract(
+    resolveContactLockedFootYaw(footYawState, 1.25) === 1.25 &&
+      !footYawState.plantedFootYawLocked,
+    'lifting the foot releases its yaw lock for the next step',
+  );
+  footYawState.contactState = 'planted';
+  assertContract(
+    resolveContactLockedFootYaw(footYawState, 1.5) === 1.5 &&
+      footYawState.plantedFootYawLocked,
+    'the next touchdown captures a new planted yaw',
   );
   const kneeQuaternion = resolveKneeJointQuaternion(
     hip.x, hip.y, hip.z,

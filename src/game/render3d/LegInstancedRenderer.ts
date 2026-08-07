@@ -1003,8 +1003,9 @@ export class LegInstancedRenderer {
     );
   }
 
-  /** Write a foot at the lower segment endpoint. Only world yaw is applied:
-   * it follows the leg horizontally while local -Y remains world-down. */
+  /** Write a foot at the lower segment endpoint. Only the caller-provided
+   * world yaw is applied, so local -Y remains world-down. The leg rig freezes
+   * that yaw while the foot is planted. */
   updateFoot(
     slot: number,
     x: number, y: number, z: number,

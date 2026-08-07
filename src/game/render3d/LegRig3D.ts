@@ -15,7 +15,7 @@
 //
 // Animation state worth surviving a mesh rebuild is
 // captured/restored via captureLegState / applyLegState — only the
-// foot-position / lerp / phase fields, not the renderer slot indices
+// foot-pose / lerp / phase fields, not the renderer slot indices
 // or per-leg config refs (those are bound to the freshly-built
 // LegInstance and re-issued by buildLegs).
 
@@ -201,6 +201,10 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
+  /** World yaw of the foot hemisphere. It follows the leg while airborne or
+   * stepping, then remains fixed from touchdown until the foot lifts again. */
+  footYaw: number;
+  plantedFootYawLocked: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -287,6 +291,8 @@ export type LegStateSnapshot = ReadonlyArray<{
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
+  footYaw: number;
+  plantedFootYawLocked: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -307,6 +313,8 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       startWorldX: leg.startWorldX, startWorldY: leg.startWorldY, startWorldZ: leg.startWorldZ,
       targetWorldX: leg.targetWorldX, targetWorldY: leg.targetWorldY, targetWorldZ: leg.targetWorldZ,
       contactState: leg.contactState,
+      footYaw: leg.footYaw,
+      plantedFootYawLocked: leg.plantedFootYawLocked,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
       initialized: leg.initialized,
@@ -325,7 +333,7 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
  *  graphics style — so the indices line up 1:1 between the old and
  *  new LegInstance arrays. Slot indices, configs, and per-leg
  *  geometry refs (newly minted by buildLegs) are left untouched;
- *  only the foot-position / lerp / phase fields are overwritten. */
+ *  only the foot-pose / lerp / phase fields are overwritten. */
 export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
   const n = Math.min(loc.legs.length, snapshot.length);
   for (let i = 0; i < n; i++) {
@@ -335,6 +343,8 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.startWorldX = src.startWorldX; dst.startWorldY = src.startWorldY; dst.startWorldZ = src.startWorldZ;
     dst.targetWorldX = src.targetWorldX; dst.targetWorldY = src.targetWorldY; dst.targetWorldZ = src.targetWorldZ;
     dst.contactState = src.contactState;
+    dst.footYaw = src.footYaw;
+    dst.plantedFootYawLocked = src.plantedFootYawLocked;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
     dst.initialized = src.initialized;
@@ -415,6 +425,8 @@ export function buildLegs(
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
       contactState: 'free',
+      footYaw: 0,
+      plantedFootYawLocked: false,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
@@ -1061,6 +1073,7 @@ function beginGroundedLegSlideTo(
   leg.targetWorldY = targetY;
   leg.targetWorldZ = targetZ;
   leg.contactState = 'stepping';
+  leg.plantedFootYawLocked = false;
   leg.lerpProgress = 0;
   leg.lerpDuration = legSwingDurationMs(leg);
   leg.initialized = true;
@@ -1674,12 +1687,13 @@ function writeLegRenderPose(
       leg.geometryTier,
     );
     if (leg.footSlot >= 0) {
-      const footYaw = resolveLegFootYaw(
+      const candidateFootYaw = resolveLegFootYaw(
         segmentRight.x,
         segmentRight.z,
         footX - knee.x,
         footZ - knee.z,
       );
+      const footYaw = resolveContactLockedFootYaw(leg, candidateFootYaw);
       legRenderer.updateFoot(
         leg.footSlot,
         footX, footY, footZ,
@@ -1716,6 +1730,24 @@ function writeLegRenderPose(
       );
     }
   }
+}
+
+/** Apply the foot's contact orientation rule without allocating per frame.
+ * A swinging foot follows its leg. The first planted pose captures touchdown
+ * yaw, and subsequent planted poses retain it even as the chassis and knee
+ * continue to turn around the fixed ground contact. */
+export function resolveContactLockedFootYaw(
+  leg: Pick<LegInstance, 'contactState' | 'footYaw' | 'plantedFootYawLocked'>,
+  candidateFootYaw: number,
+): number {
+  if (leg.contactState !== 'planted') {
+    leg.footYaw = candidateFootYaw;
+    leg.plantedFootYawLocked = false;
+  } else if (!leg.plantedFootYawLocked) {
+    leg.footYaw = candidateFootYaw;
+    leg.plantedFootYawLocked = true;
+  }
+  return leg.footYaw;
 }
 
 function initializeLegOnSnapSphere(
@@ -1776,5 +1808,6 @@ function initializeLegOnSnapSphere(
   leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;
   leg.contactState = 'planted';
+  leg.plantedFootYawLocked = false;
   leg.initialized = true;
 }
