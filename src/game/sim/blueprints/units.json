@@ -1335,9 +1335,13 @@
         "turretBlueprintId": "turretGatling",
         "sensorTurretBlueprintId": "turretSensorUnitHippo",
         "mount": {
-          "x": 0.2,
+          "x": 0,
           "y": 0,
-          "z": 1.8
+          "z": 1.5833
+        },
+        "zResolver": {
+          "kind": "topMounted",
+          "bodyTopZFrac": 1.5833
         },
         "requiredEngagedForFightStop": true,
         "mountId": "gatling",
@@ -1346,9 +1350,9 @@
     ],
     "bodyShape": {
       "kind": "rect",
-      "lengthFrac": 0.7,
+      "lengthFrac": 1.25,
       "widthFrac": 1.6,
-      "heightFrac": 0.6
+      "heightFrac": 0.95
     },
     "teamOrnament": {
       "backX": 0.82,
