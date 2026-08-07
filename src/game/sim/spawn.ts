@@ -68,7 +68,7 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // A complete demo roster can be much denser than the shared structure arcs,
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(24);
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
@@ -495,10 +495,11 @@ function placeFactoryArcRowForUnitBlueprintIds(
       acceptCandidate,
     );
     if (factory === null && fallbackToAuthoredArea) {
-      // A flat or raised perimeter has no outer ocean, but that must not
-      // remove the repeat-production line from the demo roster. Keep the
-      // Fabricator on its authored outer arc and bypass only terrain
-      // suitability; map bounds and occupied grid cells remain enforced.
+      // Terrain can invalidate an entire search patch (dry outer-water rings,
+      // steep divider shoulders, or a highly deformed land arc), but the demo
+      // contract requires one production line per enabled unit. Retry on the
+      // same authored arc while bypassing only terrain suitability; map bounds
+      // and occupied grid cells remain enforced.
       factory = placeCompleteBuilding(
         world,
         construction,
@@ -793,6 +794,9 @@ export function spawnInitialBases(
         world, construction, factoryUnitBlueprintIds,
         oval, factoryRadius, baseAngle, factorySectorAngle, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
+        null,
+        null,
+        true,
       );
       assertFactoryRepeatCoverage(
         [...waterFactories, ...landFactories],

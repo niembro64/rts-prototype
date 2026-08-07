@@ -1,4 +1,5 @@
 import {
+  BATTLE_PRESETS,
   getModeDefaultPreset,
   type BattlePreset,
 } from '../../components/battlePresets';
@@ -234,6 +235,65 @@ function assertNegativeMetalDepositStepDemoSpawn(
     }
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);
+  }
+}
+
+/** The smallest stock map is the packing stress case: six players each need
+ * one repeat Fabricator for every enabled unit inside a narrow team arc. Keep
+ * this separate from the default-preset coverage so compact-map regressions
+ * cannot hide until a user selects that terrain. */
+function assertCompactSixPlayerFactoryCoverage(): void {
+  let compactPreset = BATTLE_PRESETS[0];
+  for (let i = 1; i < BATTLE_PRESETS.length; i++) {
+    const candidate = BATTLE_PRESETS[i];
+    if (
+      candidate.mapWidthLandCells * candidate.mapLengthLandCells <
+      compactPreset.mapWidthLandCells * compactPreset.mapLengthLandCells
+    ) {
+      compactPreset = candidate;
+    }
+  }
+  setTerrainRuntimeConfig({
+    centerMagnitude: compactPreset.centerMagnitude,
+    dividersMagnitude: compactPreset.dividersMagnitude,
+    perimeterMagnitude: compactPreset.perimeterMagnitude,
+    terrainDTerrain: compactPreset.terrainDTerrain,
+    plateauWallSlopeDegrees: compactPreset.plateauWallSlopeDegrees,
+    metalDepositStep: compactPreset.metalDepositStep,
+    terrainDetail: compactPreset.terrainDetail,
+  });
+  const mapWidth = compactPreset.mapWidthLandCells * LAND_CELL_SIZE;
+  const mapHeight = compactPreset.mapLengthLandCells * LAND_CELL_SIZE;
+  const playerIds: PlayerId[] = [];
+  for (let i = 0; i < DEMO_CONFIG.playerCount; i++) {
+    playerIds.push((i + 1) as PlayerId);
+  }
+  const world = new WorldState(1241, mapWidth, mapHeight);
+  const construction = new ConstructionSystem(mapWidth, mapHeight, null);
+  const entities = spawnInitialBases(world, construction, playerIds, 'demo');
+  const expectedUnitBlueprintIds =
+    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  const coverage = new Map<PlayerId, Set<string>>();
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+    const playerId = entity.ownership?.playerId;
+    const selected = entity.factory?.selectedUnitBlueprintId;
+    if (playerId === undefined || selected === null || selected === undefined) continue;
+    let selectedByPlayer = coverage.get(playerId);
+    if (selectedByPlayer === undefined) {
+      selectedByPlayer = new Set<string>();
+      coverage.set(playerId, selectedByPlayer);
+    }
+    selectedByPlayer.add(selected);
+  }
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    assertContract(
+      coverage.get(playerId)?.size === expectedUnitBlueprintIds.length,
+      `${compactPreset.name} player ${playerId} must retain all ` +
+        `${expectedUnitBlueprintIds.length} repeat Fabricator lines`,
+    );
   }
 }
 
@@ -600,6 +660,7 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   });
   try {
     runDemoMetalExtractorSpawnContractTestForPreset(preset);
+    assertCompactSixPlayerFactoryCoverage();
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);
   }
