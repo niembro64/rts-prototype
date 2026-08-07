@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export type PrimitiveGeometryTier = 'close' | 'mid' | 'far';
 export type PrimitiveGeometryRole =
@@ -568,6 +569,41 @@ export function createPrimitiveSphereGeometry(
   return geometry;
 }
 
+/** Closed upper hemisphere with its origin at the center of the equatorial
+ * disc. The dome occupies local +Y and the disc's outward normal is local -Y,
+ * so an identity world transform makes a flat-bottomed, downward-facing foot.
+ */
+export function createPrimitiveHemisphereGeometry(
+  role: PrimitiveGeometryRole,
+  tier: PrimitiveGeometryTier = 'close',
+  radius = 1,
+): THREE.BufferGeometry {
+  const q = quality(role);
+  const widthSegments = q.sphere[tier].widthSegments;
+  const heightSegments = Math.max(1, Math.ceil(q.sphere[tier].heightSegments / 2));
+  const dome = new THREE.SphereGeometry(
+    radius,
+    widthSegments,
+    heightSegments,
+    0,
+    Math.PI * 2,
+    0,
+    Math.PI / 2,
+  );
+  const cap = new THREE.CircleGeometry(radius, widthSegments);
+  // CircleGeometry faces local +Z. Rotating +90° around X makes the cap face
+  // local -Y while leaving its center exactly at the hemisphere origin.
+  cap.rotateX(Math.PI / 2);
+  const geometry = mergeGeometries([dome, cap], false);
+  dome.dispose();
+  cap.dispose();
+  if (geometry === null) {
+    throw new Error('Unable to merge primitive hemisphere dome and cap.');
+  }
+  preserveGeometryVolume(geometry, Math.PI * 2 / 3 * radius ** 3);
+  return geometry;
+}
+
 export function createPrimitiveCylinderGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',
@@ -599,19 +635,23 @@ export function createPrimitiveCylinderGeometry(
  * segment geometry, so the existing world-space IK transforms apply without
  * any LOD-specific pose code. */
 export function createExtrudedEquilateralTriangleGeometry(
-  radius = 1,
+  radiusTop = 1,
   height = 1,
+  radiusBottom = radiusTop,
 ): THREE.BufferGeometry {
   const halfHeight = height / 2;
-  const ring = [0, 1, 2].map((index) => {
+  const unitRing = [0, 1, 2].map((index) => {
     const angle = Math.PI / 2 + index * Math.PI * 2 / 3;
-    return [Math.cos(angle) * radius, Math.sin(angle) * radius] as const;
+    return [Math.cos(angle), Math.sin(angle)] as const;
   });
   const vertices: number[] = [];
   const push = (a: number, ay: number, b: number, by: number, c: number, cy: number): void => {
-    vertices.push(ring[a][0], ay, ring[a][1]);
-    vertices.push(ring[b][0], by, ring[b][1]);
-    vertices.push(ring[c][0], cy, ring[c][1]);
+    const ar = ay > 0 ? radiusTop : radiusBottom;
+    const br = by > 0 ? radiusTop : radiusBottom;
+    const cr = cy > 0 ? radiusTop : radiusBottom;
+    vertices.push(unitRing[a][0] * ar, ay, unitRing[a][1] * ar);
+    vertices.push(unitRing[b][0] * br, by, unitRing[b][1] * br);
+    vertices.push(unitRing[c][0] * cr, cy, unitRing[c][1] * cr);
   };
   // One triangle per cap, then two triangles for each rectangular side.
   push(2, halfHeight, 1, halfHeight, 0, halfHeight);

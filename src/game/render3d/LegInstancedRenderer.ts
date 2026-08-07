@@ -1,17 +1,18 @@
-// LegInstancedRenderer — renders every leg cylinder and hip-joint sphere
+// LegInstancedRenderer — renders every leg cylinder and joint sphere
 // across every unit in the scene via shared instanced
 // pools. Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
-// → 8 per 4-leg unit → 4000+ at 500 such units. Hip joints (full
+// → 8 per 4-leg unit → 4000+ at 500 such units. Hip and knee joints (full
 // style only) similarly collapse into shared InstancedMesh draws.
 //
 // Each leg cylinder is a single instance in one of the two
 // InstancedBufferGeometry-backed meshes. The cylinder geometry is
 // the canonical (radius 1, height 1, axis +Y) base; per-instance
 // attributes carry the world-space `instStart` and `instEnd` points
-// the cylinder should span between, plus `instThickness` for the
-// XZ scaling. The vertex shader picks them up and rebuilds an
-// orthonormal basis (right, up, forward) aligning local +Y to
+// the cylinder should span between, `instThickness` for XZ scaling,
+// and a shared per-leg `instRight` direction that locks both segments'
+// roll around their own axes. The vertex shader picks them up and rebuilds
+// an orthonormal basis (right, up, forward) aligning local +Y to
 // `(end - start)`, then maps the base vertex into world space.
 //
 // Joint spheres ride on a regular THREE.InstancedMesh. They are
@@ -39,6 +40,7 @@ import { disposeMesh } from './threeUtils';
 import {
   createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
+  createPrimitiveHemisphereGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
@@ -59,6 +61,7 @@ import {
   uploadDirtySlotSpan as uploadDirtySpan,
   writeInstancedMatrix as writeMatrixAt,
 } from './instancedBufferUpdate';
+import { LEG_ATTACHMENT_RADIUS_MULTIPLIER } from './LocomotionRigShared3D';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -141,7 +144,7 @@ function shouldDefrag(freeListLen: number, nextSlot: number): boolean {
  *  The basis math:
  *    axis      = end - start
  *    up        = normalize(axis)             [maps local +Y here]
- *    right     = ⟂(world Y, up)              [maps local +X here]
+ *    right     = normalize(instRight ⊥ up)    [maps local +X here]
  *    forward   = right × up                  [maps local +Z here]
  *
  *  THE ORDER OF THAT LAST CROSS PRODUCT IS LOAD-BEARING. `up × right` gives
@@ -155,14 +158,16 @@ function shouldDefrag(freeListLen: number, nextSlot: number): boolean {
  *  of a uniformly shaded cylinder looks exactly like the outside. Surface
  *  texturing is what made it obvious.
  *
- *  When |axis · world Y| ≈ 1 (cylinder near-vertical, parallel to
- *  world up) the cross with world Y degenerates; we fall back to
- *  world X for `right`. Same fallback logic in the position and
- *  normal chunks so they agree on the basis. */
+ *  `instRight` is the normal of the complete leg's bend plane, shared by its
+ *  upper and lower segments. Projecting it against each segment axis removes
+ *  tiny IK error while preserving one continuous roll alignment through the
+ *  knee. Degenerate straight-up legs retain the old stable world-axis
+ *  fallback. */
 const INSTANCE_HEADER = `
 attribute vec3 instStart;
 attribute vec3 instEnd;
 attribute float instThickness;
+attribute vec3 instRight;
 `;
 
 // The basis is built in the NORMAL chunk, not the position chunk, because
@@ -172,8 +177,12 @@ const INSTANCE_BEGIN_NORMAL = `
 vec3 _segAxis = instEnd - instStart;
 float _segLen = length(_segAxis);
 vec3 _segUp = _segLen > 0.001 ? _segAxis / _segLen : vec3(0.0, 1.0, 0.0);
+vec3 _segRightProjected = instRight - _segUp * dot(instRight, _segUp);
+float _segRightLen = length(_segRightProjected);
 vec3 _segRight;
-if (abs(_segUp.y) > 0.999) {
+if (_segRightLen > 0.001) {
+  _segRight = _segRightProjected / _segRightLen;
+} else if (abs(_segUp.y) > 0.999) {
   _segRight = vec3(1.0, 0.0, 0.0);
 } else {
   _segRight = normalize(cross(vec3(0.0, 1.0, 0.0), _segUp));
@@ -299,17 +308,25 @@ function makeInstancedSphereMaterial(): THREE.MeshLambertMaterial {
  *  doesn't get USE_INSTANCING and try to multiply by an
  *  instanceMatrix we don't have — Three.js still issues the
  *  drawElementsInstanced call because the GEOMETRY is instanced. */
+type LegCylinderProfile = 'upper' | 'lower' | 'footTaper';
+
 function buildInstancedCylinderGeom(
   startBuf: THREE.InstancedBufferAttribute,
   endBuf: THREE.InstancedBufferAttribute,
   thickBuf: THREE.InstancedBufferAttribute,
+  rightBuf: THREE.InstancedBufferAttribute,
   colorBuf: THREE.InstancedBufferAttribute,
   fadeBuf: THREE.InstancedBufferAttribute,
   geometryTier: PrimitiveGeometryTier,
+  profile: LegCylinderProfile,
 ): THREE.InstancedBufferGeometry {
+  const startRadius = profile === 'upper' ? LEG_ATTACHMENT_RADIUS_MULTIPLIER : 1;
+  const endRadius = profile === 'footTaper' ? 0 : 1;
   const base = geometryTier === 'far'
-    ? createExtrudedEquilateralTriangleGeometry()
-    : createPrimitiveCylinderGeometry('locomotion', geometryTier);
+    ? createExtrudedEquilateralTriangleGeometry(endRadius, 1, startRadius)
+    : createPrimitiveCylinderGeometry(
+        'locomotion', geometryTier, endRadius, startRadius,
+      );
   const inst = new THREE.InstancedBufferGeometry();
   inst.index = base.index;
   inst.setAttribute('position', base.attributes.position);
@@ -319,6 +336,7 @@ function buildInstancedCylinderGeom(
   inst.setAttribute('instStart', startBuf);
   inst.setAttribute('instEnd', endBuf);
   inst.setAttribute('instThickness', thickBuf);
+  inst.setAttribute('instRight', rightBuf);
   inst.setAttribute('color', colorBuf);
   inst.setAttribute('aFade', fadeBuf);
   // The base geom's bounding sphere is at origin with radius 1; our
@@ -333,6 +351,7 @@ class CylinderPool {
   private startBuf: THREE.InstancedBufferAttribute;
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
+  private rightBuf: THREE.InstancedBufferAttribute;
   private colorBuf: THREE.InstancedBufferAttribute;
   // Per-instance materialization alpha (0 transparent → 1 opaque). Build-in
   // and death-out ride this; the cylinder's `instThickness` always holds its
@@ -341,6 +360,7 @@ class CylinderPool {
   private readonly startDirty = createDirtySpan();
   private readonly endDirty = createDirtySpan();
   private readonly thickDirty = createDirtySpan();
+  private readonly rightDirty = createDirtySpan();
   private readonly colorDirty = createDirtySpan();
   private readonly fadeDirty = createDirtySpan();
   private mesh: THREE.Mesh;
@@ -356,7 +376,11 @@ class CylinderPool {
   private static readonly _scratchColor = new THREE.Color();
   private readonly chart: SurfaceChartAttribute;
 
-  constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
+  constructor(
+    parent: THREE.Group,
+    geometryTier: PrimitiveGeometryTier,
+    profile: LegCylinderProfile,
+  ) {
     this.startBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -366,14 +390,17 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
+    this.rightBuf = new THREE.InstancedBufferAttribute(
+      new Float32Array(SLOT_CAP * 3), 3,
+    ).setUsage(THREE.DynamicDrawUsage);
     this.colorBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
     this.fadeBuf = makeFadeAttribute();
 
     const geom = buildInstancedCylinderGeom(
-      this.startBuf, this.endBuf, this.thickBuf, this.colorBuf, this.fadeBuf,
-      geometryTier,
+      this.startBuf, this.endBuf, this.thickBuf, this.rightBuf,
+      this.colorBuf, this.fadeBuf, geometryTier, profile,
     );
     const material = makeInstancedLegMaterial();
     // Lit now, so the chart's height-derived bump has a normal to perturb —
@@ -418,7 +445,12 @@ class CylinderPool {
     markDirtySlot(this.fadeDirty, slot);
     const c = CylinderPool._scratchColor.set(color);
     const arr = this.colorBuf.array as Float32Array;
+    const rights = this.rightBuf.array as Float32Array;
     const i3 = slot * 3;
+    rights[i3 + 0] = 1;
+    rights[i3 + 1] = 0;
+    rights[i3 + 2] = 0;
+    markDirtySlot(this.rightDirty, slot);
     arr[i3 + 0] = c.r;
     arr[i3 + 1] = c.g;
     arr[i3 + 2] = c.b;
@@ -443,6 +475,7 @@ class CylinderPool {
     const sa = this.startBuf.array as Float32Array;
     const ea = this.endBuf.array as Float32Array;
     const ta = this.thickBuf.array as Float32Array;
+    const ra = this.rightBuf.array as Float32Array;
     const ca = this.colorBuf.array as Float32Array;
     const fa = this.fadeBuf.array as Float32Array;
     const s3 = src * 3;
@@ -453,6 +486,9 @@ class CylinderPool {
     ea[d3 + 0] = ea[s3 + 0];
     ea[d3 + 1] = ea[s3 + 1];
     ea[d3 + 2] = ea[s3 + 2];
+    ra[d3 + 0] = ra[s3 + 0];
+    ra[d3 + 1] = ra[s3 + 1];
+    ra[d3 + 2] = ra[s3 + 2];
     ta[dst] = ta[src];
     fa[dst] = fa[src];
     ca[d3 + 0] = ca[s3 + 0];
@@ -467,6 +503,7 @@ class CylinderPool {
     markDirtySlot(this.endDirty, dst);
     markDirtySlot(this.thickDirty, dst);
     markDirtySlot(this.thickDirty, src);
+    markDirtySlot(this.rightDirty, dst);
     markDirtySlot(this.fadeDirty, dst);
     markDirtySlot(this.fadeDirty, src);
     markDirtySlot(this.colorDirty, dst);
@@ -477,12 +514,14 @@ class CylinderPool {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
+    rightX: number, rightY: number, rightZ: number,
   ): void {
     if (slot < 0) return;
     const i3 = slot * 3;
     const starts = this.startBuf.array as Float32Array;
     const ends = this.endBuf.array as Float32Array;
     const thicknesses = this.thickBuf.array as Float32Array;
+    const rights = this.rightBuf.array as Float32Array;
     const fsx = Math.fround(sx);
     const fsy = Math.fround(sy);
     const fsz = Math.fround(sz);
@@ -490,6 +529,9 @@ class CylinderPool {
     const fey = Math.fround(ey);
     const fez = Math.fround(ez);
     const fthick = Math.fround(thick);
+    const frightX = Math.fround(rightX);
+    const frightY = Math.fround(rightY);
+    const frightZ = Math.fround(rightZ);
     if (
       starts[i3 + 0] !== fsx ||
       starts[i3 + 1] !== fsy ||
@@ -513,6 +555,16 @@ class CylinderPool {
     if (thicknesses[slot] !== fthick) {
       thicknesses[slot] = fthick;
       markDirtySlot(this.thickDirty, slot);
+    }
+    if (
+      rights[i3 + 0] !== frightX ||
+      rights[i3 + 1] !== frightY ||
+      rights[i3 + 2] !== frightZ
+    ) {
+      rights[i3 + 0] = frightX;
+      rights[i3 + 1] = frightY;
+      rights[i3 + 2] = frightZ;
+      markDirtySlot(this.rightDirty, slot);
     }
   }
 
@@ -549,6 +601,7 @@ class CylinderPool {
     uploadDirtySpan(this.startBuf, this.startDirty, 3);
     uploadDirtySpan(this.endBuf, this.endDirty, 3);
     uploadDirtySpan(this.thickBuf, this.thickDirty, 1);
+    uploadDirtySpan(this.rightBuf, this.rightDirty, 3);
     uploadDirtySpan(this.colorBuf, this.colorDirty, 3);
     uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
     uploadSurfaceChart(this.chart);
@@ -556,7 +609,7 @@ class CylinderPool {
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
     // every phantom instance even though they collapse to zero
-    // thickness. JointSpherePool already does this via
+    // thickness. InstancedLegPartPool already does this via
     // `mesh.count = nextSlot`; InstancedBufferGeometry exposes the
     // equivalent as `instanceCount`.
     const geometry = this.mesh.geometry as THREE.InstancedBufferGeometry;
@@ -572,8 +625,8 @@ class CylinderPool {
   }
 }
 
-/** Pool of joint spheres (hip / knee). One InstancedMesh of
- *  the canonical unit sphere; per-instance position + uniform scale
+/** Pool for a stock-transform instanced leg part: either the hip/knee sphere
+ *  or the upright foot hemisphere. Per-instance position + uniform scale
  *  (radius) ride on `instanceMatrix`, materialization alpha on a
  *  per-instance `aFade` attribute. The matrix always holds the leg's
  *  true pose so the joint never changes size as it fades.
@@ -583,7 +636,7 @@ class CylinderPool {
  *  `mesh.count = nextSlot` per frame so the GPU only walks live
  *  slots; freed slots are zero-scaled so even within `count` they
  *  contribute no fragments. */
-class JointSpherePool {
+class InstancedLegPartPool {
   private readonly mesh: THREE.InstancedMesh;
   private readonly fadeBuf: THREE.InstancedBufferAttribute;
   private readonly matrixDirty = createDirtySpan();
@@ -595,15 +648,22 @@ class JointSpherePool {
   private static readonly _scratchMat = new THREE.Matrix4();
   private static readonly _scratchPos = new THREE.Vector3();
   private static readonly _scratchScale = new THREE.Vector3();
+  private static readonly _scratchQuaternion = new THREE.Quaternion();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
   private readonly chart: SurfaceChartAttribute;
 
-  constructor(parent: THREE.Group, geometryTier: PrimitiveGeometryTier) {
-    const geom = geometryTier === 'far'
-      ? createPrimitiveTetrahedronGeometry()
-      : createPrimitiveSphereGeometry('locomotion', geometryTier);
+  constructor(
+    parent: THREE.Group,
+    geometryTier: PrimitiveGeometryTier,
+    geometryKind: 'joint' | 'foot',
+  ) {
+    const geom = geometryKind === 'foot'
+      ? createPrimitiveHemisphereGeometry('locomotion', geometryTier)
+      : geometryTier === 'far'
+        ? createPrimitiveTetrahedronGeometry()
+        : createPrimitiveSphereGeometry('locomotion', geometryTier);
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial();
@@ -638,10 +698,10 @@ class JointSpherePool {
     }
     this.relocators[slot] = onRelocate;
     writeSurfaceChart(this.chart, slot, chart, hostScale);
-    writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
+    writeMatrixAt(this.mesh, slot, InstancedLegPartPool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
-    const c = JointSpherePool._scratchColor.set(color);
+    const c = InstancedLegPartPool._scratchColor.set(color);
     const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
     if (arr) {
       const i3 = slot * 3;
@@ -655,7 +715,7 @@ class JointSpherePool {
 
   free(slot: number): void {
     if (slot < 0) return;
-    writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
+    writeMatrixAt(this.mesh, slot, InstancedLegPartPool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
     markDirtySlot(this.fadeDirty, slot);
     writeSurfaceChart(this.chart, slot, 'none');
@@ -692,14 +752,34 @@ class JointSpherePool {
 
   update(slot: number, x: number, y: number, z: number, radius: number): void {
     if (slot < 0) return;
-    JointSpherePool._scratchPos.set(x, y, z);
-    JointSpherePool._scratchScale.set(radius, radius, radius);
-    JointSpherePool._scratchMat.compose(
-      JointSpherePool._scratchPos,
-      JointSpherePool._IDENTITY_QUAT,
-      JointSpherePool._scratchScale,
+    InstancedLegPartPool._scratchPos.set(x, y, z);
+    InstancedLegPartPool._scratchScale.set(radius, radius, radius);
+    InstancedLegPartPool._scratchMat.compose(
+      InstancedLegPartPool._scratchPos,
+      InstancedLegPartPool._IDENTITY_QUAT,
+      InstancedLegPartPool._scratchScale,
     );
-    writeMatrixAt(this.mesh, slot, JointSpherePool._scratchMat, this.matrixDirty);
+    writeMatrixAt(this.mesh, slot, InstancedLegPartPool._scratchMat, this.matrixDirty);
+  }
+
+  updateOriented(
+    slot: number,
+    x: number, y: number, z: number,
+    radius: number,
+    quaternionX: number, quaternionY: number, quaternionZ: number, quaternionW: number,
+  ): void {
+    if (slot < 0) return;
+    InstancedLegPartPool._scratchPos.set(x, y, z);
+    InstancedLegPartPool._scratchScale.set(radius, radius, radius);
+    InstancedLegPartPool._scratchQuaternion.set(
+      quaternionX, quaternionY, quaternionZ, quaternionW,
+    ).normalize();
+    InstancedLegPartPool._scratchMat.compose(
+      InstancedLegPartPool._scratchPos,
+      InstancedLegPartPool._scratchQuaternion,
+      InstancedLegPartPool._scratchScale,
+    );
+    writeMatrixAt(this.mesh, slot, InstancedLegPartPool._scratchMat, this.matrixDirty);
   }
 
   fade(slot: number, fade: number): void {
@@ -744,7 +824,9 @@ export class LegInstancedRenderer {
   private readonly pools = new Map<PrimitiveGeometryTier, {
     upper: CylinderPool;
     lower: CylinderPool;
-    joints: JointSpherePool;
+    lowerTaper: CylinderPool;
+    joints: InstancedLegPartPool;
+    feet: InstancedLegPartPool;
   }>();
 
   constructor(parent: THREE.Group) {
@@ -755,9 +837,11 @@ export class LegInstancedRenderer {
     let pools = this.pools.get(tier);
     if (!pools) {
       pools = {
-        upper: new CylinderPool(this.parent, tier),
-        lower: new CylinderPool(this.parent, tier),
-        joints: new JointSpherePool(this.parent, tier),
+        upper: new CylinderPool(this.parent, tier, 'upper'),
+        lower: new CylinderPool(this.parent, tier, 'lower'),
+        lowerTaper: new CylinderPool(this.parent, tier, 'footTaper'),
+        joints: new InstancedLegPartPool(this.parent, tier, 'joint'),
+        feet: new InstancedLegPartPool(this.parent, tier, 'foot'),
       };
       this.pools.set(tier, pools);
     }
@@ -789,7 +873,16 @@ export class LegInstancedRenderer {
   ): number {
     return this.pool(tier).lower.alloc(color, onRelocate, chart, hostScale);
   }
-  /** Allocate a joint-sphere slot (used by the full leg style for hips).
+  allocLowerTaper(
+    color: number,
+    onRelocate: SlotRelocator,
+    tier: PrimitiveGeometryTier = 'close',
+    chart: SurfaceChartId = 'none',
+    hostScale = 1,
+  ): number {
+    return this.pool(tier).lowerTaper.alloc(color, onRelocate, chart, hostScale);
+  }
+  /** Allocate a joint-sphere slot (used by the full leg style for hips and knees).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
   allocJoint(
@@ -801,9 +894,21 @@ export class LegInstancedRenderer {
   ): number {
     return this.pool(tier).joints.alloc(color, onRelocate, chart, hostScale);
   }
+  /** Allocate an upright foot-hemisphere slot for a two-segment leg. */
+  allocFoot(
+    color: number,
+    onRelocate: SlotRelocator,
+    tier: PrimitiveGeometryTier = 'close',
+    chart: SurfaceChartId = 'none',
+    hostScale = 1,
+  ): number {
+    return this.pool(tier).feet.alloc(color, onRelocate, chart, hostScale);
+  }
   freeUpper(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).upper.free(slot); }
   freeLower(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).lower.free(slot); }
+  freeLowerTaper(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).lowerTaper.free(slot); }
   freeJoint(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).joints.free(slot); }
+  freeFoot(slot: number, tier: PrimitiveGeometryTier = 'close'): void { this.pool(tier).feet.free(slot); }
 
   fadeUpper(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier).upper.fade(slot, fade);
@@ -811,8 +916,14 @@ export class LegInstancedRenderer {
   fadeLower(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier).lower.fade(slot, fade);
   }
+  fadeLowerTaper(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).lowerTaper.fade(slot, fade);
+  }
   fadeJoint(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier).joints.fade(slot, fade);
+  }
+  fadeFoot(slot: number, fade: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).feet.fade(slot, fade);
   }
 
   translateUpper(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
@@ -821,8 +932,14 @@ export class LegInstancedRenderer {
   translateLower(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier).lower.translate(slot, dx, dy, dz);
   }
+  translateLowerTaper(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).lowerTaper.translate(slot, dx, dy, dz);
+  }
   translateJoint(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
     this.pool(tier).joints.translate(slot, dx, dy, dz);
+  }
+  translateFoot(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
+    this.pool(tier).feet.translate(slot, dx, dy, dz);
   }
 
   updateUpper(
@@ -830,9 +947,12 @@ export class LegInstancedRenderer {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
+    rightX: number, rightY: number, rightZ: number,
     tier: PrimitiveGeometryTier = 'close',
   ): void {
-    this.pool(tier).upper.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier).upper.update(
+      slot, sx, sy, sz, ex, ey, ez, thick, rightX, rightY, rightZ,
+    );
   }
 
   updateLower(
@@ -840,9 +960,25 @@ export class LegInstancedRenderer {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
+    rightX: number, rightY: number, rightZ: number,
     tier: PrimitiveGeometryTier = 'close',
   ): void {
-    this.pool(tier).lower.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    this.pool(tier).lower.update(
+      slot, sx, sy, sz, ex, ey, ez, thick, rightX, rightY, rightZ,
+    );
+  }
+
+  updateLowerTaper(
+    slot: number,
+    sx: number, sy: number, sz: number,
+    ex: number, ey: number, ez: number,
+    thick: number,
+    rightX: number, rightY: number, rightZ: number,
+    tier: PrimitiveGeometryTier = 'close',
+  ): void {
+    this.pool(tier).lowerTaper.update(
+      slot, sx, sy, sz, ex, ey, ez, thick, rightX, rightY, rightZ,
+    );
   }
 
   /** Per-frame write for one joint sphere — encodes world position
@@ -853,13 +989,45 @@ export class LegInstancedRenderer {
     this.pool(tier).joints.update(slot, x, y, z, radius);
   }
 
+  /** Write a knee sphere whose local frame follows the two segment frames. */
+  updateOrientedJoint(
+    slot: number,
+    x: number, y: number, z: number,
+    radius: number,
+    quaternionX: number, quaternionY: number, quaternionZ: number, quaternionW: number,
+    tier: PrimitiveGeometryTier = 'close',
+  ): void {
+    this.pool(tier).joints.updateOriented(
+      slot, x, y, z, radius,
+      quaternionX, quaternionY, quaternionZ, quaternionW,
+    );
+  }
+
+  /** Write a foot at the lower segment endpoint. Only world yaw is applied:
+   * it follows the leg horizontally while local -Y remains world-down. */
+  updateFoot(
+    slot: number,
+    x: number, y: number, z: number,
+    radius: number,
+    yaw: number,
+    tier: PrimitiveGeometryTier = 'close',
+  ): void {
+    const halfYaw = yaw * 0.5;
+    this.pool(tier).feet.updateOriented(
+      slot, x, y, z, radius,
+      0, Math.sin(halfYaw), 0, Math.cos(halfYaw),
+    );
+  }
+
   /** Upload dirty per-instance spans — call once per frame after every
    *  leg has been updated. The actual GPU upload happens at the next render. */
   flush(): void {
     for (const pools of this.pools.values()) {
       pools.upper.flush();
       pools.lower.flush();
+      pools.lowerTaper.flush();
       pools.joints.flush();
+      pools.feet.flush();
     }
   }
 
@@ -867,7 +1035,9 @@ export class LegInstancedRenderer {
     for (const pools of this.pools.values()) {
       pools.upper.destroy();
       pools.lower.destroy();
+      pools.lowerTaper.destroy();
       pools.joints.destroy();
+      pools.feet.destroy();
     }
     this.pools.clear();
   }

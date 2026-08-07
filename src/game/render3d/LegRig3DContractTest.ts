@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import {
   legChoppedSphereNeedsStep,
   legSurfaceWithinReach,
@@ -8,12 +9,142 @@ import {
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
+import { resolveKneeJointQuaternion, resolveLegSegmentRight } from './LegRig3D';
+import {
+  kneeFromIK,
+  LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER,
+  LEG_FOOT_RADIUS_MULTIPLIER,
+  LEG_FOOT_TAPER_LENGTH_MULTIPLIER,
+  LEG_KNEE_SPHERE_RADIUS_MULTIPLIER,
+  resolveLegFootYaw,
+  resolveLowerLegFootTaperStart,
+} from './LocomotionRigShared3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[leg rig contract] ${message}`);
 }
 
 export function runLegRig3DContractTest(): void {
+  assertContract(
+    LEG_ATTACHMENT_RADIUS_MULTIPLIER === 2,
+    'the body attachment is exactly twice the shared knee/foot radius',
+  );
+  assertContract(
+    LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER === 2.5,
+    'the attachment sphere is exactly 2.5x the shared knee/foot radius',
+  );
+  assertContract(
+    LEG_KNEE_SPHERE_RADIUS_MULTIPLIER === 0.75,
+    'the knee sphere is exactly 0.75x the shared segment radius',
+  );
+  assertContract(
+    LEG_FOOT_RADIUS_MULTIPLIER === 1.5,
+    'the foot hemisphere is exactly 1.5x the shared segment radius',
+  );
+  assertContract(
+    LEG_FOOT_TAPER_LENGTH_MULTIPLIER === 2,
+    'the pointed lower-leg section is exactly two foot radii long',
+  );
+  const taperStart = { x: 0, y: 0, z: 0 };
+  const realizedTaperLength = resolveLowerLegFootTaperStart(
+    0, 10, 0,
+    0, 0, 0,
+    1.5,
+    taperStart,
+  );
+  assertContract(
+    realizedTaperLength === 3 && taperStart.x === 0 && taperStart.y === 3 && taperStart.z === 0,
+    'the lower-leg taper begins two foot radii up from the foot endpoint',
+  );
+  const chassisUpLength = Math.hypot(0.2, 0.8, 0.56);
+  const chassisUp = {
+    x: 0.2 / chassisUpLength,
+    y: 0.8 / chassisUpLength,
+    z: 0.56 / chassisUpLength,
+  };
+  const hip = { x: 2, y: 15, z: -4 };
+  const foot = { x: 18, y: 1, z: 9 };
+  const knee = kneeFromIK(
+    hip.x, hip.y, hip.z,
+    foot.x, foot.y, foot.z,
+    18, 20,
+    chassisUp.x, chassisUp.y, chassisUp.z,
+  );
+  const segmentRight = { x: 0, y: 0, z: 0 };
+  resolveLegSegmentRight(
+    hip.x, hip.y, hip.z,
+    foot.x, foot.y, foot.z,
+    chassisUp.x, chassisUp.y, chassisUp.z,
+    segmentRight,
+  );
+  const upperRightDot =
+    segmentRight.x * (knee.x - hip.x) +
+    segmentRight.y * (knee.y - hip.y) +
+    segmentRight.z * (knee.z - hip.z);
+  const lowerRightDot =
+    segmentRight.x * (foot.x - knee.x) +
+    segmentRight.y * (foot.y - knee.y) +
+    segmentRight.z * (foot.z - knee.z);
+  assertContract(
+    Math.abs(upperRightDot) < 1e-9 && Math.abs(lowerRightDot) < 1e-9,
+    'upper and lower leg segments share one roll axis through the knee',
+  );
+  assertContract(
+    Math.abs(Math.hypot(segmentRight.x, segmentRight.y, segmentRight.z) - 1) < 1e-9,
+    'the shared leg roll axis remains normalized on a tilted chassis',
+  );
+  const footYaw = resolveLegFootYaw(
+    segmentRight.x,
+    segmentRight.z,
+    foot.x - knee.x,
+    foot.z - knee.z,
+  );
+  const footQuaternion = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    footYaw,
+  );
+  const footLocalRight = new THREE.Vector3(1, 0, 0).applyQuaternion(footQuaternion);
+  const expectedHorizontalRight = new THREE.Vector3(
+    segmentRight.x, 0, segmentRight.z,
+  ).normalize();
+  const footLocalDown = new THREE.Vector3(0, -1, 0).applyQuaternion(footQuaternion);
+  assertContract(
+    footLocalRight.dot(expectedHorizontalRight) > 1 - 1e-9,
+    'the foot yaw follows the leg segments shared horizontal roll axis',
+  );
+  assertContract(
+    footLocalDown.y < -1 + 1e-9 && Math.abs(footLocalDown.x) < 1e-9 && Math.abs(footLocalDown.z) < 1e-9,
+    'the yawed foot keeps its flat cap normal pointing world-down',
+  );
+  const kneeQuaternion = resolveKneeJointQuaternion(
+    hip.x, hip.y, hip.z,
+    knee.x, knee.y, knee.z,
+    foot.x, foot.y, foot.z,
+    segmentRight.x, segmentRight.y, segmentRight.z,
+    new THREE.Quaternion(),
+  );
+  const kneeLocalRight = new THREE.Vector3(1, 0, 0).applyQuaternion(kneeQuaternion);
+  const kneeLocalUp = new THREE.Vector3(0, 1, 0).applyQuaternion(kneeQuaternion);
+  const expectedKneeTangent = new THREE.Vector3(
+    knee.x - hip.x,
+    knee.y - hip.y,
+    knee.z - hip.z,
+  ).normalize().add(new THREE.Vector3(
+    foot.x - knee.x,
+    foot.y - knee.y,
+    foot.z - knee.z,
+  ).normalize()).normalize();
+  assertContract(
+    kneeLocalRight.dot(new THREE.Vector3(
+      segmentRight.x, segmentRight.y, segmentRight.z,
+    )) > 1 - 1e-9,
+    'the knee sphere keeps the roll axis shared by both leg segments',
+  );
+  assertContract(
+    kneeLocalUp.dot(expectedKneeTangent) > 1 - 1e-9,
+    'the knee sphere follows the upper/lower segment direction bisector',
+  );
   assertContract(
     locomotionTerrainModeForSupportHeight(-0.01) === 'terrainBed',
     'a submerged physical support makes leg feet sample the terrain bed',

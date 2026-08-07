@@ -7,6 +7,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveRingGeometry,
   createPrimitiveSphereGeometry,
+  createPrimitiveHemisphereGeometry,
   createPrimitiveTetrahedronGeometry,
   createPrimitiveTorusGeometry,
   createPrimitiveVertexDownTetrahedronGeometry,
@@ -213,10 +214,77 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
   );
   assertVolume(lowLegSegment, 'low leg segment', Math.PI);
   lowLegSegment.dispose();
+  const taperedLowLegSegment = createExtrudedEquilateralTriangleGeometry(1, 1, 2);
+  assertContract(
+    triangleCount(taperedLowLegSegment) === 8,
+    'tapered low upper-leg segment retains the eight-triangle budget',
+  );
+  assertVolume(taperedLowLegSegment, 'tapered low upper-leg segment', Math.PI * 7 / 3);
+  const taperedPosition = taperedLowLegSegment.getAttribute('position');
+  let topRadius = 0;
+  let bottomRadius = 0;
+  for (let vertex = 0; vertex < taperedPosition.count; vertex++) {
+    const radius = Math.hypot(taperedPosition.getX(vertex), taperedPosition.getZ(vertex));
+    if (taperedPosition.getY(vertex) > 0) topRadius = Math.max(topRadius, radius);
+    else bottomRadius = Math.max(bottomRadius, radius);
+  }
+  assertContract(
+    Math.abs(bottomRadius / topRadius - 2) < 1e-6,
+    'upper-leg attachment radius is exactly 2x its knee radius at low detail',
+  );
+  taperedLowLegSegment.dispose();
+  const pointedLowLegSegment = createExtrudedEquilateralTriangleGeometry(0, 1, 1);
+  assertContract(
+    triangleCount(pointedLowLegSegment) === 8,
+    'pointed low lower-leg segment retains the triangular-prism topology',
+  );
+  assertVolume(pointedLowLegSegment, 'pointed low lower-leg segment', Math.PI / 3);
+  const pointedPosition = pointedLowLegSegment.getAttribute('position');
+  let pointedTopRadius = 0;
+  let pointedBottomRadius = 0;
+  for (let vertex = 0; vertex < pointedPosition.count; vertex++) {
+    const radius = Math.hypot(pointedPosition.getX(vertex), pointedPosition.getZ(vertex));
+    if (pointedPosition.getY(vertex) > 0) pointedTopRadius = Math.max(pointedTopRadius, radius);
+    else pointedBottomRadius = Math.max(pointedBottomRadius, radius);
+  }
+  assertContract(
+    pointedTopRadius < 1e-9 && pointedBottomRadius > 0,
+    'the low lower-leg taper reaches radius zero at its foot endpoint',
+  );
+  pointedLowLegSegment.dispose();
   const lowLegJoint = createPrimitiveTetrahedronGeometry();
   assertContract(triangleCount(lowLegJoint) === 4, 'low leg joint is a four-face tetrahedron');
   assertVolume(lowLegJoint, 'low leg joint', Math.PI * 4 / 3);
   lowLegJoint.dispose();
+
+  for (const tier of tiers) {
+    const foot = createPrimitiveHemisphereGeometry('locomotion', tier);
+    assertVolume(foot, `${tier} leg foot hemisphere`, Math.PI * 2 / 3);
+    const positions = foot.getAttribute('position');
+    const normals = foot.getAttribute('normal');
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let downwardCapCenterFound = false;
+    for (let vertex = 0; vertex < positions.count; vertex++) {
+      const x = positions.getX(vertex);
+      const y = positions.getY(vertex);
+      const z = positions.getZ(vertex);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      if (Math.hypot(x, y, z) < 1e-6 && normals.getY(vertex) < -0.999) {
+        downwardCapCenterFound = true;
+      }
+    }
+    assertContract(
+      minY > -1e-5 && maxY > 0.5,
+      `${tier} leg foot dome stays entirely above its origin plane`,
+    );
+    assertContract(
+      downwardCapCenterFound,
+      `${tier} leg foot has a closed flat cap whose normal points down`,
+    );
+    foot.dispose();
+  }
 
   // Pylon head: a volume-preserved tetrahedron whose lowest vertex points
   // straight down local -Y (into the pylon tube bore).

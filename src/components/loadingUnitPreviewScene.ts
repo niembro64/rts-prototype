@@ -41,7 +41,15 @@ import {
 } from '@/game/render3d/SwimRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
-import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
+import {
+  kneeFromIK,
+  LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER,
+  LEG_FOOT_RADIUS_MULTIPLIER,
+  LEG_KNEE_SPHERE_RADIUS_MULTIPLIER,
+  resolveLegFootYaw,
+  resolveLowerLegFootTaperStart,
+} from '@/game/render3d/LocomotionRigShared3D';
 import {
   buildProductionHoldRingMesh,
   type ProductionHoldRingOrientation,
@@ -60,6 +68,7 @@ import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflect
 import {
   createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
+  createPrimitiveHemisphereGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
@@ -294,14 +303,48 @@ const legSegmentGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
   mid: createPrimitiveCylinderGeometry('locomotion', 'mid'),
   far: createExtrudedEquilateralTriangleGeometry(),
 };
+const upperLegSegmentGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveCylinderGeometry(
+    'locomotion', 'close', 1, LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  ),
+  mid: createPrimitiveCylinderGeometry(
+    'locomotion', 'mid', 1, LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  ),
+  far: createExtrudedEquilateralTriangleGeometry(
+    1, 1, LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  ),
+};
+const lowerLegTaperGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveCylinderGeometry('locomotion', 'close', 0, 1),
+  mid: createPrimitiveCylinderGeometry('locomotion', 'mid', 0, 1),
+  far: createExtrudedEquilateralTriangleGeometry(0, 1, 1),
+};
 const legJointGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
   close: createPrimitiveSphereGeometry('locomotion', 'close'),
   mid: createPrimitiveSphereGeometry('locomotion', 'mid'),
   far: createPrimitiveTetrahedronGeometry(),
 };
+const legFootGeoms: Record<PrimitiveGeometryTier, THREE.BufferGeometry> = {
+  close: createPrimitiveHemisphereGeometry('locomotion', 'close'),
+  mid: createPrimitiveHemisphereGeometry('locomotion', 'mid'),
+  far: createPrimitiveHemisphereGeometry('locomotion', 'far'),
+};
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
 const scratchTarget = new THREE.Vector3();
+const scratchLegRight = new THREE.Vector3();
+const scratchKneeUpper = new THREE.Vector3();
+const scratchKneeLower = new THREE.Vector3();
+const scratchKneeTangent = new THREE.Vector3();
+const scratchKneeForward = new THREE.Vector3();
+const scratchKneeBasis = new THREE.Matrix4();
+const scratchKneeQuaternion = new THREE.Quaternion();
+const scratchSegmentRight = new THREE.Vector3();
+const scratchSegmentForward = new THREE.Vector3();
+const scratchSegmentBasis = new THREE.Matrix4();
+const scratchFootParentQuaternion = new THREE.Quaternion();
+const scratchFootWorldQuaternion = new THREE.Quaternion();
+const scratchLowerTaperStart = new THREE.Vector3();
 
 export class LoadingUnitPreviewScene {
   private readonly renderer: THREE.WebGLRenderer;
@@ -876,9 +919,10 @@ function buildPreviewLegs(
   const radius = blueprint.radius.other;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
-  const upperRadius = Math.max(locomotion.config.upperThickness, 1) * 0.6;
-  const lowerRadius = Math.max(locomotion.config.lowerThickness, 1) * 0.6;
-  const hipJointRadius = Math.max(1, locomotion.config.hipRadius);
+  const legRadius = Math.max(locomotion.config.radius, 1) * 0.6;
+  const hipJointRadius = legRadius * LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER;
+  const kneeJointRadius = legRadius * LEG_KNEE_SPHERE_RADIUS_MULTIPLIER;
+  const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;
   const group = new THREE.Group();
   const snapSphere: LegSnapSphereLocal = {
     centerX: 0,
@@ -914,7 +958,7 @@ function buildPreviewLegs(
     const hip = new THREE.Vector3(leg.attachOffsetX, hipY, leg.attachOffsetY);
     const foot = new THREE.Vector3(
       snapSphere.centerX,
-      lowerRadius + 0.35,
+      0.35,
       snapSphere.centerZ,
     );
     const knee = kneeFromIK(
@@ -924,9 +968,52 @@ function buildPreviewLegs(
       0, 1, 0,
     );
     const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-    addCylinderBetween(legGroup, hip, kneeVec, upperRadius, legMaterial, geometryTier);
-    addCylinderBetween(legGroup, kneeVec, foot, lowerRadius, legMaterial, geometryTier);
+    scratchDir.subVectors(foot, hip);
+    scratchLegRight.crossVectors(scratchUp, scratchDir).normalize();
+    scratchKneeUpper.subVectors(kneeVec, hip).normalize();
+    scratchKneeLower.subVectors(foot, kneeVec).normalize();
+    scratchKneeTangent.addVectors(scratchKneeUpper, scratchKneeLower).normalize();
+    scratchKneeForward.crossVectors(scratchLegRight, scratchKneeTangent).normalize();
+    scratchKneeTangent.crossVectors(scratchKneeForward, scratchLegRight).normalize();
+    scratchKneeBasis.makeBasis(
+      scratchLegRight,
+      scratchKneeTangent,
+      scratchKneeForward,
+    );
+    scratchKneeQuaternion.setFromRotationMatrix(scratchKneeBasis).normalize();
+    const footYaw = resolveLegFootYaw(
+      scratchLegRight.x,
+      scratchLegRight.z,
+      foot.x - kneeVec.x,
+      foot.z - kneeVec.z,
+    );
+    resolveLowerLegFootTaperStart(
+      kneeVec.x, kneeVec.y, kneeVec.z,
+      foot.x, foot.y, foot.z,
+      footRadius,
+      scratchLowerTaperStart,
+    );
+    addCylinderBetween(
+      legGroup, hip, kneeVec, legRadius, legMaterial, geometryTier, 'upper', scratchLegRight,
+    );
+    addCylinderBetween(
+      legGroup, kneeVec, scratchLowerTaperStart, legRadius,
+      legMaterial, geometryTier, 'lower', scratchLegRight,
+    );
+    addCylinderBetween(
+      legGroup, scratchLowerTaperStart, foot, legRadius,
+      legMaterial, geometryTier, 'footTaper', scratchLegRight,
+    );
     addSphere(legGroup, hip, hipJointRadius, legMaterial, geometryTier);
+    addSphere(
+      legGroup,
+      kneeVec,
+      kneeJointRadius,
+      legMaterial,
+      geometryTier,
+      scratchKneeQuaternion,
+    );
+    addFoot(legGroup, foot, footRadius, footYaw, legMaterial, geometryTier);
   }
   return group;
 }
@@ -997,11 +1084,27 @@ function animatePreviewLegs(group: THREE.Group, stride: number, active: boolean)
     if (!active) {
       leg.position.y = 0;
       leg.rotation.z = 0;
-      continue;
+    } else {
+      const legPhase = stride + i * Math.PI * 0.68;
+      leg.position.y = Math.max(0, Math.sin(legPhase)) * 2.6;
+      leg.rotation.z = Math.sin(legPhase) * 0.08;
     }
-    const legPhase = stride + i * Math.PI * 0.68;
-    leg.position.y = Math.max(0, Math.sin(legPhase)) * 2.6;
-    leg.rotation.z = Math.sin(legPhase) * 0.08;
+    // Counter every ancestor rotation, including the preview's presentation
+    // pitch and gait sway, then restore only the foot's authored world yaw.
+    // Its cap therefore remains world-down while its surface frame follows
+    // the same horizontal bend plane as the leg segments.
+    leg.getWorldQuaternion(scratchFootParentQuaternion);
+    scratchFootParentQuaternion.invert();
+    for (const part of leg.children) {
+      if (part.userData.previewUprightLegFoot === true) {
+        const worldYaw = part.userData.previewLegFootWorldYaw;
+        scratchFootWorldQuaternion.setFromAxisAngle(
+          scratchUp,
+          typeof worldYaw === 'number' ? worldYaw : 0,
+        );
+        part.quaternion.copy(scratchFootParentQuaternion).multiply(scratchFootWorldQuaternion);
+      }
+    }
   }
 }
 
@@ -1012,17 +1115,29 @@ function addCylinderBetween(
   radius: number,
   material: THREE.Material,
   geometryTier: PrimitiveGeometryTier,
+  profile: 'upper' | 'lower' | 'footTaper',
+  sharedRight: THREE.Vector3,
 ): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const dz = b.z - a.z;
   const length = Math.hypot(dx, dy, dz);
   if (length < 0.001) return;
-  const mesh = new THREE.Mesh(legSegmentGeoms[geometryTier], material);
+  const geometry = profile === 'upper'
+    ? upperLegSegmentGeoms[geometryTier]
+    : profile === 'footTaper'
+      ? lowerLegTaperGeoms[geometryTier]
+      : legSegmentGeoms[geometryTier];
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
   mesh.scale.set(radius, length, radius);
   scratchDir.set(dx / length, dy / length, dz / length);
-  mesh.quaternion.setFromUnitVectors(scratchUp, scratchDir);
+  scratchSegmentRight.copy(sharedRight)
+    .addScaledVector(scratchDir, -sharedRight.dot(scratchDir))
+    .normalize();
+  scratchSegmentForward.crossVectors(scratchSegmentRight, scratchDir).normalize();
+  scratchSegmentBasis.makeBasis(scratchSegmentRight, scratchDir, scratchSegmentForward);
+  mesh.quaternion.setFromRotationMatrix(scratchSegmentBasis);
   parent.add(mesh);
 }
 
@@ -1032,9 +1147,28 @@ function addSphere(
   radius: number,
   material: THREE.Material,
   geometryTier: PrimitiveGeometryTier,
+  quaternion?: THREE.Quaternion,
 ): void {
   const mesh = new THREE.Mesh(legJointGeoms[geometryTier], material);
   mesh.position.copy(center);
   mesh.scale.setScalar(radius);
+  if (quaternion !== undefined) mesh.quaternion.copy(quaternion);
+  parent.add(mesh);
+}
+
+function addFoot(
+  parent: THREE.Group,
+  origin: THREE.Vector3,
+  radius: number,
+  worldYaw: number,
+  material: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
+): void {
+  const mesh = new THREE.Mesh(legFootGeoms[geometryTier], material);
+  mesh.position.copy(origin);
+  mesh.scale.setScalar(radius);
+  mesh.rotation.y = worldYaw;
+  mesh.userData.previewUprightLegFoot = true;
+  mesh.userData.previewLegFootWorldYaw = worldYaw;
   parent.add(mesh);
 }

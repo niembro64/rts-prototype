@@ -288,9 +288,7 @@
         }
       },
       "config": {
-        "upperThickness": 2.5,
-        "lowerThickness": 2,
-        "hipRadius": 1.5,
+        "radius": 2,
         "kneeRadius": 0.8,
         "lerpDuration": 200,
         "segments": {
@@ -635,9 +633,7 @@
         }
       },
       "config": {
-        "upperThickness": 2,
-        "lowerThickness": 1.5,
-        "hipRadius": 1,
+        "radius": 1.5,
         "kneeRadius": 1.5,
         "lerpDuration": 100,
         "segments": {
@@ -895,9 +891,7 @@
         }
       },
       "config": {
-        "upperThickness": 9,
-        "lowerThickness": 8,
-        "hipRadius": 5.5,
+        "radius": 8,
         "kneeRadius": 7.5,
         "lerpDuration": 320,
         "segments": {
@@ -1131,9 +1125,7 @@
         }
       },
       "config": {
-        "upperThickness": 7,
-        "lowerThickness": 6,
-        "hipRadius": 4,
+        "radius": 6,
         "kneeRadius": 6,
         "lerpDuration": 300,
         "segments": {
@@ -1669,9 +1661,7 @@
         }
       },
       "config": {
-        "upperThickness": 6.5,
-        "lowerThickness": 6,
-        "hipRadius": 3.5,
+        "radius": 6,
         "kneeRadius": 6,
         "lerpDuration": 200,
         "segments": {
@@ -2858,9 +2848,7 @@
         }
       },
       "config": {
-        "upperThickness": 15,
-        "lowerThickness": 12,
-        "hipRadius": 10,
+        "radius": 12,
         "kneeRadius": 13,
         "lerpDuration": 420,
         "segments": {
@@ -3183,9 +3171,7 @@
         }
       },
       "config": {
-        "upperThickness": 8,
-        "lowerThickness": 7,
-        "hipRadius": 5,
+        "radius": 7,
         "kneeRadius": 7,
         "lerpDuration": 300,
         "segments": {

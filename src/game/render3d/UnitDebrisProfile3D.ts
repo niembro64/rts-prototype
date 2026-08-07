@@ -29,6 +29,11 @@ import {
   resolveLegSnapSphereLocal,
   type LegSnapSphereLocal,
 } from './LegGait3D';
+import {
+  LEG_ATTACHMENT_RADIUS_MULTIPLIER,
+  LEG_FOOT_RADIUS_MULTIPLIER,
+  resolveLowerLegFootTaperStart,
+} from './LocomotionRigShared3D';
 import { turretBodyRadiusFromRadius } from '../math';
 import {
   getTurretBlueprint,
@@ -190,12 +195,15 @@ export function getDebrisUnitProfile(
       }
     }
   } else if (loc?.type === 'legs') {
-    // One cylinder per upper segment + one per lower segment, placed at
+    // One cylinder per upper segment plus uniform and pointed lower pieces, placed at
     // their rest-pose hip/knee/foot positions — same math Locomotion3D
     // uses to initialize legs.
     const { all } = resolveMirroredLegConfigs(loc.config, r);
-    const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
-    const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
+    const legRadius = Math.max(1, loc.config.radius) * 0.6;
+    const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;
+    // Debris cylinders are uniform, so approximate the tapered upper segment
+    // at the mean of its 2x attachment and 1x knee radii.
+    const upperDebrisRadius = legRadius * (LEG_ATTACHMENT_RADIUS_MULTIPLIER + 1) * 0.5;
     const snapSphere: LegSnapSphereLocal = {
       centerX: 0,
       centerZ: 0,
@@ -203,6 +211,7 @@ export function getDebrisUnitProfile(
       outwardZ: 0,
       radius: 0,
     };
+    const lowerTaperStart = { x: 0, y: 0, z: 0 };
     for (const lc of all) {
       const hipX = lc.attachOffsetX;
       const hipZ = lc.attachOffsetY;
@@ -236,14 +245,35 @@ export function getDebrisUnitProfile(
         kind: 'cyl',
         ax: hipX, ay: hipY, az: hipZ,
         bx: kneeX, by: kneeY, bz: kneeZ,
-        thickness: upperThick,
+        thickness: upperDebrisRadius,
         color: 'leg',
       });
+      resolveLowerLegFootTaperStart(
+        kneeX, kneeY, kneeZ,
+        footX, FOOT_Y, footZ,
+        footRadius,
+        lowerTaperStart,
+      );
+      if (Math.hypot(
+        lowerTaperStart.x - kneeX,
+        lowerTaperStart.y - kneeY,
+        lowerTaperStart.z - kneeZ,
+      ) > 1e-6) {
+        staticFragments.push({
+          kind: 'cyl',
+          ax: kneeX, ay: kneeY, az: kneeZ,
+          bx: lowerTaperStart.x, by: lowerTaperStart.y, bz: lowerTaperStart.z,
+          thickness: legRadius,
+          color: 'leg',
+        });
+      }
+      // Debris cylinder pools are uniform, so represent the live 1x→0x cone
+      // with its mean radius while preserving the exact two-foot-radius span.
       staticFragments.push({
         kind: 'cyl',
-        ax: kneeX, ay: kneeY, az: kneeZ,
+        ax: lowerTaperStart.x, ay: lowerTaperStart.y, az: lowerTaperStart.z,
         bx: footX, by: FOOT_Y, bz: footZ,
-        thickness: lowerThick,
+        thickness: legRadius * 0.5,
         color: 'leg',
       });
     }

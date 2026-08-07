@@ -765,9 +765,7 @@ pub struct LegSnapRay {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegConfig {
-    pub upperThickness: f64,
-    pub lowerThickness: f64,
-    pub hipRadius: f64,
+    pub radius: f64,
     pub kneeRadius: f64,
     pub lerpDuration: f64,
     pub segments: LegSegments,

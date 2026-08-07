@@ -525,9 +525,7 @@ export type LegSnapRay = {
 };
 
 export type LegConfig = {
-  upperThickness: number;
-  lowerThickness: number;
-  hipRadius: number;
+  radius: number;
   kneeRadius: number;
   lerpDuration: number;
   segments: LegSegments;

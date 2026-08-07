@@ -260,6 +260,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       );
     }
     const globalValues = [
+      ['radius', config.radius],
       ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
       ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
       ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
@@ -274,11 +275,12 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       }
     }
     if (
-      config.segments.upper.lengthUnitRadiusRatio <= 0
-      || config.segments.lower.lengthUnitRadiusRatio <= 0
+      config.radius <= 0 ||
+      config.segments.upper.lengthUnitRadiusRatio <= 0 ||
+      config.segments.lower.lengthUnitRadiusRatio <= 0
     ) {
       throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: leg lengths must be positive`,
+        `Invalid leg layout for ${bp.unitBlueprintId}: radius and leg lengths must be positive`,
       );
     }
     if (

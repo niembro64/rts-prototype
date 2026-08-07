@@ -44,10 +44,15 @@ import {
 import {
   type LocomotionBase,
   type LocomotionRenderPose,
+  LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER,
+  LEG_FOOT_RADIUS_MULTIPLIER,
+  LEG_KNEE_SPHERE_RADIUS_MULTIPLIER,
   chassisUpFromPose,
   easeOutCubic,
   emaAlpha,
   kneeFromIK,
+  resolveLegFootYaw,
+  resolveLowerLegFootTaperStart,
   rollingLocomotionBodyActive,
   transformChassisRootToWorld,
   transformWorldVectorToChassis,
@@ -214,12 +219,20 @@ export type LegInstance = {
    *  'animated' / 'full' style; 'simple' legs are a single
    *  upper-cylinder spanning hip → foot directly. */
   lowerSlot: number;
-  /** Slot into LegInstancedRenderer's hip-joint pool. Only allocated
-   *  for the 'full' style; knees deliberately have no cap geometry. */
+  /** Pointed final section of the lower leg, from the 2-foot-radius boundary
+   * to radius zero at the foot origin. */
+  lowerTaperSlot: number;
+  /** Upright hemisphere at the lower segment endpoint. Two-segment styles
+   * allocate it separately from the freely oriented joint-sphere pool. */
+  footSlot: number;
+  /** Slots into LegInstancedRenderer's joint-sphere pool. Only allocated
+   *  for the 'full' style. */
   hipJointSlot: number;
+  kneeJointSlot: number;
   hipJointRadius: number;
-  upperThick: number;
-  lowerThick: number;
+  kneeJointRadius: number;
+  footRadius: number;
+  legRadius: number;
   /** LEG-RAD debug viz: this leg's derived outer foot sphere. */
   restSphere?: THREE.LineSegments;
   /** LEG-RAD debug viz: attachment-ground chopping sphere for this leg. */
@@ -354,8 +367,7 @@ export function buildLegs(
   worldGroup.add(group);
 
   const legs: LegInstance[] = [];
-  const upperThick = Math.max(cfg.upperThickness, 1) * 0.6;
-  const lowerThick = Math.max(cfg.lowerThickness, 1) * 0.6;
+  const legRadius = Math.max(cfg.radius, 1) * 0.6;
 
   const sideLegCount = left.length;
   for (let i = 0; i < allConfigs.length; i++) {
@@ -370,10 +382,11 @@ export function buildLegs(
     const sideParity = side === 1 ? 1 : 0;
     const phaseShift01 = ((sideIndex & 1) ^ sideParity) as 0 | 1;
 
-    // Hip-joint sphere sizing is baked once because only its world
-    // transform changes per frame. Kneecaps and feet are intentionally
-    // absent: the two cylinders alone define the leg silhouette.
-    const hipJointRadius = Math.max(1, cfg.hipRadius);
+    // The hip sphere deliberately surrounds the upper segment's 2x body end;
+    // the smaller knee sphere nests inside the two 1x segment ends.
+    const hipJointRadius = legRadius * LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER;
+    const kneeJointRadius = legRadius * LEG_KNEE_SPHERE_RADIUS_MULTIPLIER;
+    const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;
 
     // Hip Y defaults to the lifted vertical mid-point of whichever
     // body segment the leg sits under. Units whose visible body is a
@@ -410,13 +423,17 @@ export function buildLegs(
       snapRayOriginInitialized: false,
       upperSlot: -1,
       lowerSlot: -1,
+      lowerTaperSlot: -1,
+      footSlot: -1,
       hipJointSlot: -1,
+      kneeJointSlot: -1,
       hipJointRadius,
-      upperThick,
-      lowerThick,
+      kneeJointRadius,
+      footRadius,
+      legRadius,
     };
 
-    // Cylinders and hip joints are slots in the shared
+    // Cylinders and joint spheres are slots in the shared
     // LegInstancedRenderer pools. Each alloc registers a relocator
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
@@ -433,10 +450,22 @@ export function buildLegs(
         legColor, (s) => { leg.lowerSlot = s; }, geometryTier, charts?.lower,
         legChartScale,
       );
+      leg.lowerTaperSlot = legRenderer.allocLowerTaper(
+        legColor, (s) => { leg.lowerTaperSlot = s; }, geometryTier, charts?.lower,
+        legChartScale,
+      );
+      leg.footSlot = legRenderer.allocFoot(
+        legColor, (s) => { leg.footSlot = s; }, geometryTier, charts?.joint,
+        legChartScale,
+      );
     }
     if (legStyle === 'full') {
       leg.hipJointSlot = legRenderer.allocJoint(
         legColor, (s) => { leg.hipJointSlot = s; }, geometryTier, charts?.joint,
+        legChartScale,
+      );
+      leg.kneeJointSlot = legRenderer.allocJoint(
+        legColor, (s) => { leg.kneeJointSlot = s; }, geometryTier, charts?.joint,
         legChartScale,
       );
     }
@@ -468,13 +497,16 @@ export function buildLegs(
   };
 }
 
-/** Free every allocated slot (upper / lower / hip joint) for
+/** Free every allocated slot (upper / lower / joint spheres) for
  *  this rig back to the shared LegInstancedRenderer pools. */
 export function freeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer): void {
   for (const leg of mesh.legs) {
     legRenderer.freeUpper(leg.upperSlot, leg.geometryTier);
     legRenderer.freeLower(leg.lowerSlot, leg.geometryTier);
+    legRenderer.freeLowerTaper(leg.lowerTaperSlot, leg.geometryTier);
+    legRenderer.freeFoot(leg.footSlot, leg.geometryTier);
     legRenderer.freeJoint(leg.hipJointSlot, leg.geometryTier);
+    legRenderer.freeJoint(leg.kneeJointSlot, leg.geometryTier);
   }
 }
 
@@ -483,7 +515,10 @@ export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, f
   for (const leg of mesh.legs) {
     legRenderer.fadeUpper(leg.upperSlot, clamped, leg.geometryTier);
     legRenderer.fadeLower(leg.lowerSlot, clamped, leg.geometryTier);
+    legRenderer.fadeLowerTaper(leg.lowerTaperSlot, clamped, leg.geometryTier);
+    legRenderer.fadeFoot(leg.footSlot, clamped, leg.geometryTier);
     legRenderer.fadeJoint(leg.hipJointSlot, clamped, leg.geometryTier);
+    legRenderer.fadeJoint(leg.kneeJointSlot, clamped, leg.geometryTier);
   }
 }
 
@@ -497,12 +532,15 @@ export function translateLegSlots(
   for (const leg of mesh.legs) {
     legRenderer.translateUpper(leg.upperSlot, dx, dy, dz, leg.geometryTier);
     legRenderer.translateLower(leg.lowerSlot, dx, dy, dz, leg.geometryTier);
+    legRenderer.translateLowerTaper(leg.lowerTaperSlot, dx, dy, dz, leg.geometryTier);
+    legRenderer.translateFoot(leg.footSlot, dx, dy, dz, leg.geometryTier);
     legRenderer.translateJoint(leg.hipJointSlot, dx, dy, dz, leg.geometryTier);
+    legRenderer.translateJoint(leg.kneeJointSlot, dx, dy, dz, leg.geometryTier);
   }
 }
 
 /** Per-frame: advance each leg's snap-lerp physics + IK, write
- *  cylinder + hip-joint transforms into the shared instanced
+ *  cylinder + joint-sphere transforms into the shared instanced
  *  renderer pools. Returns true while the rig needs another visual
  *  frame without an external render dirty waking it. */
 export function updateLegs(
@@ -913,17 +951,17 @@ export function updateLegs(
       footZ = hipWorldZ + clampDz * scale;
     }
 
-    // The gait foot remains terrain-planted, but the visible foot
-    // endpoint needs enough clearance for the leg cylinder's radius.
-    // Sampling at the current visual XZ keeps stepping feet above
-    // hills/ridges between their start and target ground points.
-    const footCylinderRadius = mesh.legStyle === 'simple' ? leg.upperThick : leg.lowerThick;
+    // The gait foot remains terrain-planted. A two-segment leg ends at the
+    // hemisphere's flat origin plane, so only the small z-fighting clearance
+    // lifts it from terrain. Simple legs have no foot and retain enough lift
+    // for their cylinder end cap.
+    const endpointVerticalRadius = mesh.legStyle === 'simple' ? leg.legRadius : 0;
     const footSurface = sampleLocomotionFootSurface(
       footX,
       footZ,
       mapWidth,
       mapHeight,
-      footCylinderRadius,
+      endpointVerticalRadius,
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
@@ -1348,13 +1386,13 @@ function updateUnsupportedLegPose(
       unsupportedLocalX, FOOT_Y, unsupportedLocalZ,
       pose, _worldOut,
     );
-    const footCylinderRadius = mesh.legStyle === 'simple' ? leg.upperThick : leg.lowerThick;
+    const endpointVerticalRadius = mesh.legStyle === 'simple' ? leg.legRadius : 0;
     const firstSurface = sampleLocomotionFootSurface(
       _worldOut.x,
       _worldOut.z,
       mapWidth,
       mapHeight,
-      footCylinderRadius,
+      endpointVerticalRadius,
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
@@ -1401,7 +1439,7 @@ function updateUnsupportedLegPose(
       targetFootZ,
       mapWidth,
       mapHeight,
-      footCylinderRadius,
+      endpointVerticalRadius,
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
@@ -1442,7 +1480,7 @@ function updateUnsupportedLegPose(
       leg.worldZ,
       mapWidth,
       mapHeight,
-      footCylinderRadius,
+      endpointVerticalRadius,
       LEG_ENDPOINT_GROUND_CLEARANCE,
       entity.id,
       _footSurface,
@@ -1472,6 +1510,94 @@ function updateUnsupportedLegPose(
   return needsFrame;
 }
 
+/** Resolve one roll axis for the complete hip-knee-foot chain. Both visible
+ * segments receive this same axis, so the lower segment cannot twist around
+ * its length independently of the upper segment as the chassis tilts. */
+export function resolveLegSegmentRight(
+  hipX: number,
+  hipY: number,
+  hipZ: number,
+  footX: number,
+  footY: number,
+  footZ: number,
+  chassisUpX: number,
+  chassisUpY: number,
+  chassisUpZ: number,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  const axisX = footX - hipX;
+  const axisY = footY - hipY;
+  const axisZ = footZ - hipZ;
+  let rightX = chassisUpY * axisZ - chassisUpZ * axisY;
+  let rightY = chassisUpZ * axisX - chassisUpX * axisZ;
+  let rightZ = chassisUpX * axisY - chassisUpY * axisX;
+  let rightLength = Math.hypot(rightX, rightY, rightZ);
+  if (rightLength <= 1e-6) {
+    if (Math.abs(chassisUpX) < 0.75) {
+      rightX = 0;
+      rightY = chassisUpZ;
+      rightZ = -chassisUpY;
+    } else {
+      rightX = chassisUpY;
+      rightY = -chassisUpX;
+      rightZ = 0;
+    }
+    rightLength = Math.max(1e-6, Math.hypot(rightX, rightY, rightZ));
+  }
+  const inverseLength = 1 / rightLength;
+  out.x = rightX * inverseLength;
+  out.y = rightY * inverseLength;
+  out.z = rightZ * inverseLength;
+  return out;
+}
+
+const _legSegmentRight = { x: 1, y: 0, z: 0 };
+const _lowerTaperStart = { x: 0, y: 0, z: 0 };
+const _kneeUpperAxis = new THREE.Vector3();
+const _kneeLowerAxis = new THREE.Vector3();
+const _kneeTangent = new THREE.Vector3();
+const _kneeRight = new THREE.Vector3();
+const _kneeForward = new THREE.Vector3();
+const _kneeBasis = new THREE.Matrix4();
+const _kneeJointQuaternion = new THREE.Quaternion();
+
+/** Orient the knee's local X axis to the roll axis shared by both segments,
+ * and its local Y axis to their direction bisector. The result moves as one
+ * continuous hip-knee-foot frame instead of leaving the sphere world-aligned
+ * while the two struts rotate around it. */
+export function resolveKneeJointQuaternion(
+  hipX: number, hipY: number, hipZ: number,
+  kneeX: number, kneeY: number, kneeZ: number,
+  footX: number, footY: number, footZ: number,
+  segmentRightX: number, segmentRightY: number, segmentRightZ: number,
+  out: THREE.Quaternion,
+): THREE.Quaternion {
+  _kneeUpperAxis.set(kneeX - hipX, kneeY - hipY, kneeZ - hipZ).normalize();
+  _kneeLowerAxis.set(footX - kneeX, footY - kneeY, footZ - kneeZ).normalize();
+  _kneeTangent.addVectors(_kneeUpperAxis, _kneeLowerAxis);
+  if (_kneeTangent.lengthSq() <= 1e-12) {
+    _kneeTangent.set(footX - hipX, footY - hipY, footZ - hipZ);
+  }
+  if (_kneeTangent.lengthSq() <= 1e-12) _kneeTangent.set(0, 1, 0);
+  _kneeTangent.normalize();
+
+  _kneeRight.set(segmentRightX, segmentRightY, segmentRightZ);
+  _kneeRight.addScaledVector(_kneeTangent, -_kneeRight.dot(_kneeTangent));
+  if (_kneeRight.lengthSq() <= 1e-12) {
+    if (Math.abs(_kneeTangent.y) < 0.999) {
+      _kneeRight.set(0, 1, 0).cross(_kneeTangent);
+    } else {
+      _kneeRight.set(1, 0, 0);
+    }
+  }
+  _kneeRight.normalize();
+  _kneeForward.crossVectors(_kneeRight, _kneeTangent).normalize();
+  // Rebuild the tangent from the other two axes to remove accumulated error.
+  _kneeTangent.crossVectors(_kneeForward, _kneeRight).normalize();
+  _kneeBasis.makeBasis(_kneeRight, _kneeTangent, _kneeForward);
+  return out.setFromRotationMatrix(_kneeBasis).normalize();
+}
+
 function writeLegRenderPose(
   mesh: LegMesh,
   leg: LegInstance,
@@ -1487,12 +1613,19 @@ function writeLegRenderPose(
   chassisUpZ: number,
 ): void {
   const c = leg.config;
+  const segmentRight = resolveLegSegmentRight(
+    hipWorldX, hipWorldY, hipWorldZ,
+    footX, footY, footZ,
+    chassisUpX, chassisUpY, chassisUpZ,
+    _legSegmentRight,
+  );
   if (mesh.legStyle === 'simple') {
     legRenderer.updateUpper(
       leg.upperSlot,
       hipWorldX, hipWorldY, hipWorldZ,
       footX, footY, footZ,
-      leg.upperThick,
+      leg.legRadius,
+      segmentRight.x, segmentRight.y, segmentRight.z,
       leg.geometryTier,
     );
   } else {
@@ -1506,22 +1639,80 @@ function writeLegRenderPose(
       leg.upperSlot,
       hipWorldX, hipWorldY, hipWorldZ,
       knee.x, knee.y, knee.z,
-      leg.upperThick,
+      leg.legRadius,
+      segmentRight.x, segmentRight.y, segmentRight.z,
       leg.geometryTier,
     );
+    const realizedTaperLength = resolveLowerLegFootTaperStart(
+      knee.x, knee.y, knee.z,
+      footX, footY, footZ,
+      leg.footRadius,
+      _lowerTaperStart,
+    );
+    const lowerLength = Math.hypot(
+      footX - knee.x,
+      footY - knee.y,
+      footZ - knee.z,
+    );
+    const mainLowerRadius = lowerLength - realizedTaperLength > 1e-6
+      ? leg.legRadius
+      : 0;
     legRenderer.updateLower(
       leg.lowerSlot,
       knee.x, knee.y, knee.z,
-      footX, footY, footZ,
-      leg.lowerThick,
+      _lowerTaperStart.x, _lowerTaperStart.y, _lowerTaperStart.z,
+      mainLowerRadius,
+      segmentRight.x, segmentRight.y, segmentRight.z,
       leg.geometryTier,
     );
+    legRenderer.updateLowerTaper(
+      leg.lowerTaperSlot,
+      _lowerTaperStart.x, _lowerTaperStart.y, _lowerTaperStart.z,
+      footX, footY, footZ,
+      realizedTaperLength > 1e-6 ? leg.legRadius : 0,
+      segmentRight.x, segmentRight.y, segmentRight.z,
+      leg.geometryTier,
+    );
+    if (leg.footSlot >= 0) {
+      const footYaw = resolveLegFootYaw(
+        segmentRight.x,
+        segmentRight.z,
+        footX - knee.x,
+        footZ - knee.z,
+      );
+      legRenderer.updateFoot(
+        leg.footSlot,
+        footX, footY, footZ,
+        leg.footRadius,
+        footYaw,
+        leg.geometryTier,
+      );
+    }
     if (leg.hipJointSlot >= 0) {
       legRenderer.updateJoint(
         leg.hipJointSlot,
         hipWorldX, hipWorldY, hipWorldZ,
         leg.hipJointRadius,
-          leg.geometryTier,
+        leg.geometryTier,
+      );
+    }
+    if (leg.kneeJointSlot >= 0) {
+      resolveKneeJointQuaternion(
+        hipWorldX, hipWorldY, hipWorldZ,
+        knee.x, knee.y, knee.z,
+        footX, footY, footZ,
+        segmentRight.x, segmentRight.y, segmentRight.z,
+        _kneeJointQuaternion,
+      );
+      legRenderer.updateOrientedJoint(
+        leg.kneeJointSlot,
+        knee.x, knee.y, knee.z,
+        leg.kneeJointRadius,
+        _kneeJointQuaternion.x,
+        _kneeJointQuaternion.y,
+        _kneeJointQuaternion.z,
+        _kneeJointQuaternion.w,
+        leg.geometryTier,
       );
     }
   }

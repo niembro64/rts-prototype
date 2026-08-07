@@ -42,6 +42,79 @@ export type LocomotionBase = {
   geometryKey: string;
 };
 
+/** Radius of a leg's upper segment at its body attachment relative to the
+ * shared 1x knee/foot radius. */
+export const LEG_ATTACHMENT_RADIUS_MULTIPLIER = 2;
+
+/** Radius of the spherical body attachment relative to the shared 1x
+ * knee/foot radius. It deliberately encloses the upper segment's 2x end. */
+export const LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER = 2.5;
+
+/** Radius of the spherical knee joint relative to the shared 1x segment
+ * radius. Keeping it below 1x makes the joint read as nested inside both
+ * segment ends instead of capping them. */
+export const LEG_KNEE_SPHERE_RADIUS_MULTIPLIER = 0.75;
+
+/** Radius of the flat-bottomed foot relative to the shared 1x segment radius. */
+export const LEG_FOOT_RADIUS_MULTIPLIER = 1.5;
+
+/** Length of the pointed lower-leg section, measured in rendered foot radii. */
+export const LEG_FOOT_TAPER_LENGTH_MULTIPLIER = 2;
+
+/** Find the point on the lower leg that is `2 * footRadius` from the foot.
+ * The result is clamped to the knee when an unusually short lower segment
+ * cannot contain the full requested taper. Returns the realized taper length. */
+export function resolveLowerLegFootTaperStart(
+  kneeX: number,
+  kneeY: number,
+  kneeZ: number,
+  footX: number,
+  footY: number,
+  footZ: number,
+  footRadius: number,
+  out: { x: number; y: number; z: number },
+): number {
+  const dx = kneeX - footX;
+  const dy = kneeY - footY;
+  const dz = kneeZ - footZ;
+  const lowerLength = Math.hypot(dx, dy, dz);
+  if (lowerLength <= 1e-9) {
+    out.x = footX;
+    out.y = footY;
+    out.z = footZ;
+    return 0;
+  }
+  const taperLength = Math.min(
+    lowerLength,
+    Math.max(0, footRadius) * LEG_FOOT_TAPER_LENGTH_MULTIPLIER,
+  );
+  const fractionFromFoot = taperLength / lowerLength;
+  out.x = footX + dx * fractionFromFoot;
+  out.y = footY + dy * fractionFromFoot;
+  out.z = footZ + dz * fractionFromFoot;
+  return taperLength;
+}
+
+/** Resolve a world-Y-only foot rotation from the roll axis shared by the two
+ * leg segments. Local +X follows the horizontal projection of that shared
+ * axis, which also makes local +Z follow the leg's horizontal bend plane.
+ * Restricting the result to yaw keeps the hemisphere's local -Y cap normal
+ * pointing straight down. */
+export function resolveLegFootYaw(
+  segmentRightX: number,
+  segmentRightZ: number,
+  fallbackForwardX: number,
+  fallbackForwardZ: number,
+): number {
+  if (segmentRightX * segmentRightX + segmentRightZ * segmentRightZ > 1e-12) {
+    return Math.atan2(-segmentRightZ, segmentRightX);
+  }
+  if (fallbackForwardX * fallbackForwardX + fallbackForwardZ * fallbackForwardZ > 1e-12) {
+    return Math.atan2(fallbackForwardX, fallbackForwardZ);
+  }
+  return 0;
+}
+
 const ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ = 1e-4;
 const ROLLING_LOCOMOTION_YAW_RATE_EPSILON = 1e-4;
 

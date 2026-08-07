@@ -2150,9 +2150,7 @@
     "LegConfig": {
       "type": "object",
       "required": [
-        "upperThickness",
-        "lowerThickness",
-        "hipRadius",
+        "radius",
         "kneeRadius",
         "lerpDuration",
         "segments",
@@ -2162,13 +2160,7 @@
         "leftSide"
       ],
       "properties": {
-        "upperThickness": {
-          "type": "number"
-        },
-        "lowerThickness": {
-          "type": "number"
-        },
-        "hipRadius": {
+        "radius": {
           "type": "number"
         },
         "kneeRadius": {
