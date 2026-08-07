@@ -66,18 +66,25 @@ const TREAD_Y = TREAD_HEIGHT / 2;
  *
  * The pitch is a TARGET rather than an exact spacing, because a chain has to
  * close: the count is rounded to fit the belt's loop and the spacing falls
- * out of that, landing within half a cleat of the target on every unit.
+ * out of that. The deviation is larger on a short belt than a long one, since
+ * a loop that fits five cleats can only be off by a fifth of one.
+ *
+ * Depth and pitch move together — doubling both keeps the duty ratio at 0.4,
+ * so the bars stay the same proportion of the belt they sit on and only the
+ * scale of the pattern changes. Height is independent and deliberately fixed:
+ * it is how far the grouser stands proud of the belt, which is a property of
+ * the part rather than of the rhythm.
  */
 const TREAD_CLEAT_HEIGHT = 1.1;
-const TREAD_CLEAT_LENGTH = 1.6;
+const TREAD_CLEAT_LENGTH = 3.2;
 /** Target spacing along the belt. The near rung is the real number; the mid
  *  rung doubles it, which is a distance decision rather than a size one — a
  *  belt at that range is a few dozen pixels and the halved count is not
  *  resolvable. */
 const TREAD_CLEAT_PITCH: Record<PrimitiveGeometryTier, number> = {
-  close: 4,
-  mid: 8,
-  far: 8,
+  close: 8,
+  mid: 16,
+  far: 16,
 };
 
 // Movement-position EMA tau for the per-side lift. Drives the side
