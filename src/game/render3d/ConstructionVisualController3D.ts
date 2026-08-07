@@ -116,7 +116,7 @@ export class ConstructionVisualController3D {
   /** Drop the cached factory→build-target association for a source entity
    *  when its mesh is removed (e.g. a factory dies mid-build). Called from
    *  the renderer entity-removal path, matching how barrelSpinState and
-   *  turretBeamAimCache are pruned. Without this the map grows unbounded by
+   *  other per-entity render caches are pruned. Without this the map grows unbounded by
    *  factory count, since resolveFactoryConstructionTarget only self-prunes
    *  while it is still being called for that source. */
   unregister(entityId: EntityId): void {

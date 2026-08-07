@@ -23,7 +23,6 @@ import {
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
   getTurretHeadRadius,
-  turretBarrelFollowsBeam,
 } from '../math';
 import {
   buildConstructionEmitterRigFromTurretConfig,
@@ -91,14 +90,10 @@ export type TurretMesh = {
    *  Tells the alloc + per-frame writer to route through the cone
    *  instanced pool instead of the cylinder pool. */
   barrelUsesCone?: boolean;
-  /** True for head-only turrets: the per-frame writer treats the head as
-   *  body geometry, so it stays on the player primary color while aim
-   *  state changes. Ray turret heads still track the beam direction. */
+  /** True for head-only utility turrets: the per-frame writer treats the
+   *  bare head as body geometry, so it stays on the player primary color
+   *  while state changes. */
   headOnly?: boolean;
-  /** True for ray turrets whose head is posed from the last beam direction
-   *  (`TurretBeamAimCache3D`) instead of the sim's turret aim. Set iff
-   *  `turretBarrelFollowsBeam(config)`. */
-  barrelFollowsBeam?: boolean;
   /** True for visible shield-sphere emitter cores. The
    *  per-frame writer drives the active shield pulse on these heads. */
   shieldEmitterCore?: boolean;
@@ -186,10 +181,6 @@ export function buildTurretMesh3D(
   const headRadius = getTurretHeadRadius(turret.config);
   const headOnly = turret.config.headOnly === true;
   const detailLevel = deps.detailLevel ?? 1;
-  // Beam (ray) turrets stay head-only on the wire and visually: the beam
-  // cylinder itself originates at the turret mount center.
-  const followsBeam = turretBarrelFollowsBeam(turret.config);
-
   if (turret.config.constructionEmitter !== null) {
     // Resource-pylon turrets render only their own resource's pylon; a
     // constructionEmitter with no resourcePylon falls back to the energy+metal
@@ -270,9 +261,7 @@ export function buildTurretMesh3D(
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  // Head-only turrets stop here as a bare head sphere. Ray turrets keep
-  // barrelFollowsBeam so the pose pass can still point the head along the
-  // last fired beam, but there is no cone, muzzle ball, or barrel offset.
+  // Head-only utility turrets stop here as a bare head sphere.
   if (!barrel || isShield || turretOff || headOnly) {
     parent.add(root);
     return {
@@ -281,7 +270,6 @@ export function buildTurretMesh3D(
       headRadius: cachedHeadRadius,
       barrels,
       headOnly,
-      barrelFollowsBeam: followsBeam,
       shieldEmitterCore: showShieldEmitterCore,
       shieldEmitterPulseMat,
     };
@@ -376,7 +364,7 @@ export function buildTurretMesh3D(
     parent.add(root);
     return {
       root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
-      headOnly, barrelFollowsBeam: followsBeam,
+      headOnly,
     };
   }
   // EVERY turret gets a collar, sized from its own head. The kit is one
@@ -432,7 +420,7 @@ export function buildTurretMesh3D(
   parent.add(root);
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
-    barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
+    barrelUsesCone, headOnly,
     teamCollar,
   };
 }

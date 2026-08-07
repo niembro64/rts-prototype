@@ -23,7 +23,6 @@ type ClientSupplementalPresentationOptions = {
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
   markLineProjectilesChanged: () => void;
   updateProjectileRenderSpatialIndex: (entity: Entity) => void;
-  markBeamHostRenderDirty: (beamEntity: Entity) => void;
 };
 
 function noteTargetAge(
@@ -276,7 +275,6 @@ export class ClientSupplementalPresentation {
       applyProjectileSpawn,
       markLineProjectilesChanged,
       updateProjectileRenderSpatialIndex,
-      markBeamHostRenderDirty,
     } = this.options;
 
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
@@ -313,7 +311,6 @@ export class ClientSupplementalPresentation {
       ) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
-        markBeamHostRenderDirty(entity);
       }
     }
     if (beamPathsChanged) markLineProjectilesChanged();

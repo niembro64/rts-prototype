@@ -9,24 +9,16 @@ export function writeTurretAimInput(
   input: Float32Array,
   base: number,
   hostRotation: number,
-  mode: number,
   aimRotation: number,
   aimPitch: number,
-  dirX: number,
-  dirY: number,
-  dirZ: number,
   chassisTiltInverse: QuaternionLike | undefined,
 ): void {
   input[base] = hostRotation;
-  input[base + 1] = mode;
-  input[base + 2] = aimRotation;
-  input[base + 3] = aimPitch;
-  input[base + 4] = dirX;
-  input[base + 5] = dirY;
-  input[base + 6] = dirZ;
-  input[base + 7] = chassisTiltInverse?.x ?? 0;
-  input[base + 8] = chassisTiltInverse?.y ?? 0;
-  input[base + 9] = chassisTiltInverse?.z ?? 0;
-  input[base + 10] = chassisTiltInverse?.w ?? 1;
-  input[base + 11] = chassisTiltInverse ? 1 : 0;
+  input[base + 1] = aimRotation;
+  input[base + 2] = aimPitch;
+  input[base + 3] = chassisTiltInverse?.x ?? 0;
+  input[base + 4] = chassisTiltInverse?.y ?? 0;
+  input[base + 5] = chassisTiltInverse?.z ?? 0;
+  input[base + 6] = chassisTiltInverse?.w ?? 1;
+  input[base + 7] = chassisTiltInverse ? 1 : 0;
 }

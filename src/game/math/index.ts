@@ -33,7 +33,6 @@ export {
 
 export {
   countBarrels,
-  turretBarrelFollowsBeam,
   getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,

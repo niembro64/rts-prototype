@@ -69,7 +69,6 @@ import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
-import { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import { tickBeamWaveTime } from './BeamWaveVisual3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
@@ -86,7 +85,6 @@ import {
   getLegsReachToggle,
   getSmokeTrails,
 } from '@/clientBarConfig';
-import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import {
   ScopedRenderMeshRetention3D,
   type ScopedRenderMeshRetentionTelemetry,
@@ -132,7 +130,6 @@ const DEFAULT_ENTITY_EMISSION_FAR_LOD = (): boolean => false;
 type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
-  beamAimProjectiles?: readonly Entity[];
   projectileRenderProjectiles?: readonly Entity[];
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
   /** Latched detail rung from the scene's EntityLodState3D — the SAME
@@ -318,7 +315,6 @@ export class Render3DEntities {
   private turretMountCache = new TurretMountCache3D();
   // Last beam-firing direction per turret. Persists across frames so
   // beam-directed heads freeze on their last live firing direction.
-  private turretBeamAimCache = new TurretBeamAimCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -506,14 +502,6 @@ export class Render3DEntities {
     this.syncLegsReachToggleQueue();
     this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
     this.lodProxyRenderer.beginFrame();
-    // Populate beam-directed turret aim from the live beams BEFORE the
-    // unit + building turret-pose passes read it this frame.
-    this.turretBeamAimCache.collectFromBeamProjectiles(
-      entityPacket?.beamAimProjectiles ?? EMPTY_PROJECTILES,
-      BEAM_SNAP_ORIGIN_TO_TURRET
-        ? (entityId) => this.clientViewState.getEntity(entityId)
-        : undefined,
-    );
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(
       entityPacket?.buildingRows,
@@ -521,7 +509,6 @@ export class Render3DEntities {
       this._spinDt,
       this._currentDtMs,
       frameSpin.timeMs,
-      this.turretBeamAimCache,
       entityPacket?.scoped === true,
       this.entityDetailRung,
       this.entityLodProxyFadeAlpha,
@@ -1054,7 +1041,6 @@ export class Render3DEntities {
         this._currentDtMs,
         this._currentTimeMs,
         this.unitDetailInstances,
-        this.turretBeamAimCache,
         this.constructionVisuals,
         this.teamTrim,
       );
@@ -1244,7 +1230,6 @@ export class Render3DEntities {
   private removeUnitMeshForViewRemoval(id: EntityId): void {
     const wasScopedHidden = this.scopedMeshRetention.forgetUnit(id);
     this.barrelSpinState.delete(id);
-    this.turretBeamAimCache.delete(id);
     this.turretMountCache.delete(id);
     this.locomotionStateCache.delete(id);
     this.unitLodVisualStateCache.delete(id);
@@ -1303,7 +1288,6 @@ export class Render3DEntities {
     this.detachUnitMeshGroup(m);
     this.activeLocomotionUnitIds.delete(id);
     this.barrelSpinState.delete(id);
-    this.turretBeamAimCache.delete(id);
     this.turretMountCache.delete(id);
   }
 
@@ -1394,7 +1378,6 @@ export class Render3DEntities {
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();
     this.barrelSpinState.clear();
-    this.turretBeamAimCache.clear();
     this.activeLocomotionUnitIds.clear();
     this.scopedMeshRetention.clear();
     this.unitRenderScopeToken = 0;

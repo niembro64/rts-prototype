@@ -13,12 +13,9 @@ import {
 import type { EntityMesh } from './EntityMesh3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
-import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import type { TurretMesh } from './TurretMesh3D';
 import {
   TURRET_AIM_INPUT_STRIDE,
-  TURRET_AIM_MODE_POSE,
-  TURRET_AIM_MODE_WORLD_DIR,
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
 import {
@@ -116,7 +113,6 @@ export class UnitTurretPose3D {
     currentDtMs: number,
     timeMs: number,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
-    turretBeamAimCache: TurretBeamAimCache3D,
     constructionVisuals: ConstructionVisualController3D,
     teamTrim: TeamTrimRenderer3D | null,
   ): void {
@@ -214,28 +210,7 @@ export class UnitTurretPose3D {
       }
 
       let deferAim = false;
-      let aimMode = TURRET_AIM_MODE_POSE;
-      let aimRotation = aimRotationFromState;
-      let aimPitch = aimPitchFromState;
-      let aimDirX = 0;
-      let aimDirY = 0;
-      let aimDirZ = 0;
-      if (turretMesh.barrelFollowsBeam) {
-        // Beam turret: aim the head along the last beam fired (frozen at
-        // the last direction when not firing). Sim turret aim is pinned to
-        // zero on the wire for these, so fall back to the forward idle pose
-        // until the first beam is cached.
-        const beamDir = turretBeamAimCache.get(entity.id, turretIdx);
-        if (beamDir) {
-          aimMode = TURRET_AIM_MODE_WORLD_DIR;
-          aimDirX = beamDir.x;
-          aimDirY = beamDir.y;
-          aimDirZ = beamDir.z;
-        }
-        deferAim = true;
-        // Beam barrels never spin.
-        if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
-      } else if (!(useState ? (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0 : turret.config.headOnly)) {
+      if (!(useState ? (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0 : turret.config.headOnly)) {
         deferAim = true;
         if (turretMesh.spinGroup) {
           setEulerXIfChanged(
@@ -251,7 +226,7 @@ export class UnitTurretPose3D {
         turretMesh.headSlot !== undefined &&
         turretMesh.headRadius !== undefined
       ) {
-        const headColorOverride = turretMesh.headOnly && !turretMesh.barrelFollowsBeam
+        const headColorOverride = turretMesh.headOnly
           ? useState
             ? entityHeadOnlyTurretHeadColorHexForStateCode(entity, stateViews.stateCode[stateRow])
             : entityHeadOnlyTurretHeadColorHex(entity, turret.state)
@@ -276,12 +251,8 @@ export class UnitTurretPose3D {
             parentPosition,
             parentQuaternion,
             entity.transform.rotation,
-            aimMode,
-            aimRotation,
-            aimPitch,
-            aimDirX,
-            aimDirY,
-            aimDirZ,
+            aimRotationFromState,
+            aimPitchFromState,
             chassisTiltInverse,
           );
           continue;
@@ -308,12 +279,8 @@ export class UnitTurretPose3D {
             parentPosition,
             parentQuaternion,
             entity.transform.rotation,
-            aimMode,
-            aimRotation,
-            aimPitch,
-            aimDirX,
-            aimDirY,
-            aimDirZ,
+            aimRotationFromState,
+            aimPitchFromState,
             chassisTiltInverse,
           );
           continue;
@@ -493,12 +460,8 @@ export class UnitTurretPose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     hostRotation: number,
-    mode: number,
     aimRotation: number,
     aimPitch: number,
-    dirX: number,
-    dirY: number,
-    dirZ: number,
     chassisTiltInverse: THREE.Quaternion | undefined,
   ): void {
     const index = this.aimCount;
@@ -511,12 +474,8 @@ export class UnitTurretPose3D {
       input,
       base,
       hostRotation,
-      mode,
       aimRotation,
       aimPitch,
-      dirX,
-      dirY,
-      dirZ,
       chassisTiltInverse,
     );
 

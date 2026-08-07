@@ -8,7 +8,7 @@
 
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, EmissionConfig, TurretConfig } from '../sim/types';
-import { isRayConfig, isProjectileShot, isRocketLikeShot } from '../sim/types';
+import { isProjectileShot, isRayConfig, isRocketLikeShot } from '../sim/types';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
 
@@ -85,20 +85,6 @@ export function getTurretBarrelCenterToTipLength(
     return 0;
   }
   return getTurretHeadRadius(config) * (1 + barrel.barrelLength);
-}
-
-/** A head-only turret emitting a ray keeps its aim off the wire and poses
- *  from the last beam fired. The historical flag name is kept as the
- *  single source of truth for "this ray turret follows its beam"; the
- *  mesh builder now leaves it head-only and the pose passes aim that head
- *  from `TurretBeamAimCache3D`. */
-export function turretBarrelFollowsBeam(
-  config: { headOnly?: boolean; shot?: EmissionConfig | null | undefined },
-): boolean {
-  return config.headOnly === true
-    && config.shot !== null
-    && config.shot !== undefined
-    && isRayConfig(config.shot);
 }
 
 /** How many physical barrels a turret config has. Single-barrel and

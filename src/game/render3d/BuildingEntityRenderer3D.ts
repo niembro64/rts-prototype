@@ -42,12 +42,9 @@ import {
   type TurretMesh,
 } from './TurretMesh3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
-import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import { BuildingRenderPacket3D } from './EntityRenderPackets3D';
 import {
   TURRET_AIM_INPUT_STRIDE,
-  TURRET_AIM_MODE_POSE,
-  TURRET_AIM_MODE_WORLD_DIR,
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
 import {
@@ -411,9 +408,6 @@ export class BuildingEntityRenderer3D {
    *  Anti-Air rocket gatling). Towers render per-Mesh, so they keep
    *  their own spin state separate from the unit renderer's. */
   private readonly barrelSpin = new UnitBarrelSpinState3D();
-  /** Set each frame from update(): last beam direction per turret, read
-   *  to aim beam-directed heads on beam towers (turretBeamLong). */
-  private beamAimCache: TurretBeamAimCache3D | null = null;
   private barrelSpinEnabled = false;
   private readonly fallbackBuildingRenderRows = new BuildingRenderPacket3D();
   private readonly turretAimBatch = new UnitTurretAimBatch3D();
@@ -486,7 +480,6 @@ export class BuildingEntityRenderer3D {
     spinDt: number,
     currentDtMs: number,
     timeMs: number,
-    beamAimCache: TurretBeamAimCache3D,
     scopedRender: boolean = false,
     entityDetailRung?: (entity: Entity) => DetailRung,
     entityLodProxyFadeAlpha?: (entity: Entity) => number,
@@ -510,7 +503,6 @@ export class BuildingEntityRenderer3D {
     const pruneToken = pruneBuildings
       ? ++this.renderScopeToken
       : 0;
-    this.beamAimCache = beamAimCache;
     const nextBarrelSpinEnabled = getGraphicsConfig().barrelSpin;
     if (nextBarrelSpinEnabled !== this.barrelSpinEnabled) {
       this.buildingSpinResetPending = !nextBarrelSpinEnabled;
@@ -519,12 +511,12 @@ export class BuildingEntityRenderer3D {
     this.beginTurretAimFrame();
     this.beginBuildingPoseFrame();
     if (buildingRows !== undefined) {
-      this.removeBuildingMeshesFromPacket(buildingRows, beamAimCache);
+      this.removeBuildingMeshesFromPacket(buildingRows);
     }
     const rows = forceFullRows
       ? this.populateFallbackBuildingRenderRows(entityDetailRung)
       : buildingRows ?? this.populateFallbackBuildingRenderRows(entityDetailRung);
-    if (buildingRows === undefined) this.removeBuildingMeshesFromPacket(rows, beamAimCache);
+    if (buildingRows === undefined) this.removeBuildingMeshesFromPacket(rows);
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
@@ -541,7 +533,7 @@ export class BuildingEntityRenderer3D {
         );
         if (mesh !== undefined) {
           if (pruneBuildings) mesh.renderSeenToken = pruneToken;
-          this.deactivateBuildingMeshForLod(entityId, mesh, beamAimCache);
+          this.deactivateBuildingMeshForLod(entityId, mesh);
         }
         continue;
       }
@@ -642,7 +634,7 @@ export class BuildingEntityRenderer3D {
 
     this.flushBuildingPoseRecords();
     this.flushTurretAimRecords();
-    if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
+    if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender);
     this.updateBuildingTurretSpinQueue(spinDt);
     this.animations.update(spinDt, currentDtMs, timeMs);
     this.updateBuildingSpawnFades(currentDtMs);
@@ -754,20 +746,17 @@ export class BuildingEntityRenderer3D {
 
   private removeBuildingMeshesFromPacket(
     rows: BuildingRenderPacket3D,
-    beamAimCache: TurretBeamAimCache3D,
   ): void {
     for (let i = 0; i < rows.removedCount; i++) {
-      this.removeBuildingMeshForViewRemoval(rows.removedEntityIdAt(i), beamAimCache);
+      this.removeBuildingMeshForViewRemoval(rows.removedEntityIdAt(i));
     }
   }
 
   private removeBuildingMeshForViewRemoval(
     id: EntityId,
-    beamAimCache: TurretBeamAimCache3D,
   ): void {
     const wasScopedHidden = this.scopedMeshRetention.forgetBuilding(id);
     this.unregisterBuildingSpinTurrets(id);
-    beamAimCache.delete(id);
     this.spawnFadeElapsed.delete(id);
 
     const mesh = this.meshes.get(id);
@@ -787,14 +776,13 @@ export class BuildingEntityRenderer3D {
   private pruneUnseenBuildingMeshes(
     pruneToken: number,
     scopedRender: boolean,
-    beamAimCache: TurretBeamAimCache3D,
   ): void {
     for (const [id, mesh] of this.meshes) {
       if (mesh.renderSeenToken === pruneToken) continue;
       if (scopedRender) {
-        this.deactivateBuildingMeshForScope(id, mesh, beamAimCache);
+        this.deactivateBuildingMeshForScope(id, mesh);
       } else {
-        this.removeBuildingMeshForViewRemoval(id, beamAimCache);
+        this.removeBuildingMeshForViewRemoval(id);
       }
     }
   }
@@ -802,12 +790,10 @@ export class BuildingEntityRenderer3D {
   private deactivateBuildingMeshForScope(
     id: EntityId,
     mesh: EntityMesh,
-    beamAimCache: TurretBeamAimCache3D,
   ): void {
     if (!this.scopedMeshRetention.markBuildingHidden(id)) return;
     this.animations.detach(id);
     this.deactivateBuildingSpinEntries(id);
-    beamAimCache.delete(id);
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
     setObjectVisibleIfChanged(mesh.group, false);
@@ -817,13 +803,11 @@ export class BuildingEntityRenderer3D {
   private deactivateBuildingMeshForLod(
     id: EntityId,
     mesh: EntityMesh,
-    beamAimCache: TurretBeamAimCache3D,
   ): void {
     if (mesh.renderLodProxyActive === true) return;
     mesh.renderLodProxyActive = true;
     this.animations.detach(id);
     this.deactivateBuildingSpinEntries(id);
-    beamAimCache.delete(id);
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
     setObjectVisibleIfChanged(mesh.group, false);
@@ -953,7 +937,6 @@ export class BuildingEntityRenderer3D {
         this.animations.unregister(entity.id);
       }
       this.meshes.delete(entity.id);
-      this.beamAimCache?.delete(entity.id);
       if (bandOnlyChanged) this.deactivateBuildingSpinEntries(entity.id);
       else this.unregisterBuildingSpinTurrets(entity.id);
       this.scopedMeshRetention.forgetBuilding(entity.id);
@@ -1239,82 +1222,35 @@ export class BuildingEntityRenderer3D {
         this.enqueueTurretAim(
           turretMesh,
           rows.rotation[row],
-          TURRET_AIM_MODE_POSE,
           turretState?.rotation ?? turret.rotation,
-          0,
-          0,
-          0,
           0,
           mesh,
           teamColorHex,
         );
         continue;
       }
-      const followsBeam = turretMesh.barrelFollowsBeam === true;
-      // Head-only turrets that don't follow a beam draw a bare head and
-      // skip barrel posing. Treat that head as body geometry: keep it on
+      // Head-only utility turrets draw a bare head and skip barrel posing.
+      // Treat that head as body geometry: keep it on
       // player primary so state/LOD changes do not shift the body tone.
       // While the shell override owns the head material during
       // construction, leave it alone.
-      if ((turretState?.headOnly ?? turret.config.headOnly) && !followsBeam) {
+      if (turretState?.headOnly ?? turret.config.headOnly) {
         if (turretMesh.head && !underConstruction) {
           this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
         }
         continue;
       }
-      // Beam turrets colour like any other turret: a plain team-color head
-      // (no engage flip) while the head tracks the beam direction below.
-      if (followsBeam && turretMesh.head && !underConstruction) {
-        this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
-      }
-      if (!underConstruction && !followsBeam) {
+      if (!underConstruction) {
         this.setTurretBarrelMaterial(turretMesh, this.getTurretAccentMat(ownerId));
       }
-      if (followsBeam) {
-        // Aim the head along the last beam fired (frozen there when idle);
-        // fall back to the forward idle pose until it first fires.
-        const beamDir = this.beamAimCache?.get(entity.id, turretIndex) ?? null;
-        if (beamDir) {
-          this.enqueueTurretAim(
-            turretMesh,
-            rows.rotation[row],
-            TURRET_AIM_MODE_WORLD_DIR,
-            0,
-            0,
-            beamDir.x,
-            beamDir.y,
-            beamDir.z,
-            mesh,
-            teamColorHex,
-          );
-        } else {
-          this.enqueueTurretAim(
-            turretMesh,
-            rows.rotation[row],
-            TURRET_AIM_MODE_POSE,
-            turretState?.rotation ?? turret.rotation,
-            turretState?.pitch ?? turret.pitch,
-            0,
-            0,
-            0,
-            mesh,
-            teamColorHex,
-          );
-        }
-      } else {
-        this.enqueueTurretAim(
-          turretMesh,
-          rows.rotation[row],
-          TURRET_AIM_MODE_POSE,
-          turretState?.rotation ?? turret.rotation,
-          turretState?.pitch ?? turret.pitch,
-          0,
-          0,
-          0,
-          mesh,
-          teamColorHex,
-        );
-      }
+      this.enqueueTurretAim(
+        turretMesh,
+        rows.rotation[row],
+        turretState?.rotation ?? turret.rotation,
+        turretState?.pitch ?? turret.pitch,
+        mesh,
+        teamColorHex,
+      );
       // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
       // rocket cluster). Single-barrel turrets have no spin state, so
       // angleFor returns undefined and the cluster stays still.
@@ -1578,12 +1514,8 @@ export class BuildingEntityRenderer3D {
   private enqueueTurretAim(
     turretMesh: TurretMesh,
     hostRotation: number,
-    mode: number,
     aimRotation: number,
     aimPitch: number,
-    dirX: number,
-    dirY: number,
-    dirZ: number,
     host: EntityMesh,
     teamColorHex: number,
   ): void {
@@ -1594,17 +1526,13 @@ export class BuildingEntityRenderer3D {
     const base = index * TURRET_AIM_INPUT_STRIDE;
     const input = this.turretAimInput;
     input[base] = hostRotation;
-    input[base + 1] = mode;
-    input[base + 2] = aimRotation;
-    input[base + 3] = aimPitch;
-    input[base + 4] = dirX;
-    input[base + 5] = dirY;
-    input[base + 6] = dirZ;
+    input[base + 1] = aimRotation;
+    input[base + 2] = aimPitch;
+    input[base + 3] = 0;
+    input[base + 4] = 0;
+    input[base + 5] = 0;
+    input[base + 6] = 1;
     input[base + 7] = 0;
-    input[base + 8] = 0;
-    input[base + 9] = 0;
-    input[base + 10] = 1;
-    input[base + 11] = 0;
     this.turretAimMeshes[index] = turretMesh;
     this.turretAimHosts[index] = host;
     this.turretAimTeamColors[index] = teamColorHex;

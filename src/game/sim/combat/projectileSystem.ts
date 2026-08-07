@@ -5,7 +5,6 @@ import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import { isAttackEmitterConfig } from '../emitterKinds';
-import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { WindState } from '../wind';
@@ -216,91 +215,46 @@ type BeamAimScratch = {
   targetEntityId: EntityId;
 };
 
-function writeBeamAimFromPoint(
+function writeBeamAimFromTurretPose(
   startX: number,
   startY: number,
   startZ: number,
-  targetX: number,
-  targetY: number,
-  targetZ: number,
-  out: BeamAimScratch,
-): boolean {
-  const dx = targetX - startX;
-  const dy = targetY - startY;
-  const dz = targetZ - startZ;
-  const len = DMath.hypot(dx, dy, dz);
-  if (!Number.isFinite(len) || len <= 1e-6) return false;
-  const inv = 1 / len;
-  out.dirX = dx * inv;
-  out.dirY = dy * inv;
-  out.dirZ = dz * inv;
-  out.visualEndX = targetX;
-  out.visualEndY = targetY;
-  out.visualEndZ = targetZ;
-  return true;
-}
-
-function writeBeamAimFallback(
-  startX: number,
-  startY: number,
-  startZ: number,
-  fallbackYaw: number,
-  fallbackPitch: number,
+  turretYaw: number,
+  turretPitch: number,
+  traceDistance: number,
   out: BeamAimScratch,
 ): void {
-  const pitchCos = DMath.cos(fallbackPitch);
-  out.dirX = DMath.cos(fallbackYaw) * pitchCos;
-  out.dirY = DMath.sin(fallbackYaw) * pitchCos;
-  out.dirZ = DMath.sin(fallbackPitch);
-  out.visualEndX = startX + out.dirX;
-  out.visualEndY = startY + out.dirY;
-  out.visualEndZ = startZ + out.dirZ;
+  const pitchCos = DMath.cos(turretPitch);
+  out.dirX = DMath.cos(turretYaw) * pitchCos;
+  out.dirY = DMath.sin(turretYaw) * pitchCos;
+  out.dirZ = DMath.sin(turretPitch);
+  out.visualEndX = startX + out.dirX * traceDistance;
+  out.visualEndY = startY + out.dirY * traceDistance;
+  out.visualEndZ = startZ + out.dirZ * traceDistance;
 }
 
 function resolveBeamAim(
   target: Entity | undefined,
-  targetPoint: { x: number; y: number; z: number } | null,
-  existingPoints: readonly BeamPoint[] | null,
   startX: number,
   startY: number,
   startZ: number,
-  fallbackYaw: number,
-  fallbackPitch: number,
+  turretYaw: number,
+  turretPitch: number,
+  traceDistance: number,
   out: BeamAimScratch,
 ): BeamAimScratch {
-  out.targetEntityId = NO_ENTITY_ID;
-  if (target !== undefined && isLiveHomingTarget(target)) {
-    const point = getEntityPosition3d(target, _beamTargetPoint);
-    if (target.building !== null) {
-      // A building's combat volume floats for hovering types; the beam must
-      // aim at the combat center, not the ground-centered transform, or it
-      // strikes the terrain under the fabricator torus.
-      point.z = getBuildingCombatCenterZ(target);
-    }
-    if (writeBeamAimFromPoint(startX, startY, startZ, point.x, point.y, point.z, out)) {
-      out.targetEntityId = target.id;
-      return out;
-    }
-  }
-  if (
-    targetPoint !== null &&
-    writeBeamAimFromPoint(startX, startY, startZ, targetPoint.x, targetPoint.y, targetPoint.z, out)
-  ) {
-    return out;
-  }
-  if (existingPoints !== null && existingPoints.length >= 2) {
-    const previousEnd = existingPoints[existingPoints.length - 1];
-    if (
-      writeBeamAimFromPoint(
-        startX, startY, startZ,
-        previousEnd.x, previousEnd.y, previousEnd.z,
-        out,
-      )
-    ) {
-      return out;
-    }
-  }
-  writeBeamAimFallback(startX, startY, startZ, fallbackYaw, fallbackPitch, out);
+  out.targetEntityId = target !== undefined && isLiveHomingTarget(target)
+    ? target.id
+    : NO_ENTITY_ID;
+  writeBeamAimFromTurretPose(
+    startX,
+    startY,
+    startZ,
+    turretYaw,
+    turretPitch,
+    traceDistance,
+    out,
+  );
   return out;
 }
 
@@ -382,7 +336,6 @@ const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
-const _beamTargetPoint = { x: 0, y: 0, z: 0 };
 const _fireBeamAim: BeamAimScratch = {
   dirX: 1,
   dirY: 0,
@@ -1109,13 +1062,12 @@ export function fireTurrets(
           const beamStartZ = spawnZ;
           const beamAim = resolveBeamAim(
             lockedTarget,
-            groundTargetPoint,
-            null,
             beamStartX,
             beamStartY,
             beamStartZ,
             turretAngle,
             turretPitch,
+            getBeamTraceDistance(world),
             _fireBeamAim,
           );
 
@@ -1139,9 +1091,9 @@ export function fireTurrets(
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
             beam.projectile.targetEntityId = beamAim.targetEntityId;
-            // createBeam seeds both polyline vertices at spawnZ; snap
-            // the spawn endpoint to the direct target-origin ray so the
-            // first client frame starts on the intended target.
+            // createBeam seeds both polyline vertices at spawnZ; apply the
+            // authoritative turret-pose trace altitude so the first client
+            // frame starts on the same 3D line the sim will retrace.
             const pts = beam.projectile.points;
             if (pts && pts.length >= 2) pts[pts.length - 1].z = beamAim.visualEndZ;
           }
@@ -1998,10 +1950,10 @@ export function updateProjectiles(
           }
         }
 
-        // Beam starts follow the turret mount center. Direction follows the
-        // live target-origin ray when the turret has an entity lock,
-        // so a fast target cannot visually or physically dodge merely
-        // because the rendered turret yaw is still catching up.
+        // Beam starts follow the turret mount center and direction follows
+        // the same authoritative yaw/pitch servo used by every other combat
+        // turret. Beam blueprints tune that shared servo to near-instant
+        // response; the ray never bypasses it with a target-origin shortcut.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
@@ -2062,13 +2014,12 @@ export function updateProjectiles(
           : undefined;
         const beamAim = resolveBeamAim(
           lockedTarget,
-          source.combat.priorityTargetPoint,
-          points,
           beamStartX,
           beamStartY,
           beamStartZ,
           turretAngle,
           turretPitch,
+          getBeamTraceDistance(world),
           _updateBeamAim,
         );
         const targetChanged = proj.targetEntityId !== beamAim.targetEntityId;

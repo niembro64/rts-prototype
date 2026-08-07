@@ -527,11 +527,9 @@ export type TurretConfig = {
   groundAimFraction: number | null;
   /** World-space radius of the rendered turret body sphere. */
   radius: TurretRadiusConfig;
-  /** See TurretBlueprint.headOnly — turrets with no barrel visual.
-   *  Rendered as a head sphere only; head color shifts halfway toward
-   *  white when the turret is engaged. Head-only turrets skip yaw/pitch
-   *  pose and rotation/pitch/velocity snapshots; beam/laser presentation
-   *  travels through beam endpoint updates. */
+  /** See TurretBlueprint.headOnly — utility mounts with no orientable barrel.
+   *  Rendered as a bare head and omitted from turret aim snapshots. Combat
+   *  ray emitters are ordinary full-barrel aiming turrets. */
   headOnly: boolean;
   /** Per-mount task source. Host consumes compatible host intents,
    *  autonomous runs a kind-specific policy, and manual waits for an ability. */

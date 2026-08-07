@@ -5,10 +5,8 @@ import {
 } from '../math/quaternionTupleMath';
 import { WasmPoseBatch3D } from './wasmPoseBatch3D';
 
-export const TURRET_AIM_INPUT_STRIDE = 12;
+export const TURRET_AIM_INPUT_STRIDE = 8;
 const TURRET_AIM_OUTPUT_STRIDE = 2;
-export const TURRET_AIM_MODE_POSE = 0;
-export const TURRET_AIM_MODE_WORLD_DIR = 1;
 
 export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
   private readonly fallbackRotated: MutableVector3Tuple = [0, 0, 0];
@@ -24,15 +22,8 @@ export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
       const ib = i * this.inputStride;
       const ob = i * this.outputStride;
       const hostRotation = input[ib];
-      let aimRotation = input[ib + 2];
-      let aimPitch = input[ib + 3];
-      if (input[ib + 1] === TURRET_AIM_MODE_WORLD_DIR) {
-        const dirX = input[ib + 4];
-        const dirY = input[ib + 5];
-        const dirZ = input[ib + 6];
-        aimRotation = Math.atan2(dirY, dirX);
-        aimPitch = Math.atan2(dirZ, Math.hypot(dirX, dirY));
-      }
+      const aimRotation = input[ib + 1];
+      const aimPitch = input[ib + 2];
 
       const cosRot = Math.cos(aimRotation);
       const sinRot = Math.sin(aimRotation);
@@ -41,13 +32,13 @@ export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
       let x = cosRot * cosPitch;
       let y = sinPitch;
       let z = sinRot * cosPitch;
-      if (input[ib + 11] !== 0) {
+      if (input[ib + 7] !== 0) {
         const rotated = rotateVectorByQuaternionInto(
           this.fallbackRotated,
-          input[ib + 7],
-          input[ib + 8],
-          input[ib + 9],
-          input[ib + 10],
+          input[ib + 3],
+          input[ib + 4],
+          input[ib + 5],
+          input[ib + 6],
           x,
           y,
           z,

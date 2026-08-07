@@ -231,7 +231,6 @@ export class RtsScene3DRenderPhase {
   private readonly entityRendererPacket = {
     unitRows: this.unitRenderPacket,
     buildingRows: this.buildingRenderPacket,
-    beamAimProjectiles: [] as readonly Entity[],
     projectileRenderProjectiles: [] as readonly Entity[],
     isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
     entityDetailRung: this.entityDetailRungRef,
@@ -484,7 +483,6 @@ export class RtsScene3DRenderPhase {
     const rendererPacket = this.entityRendererPacket;
     rendererPacket.unitRows = entityLists.unitRows;
     rendererPacket.buildingRows = entityLists.buildingRows;
-    rendererPacket.beamAimProjectiles = lineProjectiles;
     rendererPacket.projectileRenderProjectiles = projectileLists.traveling;
     rendererPacket.scoped = this.renderScope.getMode() !== 'all';
     this.entityRendererOverlayModes.reclaimTargets =

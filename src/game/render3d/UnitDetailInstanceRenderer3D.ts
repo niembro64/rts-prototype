@@ -598,7 +598,7 @@ export class UnitDetailInstanceRenderer3D {
     const turretAccentHex = entityTurretAccentColorHex(entity);
     for (let i = 0; i < mesh.turrets.length; i++) {
       const turret = mesh.turrets[i];
-      const headColorKey = turret.headOnly && turret.barrelFollowsBeam !== true
+      const headColorKey = turret.headOnly
         ? entityHeadOnlyTurretHeadColorHex(entity, turrets[i]?.state)
         : turretHeadHex;
       if (

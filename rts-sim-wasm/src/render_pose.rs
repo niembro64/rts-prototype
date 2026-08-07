@@ -1369,14 +1369,12 @@ pub fn render_turret_head_compute(count: u32) {
 // ─────────────────────────────────────────────────────────────────
 //  Render pose helper — unit turret aim/root pose
 //
-//  Converts the sim aim into the local turret rig's root yaw and pitch.
-//  Mode 0 reads turret rotation/pitch. Mode 1 reads a world direction
-//  vector first, matching applyTurretAimWorldDir3D's beam path.
+//  Converts the authoritative sim aim into the local turret rig's root yaw
+//  and pitch. Every aiming turret supplies the same yaw/pitch pose contract.
 // ─────────────────────────────────────────────────────────────────
 
-pub const RENDER_TURRET_AIM_INPUT_STRIDE: usize = 12;
+pub const RENDER_TURRET_AIM_INPUT_STRIDE: usize = 8;
 pub const RENDER_TURRET_AIM_OUTPUT_STRIDE: usize = 2;
-pub(crate) const RENDER_TURRET_AIM_MODE_WORLD_DIR: f32 = 1.0;
 
 pub(crate) struct RenderTurretAimScratch {
     input: Vec<f32>,
@@ -1436,30 +1434,20 @@ pub fn render_turret_aim_compute(count: u32) {
         let ib = i * RENDER_TURRET_AIM_INPUT_STRIDE;
         let ob = i * RENDER_TURRET_AIM_OUTPUT_STRIDE;
         let host_rotation = s.input[ib] as f64;
-        let mode = s.input[ib + 1];
-        let (aim_rotation, aim_pitch) = if mode == RENDER_TURRET_AIM_MODE_WORLD_DIR {
-            let dir_x = s.input[ib + 4] as f64;
-            let dir_y = s.input[ib + 5] as f64;
-            let dir_z = s.input[ib + 6] as f64;
-            (
-                dir_y.atan2(dir_x),
-                dir_z.atan2((dir_x * dir_x + dir_y * dir_y).sqrt()),
-            )
-        } else {
-            (s.input[ib + 2] as f64, s.input[ib + 3] as f64)
-        };
+        let aim_rotation = s.input[ib + 1] as f64;
+        let aim_pitch = s.input[ib + 2] as f64;
 
         let cos_rot = aim_rotation.cos();
         let sin_rot = aim_rotation.sin();
         let cos_pitch = aim_pitch.cos();
         let sin_pitch = aim_pitch.sin();
         let mut aim_dir = [cos_rot * cos_pitch, sin_pitch, sin_rot * cos_pitch];
-        if s.input[ib + 11] != 0.0 {
+        if s.input[ib + 7] != 0.0 {
             let inv_tilt = [
-                s.input[ib + 7] as f64,
-                s.input[ib + 8] as f64,
-                s.input[ib + 9] as f64,
-                s.input[ib + 10] as f64,
+                s.input[ib + 3] as f64,
+                s.input[ib + 4] as f64,
+                s.input[ib + 5] as f64,
+                s.input[ib + 6] as f64,
             ];
             aim_dir = quat_rotate_vec(inv_tilt, aim_dir);
         }

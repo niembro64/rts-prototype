@@ -834,7 +834,7 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1600,
+    "turretTurnAccel": 900000,
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
@@ -859,7 +859,7 @@
     "radius": {
       "other": 6
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"
@@ -918,7 +918,7 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1600,
+    "turretTurnAccel": 900000,
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
@@ -943,7 +943,7 @@
     "radius": {
       "other": 3
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"
@@ -1002,7 +1002,7 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1600,
+    "turretTurnAccel": 900000,
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
@@ -1027,7 +1027,7 @@
     "radius": {
       "other": 8
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"
@@ -1272,7 +1272,7 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1600,
+    "turretTurnAccel": 900000,
     "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
@@ -1297,7 +1297,7 @@
     "radius": {
       "other": 16
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"

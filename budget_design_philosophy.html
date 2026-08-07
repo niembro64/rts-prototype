@@ -1801,17 +1801,16 @@
     </section>
 
     <section>
-      <h2>Beam Turrets Track Their Beam; Rocket Turrets Spin Gatlings</h2>
+      <h2>Combat Turrets Share One Aim; Beams Are Tuned Super-Snappy</h2>
       <p>
-        Every combat turret renders a barrel. What differs is <em>where the barrel
-        points</em>. Most turrets &mdash; guns, cannons, mortars, gatlings, rockets,
-        the disruptor &mdash; orient their barrel from the
+        Every combat turret renders a barrel and points it from the same
         authoritative turret aim (<code>weapon.rotation</code> /
         <code>weapon.pitch</code>) that travels on the wire and corrects through the
-        <strong>rotation position</strong> channel like everything else.
-        Beam-family turrets are the one exception: their barrel and head are aimed by
-        the <em>last beam they fired</em>, not by turret aim. This replaces the older
-        rule where beam and rocket turrets drew as a bare head sphere with no barrel.
+        <strong>rotation position</strong> channel like everything else. Guns,
+        cannons, mortars, gatlings, rockets, the disruptor, and beam-family turrets
+        all consume the shared target acquisition, aim solver, critically damped
+        yaw/pitch servo, aim-error firing gate, snapshot, interpolation, and renderer
+        pose path. An emission family does not get a private targeting path.
       </p>
       <h3>Rocket turrets are spinning gatlings</h3>
       <p>
@@ -1827,61 +1826,33 @@
         turret&rsquo;s aim is now a real visual, it rides the wire again &mdash; these
         are ordinary aiming turrets, no longer head-only.
       </p>
-      <h3>Beam turrets point where their beam last fired</h3>
+      <h3>Beam turrets use the shared servo at extreme finite stiffness</h3>
       <p>
         Beam-family turrets (<code>turretBeam</code>, <code>turretBeamMini</code>,
-        <code>turretBeamMega</code>, <code>turretBeamLong</code>) render their tapered
-        emitter barrel, but the renderer never reads turret aim for them. Instead the
-        beam <em>is</em> the aim: each frame, just before the turret-pose passes run,
-        the entity renderer records the firing direction of every active beam &mdash;
-        the first segment of the beam polyline, running from the turret mount toward the
-        target &mdash; keyed by the emitting host (recorded under every candidate id the
-        beam carries, since composite/parented hosts can differ). The turret-pose pass
-        reads that direction the same frame and orients the barrel and head along it.
-        When the beam stops, the cache keeps the last direction, so the barrel
-        <em>freezes pointing wherever it last fired</em> rather than snapping back to
-        forward. The cone barrel extends out to the beam's start-point orb, so the beam
-        reads as leaving the barrel tip. A beam turret otherwise colours exactly like
-        every other turret &mdash; a plain team-color head and white barrel, with no
-        engage-time colour flip.
+        <code>turretBeamMega</code>, <code>turretBeamLong</code>) use the ordinary
+        damped turret servo with an extremely high but finite authored turn
+        acceleration. At the fixed simulation cadence that makes them settle
+        effectively within one tick while preserving the same state transition,
+        aim-error calculation, and firing eligibility as every other turret. There is
+        no instant-lock branch and no assignment that copies the target bearing
+        directly into turret rotation.
       </p>
-      <h3>The <code>headOnly</code> contract is wire-only, not &ldquo;no barrel&rdquo;</h3>
       <p>
-        Marking a turret <code>headOnly: true</code> now means exactly one thing: its
-        aim motion is pinned to zero on the wire (the snapshot serializer drops the
-        rotation / angular-velocity / pitch / pitch-velocity slots). It no longer
-        implies &ldquo;no barrel,&rdquo; and it no longer changes the turret&rsquo;s
-        colour &mdash; a beam turret renders with the same team-color head and white
-        barrel as every other turret, with no engage-time flip. Whether a head-only
-        turret draws a barrel is
-        <em>derived</em>, not a separate flag:
-        <code>turretBarrelFollowsBeam(config)</code> is exactly <code>headOnly &amp;&amp;
-        the turret emits a ray</code>. A head-only ray turret renders a beam-directed
-        barrel (built and posed from the last beam, per above); a head-only turret
-        that emits nothing aimable would still draw as a bare head. The simulation
-        keeps tracking live aim internally so the beam still leaves in the right
-        direction &mdash; that value just never reaches the wire, because the beam
-        polyline already carries the geometry the barrel reconstructs from.
+        A live beam is retraced from the turret mount along that authoritative
+        yaw/pitch pose. It does not construct a second direction from the locked
+        target&rsquo;s current center, and the renderer does not reconstruct turret
+        orientation from the beam polyline. Once aligned, a ray still has no
+        projectile travel time and therefore applies along its traced line
+        immediately; what is removed is the ability to hit a target independently of
+        where the shared turret servo is actually pointing.
       </p>
-      <h3>Why aim stays off the wire for beams</h3>
       <p>
-        Aim motion is one of the busiest turret channels in the presentation snapshot.
-        A continuously tracking turret changes rotation, pitch, and angular velocity every
-        frame, which bloats full-state rows with detail the renderer does not need for beams.
-        For beams the renderer never <em>uses</em> that traffic, because
-        the beam polyline already defines the direction and the barrel is posed from it,
-        so zeroing the four angular fields keeps the full-state beam row focused on
-        target-acquisition or state changes. Rocket turrets accept that aim traffic
-        deliberately, because for them the tracking, spinning barrel cluster <em>is</em>
-        the read.
-      </p>
-      <h3>Where the rule does not apply</h3>
-      <p>
-        The disruptor cannon stays an ordinary full-barrel aiming turret: it is a
-        melee gun whose visible barrel is part of the read. Construction emitters
-        and non-attack utility hardpoints continue to use their existing dedicated rigs.
-        Beam-directed barrels are specifically the beam (<code>ray</code>) turrets;
-        everything else aims from the wire.
+        Beam turrets are therefore ordinary full-barrel turrets rather than
+        <code>headOnly</code> mounts. Their rotation, angular velocity, pitch, and
+        pitch velocity use the normal turret presentation rows, and their tapered
+        barrels use the normal turret pose pass. <code>headOnly: true</code> is
+        reserved for bare utility mounts with no orientable barrel; those mounts may
+        omit aim motion because there is no combat pose to present.
       </p>
     </section>
 

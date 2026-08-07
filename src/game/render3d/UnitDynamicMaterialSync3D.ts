@@ -59,7 +59,7 @@ export function syncUnitDynamicMaterials3D(params: {
       if (colorMat.color instanceof THREE.Color) colorMat.color.set(colorHex);
       continue;
     }
-    if (turretMesh.headOnly === true && turretMesh.barrelFollowsBeam !== true) {
+    if (turretMesh.headOnly === true) {
       const primaryMat = materialPalette.getPrimaryMat(ownerId);
       if (turretMesh.cachedHeadMaterial === primaryMat) continue;
       turretMesh.head.material = primaryMat;

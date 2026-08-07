@@ -259,7 +259,7 @@ function assertSlowRocketDropsLockAfterLosingTarget(): void {
   resetTurretHostIntegrationState();
 }
 
-function assertBeamSpawnAimsAtTargetOrigin(): void {
+function assertBeamUsesSharedSnappyTurretAim(): void {
   resetTurretHostIntegrationState();
   const world = createIsolatedTestWorld(5322, 1024, 1024);
   world.playerCount = 2;
@@ -304,22 +304,48 @@ function assertBeamSpawnAimsAtTargetOrigin(): void {
   const dtMs = 50;
   stampCombatTargetingPool(world);
   const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
-  updateTurretRotation(world, dtMs, activeCombatUnits);
-
   const { turret: beamTurret } = getFirstAttackTurret(daddy);
-  beamTurret.rotation = 0;
-  beamTurret.pitch = 0;
-  beamTurret.aimErrorYaw = 0;
-  beamTurret.aimErrorPitch = 0;
+  assertContract(!beamTurret.config.headOnly, 'beam turret must publish ordinary full-barrel aim');
+
+  // Prove there is no beam-only snap hidden ahead of the shared spring:
+  // with deliberately weak tuning, one update must leave a visible error
+  // and the ordinary aim gate must refuse to fire.
+  const authoredTurnAccel = beamTurret.turnAccel;
+  beamTurret.turnAccel = 1;
+  updateTurretRotation(world, dtMs, activeCombatUnits);
+  assertContract(
+    Math.abs(beamTurret.aimErrorYaw) > 0.1,
+    'beam aim must retain spring error when its shared servo is deliberately slowed',
+  );
+  const earlyFireResult = fireTurrets(world, dtMs, new ForceAccumulator(), activeCombatUnits);
+  assertContract(
+    !earlyFireResult.spawnEvents.some((event) => event.beam !== undefined),
+    'beam must not bypass the shared aim-error firing gate',
+  );
+
+  // Restore the authored extreme stiffness. The same integrator should now
+  // settle effectively within one tick and make the ray eligible.
+  beamTurret.turnAccel = authoredTurnAccel;
+  updateTurretRotation(world, dtMs, activeCombatUnits);
+  const expectedYaw = Math.PI / 2;
+  assertNear(beamTurret.rotation, expectedYaw, 'beam shared servo must settle to target yaw in one tick');
+  assertNear(beamTurret.aimErrorYaw, 0, 'beam shared servo must leave negligible yaw error');
 
   const fireResult = fireTurrets(world, dtMs, new ForceAccumulator(), activeCombatUnits);
   const beamSpawn = fireResult.spawnEvents.find((event) => event.beam !== undefined);
   assertContract(beamSpawn !== undefined, 'mini beam turret must spawn a beam event');
   const beam = beamSpawn.beam;
   assertContract(beam !== undefined, 'beam spawn must carry start/end metadata');
-  assertNear(beam.end.x, target.transform.x, 'beam spawn endpoint x must snap to target origin');
-  assertNear(beam.end.y, target.transform.y, 'beam spawn endpoint y must snap to target origin');
-  assertNear(beamSpawn.rotation, Math.PI / 2, 'beam spawn yaw must follow target-origin ray, not stale turret yaw');
+  assertNear(
+    Math.atan2(beam.end.y - beam.start.y, beam.end.x - beam.start.x),
+    beamTurret.rotation,
+    'beam spawn line must follow the authoritative turret yaw',
+  );
+  assertNear(
+    beamSpawn.rotation,
+    beamTurret.rotation,
+    'beam spawn metadata must follow shared turret aim',
+  );
   resetTurretHostIntegrationState();
 }
 
@@ -636,7 +662,7 @@ export function runTurretHostIntegrationContractTest(): void {
     assertSlowRocketLaunchVelocityInheritance(true);
     assertSlowRocketLaunchVelocityInheritance(false);
     assertSlowRocketDropsLockAfterLosingTarget();
-    assertBeamSpawnAimsAtTargetOrigin();
+    assertBeamUsesSharedSnappyTurretAim();
     assertLorisReflectorRemainsAutonomousFromHostTask();
   } finally {
     resetTurretHostIntegrationState();

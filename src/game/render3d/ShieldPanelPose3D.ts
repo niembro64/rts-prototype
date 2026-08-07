@@ -7,7 +7,6 @@ import {
 } from './ShieldPanelMatrixBatch3D';
 import {
   TURRET_AIM_INPUT_STRIDE,
-  TURRET_AIM_MODE_POSE,
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
@@ -230,12 +229,8 @@ export class ShieldPanelPose3D {
       input,
       base,
       hostRotation,
-      TURRET_AIM_MODE_POSE,
       aimRotation,
       aimPitch,
-      0,
-      0,
-      0,
       chassisTiltInverse,
     );
 
