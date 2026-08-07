@@ -60,6 +60,25 @@ uniform float uFogOfWarUnseenDesaturation;
 uniform float uFogOfWarRadarDesaturation;
 uniform float uEntityShadowEnabled;
 uniform float uEntityShadowDarkness;
+
+// Read a MAX-composited coverage field written by the region pass.
+//
+// The region pass already applied the authored penumbra (1 - smoothstep across
+// the soft edge) before compositing, so this is a lookup plus a TAIL CLAMP and
+// deliberately not a second curve. The clamp is what the old
+// smoothstep(0.02, 0.98) was actually needed for — snapping the near-zero tail
+// to zero so a faint haze does not cover the whole map, and the near-one tail
+// to one — and it does that without reshaping.
+//
+// Reshaping mattered because MAX leaves a gradient CREASE wherever two regions
+// are equally strong: the field is continuous, its slope is not. A second
+// S-curve steepens the middle and amplifies that fold into a visible seam,
+// whose position depends on the two sources' relative distance — so it swept
+// across the ground as they moved. Shaping once leaves the fold where it
+// belongs, below the threshold of visibility.
+float worldShadeField(float composited) {
+  return clamp((composited - 0.02) / 0.96, 0.0, 1.0);
+}
 `;
 
 /** Applies full-sight, radar, unseen, and optional entity-shadow coverage from
@@ -87,13 +106,13 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     ? 1.0
     : 0.0;
   float fullSightCoverage = mix(
-    smoothstep(0.02, 0.98, worldCoverage.r),
-    smoothstep(0.02, 0.98, worldCoverage.b),
+    worldShadeField(worldCoverage.r),
+    worldShadeField(worldCoverage.b),
     targetIsUnderwater
   );
   float contactSensorCoverage = mix(
-    smoothstep(0.02, 0.98, worldCoverage.g),
-    smoothstep(0.02, 0.98, worldCoverage.a),
+    worldShadeField(worldCoverage.g),
+    worldShadeField(worldCoverage.a),
     targetIsUnderwater
   );
   float contactCoverage = max(fullSightCoverage, contactSensorCoverage);
@@ -107,19 +126,8 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
     radarOnlyCoverage * uFogOfWarRadarDesaturation +
     unseenCoverage * uFogOfWarUnseenDesaturation
   );
-  // OCCLUSION, SHAPED EXACTLY ONCE. The region pass already wrote the authored
-  // penumbra (1 - smoothstep across the soft edge) and MAX-composited it, so
-  // this is a lookup plus a tail clamp — NOT a second smoothstep. Running the
-  // curve twice steepened the penumbra to roughly a third of its authored
-  // width and, worse, amplified the gradient crease that MAX leaves wherever
-  // two shadows meet. That crease is a moving seam: as two units pass each
-  // other it sweeps across the ground between them, which is what made nearby
-  // shadows look like they were crawling.
-  //
-  // The clamp keeps what the old smoothstep's endpoints were for — snapping
-  // the near-zero tail to zero so a faint haze does not cover the map — and
-  // drops the reshaping it was doing by accident.
-  float entityOcclusion = ${receiveEntityShadows ? 'clamp((texture2D(uWorldShadowMap, worldShadeUv).r - 0.02) / 0.96, 0.0, 1.0)' : '0.0'};
+  // Occlusion of the sun by nearby entities — see worldShadeField.
+  float entityOcclusion = ${receiveEntityShadows ? 'worldShadeField(texture2D(uWorldShadowMap, worldShadeUv).r)' : '0.0'};
   float entityShadowDarkness =
     ${receiveEntityShadows ? 'uEntityShadowEnabled * entityOcclusion * uEntityShadowDarkness' : '0.0'};
 
