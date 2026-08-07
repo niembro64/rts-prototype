@@ -52,9 +52,33 @@ const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const _treadClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
+/**
+ * CLEAT GEOMETRY IS ABSOLUTE. All three of these are world units, not
+ * fractions of anything.
+ *
+ * A track is a chain of standard parts. The belt it runs on is sized to the
+ * unit — a Mammoth's is wider and longer than a Lynx's — but the grousers
+ * bolted to it come off the same production line, so their depth along the
+ * belt, their height, and the pitch between them do not change from one unit
+ * to the next. Deriving them from the unit's radius, as this did, made a big
+ * unit's track read as a coarse conveyor and a small one's as a fine chain,
+ * which is the opposite of what a shared chassis part looks like.
+ *
+ * The pitch is a TARGET rather than an exact spacing, because a chain has to
+ * close: the count is rounded to fit the belt's loop and the spacing falls
+ * out of that, landing within half a cleat of the target on every unit.
+ */
 const TREAD_CLEAT_HEIGHT = 1.1;
-const TREAD_CLEAT_WIDTH_FRAC = 1.0;
-const TREAD_CLEAT_LENGTH_FRAC = 0.36;
+const TREAD_CLEAT_LENGTH = 1.6;
+/** Target spacing along the belt. The near rung is the real number; the mid
+ *  rung doubles it, which is a distance decision rather than a size one — a
+ *  belt at that range is a few dozen pixels and the halved count is not
+ *  resolvable. */
+const TREAD_CLEAT_PITCH: Record<PrimitiveGeometryTier, number> = {
+  close: 4,
+  mid: 8,
+  far: 8,
+};
 
 // Movement-position EMA tau for the per-side lift. Drives the side
 // toward the floor-clamp target each frame; long enough that terrain
@@ -370,12 +394,16 @@ export function buildTreads(
     // return, bottom ground-contact run, and rounded rear return. This
     // makes treads read correctly from side/front/back instead of
     // looking like a square slab with only top markings.
-    const cleatCount = geometryTier === 'mid'
-      ? Math.max(6, Math.round(cleatLoopLength / Math.max(1, r * 0.62)))
-      : Math.max(8, Math.round(cleatLoopLength / Math.max(1, r * 0.26)));
+    const cleatCount = Math.max(
+      4,
+      Math.round(cleatLoopLength / TREAD_CLEAT_PITCH[geometryTier]),
+    );
     cleatSpacing = cleatLoopLength / cleatCount;
-    const cleatLen = cleatSpacing * TREAD_CLEAT_LENGTH_FRAC;
-    const cleatWidth = width * TREAD_CLEAT_WIDTH_FRAC;
+    const cleatLen = TREAD_CLEAT_LENGTH;
+    // Width is the one dimension that stays relative: a grouser spans the
+    // track it is bolted across. A fixed width would leave a strip down the
+    // middle of a wide belt and overhang a narrow one.
+    const cleatWidth = width;
     const cleatsPerSide = cleatCount + 1;
     for (let s = 0; s < 2; s++) {
       const sideGroup = sides[s].group;
@@ -398,7 +426,7 @@ export function buildTreads(
   unitGroup.add(group);
   // Rut width sized to the cleat: narrower than the slab so the
   // left+right ruts read as two parallel lines instead of merging.
-  const printWidth = Math.max(0.5, width * TREAD_CLEAT_WIDTH_FRAC);
+  const printWidth = Math.max(0.5, width);
   return {
     type: 'treads',
     group,

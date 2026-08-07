@@ -115,19 +115,29 @@ export function getBodyHalfWidthFrac(bodyShape: UnitBodyShape | null): number {
 
 function bodyPartHalfWidthFrac(part: UnitBodyShape | UnitBodyShapePart): number {
   switch (part.kind) {
+    // A polygon is built at circumradius 1 and scaled by radiusFrac, and a
+    // sphere at radius 1 scaled by its own frac, so those fracs ARE the half
+    // extent.
     case 'polygon':
       return part.radiusFrac;
-    case 'rect':
-    case 'rhombus':
-      return part.widthFrac;
     case 'circle':
       return part.radiusFrac;
     case 'oval':
       return part.zFrac;
+    // A rect/rhombus is built at FULL extent 1 — half extents of 0.5 — and
+    // then scaled, so its frac is a full width and has to be halved. Reading
+    // it as a half extent is what pushed the one rect-bodied tracked unit's
+    // belts twice as far out as they needed to be.
+    case 'rect':
+    case 'rhombus':
+      return part.widthFrac / 2;
     case 'composite': {
       let half = 0;
       for (const child of part.parts) {
-        half = Math.max(half, bodyPartHalfWidthFrac(child));
+        // A composite's segments carry their own lateral offset, so a narrow
+        // segment slung outboard reaches further than a wide one on the axis.
+        const offset = Math.abs(child.offsetLateral ?? 0);
+        half = Math.max(half, offset + bodyPartHalfWidthFrac(child));
       }
       return half;
     }

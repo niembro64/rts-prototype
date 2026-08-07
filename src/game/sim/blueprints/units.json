@@ -1332,12 +1332,12 @@
         "mounts": [
           {
             "xUnitRadiusRatio": 0,
-            "yUnitRadiusRatio": -1.995,
+            "yUnitRadiusRatio": -1.195,
             "zUnitRadiusRatio": 0.1667
           },
           {
             "xUnitRadiusRatio": 0,
-            "yUnitRadiusRatio": 1.995,
+            "yUnitRadiusRatio": 1.195,
             "zUnitRadiusRatio": 0.1667
           }
         ],
