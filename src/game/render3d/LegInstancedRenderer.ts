@@ -1003,20 +1003,22 @@ export class LegInstancedRenderer {
     );
   }
 
-  /** Write a foot at the lower segment endpoint. Only the caller-provided
-   * world yaw is applied, so local -Y remains world-down. The leg rig freezes
-   * that yaw while the foot is planted. */
+  /** Write a foot at the lower segment endpoint using the caller's complete
+   * world orientation. Swinging feet provide upright yaw; planted feet provide
+   * the terrain-aligned quaternion captured at touchdown. */
   updateFoot(
     slot: number,
     x: number, y: number, z: number,
     radius: number,
-    yaw: number,
+    quaternionX: number,
+    quaternionY: number,
+    quaternionZ: number,
+    quaternionW: number,
     tier: PrimitiveGeometryTier = 'close',
   ): void {
-    const halfYaw = yaw * 0.5;
     this.pool(tier).feet.updateOriented(
       slot, x, y, z, radius,
-      0, Math.sin(halfYaw), 0, Math.cos(halfYaw),
+      quaternionX, quaternionY, quaternionZ, quaternionW,
     );
   }
 

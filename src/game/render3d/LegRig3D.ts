@@ -38,7 +38,9 @@ import {
   getLocomotionSurfaceHeight,
   locomotionTerrainModeForSupportHeight,
   sampleLocomotionFootSurface,
+  sampleLocomotionFootSurfaceNormal,
   type LocomotionFootSurfaceSample,
+  type LocomotionSurfaceNormal,
   type LocomotionTerrainMode,
 } from './LocomotionTerrainSampler';
 import {
@@ -201,10 +203,14 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  /** World yaw of the foot hemisphere. It follows the leg while airborne or
-   * stepping, then remains fixed from touchdown until the foot lifts again. */
-  footYaw: number;
-  plantedFootYawLocked: boolean;
+  /** Full world orientation of the foot hemisphere. Swinging feet remain
+   * world-up and follow the leg yaw; touchdown aligns local +Y with the local
+   * support normal, then keeps this quaternion fixed until lift-off. */
+  footQuaternionX: number;
+  footQuaternionY: number;
+  footQuaternionZ: number;
+  footQuaternionW: number;
+  plantedFootOrientationLocked: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -291,8 +297,11 @@ export type LegStateSnapshot = ReadonlyArray<{
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  footYaw: number;
-  plantedFootYawLocked: boolean;
+  footQuaternionX: number;
+  footQuaternionY: number;
+  footQuaternionZ: number;
+  footQuaternionW: number;
+  plantedFootOrientationLocked: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -313,8 +322,11 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       startWorldX: leg.startWorldX, startWorldY: leg.startWorldY, startWorldZ: leg.startWorldZ,
       targetWorldX: leg.targetWorldX, targetWorldY: leg.targetWorldY, targetWorldZ: leg.targetWorldZ,
       contactState: leg.contactState,
-      footYaw: leg.footYaw,
-      plantedFootYawLocked: leg.plantedFootYawLocked,
+      footQuaternionX: leg.footQuaternionX,
+      footQuaternionY: leg.footQuaternionY,
+      footQuaternionZ: leg.footQuaternionZ,
+      footQuaternionW: leg.footQuaternionW,
+      plantedFootOrientationLocked: leg.plantedFootOrientationLocked,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
       initialized: leg.initialized,
@@ -343,8 +355,11 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.startWorldX = src.startWorldX; dst.startWorldY = src.startWorldY; dst.startWorldZ = src.startWorldZ;
     dst.targetWorldX = src.targetWorldX; dst.targetWorldY = src.targetWorldY; dst.targetWorldZ = src.targetWorldZ;
     dst.contactState = src.contactState;
-    dst.footYaw = src.footYaw;
-    dst.plantedFootYawLocked = src.plantedFootYawLocked;
+    dst.footQuaternionX = src.footQuaternionX;
+    dst.footQuaternionY = src.footQuaternionY;
+    dst.footQuaternionZ = src.footQuaternionZ;
+    dst.footQuaternionW = src.footQuaternionW;
+    dst.plantedFootOrientationLocked = src.plantedFootOrientationLocked;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
     dst.initialized = src.initialized;
@@ -425,8 +440,11 @@ export function buildLegs(
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
       contactState: 'free',
-      footYaw: 0,
-      plantedFootYawLocked: false,
+      footQuaternionX: 0,
+      footQuaternionY: 0,
+      footQuaternionZ: 0,
+      footQuaternionW: 1,
+      plantedFootOrientationLocked: false,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
@@ -980,6 +998,20 @@ export function updateLegs(
       terrainMode,
     );
     const visualFootY = Math.max(footY, footSurface.visualFootY);
+    const touchdownSurfaceNormal =
+      leg.footSlot >= 0 &&
+      leg.contactState === 'planted' &&
+      !leg.plantedFootOrientationLocked
+        ? sampleLocomotionFootSurfaceNormal(
+          footX,
+          footZ,
+          mapWidth,
+          mapHeight,
+          entity.id,
+          _footSurfaceNormal,
+          terrainMode,
+        )
+        : null;
 
     writeLegRenderPose(
       mesh,
@@ -988,6 +1020,7 @@ export function updateLegs(
       hipWorldX, hipWorldY, hipWorldZ,
       footX, visualFootY, footZ,
       chassisUpX, chassisUpY, chassisUpZ,
+      touchdownSurfaceNormal,
     );
   }
   return legsNeedFrame(mesh, pose, showViz || showReachViz);
@@ -1073,7 +1106,7 @@ function beginGroundedLegSlideTo(
   leg.targetWorldY = targetY;
   leg.targetWorldZ = targetZ;
   leg.contactState = 'stepping';
-  leg.plantedFootYawLocked = false;
+  leg.plantedFootOrientationLocked = false;
   leg.lerpProgress = 0;
   leg.lerpDuration = legSwingDurationMs(leg);
   leg.initialized = true;
@@ -1311,6 +1344,7 @@ const _footSurface: LocomotionFootSurfaceSample = {
   groundY: 0,
   visualFootY: 0,
 };
+const _footSurfaceNormal: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 
 function updateUnsupportedLegPose(
   mesh: LegMesh,
@@ -1518,6 +1552,7 @@ function updateUnsupportedLegPose(
       hipWorldX, hipWorldY, hipWorldZ,
       leg.worldX, footY, leg.worldZ,
       chassisUpX, chassisUpY, chassisUpZ,
+      null,
     );
   }
   return needsFrame;
@@ -1573,6 +1608,11 @@ const _kneeRight = new THREE.Vector3();
 const _kneeForward = new THREE.Vector3();
 const _kneeBasis = new THREE.Matrix4();
 const _kneeJointQuaternion = new THREE.Quaternion();
+const _footSurfaceUp = new THREE.Vector3();
+const _footSurfaceRight = new THREE.Vector3();
+const _footSurfaceForward = new THREE.Vector3();
+const _footSurfaceBasis = new THREE.Matrix4();
+const _footTouchdownQuaternion = new THREE.Quaternion();
 
 /** Orient the knee's local X axis to the roll axis shared by both segments,
  * and its local Y axis to their direction bisector. The result moves as one
@@ -1624,6 +1664,7 @@ function writeLegRenderPose(
   chassisUpX: number,
   chassisUpY: number,
   chassisUpZ: number,
+  touchdownSurfaceNormal: LocomotionSurfaceNormal | null,
 ): void {
   const c = leg.config;
   const segmentRight = resolveLegSegmentRight(
@@ -1693,12 +1734,21 @@ function writeLegRenderPose(
         footX - knee.x,
         footZ - knee.z,
       );
-      const footYaw = resolveContactLockedFootYaw(leg, candidateFootYaw);
+      resolveContactLockedFootOrientation(
+        leg,
+        candidateFootYaw,
+        touchdownSurfaceNormal?.nx ?? 0,
+        touchdownSurfaceNormal?.nz ?? 1,
+        touchdownSurfaceNormal?.ny ?? 0,
+      );
       legRenderer.updateFoot(
         leg.footSlot,
         footX, footY, footZ,
         leg.footRadius,
-        footYaw,
+        leg.footQuaternionX,
+        leg.footQuaternionY,
+        leg.footQuaternionZ,
+        leg.footQuaternionW,
         leg.geometryTier,
       );
     }
@@ -1732,22 +1782,95 @@ function writeLegRenderPose(
   }
 }
 
-/** Apply the foot's contact orientation rule without allocating per frame.
- * A swinging foot follows its leg. The first planted pose captures touchdown
- * yaw, and subsequent planted poses retain it even as the chassis and knee
- * continue to turn around the fixed ground contact. */
-export function resolveContactLockedFootYaw(
-  leg: Pick<LegInstance, 'contactState' | 'footYaw' | 'plantedFootYawLocked'>,
+/** Build a foot frame whose local +Y follows the support normal while local
+ * +X stays as close as possible to the yaw-authored horizontal right axis.
+ * Consequently the hemisphere cap's local -Y points into the ground and its
+ * flat plane lies tangent to the terrain. */
+export function resolveLegFootSurfaceQuaternion(
   candidateFootYaw: number,
-): number {
-  if (leg.contactState !== 'planted') {
-    leg.footYaw = candidateFootYaw;
-    leg.plantedFootYawLocked = false;
-  } else if (!leg.plantedFootYawLocked) {
-    leg.footYaw = candidateFootYaw;
-    leg.plantedFootYawLocked = true;
+  surfaceNormalX: number,
+  surfaceNormalY: number,
+  surfaceNormalZ: number,
+  out: THREE.Quaternion,
+): THREE.Quaternion {
+  _footSurfaceUp.set(surfaceNormalX, surfaceNormalY, surfaceNormalZ);
+  if (
+    !Number.isFinite(_footSurfaceUp.lengthSq()) ||
+    _footSurfaceUp.lengthSq() <= 1e-12
+  ) {
+    _footSurfaceUp.set(0, 1, 0);
+  } else {
+    _footSurfaceUp.normalize();
+    if (_footSurfaceUp.y < 0) _footSurfaceUp.multiplyScalar(-1);
   }
-  return leg.footYaw;
+
+  _footSurfaceRight.set(
+    Math.cos(candidateFootYaw),
+    0,
+    -Math.sin(candidateFootYaw),
+  );
+  _footSurfaceRight.addScaledVector(
+    _footSurfaceUp,
+    -_footSurfaceRight.dot(_footSurfaceUp),
+  );
+  if (_footSurfaceRight.lengthSq() <= 1e-12) {
+    _footSurfaceForward.set(
+      Math.sin(candidateFootYaw),
+      0,
+      Math.cos(candidateFootYaw),
+    );
+    _footSurfaceRight.crossVectors(_footSurfaceUp, _footSurfaceForward);
+  }
+  _footSurfaceRight.normalize();
+  _footSurfaceForward.crossVectors(_footSurfaceRight, _footSurfaceUp).normalize();
+  _footSurfaceBasis.makeBasis(
+    _footSurfaceRight,
+    _footSurfaceUp,
+    _footSurfaceForward,
+  );
+  return out.setFromRotationMatrix(_footSurfaceBasis).normalize();
+}
+
+/** Apply the foot's contact-orientation rule without allocating per frame.
+ * Swinging feet remain upright and follow the leg yaw. The first planted pose
+ * aligns to the sampled support normal and captures the complete quaternion;
+ * later planted poses retain it without resampling or following the chassis. */
+export function resolveContactLockedFootOrientation(
+  leg: Pick<
+    LegInstance,
+    | 'contactState'
+    | 'footQuaternionX'
+    | 'footQuaternionY'
+    | 'footQuaternionZ'
+    | 'footQuaternionW'
+    | 'plantedFootOrientationLocked'
+  >,
+  candidateFootYaw: number,
+  surfaceNormalX: number,
+  surfaceNormalY: number,
+  surfaceNormalZ: number,
+): void {
+  if (leg.contactState !== 'planted') {
+    const halfYaw = candidateFootYaw * 0.5;
+    leg.footQuaternionX = 0;
+    leg.footQuaternionY = Math.sin(halfYaw);
+    leg.footQuaternionZ = 0;
+    leg.footQuaternionW = Math.cos(halfYaw);
+    leg.plantedFootOrientationLocked = false;
+  } else if (!leg.plantedFootOrientationLocked) {
+    resolveLegFootSurfaceQuaternion(
+      candidateFootYaw,
+      surfaceNormalX,
+      surfaceNormalY,
+      surfaceNormalZ,
+      _footTouchdownQuaternion,
+    );
+    leg.footQuaternionX = _footTouchdownQuaternion.x;
+    leg.footQuaternionY = _footTouchdownQuaternion.y;
+    leg.footQuaternionZ = _footTouchdownQuaternion.z;
+    leg.footQuaternionW = _footTouchdownQuaternion.w;
+    leg.plantedFootOrientationLocked = true;
+  }
 }
 
 function initializeLegOnSnapSphere(
@@ -1808,6 +1931,6 @@ function initializeLegOnSnapSphere(
   leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;
   leg.contactState = 'planted';
-  leg.plantedFootYawLocked = false;
+  leg.plantedFootOrientationLocked = false;
   leg.initialized = true;
 }

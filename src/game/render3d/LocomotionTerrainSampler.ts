@@ -4,6 +4,7 @@ import {
   getSurfaceHeight,
   getSurfaceNormal,
   getTerrainBedHeight,
+  getTerrainBedNormal,
   getTerrainVersion,
   isWaterAt,
 } from '../sim/Terrain';
@@ -46,6 +47,8 @@ export type LocomotionPartClamp = {
 };
 
 const locomotionSupportIndex = new SupportSurfaceIndex();
+const footTerrainNormalScratch: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 };
+const footSupportSurfaceScratch = createWorldSupportSurface();
 
 export function refreshLocomotionSupportSurfaces(supportEntities: Iterable<Entity>): void {
   locomotionSupportIndex.rebuild(supportEntities);
@@ -228,4 +231,47 @@ export function sampleLocomotionFootSurface(
   result.groundY = groundY;
   result.visualFootY = groundY + cylinderRadius + clearance;
   return result;
+}
+
+/** Sample the exact support normal under a foot. This is intentionally
+ * separate from the per-frame height sample: leg rigs call it only on the
+ * unplanted -> planted transition, then retain the resulting orientation
+ * until the next step. Normals use simulation axes (X/Y horizontal, Z up). */
+export function sampleLocomotionFootSurfaceNormal(
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
+  ignoreEntityId?: EntityId | null,
+  out: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 },
+  terrainMode: LocomotionTerrainMode = 'visibleSurface',
+): LocomotionSurfaceNormal {
+  const terrainY = terrainMode === 'terrainBed'
+    ? getTerrainBedHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE)
+    : getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  const terrainNormal = terrainMode === 'terrainBed'
+    ? getTerrainBedNormal(
+      x, z, mapWidth, mapHeight, LAND_CELL_SIZE, footTerrainNormalScratch,
+    )
+    : getSurfaceNormal(
+      x, z, mapWidth, mapHeight, LAND_CELL_SIZE, footTerrainNormalScratch,
+    );
+  writeTerrainSupportSurface(
+    footSupportSurfaceScratch,
+    terrainY,
+    terrainNormal,
+    isWaterAt(x, z, mapWidth, mapHeight),
+    getTerrainVersion(),
+  );
+  locomotionSupportIndex.sampleSupportSurface(
+    x,
+    z,
+    terrainY,
+    { ignoreEntityId: ignoreEntityId ?? null },
+    footSupportSurfaceScratch,
+  );
+  out.nx = footSupportSurfaceScratch.normalX;
+  out.ny = footSupportSurfaceScratch.normalY;
+  out.nz = footSupportSurfaceScratch.normalZ;
+  return out;
 }

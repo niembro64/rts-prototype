@@ -2,6 +2,7 @@ import { UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND } from '../../config';
 import {
   getLocomotionSurfaceHeight,
   refreshLocomotionSupportSurfaces,
+  sampleLocomotionFootSurfaceNormal,
   sampleLocomotionSupportSurface,
 } from '../render3d/LocomotionTerrainSampler';
 import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
@@ -505,6 +506,15 @@ function assertRenderLocomotionContract(): void {
   assertContract(renderSurface.supportKind === 'building', 'render support sample must resolve building top');
   assertContract(renderSurface.supportEntityId === building.id, 'render support sample must preserve support host');
   assertNear(renderSurface.groundZ, buildingTopZ, 'render support surface height');
+  const footNormal = sampleLocomotionFootSurfaceNormal(
+    dry.x,
+    dry.y,
+    world.mapWidth,
+    world.mapHeight,
+  );
+  assertNear(footNormal.nx, 0, 'foot touchdown building-support normal x');
+  assertNear(footNormal.ny, 0, 'foot touchdown building-support normal y');
+  assertNear(footNormal.nz, 1, 'foot touchdown building-support normal up');
 }
 
 function assertFactoryShellContract(): void {

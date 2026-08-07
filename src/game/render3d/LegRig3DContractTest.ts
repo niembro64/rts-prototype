@@ -9,9 +9,11 @@ import {
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
+import { WATER_LEVEL } from '../sim/Terrain';
 import {
-  resolveContactLockedFootYaw,
+  resolveContactLockedFootOrientation,
   resolveKneeJointQuaternion,
+  resolveLegFootSurfaceQuaternion,
   resolveLegSegmentRight,
 } from './LegRig3D';
 import {
@@ -121,37 +123,100 @@ export function runLegRig3DContractTest(): void {
     footLocalDown.y < -1 + 1e-9 && Math.abs(footLocalDown.x) < 1e-9 && Math.abs(footLocalDown.z) < 1e-9,
     'the yawed foot keeps its flat cap normal pointing world-down',
   );
-  const footYawState = {
+  const slopeNormal = new THREE.Vector3(0.2, 0.93, 0.3).normalize();
+  const slopeQuaternion = resolveLegFootSurfaceQuaternion(
+    0.5,
+    slopeNormal.x,
+    slopeNormal.y,
+    slopeNormal.z,
+    new THREE.Quaternion(),
+  );
+  const slopeFootUp = new THREE.Vector3(0, 1, 0).applyQuaternion(slopeQuaternion);
+  const slopeFootDown = new THREE.Vector3(0, -1, 0).applyQuaternion(slopeQuaternion);
+  assertContract(
+    slopeFootUp.dot(slopeNormal) > 1 - 1e-9 &&
+      slopeFootDown.dot(slopeNormal.clone().multiplyScalar(-1)) > 1 - 1e-9,
+    'the foot flat cap lies tangent to its touchdown terrain normal',
+  );
+  const footOrientationState = {
     contactState: 'stepping' as 'planted' | 'stepping' | 'free',
-    footYaw: 0,
-    plantedFootYawLocked: false,
+    footQuaternionX: 0,
+    footQuaternionY: 0,
+    footQuaternionZ: 0,
+    footQuaternionW: 1,
+    plantedFootOrientationLocked: false,
   };
-  assertContract(
-    resolveContactLockedFootYaw(footYawState, 0.25) === 0.25 &&
-      !footYawState.plantedFootYawLocked,
-    'a stepping foot follows the current leg yaw without locking',
+  resolveContactLockedFootOrientation(
+    footOrientationState,
+    0.25,
+    slopeNormal.x,
+    slopeNormal.y,
+    slopeNormal.z,
   );
-  footYawState.contactState = 'planted';
-  assertContract(
-    resolveContactLockedFootYaw(footYawState, 0.5) === 0.5 &&
-      footYawState.plantedFootYawLocked,
-    'touchdown captures the foot world yaw',
+  const swingQuaternion = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
   );
   assertContract(
-    resolveContactLockedFootYaw(footYawState, 1.25) === 0.5,
-    'a planted foot ignores later leg yaw changes',
+    new THREE.Vector3(0, 1, 0).applyQuaternion(swingQuaternion).y > 1 - 1e-9 &&
+      !footOrientationState.plantedFootOrientationLocked,
+    'a stepping foot follows leg yaw while remaining world-up and unlocked',
   );
-  footYawState.contactState = 'stepping';
-  assertContract(
-    resolveContactLockedFootYaw(footYawState, 1.25) === 1.25 &&
-      !footYawState.plantedFootYawLocked,
-    'lifting the foot releases its yaw lock for the next step',
+  footOrientationState.contactState = 'planted';
+  resolveContactLockedFootOrientation(
+    footOrientationState,
+    0.5,
+    slopeNormal.x,
+    slopeNormal.y,
+    slopeNormal.z,
   );
-  footYawState.contactState = 'planted';
+  const touchdownQuaternion = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
   assertContract(
-    resolveContactLockedFootYaw(footYawState, 1.5) === 1.5 &&
-      footYawState.plantedFootYawLocked,
-    'the next touchdown captures a new planted yaw',
+    new THREE.Vector3(0, 1, 0).applyQuaternion(touchdownQuaternion).dot(slopeNormal) > 1 - 1e-9 &&
+      footOrientationState.plantedFootOrientationLocked,
+    'touchdown captures the complete terrain-aligned foot orientation',
+  );
+  const plantedQuaternion = touchdownQuaternion.toArray();
+  resolveContactLockedFootOrientation(footOrientationState, 1.25, 0, 1, 0);
+  assertContract(
+    footOrientationState.footQuaternionX === plantedQuaternion[0] &&
+      footOrientationState.footQuaternionY === plantedQuaternion[1] &&
+      footOrientationState.footQuaternionZ === plantedQuaternion[2] &&
+      footOrientationState.footQuaternionW === plantedQuaternion[3],
+    'a planted foot ignores later leg-yaw and terrain-normal changes',
+  );
+  footOrientationState.contactState = 'stepping';
+  resolveContactLockedFootOrientation(footOrientationState, 1.25, 0, 1, 0);
+  assertContract(
+    !footOrientationState.plantedFootOrientationLocked,
+    'lifting the foot releases its orientation lock for the next step',
+  );
+  footOrientationState.contactState = 'planted';
+  const nextSlopeNormal = new THREE.Vector3(-0.35, 0.9, 0.2).normalize();
+  resolveContactLockedFootOrientation(
+    footOrientationState,
+    1.5,
+    nextSlopeNormal.x,
+    nextSlopeNormal.y,
+    nextSlopeNormal.z,
+  );
+  const nextTouchdownQuaternion = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
+  assertContract(
+    new THREE.Vector3(0, 1, 0).applyQuaternion(nextTouchdownQuaternion).dot(nextSlopeNormal) > 1 - 1e-9 &&
+      footOrientationState.plantedFootOrientationLocked,
+    'the next touchdown captures its new local terrain orientation',
   );
   const kneeQuaternion = resolveKneeJointQuaternion(
     hip.x, hip.y, hip.z,
@@ -182,11 +247,11 @@ export function runLegRig3DContractTest(): void {
     'the knee sphere follows the upper/lower segment direction bisector',
   );
   assertContract(
-    locomotionTerrainModeForSupportHeight(-0.01) === 'terrainBed',
+    locomotionTerrainModeForSupportHeight(WATER_LEVEL - 0.01) === 'terrainBed',
     'a submerged physical support makes leg feet sample the terrain bed',
   );
   assertContract(
-    locomotionTerrainModeForSupportHeight(0) === 'visibleSurface',
+    locomotionTerrainModeForSupportHeight(WATER_LEVEL) === 'visibleSurface',
     'support on the water plane retains visible-surface locomotion sampling',
   );
   const pointVelocity = { x: 0, z: 0 };
