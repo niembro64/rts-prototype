@@ -13,6 +13,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
+import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import type { PlayerId } from './types';
 import { WorldState } from './WorldState';
 import {
@@ -238,11 +239,10 @@ function assertNegativeMetalDepositStepDemoSpawn(
   }
 }
 
-/** The smallest stock map is the packing stress case: six players each need
- * one repeat Fabricator for every enabled unit inside a narrow team arc. Keep
- * this separate from the default-preset coverage so compact-map regressions
- * cannot hide until a user selects that terrain. */
-function assertCompactSixPlayerFactoryCoverage(): void {
+/** The smallest stock map with the authored [1,2,0,3] roster is the packing
+ * stress case. It must retain exact coverage even though genuinely constrained
+ * custom maps use best-effort placement. */
+function assertCompactAuthoredRosterFactoryCoverage(): void {
   let compactPreset = BATTLE_PRESETS[0];
   for (let i = 1; i < BATTLE_PRESETS.length; i++) {
     const candidate = BATTLE_PRESETS[i];
@@ -269,22 +269,40 @@ function assertCompactSixPlayerFactoryCoverage(): void {
     playerIds.push((i + 1) as PlayerId);
   }
   const world = new WorldState(1241, mapWidth, mapHeight);
+  world.setTeamRoster(buildTeamRosterFromSeatCounts(
+    playerIds,
+    DEMO_CONFIG.allyTeamSeats,
+  ));
   const construction = new ConstructionSystem(mapWidth, mapHeight, null);
   const entities = spawnInitialBases(world, construction, playerIds, 'demo');
   const expectedUnitBlueprintIds =
     getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  const expectedUnitBlueprintIdSet = new Set<string>(expectedUnitBlueprintIds);
   const coverage = new Map<PlayerId, Set<string>>();
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (entity.buildingBlueprintId !== 'towerFabricator') continue;
     const playerId = entity.ownership?.playerId;
-    const selected = entity.factory?.selectedUnitBlueprintId;
-    if (playerId === undefined || selected === null || selected === undefined) continue;
+    const factory = entity.factory;
+    const selected = factory?.selectedUnitBlueprintId;
+    assertContract(playerId !== undefined, 'compact demo Fabricator must have an owner');
+    assertContract(
+      factory?.repeatProduction === true && selected !== null && selected !== undefined,
+      `compact demo Fabricator ${entity.id} must start in repeat production`,
+    );
+    assertContract(
+      expectedUnitBlueprintIdSet.has(selected),
+      `compact demo Fabricator ${entity.id} selected unexpected unit ${selected}`,
+    );
     let selectedByPlayer = coverage.get(playerId);
     if (selectedByPlayer === undefined) {
       selectedByPlayer = new Set<string>();
       coverage.set(playerId, selectedByPlayer);
     }
+    assertContract(
+      !selectedByPlayer.has(selected),
+      `compact demo player ${playerId} must not duplicate repeat line ${selected}`,
+    );
     selectedByPlayer.add(selected);
   }
   for (let i = 0; i < playerIds.length; i++) {
@@ -295,6 +313,47 @@ function assertCompactSixPlayerFactoryCoverage(): void {
         `${expectedUnitBlueprintIds.length} repeat Fabricator lines`,
     );
   }
+}
+
+/** A user-authored map can be physically too small for every requested demo
+ * line. Missing optional placements are allowed there; startup itself is not.
+ * This tiny map fits one 14x14-cell Fabricator footprint but not six. */
+function assertConstrainedFactoryPlacementIsNonFatal(): void {
+  const mapWidth = 600;
+  const mapHeight = 600;
+  const playerIds: PlayerId[] = [];
+  for (let i = 0; i < DEMO_CONFIG.playerCount; i++) {
+    playerIds.push((i + 1) as PlayerId);
+  }
+  const world = new WorldState(1244, mapWidth, mapHeight);
+  world.setTeamRoster(buildTeamRosterFromSeatCounts(
+    playerIds,
+    DEMO_CONFIG.allyTeamSeats,
+  ));
+  const construction = new ConstructionSystem(mapWidth, mapHeight, null);
+  const entities = spawnInitialBases(
+    world,
+    construction,
+    playerIds,
+    'demo',
+    new Set<string>(['unitBadger']),
+    new Set<string>(['towerFabricator']),
+  );
+  const factories = entities.filter(
+    (entity) => entity.buildingBlueprintId === 'towerFabricator',
+  );
+  assertContract(
+    factories.length > 0 && factories.length < playerIds.length,
+    'constrained map must exercise a partial, nonfatal Fabricator placement',
+  );
+  assertContract(
+    factories.every(
+      (entity) =>
+        entity.factory?.repeatProduction === true &&
+        entity.factory.selectedUnitBlueprintId === 'unitBadger',
+    ),
+    'every constrained-map Fabricator that fits must repeat-produce unitBadger',
+  );
 }
 
 function runDemoMetalExtractorSpawnContractTestForPreset(
@@ -660,7 +719,8 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   });
   try {
     runDemoMetalExtractorSpawnContractTestForPreset(preset);
-    assertCompactSixPlayerFactoryCoverage();
+    assertCompactAuthoredRosterFactoryCoverage();
+    assertConstrainedFactoryPlacementIsNonFatal();
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);
   }

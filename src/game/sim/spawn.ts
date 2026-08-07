@@ -15,9 +15,8 @@ import {
 } from '../../config';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import {
-  getAllyTeamBuildArcAngle,
-  getLayoutAllyTeamCount,
   getSeatBaseAngle,
+  getSeatBuildArcAngle,
   normalizePlayerIds,
 } from './playerLayout';
 import type { TeamRoster } from './teamRoster';
@@ -68,7 +67,7 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // A complete demo roster can be much denser than the shared structure arcs,
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(48);
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
@@ -433,12 +432,10 @@ function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void 
   factory.factory.repeatProduction = true;
 }
 
-function assertFactoryRepeatCoverage(
+function assertPlacedFactoriesRepeat(
   factories: readonly Entity[],
-  unitBlueprintIds: readonly string[],
   playerId: PlayerId,
 ): void {
-  const missing = new Set(unitBlueprintIds);
   for (let i = 0; i < factories.length; i++) {
     const factory = factories[i].factory;
     if (factory === null || factory === undefined) {
@@ -448,13 +445,6 @@ function assertFactoryRepeatCoverage(
     if (factory.repeatProduction !== true || selected === null) {
       throw new Error(`Demo base factory for player ${playerId} must start in repeat production`);
     }
-    missing.delete(selected);
-  }
-  if (factories.length !== unitBlueprintIds.length || missing.size > 0) {
-    throw new Error(
-      `Demo base factory coverage failed for player ${playerId}; missing repeat Fabricators for: ` +
-        [...missing].join(', '),
-    );
   }
 }
 
@@ -689,21 +679,21 @@ export function spawnInitialBases(
     DEMO_CONFIG.baseRings.buildingResourceConverter.radiusFraction,
   );
 
-  // Each player's slice of the spawn oval is ONE HALF of the
-  // 2π/N angular cycle — the other half is the divider terrain slice
-  // (the mountain ridge in Terrain.ts). This same formula is used for
-  // one-player maps too: one commander gets one team slice and one
-  // divider slice, rather than a special full-circle layout.
-  const allyTeamCount = getLayoutAllyTeamCount(world.getAllyTeamCount());
-  const sectorAngle = getAllyTeamBuildArcAngle(allyTeamCount, DEMO_CONFIG.arcSectorFraction);
-  // The complete one-Fabricator-per-unit roster needs more room than the
-  // shared structure arcs. It may occupy the full team sector, but never
-  // crosses into the alternating divider sector.
-  const factorySectorAngle = getAllyTeamBuildArcAngle(allyTeamCount, 1);
-
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
     const baseAngle = getSeatBaseAngle(world.teamRoster, playerId);
+    const sectorAngle = getSeatBuildArcAngle(
+      world.teamRoster,
+      playerId,
+      DEMO_CONFIG.arcSectorFraction,
+    );
+    // Teammates share one build slice. Give each factory row only its seat's
+    // subdivision so rows meet at their boundaries instead of overlapping.
+    const factorySectorAngle = getSeatBuildArcAngle(
+      world.teamRoster,
+      playerId,
+      1,
+    );
 
     // Commander: single entity at the player's spawn point on the outer
     // oval, facing the map center.
@@ -743,10 +733,10 @@ export function spawnInitialBases(
       ));
     }
 
-    // Fabricator arcs — exactly one Fabricator per available demo unit.
+    // Fabricator arcs — attempt one Fabricator per available demo unit.
     // Water-capable lines use the outer-water ring; every other line uses the
-    // land ring across the full team sector. Each begins in repeat production
-    // of its assigned unit.
+    // land ring inside this seat's part of the team sector. Each successfully
+    // placed factory begins repeat production of its assigned unit.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster. Disabling the towerFabricator
@@ -762,8 +752,9 @@ export function spawnInitialBases(
         oval,
         waterFactoryRadius,
         baseAngle,
-        getAllyTeamBuildArcAngle(
-          allyTeamCount,
+        getSeatBuildArcAngle(
+          world.teamRoster,
+          playerId,
           DEMO_CONFIG.waterFabricators.arcSectorFraction,
         ),
         playerId,
@@ -798,9 +789,11 @@ export function spawnInitialBases(
         null,
         true,
       );
-      assertFactoryRepeatCoverage(
+      // Placement remains best-effort: unusually small maps or dense custom
+      // rosters may not have room for every decorative demo production line.
+      // A skipped line must never abort creation of the lobby background.
+      assertPlacedFactoriesRepeat(
         [...waterFactories, ...landFactories],
-        [...waterFactoryUnitBlueprintIds, ...factoryUnitBlueprintIds],
         playerId,
       );
       entities.push(...waterFactories, ...landFactories);

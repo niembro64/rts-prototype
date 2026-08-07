@@ -46,6 +46,22 @@ export function getAllyTeamBuildArcAngle(
   return (Math.PI / count) * Math.max(0, arcSectorFraction);
 }
 
+/** Angular width available to one seat inside its ally team's build slice.
+ *  Seat centres already divide the side evenly; their structure arcs must
+ *  use the same subdivision or teammates all author buildings across the
+ *  entire shared slice and collide with one another. */
+export function getSeatBuildArcAngle(
+  roster: TeamRoster,
+  playerId: PlayerId,
+  arcSectorFraction: number,
+): number {
+  const seat = getSeatWithinAllyTeam(roster, playerId);
+  return getAllyTeamBuildArcAngle(
+    roster.allyTeamIds.length,
+    arcSectorFraction,
+  ) / seat.count;
+}
+
 /**
  * Where one seat sits inside its side's slice.
  *

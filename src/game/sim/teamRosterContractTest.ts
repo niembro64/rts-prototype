@@ -25,6 +25,7 @@ import {
   getAllyTeamBaseAngle,
   getAllyTeamBuildArcAngle,
   getSeatBaseAngle,
+  getSeatBuildArcAngle,
   getTerrainDividerTeamCount,
 } from './playerLayout';
 
@@ -116,6 +117,11 @@ export function runTeamRosterContractTest(): void {
     assertContract(
       Math.abs(angles[1] - angles[0]) > 1e-6,
       'teammates do not stack on one point',
+    );
+    assertNear(
+      getSeatBuildArcAngle(roster, members[0], 1),
+      sliceArc / members.length,
+      'each seat receives one non-overlapping subdivision of its side build arc',
     );
     if (side > 0) {
       assertNear(
