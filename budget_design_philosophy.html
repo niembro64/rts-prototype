@@ -3207,6 +3207,66 @@
     </section>
 
     <section>
+      <h2>A Shader Interface Is A Contract, And GPUs Disagree About The Rest</h2>
+      <p>
+        We write our own shaders, so we own the parts of them the language
+        leaves underspecified. When a rendering fault appears on one GPU and
+        not another, the useful assumption is never that the second GPU is
+        broken. It is that our shader asked for something the spec does not
+        guarantee, and one driver happened to answer the way we hoped.
+      </p>
+
+      <h3>A discrete value must never ride an interpolated varying</h3>
+      <p>
+        This cost real time, so it is written down. The surface-texturing
+        shader passes a <em>band code</em> &mdash; which rectangle of the trim
+        sheet a fragment reads &mdash; and it travelled as an ordinary
+        interpolated varying, decoded with <code>int()</code>. Every vertex of
+        a triangle carried the same code, so a perspective-correct interpolator
+        <em>should</em> return it exactly. Nothing requires it to. A fragment
+        landing on 5.99999 truncated to 5 and sampled a different band
+        entirely; for a leg strut that neighbour was the whitest content on the
+        sheet, so the miss appeared as bright white specks crawling over every
+        legged and tracked unit &mdash; on NVIDIA, and not on Apple, because
+        interpolation precision is a property of the hardware.
+      </p>
+      <ul class="rule-list">
+        <li>Anything used as an INDEX, an ENUM, or a BRANCH CONDITION is declared <code>flat</code>. Interpolating a selector is a category error: there is no meaningful value between two array slots.</li>
+        <li>Round rather than truncate when a float must become an integer, so an off-by-one-ulp value fails toward the right answer instead of silently reading its neighbour.</li>
+        <li>Pin it in a test. Shader source is the one place a contract cannot be expressed in the type system, so the contract test parses the patched source and asserts the qualifier is present in both stages.</li>
+      </ul>
+
+      <h3>Everything the shader declares, the host must supply</h3>
+      <p>
+        A uniform that is declared and used but never uploaded does not fail.
+        The program links, the material renders, and the value is silently
+        zero. That is the worst failure mode a shader has, because it looks
+        like a rendering decision rather than a bug &mdash; a zeroed sampling
+        ceiling once pinned an entire atlas to its sharpest mip and read as
+        <em>more</em> aliasing, which is the opposite of the fix it belonged
+        to.
+      </p>
+      <ul class="rule-list">
+        <li>Assign shared uniforms by iterating the object that defines them, never by writing one line per name. An omission then cannot be expressed.</li>
+        <li>Bound anything a driver may compute differently. Screen-space derivatives are the usual suspect: a ratio of two derivatives explodes where the denominator collapses (a silhouette) while the numerator does not (a texture sample). Clamp to what the effect can physically mean &mdash; relief cannot tilt a normal past 45 degrees, and an atlas cannot be sampled below the mip its gutters protect.</li>
+      </ul>
+
+      <h3>The machine that shows the fault must be able to bisect it</h3>
+      <p>
+        A fix for hardware-specific behaviour cannot be verified on the machine
+        that does not show it. Ship the diagnosis, not just the patch: expose
+        each suspect term as a development-time runtime knob so the person in
+        front of the broken GPU can restore the old behaviour for one term at a
+        time and answer the question in a line, rather than in a
+        rebuild-and-guess loop.
+      </p>
+      <ul class="rule-list">
+        <li>Compare a surface that shows the fault against one that does not, and prefer comparisons that break several theories at once. Tracked units sparkling alongside legged ones eliminated the transparent pass, the instanced path, and curvature in a single observation, because tracks share none of those with legs &mdash; only a chart.</li>
+        <li>Test in the real scene. Preview and lab harnesses build their own materials and their own rigs; a locomotion shading fault cannot reproduce in a viewer whose legs are a different material on a different code path.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>Resource Accounting and Work Presentation Are Separate</h2>
       <p>
         The resource-movement ledger is the source of truth for accounting, UI, replay, and
@@ -3756,6 +3816,7 @@
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, an owned-buffer renderer path for an older per-object path, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation hot paths and keep renderer framework use behind owned buffer, shader, culling, and batching contracts.</li>
+        <li>Treat a shader interface as a contract the language cannot check for you. Declare anything used as an index, enum, or branch condition <code>flat</code> &mdash; interpolating a selector lets a fragment decode its neighbour, which is hardware-dependent and reads as sparkle rather than as a bug. Supply every uniform the source declares by iterating the definition rather than naming each one, because an unsupplied uniform is silently zero. Bound anything derivative-based to what the effect can physically mean. When a fault appears on one GPU only, assume our shader is underspecified rather than that the driver is wrong, expose each suspect term as a runtime knob so the machine that shows it can bisect it, and pin the resulting rule in a contract test that parses the shader source.</li>
         <li>Stack the runtime so TypeScript coordinates and WASM computes: the TS shell handles boot, UI, IO, and WASM calls; the Rust/WASM engine owns every per-unit and per-tick loop; the renderer backend owns GPU buffers, instancing, shader programs, and optional compute work. Hot data should cross the JS/WASM boundary as rarely as the design allows.</li>
         <li>Author blueprints, tuning tables, maps, and other content as JSON data validated by a shared schema, not as TypeScript modules. Data the Rust/WASM simulation cannot read is a wall that prevents the TS-to-Rust migration from ever completing.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
