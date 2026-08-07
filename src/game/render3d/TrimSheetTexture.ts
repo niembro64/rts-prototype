@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import {
   BAND_CAP_ZONES,
+  BAND_FINE_TIER,
   BAND_SURFACE,
   BAND_WRAPS_V,
   TRIM_BAND_GUTTER_PIXELS,
@@ -39,6 +40,8 @@ import {
   bandFeatureCounts,
   bandRectPx,
   packedSheetHeight,
+  withFineTiers,
+  type BaseTrimBandId,
   type TrimBandId,
 } from './SurfaceChart3D';
 import {
@@ -55,7 +58,7 @@ import {
 
 /** One deterministic seed per band so editing one band's generator cannot
  *  reshuffle the noise in every other band. */
-const BAND_SEEDS: Record<TrimBandId, number> = {
+const BASE_BAND_SEEDS: Record<BaseTrimBandId, number> = {
   substanceGrain: 0x6b40f2,
   armorPlate: 0x51a7e1,
   noseFacet: 0x2c9b34,
@@ -70,6 +73,14 @@ const BAND_SEEDS: Record<TrimBandId, number> = {
   trackGrouser: 0x27c4a8,
   trackBeltPlate: 0x8a1f63,
 };
+
+// A tier gets its OWN seed. Same seed would give the fine tier the first two
+// of the coarse tier's plates at four times the width, which on a unit
+// carrying both tiers reads as one band that lost its nerve.
+const BAND_SEEDS: Record<TrimBandId, number> = withFineTiers(
+  BASE_BAND_SEEDS,
+  (seed) => (seed ^ 0x5bd1e995) >>> 0,
+);
 
 type Layer = {
   albedo: CanvasRenderingContext2D;
@@ -782,6 +793,55 @@ function drawHydraulicStrut(
   }
 }
 
+/**
+ * A strut too small to be plated.
+ *
+ * The coarse strut is 32 world units around and carries three panels. There is
+ * no quarter-size version of that: any smaller tier lands at exactly TWO panels
+ * around, and two panels around a cylinder is one bright side and one dark
+ * side — a baked directional highlight, which the harmonic contract rejects
+ * and which is the specific artifact that made leg segments read as though you
+ * were looking at their backs.
+ *
+ * So the small tier is not the same art shrunk. It is what a strut 8 world
+ * units around actually is: a machined post with a collar at each end. Nothing
+ * varies around its circumference except the collar bolts, and those are set
+ * above the third harmonic so they read as hardware from every angle rather
+ * than as a light. This is the same vocabulary — collar, bare shaft, bolts —
+ * minus the one element that cannot survive at this size.
+ */
+function drawHydraulicStrutFine(layer: Layer, rect: BandRect): void {
+  layer.albedo.fillStyle = gray(0.53);
+  layer.albedo.fillRect(rect.x, rect.y, rect.width, rect.height);
+  layer.height.fillStyle = gray(0.5);
+  layer.height.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+  const collarHeight = rect.height * 0.13;
+  const shaftTop = rect.y + collarHeight;
+  const shaftHeight = rect.height - collarHeight * 2;
+  layer.bare.fillStyle = gray(0.18);
+  layer.bare.fillRect(rect.x, shaftTop, rect.width, shaftHeight);
+  // Constant across u, so it costs nothing in the harmonics: the shaft reads
+  // as turned metal rather than as a flat fill.
+  for (const t of [0.34, 0.72]) {
+    const y = shaftTop + shaftHeight * t;
+    layer.albedo.fillStyle = gray(0.44);
+    layer.albedo.fillRect(rect.x, y, rect.width, 3);
+    layer.height.fillStyle = gray(0.62);
+    layer.height.fillRect(rect.x, y, rect.width, 3);
+  }
+
+  for (const y of [rect.y, rect.y + rect.height - collarHeight]) {
+    bevelRect(layer, rect.x, y, rect.width, collarHeight, 0.55, 0.97, 0.38);
+    layer.bare.fillStyle = gray(0.4);
+    layer.bare.fillRect(rect.x, y, rect.width, collarHeight);
+    // FOUR, so the bolt rhythm sits above the third harmonic the directional
+    // check watches. Sized to the spacing rather than copied from the coarse
+    // band, where they would touch at this circumference.
+    boltRow(layer, rect, y + collarHeight * 0.5, 4, Math.min(5.5, rect.width / 4 * 0.32));
+  }
+}
+
 /** Bolt boss — joints. A heavy bolted flange ringing the middle with plated
  *  shoulders above and below, so a sphere reads as a machined knuckle. */
 function drawBoltBoss(
@@ -800,7 +860,11 @@ function drawBoltBoss(
   bevelRect(layer, rect.x, ringY, rect.width, ringHeight, 0.6, 0.98, 0.38);
   layer.bare.fillStyle = gray(0.42);
   layer.bare.fillRect(rect.x, ringY, rect.width, ringHeight);
-  boltRow(layer, rect, ringY + ringHeight * 0.5, columns, 8);
+  // Bolt diameter follows the flange it holds, capped at the size this band
+  // was drawn with. Held absolute, the small tier's two bolts spanned half a
+  // knuckle's circumference and took the band over its bare-metal budget —
+  // hardware that size belongs on a knuckle four times as big.
+  boltRow(layer, rect, ringY + ringHeight * 0.5, columns, Math.min(8, rect.width * 0.055));
   seamRow(layer, rect, ringY - 3, 3);
   seamRow(layer, rect, ringY + ringHeight, 3);
 }
@@ -1304,18 +1368,12 @@ function drawTrackBeltPlate(
   }
 }
 
-const BAND_DRAWERS: Record<
-  TrimBandId,
-  {
-    base: { albedo: number; height: number; bare: number };
-    draw: (
-      layer: Layer,
-      rect: BandRect,
-      rng: () => number,
-      band: TrimBandId,
-    ) => void;
-  }
-> = {
+type BandDrawerSpec = {
+  base: { albedo: number; height: number; bare: number };
+  draw: (layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId) => void;
+};
+
+const BASE_BAND_DRAWERS: Record<BaseTrimBandId, BandDrawerSpec> = {
   substanceGrain: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawSubstanceGrain },
   armorPlate: { base: { albedo: 0.03, height: 0.12, bare: 0.04 }, draw: drawArmorPlate },
   noseFacet: { base: { albedo: 0.03, height: 0.12, bare: 0.06 }, draw: drawNoseFacet },
@@ -1330,6 +1388,28 @@ const BAND_DRAWERS: Record<
   trackGrouser: { base: { albedo: 0.52, height: 0.72, bare: 0.16 }, draw: drawTrackGrouser },
   trackBeltPlate: { base: { albedo: 0.40, height: 0.5, bare: 0.10 }, draw: drawTrackBeltPlate },
 };
+
+// Both tiers of a band are drawn by the SAME function off the same base
+// values. A tier is a size, and the drawer already takes its size from the
+// rect it is handed and its feature count from bandFeatureCounts — so the fine
+// tier is that art at its own scale rather than a second thing to keep in
+// step. Every drawer must therefore hold up at one column, which is what a
+// part a quarter the reference's size can come out at.
+// A fine tier normally reuses its coarse tier's drawer at its own size. The
+// strut is the exception, and an explicit one: at a quarter size its panel
+// grid becomes a directional highlight, so its small tier is drawn as the
+// unplated post it physically is. See drawHydraulicStrutFine.
+const FINE_BAND_DRAWER_OVERRIDES: Partial<Record<TrimBandId, BandDrawerSpec>> = {
+  hydraulicStrutFine: {
+    base: { albedo: 0.53, height: 0.5, bare: 0.18 },
+    draw: (layer, rect) => drawHydraulicStrutFine(layer, rect),
+  },
+};
+
+const BAND_DRAWERS = withFineTiers(
+  BASE_BAND_DRAWERS,
+  (spec, coarse) => FINE_BAND_DRAWER_OVERRIDES[BAND_FINE_TIER[coarse] as TrimBandId] ?? spec,
+);
 
 let cachedCanvas: HTMLCanvasElement | null = null;
 let cachedTexture: THREE.CanvasTexture | null = null;
@@ -1352,7 +1432,30 @@ function buildTrimSheetCanvas(): HTMLCanvasElement {
   for (const band of TRIM_BAND_ORDER) {
     const spec = BAND_DRAWERS[band];
     const rect = beginBand(layer, band, spec.base);
+    // A DRAWER MAY ONLY PAINT INSIDE ITS OWN BAND, and this is what makes that
+    // true rather than hoped for.
+    //
+    // Wrapping details are drawn twice — once at x and once at x - width — so
+    // that a scuff running off one edge reappears at the other. The second
+    // copy lands outside the band by construction, and with the bands packed
+    // side by side that is not empty space, it is the neighbour. It cost
+    // nothing for as long as the neighbour happened to be drawn afterwards and
+    // painted over it; adding the size tiers changed the packing, and the
+    // track's side frame started scribbling a row of link seams across the
+    // finished tyre four bands to its left.
+    //
+    // Clipping fixes the wrap as well as the vandalism: the copy is now cut at
+    // the band edge, which is exactly the half a wrapping detail should show.
+    const contexts = [layer.albedo, layer.height, layer.bare];
+    for (const ctx of contexts) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.width, rect.height);
+      ctx.clip();
+    }
     spec.draw(layer, rect, makeSeededRng(BAND_SEEDS[band]), band);
+    for (const ctx of contexts) ctx.restore();
+    // NOT clipped: the gutters are outside the content rect on purpose.
     fillBandGutters(layer, rect, BAND_WRAPS_V.has(band));
   }
 

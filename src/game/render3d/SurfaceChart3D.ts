@@ -35,7 +35,7 @@
 /** Bands of the trim sheet, top to bottom. The order IS the v layout — the
  *  generator rasterizes them in this order and the packing below derives each
  *  band's v range from its index, so the two can never disagree. */
-export type TrimBandId =
+export type BaseTrimBandId =
   | 'substanceGrain'
   | 'armorPlate'
   | 'noseFacet'
@@ -50,7 +50,25 @@ export type TrimBandId =
   | 'trackGrouser'
   | 'trackBeltPlate';
 
-export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
+/**
+ * The SECOND SIZE TIER — see the long note above BAND_FINE_TIER.
+ *
+ * Same art, same drawer, same texel density, drawn for a part a quarter the
+ * reference's size. It exists because a CLOSED axis cannot show a fraction of
+ * a band, so a part smaller than the reference was forced up to one whole
+ * wrap and wore the entire band at up to 4.4x the sheet's density.
+ */
+export type FineTrimBandId =
+  | 'armorPlateFine'
+  | 'noseFacetFine'
+  | 'hydraulicStrutFine'
+  | 'boltBossFine'
+  | 'liveryChevronFine'
+  | 'tyreTreadFine';
+
+export type TrimBandId = BaseTrimBandId | FineTrimBandId;
+
+const BASE_TRIM_BAND_ORDER: readonly BaseTrimBandId[] = [
   'substanceGrain',
   'armorPlate',
   'noseFacet',
@@ -65,6 +83,54 @@ export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
   'trackGrouser',
   'trackBeltPlate',
 ];
+
+/**
+ * Which bands have a second, smaller tier, and what it is called.
+ *
+ * ONLY closed-u bands need one. An open axis takes a fractional repeat
+ * happily — half a strap is half a strap — so the livery piping and the track
+ * side frame stay single-tier and scale continuously. A closed axis is the
+ * whole problem: it has to come out whole or the wrap mismatches.
+ */
+export const BAND_FINE_TIER: Partial<Record<BaseTrimBandId, FineTrimBandId>> = {
+  armorPlate: 'armorPlateFine',
+  noseFacet: 'noseFacetFine',
+  hydraulicStrut: 'hydraulicStrutFine',
+  boltBoss: 'boltBossFine',
+  liveryChevron: 'liveryChevronFine',
+  tyreTread: 'tyreTreadFine',
+};
+
+const FINE_TIER_PAIRS = Object.entries(BAND_FINE_TIER) as [BaseTrimBandId, FineTrimBandId][];
+
+export const BAND_COARSE_TIER = Object.fromEntries(
+  FINE_TIER_PAIRS.map(([coarse, fine]) => [fine, coarse]),
+) as Record<FineTrimBandId, BaseTrimBandId>;
+
+export const TRIM_BAND_ORDER: readonly TrimBandId[] = [
+  ...BASE_TRIM_BAND_ORDER,
+  ...FINE_TIER_PAIRS.map(([, fine]) => fine),
+];
+
+/**
+ * Build a whole-sheet table from one written per DRAWN band, deriving each
+ * fine tier's entry from its coarse one.
+ *
+ * Tiers are two sizes of the same band, so every table that describes a band
+ * has to agree across them or the sheet and the charts diverge — a fine tier
+ * with the wrong tiling axes, or missing from the drawer table, is a band that
+ * renders as garbage on exactly the small hosts it was added to serve. Writing
+ * the entries by hand in six places is how that drift happens; deriving them
+ * is how it cannot.
+ */
+export function withFineTiers<T>(
+  base: Record<BaseTrimBandId, T>,
+  derive: (coarseEntry: T, coarseBand: BaseTrimBandId) => T,
+): Record<TrimBandId, T> {
+  const out = { ...base } as Record<TrimBandId, T>;
+  for (const [coarse, fine] of FINE_TIER_PAIRS) out[fine] = derive(base[coarse], coarse);
+  return out;
+}
 
 export const TRIM_SHEET_PIXELS = 2048;
 
@@ -155,7 +221,7 @@ export const GRAIN_BAND: TrimBandId = 'substanceGrain';
  */
 export type BandTileAxes = { u: boolean; v: boolean };
 
-export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
+const BASE_BAND_TILE_AXES: Record<BaseTrimBandId, BandTileAxes> = {
   // Projected, never charted; listed for completeness.
   substanceGrain: { u: true, v: true },
   // Pure material on both axes: columns around, courses down.
@@ -183,6 +249,11 @@ export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
   trackBeltPlate: { u: true, v: false },
 };
 
+/** A tier is a SIZE, not a different surface: it tiles on exactly the axes its
+ *  coarse tier does. */
+export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> =
+  withFineTiers(BASE_BAND_TILE_AXES, (axes) => axes);
+
 /**
  * Bands whose u axis is CLOSED — it wraps around the surface and meets
  * itself: a sphere's azimuth, a cylinder's circumference, a belt's loop.
@@ -196,8 +267,13 @@ export const BAND_TILE_AXES: Record<TrimBandId, BandTileAxes> = {
  *
  * An OPEN u has two real ends and needs no rounding: the livery strap runs
  * from the hull's tail to its nose and terminates in caps at both.
+ *
+ * Rounding is cheap in the middle of the roster and RUINOUS below it, which is
+ * what the second size tier exists to fix: `max(1, round(s))` cannot go under
+ * one, so a part a quarter the reference's size wore the whole band at four
+ * times the sheet's density. See BAND_FINE_TIER.
  */
-export const BAND_CLOSED_U: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+const BASE_BAND_CLOSED_U: ReadonlySet<BaseTrimBandId> = new Set<BaseTrimBandId>([
   'armorPlate',
   'noseFacet',
   'hydraulicStrut',
@@ -209,6 +285,11 @@ export const BAND_CLOSED_U: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   // rim, and that wears `trackRunning`. Listing it as closed forced its repeat
   // up to a whole number, so a track shorter than the reference showed the
   // WHOLE band squeezed onto it — 3x the sheet's texel density on a Lynx.
+]);
+
+export const BAND_CLOSED_U: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+  ...BASE_BAND_CLOSED_U,
+  ...FINE_TIER_PAIRS.filter(([coarse]) => BASE_BAND_CLOSED_U.has(coarse)).map(([, fine]) => fine),
 ]);
 
 /** Bands whose v repeats, and whose v gutters must therefore WRAP rather than
@@ -238,7 +319,7 @@ export type BandSurface = {
   featureSize: number;
 };
 
-export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
+const BASE_BAND_SURFACE: Record<BaseTrimBandId, BandSurface> = {
   // The grain is not a chart — it is projected (see SurfaceChartMaterial3D) and
   // only ever lands where no chart did. Its plate is deliberately the SAME 24
   // world units as the hull's, so a building wall and a Formik hull lobe are
@@ -296,6 +377,99 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = {
 };
 
 /**
+ * How much smaller the second tier's reference part is.
+ *
+ * A quarter, because that is about where the roster's smallest hosts sit
+ * against the Formik — a 9-radius scout hull is 0.225, a 10-radius walker's
+ * legs 0.25 — and because the quantization error a closed axis cannot escape
+ * is worst just below a whole repeat. Two tiers a quarter apart put every host
+ * in the roster within 1.3x of the sheet's density; one tier left the smallest
+ * at 4.4x.
+ *
+ * Both tiers are drawn at the SAME texels per world unit. The fine tier is a
+ * smaller rectangle holding fewer features, not the same rectangle shrunk —
+ * shrinking it would be the density bug wearing a different hat.
+ */
+export const CHART_FINE_TIER_SCALE = 0.25;
+
+/**
+ * The smallest a fine tier's feature may be drawn, in world units.
+ *
+ * A quarter is not always reachable. A band only 32 world units around to
+ * begin with — the leg strut — has no quarter that still holds TWO features,
+ * and two is a hard floor on a closed surface: one feature wrapping a cylinder
+ * is not a pattern, it is a bright stripe down one side, and it turns its dark
+ * face to the camera as the part rotates. That is a baked directional
+ * highlight, and the sheet's own harmonic contract rejects it.
+ *
+ * So the fine tier is a quarter OR the smallest size that still holds two
+ * legible features, whichever is bigger. Bands whose own features are already
+ * finer than this — a tyre's lugs — are held to their own size instead, since
+ * demanding a fine tier be coarser than its coarse tier is nonsense.
+ */
+export const MIN_FINE_FEATURE_WORLD_UNITS = 4.2;
+
+/**
+ * How far off true density the coarse tier may be before the fine one takes
+ * over.
+ *
+ * Not zero, and deliberately so: the fine tier quantizes more finely and would
+ * otherwise win nearly every host, but it also holds FEWER distinct features,
+ * so a big hull dressed in it repeats a two-plate motif nine times around.
+ * The coarse tier is the richer art and keeps the host whenever it is close
+ * enough — which for everything from the Formik up it is.
+ *
+ * A fifth, because a fifth is where the two costs cross. Plates 20% off their
+ * drawn size are not something anyone can see without a reference beside them;
+ * a nine-fold repeat of two plates around a Queen is the first thing you see.
+ * Tightening this to 1.15 moved exactly one host — the Queen, the largest and
+ * most-looked-at unit in the game — onto the SMALL tier to buy 13% of density,
+ * which is the trade backwards.
+ */
+export const CHART_TIER_TOLERANCE = 1.2;
+
+/** How small each band's fine tier actually gets: a quarter where the band is
+ *  big enough to take it, held up to two legible features where it is not. */
+const FINE_TIER_SCALE: Record<FineTrimBandId, number> = Object.fromEntries(
+  FINE_TIER_PAIRS.map(([coarse, fine]) => {
+    const surface = BASE_BAND_SURFACE[coarse];
+    const feature = Math.min(surface.featureSize, MIN_FINE_FEATURE_WORLD_UNITS);
+    return [fine, Math.max(CHART_FINE_TIER_SCALE, (2 * feature) / surface.uExtent)];
+  }),
+) as Record<FineTrimBandId, number>;
+
+/** A band's size as a multiple of its family's reference part: 1 for the tier
+ *  the reference host wears, about a quarter for the small one. */
+export function bandTierScale(band: TrimBandId): number {
+  return FINE_TIER_SCALE[band as FineTrimBandId] ?? 1;
+}
+
+/** Both tiers of every band. The fine tier is its coarse tier's art at about a
+ *  quarter the size; `featureSize` is untouched, so it holds FEWER plates
+ *  rather than smaller ones — shrinking the plates would be the density bug
+ *  this exists to remove. */
+export const BAND_SURFACE: Record<TrimBandId, BandSurface> = withFineTiers(
+  BASE_BAND_SURFACE,
+  (surface, coarse) => {
+    const scale = FINE_TIER_SCALE[BAND_FINE_TIER[coarse] as FineTrimBandId];
+    const uExtent = surface.uExtent * scale;
+    return {
+      uExtent,
+      vExtent: surface.vExtent * scale,
+      // The authored feature, or as much of it as FITS two across — whichever
+      // is smaller. A hull lobe a quarter the Formik's still has room for a
+      // 24-unit plate and keeps it; a leg strut a quarter of the Formik's is
+      // 8 world units around, and no amount of wanting an 11-unit panel puts
+      // one there. Holding the number anyway is what produced 4x10 panels: a
+      // feature stretched 2.4:1 because its width had to fit and its height
+      // did not. Texel density is untouched either way — this is how many
+      // features the band holds, not how finely they are drawn.
+      featureSize: Math.min(surface.featureSize, uExtent / 2),
+    };
+  },
+);
+
+/**
  * How a band splits between a cylinder's wall and its end faces.
  *
  * Only cylinders whose flat face is actually seen need this. The values are
@@ -312,7 +486,7 @@ export type CapZone = {
 // The cap zone is exactly the face's RADIUS worth of band, because the remap
 // puts the radius on v: 1 world unit of radius is 1 world unit of band, so the
 // face is textured at the sheet density like everything else.
-export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
+const BASE_BAND_CAP_ZONES: Partial<Record<BaseTrimBandId, CapZone>> = {
   // A DEAD GAP separates wallVEnd from capCenterV. With the two equal, the
   // face's centre row abuts the wall's last row, and bilinear filtering at the
   // exact centre of the face pulls in the tube's bright machined lip — a white
@@ -332,6 +506,17 @@ export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
   // the barrel's half-unit gap the hub filtered in the tread's lug pattern
   // and the face came out striped.
   tyreTread: { wallVEnd: 6 / 12.4, capCenterV: 8 / 12.4, capRimV: 1 },
+};
+
+/** Cap zones carry across tiers UNCHANGED, because they are fractions of v and
+ *  a tier scales u and v together. That is what lets one UV remap serve a
+ *  wheel of either tier without knowing which it got. */
+export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
+  ...BASE_BAND_CAP_ZONES,
+  ...Object.fromEntries(
+    FINE_TIER_PAIRS.filter(([coarse]) => BASE_BAND_CAP_ZONES[coarse] !== undefined)
+      .map(([coarse, fine]) => [fine, BASE_BAND_CAP_ZONES[coarse]]),
+  ),
 };
 
 /** A band's pixel rectangle in the sheet, gutters included. */
@@ -497,15 +682,52 @@ export function isLiveryChart(chart: SurfaceChartId): boolean {
  * Formik is therefore not a special case in code and still renders exactly as
  * it was drawn.
  */
-export function chartRepeat(chart: SurfaceChartId, hostScale: number): [number, number] {
-  if (chart === 'none') return [1, 1];
-  const band = CHART_DEFS[chart].band;
+/** A band's repeats on a host of the given size. Public so the contract test
+ *  can ask what the tier it did NOT pick would have done, without restating
+ *  the rule and drifting from it. */
+export function bandRepeatsForHost(band: TrimBandId, hostScale: number): [number, number] {
   const axes = BAND_TILE_AXES[band];
-  let repeatU = axes.u ? hostScale : 1;
+  // Against THIS TIER's reference part, not the sheet's. A fine tier is a
+  // quarter the size, so a host wraps it four times as often.
+  const scale = hostScale / bandTierScale(band);
+  let repeatU = axes.u ? scale : 1;
   // A closed u has to come out whole, or the surface's own seam lands
   // mid-band and the wrap mismatches along one meridian. See BAND_CLOSED_U.
   if (axes.u && BAND_CLOSED_U.has(band)) repeatU = Math.max(1, Math.round(repeatU));
-  return [repeatU, axes.v ? hostScale : 1];
+  return [repeatU, axes.v ? scale : 1];
+}
+
+/** How far a closed axis' whole-number repeat lands from true density, as a
+ *  factor >= 1 in whichever direction it misses. */
+function closedRepeatError(scale: number): number {
+  const ratio = Math.max(1, Math.round(scale)) / scale;
+  return ratio >= 1 ? ratio : 1 / ratio;
+}
+
+/**
+ * Which SIZE of a band this host wears.
+ *
+ * Only a closed u can be wrong — an open axis takes the exact fractional
+ * repeat and is already at density — so only a closed u gets a choice. The
+ * coarse tier keeps the host while it is within tolerance, because it is the
+ * richer art; past that the fine tier takes over if, and only if, it actually
+ * lands closer. Nothing here is keyed to a blueprint or a part: a host is on
+ * the small tier because of its SIZE, which is the only thing that made it
+ * wrong in the first place.
+ */
+export function chartBandForHost(chart: SurfaceChartId, hostScale: number): TrimBandId {
+  if (chart === 'none') return GRAIN_BAND;
+  const coarse = CHART_DEFS[chart].band;
+  const fine = BAND_FINE_TIER[coarse as BaseTrimBandId];
+  if (fine === undefined) return coarse;
+  const coarseError = closedRepeatError(hostScale);
+  if (coarseError <= CHART_TIER_TOLERANCE) return coarse;
+  return closedRepeatError(hostScale / bandTierScale(fine)) < coarseError ? fine : coarse;
+}
+
+export function chartRepeat(chart: SurfaceChartId, hostScale: number): [number, number] {
+  if (chart === 'none') return [1, 1];
+  return bandRepeatsForHost(chartBandForHost(chart, hostScale), hostScale);
 }
 
 /** Every band's rectangle, in TRIM_BAND_ORDER, as the shader's uniform array
@@ -547,8 +769,9 @@ export function packChart(
     out[offset + 3] = 0;
     return;
   }
-  const [repeatU, repeatV] = chartRepeat(chart, hostScale);
-  out[offset] = TRIM_BAND_ORDER.indexOf(CHART_DEFS[chart].band) + 1;
+  const band = chartBandForHost(chart, hostScale);
+  const [repeatU, repeatV] = bandRepeatsForHost(band, hostScale);
+  out[offset] = TRIM_BAND_ORDER.indexOf(band) + 1;
   out[offset + 1] = repeatU;
   out[offset + 2] = repeatV;
   out[offset + 3] = 0;
@@ -562,6 +785,10 @@ export function bandFeatureCounts(band: TrimBandId): {
   courses: number;
 } {
   const surface = BAND_SURFACE[band];
+  // TWO is a floor, on both tiers. One feature around a closed surface is not
+  // a pattern — it is a stripe down one side, which rotates its dark face to
+  // the camera and reads as a baked directional highlight. The fine tier's
+  // scale is chosen so this clamp never has to bite hard; see FINE_TIER_SCALE.
   return {
     columns: Math.max(2, Math.round(surface.uExtent / surface.featureSize)),
     courses: Math.max(1, Math.round(surface.vExtent / surface.featureSize)),

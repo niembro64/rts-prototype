@@ -10,6 +10,8 @@ import * as THREE from 'three';
 import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
+  BAND_COARSE_TIER,
+  BAND_FINE_TIER,
   BAND_SURFACE,
   BAND_CLOSED_U,
   BAND_TILE_AXES,
@@ -18,6 +20,9 @@ import {
   GRAIN_TILE_WORLD_UNITS,
   LEG_CHARTS,
   ROSTER_CHARTS,
+  CHART_TIER_TOLERANCE,
+  bandRepeatsForHost,
+  chartBandForHost,
   chartRepeat,
   TRIM_BAND_GUTTER_PIXELS,
   TRIM_BAND_ORDER,
@@ -30,6 +35,7 @@ import {
   packedSheetHeight,
   isLiveryChart,
   packChart,
+  type BaseTrimBandId,
   type SurfaceChartId,
   type TrimBandId,
 } from './SurfaceChart3D';
@@ -56,6 +62,39 @@ function bandPixelBounds(band: TrimBandId): {
 
 /** The only two charts allowed to carry team identity. */
 const LIVERY_CHARTS: readonly SurfaceChartId[] = ['liveryStrap', 'liveryCollar'];
+
+/**
+ * Host sizes to check density at, as multiples of the reference part.
+ *
+ * The roster's real sizes are in here — hull radii 9 to 94 against the
+ * Formik's 40, legs 10 to 94, wheels 2.24 against 4.4 — and then a sweep
+ * BETWEEN them, because the next unit anyone adds will land somewhere we did
+ * not pick. Density is a property of a size, not of a blueprint, so the check
+ * is over sizes.
+ */
+const ROSTER_HOST_SCALES: readonly number[] = [
+  0.225, 0.25, 0.275, 0.325, 0.4, 0.45, 0.5, 0.509, 0.7, 0.75, 0.85, 1, 1.9, 2.3, 2.35,
+  ...Array.from({ length: 45 }, (_, i) => 0.2 + i * 0.05),
+];
+
+/**
+ * How far off the sheet's texel density any host may land.
+ *
+ * 1.5, and that number is structural rather than chosen. A closed axis has to
+ * repeat a whole number of times, so a host landing between two whole repeats
+ * is quantized to the nearer one, and the worst place to stand is just under
+ * one-and-a-half wraps: the truth is 1.49 and the nearest whole number is 1,
+ * so the host wears half again the detail it should. Rounding DOWN at a low
+ * repeat count is the expensive direction — at 2.5 wraps the same half-repeat
+ * miss is only 1.25 — which is why the small end of the roster is the end that
+ * needed a second tier at all.
+ *
+ * Nothing beats 1.5 with two tiers. A third would, by putting another repeat
+ * boundary inside the gap; it would also cost another band's sheet area and
+ * another motif for a big hull to repeat. The roster's real sizes all come in
+ * under 1.30 today, so that bill has not come due.
+ */
+const MAX_TEXEL_DENSITY_ERROR = 1.5;
 
 function bandOf(chart: SurfaceChartId): TrimBandId | null {
   if (chart === 'none') return null;
@@ -141,7 +180,10 @@ function checkCatalog(): void {
     assertContract(packed[0] >= 1, `${chart} must resolve to a real band code`);
     const band = bandOf(chart);
     assertContract(band !== null, `${chart} must resolve to a real band`);
-    usedBands.add(band);
+    // Across the ROSTER's sizes, not just the reference host's. A band has two
+    // size tiers and which one a chart lands on is decided by the host, so
+    // "used" can only be answered by asking every host the roster has.
+    for (const scale of ROSTER_HOST_SCALES) usedBands.add(chartBandForHost(chart, scale));
 
     // THE REFERENCE HOST IS NOT A SPECIAL CASE, and this is what keeps that
     // true without letting it drift. A host the same size as the one every
@@ -198,6 +240,60 @@ function checkCatalog(): void {
       );
     }
   }
+  // TEXEL DENSITY, MEASURED, ACROSS THE WHOLE ROSTER.
+  //
+  // Everything above checks the MECHANISM — whole repeats, tiling axes, the
+  // reference host being one wrap. None of it checks the thing the mechanism
+  // is for, and that is exactly how a real bug shipped: `trackBeltPlate` was
+  // marked closed-u, every rule above still passed, and a Lynx wore its whole
+  // side frame at 3x the sheet's density. This asks the only question that
+  // matters — how many texels per world unit does this host actually get —
+  // and it asks it of every host size the roster contains.
+  //
+  // The bound is not 1.0 because a closed axis cannot hit 1.0: it has to come
+  // out whole, so a host between two whole repeats is quantized to one of
+  // them. Two size tiers a quarter apart bound that miss at 1.3x, which is
+  // where this sits. One tier bounded it at 4.4x, which is what it was.
+  for (const chart of ROSTER_CHARTS) {
+    const referenceBand = bandOf(chart);
+    if (referenceBand === null || !BAND_TILE_AXES[referenceBand].u) continue;
+    for (const scale of ROSTER_HOST_SCALES) {
+      const band = chartBandForHost(chart, scale);
+      const [repeatU] = chartRepeat(chart, scale);
+      // The host's own u extent is the reference part's, scaled by the host.
+      const hostExtent = BAND_SURFACE[referenceBand].uExtent * scale;
+      const density = (BAND_SURFACE[band].uExtent * repeatU) / hostExtent;
+      const error = density >= 1 ? density : 1 / density;
+      assertContract(
+        error <= MAX_TEXEL_DENSITY_ERROR,
+        `${chart} on a host of scale ${scale} lands at ${density.toFixed(2)}x the `
+          + `sheet's texel density (band ${band}, ${repeatU} wraps) — the whole `
+          + 'point of the trim sheet is that this number is 1',
+      );
+
+      // AND THE TIER PICKED IS THE BETTER ONE. The bound above is satisfiable
+      // by a mechanism that picks tiers badly and happens to stay inside it,
+      // which is exactly the state this started in — one tier, no choice, and
+      // every rule passing. Once the coarse tier is out of tolerance the only
+      // defensible answer is whichever tier actually lands closer.
+      const other = BAND_COARSE_TIER[band as never] !== undefined
+        ? referenceBand
+        : BAND_FINE_TIER[referenceBand as BaseTrimBandId];
+      if (other === undefined || other === band) continue;
+      const otherDensity = (BAND_SURFACE[other].uExtent * bandRepeatsForHost(other, scale)[0])
+        / hostExtent;
+      const otherError = otherDensity >= 1 ? otherDensity : 1 / otherDensity;
+      // The epsilon is real: a host sitting exactly on the tolerance has its
+      // error computed here from extents and there from a ratio of repeats,
+      // and the two land either side of 1.2 in the last bit.
+      assertContract(
+        error <= otherError || error <= CHART_TIER_TOLERANCE + 1e-9,
+        `${chart} on a host of scale ${scale} took band ${band} at ${error.toFixed(2)}x `
+          + `when ${other} would have landed at ${otherError.toFixed(2)}x`,
+      );
+    }
+  }
+
   // A band nothing references is a band nobody will notice is broken.
   for (const band of TRIM_BAND_ORDER) {
     assertContract(
@@ -749,7 +845,11 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
  * gaudy. Counts are derived from BAND_SURFACE instead; this pins that the
  * derivation stays inside sane physical bounds.
  */
-const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+// The small strut is not plated at all — see drawHydraulicStrutFine. Its
+// coarse tier IS, so this one cannot be derived from a tier pair.
+const NO_PANEL_GRID_EXTRA_BANDS: readonly TrimBandId[] = ['hydraulicStrutFine'];
+
+const NO_PANEL_GRID_BASE_BANDS: readonly BaseTrimBandId[] = [
   'barrelShaft',
   // Neither of these is a plated surface: a tyre is a moulded carcass with
   // lugs, and the running band is deliberately plain steel. Panel counts are
@@ -757,6 +857,18 @@ const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   'tyreTread',
   'trackRunning',
   'trackGrouser',
+];
+
+// Whether a band is a plated grid is a fact about the SURFACE, not about which
+// size of it a host wears — a small wheel's tyre is still a moulded carcass.
+// Listing only the coarse tiers here let the fine tyre be judged as plating
+// and fail on lug size, which is the drift withFineTiers exists to stop.
+const NO_PANEL_GRID_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
+  ...NO_PANEL_GRID_BASE_BANDS,
+  ...NO_PANEL_GRID_EXTRA_BANDS,
+  ...NO_PANEL_GRID_BASE_BANDS.map((band) => BAND_FINE_TIER[band]).filter(
+    (band): band is NonNullable<typeof band> => band !== undefined,
+  ),
 ]);
 
 function checkFeatureScale(): void {
