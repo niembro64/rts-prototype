@@ -87,6 +87,7 @@ import {
   createHostOrnamentGeometry,
   createTurretCollarGeometry,
   hostOrnamentProfile,
+  type TeamOrnamentFit,
   ornamentProfileKey,
 } from '@/game/render3d/TeamOrnament3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
@@ -680,7 +681,7 @@ function buildPreviewBody(
   }
   // Every host wears the kit, so every preview card shows it.
   chassis.add(new THREE.Mesh(
-    previewOrnamentGeometry(bodyEntry),
+    previewOrnamentGeometry(bodyEntry, blueprint.teamOrnament),
     materials.teamOrnament,
   ));
   chassis.scale.setScalar(blueprint.radius.other);
@@ -689,7 +690,10 @@ function buildPreviewBody(
 
 /** The kit fitted to this body, cached by profile exactly as the live
  *  renderer's pools are — two units of the same shape share one geometry. */
-function previewOrnamentGeometry(bodyEntry: BodyGeomEntry): THREE.BufferGeometry {
+function previewOrnamentGeometry(
+  bodyEntry: BodyGeomEntry,
+  fit: TeamOrnamentFit,
+): THREE.BufferGeometry {
   let minX = 0;
   let maxX = 0;
   let halfWidth = 0;
@@ -708,7 +712,7 @@ function previewOrnamentGeometry(bodyEntry: BodyGeomEntry): THREE.BufferGeometry
     maxX,
     halfWidth,
     topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
-  });
+  }, fit);
   const key = ornamentProfileKey(profile);
   let geometry = previewOrnamentGeoms.get(key);
   if (geometry === undefined) {

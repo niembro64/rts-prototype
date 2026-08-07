@@ -164,12 +164,42 @@ export type HostOrnamentProfile = {
   backX: number;
   /** Foremost rail point. */
   frontX: number;
-  /** Height the rails ride at — the body's own top. */
-  topY: number;
+  /** Height the rails ride at over the TAIL. */
+  backY: number;
+  /** Height the rails ride at over the NOSE. Separate from `backY` because a
+   *  hull that drops away at the nose wants its rail to drop with it; the
+   *  kit's own profile is then applied on top of that line, so the shape is
+   *  still one design and only the box it is fitted into changes. */
+  frontY: number;
   /** Lateral half-span the shoulders reach. */
   halfWidth: number;
   /** Multiplier on the strap's cross-section. 1 is the Formik's. */
   section: number;
+};
+
+/**
+ * The fit as AUTHORED — fractions of the host's own extents, straight off the
+ * blueprint.
+ *
+ * These four were constants in this file, and being constants they were a
+ * claim that every body in the game is the Formik's proportions. They are not:
+ * a rail inset 21% from the nose sits on the hull of a walker and floats off
+ * the end of something longer. They belong to the unit.
+ */
+export type TeamOrnamentFit = {
+  backX: number;
+  frontX: number;
+  backY: number;
+  frontY: number;
+};
+
+/** What every host got before the fit was authorable, and what a host with
+ *  nothing to say still gets. */
+export const DEFAULT_TEAM_ORNAMENT_FIT: TeamOrnamentFit = {
+  backX: 0.82,
+  frontX: 0.79,
+  backY: 1,
+  frontY: 1,
 };
 
 /** The Formik's own fit — the reference every other host's kit is the same
@@ -178,7 +208,8 @@ export type HostOrnamentProfile = {
 export const REFERENCE_ORNAMENT_PROFILE: HostOrnamentProfile = {
   backX: -1.31,
   frontX: 0.95,
-  topY: 1.45,
+  backY: 1.45,
+  frontY: 1.45,
   halfWidth: 0.45,
   section: 1,
 };
@@ -193,21 +224,34 @@ export const REFERENCE_ORNAMENT_PROFILE: HostOrnamentProfile = {
  * roughly -1.6 to 1.2 and the rails sit inside that — so the reference unit
  * lands back on its authored kit and everything else is fitted the same way.
  */
-export function hostOrnamentProfile(bounds: {
-  minX: number;
-  maxX: number;
-  halfWidth: number;
-  topY: number;
-}): HostOrnamentProfile {
-  const backX = bounds.minX * 0.82;
-  const frontX = bounds.maxX * 0.79;
+export function hostOrnamentProfile(
+  bounds: {
+    minX: number;
+    maxX: number;
+    halfWidth: number;
+    topY: number;
+  },
+  fit: TeamOrnamentFit = DEFAULT_TEAM_ORNAMENT_FIT,
+): HostOrnamentProfile {
+  const backX = bounds.minX * fit.backX;
+  const frontX = bounds.maxX * fit.frontX;
   const halfWidth = Math.max(1e-3, bounds.halfWidth * 0.66);
   const topY = Math.max(1e-3, bounds.topY);
   // The section scales with the SMALLER of the body's two cross-body extents.
   // Scaling it off the length would give a long thin hull straps wider than
   // the hull itself.
+  //
+  // Deliberately off the BODY's top rather than the rail's: dropping a rail
+  // down the hull moves where the kit sits, and should not also thin it.
   const section = Math.max(0.15, Math.min(halfWidth / 0.45, topY / 1.45));
-  return { backX, frontX, topY, halfWidth, section };
+  return {
+    backX,
+    frontX,
+    backY: Math.max(1e-3, topY * fit.backY),
+    frontY: Math.max(1e-3, topY * fit.frontY),
+    halfWidth,
+    section,
+  };
 }
 
 /** Pool identity for a profile. Two hosts whose kits would be visually
@@ -215,7 +259,8 @@ export function hostOrnamentProfile(bounds: {
  *  into a roster of draw calls. Quantized for exactly that reason. */
 export function ornamentProfileKey(profile: HostOrnamentProfile): string {
   const q = (value: number): string => value.toFixed(2);
-  return `${q(profile.backX)}/${q(profile.frontX)}/${q(profile.topY)}`
+  return `${q(profile.backX)}/${q(profile.frontX)}`
+    + `/${q(profile.backY)}/${q(profile.frontY)}`
     + `/${q(profile.halfWidth)}/${q(profile.section)}`;
 }
 
@@ -383,6 +428,14 @@ function ridge(
 /** Shoulder rail path for one side, fitted to a profile. The rib paths below
  *  reuse these exact points, which is what welds the frame into a single
  *  piece. */
+/** The height the kit's own profile is measured against at this point along
+ *  the body — the tail's over the tail, the nose's over the nose, and a
+ *  straight line between. One number when the two agree, which is what makes
+ *  a host that says nothing about its nose render exactly as before. */
+function railTopAt(profile: HostOrnamentProfile, t: number): number {
+  return profile.backY + (profile.frontY - profile.backY) * t;
+}
+
 function railPath(
   profile: HostOrnamentProfile,
   side: -1 | 1,
@@ -391,7 +444,7 @@ function railPath(
   const span = profile.frontX - profile.backX;
   const full = RAIL_SHAPE.map((sample) => new THREE.Vector3(
     profile.backX + span * sample.t,
-    profile.topY * sample.y,
+    railTopAt(profile, sample.t) * sample.y,
     side * profile.halfWidth * sample.z,
   ));
   if (samples >= full.length) return full;
@@ -418,7 +471,10 @@ export function createHostOrnamentGeometry(
   tier: PrimitiveGeometryTier = 'close',
 ): THREE.BufferGeometry {
   const plan = STRAP_TIER_PLAN[tier];
-  const spineY = profile.topY * SPINE_Y_FRAC;
+  // The spine is the axis every section's apex points AWAY from, so it is a
+  // roll reference rather than a visible feature — it takes the rail's mean
+  // height and does not need to tilt with it.
+  const spineY = (profile.backY + profile.frontY) * 0.5 * SPINE_Y_FRAC;
   const left = railPath(profile, -1, plan.railSamples);
   const right = railPath(profile, 1, plan.railSamples);
   const pieces: THREE.BufferGeometry[] = [
@@ -428,9 +484,13 @@ export function createHostOrnamentGeometry(
 
   if (plan.ribs) {
     for (const [railIndex, apexY] of RIB_SHAPE) {
+      // The apex rides the rail's OWN height at this station, so a rib over a
+      // dropped nose arches over the nose rather than back up to the tail's
+      // height and leaving the rail behind.
+      const apex = railTopAt(profile, RAIL_SHAPE[railIndex].t) * apexY;
       pieces.push(ridge([
         left[railIndex].clone(),
-        new THREE.Vector3(left[railIndex].x, profile.topY * apexY, 0),
+        new THREE.Vector3(left[railIndex].x, apex, 0),
         right[railIndex].clone(),
       ], plan.section, spineY, profile.section));
     }

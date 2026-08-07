@@ -751,6 +751,13 @@ export type UnitBodyShapeComposite = {
   parts: UnitBodyShapePart[];
 };
 
+export type TeamOrnamentFit = {
+  backX: number;
+  frontX: number;
+  backY: number;
+  frontY: number;
+};
+
 export type UnitBodyShape = UnitBodyShapePolygon | UnitBodyShapeRect | UnitBodyShapeRhombus | UnitBodyShapeCircle | UnitBodyShapeOval | UnitBodyShapeComposite;
 
 export type EntityHudBlueprint = {
@@ -792,6 +799,7 @@ export type UnitBlueprint = {
   cost: ResourceCost;
   turrets: TurretMount[];
   bodyShape: UnitBodyShape | null;
+  teamOrnament: TeamOrnamentFit;
   hud: EntityHudBlueprint;
   unitLocomotion: UnitLocomotionBlueprint;
   suspension: UnitSuspensionConfig | null;

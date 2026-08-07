@@ -1,6 +1,8 @@
 import type * as THREE from 'three';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import { UNIT_BLUEPRINTS } from '../sim/blueprints';
 import {
+  DEFAULT_TEAM_ORNAMENT_FIT,
   REFERENCE_ORNAMENT_PROFILE,
   createHostOrnamentGeometry,
   createTurretCollarGeometry,
@@ -67,7 +69,82 @@ function signedVolume(geometry: THREE.BufferGeometry): number {
   return volume;
 }
 
+
+/**
+ * The authored fit is REAL, and it is the only thing that moved.
+ *
+ * Two failure modes, and they are opposites. A knob added to a blueprint and
+ * never threaded to the geometry is worse than no knob — it reads as tuned
+ * when it is inert, and the next person spends an afternoon changing numbers
+ * that do nothing. And a knob whose default does not reproduce what shipped
+ * silently re-dresses the entire roster the day it lands.
+ */
+function checkAuthoredFit(): void {
+  const bounds = { minX: -1.6, maxX: 1.2, halfWidth: 0.68, topY: 1.45 };
+
+  // The default is the four constants this used to hardcode. If this fails,
+  // every unit in the game just changed shape.
+  const base = hostOrnamentProfile(bounds);
+  assertContract(
+    Math.abs(base.backX - bounds.minX * 0.82) < 1e-9
+      && Math.abs(base.frontX - bounds.maxX * 0.79) < 1e-9
+      && Math.abs(base.backY - bounds.topY) < 1e-9
+      && Math.abs(base.frontY - bounds.topY) < 1e-9,
+    'the default ornament fit must reproduce the constants it replaced — got '
+      + `${base.backX.toFixed(3)}/${base.frontX.toFixed(3)}`
+      + `/${base.backY.toFixed(3)}/${base.frontY.toFixed(3)}`,
+  );
+  assertContract(
+    ornamentProfileKey(hostOrnamentProfile(bounds, DEFAULT_TEAM_ORNAMENT_FIT))
+      === ornamentProfileKey(base),
+    'the default fit and no fit at all must be the same fit',
+  );
+
+  // Each of the four has to actually reach the geometry. Testing them one at a
+  // time is the point: three wired knobs and one dropped on the floor is the
+  // shape this bug takes, and a combined check passes on any one of them.
+  for (const axis of ['backX', 'frontX', 'backY', 'frontY'] as const) {
+    const fit = { ...DEFAULT_TEAM_ORNAMENT_FIT, [axis]: 0.5 };
+    const moved = hostOrnamentProfile(bounds, fit);
+    assertContract(
+      Math.abs(moved[axis] - base[axis]) > 1e-6,
+      `ornament fit "${axis}" is authored but never reaches the profile`,
+    );
+    const geometry = createHostOrnamentGeometry(moved, 'close');
+    try {
+      const box = geometry.boundingBox;
+      assertContract(box !== null, `${axis} kit exposes bounds`);
+      const reference = createHostOrnamentGeometry(base, 'close');
+      const referenceBox = reference.boundingBox!;
+      assertContract(
+        Math.abs(box.min.x - referenceBox.min.x) > 1e-6
+          || Math.abs(box.max.x - referenceBox.max.x) > 1e-6
+          || Math.abs(box.max.y - referenceBox.max.y) > 1e-6,
+        `ornament fit "${axis}" reaches the profile but not the geometry`,
+      );
+      reference.dispose();
+    } finally {
+      geometry.dispose();
+    }
+  }
+
+  // The roster's authored values have to be usable numbers. A ratio past 1
+  // puts the rail outside the body it is bolted to, which is the one thing
+  // fitting the kit per host exists to prevent.
+  for (const [id, blueprint] of Object.entries(UNIT_BLUEPRINTS)) {
+    const fit = blueprint.teamOrnament;
+    for (const axis of ['backX', 'frontX', 'backY', 'frontY'] as const) {
+      assertContract(
+        Number.isFinite(fit[axis]) && fit[axis] > 0 && fit[axis] <= 1.25,
+        `${id} authors teamOrnament.${axis} = ${fit[axis]}; it is a fraction of `
+          + 'the body\'s own extent and belongs in (0, 1.25]',
+      );
+    }
+  }
+}
+
 export function runTeamOrnament3DContractTest(): void {
+  checkAuthoredFit();
   const headRadius = 32;
   const anchor = getTurretCollarProfile(headRadius);
   // One cylinder, centre of the turret out to the head sphere's pole.

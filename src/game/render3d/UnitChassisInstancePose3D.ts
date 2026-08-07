@@ -9,7 +9,12 @@ import {
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import { entityTeamColorHex } from './EntityInstanceColor3D';
-import { hostOrnamentProfile, type HostOrnamentProfile } from './TeamOrnament3D';
+import {
+  DEFAULT_TEAM_ORNAMENT_FIT,
+  hostOrnamentProfile,
+  type HostOrnamentProfile,
+} from './TeamOrnament3D';
+import { getUnitBlueprint } from '../sim/blueprints';
 import {
   growFloat32Array,
   writePositionQuaternion,
@@ -29,7 +34,11 @@ const WRITE_POLY = 1;
  * Cached on the mesh: the parts are immutable for a given body shape and tier,
  * and this runs in the per-frame pose pass.
  */
-function ornamentProfileFor(mesh: EntityMesh, bodyEntry: BodyGeomEntry): HostOrnamentProfile {
+function ornamentProfileFor(
+  entity: Entity,
+  mesh: EntityMesh,
+  bodyEntry: BodyGeomEntry,
+): HostOrnamentProfile {
   const cached = mesh.teamTrimProfile;
   if (cached !== undefined) return cached;
   let minX = 0;
@@ -47,12 +56,18 @@ function ornamentProfileFor(mesh: EntityMesh, bodyEntry: BodyGeomEntry): HostOrn
     maxX = 1;
   }
   if (halfWidth < 1e-3) halfWidth = 1;
+  // The BOUNDS are measured; the FIT is authored. Where the rails start, stop
+  // and how high they ride over each end is a fact about how this hull is
+  // meant to be dressed, and no measurement of a bounding box recovers it.
+  const blueprintId = entity.unit?.unitBlueprintId;
   const profile = hostOrnamentProfile({
     minX,
     maxX,
     halfWidth,
     topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
-  });
+  }, blueprintId === undefined
+    ? DEFAULT_TEAM_ORNAMENT_FIT
+    : getUnitBlueprint(blueprintId).teamOrnament);
   mesh.teamTrimProfile = profile;
   return profile;
 }
@@ -90,7 +105,7 @@ export class UnitChassisInstancePose3D {
   ): void {
     if (mesh.teamTrimSlot === undefined) {
       const slot = teamTrim.allocHostKit(
-        ornamentProfileFor(mesh, bodyEntry),
+        ornamentProfileFor(entity, mesh, bodyEntry),
         radius,
         mesh.geometryTier ?? 'close',
       );

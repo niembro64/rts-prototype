@@ -3020,6 +3020,35 @@
       },
       "additionalProperties": false
     },
+    "TeamOrnamentFit": {
+      "description": "Where this unit's team-coloured body kit sits on its hull, as fractions of the body's own extents. The kit's SHAPE is one design shared by the whole roster (see TeamOrnament3D); these four numbers are the box it is fitted into, which is what stops a rail meant for a walker's carapace from hanging off the ends of a hull that is a different proportion. 1 means 'out to the body's own edge'.",
+      "type": "object",
+      "required": [
+        "backX",
+        "frontX",
+        "backY",
+        "frontY"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "backX": {
+          "description": "Rearmost rail point, as a fraction of the body's rear extent.",
+          "type": "number"
+        },
+        "frontX": {
+          "description": "Foremost rail point, as a fraction of the body's front extent.",
+          "type": "number"
+        },
+        "backY": {
+          "description": "Rail height at the tail, as a fraction of the body's top.",
+          "type": "number"
+        },
+        "frontY": {
+          "description": "Rail height at the nose, as a fraction of the body's top.",
+          "type": "number"
+        }
+      }
+    },
     "UnitBodyShape": {
       "oneOf": [
         {
@@ -3142,6 +3171,7 @@
         "cost",
         "turrets",
         "bodyShape",
+        "teamOrnament",
         "hud",
         "unitLocomotion",
         "suspension",
@@ -3199,6 +3229,9 @@
               "type": "null"
             }
           ]
+        },
+        "teamOrnament": {
+          "$ref": "#/$defs/TeamOrnamentFit"
         },
         "hud": {
           "$ref": "#/$defs/EntityHudBlueprint"

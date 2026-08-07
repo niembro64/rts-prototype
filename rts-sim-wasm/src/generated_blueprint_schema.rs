@@ -1038,6 +1038,14 @@ pub struct UnitBodyShapeComposite {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TeamOrnamentFit {
+    pub backX: f64,
+    pub frontX: f64,
+    pub backY: f64,
+    pub frontY: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnitBodyShape {
     UnitBodyShapePolygon(UnitBodyShapePolygon),
     UnitBodyShapeRect(UnitBodyShapeRect),
@@ -1096,6 +1104,7 @@ pub struct UnitBlueprint {
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,
     pub bodyShape: Option<UnitBodyShape>,
+    pub teamOrnament: TeamOrnamentFit,
     pub hud: EntityHudBlueprint,
     pub unitLocomotion: UnitLocomotionBlueprint,
     pub suspension: Option<BlueprintJsonValue>,
