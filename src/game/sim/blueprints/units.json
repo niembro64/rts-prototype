@@ -911,23 +911,23 @@
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.42,
-              "yUnitRadiusRatio": -0.28,
-              "zUnitRadiusRatio": 0.92
+              "xUnitRadiusRatio": 0.7,
+              "yUnitRadiusRatio": 0.85,
+              "zUnitRadiusRatio": 1
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.02,
-              "yUnitRadiusRatio": -0.36,
-              "zUnitRadiusRatio": 1.22
+              "xUnitRadiusRatio": 0.0,
+              "yUnitRadiusRatio": 1,
+              "zUnitRadiusRatio": 1
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.48,
-              "yUnitRadiusRatio": -0.3,
-              "zUnitRadiusRatio": 1.35
+              "xUnitRadiusRatio": -0.7,
+              "yUnitRadiusRatio": 1.05,
+              "zUnitRadiusRatio": 1
             }
           }
         ]
@@ -1147,16 +1147,16 @@
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.4,
-              "yUnitRadiusRatio": -0.4,
-              "zUnitRadiusRatio": 1.05
+              "xUnitRadiusRatio": 0.1,
+              "yUnitRadiusRatio": 1,
+              "zUnitRadiusRatio": 0.8
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.4,
-              "yUnitRadiusRatio": -0.4,
-              "zUnitRadiusRatio": 1.05
+              "xUnitRadiusRatio": -0.8,
+              "yUnitRadiusRatio": 1.3,
+              "zUnitRadiusRatio": 0.8
             }
           }
         ]
