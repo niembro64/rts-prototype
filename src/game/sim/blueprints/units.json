@@ -3250,21 +3250,21 @@
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0.46,
-              "yUnitRadiusRatio": -0.36,
+              "yUnitRadiusRatio": 0.45,
               "zUnitRadiusRatio": 0.44446808510638297
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": 0,
-              "yUnitRadiusRatio": -0.42,
+              "yUnitRadiusRatio": 0.55,
               "zUnitRadiusRatio": 0.574468085106383
             }
           },
           {
             "attachmentPoint": {
               "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.36,
+              "yUnitRadiusRatio": 0.6,
               "zUnitRadiusRatio": 0.574468085106383
             }
           }
