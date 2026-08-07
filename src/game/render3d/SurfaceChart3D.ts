@@ -204,7 +204,11 @@ export const BAND_CLOSED_U: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   'boltBoss',
   'liveryChevron',
   'tyreTread',
-  'trackBeltPlate',
+  // trackBeltPlate is NOT here. It dresses the track's flat outer face, which
+  // runs nose to tail and has two real ends; the belt's actual loop is the
+  // rim, and that wears `trackRunning`. Listing it as closed forced its repeat
+  // up to a whole number, so a track shorter than the reference showed the
+  // WHOLE band squeezed onto it — 3x the sheet's texel density on a Lynx.
 ]);
 
 /** Bands whose v repeats, and whose v gutters must therefore WRAP rather than

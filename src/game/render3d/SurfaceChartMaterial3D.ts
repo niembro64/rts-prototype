@@ -332,10 +332,15 @@ const FRAGMENT_DECL = [
   // band to a whole roster: a plate stays 24 world units on a scout and on a
   // Queen because only the wrap count changes.
   //
-  // AT OR BELOW ONE REPEAT THE LOOKUP CLAMPS rather than wraps, which is not a
-  // detail — it is what makes the reference host bit-identical to the band as
-  // drawn, and what lets a part SMALLER than the reference show the first
-  // fraction of the band instead of a compressed copy of all of it.
+  // BELOW ONE REPEAT THE PART SHOWS A FRACTION OF THE BAND, not a compressed
+  // copy of all of it. That is the density rule on the shrinking side: a
+  // half-length part carries half the band's content at the same texels per
+  // world unit, rather than the whole band at twice the density. Clamping
+  // here instead — which is what this did — is why a track shorter than the
+  // reference came out three times too busy.
+  //
+  // At exactly one repeat the two are identical, so the reference host is
+  // untouched either way.
   //
   // Derivatives are taken from the repeated coordinate and scaled by the
   // rectangle, or the mip selection comes from whole-sheet coordinates and
@@ -345,8 +350,8 @@ const FRAGMENT_DECL = [
   '  vec2 span = rect.zw;',
   '  vec2 tiles = step(vec2(1.0001), repeat);',
   '  vec2 scaled = chartUv * repeat;',
-  '  vec2 local = mix(clamp(chartUv, vec2(0.0), vec2(1.0)), fract(scaled), tiles);',
-  '  vec2 grad = mix(chartUv, scaled, tiles);',
+  '  vec2 local = mix(scaled, fract(scaled), tiles);',
+  '  vec2 grad = scaled;',
   '  vec2 texels = vec2(textureSize(uTrimSheet, 0));',
   '  vec2 half_texel = 0.5 / texels;',
   '  vec2 st = clamp(',
