@@ -43,8 +43,6 @@ import {
   getShieldFrameGeometry,
 } from '../sim/shieldPanelCache';
 
-// Must match Locomotion3D. Tread height and chassis lift share one value.
-const TREAD_Y = TREAD_CHASSIS_LIFT_Y / 2;
 const FOOT_Y = 1;
 
 /** Logical color category — Debris3D resolves to a real RGB number at
@@ -163,11 +161,13 @@ export function getDebrisUnitProfile(
     const cfg = loc.config;
     const length = r * cfg.treadLength;
     const width = r * cfg.treadWidth;
-    const offset = r * cfg.treadOffset;
-    for (const side of [-1, 1]) {
+    // Authored mounts, same as the live rig — see TreadRig3D.
+    for (const mount of cfg.mounts) {
       staticFragments.push({
         kind: 'box',
-        x: 0, y: TREAD_Y, z: side * offset,
+        x: r * mount.xUnitRadiusRatio,
+        y: r * mount.zUnitRadiusRatio,
+        z: r * mount.yUnitRadiusRatio,
         yaw: 0,
         sx: length, sy: TREAD_CHASSIS_LIFT_Y, sz: width,
         color: 'tread',
@@ -180,18 +180,18 @@ export function getDebrisUnitProfile(
     const cfg = loc.config;
     const wheelR = Math.max(1, r * cfg.wheelRadius);
     const tireWidth = Math.max(0.5, r * cfg.treadWidth);
-    const fx = r * cfg.wheelDistX;
-    const fz = r * cfg.wheelDistY;
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        staticFragments.push({
-          kind: 'cyl',
-          ax: sx * fx, ay: wheelR, az: sz * fz - tireWidth / 2,
-          bx: sx * fx, by: wheelR, bz: sz * fz + tireWidth / 2,
-          thickness: wheelR,
-          color: 'wheel',
-        });
-      }
+    // Authored mounts, same as the live rig — see WheelRig3D.
+    for (const mount of cfg.mounts) {
+      const fx = r * mount.xUnitRadiusRatio;
+      const fz = r * mount.yUnitRadiusRatio;
+      const my = r * mount.zUnitRadiusRatio;
+      staticFragments.push({
+        kind: 'cyl',
+        ax: fx, ay: my, az: fz - tireWidth / 2,
+        bx: fx, by: my, bz: fz + tireWidth / 2,
+        thickness: wheelR,
+        color: 'wheel',
+      });
     }
   } else if (loc?.type === 'legs') {
     // One cylinder per upper segment plus uniform and pointed lower pieces, placed at

@@ -477,26 +477,18 @@ export type BuildingTurretMount = {
 };
 
 export type WheelConfig = {
-  wheelDistX: number;
-  wheelDistY: number;
-  treadLength: number;
+  mounts: LocomotionMount[];
   treadWidth: number;
   wheelRadius: number;
   rotationSpeed: number;
 };
 
 export type TreadConfig = {
-  treadOffset: number;
+  mounts: LocomotionMount[];
   treadLength: number;
   treadWidth: number;
   wheelRadius: number;
   rotationSpeed: number;
-};
-
-export type LegAttachmentPoint = {
-  xUnitRadiusRatio: number;
-  yUnitRadiusRatio: number;
-  zUnitRadiusRatio: number;
 };
 
 export type LegSegment = {
@@ -514,7 +506,7 @@ export type LegFootSphere = {
 };
 
 export type LegLayoutEntry = {
-  attachmentPoint: LegAttachmentPoint;
+  attachmentPoint: LocomotionMount;
 };
 
 export type LegChoppingSphere = {
@@ -946,3 +938,9 @@ export type ShieldConfig = {
 };
 
 export type EmissionConfig = ProjectileShot | BeamRay | LaserRay | ShieldConfig;
+
+export type LocomotionMount = {
+  xUnitRadiusRatio: number;
+  yUnitRadiusRatio: number;
+  zUnitRadiusRatio: number;
+};

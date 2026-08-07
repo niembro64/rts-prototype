@@ -10,6 +10,7 @@ import {
 } from '../unitLocomotionPresetConfig';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import { getAllUnitBlueprints } from './units';
+import { getBodyHalfWidthFrac } from '../../math/BodyDimensions';
 import { UNIT_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import rawLocomotionConfig from '../unitLocomotionConfig.json';
 import {
@@ -127,8 +128,87 @@ function checkLegAttachmentPoints(): void {
   }
 }
 
+
+/**
+ * EVERY LOCOMOTION PIECE IS PLACED BY AN AUTHORED {x, y, z}, AND CLEARS THE
+ * HULL.
+ *
+ * Both halves are the point. Placement used to be derived from a scalar pair
+ * reflected into corners — `wheelDistX`/`wheelDistY`, `treadOffset` — which
+ * could only describe one symmetric arrangement and, more importantly, said
+ * nothing about where the hull actually ends. Every tracked unit in the
+ * roster had its belts buried inside its own body as a result, because
+ * nothing in the data related the two.
+ *
+ * A mount is authored now, and the clearance it must leave is a number this
+ * test checks: the piece's own half-width plus a shared standoff, measured
+ * against the body's real half-extent. That is what makes "disconnected" a
+ * property of the roster rather than of whoever last looked at it.
+ */
+const LOCOMOTION_PIECE_CLEARANCE = 0.1;
+
+function pieceHalfWidthUnitRadius(
+  locomotion: UnitLocomotionBlueprint,
+): number {
+  switch (locomotion.type) {
+    case 'wheels':
+      return locomotion.config.treadWidth / 2;
+    case 'treads':
+    case 'amphibious-treads':
+      return locomotion.config.treadWidth / 2;
+    default:
+      return 0;
+  }
+}
+
+function checkLocomotionMountClearance(): void {
+  for (const blueprint of getAllUnitBlueprints()) {
+    const locomotion = blueprint.unitLocomotion;
+    if (
+      locomotion.type !== 'wheels' &&
+      locomotion.type !== 'treads' &&
+      locomotion.type !== 'amphibious-treads'
+    ) {
+      continue;
+    }
+    const unitBlueprintId = blueprint.unitBlueprintId;
+    const mounts = locomotion.config.mounts;
+    assertContract(
+      mounts.length > 0,
+      `${unitBlueprintId} must author at least one locomotion mount`,
+    );
+    const halfWidth = pieceHalfWidthUnitRadius(locomotion);
+    const bodyHalfWidth = getBodyHalfWidthFrac(blueprint.bodyShape);
+    for (let i = 0; i < mounts.length; i++) {
+      const mount = mounts[i];
+      for (const axis of ['xUnitRadiusRatio', 'yUnitRadiusRatio', 'zUnitRadiusRatio'] as const) {
+        assertContract(
+          Number.isFinite(mount[axis]),
+          `${unitBlueprintId} mount ${i} must author a finite ${axis}`,
+        );
+      }
+      // The piece hangs off the side, so its inner face is what has to clear
+      // the hull. A mount that merely puts the CENTRE outside the body still
+      // buries half the track.
+      const inner = Math.abs(mount.yUnitRadiusRatio) - halfWidth;
+      assertContract(
+        inner >= bodyHalfWidth + LOCOMOTION_PIECE_CLEARANCE - 1e-6,
+        `${unitBlueprintId} mount ${i} sits ${inner.toFixed(3)} out but the body `
+          + `reaches ${bodyHalfWidth.toFixed(3)} — the piece needs to clear it by `
+          + `${LOCOMOTION_PIECE_CLEARANCE} unit-radius, or it renders buried in `
+          + 'the hull it is supposed to be carrying',
+      );
+      assertContract(
+        mount.zUnitRadiusRatio > 0,
+        `${unitBlueprintId} mount ${i} sits at or below the unit origin`,
+      );
+    }
+  }
+}
+
 export function runUnitLocomotionContractTest(): void {
   checkLegAttachmentPoints();
+  checkLocomotionMountClearance();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
   const manySamples: Array<{ x: number; y: number }> = [];

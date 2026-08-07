@@ -99,6 +99,43 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape | null): number {
 
 /** World-space body-top Y for a unit with the given body shape and
  *  visual unit radius. */
+/**
+ * Half the body's LATERAL extent, in unit-radius-1 space.
+ *
+ * The mirror of getBodyTopFrac for the other axis, and the number a
+ * locomotion mount has to clear: a wheel or a track whose inner face sits
+ * inside this is rendering inside the hull it is carrying. Sim-side rather
+ * than renderer-side on purpose — the blueprint contract test needs it, and
+ * it must not have to import a THREE module to ask how wide a body is.
+ */
+export function getBodyHalfWidthFrac(bodyShape: UnitBodyShape | null): number {
+  if (bodyShape === null) return 0;
+  return bodyPartHalfWidthFrac(bodyShape);
+}
+
+function bodyPartHalfWidthFrac(part: UnitBodyShape | UnitBodyShapePart): number {
+  switch (part.kind) {
+    case 'polygon':
+      return part.radiusFrac;
+    case 'rect':
+    case 'rhombus':
+      return part.widthFrac;
+    case 'circle':
+      return part.radiusFrac;
+    case 'oval':
+      return part.zFrac;
+    case 'composite': {
+      let half = 0;
+      for (const child of part.parts) {
+        half = Math.max(half, bodyPartHalfWidthFrac(child));
+      }
+      return half;
+    }
+    default:
+      return 0;
+  }
+}
+
 export function getBodyTopY(bodyShape: UnitBodyShape | null, unitRadius: number): number {
   return getBodyTopFrac(bodyShape) * unitRadius;
 }

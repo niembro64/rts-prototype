@@ -708,9 +708,7 @@ pub struct BuildingTurretMount {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct WheelConfig {
-    pub wheelDistX: f64,
-    pub wheelDistY: f64,
-    pub treadLength: f64,
+    pub mounts: Vec<LocomotionMount>,
     pub treadWidth: f64,
     pub wheelRadius: f64,
     pub rotationSpeed: f64,
@@ -718,18 +716,11 @@ pub struct WheelConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreadConfig {
-    pub treadOffset: f64,
+    pub mounts: Vec<LocomotionMount>,
     pub treadLength: f64,
     pub treadWidth: f64,
     pub wheelRadius: f64,
     pub rotationSpeed: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LegAttachmentPoint {
-    pub xUnitRadiusRatio: f64,
-    pub yUnitRadiusRatio: f64,
-    pub zUnitRadiusRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -751,7 +742,7 @@ pub struct LegFootSphere {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegLayoutEntry {
-    pub attachmentPoint: LegAttachmentPoint,
+    pub attachmentPoint: LocomotionMount,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1284,4 +1275,11 @@ pub enum EmissionConfig {
     BeamRay(BeamRay),
     LaserRay(LaserRay),
     ShieldConfig(ShieldConfig),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionMount {
+    pub xUnitRadiusRatio: f64,
+    pub yUnitRadiusRatio: f64,
+    pub zUnitRadiusRatio: f64,
 }

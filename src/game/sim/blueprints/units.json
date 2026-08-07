@@ -71,9 +71,28 @@
         }
       },
       "config": {
-        "wheelDistX": 0.6,
-        "wheelDistY": 0.7,
-        "treadLength": 0.5,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          }
+        ],
         "treadWidth": 0.15,
         "wheelRadius": 0.28,
         "rotationSpeed": 1
@@ -176,7 +195,18 @@
         }
       },
       "config": {
-        "treadOffset": 0.8,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -0.945,
+            "zUnitRadiusRatio": 0.5
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 0.945,
+            "zUnitRadiusRatio": 0.5
+          }
+        ],
         "treadLength": 1.6,
         "treadWidth": 0.45,
         "wheelRadius": 0.12,
@@ -421,7 +451,18 @@
         }
       },
       "config": {
-        "treadOffset": 0.85,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -1.195,
+            "zUnitRadiusRatio": 0.3125
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 1.195,
+            "zUnitRadiusRatio": 0.3125
+          }
+        ],
         "treadLength": 1.7,
         "treadWidth": 0.55,
         "wheelRadius": 0.12,
@@ -526,9 +567,28 @@
         }
       },
       "config": {
-        "wheelDistX": 0.65,
-        "wheelDistY": 0.7,
-        "treadLength": 0.5,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.65,
+            "yUnitRadiusRatio": -0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": 0.65,
+            "yUnitRadiusRatio": 0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": -0.65,
+            "yUnitRadiusRatio": -0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": -0.65,
+            "yUnitRadiusRatio": 0.82,
+            "zUnitRadiusRatio": 0.22
+          }
+        ],
         "treadWidth": 0.3,
         "wheelRadius": 0.22,
         "rotationSpeed": 1
@@ -765,7 +825,18 @@
         }
       },
       "config": {
-        "treadOffset": 0.9,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -1.27,
+            "zUnitRadiusRatio": 0.2083
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 1.27,
+            "zUnitRadiusRatio": 0.2083
+          }
+        ],
         "treadLength": 2,
         "treadWidth": 0.6,
         "wheelRadius": 0.175,
@@ -1258,7 +1329,18 @@
         }
       },
       "config": {
-        "treadOffset": 1.1,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -1.995,
+            "zUnitRadiusRatio": 0.1667
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 1.995,
+            "zUnitRadiusRatio": 0.1667
+          }
+        ],
         "treadLength": 2.6,
         "treadWidth": 0.55,
         "wheelRadius": 0.2,
@@ -1808,7 +1890,18 @@
         }
       },
       "config": {
-        "treadOffset": 0.85,
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -0.85,
+            "zUnitRadiusRatio": 0.5
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 0.85,
+            "zUnitRadiusRatio": 0.5
+          }
+        ],
         "treadLength": 1.7,
         "treadWidth": 0.5,
         "wheelRadius": 0.12,

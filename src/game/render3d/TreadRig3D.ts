@@ -264,7 +264,6 @@ export function buildTreads(
   const group = new THREE.Group();
   const length = r * cfg.treadLength;
   const width = r * cfg.treadWidth;
-  const offset = r * cfg.treadOffset;
   const treadRadius = Math.min(TREAD_HEIGHT / 2, Math.max(1, length / 2));
   const straightLength = Math.max(1, length - 2 * treadRadius);
 
@@ -286,9 +285,18 @@ export function buildTreads(
   );
   cleatMat.side = THREE.DoubleSide;
 
-  for (const side of [-1, 1] as const) {
+  // One authored mount per belt. `treadOffset` used to be a single lateral
+  // scalar reflected into two sides, so a track could not be given its own
+  // height and nothing recorded how far it stood off the hull — which is how
+  // every tracked unit ended up with its belts buried in its own body.
+  for (const mount of cfg.mounts) {
+    const side = mount.yUnitRadiusRatio < 0 ? -1 : 1;
     const sideGroup = new THREE.Group();
-    sideGroup.position.set(0, 0, side * offset);
+    sideGroup.position.set(
+      r * mount.xUnitRadiusRatio,
+      r * mount.zUnitRadiusRatio - TREAD_Y,
+      r * mount.yUnitRadiusRatio,
+    );
     group.add(sideGroup);
 
     if (geometryTier === 'far') {
@@ -342,7 +350,7 @@ export function buildTreads(
 
     sides.push({
       side,
-      lateralOffset: side * offset,
+      lateralOffset: r * mount.yUnitRadiusRatio,
       group: sideGroup,
       lift: 0,
       targetLift: 0,
@@ -352,10 +360,10 @@ export function buildTreads(
     });
   }
 
-  const treadContacts: RollingContactState[] = [
-    rollingContact(0, -offset),
-    rollingContact(0, offset),
-  ];
+  // One rolling-contact sampler per belt, at that belt's own mount.
+  const treadContacts: RollingContactState[] = cfg.mounts.map(
+    (mount) => rollingContact(r * mount.xUnitRadiusRatio, r * mount.yUnitRadiusRatio),
+  );
 
   if (cleatsVisible) {
     // Animated cleats cover the full belt loop: top run, rounded front

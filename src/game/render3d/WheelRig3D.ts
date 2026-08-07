@@ -153,21 +153,26 @@ export function buildWheels(
   const group = new THREE.Group();
   const wheelR = Math.max(1, r * cfg.wheelRadius);
   const tireWidth = Math.max(0.5, r * cfg.treadWidth);
-  const fx = r * cfg.wheelDistX;
-  const fz = r * cfg.wheelDistY;
   const wheelGroups: THREE.Group[] = [];
   const wheels: THREE.Mesh[] = [];
   const wheelMounts: WheelMount[] = [];
   const wheelContacts: RollingContactState[] = [];
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
+  // One authored mount per wheel. This used to be a (distX, distY) pair
+  // reflected into four corners, which could only ever describe four wheels
+  // in a rectangle and gave the rig no way to say how far off the hull they
+  // stood — see the locomotion mount contract test.
+  for (const mount of cfg.mounts) {
+    {
+      const fx = r * mount.xUnitRadiusRatio;
+      const fz = r * mount.yUnitRadiusRatio;
+      const mountY = r * mount.zUnitRadiusRatio;
       // Outer group: position at the wheel mount, lay the cylinder
-      // on its side (axle parallel to lateral). Wheel center sits at
-      // y = wheelR so the bottom of the tire touches the ground —
-      // baseline before the per-frame floor clamp lifts it further to
-      // ride terrain.
+      // on its side (axle parallel to lateral). The mount's own height is
+      // the wheel centre — normally the wheel radius, so the bottom of the
+      // tyre touches the ground — as the baseline before the per-frame
+      // floor clamp lifts it further to ride terrain.
       const wheelGroup = new THREE.Group();
-      wheelGroup.position.set(sx * fx, wheelR, sz * fz);
+      wheelGroup.position.set(fx, mountY, fz);
       wheelGroup.rotation.x = Math.PI / 2;
       // Inner mesh — the spinning tire. Local +X / +Z scale to wheel
       // radius (the disc face); local +Y scale to tire width (post-
@@ -194,8 +199,8 @@ export function buildWheels(
       wheelGroups.push(wheelGroup);
       wheels.push(tire);
       wheelMounts.push({
-        localX: sx * fx,
-        localZ: sz * fz,
+        localX: fx,
+        localZ: fz,
         wheelR,
         maxLift: Math.max(1, wheelR * 1.25),
         lift: 0,
@@ -203,7 +208,7 @@ export function buildWheels(
         angularVelocity: 0,
         rotation: 0,
       });
-      wheelContacts.push(rollingContact(sx * fx, sz * fz));
+      wheelContacts.push(rollingContact(fx, fz));
     }
   }
   unitGroup.add(group);

@@ -1994,22 +1994,18 @@
     "WheelConfig": {
       "type": "object",
       "required": [
-        "wheelDistX",
-        "wheelDistY",
-        "treadLength",
+        "mounts",
         "treadWidth",
         "wheelRadius",
         "rotationSpeed"
       ],
       "properties": {
-        "wheelDistX": {
-          "type": "number"
-        },
-        "wheelDistY": {
-          "type": "number"
-        },
-        "treadLength": {
-          "type": "number"
+        "mounts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/LocomotionMount"
+          }
         },
         "treadWidth": {
           "type": "number"
@@ -2026,15 +2022,19 @@
     "TreadConfig": {
       "type": "object",
       "required": [
-        "treadOffset",
+        "mounts",
         "treadLength",
         "treadWidth",
         "wheelRadius",
         "rotationSpeed"
       ],
       "properties": {
-        "treadOffset": {
-          "type": "number"
+        "mounts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/LocomotionMount"
+          }
         },
         "treadLength": {
           "type": "number"
@@ -2046,26 +2046,6 @@
           "type": "number"
         },
         "rotationSpeed": {
-          "type": "number"
-        }
-      },
-      "additionalProperties": false
-    },
-    "LegAttachmentPoint": {
-      "type": "object",
-      "required": [
-        "xUnitRadiusRatio",
-        "yUnitRadiusRatio",
-        "zUnitRadiusRatio"
-      ],
-      "properties": {
-        "xUnitRadiusRatio": {
-          "type": "number"
-        },
-        "yUnitRadiusRatio": {
-          "type": "number"
-        },
-        "zUnitRadiusRatio": {
           "type": "number"
         }
       },
@@ -2122,7 +2102,7 @@
       ],
       "properties": {
         "attachmentPoint": {
-          "$ref": "#/$defs/LegAttachmentPoint"
+          "$ref": "#/$defs/LocomotionMount"
         }
       },
       "additionalProperties": false
@@ -3847,6 +3827,26 @@
           "$ref": "#/$defs/ShieldConfig"
         }
       ]
+    },
+    "LocomotionMount": {
+      "type": "object",
+      "required": [
+        "xUnitRadiusRatio",
+        "yUnitRadiusRatio",
+        "zUnitRadiusRatio"
+      ],
+      "properties": {
+        "xUnitRadiusRatio": {
+          "type": "number"
+        },
+        "yUnitRadiusRatio": {
+          "type": "number"
+        },
+        "zUnitRadiusRatio": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
