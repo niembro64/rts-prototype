@@ -54,6 +54,7 @@ export type {
   
   TurretLockOnRelationshipInclusion,
   TurretMount,
+  UnitTurretHostAttachment,
   TurretRadiusConfig,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,

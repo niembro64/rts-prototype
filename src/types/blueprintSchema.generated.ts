@@ -455,6 +455,11 @@ export type UnitTurretMountZResolver = {
   bodyTopZFrac: number;
 };
 
+export type UnitTurretHostAttachment = {
+  kind: 'standingArm';
+  arm: 'leftArm' | 'rightArm';
+};
+
 export type TurretMount = {
   mountId: string;
   turretBlueprintId: TurretBlueprintId;
@@ -465,6 +470,7 @@ export type TurretMount = {
   slavedToMountId?: string;
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
+  hostAttachment?: UnitTurretHostAttachment;
   visualVariant?: ConstructionEmitterSize;
   producedBlueprintId?: UnitBlueprintId;
   allowedBuildBlueprintIds?: StructureBlueprintId[];

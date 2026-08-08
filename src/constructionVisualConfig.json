@@ -26,14 +26,14 @@
     "unitCommander": {
       "kind": "sleeve",
       "center": {
-        "forward": -0.42,
-        "up": 1.34,
+        "forward": 0,
+        "up": -0.17,
         "lateral": 0
       },
       "axis": "up",
-      "radius": 0.34,
-      "length": 0.1,
-      "stripeCount": 16
+      "radius": 0.18,
+      "length": 0.42,
+      "stripeCount": 10
     },
     "unitConstructionDrone": {
       "kind": "sleeve",

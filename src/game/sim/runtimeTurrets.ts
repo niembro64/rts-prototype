@@ -20,6 +20,7 @@ import {
 } from './types';
 import type { BuildingTurretMount } from '../../types/blueprints';
 import type { TurretMountControlMode } from '../../types/blueprints';
+import type { UnitTurretHostAttachment } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
@@ -41,6 +42,7 @@ function makeRuntimeTurret(
   requiredEngagedForFightStop: boolean,
   sensorTurretBlueprintId: string | null,
   slavedToMountId: string | null,
+  hostAttachment: UnitTurretHostAttachment | null,
   identity: {
     id: EntityId;
     parentId: EntityId;
@@ -74,6 +76,7 @@ function makeRuntimeTurret(
     controlMode,
     slavedToMountId,
     requiredEngagedForFightStop,
+    hostAttachment,
     visualVariant: visualVariant ?? turretConfig.visualVariant,
   };
   const mountOffset2d = DMath.hypot(mount.x, mount.y);
@@ -181,6 +184,7 @@ export function createUnitRuntimeTurrets(
       mount.requiredEngagedForFightStop,
       mount.sensorTurretBlueprintId ?? null,
       mount.slavedToMountId ?? null,
+      mount.hostAttachment ?? null,
       identity,
       mount.visualVariant,
     ));
@@ -216,6 +220,7 @@ export function createBuildingRuntimeTurrets(
       false,
       m.sensorTurretBlueprintId ?? null,
       m.slavedToMountId ?? null,
+      null,
       identity,
       m.visualVariant,
     ));

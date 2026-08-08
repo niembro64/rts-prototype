@@ -1915,6 +1915,25 @@
       },
       "additionalProperties": false
     },
+    "UnitTurretHostAttachment": {
+      "type": "object",
+      "required": [
+        "kind",
+        "arm"
+      ],
+      "properties": {
+        "kind": {
+          "const": "standingArm"
+        },
+        "arm": {
+          "enum": [
+            "leftArm",
+            "rightArm"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "TurretMount": {
       "type": "object",
       "required": [
@@ -1956,6 +1975,9 @@
         },
         "zResolver": {
           "$ref": "#/$defs/UnitTurretMountZResolver"
+        },
+        "hostAttachment": {
+          "$ref": "#/$defs/UnitTurretHostAttachment"
         },
         "visualVariant": {
           "$ref": "#/$defs/ConstructionEmitterSize"

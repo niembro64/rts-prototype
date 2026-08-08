@@ -9,6 +9,7 @@ import type {
   TurretEmitterKind,
   TurretIntelRequirement,
   TurretMountControlMode,
+  UnitTurretHostAttachment,
   TurretRadiusConfig,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
@@ -537,6 +538,10 @@ export type TurretConfig = {
   /** Unit-mount authored fight/patrol stop gate. If true, this turret must
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
+  /** Optional host-side presentation attachment. The turret always owns and
+   *  publishes its yaw/pitch; a compatible host may echo that pose through
+   *  the named body attachment without changing the turret's own aim. */
+  hostAttachment: UnitTurretHostAttachment | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
   visualVariant: ConstructionEmitterSize | null;
   spawn: SpawnTurretConfig | null;
@@ -645,7 +650,11 @@ export type Turret = {
   target: EntityId | null;
   ranges: TurretRanges;
   state: TurretState;
+  /** Authoritative world-space yaw. This is always host-readable even when
+   *  the host ignores it or merely echoes it through presentation joints. */
   rotation: number;
+  /** Authoritative elevation. Like rotation, hosts may observe this value but
+   *  never replace the turret's own aim through the attachment contract. */
   pitch: number;
   angularVelocity: number;
   /** Yaw angular acceleration (rad/s²) produced by this tick's

@@ -15,6 +15,10 @@ import { createRenderFrameState } from './RenderFrameState3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ScopedRenderMeshRetention3D } from './ScopedRenderMeshRetention3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[building turret presentation contract] ${message}`);
@@ -57,9 +61,9 @@ export function runBuildingTurretPresentation3DContractTest(): void {
   const world = new THREE.Group();
   const primaryMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
   const accentMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-  const turretHeadGeom = new THREE.SphereGeometry(1, 8, 6);
-  const barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
-  const coneBarrelGeom = new THREE.CylinderGeometry(1, 0.5, 1, 8);
+  const turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
+  const barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
+  const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 1, 0.5);
   const renderer = new BuildingEntityRenderer3D({
     world,
     clientViewState,

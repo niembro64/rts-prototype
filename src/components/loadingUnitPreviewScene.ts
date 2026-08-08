@@ -90,7 +90,14 @@ import {
   type TeamOrnamentFit,
   ornamentProfileKey,
 } from '@/game/render3d/TeamOrnament3D';
-import { buildStandingRig, poseStandingRigAtRest, type StandingMesh } from '@/game/render3d/StandingRig3D';
+import {
+  buildStandingRig,
+  poseStandingRigAtPreviewCycle,
+  poseStandingRigAtRest,
+  resolveStandingArmTurretRoot,
+  type StandingArmId,
+  type StandingMesh,
+} from '@/game/render3d/StandingRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -180,7 +187,16 @@ type PreviewLocomotionRig =
   | { type: 'flippers'; mesh: FlipperMesh }
   | { type: 'swim'; mesh: SwimMesh }
   | { type: 'legs'; group: THREE.Group }
-  | { type: 'standing'; mesh: StandingMesh };
+  | {
+    type: 'standing';
+    mesh: StandingMesh;
+    articulatedTurrets: Array<{
+      root: THREE.Group;
+      armId: StandingArmId;
+      mountId: string;
+      headRadius: number;
+    }>;
+  };
 
 type PreviewModel = {
   root: THREE.Group;
@@ -600,20 +616,35 @@ function buildPreviewUnitModel(
   const yawGroup = new THREE.Group();
   root.add(yawGroup);
 
-  const locomotion = buildPreviewLocomotion(yawGroup, blueprint, materials, geometryTier);
-
   const liftGroup = new THREE.Group();
   liftGroup.position.y = chassisLift;
   yawGroup.add(liftGroup);
+  const locomotion = buildPreviewLocomotion(
+    yawGroup,
+    liftGroup,
+    blueprint,
+    chassisLift,
+    materials,
+    geometryTier,
+  );
 
   const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
   buildPreviewBody(liftGroup, blueprint, materials, geometryTier);
   const markingProfile = getConstructionHostMarkingProfile(unitBlueprintId);
-  if (markingProfile !== null) {
+  if (markingProfile !== null && unitBlueprintId !== 'unitCommander') {
     liftGroup.add(buildConstructionHostMarking(markingProfile, radius, geometryTier));
   }
   buildPreviewProductionRing(liftGroup, productionRing, materials.primary, geometryTier);
-  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials, productionRing, geometryTier);
+  buildPreviewTurrets(
+    liftGroup,
+    blueprint,
+    unitBlueprintId,
+    chassisLift,
+    materials,
+    productionRing,
+    geometryTier,
+    locomotion?.type === 'standing' ? locomotion : null,
+  );
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials, geometryTier);
   return { root, locomotion };
 }
@@ -676,11 +707,16 @@ function buildPreviewBody(
   if (blueprint.unitBlueprintId === 'unitCommander') {
     chassis.add(previewCommanderVisualKit.buildKit(bodyMaterial, geometryTier));
   }
-  // Every unit wears the shared body kit, so every unit card shows it.
-  chassis.add(new THREE.Mesh(
-    previewOrnamentGeometry(bodyEntry, blueprint.teamOrnament),
-    materials.teamOrnament,
-  ));
+  // The shared rail-and-rib hull ornament is designed for horizontal vehicle
+  // bodies. On an upright biped its cross-body ridge becomes a broad skirt at
+  // the waist, hiding the legs and feet. Standing units carry their identity
+  // in their humanoid armour and held equipment instead.
+  if (blueprint.unitLocomotion.type !== 'standing') {
+    chassis.add(new THREE.Mesh(
+      previewOrnamentGeometry(bodyEntry, blueprint.teamOrnament),
+      materials.teamOrnament,
+    ));
+  }
   chassis.scale.setScalar(blueprint.radius.other);
   liftGroup.add(chassis);
 }
@@ -727,6 +763,7 @@ function buildPreviewTurrets(
   materials: PreviewUnitMaterials,
   productionRing: PreviewProductionRing | null,
   geometryTier: PrimitiveGeometryTier,
+  standingRig: Extract<PreviewLocomotionRig, { type: 'standing' }> | null,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
   const bodyIsShieldEmitter = blueprint.bodyShape === null && turrets.some(
@@ -761,6 +798,11 @@ function buildPreviewTurrets(
         materials.primary,
         geometryTier,
       );
+    } else if (unitBlueprintId === 'unitHuman') {
+      previewCommanderVisualKit.decorateHumanWeapon(
+        turretMesh,
+        materials.primary,
+      );
     }
     const headRadius = getTurretHeadRadius(turret.config);
     let mountX = turret.mount.x;
@@ -773,11 +815,30 @@ function buildPreviewTurrets(
       mountZ = productionRing.centerZ + productionRing.ringRadius * side;
       productionPylonOrdinal++;
     }
-    turretMesh.root.position.set(
-      mountX,
-      mountY - headRadius,
-      mountZ,
-    );
+    const hostAttachment = turret.config.hostAttachment;
+    const articulatedMount = standingRig === null || hostAttachment?.kind !== 'standingArm'
+      ? null
+      : resolveStandingArmTurretRoot(
+        standingRig.mesh,
+        hostAttachment.arm,
+        turret.mountId,
+        headRadius,
+      );
+    if (articulatedMount !== null) {
+      turretMesh.root.position.copy(articulatedMount);
+      standingRig?.articulatedTurrets.push({
+        root: turretMesh.root,
+        armId: hostAttachment!.arm,
+        mountId: turret.mountId,
+        headRadius,
+      });
+    } else {
+      turretMesh.root.position.set(
+        mountX,
+        mountY - headRadius,
+        mountZ,
+      );
+    }
     applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
     const anchor = turretMesh.teamCollar;
     if (anchor !== undefined && turretMesh.pitchGroup !== undefined) {
@@ -794,7 +855,9 @@ function buildPreviewTurrets(
 
 function buildPreviewLocomotion(
   yawGroup: THREE.Group,
+  liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
+  chassisLift: number,
   materials: PreviewUnitMaterials,
   geometryTier: PrimitiveGeometryTier,
 ): PreviewLocomotionRig | null {
@@ -869,11 +932,11 @@ function buildPreviewLocomotion(
     case 'standing': {
       // The card shows the real rig, standing still — same parts, same solve.
       const mesh = buildStandingRig(
-        yawGroup, radius, locomotion.config.legs, locomotion.config.arms,
-        0, HOST_PLAYER_ID, geometryTier,
+        liftGroup, radius, locomotion.config.legs, locomotion.config.arms,
+        chassisLift, HOST_PLAYER_ID, geometryTier, blueprint.unitBlueprintId,
       );
       poseStandingRigAtRest(mesh);
-      return { type: 'standing', mesh };
+      return { type: 'standing', mesh, articulatedTurrets: [] };
     }
   }
   return null;
@@ -1048,8 +1111,17 @@ function animatePreviewLocomotion(
       animatePreviewLegs(rig.group, active ? stride : 0, active);
       return;
     case 'standing':
-      // Held at rest: the walk is driven by ground distance, and a card has
-      // no ground under it to cover.
+      if (active) poseStandingRigAtPreviewCycle(rig.mesh, phase, Math.min(1, motionScale));
+      else poseStandingRigAtRest(rig.mesh);
+      for (const turret of rig.articulatedTurrets) {
+        const mount = resolveStandingArmTurretRoot(
+          rig.mesh,
+          turret.armId,
+          turret.mountId,
+          turret.headRadius,
+        );
+        if (mount !== null) turret.root.position.copy(mount);
+      }
       return;
   }
 }

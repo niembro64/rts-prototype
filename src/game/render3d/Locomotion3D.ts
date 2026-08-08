@@ -120,12 +120,14 @@ export type LocomotionStateSnapshot =
       /** A tier rebuild must not restart the walk mid-stride, and it must not
        *  move a planted foot: the footholds ARE the leg state. */
       contact: RollingContactSnapshot;
-      phase: number;
       gait: number;
       hipYaw: number;
       swingingLeg: number;
+      wasMoving: boolean;
+      settling: boolean;
       legs: Array<Readonly<{
         footX: number; footY: number; footZ: number;
+        footLocalX: number;
         stepping: boolean; stepT: number; stepSeconds: number;
         fromX: number; fromY: number; fromZ: number;
         toX: number; toY: number; toZ: number;
@@ -207,12 +209,14 @@ export function captureLocomotionState(
       return {
         type: 'standing',
         contact: captureRollingContact(locomotion.contact),
-        phase: locomotion.phase,
         gait: locomotion.gait,
         hipYaw: locomotion.hipYaw,
         swingingLeg: locomotion.swingingLeg,
+        wasMoving: locomotion.wasMoving,
+        settling: locomotion.settling,
         legs: locomotion.legs.map((leg) => ({
           footX: leg.footX, footY: leg.footY, footZ: leg.footZ,
+          footLocalX: leg.footLocalX,
           stepping: leg.stepping, stepT: leg.stepT, stepSeconds: leg.stepSeconds,
           fromX: leg.fromX, fromY: leg.fromY, fromZ: leg.fromZ,
           toX: leg.toX, toY: leg.toY, toZ: leg.toZ,
@@ -282,11 +286,12 @@ export function applyLocomotionState(
     case 'standing': {
       const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'standing' }>;
       applyRollingContact(locomotion.contact, state.contact);
-      locomotion.phase = state.phase;
       locomotion.gait = state.gait;
       locomotion.hipYaw = state.hipYaw;
       locomotion.hips.rotation.y = state.hipYaw;
       locomotion.swingingLeg = state.swingingLeg;
+      locomotion.wasMoving = state.wasMoving;
+      locomotion.settling = state.settling;
       for (let i = 0; i < locomotion.legs.length && i < state.legs.length; i++) {
         Object.assign(locomotion.legs[i], state.legs[i]);
       }
@@ -476,8 +481,12 @@ export function buildLocomotion(
     }
     case 'standing': {
       const mesh = buildStandingRig(
-        unitGroup, unitRadius, loc.config.legs, loc.config.arms,
+        // The standing rig poses against the lifted root, so it must share
+        // that root. Parenting it to the unlifted yaw group displaced every
+        // limb by the chassis lift (eleven world units on Human).
+        airborneUnitGroup, unitRadius, loc.config.legs, loc.config.arms,
         getChassisLift(bp, unitRadius), ownerId, geometryTier,
+        bp.unitBlueprintId,
       );
       poseStandingRigAtRest(mesh);
       mesh.geometryKey = geometryKey;
@@ -562,7 +571,7 @@ export function updateLocomotion(
     case 'legs':
       return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
     case 'standing':
-      return updateStandingRig(mesh, pose, dtMs, mapWidth, mapHeight);
+      return updateStandingRig(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'flippers':
       return updateFlippers(mesh, pose, dtMs);
     case 'hover':

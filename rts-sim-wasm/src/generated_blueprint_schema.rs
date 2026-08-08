@@ -685,6 +685,12 @@ pub struct UnitTurretMountZResolver {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitTurretHostAttachment {
+    pub kind: String,
+    pub arm: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TurretMount {
     pub mountId: String,
     pub turretBlueprintId: String,
@@ -695,6 +701,7 @@ pub struct TurretMount {
     pub slavedToMountId: Option<String>,
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
+    pub hostAttachment: Option<UnitTurretHostAttachment>,
     pub visualVariant: Option<String>,
     pub producedBlueprintId: Option<String>,
     pub allowedBuildBlueprintIds: Option<Vec<String>>,

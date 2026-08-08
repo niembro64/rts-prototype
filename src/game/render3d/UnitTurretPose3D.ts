@@ -29,6 +29,7 @@ import {
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
+import { resolveStandingArmTurretRoot } from './StandingRig3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
@@ -64,6 +65,7 @@ export class UnitTurretPose3D {
   private readonly anchorQuaternion = new THREE.Quaternion();
   private readonly scratchZeroPosition = new THREE.Vector3();
   private readonly scratchIdentityQuaternion = new THREE.Quaternion();
+  private readonly articulatedMount = new THREE.Vector3();
 
   private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
   private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
@@ -159,12 +161,32 @@ export class UnitTurretPose3D {
         ? mountZ
         : supportPointOffsetZ;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
-      setVector3IfChanged(
-        turretMesh.root.position,
-        mountX,
-        turretMountY,
-        mountY,
-      );
+      const hostAttachment = turret?.config.hostAttachment;
+      const articulatedMount = mesh.locomotion?.type === 'standing' &&
+        hostAttachment?.kind === 'standingArm'
+        ? resolveStandingArmTurretRoot(
+          mesh.locomotion,
+          hostAttachment.arm,
+          turret?.mountId ?? '',
+          headRadius,
+          this.articulatedMount,
+        )
+        : null;
+      if (articulatedMount !== null) {
+        setVector3IfChanged(
+          turretMesh.root.position,
+          articulatedMount.x,
+          articulatedMount.y,
+          articulatedMount.z,
+        );
+      } else {
+        setVector3IfChanged(
+          turretMesh.root.position,
+          mountX,
+          turretMountY,
+          mountY,
+        );
+      }
 
       if (turretMesh.constructionEmitter) {
         setEulerZIfChanged(

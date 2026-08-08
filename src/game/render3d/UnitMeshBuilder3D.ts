@@ -248,7 +248,7 @@ export class UnitMeshBuilder3D {
     const markingProfile = blueprint === undefined
       ? null
       : getConstructionHostMarkingProfile(blueprint.unitBlueprintId);
-    if (markingProfile !== null) {
+    if (markingProfile !== null && blueprint?.unitBlueprintId !== 'unitCommander') {
       // Chassis children live in unit-radius-1 space; the renderer scales
       // the chassis group by the unit's render radius every frame. Marking
       // profiles are authored in body-radius units, so build at scale 1 —
@@ -460,6 +460,11 @@ export class UnitMeshBuilder3D {
           turret.config.turretBlueprintId === commanderDgunTurretBlueprintId,
           this.getPrimaryMat(ownerId),
           geometryTierForDetail(detailLevel),
+        );
+      } else if (entity.unit?.unitBlueprintId === 'unitHuman' && !hideHead) {
+        this.commanderVisualKit.decorateHumanWeapon(
+          turretMesh,
+          this.getPrimaryMat(ownerId),
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;

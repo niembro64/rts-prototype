@@ -27,7 +27,10 @@ export type ClientRenderTurretStateViews = {
   readonly turretEntityIds: Float64Array;
   readonly flags: Uint16Array;
   readonly stateCode: Uint8Array;
+  /** The shared turret/host yaw channel. Turret presentation and optional
+   *  host assistance read the same authoritative row. */
   readonly rotation: Float32Array;
+  /** The shared turret/host pitch channel; hosts may ignore it. */
   readonly pitch: Float32Array;
   readonly mountX: Float32Array;
   readonly mountY: Float32Array;

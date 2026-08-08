@@ -770,6 +770,9 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // Unit mounts opt into fight/patrol halt gating individually. Building
     // mounts never participate in unit movement halt checks.
     requiredEngagedForFightStop: false,
+    // Host presentation attachments are also per unit mount. Most hosts do
+    // nothing with turret aim, so the shared blueprint has no attachment.
+    hostAttachment: null,
     constructionEmitter: turretBlueprint.constructionEmitter !== null
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,

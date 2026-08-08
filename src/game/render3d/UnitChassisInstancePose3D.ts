@@ -151,7 +151,10 @@ export class UnitChassisInstancePose3D {
       }
       return;
     }
-    if (teamTrim !== null) {
+    const unitBlueprintId = entity.unit?.unitBlueprintId;
+    const usesStandingRig = unitBlueprintId !== undefined &&
+      getUnitBlueprint(unitBlueprintId).unitLocomotion.type === 'standing';
+    if (teamTrim !== null && !usesStandingRig) {
       this.updateTeamKit(
         entity,
         mesh,
@@ -161,6 +164,8 @@ export class UnitChassisInstancePose3D {
         parentQuaternion,
         teamTrim,
       );
+    } else if (teamTrim !== null && mesh.teamTrimSlot !== undefined) {
+      teamTrim.hide(mesh.teamTrimSlot);
     }
 
     if (mesh.smoothChassisSlots) {

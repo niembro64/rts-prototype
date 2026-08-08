@@ -447,6 +447,19 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
         `Invalid turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: mount x/y/z must be finite`,
       );
     }
+    const standingHost = bp.unitLocomotion.type === 'standing';
+    if (standingHost && turret.hostAttachment?.kind !== 'standingArm') {
+      throw new Error(
+        `Invalid standing turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+        'every standing-host turret must identify its leftArm or rightArm attachment',
+      );
+    }
+    if (!standingHost && turret.hostAttachment !== undefined) {
+      throw new Error(
+        `Invalid turret host attachment for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+        'standingArm attachments require standing locomotion',
+      );
+    }
     // Airborne mounts may use all three axes. Presentation banking is
     // disabled for a host with any off-axis combat mount, so visual-only
     // roll can never move its rendered turret away from combat truth.

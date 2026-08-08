@@ -50,6 +50,7 @@ type ExpectedLocomotionDomain = Readonly<{
  * chassis; navigation and survival stay deliberate data decisions.
  */
 const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDomain>> = {
+  unitHuman: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitJackal: { type: 'wheels', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitLynx: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitDaddy: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
@@ -74,7 +75,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitQueenBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitQueenTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitTransport: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitCommander: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitCommander: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
 
 
@@ -257,10 +258,41 @@ function checkLocomotionMountsAuthored(): void {
   }
 }
 
+function checkStandingTurretArmAttachments(): void {
+  for (const blueprint of getAllUnitBlueprints()) {
+    const standing = blueprint.unitLocomotion.type === 'standing';
+    for (const turret of blueprint.turrets) {
+      if (!standing) {
+        assertContract(
+          turret.hostAttachment === undefined,
+          `${blueprint.unitBlueprintId}/${turret.mountId} cannot name a standing arm on a non-standing host`,
+        );
+        continue;
+      }
+      assertContract(
+        turret.hostAttachment?.kind === 'standingArm' &&
+          (turret.hostAttachment.arm === 'leftArm' || turret.hostAttachment.arm === 'rightArm'),
+        `${blueprint.unitBlueprintId}/${turret.mountId} must identify the standing arm carrying it`,
+      );
+    }
+  }
+
+  for (const unitBlueprintId of ['unitHuman', 'unitCommander'] as const) {
+    const blueprint = getUnitBlueprint(unitBlueprintId);
+    assertContract(
+      blueprint.turrets.every((turret) =>
+        turret.hostAttachment?.kind === 'standingArm' &&
+        turret.hostAttachment.arm === 'rightArm'),
+      `${unitBlueprintId} mounts every current combat turret on its authored right arm`,
+    );
+  }
+}
+
 export function runUnitLocomotionContractTest(): void {
   checkLegAttachmentPoints();
   checkLocomotionMountsAuthored();
   checkLocomotionMountClearance();
+  checkStandingTurretArmAttachments();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
   const manySamples: Array<{ x: number; y: number }> = [];
@@ -384,13 +416,13 @@ export function runUnitLocomotionContractTest(): void {
 
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
-    commander.physicsPresetId === 'amphibiousLegs' &&
+    commander.physicsPresetId === 'standing' &&
       commander.navigation.waypoint.allowOnGround &&
       commander.navigation.waypoint.allowInWater &&
       !commander.navigation.waypoint.allowInAir &&
       commander.environmentalHazards.waterDamagePerSecond === 0 &&
       commander.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
-    'Commander uses its leg rig to walk the seabed without a water-surface controller',
+    'Commander uses its standing rig to walk the seabed without a water-surface controller',
   );
 
   const eagle = getUnitLocomotion('unitEagle');

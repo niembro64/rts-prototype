@@ -83,6 +83,7 @@ import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { LocomotionRenderPose } from './LocomotionRigShared3D';
+import { updateStandingHostTurretAim } from './StandingRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 import {
@@ -305,6 +306,11 @@ export class Render3DEntities {
    *  authoritative body orientation plus any presentation-only bank.
    *  Turret pose converts world aim through this same quaternion. */
   private _smoothParentQuat = new THREE.Quaternion();
+  /** Local standing-host torso assistance composed after the authoritative
+   *  chassis pose. Turrets consume the result and counter-aim themselves back
+   *  to their unchanged authoritative world yaw/pitch. */
+  private _hostAimAssistQuat = new THREE.Quaternion();
+  private readonly _hostAimAssistAxis = new THREE.Vector3(0, 1, 0);
   /** Lifted world position from the unit base-pose batch. Reproduces
    *  the scenegraph chain
    *    group → yawGroup → liftGroup → chassis
@@ -974,6 +980,15 @@ export class Render3DEntities {
       const poseBase = poseIndex * poseOutputStride;
       const visualBankRoll = poseOutput[poseBase + 32];
       m.visualBankRoll = visualBankRoll;
+      const standingUpperBodyYaw = m.locomotion?.type === 'standing'
+        ? updateStandingHostTurretAim(
+          m.locomotion,
+          tRot,
+          turretRows,
+          turrets,
+          this._currentDtMs,
+        )
+        : 0;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -997,7 +1012,7 @@ export class Render3DEntities {
         setEulerIfChanged(
           m.liftGroup.rotation,
           airborne ? -visualBankRoll : 0,
-          0,
+          standingUpperBodyYaw,
           0,
         );
       }
@@ -1020,18 +1035,20 @@ export class Render3DEntities {
         poseOutput[poseBase + 10],
         poseOutput[poseBase + 11],
       );
+      this._locomotionParentQuat.copy(this._smoothParentQuat);
+      if (standingUpperBodyYaw !== 0) {
+        this._hostAimAssistQuat.setFromAxisAngle(
+          this._hostAimAssistAxis,
+          standingUpperBodyYaw,
+        );
+        this._smoothParentQuat.multiply(this._hostAimAssistQuat);
+      }
       this._smoothLiftedPos.set(
         poseOutput[poseBase + 12],
         poseOutput[poseBase + 13],
         poseOutput[poseBase + 14],
       );
       this._unitChainMat.fromArray(poseOutput, poseBase + 16);
-      this._locomotionParentQuat.set(
-        poseOutput[poseBase + 8],
-        poseOutput[poseBase + 9],
-        poseOutput[poseBase + 10],
-        poseOutput[poseBase + 11],
-      );
       this.chassisInstancePose.update(
         e,
         m,
@@ -1062,57 +1079,10 @@ export class Render3DEntities {
       }
       if (unitOverlayVersionDirty) m.unitOverlayVersion = unitOverlayStateVersion;
 
-      this.turretPose.update(
-        e,
-        m,
-        turretRows,
-        turrets,
-        bodyMaterialized,
-        unitRows.supportPointOffsetZ[row],
-        this._smoothLiftedPos,
-        this._smoothParentQuat,
-        unitGfx.barrelSpin,
-        this.barrelSpinState,
-        this._currentDtMs,
-        this._currentTimeMs,
-        this.unitDetailInstances,
-        this.constructionVisuals,
-        this.teamTrim,
-      );
-
-      if (m.mirrors) {
-        if (!this.turretShieldPanelsEnabled) {
-          this.deactivateShieldPanelMesh(m.mirrors);
-        } else {
-          const shieldPanelTurretIndex = unitRows.shieldPanelTurretIndex[row];
-          const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-          const shieldPanelMaterialized = bodyMaterialized && (
-            turretRows !== undefined
-              ? shieldPanelTurretIndex >= 0 && shieldPanelTurretIndex < turretRows.count
-              : shieldPanelTurret !== undefined
-          );
-          if (shieldPanelMaterialized) {
-            this.shieldPanelPose.update(
-              e,
-              m.mirrors,
-              turretRows,
-              shieldPanelTurretIndex,
-              this._smoothLiftedPos,
-              this._smoothParentQuat,
-              shieldPanelTurret?.rotation,
-              shieldPanelTurret?.pitch,
-            );
-          } else {
-            this.deactivateShieldPanelMesh(m.mirrors);
-          }
-        }
-      }
-
-      // Locomotion: spin tread wheels per velocity; legs write per-
-      // instance buffers in the shared cylinder pool. Below the animation
-      // rung the rig updates on a frame stride (with accumulated dt so the
-      // EMAs stay frame-rate independent) — the floor clamp goes a few
-      // frames stale at a screen size where that cannot read.
+      // Pose locomotion before mounted equipment. Standing units carry their
+      // visible turrets on an animated hand, so placing turrets first made the
+      // weapon trail the wrist by one render frame. Other rigs are independent
+      // of turret placement and retain the same update conditions here.
       const locomotion = m.locomotion;
       if (locomotion) {
         const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
@@ -1170,6 +1140,52 @@ export class Render3DEntities {
           );
           if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);
+        }
+      }
+
+      this.turretPose.update(
+        e,
+        m,
+        turretRows,
+        turrets,
+        bodyMaterialized,
+        unitRows.supportPointOffsetZ[row],
+        this._smoothLiftedPos,
+        this._smoothParentQuat,
+        unitGfx.barrelSpin,
+        this.barrelSpinState,
+        this._currentDtMs,
+        this._currentTimeMs,
+        this.unitDetailInstances,
+        this.constructionVisuals,
+        this.teamTrim,
+      );
+
+      if (m.mirrors) {
+        if (!this.turretShieldPanelsEnabled) {
+          this.deactivateShieldPanelMesh(m.mirrors);
+        } else {
+          const shieldPanelTurretIndex = unitRows.shieldPanelTurretIndex[row];
+          const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
+          const shieldPanelMaterialized = bodyMaterialized && (
+            turretRows !== undefined
+              ? shieldPanelTurretIndex >= 0 && shieldPanelTurretIndex < turretRows.count
+              : shieldPanelTurret !== undefined
+          );
+          if (shieldPanelMaterialized) {
+            this.shieldPanelPose.update(
+              e,
+              m.mirrors,
+              turretRows,
+              shieldPanelTurretIndex,
+              this._smoothLiftedPos,
+              this._smoothParentQuat,
+              shieldPanelTurret?.rotation,
+              shieldPanelTurret?.pitch,
+            );
+          } else {
+            this.deactivateShieldPanelMesh(m.mirrors);
+          }
         }
       }
 
