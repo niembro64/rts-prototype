@@ -609,14 +609,14 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               root: transformTuple(rig.group),
               legs: rig.legs.map((leg) => [
                 leg.side, n(leg.hipX), n(leg.hipY), n(leg.hipZ),
-                n(leg.thighLength), n(leg.shinLength), n(leg.phaseOffset),
+                n(leg.thighLength), n(leg.shinLength),
                 ...transformTuple(leg.knee), ...transformTuple(leg.foot),
               ]),
               arms: rig.arms.map((arm) => [
                 arm.side, n(arm.shoulderX), n(arm.shoulderY), n(arm.shoulderZ),
                 n(arm.handX), n(arm.handY), ...transformTuple(arm.elbow),
               ]),
-              stride: [n(rig.strideLength), n(rig.strideLift), n(rig.standHipY)],
+              stride: [n(rig.stepLength), n(rig.strideLift), n(rig.standHipY)],
             },
           };
         }

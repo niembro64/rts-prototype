@@ -117,10 +117,19 @@ export type LocomotionStateSnapshot =
     }
   | {
       type: 'standing';
-      /** A tier rebuild must not restart the walk mid-stride. */
+      /** A tier rebuild must not restart the walk mid-stride, and it must not
+       *  move a planted foot: the footholds ARE the leg state. */
       contact: RollingContactSnapshot;
       phase: number;
       gait: number;
+      hipYaw: number;
+      swingingLeg: number;
+      legs: Array<Readonly<{
+        footX: number; footY: number; footZ: number;
+        stepping: boolean; stepT: number; stepSeconds: number;
+        fromX: number; fromY: number; fromZ: number;
+        toX: number; toY: number; toZ: number;
+      }>>;
     }
   | {
       type: 'wheels';
@@ -200,6 +209,14 @@ export function captureLocomotionState(
         contact: captureRollingContact(locomotion.contact),
         phase: locomotion.phase,
         gait: locomotion.gait,
+        hipYaw: locomotion.hipYaw,
+        swingingLeg: locomotion.swingingLeg,
+        legs: locomotion.legs.map((leg) => ({
+          footX: leg.footX, footY: leg.footY, footZ: leg.footZ,
+          stepping: leg.stepping, stepT: leg.stepT, stepSeconds: leg.stepSeconds,
+          fromX: leg.fromX, fromY: leg.fromY, fromZ: leg.fromZ,
+          toX: leg.toX, toY: leg.toY, toZ: leg.toZ,
+        })),
       };
     case 'wheels':
       return {
@@ -267,6 +284,12 @@ export function applyLocomotionState(
       applyRollingContact(locomotion.contact, state.contact);
       locomotion.phase = state.phase;
       locomotion.gait = state.gait;
+      locomotion.hipYaw = state.hipYaw;
+      locomotion.hips.rotation.y = state.hipYaw;
+      locomotion.swingingLeg = state.swingingLeg;
+      for (let i = 0; i < locomotion.legs.length && i < state.legs.length; i++) {
+        Object.assign(locomotion.legs[i], state.legs[i]);
+      }
       return;
     }
     case 'wheels': {

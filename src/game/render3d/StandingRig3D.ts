@@ -15,14 +15,22 @@
 // two-link solve inside it, and the lateral offset of the whole limb is a
 // CONSTANT. Sideways motion is not damped here — it is unrepresentable.
 //
-// THE WALK. One cycle is one stride length of ground covered, so the phase is
-// integrated from ground distance, not from time: a mech pushed backwards walks
-// backwards, and a stopped one stops with its feet down. Each leg spends half
-// the cycle in stance — foot fixed to the ground, travelling backwards through
-// the hull's frame at exactly the speed the hull travels forwards, which is
-// what stops the feet skating — and half in swing, lifted along an arc to the
-// next footfall. The legs are half a cycle apart; the arms take the leg phase
-// on the opposite side, which is what a walk is.
+// THE WALK IS NOT ON A CLOCK. The foothold is the state and the gait is the
+// consequence: each foot is placed at a WORLD point and held there, and the
+// leg takes a new step when the hip has carried far enough away from it. A
+// planted foot is therefore motionless by construction, at any speed and at
+// none — no phase counter to agree with, so none to disagree with. It also
+// means every way a unit can move produces stepping for free: walking,
+// pivoting on the spot, strafing, accelerating, cresting a slope. All of them
+// move the hip away from the foothold, which is the only thing being measured.
+//
+// A phase-driven trajectory was tried first and skated: stance swept the foot
+// back through the hull frame by stride×gait while the hull advanced by the
+// full stride, so the two agreed only at top speed and the feet slid at every
+// speed below it. Turning on the spot moved the chassis centre by nothing at
+// all, so the phase froze and the unit spun with its feet welded on.
+//
+// Only one foot may swing at a time. That rule IS a biped's balance.
 //
 // UPRIGHT. A biped does not lean into a hill. The hull's terrain tilt is
 // cancelled at the pose (see Render3DEntities' upright hosts), so this rig can
@@ -69,16 +77,31 @@ export type StandingLeg = {
   hipZ: number;
   thighLength: number;
   shinLength: number;
-  /** Half a cycle apart from its opposite number. */
-  phaseOffset: number;
   thigh: Strut;
   shin: Strut;
   knee: THREE.Mesh;
-  /** Foot plate plus its two forward prongs — the splayed commander foot. */
+  /** Foot plate plus its two forward toes. */
   foot: THREE.Group;
-  /** Where this foot is planted, chassis-local. Held through stance. */
-  plantX: number;
-  plantY: number;
+  /** WHERE THIS FOOT IS, IN THE WORLD. This is the leg's state, and the pose
+   *  is derived from it — not the other way round. A planted foot is then
+   *  motionless by construction at any speed, including none, and every way a
+   *  unit can move (walking, turning on the spot, strafing, accelerating,
+   *  cresting a slope) produces stepping for free, because all of them move
+   *  the hip away from the foothold. */
+  footX: number;
+  footY: number;
+  footZ: number;
+  /** Swing state. A leg is either planted or on its way to a new foothold. */
+  stepping: boolean;
+  /** 0..1 through the current swing. */
+  stepT: number;
+  stepSeconds: number;
+  fromX: number;
+  fromY: number;
+  fromZ: number;
+  toX: number;
+  toY: number;
+  toZ: number;
 };
 
 export type StandingArm = {
@@ -112,26 +135,41 @@ export type StandingMesh = {
   hipYaw: number;
   legs: StandingLeg[];
   arms: StandingArm[];
-  /** Ground distance, the only clock this rig has. */
+  /** Ground distance. Used only to size a swing and to swing the arms — the
+   *  legs are driven by where their feet are, not by a clock. */
   contact: RollingContactState;
-  /** Stride phase in cycles, 0..1. */
+  /** Arm swing phase in cycles, 0..1. Advanced by ground distance so the arms
+   *  stay locked to the walk. */
   phase: number;
-  /** Smoothed 0..1 stride amplitude, so starting and stopping eases. */
+  /** Smoothed 0..1 walk amplitude for the arms. */
   gait: number;
-  strideLength: number;
+  /** How far apart consecutive footholds are placed. */
+  stepLength: number;
   strideLift: number;
+  /** Nominal hip height above the sole, from standHeightRatio. Sets where a
+   *  foothold is placed and keeps the solve inside the leg's reach. */
   standHipY: number;
+  /** Which leg may swing next. A biped never lifts both feet. */
+  swingingLeg: number;
   armSwingRad: number;
   armRestRad: number;
 } & LocomotionBase;
 
-/** Seconds for the gait amplitude to close most of the gap to its target. */
-const GAIT_EASE_SECONDS = 0.16;
-/** Ground speed at which the walk reaches full stride, world units/sec. */
-const FULL_STRIDE_SPEED = 22;
+/** Shortest and longest a swing may take, seconds. Between them the swing
+ *  lasts as long as the hull needs to cover half a step, so a slow walk places
+ *  its feet slowly and a run snaps them down. */
+const SWING_MIN_SECONDS = 0.14;
+const SWING_MAX_SECONDS = 0.55;
 /** Knee flex held at a standstill, radians. A locked-straight leg reads as a
  *  stilt; every mech stands with a little bend in it. */
 const STAND_KNEE_BEND_RAD = 0.16;
+/** A foothold further than this from where the leg wants it, as a fraction of
+ *  the step length, is overdue and the leg picks a new one. */
+const STEP_TRIGGER_FRACTION = 0.4;
+/** Seconds for the arm swing amplitude to ease in and out. */
+const GAIT_EASE_SECONDS = 0.16;
+/** Ground speed at which the arms reach full swing, world units/sec. */
+const ARM_FULL_SWING_SPEED = 22;
 /** How far the elbow follows the shoulder, as a fraction of shoulder swing. */
 const ELBOW_FOLLOW = 0.4;
 /** Constant elbow flex, radians. */
@@ -147,18 +185,65 @@ const _hip = new THREE.Vector2();
 const _foot = new THREE.Vector2();
 const _knee = new THREE.Vector2();
 const _chord = new THREE.Vector2();
-const _worldFoot = new THREE.Vector3();
+const _hipWorld = new THREE.Vector3();
+const _stepTarget = new THREE.Vector3();
+const _footLocal = new THREE.Vector3();
+const _localVelocity = new THREE.Vector3();
+const _invQuat = new THREE.Quaternion();
 const _poseQuat = new THREE.Quaternion();
 const _segDir = new THREE.Vector3();
 const _segQuat = new THREE.Quaternion();
 const _segUp = new THREE.Vector3(0, 1, 0);
 
-/** The hull's yaw about world up. Upright hosts have no other rotation. */
-function yawOf(pose: LocomotionRenderPose): number {
-  return Math.atan2(
-    2 * (pose.quaternionW * pose.quaternionY + pose.quaternionX * pose.quaternionZ),
-    1 - 2 * (pose.quaternionY * pose.quaternionY + pose.quaternionZ * pose.quaternionZ),
-  );
+/** Chassis-local (already hip-yawed) → world. */
+function toWorld(
+  lx: number, ly: number, lz: number,
+  pose: LocomotionRenderPose, hipYaw: number,
+  out: THREE.Vector3,
+): void {
+  const cos = Math.cos(hipYaw);
+  const sin = Math.sin(hipYaw);
+  out.set(lx * cos + lz * sin, ly, -lx * sin + lz * cos);
+  _poseQuat.set(pose.quaternionX, pose.quaternionY, pose.quaternionZ, pose.quaternionW);
+  out.applyQuaternion(_poseQuat);
+  out.x += pose.rootX;
+  out.y += pose.rootY;
+  out.z += pose.rootZ;
+}
+
+/** World → chassis-local, then out of the hips' own yaw. The exact inverse of
+ *  toWorld, so a foothold survives the round trip. */
+function toHipLocal(
+  wx: number, wy: number, wz: number,
+  pose: LocomotionRenderPose, hipYaw: number,
+  out: THREE.Vector3,
+): void {
+  out.set(wx - pose.rootX, wy - pose.rootY, wz - pose.rootZ);
+  _poseQuat.set(pose.quaternionX, pose.quaternionY, pose.quaternionZ, pose.quaternionW);
+  out.applyQuaternion(_poseQuat.invert());
+  const cos = Math.cos(-hipYaw);
+  const sin = Math.sin(-hipYaw);
+  const x = out.x;
+  const z = out.z;
+  out.x = x * cos + z * sin;
+  out.z = -x * sin + z * cos;
+}
+
+/** Put a foot on the ground directly under its hip. Used on the first frame
+ *  and by the rest pose, so a unit never starts with its feet at the origin. */
+function plantUnderHip(
+  leg: StandingLeg,
+  mesh: StandingMesh,
+  pose: LocomotionRenderPose,
+  mapWidth: number,
+  mapHeight: number,
+): void {
+  toWorld(leg.hipX, leg.hipY, leg.hipZ, pose, mesh.hipYaw, _stepTarget);
+  leg.footX = _stepTarget.x;
+  leg.footZ = _stepTarget.z;
+  leg.footY = getLocomotionSurfaceHeight(leg.footX, leg.footZ, mapWidth, mapHeight, 0);
+  leg.stepping = false;
+  leg.stepT = 0;
 }
 
 function material(ownerId: PlayerId | undefined): THREE.MeshLambertMaterial {
@@ -285,13 +370,18 @@ export function buildStandingRig(
       thighLength,
       shinLength,
       // Left leads. Half a cycle is the whole of what makes a walk a walk.
-      phaseOffset: side < 0 ? 0 : 0.5,
       thigh: makeStrut(hips, legWidth, legWidth * 0.82, ownerId),
       shin: makeStrut(hips, legWidth * 0.78, legWidth * 0.66, ownerId),
       knee: makeBlock(hips, legWidth * 0.95, legWidth * 0.95, legWidth * 0.9, ownerId),
       foot: makeFoot(hips, footLength, footWidth, ownerId),
-      plantX: 0,
-      plantY: 0,
+      footX: 0,
+      footY: 0,
+      footZ: 0,
+      stepping: false,
+      stepT: 0,
+      stepSeconds: SWING_MIN_SECONDS,
+      fromX: 0, fromY: 0, fromZ: 0,
+      toX: 0, toY: 0, toZ: 0,
     };
     legs.push(leg);
   }
@@ -328,9 +418,10 @@ export function buildStandingRig(
     contact: rollingContact(0, 0),
     phase: 0,
     gait: 0,
-    strideLength: Math.max(1, legLength * cfgLegs.strideLengthRatio),
+    stepLength: Math.max(1, legLength * cfgLegs.strideLengthRatio),
     strideLift: Math.max(0.5, legLength * cfgLegs.strideLiftRatio),
     standHipY: legLength * cfgLegs.standHeightRatio,
+    swingingLeg: -1,
     armSwingRad: THREE.MathUtils.degToRad(cfgArms.walkSwingDeg),
     armRestRad: THREE.MathUtils.degToRad(cfgArms.restSwingDeg),
     geometryKey: '',
@@ -345,81 +436,101 @@ export function updateStandingRig(
   mapHeight: number,
 ): boolean {
   const dt = Math.max(0, dtMs) / 1000;
-  // Ground distance drives the cycle, so the feet cannot outrun the hull.
   const travelled = sampleRollingContactDistance(pose, mesh.contact);
-  mesh.phase = (mesh.phase + travelled / mesh.strideLength) % 1;
-  if (mesh.phase < 0) mesh.phase += 1;
-
   const speed = dt > 0 ? Math.abs(travelled) / dt : 0;
 
   // HIPS. The hull faces what the commander is aiming at or building; the legs
-  // have to walk wherever the order sent them. Yaw the hip group by the angle
-  // between the two, which is the whole of what lets the torso spin free: the
-  // leg planes turn with it, so every solve below is unchanged.
-  const localVX = pose.velocityX * Math.cos(-yawOf(pose)) - pose.velocityZ * Math.sin(-yawOf(pose));
-  const localVZ = pose.velocityX * Math.sin(-yawOf(pose)) + pose.velocityZ * Math.cos(-yawOf(pose));
-  const planarSpeed = Math.hypot(localVX, localVZ);
-  const targetHipYaw = planarSpeed > HIP_YAW_MIN_SPEED ? Math.atan2(-localVZ, localVX) : 0;
+  // walk wherever the order sent them. Yaw the hip group by the angle between
+  // the two — the leg planes turn with it, so every solve below is unchanged.
+  //
+  // The local velocity comes off the inverse pose quaternion, the way every
+  // other rig does it. Hand-rolling the 2D rotation is what put a sign error
+  // in both components and turned the hips the wrong way.
+  _poseQuat.set(pose.quaternionX, pose.quaternionY, pose.quaternionZ, pose.quaternionW);
+  _localVelocity.set(pose.velocityX, pose.velocityY, pose.velocityZ)
+    .applyQuaternion(_invQuat.copy(_poseQuat).invert());
+  const planarSpeed = Math.hypot(_localVelocity.x, _localVelocity.z);
+  const targetHipYaw = planarSpeed > HIP_YAW_MIN_SPEED
+    ? Math.atan2(-_localVelocity.z, _localVelocity.x)
+    : 0;
   const hipEase = dt <= 0 ? 1 : 1 - Math.exp(-dt / HIP_YAW_EASE_SECONDS);
   let hipDelta = targetHipYaw - mesh.hipYaw;
   while (hipDelta > Math.PI) hipDelta -= Math.PI * 2;
   while (hipDelta < -Math.PI) hipDelta += Math.PI * 2;
   mesh.hipYaw += hipDelta * hipEase;
   mesh.hips.rotation.y = mesh.hipYaw;
-  const ease = dt <= 0 ? 1 : 1 - Math.exp(-dt / GAIT_EASE_SECONDS);
-  mesh.gait += (Math.min(1, speed / FULL_STRIDE_SPEED) - mesh.gait) * ease;
 
-  // The hull is posed upright, so its yaw alone maps the leg plane into the
-  // world. Terrain is sampled under each foot rather than assumed flat.
-  _poseQuat.set(pose.quaternionX, pose.quaternionY, pose.quaternionZ, pose.quaternionW);
+  const gaitEase = dt <= 0 ? 1 : 1 - Math.exp(-dt / GAIT_EASE_SECONDS);
+  mesh.gait += (Math.min(1, speed / ARM_FULL_SWING_SPEED) - mesh.gait) * gaitEase;
+  mesh.phase = (mesh.phase + travelled / Math.max(1, mesh.stepLength * 2)) % 1;
+  if (mesh.phase < 0) mesh.phase += 1;
 
-  for (const leg of mesh.legs) {
-    const p = (mesh.phase + leg.phaseOffset) % 1;
-    const stride = mesh.strideLength * mesh.gait;
-    let footX: number;
-    let lift: number;
-    if (p < 0.5) {
-      // STANCE. The foot travels backwards through the hull's frame at the
-      // rate the hull travels forwards; in the world it does not move at all.
-      footX = leg.hipX + stride * (0.5 - p * 2) * 0.5;
-      lift = 0;
-    } else {
-      // SWING. Forward along an arc to the next footfall.
-      const t = (p - 0.5) * 2;
-      footX = leg.hipX + stride * (t - 0.5) * 0.5;
-      lift = Math.sin(Math.PI * t) * mesh.strideLift * mesh.gait;
+  const swingSeconds = Math.min(
+    SWING_MAX_SECONDS,
+    Math.max(SWING_MIN_SECONDS, speed > 0.01 ? (mesh.stepLength * 0.5) / speed : SWING_MAX_SECONDS),
+  );
+
+  for (let i = 0; i < mesh.legs.length; i++) {
+    const leg = mesh.legs[i];
+
+    // Where this leg WANTS its foot: under its own hip, in its own plane.
+    toWorld(leg.hipX, leg.hipY, leg.hipZ, pose, mesh.hipYaw, _hipWorld);
+
+    if (!leg.stepping && leg.footX === 0 && leg.footY === 0 && leg.footZ === 0) {
+      // First frame: plant where the leg already stands.
+      plantUnderHip(leg, mesh, pose, mapWidth, mapHeight);
     }
 
-    // Hip-local → chassis-local → world XZ. Only yaw matters: the hull is
-    // upright, so the hips' own yaw is the only rotation between them.
-    const cosHip = Math.cos(mesh.hipYaw);
-    const sinHip = Math.sin(mesh.hipYaw);
-    _worldFoot.set(
-      footX * cosHip + leg.hipZ * sinHip,
-      0,
-      -footX * sinHip + leg.hipZ * cosHip,
-    ).applyQuaternion(_poseQuat);
-    const groundY = getLocomotionSurfaceHeight(
-      pose.rootX + _worldFoot.x,
-      pose.rootZ + _worldFoot.z,
-      mapWidth,
-      mapHeight,
-      0,
-    );
-    // The hull rides at a fixed height above its own footprint, so a foot on
-    // higher ground simply reaches less far down.
-    const footY = (groundY - pose.rootY) + lift;
+    if (leg.stepping) {
+      leg.stepT = Math.min(1, leg.stepT + (leg.stepSeconds > 0 ? dt / leg.stepSeconds : 1));
+      const t = leg.stepT;
+      const arc = Math.sin(Math.PI * t) * mesh.strideLift;
+      leg.footX = leg.fromX + (leg.toX - leg.fromX) * t;
+      leg.footZ = leg.fromZ + (leg.toZ - leg.fromZ) * t;
+      leg.footY = leg.fromY + (leg.toY - leg.fromY) * t + arc;
+      if (t >= 1) {
+        leg.stepping = false;
+        leg.footX = leg.toX;
+        leg.footY = leg.toY;
+        leg.footZ = leg.toZ;
+        if (mesh.swingingLeg === i) mesh.swingingLeg = -1;
+      }
+    } else {
+      // REACH, not a clock. The foothold is judged against where the hip now
+      // is; anything that moved the hip — walking, pivoting, strafing, a
+      // slope — shows up here as the same overdue distance.
+      const dx = _hipWorld.x - leg.footX;
+      const dz = _hipWorld.z - leg.footZ;
+      const overdue = Math.hypot(dx, dz) > mesh.stepLength * STEP_TRIGGER_FRACTION;
+      // One foot at a time. That rule IS a biped's balance.
+      if (overdue && mesh.swingingLeg === -1) {
+        mesh.swingingLeg = i;
+        leg.stepping = true;
+        leg.stepT = 0;
+        leg.stepSeconds = swingSeconds;
+        leg.fromX = leg.footX;
+        leg.fromY = leg.footY;
+        leg.fromZ = leg.footZ;
+        // Land half a step PAST the hip along the direction of travel, so the
+        // hip catches up to it and passes it again — which is what walking is.
+        const lead = mesh.stepLength * 0.5;
+        toWorld(leg.hipX + lead, leg.hipY, leg.hipZ, pose, mesh.hipYaw, _stepTarget);
+        leg.toX = _stepTarget.x;
+        leg.toZ = _stepTarget.z;
+        leg.toY = getLocomotionSurfaceHeight(leg.toX, leg.toZ, mapWidth, mapHeight, 0);
+      }
+    }
 
-    leg.plantX = footX;
-    leg.plantY = footY;
-
-    solveKnee(leg.hipX, leg.hipY, footX, footY, leg.thighLength, leg.shinLength, _knee);
+    // Pose from the foothold. Back into the leg's own plane, where the knee is
+    // a hinge and nothing has a third axis to wander along.
+    toHipLocal(leg.footX, leg.footY, leg.footZ, pose, mesh.hipYaw, _footLocal);
+    solveKnee(leg.hipX, leg.hipY, _footLocal.x, _footLocal.y, leg.thighLength, leg.shinLength, _knee);
     poseStrut(leg.thigh, leg.hipX, leg.hipY, leg.hipZ, _knee.x, _knee.y, leg.hipZ);
-    poseStrut(leg.shin, _knee.x, _knee.y, leg.hipZ, footX, footY, leg.hipZ);
+    poseStrut(leg.shin, _knee.x, _knee.y, leg.hipZ, _footLocal.x, _footLocal.y, leg.hipZ);
     leg.knee.position.set(_knee.x, _knee.y, leg.hipZ);
-    // The foot stays flat and square to the hull — a mech plants its sole, it
-    // does not point its toes down the way a swinging limb would.
-    leg.foot.position.set(footX, footY, leg.hipZ);
+    // Flat sole, square to the hips: a mech plants its foot, it does not point
+    // its toes the way a free-swinging limb would.
+    leg.foot.position.set(_footLocal.x, _footLocal.y, leg.hipZ);
   }
 
   for (const arm of mesh.arms) {
@@ -443,7 +554,9 @@ export function updateStandingRig(
 /** Standstill pose, for a preview card or a unit built before its first tick. */
 export function poseStandingRigAtRest(mesh: StandingMesh): void {
   for (const leg of mesh.legs) {
-    const footY = leg.hipY - Math.cos(STAND_KNEE_BEND_RAD) * (leg.thighLength + leg.shinLength) * 0.98;
+    // standHipY is the authored stance height, so the knee keeps the bend the
+    // blueprint asked for instead of locking straight at full extension.
+    const footY = leg.hipY - Math.cos(STAND_KNEE_BEND_RAD) * mesh.standHipY;
     solveKnee(leg.hipX, leg.hipY, leg.hipX, footY, leg.thighLength, leg.shinLength, _knee);
     poseStrut(leg.thigh, leg.hipX, leg.hipY, leg.hipZ, _knee.x, _knee.y, leg.hipZ);
     poseStrut(leg.shin, _knee.x, _knee.y, leg.hipZ, leg.hipX, footY, leg.hipZ);

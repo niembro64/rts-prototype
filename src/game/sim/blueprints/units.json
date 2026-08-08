@@ -1002,7 +1002,7 @@
           },
           "footLengthRatio": 0.6,
           "footWidthRatio": 3.2,
-          "strideLengthRatio": 1.0,
+          "strideLengthRatio": 0.78,
           "strideLiftRatio": 0.22,
           "standHeightRatio": 0.92
         },
@@ -4119,7 +4119,7 @@
           },
           "footLengthRatio": 0.62,
           "footWidthRatio": 3.4,
-          "strideLengthRatio": 0.95,
+          "strideLengthRatio": 0.72,
           "strideLiftRatio": 0.2,
           "standHeightRatio": 0.92
         },
