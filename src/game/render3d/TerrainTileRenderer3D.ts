@@ -1051,6 +1051,19 @@ export class TerrainTileRenderer3D {
             pathfindingHierarchyOverlayFragment('vTerrainWorldPos'),
           ].join('\n'),
         )
+        // TWO MATERIAL FAMILIES SHARE THIS PATCH, and only one of them has a
+        // roughness map. The authored biome world is Lambert; SURFACE = METAL
+        // is MeshStandardMaterial, because a metal world's look is its
+        // reflection. So `#include <roughnessmap_fragment>` exists only in the
+        // metal build, and anything appended here is injected ONLY there.
+        //
+        // That is why a stray `outgoingLight *= terrainDepthBrightness` parked
+        // in this block took out metal maps alone and left the biome world
+        // untouched: on Lambert the replace matched nothing, on Standard it
+        // referenced an identifier three.js does not declare until the lighting
+        // stage. The fragment shader failed to compile, the program was never
+        // valid, and the terrain simply did not draw — silently, because
+        // three.js only reports shader errors under ?shaderErrors=1.
         .replace(
           '#include <roughnessmap_fragment>',
           [
@@ -1063,7 +1076,6 @@ export class TerrainTileRenderer3D {
             '    uMetalSurfaceRoughnessVariation',
             '  );',
             '}',
-            'outgoingLight *= terrainDepthBrightness;',
           ].join('\n'),
         )
         .replace(
@@ -1078,6 +1090,11 @@ export class TerrainTileRenderer3D {
             '    uMetalSurfaceLitColorBlend',
             '  );',
             '}',
+            // Submerged dimming, applied to the PBR declaration the same way
+            // the Lambert branch below applies it to its own. It used to sit up
+            // in roughnessmap_fragment, where `outgoingLight` does not exist
+            // yet — see the note on the two material families.
+            'outgoingLight *= terrainDepthBrightness;',
           ].join('\n'),
         )
         .replace(
