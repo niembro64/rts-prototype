@@ -5,12 +5,14 @@ import type { EntityMesh } from './EntityMesh3D';
 
 /**
  * The render-side form of the force that killed an entity.  It deliberately
- * uses the same three inputs as combat knockback / impact effects: the
+ * uses the same three force inputs as combat knockback / impact effects: the
  * penetration direction, the attack magnitude, and the projectile velocity.
  * The victim's velocity is inherited separately so a moving wreck keeps its
- * momentum instead of stopping dead at the moment it breaks apart.
+ * momentum instead of stopping dead at the moment it breaks apart. `seed`
+ * makes the presentation-only per-piece variation replay-stable.
  */
 export type EntityDeathBlast3D = Readonly<{
+  seed: number;
   pushX: number;
   pushZ: number;
   inheritedX: number;
@@ -48,12 +50,19 @@ type EntityDeathDisassemblyState3D = {
   parts: EntityDeathPartMotion3D[];
 };
 
-const RANDOM_SPEED_MIN = 24;
-const RANDOM_SPEED_RANGE = 68;
-const RADIAL_SPEED = 22;
+const RANDOM_SPEED_MIN = 30;
+const RANDOM_SPEED_RANGE = 80;
+const RANDOM_DIRECTION_WEIGHT_MIN = 0.72;
+const RANDOM_DIRECTION_WEIGHT_RANGE = 0.24;
+const KILL_FORCE_SPEED_SCALE = 0.2;
+const KILL_FORCE_SPEED_MAX = 48;
+const SPEED_SCALE_MIN = 0.76;
+const SPEED_SCALE_RANGE = 0.52;
+const RADIAL_SPEED = 18;
 const UP_SPEED_MIN = 34;
 const UP_SPEED_RANGE = 76;
-const ANGULAR_SPEED = 7.5;
+const ANGULAR_SPEED_MIN = 3;
+const ANGULAR_SPEED_RANGE = 9;
 const LINEAR_DRAG = 0.965;
 const ANGULAR_DRAG = 0.92;
 const GRAVITY_SCALE = 0.42;
@@ -66,9 +75,11 @@ const _localDelta = new THREE.Vector3();
 
 export function entityDeathBlastFromContext3D(
   context: SimDeathContext,
+  seed: number = 0,
 ): EntityDeathBlast3D {
   const attackPush = Math.min(Math.max(0, context.attackMagnitude) * 2, 200);
   return {
+    seed: seed >>> 0,
     pushX: context.hitDir.x * attackPush + context.projectileVel.x * 0.3,
     pushZ: context.hitDir.y * attackPush + context.projectileVel.y * 0.3,
     inheritedX: context.unitVel.x * 0.5,
@@ -177,7 +188,7 @@ export class EntityDeathDisassembly3D {
     const entityZ = _rootWorldPosition.z;
     const motions: EntityDeathPartMotion3D[] = [];
     for (let i = 0; i < parts.length; i++) {
-      motions.push(this.createMotion(parts[i], blast, entityX, entityZ));
+      motions.push(this.createMotion(parts[i], blast, entityX, entityZ, i));
     }
     this.states.set(mesh, { parts: motions });
     return motions.length;
@@ -217,38 +228,95 @@ export class EntityDeathDisassembly3D {
     blast: EntityDeathBlast3D,
     entityX: number,
     entityZ: number,
+    partIndex: number,
   ): EntityDeathPartMotion3D {
-    // Random direction remains dominant enough that the entity opens into a
-    // readable cloud, while blast velocity coherently leans the whole cloud
-    // in the direction the killing force was already pushing the victim.
-    const angle = Math.random() * Math.PI * 2;
-    const randomSpeed = RANDOM_SPEED_MIN + Math.random() * RANDOM_SPEED_RANGE;
+    const angle = deathPartRandom(blast.seed, partIndex, 0) * Math.PI * 2;
+    let randomDirectionX = Math.cos(angle);
+    let randomDirectionZ = Math.sin(angle);
     let radialX = part.worldPosition.x - entityX;
     let radialZ = part.worldPosition.z - entityZ;
     const radialLength = Math.hypot(radialX, radialZ);
     if (radialLength > 1e-4) {
       radialX /= radialLength;
       radialZ /= radialLength;
+      // Random motion may travel anywhere in the outward hemisphere, but it
+      // must not make an exterior plate appear to implode through the host.
+      const inwardDot = randomDirectionX * radialX + randomDirectionZ * radialZ;
+      if (inwardDot < 0) {
+        randomDirectionX -= 2 * inwardDot * radialX;
+        randomDirectionZ -= 2 * inwardDot * radialZ;
+      }
     } else {
-      radialX = Math.cos(angle);
-      radialZ = Math.sin(angle);
+      radialX = randomDirectionX;
+      radialZ = randomDirectionZ;
     }
+
+    const killForceLength = Math.hypot(blast.pushX, blast.pushZ);
+    const killDirectionX = killForceLength > 1e-4
+      ? blast.pushX / killForceLength
+      : randomDirectionX;
+    const killDirectionZ = killForceLength > 1e-4
+      ? blast.pushZ / killForceLength
+      : randomDirectionZ;
+    // Each part gets its own blend. Random direction deliberately owns most
+    // of the ratio; the killing force supplies a smaller coherent lean so the
+    // hit remains readable without turning the breakup into a uniform cone.
+    const randomDirectionWeight = RANDOM_DIRECTION_WEIGHT_MIN +
+      deathPartRandom(blast.seed, partIndex, 1) * RANDOM_DIRECTION_WEIGHT_RANGE;
+    const killDirectionWeight = 1 - randomDirectionWeight;
+    let launchDirectionX =
+      randomDirectionX * randomDirectionWeight + killDirectionX * killDirectionWeight;
+    let launchDirectionZ =
+      randomDirectionZ * randomDirectionWeight + killDirectionZ * killDirectionWeight;
+    const launchDirectionLength = Math.hypot(launchDirectionX, launchDirectionZ);
+    if (launchDirectionLength > 1e-4) {
+      launchDirectionX /= launchDirectionLength;
+      launchDirectionZ /= launchDirectionLength;
+    } else {
+      launchDirectionX = randomDirectionX;
+      launchDirectionZ = randomDirectionZ;
+    }
+
+    const randomSpeed = RANDOM_SPEED_MIN +
+      deathPartRandom(blast.seed, partIndex, 2) * RANDOM_SPEED_RANGE;
+    const killForceSpeed = Math.min(killForceLength * KILL_FORCE_SPEED_SCALE, KILL_FORCE_SPEED_MAX);
+    const speedScale = SPEED_SCALE_MIN +
+      deathPartRandom(blast.seed, partIndex, 3) * SPEED_SCALE_RANGE;
+    const launchSpeed = (randomSpeed + killForceSpeed) * speedScale;
+
+    // Independent random axis and magnitude keep similarly-shaped neighboring
+    // pieces from tumbling in lockstep.
+    const spinAzimuth = deathPartRandom(blast.seed, partIndex, 4) * Math.PI * 2;
+    const spinAxisY = deathPartRandom(blast.seed, partIndex, 5) * 2 - 1;
+    const spinAxisHorizontal = Math.sqrt(Math.max(0, 1 - spinAxisY * spinAxisY));
+    const spinSpeed = ANGULAR_SPEED_MIN +
+      deathPartRandom(blast.seed, partIndex, 6) * ANGULAR_SPEED_RANGE;
     return {
       part,
       vx:
-        Math.cos(angle) * randomSpeed +
+        launchDirectionX * launchSpeed +
         radialX * RADIAL_SPEED +
-        blast.pushX +
         blast.inheritedX,
-      vy: UP_SPEED_MIN + Math.random() * UP_SPEED_RANGE,
+      vy: UP_SPEED_MIN + deathPartRandom(blast.seed, partIndex, 7) * UP_SPEED_RANGE,
       vz:
-        Math.sin(angle) * randomSpeed +
+        launchDirectionZ * launchSpeed +
         radialZ * RADIAL_SPEED +
-        blast.pushZ +
         blast.inheritedZ,
-      avx: (Math.random() * 2 - 1) * ANGULAR_SPEED,
-      avy: (Math.random() * 2 - 1) * ANGULAR_SPEED,
-      avz: (Math.random() * 2 - 1) * ANGULAR_SPEED,
+      avx: Math.cos(spinAzimuth) * spinAxisHorizontal * spinSpeed,
+      avy: spinAxisY * spinSpeed,
+      avz: Math.sin(spinAzimuth) * spinAxisHorizontal * spinSpeed,
     };
   }
+}
+
+/** Stateless per-piece random channel. The entity id seeds the death event;
+ *  piece index and channel keep every launch property independent without
+ *  ambient Math.random() or call-order dependence. */
+function deathPartRandom(seed: number, partIndex: number, channel: number): number {
+  let value = seed >>> 0;
+  value ^= Math.imul((partIndex + 1) >>> 0, 0x9e3779b1);
+  value ^= Math.imul((channel + 1) >>> 0, 0x85ebca6b);
+  value = Math.imul(value ^ (value >>> 16), 0x7feb352d);
+  value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
 }

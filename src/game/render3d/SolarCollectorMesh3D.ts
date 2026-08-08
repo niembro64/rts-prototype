@@ -246,7 +246,7 @@ export function buildSolarCollector(
       0,
     ), 'low'));
     details.push(detail(makeTrianglePetal(
-      solarCellMat,
+      solarPetalBackMat,
       frontBackSpan,
       frontBackLen,
       0,
@@ -263,6 +263,24 @@ export function buildSolarCollector(
       frontBackClosedDir,
       frontBackPanelSide,
     ), 'low', undefined, 'solarLeaf'));
+    details.push(detail(makeTrianglePetal(
+      solarCellMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      0,
+      0,
+      0,
+      frontBackClosedDir,
+      frontBackPanelSide,
+    ), 'low', undefined, 'solarPanel'));
     details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
       frontBackSpan * 0.58,
@@ -324,7 +342,7 @@ export function buildSolarCollector(
       1,
     ), 'low'));
     details.push(detail(makeTrianglePetal(
-      solarCellMat,
+      solarPetalBackMat,
       sideSpan,
       sideLen,
       sign * sideX,
@@ -341,6 +359,24 @@ export function buildSolarCollector(
       sideClosedDir,
       sidePanelSide,
     ), 'low', undefined, 'solarLeaf'));
+    details.push(detail(makeTrianglePetal(
+      solarCellMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      0,
+      0,
+      0,
+      sideClosedDir,
+      sidePanelSide,
+    ), 'low', undefined, 'solarPanel'));
     details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
       sideSpan * 0.58,
@@ -437,7 +473,7 @@ function makePyramidFace(
   tangentX: number,
   tangentZ: number,
   closedDirection: THREE.Vector3,
-  panelSideHint: THREE.Vector3,
+  _panelSideHint: THREE.Vector3,
 ): THREE.Mesh {
   return makeTrianglePlate(
     solarCellMat,
@@ -449,7 +485,8 @@ function makePyramidFace(
     0,
     0,
     0,
-    panelSideHint,
+    // PROBE: outward hint instead of the petal's inward one
+    undefined,
   );
 }
 

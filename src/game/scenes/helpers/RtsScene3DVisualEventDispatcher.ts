@@ -184,7 +184,7 @@ export function dispatchSimEvent3DVisual(
       context.entityRenderer.markEntityKilled(
         event.entityId,
         materialExplosionEnabled
-          ? entityDeathBlastFromContext3D(ctx)
+          ? entityDeathBlastFromContext3D(ctx, event.entityId)
           : undefined,
       );
     }

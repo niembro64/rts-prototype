@@ -4881,6 +4881,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSurfaceChart3DContractTest();
         const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');
         runTurretAimPose3DContractTest();
+        const { runBuildingTurretPresentation3DContractTest } = await import('../render3d/BuildingTurretPresentation3DContractTest');
+        runBuildingTurretPresentation3DContractTest();
         const { runQueenArmamentContractTest } = await import('../sim/blueprints/queenArmamentContractTest');
         runQueenArmamentContractTest();
         const { runHoverFanPlacement3DContractTest } = await import('../render3d/HoverFanPlacement3DContractTest');

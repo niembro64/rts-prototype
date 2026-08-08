@@ -609,7 +609,7 @@ export class BuildingEntityRenderer3D {
       }
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
-      const needsTurretFrame = activePrediction;
+      const needsTurretPoseFrame = rows.turretCount[row] > 0;
       const bodyFadeActive =
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
       const rangeOverlayVersionDirty =
@@ -629,12 +629,19 @@ export class BuildingEntityRenderer3D {
       if (
         mesh !== undefined &&
         !rowDirty &&
-        !needsTurretFrame &&
+        !activePrediction &&
         !bodyFadeActive &&
         !overlayDirty &&
         !wasLodProxyActive &&
         !detailBandChanged
       ) {
+        // Static building bodies can stay cached, but their mounted turrets
+        // consume adjacent-tick presentation poses on every display frame.
+        // Updating only this lightweight batched pose path keeps turret motion
+        // independent of the much lower presentation-snapshot dirty cadence.
+        if (needsTurretPoseFrame) {
+          this.updateTurretPoses(entity, mesh, rows, row);
+        }
         setObjectVisibleIfChanged(mesh.group, true);
         if (pruneBuildings) mesh.renderSeenToken = pruneToken;
         continue;
