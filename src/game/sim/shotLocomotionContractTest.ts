@@ -4,9 +4,7 @@ import { SHOT_BLUEPRINTS } from './blueprints/shots';
 import { isProjectileShot } from './types';
 import {
   getProjectileHomingEngagementScale,
-  getProjectileHomingThrustAcceleration,
   getProjectileMediumHoldCounterGravityAcceleration,
-  getProjectileRocketCounterGravityCarryAcceleration,
 } from './shotLocomotionMotion';
 import {
   getShotLocomotionPreset,
@@ -43,21 +41,20 @@ export function runShotLocomotionContractTest(): void {
   const rocketLocomotion = getShotLocomotionPreset(rocketShot.shotLocomotion.presetId);
   const rocketAir = rocketLocomotion.media.air;
   assertContract(rocketShot.type === 'rocket', 'shotRocketLight must stay on the rocket visual policy');
-  assertContract(rocketLocomotion.gravityForceMultiplier === 1, 'shotRocketLight must use real projectile gravity');
-
-  const projectileGravity = GRAVITY * rocketLocomotion.gravityForceMultiplier;
-  const maxThrustAccel = getProjectileHomingThrustAcceleration(rocketShot, rocketAir);
-  assertContract(maxThrustAccel > 0, 'light rocket must author positive guidance thrust');
-
-  assertNear(
-    getProjectileRocketCounterGravityCarryAcceleration(rocketShot, rocketAir, 0, projectileGravity),
-    projectileGravity,
-    'delayed rocket guidance must fully carry gravity before lateral steering starts',
+  assertContract(
+    rocketLocomotion.motionModel === 'constantSpeedGuided',
+    'shotRocketLight must preserve one speed before and after delayed guidance',
   );
-  assertNear(
-    getProjectileRocketCounterGravityCarryAcceleration(rocketShot, rocketAir, 1, projectileGravity),
-    projectileGravity - maxThrustAccel,
-    'fully engaged rocket carry term must cover gravity left outside bounded guidance thrust',
+  assertContract(
+    rocketLocomotion.gravityForceMultiplier === 0 &&
+      rocketAir.propulsionForce === 0 &&
+      rocketAir.guidanceThrust === 0 &&
+      rocketAir.velocityFrictionPer60HzFrame === 0,
+    'constant-speed light rocket cannot hide acceleration, gravity, or drag in its air profile',
+  );
+  assertContract(
+    rocketAir.turnRate > 0,
+    'constant-speed light rocket must retain finite turn authority',
   );
 
   const delayMs = rocketLocomotion.guidanceDelayMs;
@@ -82,6 +79,42 @@ export function runShotLocomotionContractTest(): void {
     getProjectileHomingEngagementScale(rocketShot, delayMs + 700, fixedStepMs) === 1,
     'rocket homing engagement must reach full strength after the ramp',
   );
+
+  const rocketTurret = getTurretBlueprint('turretRocketSlow');
+  const rocketLaunchSpeed = rocketTurret.launchForce / rocketShot.mass;
+  assertContract(
+    rocketLaunchSpeed === 150,
+    `light rocket must launch and cruise at 150 world units/s; got ${rocketLaunchSpeed}`,
+  );
+  assertContract(
+    getPoweredShotReachabilityDistance(
+      rocketLocomotion,
+      rocketAir,
+      rocketLaunchSpeed,
+      rocketShot.mass,
+    ) >= rocketTurret.targeting.engagement.range,
+    'constant-speed light rocket must retain enough lifetime reach for its launcher range',
+  );
+
+  for (const shotBlueprintId of ['shotRocketLight', 'shotMissileFast', 'shotMissileLong'] as const) {
+    const emission = buildProjectileShotConfig(shotBlueprintId);
+    if (!isProjectileShot(emission)) {
+      throw new Error(`[shot locomotion contract] ${shotBlueprintId} must build a projectile shot`);
+    }
+    const locomotion = emission.shotLocomotion;
+    assertContract(
+      locomotion.motionModel === 'constantSpeedGuided',
+      `${shotBlueprintId} must use constant-speed guidance`,
+    );
+    assertContract(
+      locomotion.guidanceDelayMs === (shotBlueprintId === 'shotRocketLight' ? 3000 : 0),
+      `${shotBlueprintId} must preserve its authored launch guidance phase`,
+    );
+    assertContract(
+      locomotion.media.air.turnRate > 0,
+      `${shotBlueprintId} must retain finite in-flight turn authority`,
+    );
+  }
 
   const torpedoEmission = buildProjectileShotConfig('shotTorpedo');
   if (!isProjectileShot(torpedoEmission)) {

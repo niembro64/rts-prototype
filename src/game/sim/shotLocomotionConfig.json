@@ -65,13 +65,13 @@
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
-    "guidedRocketLight": {
-      "motionModel": "thrustGuided",
+    "constantSpeedRocketLight": {
+      "motionModel": "constantSpeedGuided",
       "maxLifespanMs": 10000,
-      "gravityForceMultiplier": 1,
+      "gravityForceMultiplier": 0,
       "guidanceDelayMs": 3000,
       "media": {
-        "air": { "operational": true, "propulsionForce": 350, "guidanceThrust": 1000, "turnRate": 20, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 20, "velocityFrictionPer60HzFrame": 0 },
         "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "turnRate": 0, "velocityFrictionPer60HzFrame": 0 },
         "ground": { "mode": "impact" }
       },

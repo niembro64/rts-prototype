@@ -985,30 +985,84 @@ pub fn projectile_homing_guidance_batch(
         let mut steer_y = rows[base + PHG_ROW_STEER_Y];
         let mut steer_z = rows[base + PHG_ROW_STEER_Z];
         let gravity = rows[base + PHG_ROW_PROJECTILE_GRAVITY];
+        let constant_speed_mode = rows[base + PHG_ROW_CONSTANT_SPEED_MODE] != 0.0;
 
         if rows[base + PHG_ROW_SOLVE_INTERCEPT] != 0.0 {
+            // A constant-speed missile is not a moving launch platform plus
+            // another projectile-speed vector. Its current world-speed
+            // magnitude IS the complete travel budget from its current
+            // position. Feeding current velocity as origin velocity here
+            // double-counted that motion and produced a false lead point.
+            // Re-solve the ordinary velocity intercept every guidance tick;
+            // target acceleration remains a reactive turn input on later
+            // ticks rather than an unbounded trajectory prediction.
+            let origin_vel_x = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_VEL_X]
+            };
+            let origin_vel_y = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_VEL_Y]
+            };
+            let origin_vel_z = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_VEL_Z]
+            };
+            let origin_accel_x = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_ACCEL_X]
+            };
+            let origin_accel_y = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_ACCEL_Y]
+            };
+            let origin_accel_z = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_ORIGIN_ACCEL_Z]
+            };
+            let target_accel_x = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_TARGET_ACCEL_X]
+            };
+            let target_accel_y = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_TARGET_ACCEL_Y]
+            };
+            let target_accel_z = if constant_speed_mode {
+                0.0
+            } else {
+                rows[base + PHG_ROW_TARGET_ACCEL_Z]
+            };
             let input = [
                 rows[base + PHG_ROW_CURRENT_X],
                 rows[base + PHG_ROW_CURRENT_Y],
                 rows[base + PHG_ROW_CURRENT_Z],
-                rows[base + PHG_ROW_ORIGIN_VEL_X],
-                rows[base + PHG_ROW_ORIGIN_VEL_Y],
-                rows[base + PHG_ROW_ORIGIN_VEL_Z],
-                rows[base + PHG_ROW_ORIGIN_ACCEL_X],
-                rows[base + PHG_ROW_ORIGIN_ACCEL_Y],
-                rows[base + PHG_ROW_ORIGIN_ACCEL_Z],
+                origin_vel_x,
+                origin_vel_y,
+                origin_vel_z,
+                origin_accel_x,
+                origin_accel_y,
+                origin_accel_z,
                 steer_x,
                 steer_y,
                 steer_z,
                 rows[base + PHG_ROW_TARGET_VEL_X],
                 rows[base + PHG_ROW_TARGET_VEL_Y],
                 rows[base + PHG_ROW_TARGET_VEL_Z],
-                rows[base + PHG_ROW_TARGET_ACCEL_X],
-                rows[base + PHG_ROW_TARGET_ACCEL_Y],
-                rows[base + PHG_ROW_TARGET_ACCEL_Z],
+                target_accel_x,
+                target_accel_y,
+                target_accel_z,
                 0.0,
                 0.0,
-                -gravity,
+                if constant_speed_mode { 0.0 } else { -gravity },
                 rows[base + PHG_ROW_PROJECTILE_SPEED],
             ];
             let mut intercept_out = [0.0_f64; 7];
@@ -1017,7 +1071,11 @@ pub fn projectile_homing_guidance_batch(
                 &mut intercept_out,
                 0,
                 rows[base + PHG_ROW_MAX_TIME_SEC],
-                rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME],
+                if constant_speed_mode {
+                    0.0
+                } else {
+                    rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME]
+                },
                 rows[base + PHG_ROW_PROJECTILE_MASS],
                 wind_x,
                 wind_y,
@@ -1030,7 +1088,7 @@ pub fn projectile_homing_guidance_batch(
             }
         }
 
-        if rows[base + PHG_ROW_CONSTANT_SPEED_MODE] != 0.0 {
+        if constant_speed_mode {
             let (vel_x, vel_y, vel_z) = compute_constant_speed_homing_velocity_inline(
                 rows[base + PHG_ROW_VEL_X],
                 rows[base + PHG_ROW_VEL_Y],
@@ -1554,6 +1612,47 @@ mod tests {
         );
         assert!(vy > 0.0, "missile y velocity should turn toward target");
         assert_close(vz, 0.0);
+    }
+
+    #[test]
+    fn constant_speed_guidance_leads_without_double_counting_current_velocity() {
+        let mut rows = vec![0.0_f64; PROJECTILE_HOMING_GUIDANCE_STRIDE];
+        rows[PHG_ROW_VEL_X] = 100.0;
+        rows[PHG_ROW_STEER_X] = 1000.0;
+        rows[PHG_ROW_CURRENT_X] = 0.0;
+        rows[PHG_ROW_CURRENT_Y] = 0.0;
+        rows[PHG_ROW_CURRENT_Z] = 0.0;
+        rows[PHG_ROW_TARGET_VEL_Y] = 50.0;
+        // These fields must not become a second copy of missile motion or an
+        // acceleration extrapolation in constant-speed mode.
+        rows[PHG_ROW_ORIGIN_VEL_X] = 100.0;
+        rows[PHG_ROW_ORIGIN_ACCEL_X] = 500.0;
+        rows[PHG_ROW_TARGET_ACCEL_Y] = 500.0;
+        rows[PHG_ROW_PROJECTILE_SPEED] = 100.0;
+        rows[PHG_ROW_PROJECTILE_GRAVITY] = 9.81;
+        rows[PHG_ROW_MAX_TIME_SEC] = 30.0;
+        rows[PHG_ROW_HOMING_TURN_RATE] = 100.0;
+        rows[PHG_ROW_SOLVE_INTERCEPT] = 1.0;
+        rows[PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] = 0.2;
+        rows[PHG_ROW_PROJECTILE_MASS] = 1.0;
+        rows[PHG_ROW_CONSTANT_SPEED_MODE] = 1.0;
+
+        let processed =
+            projectile_homing_guidance_batch(&mut rows, 1, 1.0 / 30.0, 200.0, -100.0, 50.0);
+
+        assert_eq!(processed, 1);
+        assert_eq!(rows[PHG_ROW_OUT_INTERCEPT_FOUND], 1.0);
+        // |(1000, 50t)| = 100t gives direction (sqrt(3)/2, 1/2).
+        assert!((rows[PHG_ROW_OUT_VEL_X] - 86.60254037844386).abs() < 1e-3);
+        assert!((rows[PHG_ROW_OUT_VEL_Y] - 50.0).abs() < 1e-3);
+        assert_close(rows[PHG_ROW_OUT_VEL_Z], 0.0);
+        assert_close(
+            (rows[PHG_ROW_OUT_VEL_X] * rows[PHG_ROW_OUT_VEL_X]
+                + rows[PHG_ROW_OUT_VEL_Y] * rows[PHG_ROW_OUT_VEL_Y]
+                + rows[PHG_ROW_OUT_VEL_Z] * rows[PHG_ROW_OUT_VEL_Z])
+                .sqrt(),
+            100.0,
+        );
     }
 
     #[test]

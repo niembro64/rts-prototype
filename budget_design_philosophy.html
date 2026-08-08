@@ -692,28 +692,34 @@
         root motion always comes from the shared adjacent-tick presentation history.
       </p>
 
-      <h3>Rockets and missiles are separate guided shot policies</h3>
+      <h3>Airborne rockets and missiles share constant-speed interception</h3>
       <p>
         <code>rocket</code> and <code>missile</code> remain presentation and
         interaction families; authoritative movement comes from the shot's
-        expanded <code>shotLocomotion</code> preset. A thrust-guided preset may
-        author per-medium propulsion force and guidance thrust, and its guidance
-        enters the physics step as bounded acceleration. A constant-speed-guided
-        preset authors neither force. Its homing turn instead rotates the velocity
-        vector toward the inherited target
-        while preserving the speed magnitude it already has. Missile tuning
-        therefore lives in launch speed, turn rate, lifetime, and target
-        inheritance rather than forward acceleration.
+        expanded <code>shotLocomotion</code> preset. Every airborne rocket and
+        missile uses <code>constantSpeedGuided</code>: it authors no propulsion,
+        guidance thrust, drag, or gravity acceleration. Guidance rotates the
+        existing world-velocity vector toward a predicted interception point,
+        bounded by turn rate, while preserving its magnitude exactly. Tuning
+        therefore lives in launch/cruise speed, turn rate, lifetime, guidance
+        delay, and target inheritance rather than forward acceleration.
       </p>
       <p>
-        Constant-speed guidance is an explicit shot-locomotion policy, not a
-        hidden shortcut selected from the shot's visual family. To preserve speed
-        exactly in the current integrator, its operational medium profile uses no
-        propulsion force, no guidance thrust, zero velocity friction, and zero
-        gravity multiplier. A future guided munition that
-        should sag under gravity or accelerate under thrust should be authored
-        as a rocket-style thrust-guided shot or as a new named guidance policy,
-        not by smuggling propulsion terms into <code>missile</code>.
+        Lead is solved from the munition&rsquo;s current position and complete
+        world-speed magnitude against the target&rsquo;s current position and world
+        velocity. The munition&rsquo;s current velocity is <em>not</em> also supplied
+        as moving-origin velocity; doing both counts its motion twice and creates
+        a false intercept. Non-vertical launchers use the same zero-gravity,
+        zero-drag solve to point ahead before firing. In flight, guidance resolves
+        it again every fixed tick, so target manoeuvres become bounded course
+        corrections rather than accumulated prediction error.
+      </p>
+      <p>
+        The light vertical-launch rocket preserves its authored launch signature:
+        it travels straight upward at constant cruise speed for three seconds,
+        then smoothly engages its turn authority and begins resolving the same
+        velocity intercept as every other airborne guided munition. The delay is
+        a guidance phase, never an acceleration phase or a speed exception.
       </p>
       <h3>Shot locomotion owns movement domains and terminal decisions</h3>
       <p>
@@ -739,12 +745,12 @@
         predicting a different motion model from the one its fired shot runs.
       </p>
       <p>
-        The current named split is deliberate: <code>shotRocketLight</code>
-        remains a <code>rocket</code>, while the former fast and long rocket
-        profiles are <code>shotMissileFast</code> and
-        <code>shotMissileLong</code>. They share rocket-like visual language
-        and point-defense/reflection treatment, but their motion policy is
-        missile-specific constant-speed steering.
+        The named split remains deliberate: <code>shotRocketLight</code> is a
+        vertical-launch <code>rocket</code>, while <code>shotMissileFast</code>
+        and <code>shotMissileLong</code> are direct-launch <code>missile</code>
+        profiles. They share constant-speed interception while retaining distinct
+        launch phases, speeds, turn rates, lifetimes, visual language, and
+        point-defense/reflection treatment.
       </p>
       <h3>Rendering samples authoritative presentation state</h3>
       <p>
@@ -977,31 +983,30 @@
         <li>Patrol and fight loops re-enter the planner per leg rather than baking one permanent expanded loop. The path should adapt to the battlefield, while the waypoint loop remains the command.</li>
       </ul>
 
-      <h3>Gravity is universal; thrust answers it</h3>
+      <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>
       <p>
-        Every body with mass feels gravity every tick, without exception. The
-        local server simulation should never special-case &ldquo;this projectile
-        ignores gravity&rdquo; as a free pass. If a rocket, missile, or other
-        guided shot needs to fly a clean line to its target, it does so by
-        producing thrust that cancels the gravitational pull, not by opting out
-        of the force.
+        Every force-integrated body with mass feels gravity every tick. A
+        constant-speed-guided munition is an explicit kinematic locomotion
+        policy: vertical hold is part of preserving its authored speed vector,
+        so its validated operational profile supplies zero gravity, thrust, and
+        drag to the ordinary acceleration integrator. This is not a visual-family
+        exemption or a generic &ldquo;ignores gravity&rdquo; switch; it is the named
+        motion model&rsquo;s defining invariant.
       </p>
       <p>
-        This applies inside the real-time homing equation itself. A guided
-        projectile&rsquo;s steering update should compute the lateral correction
-        toward the predicted intercept and, in the same step, add a vertical
-        thrust component sized to counteract <code>g &middot; m</code> on this
-        tick. The visible flight path can look indistinguishable from
-        &ldquo;gravity off,&rdquo; but the physics stays whole: the body has
-        mass, the world pulls it down, the engine pushes back, and any failure
-        of the engine &mdash; out of fuel, seeker lost, lifespan expired
-        &mdash; drops the body the way a spent missile drops in the real world.
+        Thrust-guided policies still answer gravity inside their real-time
+        guidance equation: lateral steering and vertical counter-gravity share
+        one bounded acceleration budget. Constant-speed guidance does neither;
+        it rotates velocity and preserves magnitude. Losing a seeker therefore
+        makes a constant-speed munition continue on its current vector, while a
+        thrust-guided body naturally returns to ballistic motion when its engine
+        authority ends.
       </p>
       <ul class="rule-list">
-        <li>Gravity is applied to every mass body every tick. No <code>ignoresGravity</code> shortcut, no projectile-class exemption, no &ldquo;flat trajectory&rdquo; flag that bypasses integration.</li>
-        <li>Guided projectiles add a counter-gravity thrust term inside the same homing/steering update that produces lateral correction toward the target. Guidance and gravity-cancellation are one acceleration vector, not two systems.</li>
-        <li>The counter-gravity term is bounded by the projectile&rsquo;s available thrust. A weak or under-powered rocket should sag, not teleport &mdash; the homing math saturates, it does not lie.</li>
-        <li>Spent or failed guidance returns the body to ballistic motion automatically, because gravity was never turned off; only the thrust opposing it stopped.</li>
+        <li>Gravity is applied to every force-integrated mass body every tick. Constant-speed guidance is the explicit validated kinematic policy; there is no generic <code>ignoresGravity</code> flag or projectile-family exemption.</li>
+        <li>Thrust-guided projectiles add a counter-gravity term inside the same steering update that produces lateral correction. Guidance and gravity-cancellation are one acceleration vector, not two systems.</li>
+        <li>The counter-gravity term is bounded by available thrust. A weak thrust-guided body should sag, not teleport &mdash; homing saturates instead of lying.</li>
+        <li>Spent thrust-guided bodies return to ballistic motion automatically. Constant-speed-guided bodies instead retain their last velocity vector when guidance is lost.</li>
         <li>Hover and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
       </ul>
 
@@ -3777,7 +3782,7 @@
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, two-domain <code>navigation</code>, and separate environmental hazards. Every unit has positive emergency water propulsion. Waypoint-valid cells own intentional, supportable destinations; move-valid cells are derived from active physical propulsion, and directed recovery edges allow a displaced body to return without authorizing water shortcuts. Terrain angle has no global ceiling: dry, bed-supported wet MOVE, and bed-supported wet WAYPOINT envelopes use exact mass, gravity, the local normal, <code>&mu;N</code>, medium propulsion, and one 85% actuator reserve, while air and fluid-supported water ignore lakebed slope. Ground has static friction and tangential damping; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. Water damage is a universal numeric rate sampled only at the body origin; water-safe units author zero. The loader validates this hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
-        <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
+        <li>Apply gravity to every force-integrated mass body every tick; thrust-guided projectiles cancel it inside their bounded homing acceleration, while explicitly constant-speed-guided munitions preserve their complete velocity magnitude under a validated zero-thrust, zero-drag, zero-gravity kinematic policy. Never add a generic <code>ignoresGravity</code> flag.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>
         <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and applies its EMA to pan, height-pan, rotation, follow, zoom, and FOV together. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera commits any collision lift into ordinary camera state, carries no pre-collision height or downward recovery memory, and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>

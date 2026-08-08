@@ -184,12 +184,15 @@ pub(crate) fn compute_turret_gates_for_aim_point(
             true
         };
         if under_only_ok {
-            if (flags & CT_TURRET_CFG_NEEDS_BALLISTIC) == 0
+            let needs_ballistic = (flags & CT_TURRET_CFG_NEEDS_BALLISTIC) != 0;
+            let needs_constant_speed_lead = (flags & CT_TURRET_CFG_CONSTANT_SPEED_LEAD) != 0;
+            if (!needs_ballistic && !needs_constant_speed_lead)
                 || (flags & CT_TURRET_CFG_VERTICAL_LAUNCHER) != 0
             {
-                // Direct-fire / vertical-launcher: skip the ballistic solve.
-                // The same slab fields still carry a reusable yaw/pitch pose
-                // for turret rotation and downstream beam paths.
+                // Ordinary direct fire aims at the current target point.
+                // Vertical launchers also stay direct here: their authored
+                // barrel pose is straight up, and delayed in-flight guidance
+                // takes over only after the launch phase ends.
                 combat_targeting_write_direct_aim_solution(
                     pool, idx, mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z,
                 );
@@ -212,6 +215,19 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                 };
                 let fallback_yaw = pool.turret_rotation[idx] as f64;
                 let fallback_pitch = pool.turret_pitch[idx] as f64;
+                // Constant-speed guided shots use this shared kinematic
+                // solver as a zero-gravity, zero-drag velocity intercept.
+                // Ballistic shots retain their authored gravity/drag arc.
+                let solve_gravity = if needs_constant_speed_lead {
+                    0.0
+                } else {
+                    gravity
+                };
+                let solve_friction = if needs_constant_speed_lead {
+                    0.0
+                } else {
+                    projectile_air_friction_per_60hz_frame
+                };
                 ballistic_clear = combat_targeting_solve_ballistic_aim_inner(
                     pool,
                     entity_slot,
@@ -230,8 +246,8 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                     0.0,
                     projectile_speed,
                     projectile_mass,
-                    projectile_air_friction_per_60hz_frame,
-                    gravity,
+                    solve_friction,
+                    solve_gravity,
                     arc_preference,
                     max_time_sec,
                     fallback_yaw,

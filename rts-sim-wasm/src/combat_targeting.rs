@@ -83,6 +83,10 @@ pub const CT_TURRET_CFG_REQUIRES_AIR_TARGET: u32 = 1 << 16;
 /// Host-only and slaved mounts may retain/validate an assigned task but never
 /// enter independent auto-acquisition when that task is absent or rejected.
 pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
+/// Constant-speed guided munitions solve a velocity intercept before launch.
+/// Unlike ballistic aim this uses no gravity or drag, but writes through the
+/// same reusable aim-pose fields consumed by turret rotation and firing.
+pub const CT_TURRET_CFG_CONSTANT_SPEED_LEAD: u32 = 1 << 18;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -10500,6 +10504,53 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn constant_speed_turret_aim_leads_target_velocity() {
+        let mut pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(0);
+        pool.turret_count_per_entity[0] = 1;
+        let idx = combat_targeting_turret_global_idx(0, 0);
+
+        let (los_clear, intercept_clear, shield_clear) = compute_turret_gates_for_aim_point(
+            &mut pool,
+            0,
+            0,
+            idx,
+            CT_TURRET_CFG_CONSTANT_SPEED_LEAD,
+            0.0,
+            0.0,
+            0.0,
+            1000.0,
+            0.0,
+            0.0,
+            0.0,
+            50.0,
+            0.0,
+            -1,
+            -1,
+            10.0,
+            0.0,
+            0,
+            0,
+            0,
+            100.0,
+            1.0,
+            0.2,
+            0,
+            30.0,
+            0.0,
+            false,
+            9.81,
+        );
+
+        assert_eq!((los_clear, intercept_clear, shield_clear), (1, 1, 1));
+        assert_eq!(pool.turret_ballistic_has_solution[idx], 1);
+        assert!(pool.turret_ballistic_flight_time[idx] > 11.5);
+        assert!((pool.turret_ballistic_yaw[idx] as f64 - std::f64::consts::FRAC_PI_6).abs() < 1e-3);
+        assert_close(pool.turret_ballistic_pitch[idx] as f64, 0.0);
+        assert!(pool.turret_ballistic_aim_y[idx] > 0.0);
     }
 
     /// A target is handed to the cylindrical range shells as the DAMAGE

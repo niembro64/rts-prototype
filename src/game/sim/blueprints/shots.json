@@ -109,7 +109,7 @@
   },
   "shotRocketLight": {
     "type": "rocket",
-    "shotLocomotionPresetId": "guidedRocketLight",
+    "shotLocomotionPresetId": "constantSpeedRocketLight",
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
     "mass": 6,

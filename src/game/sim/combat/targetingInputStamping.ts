@@ -82,6 +82,7 @@ import {
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
   CT_TURRET_CFG_REQUIRES_AIR_TARGET,
   CT_TURRET_CFG_NO_AUTO_ACQUIRE,
+  CT_TURRET_CFG_CONSTANT_SPEED_LEAD,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
@@ -704,6 +705,13 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   }
   if (turret.config.requiredEngagedForFightStop) {
     f |= CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP;
+  }
+  if (
+    shot !== null &&
+    isProjectileShot(shot) &&
+    shot.shotLocomotion.motionModel === 'constantSpeedGuided'
+  ) {
+    f |= CT_TURRET_CFG_CONSTANT_SPEED_LEAD;
   }
   if (turret.config.targeting.requiredIntel === 'fullSight') {
     f |= CT_TURRET_CFG_REQUIRES_FULL_SIGHT;

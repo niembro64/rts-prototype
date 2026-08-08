@@ -2390,6 +2390,8 @@ export const CT_TURRET_CFG_REQUIRES_FULL_SIGHT = 1 << 15;
 export const CT_TURRET_CFG_REQUIRES_AIR_TARGET = 1 << 16;
 /** Host-only and slaved mounts never independently auto-acquire. */
 export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
+/** Constant-speed guided shots aim at their velocity interception point. */
+export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
