@@ -916,9 +916,12 @@
       },
       "config": {
         "legs": {
-          "radius": 3.6,
-          "kneeRadius": 3.6,
-          "lerpDuration": 250,
+          "hip": {
+            "xUnitRadiusRatio": 0.0,
+            "yUnitRadiusRatio": 0.3,
+            "zUnitRadiusRatio": 1.42
+          },
+          "radius": 2.6,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.74
@@ -927,24 +930,11 @@
               "lengthUnitRadiusRatio": 0.82
             }
           },
-          "footSphere": {
-            "originExtensionRatio": 0.42
-          },
-          "choppingSphere": {
-            "radiusLegLengthRatio": 0.3
-          },
-          "snapRay": {
-            "originBoundarySpanRatio": 0.55
-          },
-          "leftSide": [
-            {
-              "attachmentPoint": {
-                "xUnitRadiusRatio": 0.0,
-                "yUnitRadiusRatio": -0.3,
-                "zUnitRadiusRatio": 1.42
-              }
-            }
-          ]
+          "footLengthRatio": 0.6,
+          "footWidthRatio": 3.2,
+          "strideLengthRatio": 1.0,
+          "strideLiftRatio": 0.22,
+          "standHeightRatio": 0.92
         },
         "arms": {
           "shoulder": {
@@ -961,10 +951,10 @@
               "lengthUnitRadiusRatio": 0.46
             }
           },
-          "handRadiusRatio": 1.2,
+          "handRadiusRatio": 1.25,
           "restSwingDeg": -4,
-          "walkSwingDeg": 30,
-          "outwardDeg": 8
+          "walkSwingDeg": 26,
+          "outwardDeg": 7
         }
       },
       "environmentalHazards": {
@@ -3981,9 +3971,12 @@
       },
       "config": {
         "legs": {
-          "radius": 7,
-          "kneeRadius": 7,
-          "lerpDuration": 300,
+          "hip": {
+            "xUnitRadiusRatio": 0.0,
+            "yUnitRadiusRatio": 0.34,
+            "zUnitRadiusRatio": 1.52
+          },
+          "radius": 4.6,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.8
@@ -3992,24 +3985,11 @@
               "lengthUnitRadiusRatio": 0.88
             }
           },
-          "footSphere": {
-            "originExtensionRatio": 0.45
-          },
-          "choppingSphere": {
-            "radiusLegLengthRatio": 0.3
-          },
-          "snapRay": {
-            "originBoundarySpanRatio": 0.55
-          },
-          "leftSide": [
-            {
-              "attachmentPoint": {
-                "xUnitRadiusRatio": 0.0,
-                "yUnitRadiusRatio": -0.34,
-                "zUnitRadiusRatio": 1.52
-              }
-            }
-          ]
+          "footLengthRatio": 0.62,
+          "footWidthRatio": 3.4,
+          "strideLengthRatio": 0.95,
+          "strideLiftRatio": 0.2,
+          "standHeightRatio": 0.92
         },
         "arms": {
           "shoulder": {
@@ -4026,10 +4006,10 @@
               "lengthUnitRadiusRatio": 0.5
             }
           },
-          "handRadiusRatio": 1.25,
-          "restSwingDeg": -6,
-          "walkSwingDeg": 26,
-          "outwardDeg": 9
+          "handRadiusRatio": 1.35,
+          "restSwingDeg": -5,
+          "walkSwingDeg": 22,
+          "outwardDeg": 8
         }
       },
       "environmentalHazards": {

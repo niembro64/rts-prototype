@@ -18,7 +18,7 @@ import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
-import type { LegConfig, StandArms } from '@/types/blueprintSchema.generated';
+import type { LegConfig, StandArms, StandLegs } from '@/types/blueprintSchema.generated';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -319,6 +319,53 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
   }
 }
 
+/** A mech leg is a hinge in one vertical plane, so it is authored and checked
+ *  on its own terms — there is no reach shell, no chopping sphere and no snap
+ *  ray here, because there is no third degree of freedom for them to bound. */
+function validateStandLegs(unitBlueprintId: string, legs: StandLegs): void {
+  const values = [
+    ['hip.xUnitRadiusRatio', legs.hip.xUnitRadiusRatio],
+    ['hip.yUnitRadiusRatio', legs.hip.yUnitRadiusRatio],
+    ['hip.zUnitRadiusRatio', legs.hip.zUnitRadiusRatio],
+    ['radius', legs.radius],
+    ['segments.upper.lengthUnitRadiusRatio', legs.segments.upper.lengthUnitRadiusRatio],
+    ['segments.lower.lengthUnitRadiusRatio', legs.segments.lower.lengthUnitRadiusRatio],
+    ['footLengthRatio', legs.footLengthRatio],
+    ['footWidthRatio', legs.footWidthRatio],
+    ['strideLengthRatio', legs.strideLengthRatio],
+    ['strideLiftRatio', legs.strideLiftRatio],
+    ['standHeightRatio', legs.standHeightRatio],
+  ] as const;
+  for (const [name, value] of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Invalid stand leg layout for ${unitBlueprintId}: ${name} must be finite`);
+    }
+  }
+  if (
+    legs.radius <= 0 ||
+    legs.segments.upper.lengthUnitRadiusRatio <= 0 ||
+    legs.segments.lower.lengthUnitRadiusRatio <= 0 ||
+    legs.strideLengthRatio <= 0 ||
+    legs.standHeightRatio <= 0
+  ) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: lengths, stride and stand height must be positive`,
+    );
+  }
+  if (legs.hip.yUnitRadiusRatio <= 0) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: hip.yUnitRadiusRatio is the half-track between the two legs and must be positive`,
+    );
+  }
+  // A hip that stands higher than the leg is long cannot reach the ground, and
+  // the solve would silently hold the leg straight at full extension forever.
+  if (legs.standHeightRatio > 1) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: standHeightRatio must be at most 1 — a leg cannot stand taller than it is long`,
+    );
+  }
+}
+
 /** A biped's arms hang off the same stride its legs walk with. None of this
  *  reaches the sim — arms are presentation — but a non-finite ratio poses the
  *  whole limb at NaN, which reads as a missing arm rather than as a bad
@@ -381,7 +428,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   if (bp.unitLocomotion.type === 'legs') {
     validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config);
   } else if (bp.unitLocomotion.type === 'stand') {
-    validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
+    validateStandLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
     validateStandArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
   }
 

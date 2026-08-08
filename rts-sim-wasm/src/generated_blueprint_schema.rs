@@ -792,8 +792,20 @@ pub struct StandArms {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct StandLegs {
+    pub hip: LocomotionMount,
+    pub radius: f64,
+    pub segments: StandArmSegments,
+    pub footLengthRatio: f64,
+    pub footWidthRatio: f64,
+    pub strideLengthRatio: f64,
+    pub strideLiftRatio: f64,
+    pub standHeightRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct StandConfig {
-    pub legs: LegConfig,
+    pub legs: StandLegs,
     pub arms: StandArms,
 }
 

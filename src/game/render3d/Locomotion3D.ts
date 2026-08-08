@@ -59,11 +59,11 @@ import {
   updateFlippers,
 } from './FlipperRig3D';
 import {
-  buildStandArms,
-  fadeStandArmSlots,
-  freeStandArmSlots,
-  updateStandArms,
-} from './StandArmRig3D';
+  buildStandRig,
+  poseStandRigAtRest,
+  updateStandRig,
+  type StandMesh,
+} from './StandRig3D';
 import {
   type SwimMesh,
   buildSwimRig,
@@ -83,6 +83,7 @@ export type Locomotion3DMesh =
   | TreadMesh
   | WheelMesh
   | LegMesh
+  | StandMesh
   | FlipperMesh
   | HoverMesh
   | FlyingMesh
@@ -113,10 +114,13 @@ export type LocomotionStateSnapshot =
       lastBaseX: number;
       lastBaseY: number;
       lastBaseZ: number;
-      /** `stand` arm swing. Zero on every other walker — a tier rebuild must
-       *  not restart the swing mid-stride. */
-      armPhase: number;
-      armSwing: number;
+    }
+  | {
+      type: 'stand';
+      /** A tier rebuild must not restart the walk mid-stride. */
+      contact: RollingContactSnapshot;
+      phase: number;
+      gait: number;
     }
   | {
       type: 'wheels';
@@ -189,8 +193,13 @@ export function captureLocomotionState(
         lastBaseX: locomotion.lastBaseX,
         lastBaseY: locomotion.lastBaseY,
         lastBaseZ: locomotion.lastBaseZ,
-        armPhase: locomotion.arms?.phase ?? 0,
-        armSwing: locomotion.arms?.swing ?? 0,
+      };
+    case 'stand':
+      return {
+        type: 'stand',
+        contact: captureRollingContact(locomotion.contact),
+        phase: locomotion.phase,
+        gait: locomotion.gait,
       };
     case 'wheels':
       return {
@@ -251,10 +260,13 @@ export function applyLocomotionState(
       locomotion.lastBaseX = state.lastBaseX;
       locomotion.lastBaseY = state.lastBaseY;
       locomotion.lastBaseZ = state.lastBaseZ;
-      if (locomotion.arms) {
-        locomotion.arms.phase = state.armPhase;
-        locomotion.arms.swing = state.armSwing;
-      }
+      return;
+    }
+    case 'stand': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'stand' }>;
+      applyRollingContact(locomotion.contact, state.contact);
+      locomotion.phase = state.phase;
+      locomotion.gait = state.gait;
       return;
     }
     case 'wheels': {
@@ -440,23 +452,12 @@ export function buildLocomotion(
       return mesh;
     }
     case 'stand': {
-      // A biped walks on the ordinary leg rig — one authored leftSide entry,
-      // mirrored — and wears arms off the same chassis frame.
-      const chassisLiftY = getChassisLift(bp, unitRadius);
-      const mesh = buildLegs(
-        worldGroup, unitRadius, loc.config.legs,
-        gfx.legs, chassisLiftY,
-        legRenderer, ownerId,
-        geometryTier,
-        LEG_CHARTS,
+      const mesh = buildStandRig(
+        unitGroup, unitRadius, loc.config.legs, loc.config.arms,
+        getChassisLift(bp, unitRadius), ownerId, geometryTier,
       );
-      if (mesh) {
-        mesh.geometryKey = geometryKey;
-        mesh.arms = buildStandArms(
-          unitRadius, loc.config.arms, chassisLiftY,
-          legRenderer, ownerId, geometryTier, LEG_CHARTS,
-        );
-      }
+      poseStandRigAtRest(mesh);
+      mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'flippers': {
@@ -535,13 +536,10 @@ export function updateLocomotion(
       return updateWheels(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'treads':
       return updateTreads(mesh, entity, pose, dtMs, mapWidth, mapHeight);
-    case 'legs': {
-      const moved = updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
-      // Arms ride the same frame as the legs they belong to, so they are
-      // written here rather than from a second per-frame walk.
-      if (mesh.arms) updateStandArms(mesh.arms, pose, dtMs, legRenderer);
-      return moved;
-    }
+    case 'legs':
+      return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
+    case 'stand':
+      return updateStandRig(mesh, pose, dtMs, mapWidth, mapHeight);
     case 'flippers':
       return updateFlippers(mesh, pose, dtMs);
     case 'hover':
@@ -576,7 +574,6 @@ export function fadeLocomotion(
 ): void {
   if (!mesh || mesh.type !== 'legs') return;
   fadeLegSlots(mesh, legRenderer, fade);
-  if (mesh.arms) fadeStandArmSlots(mesh.arms, legRenderer, fade);
 }
 
 export function destroyLocomotion(
@@ -589,7 +586,6 @@ export function destroyLocomotion(
   // drop their group from the scene graph.
   if (mesh.type === 'legs') {
     freeLegSlots(mesh, legRenderer);
-    if (mesh.arms) freeStandArmSlots(mesh.arms, legRenderer);
   }
   mesh.group.parent?.remove(mesh.group);
 }

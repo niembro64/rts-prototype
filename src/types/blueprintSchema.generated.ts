@@ -549,8 +549,19 @@ export type StandArms = {
   outwardDeg: number;
 };
 
+export type StandLegs = {
+  hip: LocomotionMount;
+  radius: number;
+  segments: StandArmSegments;
+  footLengthRatio: number;
+  footWidthRatio: number;
+  strideLengthRatio: number;
+  strideLiftRatio: number;
+  standHeightRatio: number;
+};
+
 export type StandConfig = {
-  legs: LegConfig;
+  legs: StandLegs;
   arms: StandArms;
 };
 

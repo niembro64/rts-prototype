@@ -907,16 +907,21 @@ export class Render3DEntities {
       }
 
       const liftPos = m.liftGroup?.position;
-      const visualBankAllowed = unitTurretsAllowVisualBank3D(turrets);
+      // An upright host takes the hill in its legs, not in its spine: it poses
+      // off world vertical, ignores its body quaternion, and gets no visual
+      // bank. Everything else about the pose — position, yaw, lift — is
+      // unchanged, so its turrets and mounts still ride where they were built.
+      const upright = m.uprightPose === true;
+      const visualBankAllowed = !upright && unitTurretsAllowVisualBank3D(turrets);
       this.unitRenderPose.writeUnit(
         poseCount,
         tx,
         groundZ,
         ty,
         unitRows.rotation[row],
-        unitRows.normalX[row],
-        unitRows.normalY[row],
-        unitRows.normalZ[row],
+        upright ? 0 : unitRows.normalX[row],
+        upright ? 0 : unitRows.normalY[row],
+        upright ? 1 : unitRows.normalZ[row],
         liftPos?.x ?? 0,
         liftPos?.y ?? (m.chassisLift ?? 0),
         liftPos?.z ?? 0,
@@ -930,7 +935,7 @@ export class Render3DEntities {
         unitRows.orientationY[row],
         unitRows.orientationZ[row],
         unitRows.orientationW[row],
-        unitRows.hasFullOrientation[row] !== 0,
+        !upright && unitRows.hasFullOrientation[row] !== 0,
         unitRows.z[row],
         e.unit.radius.collision,
       );

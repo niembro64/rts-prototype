@@ -2263,6 +2263,60 @@
       },
       "additionalProperties": false
     },
+    "StandLegs": {
+      "type": "object",
+      "required": [
+        "hip",
+        "radius",
+        "segments",
+        "footLengthRatio",
+        "footWidthRatio",
+        "strideLengthRatio",
+        "strideLiftRatio",
+        "standHeightRatio"
+      ],
+      "properties": {
+        "hip": {
+          "$ref": "#/$defs/LocomotionMount",
+          "description": "Left hip socket in unit-radius ratios; the right leg mirrors it. The lateral component is the limb's plane and never changes."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Thigh cross-section in world units; the shin and knee derive from it."
+        },
+        "segments": {
+          "$ref": "#/$defs/StandArmSegments",
+          "description": "Thigh and shin lengths as unit-radius ratios."
+        },
+        "footLengthRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Sole length as a ratio of total leg length."
+        },
+        "footWidthRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Sole width as a ratio of the leg radius."
+        },
+        "strideLengthRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Ground covered by one full cycle, as a ratio of leg length."
+        },
+        "strideLiftRatio": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Peak foot lift during swing, as a ratio of leg length."
+        },
+        "standHeightRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Hip height above the sole at a standstill, as a ratio of leg length. Below 1 leaves the knee bent."
+        }
+      },
+      "additionalProperties": false
+    },
     "StandConfig": {
       "type": "object",
       "required": [
@@ -2271,8 +2325,8 @@
       ],
       "properties": {
         "legs": {
-          "$ref": "#/$defs/LegConfig",
-          "description": "The walking half. A biped authors exactly one leftSide entry; it is mirrored."
+          "$ref": "#/$defs/StandLegs",
+          "description": "The walking half. Its own rig \u2014 a mech leg is a hinge in one vertical plane, not an arachnid limb."
         },
         "arms": {
           "$ref": "#/$defs/StandArms"

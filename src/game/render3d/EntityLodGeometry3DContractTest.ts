@@ -33,6 +33,7 @@ import {
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math/BarrelGeometry';
+import { buildStandRig, poseStandRigAtRest } from './StandRig3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Turret } from '../sim/types';
@@ -492,29 +493,17 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
   for (const unitId of UNIT_BLUEPRINT_IDS) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
-    if (locomotion.type === 'legs' || locomotion.type === 'stand') {
-      // A `stand` biped walks on the same rig; its config nests the leg half.
-      const legConfig = locomotion.type === 'legs' ? locomotion.config : locomotion.config.legs;
+    if (locomotion.type === 'legs') {
       const legCount = resolveMirroredLegConfigs(
-        legConfig, blueprint.radius.other,
+        locomotion.config, blueprint.radius.other,
       ).all.length;
-      if (locomotion.type === 'stand') {
-        assertContract(
-          legCount === 2,
-          `${unitId} stands on exactly two legs — a biped authors one leftSide entry`,
-        );
-      }
-      // Struts, joints and feet all live in the shared instanced pools rather
-      // than under this root, so these are the roster's standing per-limb
-      // accounting figures, not a triangle count taken off a scene graph. An
-      // arm carries one segment fewer than a leg; it is counted as a whole
-      // limb because what this number feeds is the tier-descends assertion,
-      // which a fractional limb would not change.
-      const limbCount = legCount + (locomotion.type === 'stand' ? 2 : 0);
+      // Struts, joints and feet live in the shared instanced pools rather than
+      // under this root, so this is the roster's standing per-limb accounting
+      // figure, not a triangle count taken off a scene graph.
       countsByUnit.set(unitId, {
-        close: limbCount * 204,
-        mid: limbCount * 68,
-        far: limbCount * 20,
+        close: legCount * 204,
+        mid: legCount * 68,
+        far: legCount * 20,
       });
       continue;
     }
@@ -587,6 +576,47 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
                 side.side, n(side.lateralOffset), ...transformTuple(side.group),
               ]),
               loop: [n(rig.cleatLoopLength), n(rig.treadStraightLength), n(rig.treadRadius)],
+            },
+          };
+        }
+        case 'stand': {
+          const rig = buildStandRig(
+            root, radius, locomotion.config.legs, locomotion.config.arms,
+            0, undefined, tier,
+          );
+          poseStandRigAtRest(rig);
+          assertContract(
+            rig.legs.length === 2 && rig.arms.length === 2,
+            `${unitId}/${tier} stand is a biped: two legs and two arms`,
+          );
+          assertContract(
+            rig.legs.every((leg) => Math.abs(leg.hipZ) > 1e-6)
+              && rig.legs[0].hipZ === -rig.legs[1].hipZ,
+            `${unitId}/${tier} stand legs sit on a mirrored pair of planes`,
+          );
+          // The whole point of the rig: a knee is a hinge in its leg's plane,
+          // so no part of a limb may leave the lateral offset it was built on.
+          assertContract(
+            rig.legs.every((leg) =>
+              Math.abs(leg.knee.position.z - leg.hipZ) < 1e-6
+              && Math.abs(leg.foot.position.z - leg.hipZ) < 1e-6),
+            `${unitId}/${tier} stand knees and feet stay in their leg's plane`,
+          );
+          return {
+            rig,
+            count: objectTriangleCount(root),
+            signature: {
+              root: transformTuple(rig.group),
+              legs: rig.legs.map((leg) => [
+                leg.side, n(leg.hipX), n(leg.hipY), n(leg.hipZ),
+                n(leg.thighLength), n(leg.shinLength), n(leg.phaseOffset),
+                ...transformTuple(leg.knee), ...transformTuple(leg.foot),
+              ]),
+              arms: rig.arms.map((arm) => [
+                arm.side, n(arm.shoulderX), n(arm.shoulderY), n(arm.shoulderZ),
+                ...transformTuple(arm.pod),
+              ]),
+              stride: [n(rig.strideLength), n(rig.strideLift), n(rig.standHipY)],
             },
           };
         }

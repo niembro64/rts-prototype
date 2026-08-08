@@ -66,6 +66,14 @@ export type EntityMesh = {
    *  scenegraph chain doesn't apply the lift for them. Cached on the
    *  EntityMesh to avoid re-looking-up the blueprint each frame. */
   chassisLift?: number;
+  /** This host stands upright: it poses off world vertical rather than off the
+   *  terrain normal, and ignores its body quaternion.
+   *
+   *  A biped does not lean into a hill — it takes the slope up in its legs,
+   *  which is exactly what the stand rig's per-foot terrain reach is for. Left
+   *  tilting, a walking commander leans back going uphill while its feet stay
+   *  flat on it, and the two read as a mistake in opposite directions. */
+  uprightPose?: boolean;
   /** Parent for the chassis body parts. For units this is uniformly
    *  scaled by unitRadius so each BodyMeshPart's unit-radius-1 offset
    *  and per-axis scale both enlarge correctly. For buildings the group
