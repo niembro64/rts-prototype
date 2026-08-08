@@ -1766,8 +1766,8 @@
     },
     "launchForce": 9000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 900000,
-    "turretDrag": 0,
+    "turretTurnAccel": 9000,
+    "turretDrag": 1,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 3,
@@ -1860,13 +1860,13 @@
     "turretBlueprintId": "turretAntiAir",
     "name": "Anti-Air Launcher",
     "cooldown": {
-      "duration": 280,
+      "duration": 100,
       "durationRandomness": 0.05
     },
     "launchForce": 20000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 9000,
-    "turretDrag": 0,
+    "turretDrag": 1,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 6,
