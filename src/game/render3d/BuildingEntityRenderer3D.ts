@@ -213,7 +213,7 @@ type BuildingEntityMeshFactoryOptions = {
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
-  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  barrelMat: THREE.Material;
   detailLevel: number;
 };
 
@@ -230,7 +230,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     coneBarrelGeom,
     getPrimaryMat,
     getTeamOrnamentMat,
-    getTurretAccentMat,
+    barrelMat,
     detailLevel,
   } = options;
   const shapeType: BuildingShapeType = entity.buildingBlueprintId
@@ -284,7 +284,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
         barrelGeom,
         coneBarrelGeom,
         primaryMat: getPrimaryMat(ownerId),
-        turretAccentMat: getTurretAccentMat(ownerId),
+        barrelMat,
         detailLevel,
       });
       positionBuildingTurretRoot(turretMesh, turret);
@@ -369,7 +369,7 @@ type BuildingEntityRenderer3DOptions = {
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
-  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  barrelMat: THREE.Material;
   /** Shared team-trim pool. Optional so harnesses can omit it. */
   teamTrim?: TeamTrimRenderer3D | null;
   disposeWorldParentedOverlays: (mesh: EntityMesh, releaseTeamTrim?: boolean) => void;
@@ -389,7 +389,7 @@ export class BuildingEntityRenderer3D {
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
-  private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  private readonly barrelMat: THREE.Material;
   /** Shared team-trim pool, owned by Render3DEntities. Null in harnesses
    *  that construct this renderer without one. */
   private teamTrim: TeamTrimRenderer3D | null = null;
@@ -463,7 +463,7 @@ export class BuildingEntityRenderer3D {
     this.coneBarrelGeom = options.coneBarrelGeom;
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTeamOrnamentMat = options.getTeamOrnamentMat;
-    this.getTurretAccentMat = options.getTurretAccentMat;
+    this.barrelMat = options.barrelMat;
     this.teamTrim = options.teamTrim ?? null;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
@@ -1020,7 +1020,7 @@ export class BuildingEntityRenderer3D {
         coneBarrelGeom: this.coneBarrelGeom,
         getPrimaryMat: this.getPrimaryMat,
         getTeamOrnamentMat: this.getTeamOrnamentMat,
-        getTurretAccentMat: this.getTurretAccentMat,
+        barrelMat: this.barrelMat,
         detailLevel,
       });
       applyEntityLodVisualState3D(mesh, retainedLodVisualState);
@@ -1275,7 +1275,7 @@ export class BuildingEntityRenderer3D {
         continue;
       }
       if (!underConstruction) {
-        this.setTurretBarrelMaterial(turretMesh, this.getTurretAccentMat(ownerId));
+        this.setTurretBarrelMaterial(turretMesh, this.barrelMat);
       }
       this.enqueueTurretAim(
         turretMesh,

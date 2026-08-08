@@ -62,7 +62,6 @@ import { productionHoldRingRadiusForProducedUnit } from '@/game/sim/factoryProdu
 import {
   entityBodyColorHexForPlayer,
   entityTeamColorHexForPlayer,
-  turretAccentColorHexForPlayer,
 } from '@/game/render3d/EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
 import {
@@ -203,8 +202,9 @@ type PreviewProductionRing = {
 type PreviewUnitMaterials = {
   /** Body, turret head, mirror frame/arm — player primary, lit. */
   primary: THREE.MeshLambertMaterial;
-  /** Turret accent + physical barrels — half player color, half white, lit. */
-  turretAccent: THREE.MeshLambertMaterial;
+  /** Barrel steel — the roster's one gun metal, lit. Not player colored:
+   *  see TurretMesh3DDeps.barrelMat. */
+  barrel: THREE.MeshLambertMaterial;
   /** Added ornamentation — side/team identity, lit. */
   teamOrnament: THREE.MeshLambertMaterial;
   /** Shield-reflector panel surface. */
@@ -217,7 +217,7 @@ type PreviewUnitMaterials = {
 function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
   const materials: PreviewUnitMaterials = {
     primary: new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) }),
-    turretAccent: new THREE.MeshLambertMaterial({ color: turretAccentColorHexForPlayer(playerId) }),
+    barrel: new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
     teamOrnament: new THREE.MeshLambertMaterial({ color: entityTeamColorHexForPlayer(playerId) }),
     mirrorShiny: createShieldFallbackPanelMaterial(),
     leg: new THREE.MeshBasicMaterial({ color: locomotionPieceColorHex(LEG_SEGMENT_COLOR, playerId) }),
@@ -225,7 +225,7 @@ function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
   // The card is a promise about what the unit looks like in the battle, so it
   // is made of the same metal: same grain, same density, same livery.
   patchSurfaceChartSurface(materials.primary);
-  patchSurfaceChartSurface(materials.turretAccent);
+  patchSurfaceChartSurface(materials.barrel);
   patchSurfaceChartSurface(materials.teamOrnament);
   patchSurfaceChartSurface(materials.leg);
   return materials;
@@ -233,7 +233,7 @@ function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
 
 function disposePreviewUnitMaterials(materials: PreviewUnitMaterials): void {
   materials.primary.dispose();
-  materials.turretAccent.dispose();
+  materials.barrel.dispose();
   materials.teamOrnament.dispose();
   materials.mirrorShiny.dispose();
   materials.leg.dispose();
@@ -572,7 +572,7 @@ function buildPreviewBuildingTurrets(
       barrelGeom,
       coneBarrelGeom,
       primaryMat: materials.primary,
-      turretAccentMat: materials.turretAccent,
+      barrelMat: materials.barrel,
       skipHead: false,
       skipBarrels: false,
       detailLevel: detailLevelForGeometryTier(geometryTier),
@@ -744,7 +744,7 @@ function buildPreviewTurrets(
       barrelGeom,
       coneBarrelGeom,
       primaryMat: materials.primary,
-      turretAccentMat: materials.turretAccent,
+      barrelMat: materials.barrel,
       shieldEmitterMat: materials.mirrorShiny,
       showShieldEmitterCore,
       hideHead: hideBeamHead,

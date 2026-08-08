@@ -52,6 +52,18 @@ const FAN_HUB_COLOR = COLORS.units.locomotion.hover.fanHub.colorHex;
 const HOVER_SMOKE_COLOR = COLORS.units.locomotion.hover.smoke.colorHex;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
+/** How wide a duct's plume starts, as a fraction of that duct's own radius.
+ *
+ *  The wash is the column of air the ring just pushed down, so its width is a
+ *  property of the ring rather than of the unit wearing it. The smoke profile
+ *  alone cannot say that: one profile is worn by ducts of very different size,
+ *  and `locomotionHovercraft`'s flat 3 was about as wide as the Bee's 2.9-unit
+ *  ring but a fifth of the Queen's, which trailed a thread out of a ring three
+ *  times its width. Deriving from the ring means resizing a fan resizes its
+ *  wash, with no second number to keep in step; the fraction is the ratio the
+ *  small ducts already had. The profile's own startRadius stays live as a
+ *  FLOOR, so a duct small enough to emit nothing visible still puffs. */
+const HOVER_PLUME_DUCT_RADIUS_FRAC = 0.9;
 
 const ringGeomByTubeRatio = new Map<string, THREE.BufferGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
@@ -502,7 +514,10 @@ function buildFan(
       emitFramesSkip,
       fadeInMs: smokeProfile.fadeInMs,
       fadeOutMs: smokeProfile.fadeOutMs,
-      startRadius: smokeProfile.startRadius,
+      startRadius: Math.max(
+        smokeProfile.startRadius,
+        fanRadius * HOVER_PLUME_DUCT_RADIUS_FRAC,
+      ),
       endRadiusMultiplier: smokeProfile.endRadiusMultiplier,
       maxAlpha: smokeProfile.maxAlpha,
       color: HOVER_SMOKE_COLOR,

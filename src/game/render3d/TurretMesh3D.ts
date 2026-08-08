@@ -135,9 +135,11 @@ type TurretMesh3DDeps = {
   coneBarrelGeom: THREE.CylinderGeometry;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
-  /** Half player color, half white. Used for physical barrel meshes and
-   *  non-body weapon accents. */
-  turretAccentMat: THREE.Material;
+  /** The roster's barrel steel. One material for every gun on the map —
+   *  the same white the instanced unit-barrel pools are made of — so a
+   *  tower's barrel reads as the same metal as the tank's parked under it.
+   *  Team identity lives on the turret collar, not on the barrel. */
+  barrelMat: THREE.Material;
   /** Optional starting material for visible shield emitter cores. Shield
    *  turrets normally render through ShieldRenderer3D only, but shield
    *  sphere emitters can request a small physical core so the mount is
@@ -338,7 +340,7 @@ export function buildTurretMesh3D(
     const dz = tipZ - baseZ;
     const length = Math.hypot(dx, dy, dz);
     if (length < 1e-4) return;
-    const m = new THREE.Mesh(segmentGeom, deps.turretAccentMat);
+    const m = new THREE.Mesh(segmentGeom, deps.barrelMat);
     m.scale.set(cylRadius, length, cylRadius);
     m.position.set(
       (baseX + tipX) / 2,

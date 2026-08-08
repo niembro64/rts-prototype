@@ -71,7 +71,7 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     coneBarrelGeom,
     getPrimaryMat: () => primaryMaterial,
     getTeamOrnamentMat: () => primaryMaterial,
-    getTurretAccentMat: () => accentMaterial,
+    barrelMat: accentMaterial,
     disposeWorldParentedOverlays: () => undefined,
     metalDeposits: [],
     scopedMeshRetention: new ScopedRenderMeshRetention3D(),

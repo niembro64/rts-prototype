@@ -18,7 +18,6 @@ import {
   entityInstanceColorHex,
   entityInstanceColorKey,
   entityHeadOnlyTurretHeadColorHex,
-  entityTurretAccentColorHex,
 } from './EntityInstanceColor3D';
 import {
   createShieldSurfaceMaterial,
@@ -207,7 +206,6 @@ export class UnitDetailInstanceRenderer3D {
   private readonly turretHeadColorKey = new Map<number, number>();
 
   private readonly barrelPools: TierPool[] = [];
-  private readonly barrelColorKey = new Map<number, number>();
 
   // Parallel pool for legacy cone barrels. The same slot
   // index allocator + per-frame writer pattern as the cylinder pool above,
@@ -590,7 +588,6 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     const turretHeadHex = entityInstanceColorHex(entity);
-    const turretAccentHex = entityTurretAccentColorHex(entity);
     for (let i = 0; i < mesh.turrets.length; i++) {
       const turret = mesh.turrets[i];
       const headColorKey = turret.headOnly
@@ -609,17 +606,6 @@ export class UnitDetailInstanceRenderer3D {
           pool.colorDirty,
         );
         this.turretHeadColorKey.set(turret.headSlot, headColorKey);
-      }
-      // Beam-emitter cones take their color from the beam wave material,
-      // not the entity accent — nothing to sync for cone slots.
-      if (turret.barrelSlots && turret.barrelUsesCone !== true) {
-        const barrelColorKey = turretAccentHex;
-        for (const slot of turret.barrelSlots) {
-          if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
-          const pool = this.barrelPools[tierSlotTier(slot)];
-          writeInstanceColorHex(pool.mesh, tierSlotIndex(slot), barrelColorKey, pool.colorDirty);
-          this.barrelColorKey.set(slot, barrelColorKey);
-        }
       }
     }
 
@@ -1397,7 +1383,6 @@ export class UnitDetailInstanceRenderer3D {
 
   private freeBarrelSlot(slot: number): void {
     this.freeTierSlot(this.barrelPools, slot);
-    this.barrelColorKey.delete(slot);
   }
 
   private allocConeBarrelSlot(): number | null {
@@ -1540,7 +1525,6 @@ export class UnitDetailInstanceRenderer3D {
         writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
       }
     }
-    this.barrelColorKey.clear();
     this.resetTierPools(this.barrelPools);
   }
 

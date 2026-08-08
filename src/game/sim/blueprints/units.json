@@ -3149,32 +3149,62 @@
         "mounts": [
           {
             "offset": {
-              "xUnitRadiusRatio": 0.41773,
-              "yUnitRadiusRatio": -0.72353,
+              "xUnitRadiusRatio": -0.691,
+              "yUnitRadiusRatio": -0.62,
               "zUnitRadiusRatio": -0.036
             },
-            "radiusFrac": 0.16,
-            "ringTubeRadiusFrac": 0.04,
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
             "outwardAngleDeg": 12
           },
           {
             "offset": {
-              "xUnitRadiusRatio": 0.41773,
-              "yUnitRadiusRatio": 0.72353,
+              "xUnitRadiusRatio": -0.691,
+              "yUnitRadiusRatio": 0.62,
               "zUnitRadiusRatio": -0.036
             },
-            "radiusFrac": 0.16,
-            "ringTubeRadiusFrac": 0.04,
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
             "outwardAngleDeg": 12
           },
           {
             "offset": {
-              "xUnitRadiusRatio": -0.83546,
-              "yUnitRadiusRatio": 0.0,
+              "xUnitRadiusRatio": -0.18,
+              "yUnitRadiusRatio": -0.62,
               "zUnitRadiusRatio": -0.036
             },
-            "radiusFrac": 0.16,
-            "ringTubeRadiusFrac": 0.04,
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.18,
+              "yUnitRadiusRatio": 0.62,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.331,
+              "yUnitRadiusRatio": -0.62,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.331,
+              "yUnitRadiusRatio": 0.62,
+              "zUnitRadiusRatio": -0.036
+            },
+            "radiusFrac": 0.2,
+            "ringTubeRadiusFrac": 0.045,
             "outwardAngleDeg": 12
           }
         ],

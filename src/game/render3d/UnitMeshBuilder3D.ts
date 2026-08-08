@@ -51,7 +51,7 @@ type UnitMeshBuilder3DOptions = {
   mirrorArmGeom: THREE.BoxGeometry;
   mirrorSupportGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
-  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  barrelMat: THREE.Material;
   getMirrorShinyMat: () => THREE.Material;
 };
 
@@ -94,7 +94,7 @@ export class UnitMeshBuilder3D {
   private readonly mirrorArmGeom: THREE.BoxGeometry;
   private readonly mirrorSupportGeom: THREE.CylinderGeometry;
   private readonly getPrimaryMat: UnitMeshBuilder3DOptions['getPrimaryMat'];
-  private readonly getTurretAccentMat: UnitMeshBuilder3DOptions['getTurretAccentMat'];
+  private readonly barrelMat: THREE.Material;
   private readonly getMirrorShinyMat: UnitMeshBuilder3DOptions['getMirrorShinyMat'];
 
   constructor(options: UnitMeshBuilder3DOptions) {
@@ -109,7 +109,7 @@ export class UnitMeshBuilder3D {
     this.mirrorArmGeom = options.mirrorArmGeom;
     this.mirrorSupportGeom = options.mirrorSupportGeom;
     this.getPrimaryMat = options.getPrimaryMat;
-    this.getTurretAccentMat = options.getTurretAccentMat;
+    this.barrelMat = options.barrelMat;
     this.getMirrorShinyMat = options.getMirrorShinyMat;
   }
 
@@ -432,7 +432,7 @@ export class UnitMeshBuilder3D {
         barrelGeom: this.barrelGeom,
         coneBarrelGeom: this.coneBarrelGeom,
         primaryMat: this.getPrimaryMat(ownerId),
-        turretAccentMat: this.getTurretAccentMat(ownerId),
+        barrelMat: this.barrelMat,
         shieldEmitterMat: this.getPrimaryMat(ownerId),
         showShieldEmitterCore,
         skipHead: headSlot !== undefined,

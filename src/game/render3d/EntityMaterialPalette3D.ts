@@ -4,7 +4,6 @@ import type { PlayerId } from '../sim/types';
 import {
   entityBodyColorHexForPlayer,
   entityTeamColorHexForPlayer,
-  turretAccentColorHexForPlayer,
 } from './EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { patchSurfaceChartSurface } from './SurfaceChartMaterial3D';
@@ -23,7 +22,6 @@ function surfaceMat(color: number): THREE.MeshLambertMaterial {
 export class EntityMaterialPalette3D {
   private readonly primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private readonly teamOrnamentMats = new Map<number, THREE.MeshLambertMaterial>();
-  private readonly turretAccentMats = new Map<number, THREE.MeshLambertMaterial>();
   private readonly neutralMat = surfaceMat(COLORS.units.neutral.colorHex);
   private readonly mirrorShinyNeutralMat = createShieldFallbackPanelMaterial();
   private readonly barrelMat = surfaceMat(COLORS.units.turret.barrel.colorHex);
@@ -46,16 +44,6 @@ export class EntityMaterialPalette3D {
     return mat;
   }
 
-  getTurretAccentMat(playerId: PlayerId | undefined): THREE.MeshLambertMaterial {
-    const color = turretAccentColorHexForPlayer(playerId);
-    let mat = this.turretAccentMats.get(color);
-    if (!mat) {
-      mat = surfaceMat(color);
-      this.turretAccentMats.set(color, mat);
-    }
-    return mat;
-  }
-
   getTeamOrnamentMat(playerId: PlayerId | undefined): THREE.MeshLambertMaterial {
     const color = entityTeamColorHexForPlayer(playerId);
     let mat = this.teamOrnamentMats.get(color);
@@ -71,10 +59,8 @@ export class EntityMaterialPalette3D {
     this.barrelMat.dispose();
     for (const mat of this.primaryMats.values()) mat.dispose();
     for (const mat of this.teamOrnamentMats.values()) mat.dispose();
-    for (const mat of this.turretAccentMats.values()) mat.dispose();
     this.primaryMats.clear();
     this.teamOrnamentMats.clear();
-    this.turretAccentMats.clear();
     this.neutralMat.dispose();
   }
 }

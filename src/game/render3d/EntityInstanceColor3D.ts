@@ -43,20 +43,6 @@ export function entityPlayerDarkColorHexForPlayer(pid: number | undefined): numb
   return pid !== undefined ? getPlayerColors(pid).colorPlayerDark : COLORS.units.neutral.colorHex;
 }
 
-/** Turret accent — the collar/trim ring around a turret mount and the
- *  barrel accent on structures. This is TEAM color: a turret head already
- *  spends its own color on firing state, so identity lives on the trim,
- *  and putting the side there means every combat entity reads as its
- *  alliance from any angle. Lightened so it stays distinct from a body
- *  that happens to sit near the same hue. */
-export function turretAccentColorHexForPlayer(playerId: number | undefined): number {
-  return blendHexTowardWhite(entityTeamColorHexForPlayer(playerId), 0.25);
-}
-
-export function entityTurretAccentColorHex(entity: Entity): number {
-  return turretAccentColorHexForPlayer(entity.ownership?.playerId);
-}
-
 export function entityHeadOnlyTurretHeadColorHex(
   entity: Entity,
   _turretState: TurretState | undefined,

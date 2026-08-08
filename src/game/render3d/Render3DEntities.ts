@@ -379,7 +379,7 @@ export class Render3DEntities {
       coneBarrelGeom: this.coneBarrelGeom,
       getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
       getTeamOrnamentMat: (playerId) => this.materialPalette.getTeamOrnamentMat(playerId),
-      getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
+      barrelMat: this.materialPalette.getBarrelMat(),
       teamTrim: this.teamTrim,
       disposeWorldParentedOverlays: (mesh, releaseTeamTrim = true) =>
         this.disposeWorldParentedOverlays(mesh, releaseTeamTrim),
@@ -425,7 +425,7 @@ export class Render3DEntities {
       mirrorArmGeom: this.mirrorArmGeom,
       mirrorSupportGeom: this.mirrorSupportGeom,
       getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
-      getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
+      barrelMat: this.materialPalette.getBarrelMat(),
       getMirrorShinyMat: () => this.materialPalette.getMirrorShinyMat(),
     });
 

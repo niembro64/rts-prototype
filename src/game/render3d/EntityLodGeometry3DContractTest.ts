@@ -302,7 +302,7 @@ function buildTurretForTier(
     barrelGeom: closeBarrel,
     coneBarrelGeom: closeCone,
     primaryMat: material,
-    turretAccentMat: material,
+    barrelMat: material,
     shieldEmitterMat: material,
     showShieldEmitterCore: true,
     skipHead: false,
