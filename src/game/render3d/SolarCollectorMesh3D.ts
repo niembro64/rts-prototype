@@ -98,15 +98,32 @@ function makeHingeCap(
   return mesh;
 }
 
-const solarCellMat = new THREE.MeshStandardMaterial({
-  color: COLORS.buildings.materials.solarCell.colorHex,
-  metalness: COLORS.buildings.materials.solarCell.metalness,
-  roughness: COLORS.buildings.materials.solarCell.roughness,
-  side: THREE.DoubleSide,
-  polygonOffset: true,
-  polygonOffsetFactor: -1,
-  polygonOffsetUnits: -4,
-});
+function makeSolarCellMaterial(
+  polygonOffsetFactor: number,
+  polygonOffsetUnits: number,
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: COLORS.buildings.materials.solarCell.colorHex,
+    metalness: COLORS.buildings.materials.solarCell.metalness,
+    roughness: COLORS.buildings.materials.solarCell.roughness,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor,
+    polygonOffsetUnits,
+  });
+}
+
+/** The photovoltaic surface. Every part of the collector a photon is supposed
+ *  to land on is made of this — petal faces (both sides) and the four faces of
+ *  the centre pyramid — so the collector reads as one material rather than a
+ *  panel bolted to a differently-finished box. */
+const solarCellMat = makeSolarCellMaterial(-1, -4);
+/** Same surface, pushed BACK in depth. The pyramid's frustum body sits exactly
+ *  under its four face plates (and under the petals when they close), and three
+ *  coplanar surfaces need an ordering that does not depend on triangle order.
+ *  Faces and closed petals win; the body only ever draws its top cap and the
+ *  low-detail rungs where the plates are culled. */
+const solarPyramidBodyMat = makeSolarCellMaterial(1, 4);
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
   color: COLORS.buildings.materials.solarPetalBack.colorHex,
   side: THREE.DoubleSide,
@@ -170,7 +187,7 @@ export function buildSolarCollector(
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const primary = new THREE.Mesh(solarPanelPyramidGeom, solarCellMat);
+  const primary = new THREE.Mesh(solarPanelPyramidGeom, solarPyramidBodyMat);
   const details: BuildingDetailMesh[] = [];
 
   const petalTilt = 0.42;
@@ -207,6 +224,17 @@ export function buildSolarCollector(
   for (const sign of [-1, 1]) {
     const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
     const frontBackPanelSide = new THREE.Vector3(0, 0, -sign);
+    details.push(detail(makePyramidFace(
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      frontBackClosedDir,
+      frontBackPanelSide,
+    )));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       frontBackSpan,
@@ -218,7 +246,7 @@ export function buildSolarCollector(
       0,
     ), 'low'));
     details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
+      solarCellMat,
       frontBackSpan,
       frontBackLen,
       0,
@@ -274,6 +302,17 @@ export function buildSolarCollector(
 
     const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
     const sidePanelSide = new THREE.Vector3(-sign, 0, 0);
+    details.push(detail(makePyramidFace(
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sideClosedDir,
+      sidePanelSide,
+    )));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       sideSpan,
@@ -285,7 +324,7 @@ export function buildSolarCollector(
       1,
     ), 'low'));
     details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
+      solarCellMat,
       sideSpan,
       sideLen,
       sign * sideX,
@@ -372,6 +411,46 @@ export function buildSolarCollector(
     primaryMaterialLocked: true,
     solarRig: { pylon: energyPylon.rig },
   };
+}
+
+/** One face of the centre pyramid.
+ *
+ *  Built from the SAME trapezoid plate as a petal's photovoltaic face, posed
+ *  exactly where that petal lands when it closes — so the two are the same
+ *  shape by construction rather than by two sets of numbers that happen to
+ *  agree, and a closing petal settles onto its own footprint.
+ *
+ *  Sharing the plate is also what makes them the same SURFACE. The substance
+ *  grain is projected in each mesh's own object frame (see
+ *  SurfaceChartMaterial3D): a face cut from the frustum body is projected in
+ *  the building's (width, height, depth) box, so it carries a skewed, triplanar
+ *  blend of the plating pattern, while a plate is projected in its own
+ *  (span, slant) frame and carries the pattern square-on. Identical material,
+ *  visibly different surface — the frustum's faces are why the pyramid never
+ *  matched the petals. */
+function makePyramidFace(
+  width: number,
+  length: number,
+  hingeX: number,
+  hingeY: number,
+  hingeZ: number,
+  tangentX: number,
+  tangentZ: number,
+  closedDirection: THREE.Vector3,
+  panelSideHint: THREE.Vector3,
+): THREE.Mesh {
+  return makeTrianglePlate(
+    solarCellMat,
+    width,
+    length,
+    new THREE.Vector3(hingeX, hingeY, hingeZ),
+    new THREE.Vector3(tangentX, 0, tangentZ),
+    closedDirection,
+    0,
+    0,
+    0,
+    panelSideHint,
+  );
 }
 
 function makeTrianglePetal(
@@ -542,5 +621,6 @@ export function disposeSolarCollectorGeoms(): void {
   for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
   solarHingeCapGeometryByTier.clear();
   solarCellMat.dispose();
+  solarPyramidBodyMat.dispose();
   solarPetalBackMat.dispose();
 }
