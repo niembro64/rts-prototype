@@ -1,6 +1,5 @@
 import type { EntityBaseLedger, EntityRadiusConfig } from './types';
 import type { ResourceCost } from '../../../types/economyTypes';
-import { deriveShotArmingRadius } from '../shotArmingRadius';
 
 
 
@@ -31,24 +30,6 @@ export function assertValidEntityRadius(label: string, radius: EntityRadiusConfi
   assertFinitePositive(label, 'radius.other', radius.other);
   assertFinitePositive(label, 'radius.hitbox', radius.hitbox);
   assertFinitePositive(label, 'radius.collision', radius.collision);
-  if (radius.shotArmingRadius !== undefined) {
-    assertFiniteNonNegative(label, 'radius.shotArmingRadius', radius.shotArmingRadius);
-  }
-}
-
-export function assertValidShotArmingRadius(label: string, radius: EntityRadiusConfig): void {
-  assertValidEntityRadius(label, radius);
-  if (radius.shotArmingRadius === undefined) {
-    throw new Error(`Invalid ${label}: radius.shotArmingRadius must be authored`);
-  }
-  assertFiniteNonNegative(label, 'radius.shotArmingRadius', radius.shotArmingRadius);
-  const expected = deriveShotArmingRadius(radius.collision);
-  if (Math.abs(radius.shotArmingRadius - expected) > 1e-6) {
-    throw new Error(
-      `Invalid ${label}: radius.shotArmingRadius must equal 1.5 × radius.collision ` +
-      `(expected ${expected}, got ${radius.shotArmingRadius})`,
-    );
-  }
 }
 
 export function assertValidEntityBaseLedger(label: string, base: EntityBaseLedger): void {
@@ -113,5 +94,4 @@ export function normalizeEntityBaseLedgerFromAliases(
   }
   return normalized;
 }
-
 

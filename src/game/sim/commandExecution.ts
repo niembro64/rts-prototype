@@ -75,7 +75,6 @@ import {
   isBallisticArcWeapon,
   updateWeaponWorldKinematics,
 } from './combat/combatUtils';
-import { getHostShotArmingRadius } from './combat/shotArming';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
@@ -1661,7 +1660,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     {
       shotBlueprintId: dgunShot.shotBlueprintId,
       shotSource,
-      shotArmingRadius: getHostShotArmingRadius(commander),
     },
   );
 

@@ -41,10 +41,7 @@ import {
   turretMaskIncludes,
   updateWeaponWorldKinematics,
 } from './combatUtils';
-import {
-  getHostShotArmingRadius,
-  updateProjectileArming,
-} from './shotArming';
+import { updateProjectileArming } from './shotArming';
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
   dropTurretLockMidTick,
@@ -717,7 +714,6 @@ export function fireTurrets(
       : 0;
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
-    const hostShotArmingRadius = getHostShotArmingRadius(unit);
     let manualLaunchFired = false;
 
     // Fire each weapon independently
@@ -881,7 +877,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
-            { shotBlueprintId: projShot.shotBlueprintId, shotSource, shotArmingRadius: hostShotArmingRadius },
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -1158,7 +1154,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
-            { shotBlueprintId: projShot.shotBlueprintId, shotSource, shotArmingRadius: hostShotArmingRadius },
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -1474,7 +1470,7 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
   getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec, dtMs);
 
   // Pass 3: scatter post-integrate state back to JS-side mirrors,
-  // then arm projectiles whose full hitbox cleared the host ARM sphere.
+  // then arm projectiles whose full hitbox cleared the host ARM volume.
   for (let slot = 0; slot < _packedProjectileCount; slot++) {
     const entity = _packedProjectileEntities[slot];
     if (!entity || !entity.projectile) continue;

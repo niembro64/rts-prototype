@@ -414,11 +414,6 @@ export function runCommandExecutionContractTest(): void {
   assertNear(dgunSpawn.pos.y, dgunTurret.worldPos.y, 'D-gun shot must start at turret center y');
   assertNear(dgunSpawn.pos.z, dgunTurret.worldPos.z, 'D-gun shot must start at turret center z');
   assertContract(!dgunProjectile.isArmed, 'D-gun shot must begin inert inside host ARM');
-  assertNear(
-    dgunProjectile.shotArmingRadius,
-    dgunCommander.unit?.radius.shotArmingRadius ?? 0,
-    'D-gun shot must snapshot the host ARM radius',
-  );
 
   const unit = world.createUnitFromBlueprint(80, 240, 1, 'unitJackal', {
     allocateSubEntityIds: false,

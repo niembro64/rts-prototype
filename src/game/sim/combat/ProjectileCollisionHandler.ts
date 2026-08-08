@@ -347,7 +347,7 @@ function computeProjectileReflectorHits(
     const projEntity = projectiles[i];
     if (!projEntity.projectile || !projEntity.ownership) continue;
     const proj = projEntity.projectile;
-    if (proj.projectileType !== 'projectile') continue;
+    if (proj.projectileType !== 'projectile' || !proj.isArmed) continue;
 
     const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
     const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
@@ -476,7 +476,12 @@ function clipTerminalWaterTransitions(
   for (let i = 0; i < projectiles.length; i++) {
     const entity = projectiles[i];
     const proj = entity.projectile;
-    if (proj === null || proj.projectileType !== 'projectile' || !isProjectileShot(proj.config.shot)) {
+    if (
+      proj === null ||
+      proj.projectileType !== 'projectile' ||
+      !proj.isArmed ||
+      !isProjectileShot(proj.config.shot)
+    ) {
       continue;
     }
     const previousX = proj.collisionStartX ?? proj.prevX ?? entity.transform.x;
@@ -776,7 +781,6 @@ function spawnSubmunitions(
   parentShot: ProjectileShot,
   parentShotEntityId: EntityId,
   parentShotSource: ShotSource,
-  parentShotArmingRadius: number,
   detonationX: number,
   detonationY: number,
   detonationZ: number,
@@ -850,7 +854,6 @@ function spawnSubmunitions(
           spawnTick: world.getTick(),
           parentShotEntityId: parentShotEntityId,
         },
-        shotArmingRadius: parentShotArmingRadius,
       },
     );
     if (proj.projectile) {
@@ -1062,7 +1065,7 @@ function detonateKilledProjectileShot(
   if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS) !== 0) {
     spawnSubmunitions(
       world, projShot,
-      projEntity.id, proj.shotSource, proj.shotArmingRadius,
+      projEntity.id, proj.shotSource,
       projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
       proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
       undefined, undefined, undefined,
@@ -1844,7 +1847,7 @@ export function checkProjectileCollisions(
           }
           spawnSubmunitions(
             world, projShot,
-            projEntity.id, proj.shotSource, proj.shotArmingRadius,
+            projEntity.id, proj.shotSource,
             projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
             proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
             surfaceNormalX, surfaceNormalY, surfaceNormalZ,

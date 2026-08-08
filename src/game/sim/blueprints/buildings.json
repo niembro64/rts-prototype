@@ -597,8 +597,7 @@
       "radius": {
         "other": 130.272,
         "hitbox": 130.272,
-        "collision": 130.272,
-        "shotArmingRadius": 195.408
+        "collision": 130.272
       },
       "signature": {
         "radarStealth": false,
@@ -666,8 +665,7 @@
       "radius": {
         "other": 42.426,
         "hitbox": 42.426,
-        "collision": 42.426,
-        "shotArmingRadius": 63.639
+        "collision": 42.426
       },
       "signature": {
         "radarStealth": false,
@@ -735,8 +733,7 @@
       "radius": {
         "other": 56.569,
         "hitbox": 56.569,
-        "collision": 56.569,
-        "shotArmingRadius": 84.8535
+        "collision": 56.569
       },
       "signature": {
         "radarStealth": false,
@@ -804,8 +801,7 @@
       "radius": {
         "other": 28.284,
         "hitbox": 28.284,
-        "collision": 28.284,
-        "shotArmingRadius": 42.426
+        "collision": 28.284
       },
       "signature": {
         "radarStealth": false,
@@ -873,8 +869,7 @@
       "radius": {
         "other": 28.284,
         "hitbox": 28.284,
-        "collision": 28.284,
-        "shotArmingRadius": 42.426
+        "collision": 28.284
       },
       "signature": {
         "radarStealth": false,

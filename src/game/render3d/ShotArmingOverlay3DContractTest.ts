@@ -6,8 +6,10 @@ import {
 } from '@/clientBarConfig';
 import type { VolumeType } from '@/types/client';
 import { WorldState } from '../sim/WorldState';
-import { getUnitBlueprint } from '../sim/blueprints';
-import { getHostShotArmingRadius } from '../sim/combat/shotArming';
+import { getBuildingBlueprint, getUnitBlueprint } from '../sim/blueprints';
+import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { createEntityVolume, writeArmingVolume } from '../sim/entityVolumes';
 import { readNetworkUnitRadius } from '../network/unitSnapshotFields';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { EntityMesh } from './EntityMesh3D';
@@ -46,15 +48,15 @@ export function runShotArmingOverlay3DContractTest(): void {
     for (const type of VOLUME_TYPES) setVolumeToggle(type, type === 'arming');
     renderer.beginFrame();
 
-    const host = new WorldState(7831, 512, 512).createUnitFromBlueprint(
+    const world = new WorldState(7831, 512, 512);
+    const host = world.createUnitFromBlueprint(
       120,
       140,
       1,
       'unitFormik',
     );
     assertContract(host.unit !== null, 'overlay host must carry a unit component');
-    // Reproduce live-client hydration: unit radius DTOs omit immutable ARM,
-    // which must be restored from the locally shared blueprint.
+    // Reproduce live-client radius hydration; ARM derives from this HIT shape.
     host.unit.radius = readNetworkUnitRadius(null, getUnitBlueprint('unitFormik').radius);
     const mesh = {
       group: new THREE.Group(),
@@ -63,23 +65,48 @@ export function runShotArmingOverlay3DContractTest(): void {
     renderer.updateHostVolumes(mesh, host);
 
     const armMesh = mesh.radiusRings?.arming;
-    assertContract(armMesh !== undefined, 'ARM toggle must create a host sphere mesh');
-    assertContract(armMesh.visible, 'ARM host sphere mesh must be visible while its button is active');
-    assertNear(
-      armMesh.scale.x,
-      getHostShotArmingRadius(host),
-      'ARM mesh scale must equal the authoritative authored host radius',
+    assertContract(armMesh !== undefined, 'ARM toggle must create a unit sphere mesh');
+    assertContract(armMesh.visible, 'ARM unit sphere mesh must be visible while its button is active');
+    const unitArm = createEntityVolume();
+    assertContract(writeArmingVolume(host, unitArm), 'unit must publish ARM geometry');
+    assertContract(unitArm.shape === 'sphere', 'unit ARM must match its spherical HIT shape');
+    assertNear(armMesh.scale.x, unitArm.halfX, 'unit ARM mesh must draw authoritative extent');
+
+    const buildingBlueprint = getBuildingBlueprint('towerCannon');
+    const building = world.createBuilding(
+      280,
+      280,
+      buildingBlueprint.gridWidth * BUILD_GRID_CELL_SIZE,
+      buildingBlueprint.gridHeight * BUILD_GRID_CELL_SIZE,
+      buildingBlueprint.gridDepth * BUILD_GRID_CELL_SIZE,
+      1,
     );
-    assertNear(
-      armMesh.scale.x,
-      host.unit.radius.collision * 1.5,
-      'ARM mesh must be 1.5 times the host collision sphere',
+    applyBuildingBlueprintRuntime(building, 'towerCannon');
+    const buildingMesh = {
+      group: new THREE.Group(),
+      turrets: [],
+    } as unknown as EntityMesh;
+    renderer.updateHostVolumes(buildingMesh, building);
+    const buildingArmMesh = buildingMesh.radiusRings?.arming;
+    assertContract(buildingArmMesh !== undefined, 'ARM toggle must create a building box mesh');
+    assertContract(buildingArmMesh.visible, 'ARM building box mesh must be visible');
+    assertContract(
+      buildingArmMesh.geometry !== radiusSphereGeom,
+      'building ARM must not regress to the old sphere geometry',
     );
+    const buildingArm = createEntityVolume();
+    assertContract(writeArmingVolume(building, buildingArm), 'building must publish ARM geometry');
+    assertContract(buildingArm.shape === 'box', 'building ARM must match its box HIT shape');
+    assertNear(buildingArmMesh.scale.x, buildingArm.halfX * 2, 'building ARM mesh x extent');
+    assertNear(buildingArmMesh.scale.y, buildingArm.halfZ * 2, 'building ARM mesh z extent');
+    assertNear(buildingArmMesh.scale.z, buildingArm.halfY * 2, 'building ARM mesh y extent');
 
     setVolumeToggle('arming', false);
     renderer.beginFrame();
     renderer.updateHostVolumes(mesh, host);
     assertContract(!armMesh.visible, 'ARM host sphere mesh must hide when its button is inactive');
+    renderer.updateHostVolumes(buildingMesh, building);
+    assertContract(!buildingArmMesh.visible, 'ARM host box mesh must hide when its button is inactive');
   } finally {
     for (const type of VOLUME_TYPES) setVolumeToggle(type, previous.get(type) ?? false);
     renderer.dispose();

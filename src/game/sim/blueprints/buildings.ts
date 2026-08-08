@@ -43,7 +43,6 @@ import { UNIT_BLUEPRINTS } from './units';
 import { isBuildableUnitBlueprintId } from './unitRoster';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import {
-  assertValidShotArmingRadius,
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import { getMaximumSensorMatrixRadius } from '../sensorConfig';
@@ -430,11 +429,6 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       health: blueprint.hp,
     },
   );
-  if (blueprint.turrets.some(
-    (mount) => TURRET_BLUEPRINTS[mount.turretBlueprintId]?.kind === 'attack',
-  )) {
-    assertValidShotArmingRadius(`building blueprint ${id}`, blueprint.base.radius);
-  }
   if (blueprint.turrets.length === 0) {
     throw new Error(`Invalid building blueprint ${id}: every building must mount at least one turret`);
   }

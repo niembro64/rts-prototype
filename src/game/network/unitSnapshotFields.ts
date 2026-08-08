@@ -37,7 +37,7 @@ import {
 type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type UnitRadiusFallback = number | Pick<
   EntityRadii,
-  'other' | 'hitbox' | 'collision' | 'shotArmingRadius'
+  'other' | 'hitbox' | 'collision'
 >;
 
 type Vec3 = { x: number; y: number; z: number };
@@ -341,11 +341,6 @@ export function readNetworkUnitRadius(
       radius !== null && radius !== undefined ? radius.collision : undefined,
       radiusFallback(fallback, 'collision'),
     ),
-    // ARM is immutable blueprint geometry, so it does not consume another
-    // per-unit wire scalar. Hydrate it from the local blueprint fallback.
-    shotArmingRadius: typeof fallback !== 'number' && isFiniteNumber(fallback.shotArmingRadius)
-      ? fallback.shotArmingRadius
-      : undefined,
   };
 }
 

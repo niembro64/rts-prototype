@@ -19,7 +19,6 @@ import {
 } from './types';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
-import { sanitizeShotArmingRadius } from './combat/shotArming';
 import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
 
 export type CreateProjectileProvenance = {
@@ -27,8 +26,6 @@ export type CreateProjectileProvenance = {
   shotBlueprintId?: string | null;
   /** Immutable source record. Submunitions pass a copy of their parent's source record. */
   shotSource?: ShotSource | null;
-  /** Host safety radius copied at launch for projectile arming. */
-  shotArmingRadius?: number | null;
 };
 
 type WorldProjectileFactoryContext = {
@@ -124,14 +121,6 @@ export class WorldProjectileFactory {
         spawnTick: this.context.getTick(),
         parentShotEntityId: null,
       };
-    const authoredShotArmingRadius =
-      provenance !== null &&
-      provenance.shotArmingRadius !== undefined &&
-      provenance.shotArmingRadius !== null
-        ? provenance.shotArmingRadius
-        : 0;
-    const shotArmingRadius = sanitizeShotArmingRadius(authoredShotArmingRadius);
-
     // Firing paths replace the default z/vz with the authoritative turret
     // center and solved launch vector immediately after construction.
     const projectile: Projectile = {
@@ -152,11 +141,10 @@ export class WorldProjectileFactory {
       maxLifespan,
       hitEntities: new Set<EntityId>(),
       maxHits,
-      // Every physical shot is inert at creation. A zero-radius or
-      // missing-host fallback is activated by the first arming update,
+      // Every physical shot is inert at creation. A missing-host fallback is
+      // activated by the first arming update,
       // keeping construction semantics uniform without delaying rays.
       isArmed: projectileType !== 'projectile',
-      shotArmingRadius,
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,
       homingTurnRate,

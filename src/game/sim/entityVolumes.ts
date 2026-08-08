@@ -32,7 +32,6 @@ import {
 } from './blueprints';
 import { getBuildingVisualTopZ } from './buildingAnchors';
 import { getUnitGroundZ } from './unitGeometry';
-import { getHostShotArmingRadius } from './combat/shotArming';
 
 export type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
 
@@ -50,6 +49,22 @@ export type EntityVolume = {
   /** Annulus only: inner radius of the ring. Zero for every other shape. */
   innerRadius: number;
 };
+
+/** Minimum uniform expansion of HIT used by ARM. Unit collision spheres can
+ * be larger than their damage spheres; in that case ARM grows further so the
+ * old 1.5 × collision safety reach is preserved without duplicate authoring. */
+export const SHOT_ARMING_MIN_HIT_VOLUME_SCALE = 1.5;
+
+export function getShotArmingHitVolumeScale(entity: Entity): number {
+  const radius = entity.unit?.radius;
+  if (radius === undefined || !Number.isFinite(radius.hitbox) || radius.hitbox <= 0) {
+    return SHOT_ARMING_MIN_HIT_VOLUME_SCALE;
+  }
+  const collisionToHit = Number.isFinite(radius.collision)
+    ? Math.max(1, radius.collision / radius.hitbox)
+    : 1;
+  return SHOT_ARMING_MIN_HIT_VOLUME_SCALE * collisionToHit;
+}
 
 export function createEntityVolume(): EntityVolume {
   return { shape: 'sphere', x: 0, y: 0, z: 0, halfX: 0, halfY: 0, halfZ: 0, innerRadius: 0 };
@@ -281,18 +296,26 @@ export function writeCollisionVolume(entity: Entity, out: EntityVolume): boolean
   return false;
 }
 
-/** The host-centered safety sphere a shot must fully clear before it
- *  arms. Hosts only — the projectile carries a copy of the number, not a
- *  volume of its own. */
+/** The host-centered safety volume a shot must fully clear before it arms.
+ *  It is always the host's HIT volume, with the same center and shape, scaled
+ *  larger on every axis. Hosts only; shots do not carry an ARM volume. */
 export function writeArmingVolume(entity: Entity, out: EntityVolume): boolean {
   if (entity.unit === null && entity.building === null) return false;
-  return writeSphere(
-    out,
-    entity.transform.x,
-    entity.transform.y,
-    entity.unit !== null ? entity.transform.z : buildingCombatCenterZ(entity),
-    getHostShotArmingRadius(entity),
-  );
+  if (!writeHitVolume(entity, out)) return false;
+  const scale = getShotArmingHitVolumeScale(entity);
+  const originalOuterRadius = out.halfX;
+  out.halfX *= scale;
+  out.halfY *= scale;
+  out.halfZ *= scale;
+  if (out.shape === 'annulus') {
+    // Enlarging an annulus must make it a superset of HIT: expand the outer
+    // wall and thicken inward instead of scaling the empty hole outward.
+    out.innerRadius = Math.max(
+      0,
+      out.innerRadius - originalOuterRadius * (scale - 1),
+    );
+  }
+  return true;
 }
 
 /** The splash volume a shot detonates with. Projectiles only. */

@@ -1300,9 +1300,6 @@
         },
         "collision": {
           "type": "number"
-        },
-        "shotArmingRadius": {
-          "type": "number"
         }
       },
       "additionalProperties": false

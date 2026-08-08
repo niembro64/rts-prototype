@@ -26,8 +26,8 @@ import {
   getUnitLockOnInclusions,
 } from './lockOnConfig';
 import {
+  assertValidEntityRadius,
   normalizeEntityBaseLedgerFromAliases,
-  assertValidShotArmingRadius,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
 
@@ -231,7 +231,7 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
-  assertValidShotArmingRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
+  assertValidEntityRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
   if (bp.turrets.length === 0) {
     throw new Error(`Invalid unit blueprint ${bp.unitBlueprintId}: every unit must mount at least one turret`);
   }

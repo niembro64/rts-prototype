@@ -959,7 +959,7 @@ function resetEveryCustomHotkey(): void {
           >COL</BarButton>
           <BarButton
             :active="model.volumeToggles.arming"
-            title="ARMING — the host-centered safety sphere (1.5 × collision radius) a shot must fully clear before it becomes collision-active. Drawn on every host that fires."
+            title="ARMING — the host HIT shape enlarged at least 1.5× about the same center and far enough to retain its collision safety margin. A physical shot remains collision-inactive until its complete hitbox clears this volume. Drawn on every host."
             @click="model.toggleVolume('arming')"
           >ARM</BarButton>
           <BarButton

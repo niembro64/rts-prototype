@@ -94,7 +94,7 @@ export type RangeType =
  *    selection — the mouse-pick volume (sphere / box / torus / prop cylinder)
  *    hit       — damage volume + the target-acquisition cylinder
  *    collision — the physics volume
- *    arming    — the host safety sphere a shot must clear before it arms
+ *    arming    — the enlarged HIT-shaped host volume a shot clears before arming
  *    explosion — the splash volume a shot detonates with
  */
 export type VolumeType =

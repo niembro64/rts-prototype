@@ -315,7 +315,6 @@ export type EntityRadiusConfig = {
   other: number;
   hitbox: number;
   collision: number;
-  shotArmingRadius?: number;
 };
 
 export type EntityDeathExplosion = {

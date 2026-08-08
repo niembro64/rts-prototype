@@ -163,8 +163,6 @@ export type EntityRadii = {
   other: number;
   hitbox: number;
   collision: number;
-  /** Host-local safety radius for arming traveling projectile shots. */
-  shotArmingRadius?: number;
 };
 
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
@@ -818,16 +816,13 @@ export type Projectile = {
   hitEntities: Set<EntityId>;
   maxHits: number;
   hasExploded: boolean;
-  /** Traveling plasma/rocket shots can only collide/explode after their
-   *  hitbox fully clears the firing host's authored arming radius. The
+  /** Traveling physical shots can only collide/explode after their
+   *  hitbox fully clears the firing host's enlarged HIT-shaped ARM volume. The
    *  projectile system flips this and resets collisionStart* to the
    *  crossing point. */
   isArmed: boolean;
-  /** Copied from the firing host at launch so projectile arming remains
-   *  stable even if later blueprint/runtime host state changes. */
-  shotArmingRadius: number;
   /** False until the shot hitbox has fully cleared the source unit's
-   *  shot sphere. Source-clearance gating is retained for line shots
+   *  source volume. Source-clearance gating is retained for line shots
    *  whose endpoint damage starts inside the firing unit. */
   hasLeftSource: boolean;
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */

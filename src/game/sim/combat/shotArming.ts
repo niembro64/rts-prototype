@@ -1,57 +1,107 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity } from '../types';
-import { getBuildingCombatCenterZ } from '../buildingAnchors';
-import { getBuildingConfig } from '../buildConfigs';
-import { deriveShotArmingRadius } from '../shotArmingRadius';
+import {
+  createEntityVolume,
+  type EntityVolume,
+  writeArmingVolume,
+} from '../entityVolumes';
 
 type ProjectileArmingState = {
   projectileType: string;
   isArmed: boolean;
-  shotArmingRadius: number;
   collisionStartX: number | null;
   collisionStartY: number | null;
   collisionStartZ: number | null;
 };
 
-export function sanitizeShotArmingRadius(radius: number | null | undefined): number {
-  return radius !== null && radius !== undefined && Number.isFinite(radius)
-    ? Math.max(0, radius)
-    : 0;
+const _hostArmingVolume = createEntityVolume();
+
+function finiteRadius(radius: number): number {
+  return Number.isFinite(radius) ? Math.max(0, radius) : 0;
 }
 
-/** Authored host-centered safety sphere copied into every physical shot at launch. */
-export function getHostShotArmingRadius(host: Entity): number {
-  if (host.unit !== null) {
-    return sanitizeShotArmingRadius(
-      host.unit.radius.shotArmingRadius ?? deriveShotArmingRadius(host.unit.radius.collision),
-    );
+/** True while any part of the projectile's spherical HIT volume overlaps ARM. */
+export function projectileOverlapsArmingVolume(
+  volume: EntityVolume,
+  x: number,
+  y: number,
+  z: number,
+  projectileHitboxRadius: number,
+): boolean {
+  const radius = finiteRadius(projectileHitboxRadius);
+  const dx = x - volume.x;
+  const dy = y - volume.y;
+  const dz = z - volume.z;
+
+  switch (volume.shape) {
+    case 'sphere': {
+      const clearance = volume.halfX + radius;
+      return dx * dx + dy * dy + dz * dz <= clearance * clearance;
+    }
+    case 'box': {
+      const outsideX = Math.max(Math.abs(dx) - volume.halfX, 0);
+      const outsideY = Math.max(Math.abs(dy) - volume.halfY, 0);
+      const outsideZ = Math.max(Math.abs(dz) - volume.halfZ, 0);
+      return outsideX * outsideX + outsideY * outsideY + outsideZ * outsideZ <= radius * radius;
+    }
+    case 'cylinder': {
+      const radialOutside = Math.max(DMath.hypot(dx, dy) - volume.halfX, 0);
+      const verticalOutside = Math.max(Math.abs(dz) - volume.halfZ, 0);
+      return radialOutside * radialOutside + verticalOutside * verticalOutside <= radius * radius;
+    }
+    case 'annulus': {
+      const radialDistance = DMath.hypot(dx, dy);
+      const radialOutside = radialDistance < volume.innerRadius
+        ? volume.innerRadius - radialDistance
+        : Math.max(radialDistance - volume.halfX, 0);
+      const verticalOutside = Math.max(Math.abs(dz) - volume.halfZ, 0);
+      return radialOutside * radialOutside + verticalOutside * verticalOutside <= radius * radius;
+    }
   }
-  const buildingBlueprintId = host.buildingBlueprintId;
-  if (buildingBlueprintId !== undefined && buildingBlueprintId !== null) {
-    const radius = getBuildingConfig(buildingBlueprintId).radius;
-    return sanitizeShotArmingRadius(
-      radius.shotArmingRadius ?? deriveShotArmingRadius(radius.collision),
-    );
-  }
-  return 0;
 }
 
-/**
- * Center-distance at which a projectile becomes collision-active. The authored
- * ARM sphere describes the host safety volume; adding the projectile hitbox
- * radius makes activation wait until the whole shot has cleared that volume.
- */
-export function getShotArmingClearanceRadius(
-  hostArmingRadius: number,
+function crossingFraction(
+  volume: EntityVolume,
+  previousX: number,
+  previousY: number,
+  previousZ: number,
+  currentX: number,
+  currentY: number,
+  currentZ: number,
   projectileHitboxRadius: number,
 ): number {
-  return sanitizeShotArmingRadius(hostArmingRadius) +
-    sanitizeShotArmingRadius(projectileHitboxRadius);
+  if (!projectileOverlapsArmingVolume(
+    volume,
+    previousX,
+    previousY,
+    previousZ,
+    projectileHitboxRadius,
+  )) {
+    return 0;
+  }
+
+  // The overlap distance for boxes/cylinders/annuli is piecewise quadratic.
+  // A fixed-count bisection is deterministic and runs only once in a shot's
+  // life, at its transition from inert to active.
+  let insideT = 0;
+  let outsideT = 1;
+  for (let i = 0; i < 48; i++) {
+    const t = (insideT + outsideT) * 0.5;
+    const x = previousX + t * (currentX - previousX);
+    const y = previousY + t * (currentY - previousY);
+    const z = previousZ + t * (currentZ - previousZ);
+    if (projectileOverlapsArmingVolume(volume, x, y, z, projectileHitboxRadius)) {
+      insideT = t;
+    } else {
+      outsideT = t;
+    }
+  }
+  return outsideT;
 }
 
 /**
- * Arms a physical shot at the exact swept-segment crossing of its host's ARM
- * sphere. The crossing becomes collisionStart, so no inactive segment can be
+ * Arms a physical shot at the swept-segment crossing of its host's ARM
+ * volume. The crossing becomes collisionStart, so no inactive segment can be
  * replayed as a hit after activation.
  */
 export function updateProjectileArming(
@@ -68,8 +118,7 @@ export function updateProjectileArming(
   if (projectile.projectileType !== 'projectile') return true;
   if (projectile.isArmed) return true;
 
-  const armingRadius = sanitizeShotArmingRadius(projectile.shotArmingRadius);
-  if (armingRadius <= 0 || host === undefined) {
+  if (host === undefined || !writeArmingVolume(host, _hostArmingVolume)) {
     projectile.isArmed = true;
     projectile.collisionStartX = host === undefined ? currentX : previousX;
     projectile.collisionStartY = host === undefined ? currentY : previousY;
@@ -77,38 +126,24 @@ export function updateProjectileArming(
     return true;
   }
 
-  // The arming sphere is centered on the host's combat box, not its
-  // transform: a hovering building's transform.z sits at the ground
-  // while its body (and the emitting mounts) float above it.
-  const hostZ = getBuildingCombatCenterZ(host);
-  const prevDx = previousX - host.transform.x;
-  const prevDy = previousY - host.transform.y;
-  const prevDz = previousZ - hostZ;
-  const currDx = currentX - host.transform.x;
-  const currDy = currentY - host.transform.y;
-  const currDz = currentZ - hostZ;
-  const clearanceRadius = getShotArmingClearanceRadius(
-    armingRadius,
+  if (projectileOverlapsArmingVolume(
+    _hostArmingVolume,
+    currentX,
+    currentY,
+    currentZ,
+    projectileHitboxRadius,
+  )) return false;
+
+  const t = crossingFraction(
+    _hostArmingVolume,
+    previousX,
+    previousY,
+    previousZ,
+    currentX,
+    currentY,
+    currentZ,
     projectileHitboxRadius,
   );
-  const radiusSq = clearanceRadius * clearanceRadius;
-  const prevDistSq = prevDx * prevDx + prevDy * prevDy + prevDz * prevDz;
-  const currDistSq = currDx * currDx + currDy * currDy + currDz * currDz;
-  if (currDistSq <= radiusSq) return false;
-
-  let t = 0;
-  if (prevDistSq < radiusSq) {
-    const segDx = currentX - previousX;
-    const segDy = currentY - previousY;
-    const segDz = currentZ - previousZ;
-    const a = segDx * segDx + segDy * segDy + segDz * segDz;
-    const b = 2 * (prevDx * segDx + prevDy * segDy + prevDz * segDz);
-    const c = prevDistSq - radiusSq;
-    const disc = b * b - 4 * a * c;
-    t = a > 1e-12 && disc >= 0
-      ? (-b + DMath.sqrt(disc)) / (2 * a)
-      : 1;
-  }
   const clampedT = Math.max(0, Math.min(1, t));
   projectile.isArmed = true;
   projectile.collisionStartX = previousX + clampedT * (currentX - previousX);

@@ -482,7 +482,6 @@ pub struct EntityRadiusConfig {
     pub other: f64,
     pub hitbox: f64,
     pub collision: f64,
-    pub shotArmingRadius: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
