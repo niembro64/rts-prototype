@@ -839,111 +839,127 @@
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "lengthFrac": 0.468,
-          "widthFrac": 0.5940000000000001,
-          "heightFrac": 0.27,
-          "centerYFrac": 1.5
+          "lengthFrac": 0.4048,
+          "widthFrac": 0.49280000000000007,
+          "heightFrac": 0.2288,
+          "centerYFrac": 1.52
         },
         {
           "kind": "box",
           "offsetForward": 0.0,
-          "lengthFrac": 0.30600000000000005,
-          "widthFrac": 0.342,
-          "heightFrac": 0.234,
+          "lengthFrac": 0.2288,
+          "widthFrac": 0.24640000000000004,
+          "heightFrac": 0.1936,
           "centerYFrac": 1.78
         },
         {
           "kind": "box",
-          "offsetForward": 0.02,
-          "lengthFrac": 0.48600000000000004,
-          "widthFrac": 0.63,
-          "heightFrac": 0.36000000000000004,
-          "centerYFrac": 2.06
+          "offsetForward": 0.04,
+          "lengthFrac": 0.44,
+          "widthFrac": 0.5104,
+          "heightFrac": 0.2992,
+          "centerYFrac": 2.04
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.2,
+          "lengthFrac": 0.12320000000000002,
+          "widthFrac": 0.3872,
+          "heightFrac": 0.17600000000000002,
+          "centerYFrac": 2.0576
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "lengthFrac": 0.396,
-          "widthFrac": 0.9540000000000001,
-          "heightFrac": 0.198,
-          "centerYFrac": 2.3
+          "lengthFrac": 0.35200000000000004,
+          "widthFrac": 0.8623999999999999,
+          "heightFrac": 0.15839999999999999,
+          "centerYFrac": 2.28
         },
         {
           "kind": "box",
-          "offsetForward": 0.1,
-          "lengthFrac": 0.234,
-          "widthFrac": 0.25200000000000006,
-          "heightFrac": 0.216,
-          "centerYFrac": 2.58
+          "offsetForward": 0.06,
+          "lengthFrac": 0.1936,
+          "widthFrac": 0.2112,
+          "heightFrac": 0.17600000000000002,
+          "centerYFrac": 2.54
         },
         {
           "kind": "box",
-          "offsetForward": -0.44,
-          "lengthFrac": 0.234,
-          "widthFrac": 0.558,
-          "heightFrac": 0.468,
-          "centerYFrac": 2.1799999999999997
+          "offsetForward": -0.06,
+          "lengthFrac": 0.12320000000000002,
+          "widthFrac": 0.264,
+          "heightFrac": 0.08800000000000001,
+          "centerYFrac": 2.6544
         },
         {
           "kind": "box",
-          "offsetForward": -0.56,
-          "offsetLateral": -0.18000000000000002,
-          "lengthFrac": 0.12600000000000003,
-          "widthFrac": 0.14400000000000002,
-          "heightFrac": 0.41400000000000003,
-          "centerYFrac": 2.1799999999999997
+          "offsetForward": -0.4,
+          "lengthFrac": 0.1936,
+          "widthFrac": 0.4576,
+          "heightFrac": 0.4048,
+          "centerYFrac": 2.16
         },
         {
           "kind": "box",
-          "offsetForward": -0.56,
+          "offsetForward": -0.5,
+          "offsetLateral": -0.1496,
+          "lengthFrac": 0.1056,
+          "widthFrac": 0.1144,
+          "heightFrac": 0.35200000000000004,
+          "centerYFrac": 2.16
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
           "offsetLateral": 0.0,
-          "lengthFrac": 0.12600000000000003,
-          "widthFrac": 0.14400000000000002,
-          "heightFrac": 0.41400000000000003,
-          "centerYFrac": 2.1799999999999997
-        },
-        {
-          "kind": "box",
-          "offsetForward": -0.56,
-          "offsetLateral": 0.18000000000000002,
-          "lengthFrac": 0.12600000000000003,
-          "widthFrac": 0.14400000000000002,
-          "heightFrac": 0.41400000000000003,
-          "centerYFrac": 2.1799999999999997
+          "lengthFrac": 0.1056,
+          "widthFrac": 0.1144,
+          "heightFrac": 0.35200000000000004,
+          "centerYFrac": 2.16
         },
         {
           "kind": "box",
           "offsetForward": -0.5,
-          "lengthFrac": 0.30600000000000005,
-          "widthFrac": 0.5940000000000001,
-          "heightFrac": 0.07200000000000001,
-          "centerYFrac": 2.432
+          "offsetLateral": 0.1496,
+          "lengthFrac": 0.1056,
+          "widthFrac": 0.1144,
+          "heightFrac": 0.35200000000000004,
+          "centerYFrac": 2.16
         },
         {
           "kind": "box",
-          "offsetForward": -0.5,
-          "lengthFrac": 0.30600000000000005,
-          "widthFrac": 0.5940000000000001,
-          "heightFrac": 0.07200000000000001,
-          "centerYFrac": 1.9279999999999997
+          "offsetForward": -0.45,
+          "lengthFrac": 0.264,
+          "widthFrac": 0.49280000000000007,
+          "heightFrac": 0.06160000000000001,
+          "centerYFrac": 2.3800000000000003
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.45,
+          "lengthFrac": 0.264,
+          "widthFrac": 0.49280000000000007,
+          "heightFrac": 0.06160000000000001,
+          "centerYFrac": 1.9400000000000002
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "offsetLateral": -0.45,
-          "lengthFrac": 0.324,
-          "widthFrac": 0.216,
-          "heightFrac": 0.27,
-          "centerYFrac": 2.3
+          "offsetLateral": -0.4048,
+          "lengthFrac": 0.2816,
+          "widthFrac": 0.17600000000000002,
+          "heightFrac": 0.2288,
+          "centerYFrac": 2.28
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "offsetLateral": 0.45,
-          "lengthFrac": 0.324,
-          "widthFrac": 0.216,
-          "heightFrac": 0.27,
-          "centerYFrac": 2.3
+          "offsetLateral": 0.4048,
+          "lengthFrac": 0.2816,
+          "widthFrac": 0.17600000000000002,
+          "heightFrac": 0.2288,
+          "centerYFrac": 2.28
         }
       ]
     },
@@ -964,7 +980,7 @@
     },
     "unitLocomotion": {
       "type": "standing",
-      "physicsPresetId": "legs",
+      "physicsPresetId": "standing",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 14.5
@@ -988,10 +1004,10 @@
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.0,
-            "yUnitRadiusRatio": 0.3,
+            "yUnitRadiusRatio": 0.28,
             "zUnitRadiusRatio": 1.42
           },
-          "radius": 2.6,
+          "radius": 2.9,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.74
@@ -1000,8 +1016,8 @@
               "lengthUnitRadiusRatio": 0.82
             }
           },
-          "footLengthRatio": 0.6,
-          "footWidthRatio": 3.2,
+          "footLengthRatio": 0.52,
+          "footWidthRatio": 2.4,
           "strideLengthRatio": 0.78,
           "strideLiftRatio": 0.22,
           "standHeightRatio": 0.92
@@ -1009,10 +1025,10 @@
         "arms": {
           "shoulder": {
             "xUnitRadiusRatio": -0.02,
-            "yUnitRadiusRatio": 0.8,
+            "yUnitRadiusRatio": 0.76,
             "zUnitRadiusRatio": 2.22
           },
-          "radius": 2.3,
+          "radius": 2.1,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.48
@@ -3951,111 +3967,127 @@
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "lengthFrac": 0.52,
-          "widthFrac": 0.66,
-          "heightFrac": 0.3,
-          "centerYFrac": 1.62
+          "lengthFrac": 0.46,
+          "widthFrac": 0.56,
+          "heightFrac": 0.26,
+          "centerYFrac": 1.66
         },
         {
           "kind": "box",
           "offsetForward": 0.0,
-          "lengthFrac": 0.34,
-          "widthFrac": 0.38,
-          "heightFrac": 0.26,
-          "centerYFrac": 1.92
+          "lengthFrac": 0.26,
+          "widthFrac": 0.28,
+          "heightFrac": 0.22,
+          "centerYFrac": 1.94
         },
         {
           "kind": "box",
-          "offsetForward": 0.02,
-          "lengthFrac": 0.54,
-          "widthFrac": 0.7,
-          "heightFrac": 0.4,
+          "offsetForward": 0.04,
+          "lengthFrac": 0.5,
+          "widthFrac": 0.58,
+          "heightFrac": 0.34,
+          "centerYFrac": 2.22
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.2,
+          "lengthFrac": 0.14,
+          "widthFrac": 0.44,
+          "heightFrac": 0.2,
           "centerYFrac": 2.24
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "lengthFrac": 0.44,
-          "widthFrac": 1.06,
-          "heightFrac": 0.22,
-          "centerYFrac": 2.52
+          "lengthFrac": 0.4,
+          "widthFrac": 0.98,
+          "heightFrac": 0.18,
+          "centerYFrac": 2.48
         },
         {
           "kind": "box",
-          "offsetForward": 0.1,
-          "lengthFrac": 0.26,
-          "widthFrac": 0.28,
-          "heightFrac": 0.24,
-          "centerYFrac": 2.84
+          "offsetForward": 0.06,
+          "lengthFrac": 0.22,
+          "widthFrac": 0.24,
+          "heightFrac": 0.2,
+          "centerYFrac": 2.76
         },
         {
           "kind": "box",
-          "offsetForward": -0.44,
-          "lengthFrac": 0.26,
-          "widthFrac": 0.62,
-          "heightFrac": 0.52,
-          "centerYFrac": 2.38
-        },
-        {
-          "kind": "box",
-          "offsetForward": -0.56,
-          "offsetLateral": -0.2,
+          "offsetForward": -0.06,
           "lengthFrac": 0.14,
-          "widthFrac": 0.16,
-          "heightFrac": 0.46,
-          "centerYFrac": 2.38
+          "widthFrac": 0.3,
+          "heightFrac": 0.1,
+          "centerYFrac": 2.8899999999999997
         },
         {
           "kind": "box",
-          "offsetForward": -0.56,
+          "offsetForward": -0.4,
+          "lengthFrac": 0.22,
+          "widthFrac": 0.52,
+          "heightFrac": 0.46,
+          "centerYFrac": 2.35
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
+          "offsetLateral": -0.17,
+          "lengthFrac": 0.12,
+          "widthFrac": 0.13,
+          "heightFrac": 0.4,
+          "centerYFrac": 2.35
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
           "offsetLateral": 0.0,
-          "lengthFrac": 0.14,
-          "widthFrac": 0.16,
-          "heightFrac": 0.46,
-          "centerYFrac": 2.38
-        },
-        {
-          "kind": "box",
-          "offsetForward": -0.56,
-          "offsetLateral": 0.2,
-          "lengthFrac": 0.14,
-          "widthFrac": 0.16,
-          "heightFrac": 0.46,
-          "centerYFrac": 2.38
+          "lengthFrac": 0.12,
+          "widthFrac": 0.13,
+          "heightFrac": 0.4,
+          "centerYFrac": 2.35
         },
         {
           "kind": "box",
           "offsetForward": -0.5,
-          "lengthFrac": 0.34,
-          "widthFrac": 0.66,
-          "heightFrac": 0.08,
-          "centerYFrac": 2.66
+          "offsetLateral": 0.17,
+          "lengthFrac": 0.12,
+          "widthFrac": 0.13,
+          "heightFrac": 0.4,
+          "centerYFrac": 2.35
         },
         {
           "kind": "box",
-          "offsetForward": -0.5,
-          "lengthFrac": 0.34,
-          "widthFrac": 0.66,
-          "heightFrac": 0.08,
-          "centerYFrac": 2.0999999999999996
+          "offsetForward": -0.45,
+          "lengthFrac": 0.3,
+          "widthFrac": 0.56,
+          "heightFrac": 0.07,
+          "centerYFrac": 2.6
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.45,
+          "lengthFrac": 0.3,
+          "widthFrac": 0.56,
+          "heightFrac": 0.07,
+          "centerYFrac": 2.1
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "offsetLateral": -0.5,
-          "lengthFrac": 0.36,
-          "widthFrac": 0.24,
-          "heightFrac": 0.3,
-          "centerYFrac": 2.52
+          "offsetLateral": -0.46,
+          "lengthFrac": 0.32,
+          "widthFrac": 0.2,
+          "heightFrac": 0.26,
+          "centerYFrac": 2.48
         },
         {
           "kind": "box",
           "offsetForward": -0.02,
-          "offsetLateral": 0.5,
-          "lengthFrac": 0.36,
-          "widthFrac": 0.24,
-          "heightFrac": 0.3,
-          "centerYFrac": 2.52
+          "offsetLateral": 0.46,
+          "lengthFrac": 0.32,
+          "widthFrac": 0.2,
+          "heightFrac": 0.26,
+          "centerYFrac": 2.48
         }
       ]
     },
@@ -4081,7 +4113,7 @@
     },
     "unitLocomotion": {
       "type": "standing",
-      "physicsPresetId": "amphibiousLegs",
+      "physicsPresetId": "standing",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -4105,10 +4137,10 @@
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.0,
-            "yUnitRadiusRatio": 0.34,
+            "yUnitRadiusRatio": 0.3,
             "zUnitRadiusRatio": 1.52
           },
-          "radius": 4.6,
+          "radius": 5.2,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.8
@@ -4117,8 +4149,8 @@
               "lengthUnitRadiusRatio": 0.88
             }
           },
-          "footLengthRatio": 0.62,
-          "footWidthRatio": 3.4,
+          "footLengthRatio": 0.52,
+          "footWidthRatio": 2.6,
           "strideLengthRatio": 0.72,
           "strideLiftRatio": 0.2,
           "standHeightRatio": 0.92
@@ -4126,10 +4158,10 @@
         "arms": {
           "shoulder": {
             "xUnitRadiusRatio": -0.02,
-            "yUnitRadiusRatio": 0.92,
-            "zUnitRadiusRatio": 2.44
+            "yUnitRadiusRatio": 0.88,
+            "zUnitRadiusRatio": 2.42
           },
-          "radius": 4.2,
+          "radius": 3.8,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.52

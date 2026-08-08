@@ -260,6 +260,44 @@
         ]
       }
     },
+    "standing": {
+      "actuator": {
+        "propulsionAxis": "bodyForward",
+        "ground": {
+          "staticFrictionCoefficient": 1,
+          "tangentialDampingRate": 1.519068479057
+        },
+        "air": {
+          "linearDampingRate": 3.077597663253,
+          "angularDampingRate": 3.077597663253,
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        },
+        "water": {
+          "linearDampingRate": 8,
+          "angularDampingRate": 4,
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "cruiseWhenUncommanded": false
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "single"
+      },
+      "navigation": {
+        "allowOnGround": true,
+        "allowedFluidMedia": [
+          "water"
+        ]
+      }
+    },
     "hover": {
       "actuator": {
         "propulsionAxis": "worldPlanar",

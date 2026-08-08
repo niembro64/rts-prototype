@@ -166,6 +166,20 @@ const STAND_KNEE_BEND_RAD = 0.16;
 /** A foothold further than this from where the leg wants it, as a fraction of
  *  the step length, is overdue and the leg picks a new one. */
 const STEP_TRIGGER_FRACTION = 0.4;
+/** Below this ground speed the unit is standing, not walking, and a standing
+ *  mech does not shuffle: no step may START while idle.
+ *
+ *  Reach alone is not enough of a rule. A hull that is stopped still drifts a
+ *  little — prediction settling, a hip yaw easing back to square, a contact
+ *  point resampling — and any of it can nudge a hip past the trigger and set a
+ *  foot swinging for no reason a viewer can see. A leg already in the air
+ *  finishes its step; it is only the decision to start one that is gated. */
+const IDLE_SPEED = 1.5;
+/** ...but turning on the spot is NOT standing. A `standing` unit pushes along
+ *  its own facing, so it turns before it walks, and that turn has no velocity
+ *  in it at all — gated on speed alone the commander would pivot with its feet
+ *  welded to the ground and then set off already twisted. */
+const IDLE_YAW_RATE = 0.12;
 /** Seconds for the arm swing amplitude to ease in and out. */
 const GAIT_EASE_SECONDS = 0.16;
 /** Ground speed at which the arms reach full swing, world units/sec. */
@@ -467,7 +481,10 @@ export function updateStandingRig(
 
   const swingSeconds = Math.min(
     SWING_MAX_SECONDS,
-    Math.max(SWING_MIN_SECONDS, speed > 0.01 ? (mesh.stepLength * 0.5) / speed : SWING_MAX_SECONDS),
+    Math.max(
+      SWING_MIN_SECONDS,
+      planarSpeed > 0.01 ? (mesh.stepLength * 0.5) / planarSpeed : SWING_MAX_SECONDS,
+    ),
   );
 
   for (let i = 0; i < mesh.legs.length; i++) {
@@ -503,7 +520,12 @@ export function updateStandingRig(
       const dz = _hipWorld.z - leg.footZ;
       const overdue = Math.hypot(dx, dz) > mesh.stepLength * STEP_TRIGGER_FRACTION;
       // One foot at a time. That rule IS a biped's balance.
-      if (overdue && mesh.swingingLeg === -1) {
+      // Idle is judged on the unit's own VELOCITY, not on the rolling contact
+      // that clocks the arms: the contact is sampled at the terrain footprint
+      // while the hips ride the lifted root, and gating one on the other let a
+      // walking commander stand still with its feet 54 units behind it.
+      const idle = planarSpeed <= IDLE_SPEED && Math.abs(pose.yawRate) <= IDLE_YAW_RATE;
+      if (overdue && mesh.swingingLeg === -1 && !idle) {
         mesh.swingingLeg = i;
         leg.stepping = true;
         leg.stepT = 0;
