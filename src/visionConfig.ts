@@ -2,9 +2,10 @@
 //
 // A unit's presence on screen is a function of the local player's vision:
 //   - enters vision  → fades IN  over `fadeInMs`
-//   - leaves vision  → fades OUT in place over `fadeOutMs` (a plain alpha
-//                      fade — NO scatter/explosion; it isn't dead, just
-//                      out of sight)
+//   - leaves vision  → units coast at their last visible velocity while
+//                      fading OUT over `fadeOutMs`; buildings remain in place.
+//                      There is NO scatter/explosion: the entity is merely
+//                      out of sight, not dead.
 //   - is destroyed   → plays the death scatter + explosion over `deathFadeMs`
 //
 // Each transition owns its own duration so they can be tuned independently;
@@ -14,8 +15,8 @@ import rawVisionConfig from './visionConfig.json';
 type VisionConfig = {
   /** Fade-in duration (ms) when a unit becomes newly visible (enters vision). */
   fadeInMs: number;
-  /** Fade-out duration (ms) when a unit leaves vision — a plain alpha fade
-   *  in place, with no scatter or explosion. */
+  /** Fade-out duration (ms) when an entity leaves vision — units coast while
+   *  buildings remain in place, with no scatter or explosion. */
   fadeOutMs: number;
   /** Death-out scatter + fade duration (ms) when a unit is actually destroyed. */
   deathFadeMs: number;

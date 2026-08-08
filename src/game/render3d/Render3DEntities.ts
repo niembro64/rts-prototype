@@ -64,7 +64,11 @@ import {
   updateEntityBuildVisual,
   type EntityBuildVisual,
 } from './EntityFade3D';
-import { DyingUnitScatter3D } from './DyingUnitScatter3D';
+import {
+  captureUnitRendererOwnedParts3D,
+  DyingUnitScatter3D,
+} from './DyingUnitScatter3D';
+import { VanishingUnitMotion3D } from './VanishingUnitMotion3D';
 import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
@@ -194,6 +198,7 @@ export class Render3DEntities {
   // its own VISION_FADE_OUT_MS clock. Assigned in the constructor.
   private vanishingUnits!: DyingMeshFade<EntityMesh>;
   private dyingUnitScatter!: DyingUnitScatter3D;
+  private readonly vanishingUnitMotion = new VanishingUnitMotion3D();
   private readonly activeLocomotionUnitIds = new IndexedEntityIdSet();
   private legsRadiusToggle = getLegsRadiusToggle();
   private legsReachToggle = getLegsReachToggle();
@@ -433,11 +438,15 @@ export class Render3DEntities {
       },
       (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
     );
-    // OUT-OF-VISION units: a plain alpha fade-out in place — frozen pose,
-    // no scatter, no explosion — over the separate VISION_FADE_OUT_MS clock.
+    // OUT-OF-VISION units: coast at the final visible linear velocity while
+    // alpha fades. This is presentation-only: no scatter, explosion, or sim
+    // pose mutation occurs over the separate VISION_FADE_OUT_MS clock.
     this.vanishingUnits = new DyingMeshFade<EntityMesh>(
       VISION_FADE_OUT_MS,
-      (mesh, fade) => this.applyUnitEntityFade(mesh, fade, null),
+      (mesh, fade, dtMs) => {
+        this.vanishingUnitMotion.advance(mesh, dtMs);
+        this.applyUnitEntityFade(mesh, fade, null);
+      },
       (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
     );
   }
@@ -447,6 +456,7 @@ export class Render3DEntities {
    *  slots, and detach the group from the world. */
   private disposeDeadUnitMesh(id: EntityId, mesh: EntityMesh): void {
     this.dyingUnitScatter.forget(mesh);
+    this.vanishingUnitMotion.forget(mesh);
     disposeEntityGroupFade(mesh.group);
     destroyLocomotion(mesh.locomotion, this.legRenderer);
     this.world.remove(mesh.group);
@@ -820,6 +830,12 @@ export class Render3DEntities {
       this.reactivateUnitMeshForLod(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
+      // Preserve the last velocity while this row is visible. If vision drops
+      // the next packet removes the row, so the retained visual uses this
+      // render-axis vector to coast through its fade instead of freezing.
+      m.unitPresentationVelocityX = unitRows.velocityX[row];
+      m.unitPresentationVelocityY = e.unit.velocityZ ?? 0;
+      m.unitPresentationVelocityZ = unitRows.velocityY[row];
       // Below the animation rung the spin state stops advancing — the
       // spin group FREEZES at its last angle (turretPose keeps writing
       // the stored value) instead of snapping to zero.
@@ -1265,6 +1281,20 @@ export class Render3DEntities {
       }
       this.dyingUnits.markDying(id, m, m.entityLifecycleFade);
     } else {
+      this.vanishingUnitMotion.prepare(
+        m,
+        {
+          x: m.unitPresentationVelocityX ?? 0,
+          y: m.unitPresentationVelocityY ?? 0,
+          z: m.unitPresentationVelocityZ ?? 0,
+        },
+        captureUnitRendererOwnedParts3D(
+          m,
+          this.legRenderer,
+          this.unitDetailInstances,
+          this.teamTrim,
+        ),
+      );
       this.vanishingUnits.markDying(id, m, m.entityLifecycleFade);
     }
     this.unitMeshes.delete(id);

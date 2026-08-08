@@ -9,6 +9,36 @@ import {
 } from './EntityDeathDisassembly3D';
 
 /**
+ * Capture the unit surfaces that live in renderer-wide instance pools rather
+ * than below `mesh.group`. Any render-only whole-unit motion must update these
+ * handles alongside the scene-graph root or the visual will pull apart.
+ */
+export function captureUnitRendererOwnedParts3D(
+  mesh: EntityMesh,
+  legRenderer: LegInstancedRenderer,
+  unitDetailInstances: UnitDetailInstanceRenderer3D,
+  teamTrim: TeamTrimRenderer3D | null,
+): EntityDeathRenderablePart3D[] {
+  const rendererParts: EntityDeathRenderablePart3D[] = [
+    ...unitDetailInstances.captureEntityDeathParts(mesh),
+  ];
+  if (mesh.locomotion?.type === 'legs') {
+    rendererParts.push(...legRenderer.captureEntityDeathParts(mesh.locomotion));
+  }
+  if (mesh.teamTrimSlot !== undefined) {
+    const part = teamTrim?.captureDeathPart(mesh.teamTrimSlot);
+    if (part !== undefined && part !== null) rendererParts.push(part);
+  }
+  for (const turret of mesh.turrets) {
+    const slot = turret.teamCollar?.slot;
+    if (slot === undefined) continue;
+    const part = teamTrim?.captureDeathPart(slot);
+    if (part !== undefined && part !== null) rendererParts.push(part);
+  }
+  return rendererParts;
+}
+
+/**
  * Unit adapter around the shared death disassembly. Every renderer-owned
  * instance is captured alongside every ordinary Mesh descendant, so a smooth
  * hull lobe, each barrel, each leg segment/joint/foot, each shield panel, and
@@ -24,22 +54,12 @@ export class DyingUnitScatter3D {
   ) {}
 
   prepare(mesh: EntityMesh, blast: EntityDeathBlast3D): number {
-    const rendererParts: EntityDeathRenderablePart3D[] = [
-      ...this.unitDetailInstances.captureEntityDeathParts(mesh),
-    ];
-    if (mesh.locomotion?.type === 'legs') {
-      rendererParts.push(...this.legRenderer.captureEntityDeathParts(mesh.locomotion));
-    }
-    if (mesh.teamTrimSlot !== undefined) {
-      const part = this.teamTrim?.captureDeathPart(mesh.teamTrimSlot);
-      if (part !== undefined && part !== null) rendererParts.push(part);
-    }
-    for (const turret of mesh.turrets) {
-      const slot = turret.teamCollar?.slot;
-      if (slot === undefined) continue;
-      const part = this.teamTrim?.captureDeathPart(slot);
-      if (part !== undefined && part !== null) rendererParts.push(part);
-    }
+    const rendererParts = captureUnitRendererOwnedParts3D(
+      mesh,
+      this.legRenderer,
+      this.unitDetailInstances,
+      this.teamTrim,
+    );
     return this.disassembly.prepare(mesh, blast, rendererParts);
   }
 

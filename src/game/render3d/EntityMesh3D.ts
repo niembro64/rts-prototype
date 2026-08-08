@@ -213,7 +213,7 @@ export type EntityMesh = {
    *  as opposed to merely leaving the local player's vision. Read when the
    *  render removal queue drops the mesh from the live set: killed units play
    *  the scatter + death-fade, killed buildings/towers use the death fade,
-   *  and entities that just lost vision fade out quietly in place. */
+   *  and entities that just lost vision fade out quietly while coasting. */
   killed?: boolean;
   /** Killing-blow motion consumed only by the death disassembly. Undefined
    *  keeps the ordinary intact death fade (for example when the client-side
@@ -242,6 +242,12 @@ export type EntityMesh = {
    *  opacity 1 exactly once, then skip steady-state fade writes. */
   unitFadeActive?: boolean;
   unitTurretGroupFadeActive?: boolean[];
+  /** Last visible linear velocity mapped into Three world axes. When a unit
+   *  leaves vision, its retained render mesh coasts at this velocity for the
+   *  short alpha fade without advancing or mutating simulation state. */
+  unitPresentationVelocityX?: number;
+  unitPresentationVelocityY?: number;
+  unitPresentationVelocityZ?: number;
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
    *  the body-+Y wing down) for hover/flying chassis. EMA-tracked at
    *  render cadence from body-lateral centripetal acceleration
