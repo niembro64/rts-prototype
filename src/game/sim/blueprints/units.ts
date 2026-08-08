@@ -18,7 +18,7 @@ import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
-import type { LegConfig, StandArms, StandLegs } from '@/types/blueprintSchema.generated';
+import type { LegConfig, StandingArms, StandingLegs } from '@/types/blueprintSchema.generated';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -231,7 +231,7 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
 }
 
 /** Leg layout is authored the same way whichever mechanism wears it: `legs` is
- *  the config itself, `stand` carries it under `config.legs`. Both walk on the
+ *  the config itself, `standing` carries it under `config.legs`. Both walk on the
  *  same rig, so both answer to the same envelope rather than one of them
  *  getting a second copy of these bounds to drift from. */
 function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
@@ -322,7 +322,7 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
 /** A mech leg is a hinge in one vertical plane, so it is authored and checked
  *  on its own terms — there is no reach shell, no chopping sphere and no snap
  *  ray here, because there is no third degree of freedom for them to bound. */
-function validateStandLegs(unitBlueprintId: string, legs: StandLegs): void {
+function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void {
   const values = [
     ['hip.xUnitRadiusRatio', legs.hip.xUnitRadiusRatio],
     ['hip.yUnitRadiusRatio', legs.hip.yUnitRadiusRatio],
@@ -370,7 +370,7 @@ function validateStandLegs(unitBlueprintId: string, legs: StandLegs): void {
  *  reaches the sim — arms are presentation — but a non-finite ratio poses the
  *  whole limb at NaN, which reads as a missing arm rather than as a bad
  *  blueprint. */
-function validateStandArms(unitBlueprintId: string, arms: StandArms): void {
+function validateStandingArms(unitBlueprintId: string, arms: StandingArms): void {
   const values = [
     ['shoulder.xUnitRadiusRatio', arms.shoulder.xUnitRadiusRatio],
     ['shoulder.yUnitRadiusRatio', arms.shoulder.yUnitRadiusRatio],
@@ -427,9 +427,9 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 
   if (bp.unitLocomotion.type === 'legs') {
     validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config);
-  } else if (bp.unitLocomotion.type === 'stand') {
-    validateStandLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
-    validateStandArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
+  } else if (bp.unitLocomotion.type === 'standing') {
+    validateStandingLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
+    validateStandingArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
   }
 
   // Mount-finiteness only — cross-blueprint turret-ID validation runs

@@ -2202,7 +2202,7 @@
       },
       "additionalProperties": false
     },
-    "StandArmSegments": {
+    "StandingArmSegments": {
       "type": "object",
       "required": [
         "upper",
@@ -2218,7 +2218,7 @@
       },
       "additionalProperties": false
     },
-    "StandArms": {
+    "StandingArms": {
       "type": "object",
       "required": [
         "shoulder",
@@ -2240,7 +2240,7 @@
           "description": "Arm segment thickness in world units."
         },
         "segments": {
-          "$ref": "#/$defs/StandArmSegments"
+          "$ref": "#/$defs/StandingArmSegments"
         },
         "handRadiusRatio": {
           "type": "number",
@@ -2263,7 +2263,7 @@
       },
       "additionalProperties": false
     },
-    "StandLegs": {
+    "StandingLegs": {
       "type": "object",
       "required": [
         "hip",
@@ -2286,7 +2286,7 @@
           "description": "Thigh cross-section in world units; the shin and knee derive from it."
         },
         "segments": {
-          "$ref": "#/$defs/StandArmSegments",
+          "$ref": "#/$defs/StandingArmSegments",
           "description": "Thigh and shin lengths as unit-radius ratios."
         },
         "footLengthRatio": {
@@ -2317,7 +2317,7 @@
       },
       "additionalProperties": false
     },
-    "StandConfig": {
+    "StandingConfig": {
       "type": "object",
       "required": [
         "legs",
@@ -2325,11 +2325,11 @@
       ],
       "properties": {
         "legs": {
-          "$ref": "#/$defs/StandLegs",
+          "$ref": "#/$defs/StandingLegs",
           "description": "The walking half. Its own rig \u2014 a mech leg is a hinge in one vertical plane, not an arachnid limb."
         },
         "arms": {
-          "$ref": "#/$defs/StandArms"
+          "$ref": "#/$defs/StandingArms"
         }
       },
       "additionalProperties": false
@@ -2729,7 +2729,7 @@
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintStand": {
+    "UnitLocomotionBlueprintStanding": {
       "type": "object",
       "required": [
         "type",
@@ -2740,7 +2740,7 @@
       ],
       "properties": {
         "type": {
-          "const": "stand"
+          "const": "standing"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2752,7 +2752,7 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/StandConfig"
+          "$ref": "#/$defs/StandingConfig"
         }
       },
       "additionalProperties": false
@@ -2912,7 +2912,7 @@
           "$ref": "#/$defs/UnitLocomotionBlueprintLegs"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintStand"
+          "$ref": "#/$defs/UnitLocomotionBlueprintStanding"
         },
         {
           "$ref": "#/$defs/UnitLocomotionBlueprintFlippers"
@@ -2995,6 +2995,47 @@
       },
       "additionalProperties": false
     },
+    "UnitBodyShapePartBox": {
+      "type": "object",
+      "required": [
+        "kind",
+        "offsetForward",
+        "lengthFrac",
+        "widthFrac",
+        "heightFrac"
+      ],
+      "properties": {
+        "kind": {
+          "const": "box"
+        },
+        "offsetForward": {
+          "type": "number"
+        },
+        "offsetLateral": {
+          "type": "number"
+        },
+        "lengthFrac": {
+          "type": "number",
+          "description": "Full fore/aft extent."
+        },
+        "widthFrac": {
+          "type": "number",
+          "description": "Full lateral extent."
+        },
+        "heightFrac": {
+          "type": "number",
+          "description": "Full vertical extent."
+        },
+        "centerYFrac": {
+          "type": "number",
+          "description": "Centre height. Defaults to half the height, seating the box on the ground."
+        },
+        "pitchRad": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
     "UnitBodyShapePartCylinder": {
       "type": "object",
       "required": [
@@ -3071,6 +3112,9 @@
         },
         {
           "$ref": "#/$defs/UnitBodyShapePartCone"
+        },
+        {
+          "$ref": "#/$defs/UnitBodyShapePartBox"
         }
       ]
     },

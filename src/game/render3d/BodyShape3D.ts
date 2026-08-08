@@ -112,6 +112,12 @@ function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
 }
 
+let sharedUnitBox: THREE.BoxGeometry | null = null;
+function unitBoxGeometry(): THREE.BoxGeometry {
+  sharedUnitBox ??= new THREE.BoxGeometry(1, 1, 1);
+  return sharedUnitBox;
+}
+
 function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
   const halfHeight = circleYFrac(part.radiusFrac, part.yFrac);
   const centerY = part.centerYFrac ?? halfHeight;
@@ -130,6 +136,21 @@ function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; cent
     geometry: getUnitSphere(tier),
     x: part.offsetForward ?? 0, y: part.centerYFrac ?? part.yFrac, z: part.offsetLateral ?? 0,
     scaleX: part.xFrac, scaleY: part.yFrac, scaleZ: part.zFrac,
+  };
+}
+
+/** A flat-sided slab. The composite kit was all spheroids and bodies of
+ *  revolution, which is fine for a hull and wrong for a mech: a commander is
+ *  plate, and plate has edges. */
+function buildBoxSpec(part: { lengthFrac: number; widthFrac: number; heightFrac: number; centerYFrac?: number; pitchRad?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
+  void tier;
+  return {
+    geometry: unitBoxGeometry(),
+    x: part.offsetForward ?? 0,
+    y: part.centerYFrac ?? part.heightFrac * 0.5,
+    z: part.offsetLateral ?? 0,
+    scaleX: part.lengthFrac, scaleY: part.heightFrac, scaleZ: part.widthFrac,
+    rotZ: part.pitchRad,
   };
 }
 
@@ -250,6 +271,9 @@ function buildEntry(spec: UnitBodyShape, tier: PrimitiveGeometryTier): BodyGeomE
     } else if (p.kind === 'oval') {
       const part = buildOvalSpec(p, tier);
       parts.push(part);
+    } else if (p.kind === 'box') {
+      parts.push(buildBoxSpec(p, tier));
+      isSmooth = false;
     } else if (p.kind === 'cone') {
       const part = buildConeSpec(p, tier);
       parts.push(part);

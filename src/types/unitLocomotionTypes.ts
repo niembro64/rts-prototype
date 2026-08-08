@@ -61,10 +61,11 @@ export type UnitLocomotionType =
   | 'treads'
   | 'amphibious-treads'
   | 'legs'
-  /** Biped: two legs and two arms. Walks on the same leg rig 'legs' uses —
-   *  a `stand` unit authors one leftSide entry and gets the mirrored pair —
-   *  and carries arms that swing off the same stride. */
-  | 'stand'
+  /** Biped: two legs and two arms, on its own rig. A mech leg is a hinge in
+   *  one vertical plane and the hips yaw inside the hull, so the torso can
+   *  face what it is shooting while the legs walk somewhere else. Shares
+   *  nothing with `legs`, which solves an arachnid. */
+  | 'standing'
   | 'flippers'
   | 'hover'
   | 'flying'

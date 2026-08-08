@@ -1,4 +1,4 @@
-// StandRig3D — the biped. Two legs, two arms, and nothing borrowed from the
+// StandingRig3D — the biped. Two legs, two arms, and nothing borrowed from the
 // arachnid leg rig.
 //
 // WHY NOT `legs`. The leg rig solves a spider: each limb owns a reach shell
@@ -32,7 +32,7 @@
 // at a fixed depth below the hip.
 
 import * as THREE from 'three';
-import type { StandArms, StandLegs } from '@/types/blueprintSchema.generated';
+import type { StandingArms, StandingLegs } from '@/types/blueprintSchema.generated';
 import type { PlayerId } from '../sim/types';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import {
@@ -60,7 +60,7 @@ type Strut = {
   depth: number;
 };
 
-export type StandLeg = {
+export type StandingLeg = {
   /** -1 left, +1 right. Fixes the limb's plane; nothing moves it. */
   side: number;
   /** Hip socket, chassis-local. The lateral component never changes. */
@@ -81,7 +81,7 @@ export type StandLeg = {
   plantY: number;
 };
 
-export type StandArm = {
+export type StandingArm = {
   side: number;
   shoulderX: number;
   shoulderY: number;
@@ -92,15 +92,26 @@ export type StandArm = {
   upper: Strut;
   forearm: Strut;
   elbow: THREE.Mesh;
-  /** The weapon block the commander carries at the end of each arm. */
-  pod: THREE.Mesh;
+  /** Where the forearm ends, chassis-local. The turret mounted on this arm is
+   *  what the commander holds there — the rig draws no hand of its own, because
+   *  a fist on the end of a weapon arm is one lump too many. */
+  handX: number;
+  handY: number;
 };
 
-export type StandMesh = {
-  type: 'stand';
+export type StandingMesh = {
+  type: 'standing';
   group: THREE.Group;
-  legs: StandLeg[];
-  arms: StandArm[];
+  /** The legs hang off this, and it yaws INSIDE the hull.
+   *
+   *  A commander keeps its torso — and therefore its weapons — pointed at what
+   *  it is shooting or building while its legs go somewhere else entirely. The
+   *  hull carries the facing; the hips carry the walk. Everything the rig does
+   *  in a leg's plane is unchanged, because the plane turns with the hips. */
+  hips: THREE.Group;
+  hipYaw: number;
+  legs: StandingLeg[];
+  arms: StandingArm[];
   /** Ground distance, the only clock this rig has. */
   contact: RollingContactState;
   /** Stride phase in cycles, 0..1. */
@@ -125,6 +136,12 @@ const STAND_KNEE_BEND_RAD = 0.16;
 const ELBOW_FOLLOW = 0.4;
 /** Constant elbow flex, radians. */
 const ELBOW_BEND_RAD = 0.3;
+/** Seconds for the hips to swing most of the way to the travel heading. Slow
+ *  enough that a commander turning on the spot pivots rather than snapping. */
+const HIP_YAW_EASE_SECONDS = 0.22;
+/** Below this speed there is no travel direction to point the hips at, so they
+ *  square back up under the torso. */
+const HIP_YAW_MIN_SPEED = 3;
 
 const _hip = new THREE.Vector2();
 const _foot = new THREE.Vector2();
@@ -135,6 +152,14 @@ const _poseQuat = new THREE.Quaternion();
 const _segDir = new THREE.Vector3();
 const _segQuat = new THREE.Quaternion();
 const _segUp = new THREE.Vector3(0, 1, 0);
+
+/** The hull's yaw about world up. Upright hosts have no other rotation. */
+function yawOf(pose: LocomotionRenderPose): number {
+  return Math.atan2(
+    2 * (pose.quaternionW * pose.quaternionY + pose.quaternionX * pose.quaternionZ),
+    1 - 2 * (pose.quaternionY * pose.quaternionY + pose.quaternionZ * pose.quaternionZ),
+  );
+}
 
 function material(ownerId: PlayerId | undefined): THREE.MeshLambertMaterial {
   return getLocomotionMatByCache(segmentMaterials, SEGMENT_COLOR, ownerId);
@@ -162,7 +187,11 @@ function makeBlock(
   return mesh;
 }
 
-/** The commander's foot: a sole plate with two forward prongs. */
+/** The commander's foot: a thin sole plate with two forward toes.
+ *
+ *  Deliberately flat. The shin is the thick part of a mech leg; a foot that
+ *  matched it would read as a boot, and BAR's commander stands on plates it
+ *  could slide under a door. */
 function makeFoot(
   parent: THREE.Group,
   length: number,
@@ -170,13 +199,16 @@ function makeFoot(
   ownerId: PlayerId | undefined,
 ): THREE.Group {
   const group = new THREE.Group();
-  const height = Math.max(0.6, width * 0.36);
-  const sole = makeBlock(group, length * 0.62, height, width, ownerId);
-  sole.position.set(-length * 0.14, height * 0.5, 0);
+  const height = Math.max(0.35, width * 0.16);
+  const sole = makeBlock(group, length * 0.56, height, width * 0.9, ownerId);
+  sole.position.set(-length * 0.16, height * 0.5, 0);
   for (const side of [-1, 1] as const) {
-    const prong = makeBlock(group, length * 0.52, height * 0.82, width * 0.36, ownerId);
-    prong.position.set(length * 0.42, height * 0.45, side * width * 0.30);
+    const toe = makeBlock(group, length * 0.56, height * 0.8, width * 0.34, ownerId);
+    toe.position.set(length * 0.40, height * 0.45, side * width * 0.30);
   }
+  // A low heel spur, so the plate does not look like it is floating.
+  const heel = makeBlock(group, length * 0.16, height * 1.5, width * 0.5, ownerId);
+  heel.position.set(-length * 0.40, height * 0.75, 0);
   parent.add(group);
   return group;
 }
@@ -222,17 +254,19 @@ function solveKnee(
   out.set(hipX + Math.cos(kneeAngle) * thigh, hipY + Math.sin(kneeAngle) * thigh);
 }
 
-export function buildStandRig(
+export function buildStandingRig(
   unitGroup: THREE.Group,
   unitRadius: number,
-  cfgLegs: StandLegs,
-  cfgArms: StandArms,
+  cfgLegs: StandingLegs,
+  cfgArms: StandingArms,
   chassisLiftY: number,
   ownerId: PlayerId | undefined,
   _geometryTier: PrimitiveGeometryTier = 'close',
-): StandMesh {
+): StandingMesh {
   const group = new THREE.Group();
   unitGroup.add(group);
+  const hips = new THREE.Group();
+  group.add(hips);
 
   const thighLength = unitRadius * cfgLegs.segments.upper.lengthUnitRadiusRatio;
   const shinLength = unitRadius * cfgLegs.segments.lower.lengthUnitRadiusRatio;
@@ -241,9 +275,9 @@ export function buildStandRig(
   const footLength = legLength * cfgLegs.footLengthRatio;
   const footWidth = legWidth * cfgLegs.footWidthRatio;
 
-  const legs: StandLeg[] = [];
+  const legs: StandingLeg[] = [];
   for (const side of [-1, 1] as const) {
-    const leg: StandLeg = {
+    const leg: StandingLeg = {
       side,
       hipX: unitRadius * cfgLegs.hip.xUnitRadiusRatio,
       hipY: unitRadius * cfgLegs.hip.zUnitRadiusRatio - chassisLiftY,
@@ -252,10 +286,10 @@ export function buildStandRig(
       shinLength,
       // Left leads. Half a cycle is the whole of what makes a walk a walk.
       phaseOffset: side < 0 ? 0 : 0.5,
-      thigh: makeStrut(group, legWidth, legWidth * 0.82, ownerId),
-      shin: makeStrut(group, legWidth * 0.78, legWidth * 0.66, ownerId),
-      knee: makeBlock(group, legWidth * 0.95, legWidth * 0.95, legWidth * 0.9, ownerId),
-      foot: makeFoot(group, footLength, footWidth, ownerId),
+      thigh: makeStrut(hips, legWidth, legWidth * 0.82, ownerId),
+      shin: makeStrut(hips, legWidth * 0.78, legWidth * 0.66, ownerId),
+      knee: makeBlock(hips, legWidth * 0.95, legWidth * 0.95, legWidth * 0.9, ownerId),
+      foot: makeFoot(hips, footLength, footWidth, ownerId),
       plantX: 0,
       plantY: 0,
     };
@@ -265,7 +299,7 @@ export function buildStandRig(
   const upperLength = unitRadius * cfgArms.segments.upper.lengthUnitRadiusRatio;
   const forearmLength = unitRadius * cfgArms.segments.lower.lengthUnitRadiusRatio;
   const armWidth = cfgArms.radius;
-  const arms: StandArm[] = [];
+  const arms: StandingArm[] = [];
   for (const side of [-1, 1] as const) {
     arms.push({
       side,
@@ -278,20 +312,17 @@ export function buildStandRig(
       phaseOffset: side < 0 ? 0.5 : 0,
       upper: makeStrut(group, armWidth, armWidth * 0.9, ownerId),
       forearm: makeStrut(group, armWidth * 0.86, armWidth * 0.78, ownerId),
-      elbow: makeBlock(group, armWidth, armWidth, armWidth * 0.92, ownerId),
-      pod: makeBlock(
-        group,
-        armWidth * cfgArms.handRadiusRatio * 2.4,
-        armWidth * cfgArms.handRadiusRatio * 1.5,
-        armWidth * cfgArms.handRadiusRatio * 1.5,
-        ownerId,
-      ),
+      elbow: makeBlock(group, armWidth * 0.92, armWidth * 0.92, armWidth * 0.86, ownerId),
+      handX: 0,
+      handY: 0,
     });
   }
 
   return {
-    type: 'stand',
+    type: 'standing',
     group,
+    hips,
+    hipYaw: 0,
     legs,
     arms,
     contact: rollingContact(0, 0),
@@ -306,8 +337,8 @@ export function buildStandRig(
   };
 }
 
-export function updateStandRig(
-  mesh: StandMesh,
+export function updateStandingRig(
+  mesh: StandingMesh,
   pose: LocomotionRenderPose,
   dtMs: number,
   mapWidth: number,
@@ -320,6 +351,21 @@ export function updateStandRig(
   if (mesh.phase < 0) mesh.phase += 1;
 
   const speed = dt > 0 ? Math.abs(travelled) / dt : 0;
+
+  // HIPS. The hull faces what the commander is aiming at or building; the legs
+  // have to walk wherever the order sent them. Yaw the hip group by the angle
+  // between the two, which is the whole of what lets the torso spin free: the
+  // leg planes turn with it, so every solve below is unchanged.
+  const localVX = pose.velocityX * Math.cos(-yawOf(pose)) - pose.velocityZ * Math.sin(-yawOf(pose));
+  const localVZ = pose.velocityX * Math.sin(-yawOf(pose)) + pose.velocityZ * Math.cos(-yawOf(pose));
+  const planarSpeed = Math.hypot(localVX, localVZ);
+  const targetHipYaw = planarSpeed > HIP_YAW_MIN_SPEED ? Math.atan2(-localVZ, localVX) : 0;
+  const hipEase = dt <= 0 ? 1 : 1 - Math.exp(-dt / HIP_YAW_EASE_SECONDS);
+  let hipDelta = targetHipYaw - mesh.hipYaw;
+  while (hipDelta > Math.PI) hipDelta -= Math.PI * 2;
+  while (hipDelta < -Math.PI) hipDelta += Math.PI * 2;
+  mesh.hipYaw += hipDelta * hipEase;
+  mesh.hips.rotation.y = mesh.hipYaw;
   const ease = dt <= 0 ? 1 : 1 - Math.exp(-dt / GAIT_EASE_SECONDS);
   mesh.gait += (Math.min(1, speed / FULL_STRIDE_SPEED) - mesh.gait) * ease;
 
@@ -344,8 +390,15 @@ export function updateStandRig(
       lift = Math.sin(Math.PI * t) * mesh.strideLift * mesh.gait;
     }
 
-    // Chassis-local → world XZ. Only yaw matters: the hull is upright.
-    _worldFoot.set(footX, 0, leg.hipZ).applyQuaternion(_poseQuat);
+    // Hip-local → chassis-local → world XZ. Only yaw matters: the hull is
+    // upright, so the hips' own yaw is the only rotation between them.
+    const cosHip = Math.cos(mesh.hipYaw);
+    const sinHip = Math.sin(mesh.hipYaw);
+    _worldFoot.set(
+      footX * cosHip + leg.hipZ * sinHip,
+      0,
+      -footX * sinHip + leg.hipZ * cosHip,
+    ).applyQuaternion(_poseQuat);
     const groundY = getLocomotionSurfaceHeight(
       pose.rootX + _worldFoot.x,
       pose.rootZ + _worldFoot.z,
@@ -380,15 +433,15 @@ export function updateStandRig(
     poseStrut(arm.upper, arm.shoulderX, arm.shoulderY, arm.shoulderZ, elbowX, elbowY, arm.shoulderZ);
     poseStrut(arm.forearm, elbowX, elbowY, arm.shoulderZ, handX, handY, arm.shoulderZ);
     arm.elbow.position.set(elbowX, elbowY, arm.shoulderZ);
-    arm.pod.position.set(handX, handY, arm.shoulderZ);
-    arm.pod.rotation.z = elbowPitch;
+    arm.handX = handX;
+    arm.handY = handY;
   }
 
   return true;
 }
 
 /** Standstill pose, for a preview card or a unit built before its first tick. */
-export function poseStandRigAtRest(mesh: StandMesh): void {
+export function poseStandingRigAtRest(mesh: StandingMesh): void {
   for (const leg of mesh.legs) {
     const footY = leg.hipY - Math.cos(STAND_KNEE_BEND_RAD) * (leg.thighLength + leg.shinLength) * 0.98;
     solveKnee(leg.hipX, leg.hipY, leg.hipX, footY, leg.thighLength, leg.shinLength, _knee);
@@ -406,12 +459,12 @@ export function poseStandRigAtRest(mesh: StandMesh): void {
     poseStrut(arm.upper, arm.shoulderX, arm.shoulderY, arm.shoulderZ, elbowX, elbowY, arm.shoulderZ);
     poseStrut(arm.forearm, elbowX, elbowY, arm.shoulderZ, handX, handY, arm.shoulderZ);
     arm.elbow.position.set(elbowX, elbowY, arm.shoulderZ);
-    arm.pod.position.set(handX, handY, arm.shoulderZ);
-    arm.pod.rotation.z = pitch;
+    arm.handX = handX;
+    arm.handY = handY;
   }
 }
 
-export function disposeStandRigGeometry(): void {
+export function disposeStandingRigGeometry(): void {
   unitBox.dispose();
   for (const mat of segmentMaterials.values()) mat.dispose();
   segmentMaterials.clear();

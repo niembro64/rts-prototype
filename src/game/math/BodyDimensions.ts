@@ -124,6 +124,8 @@ function bodyPartHalfWidthFrac(part: UnitBodyShape | UnitBodyShapePart): number 
       return part.radiusFrac;
     case 'oval':
       return part.zFrac;
+    case 'box':
+      return part.widthFrac * 0.5;
     // A rect/rhombus is built at FULL extent 1 — half extents of 0.5 — and
     // then scaled, so its frac is a full width and has to be halved. Reading
     // it as a half extent is what pushed the one rect-bodied tracked unit's
@@ -153,6 +155,7 @@ export function getBodyTopY(bodyShape: UnitBodyShape | null, unitRadius: number)
 function bodyPartTopFrac(part: UnitBodyShapePart): number {
   if (part.kind === 'circle') return circleCenterYFrac(part) + circleYFrac(part.radiusFrac, part.yFrac);
   if (part.kind === 'oval') return (part.centerYFrac ?? part.yFrac) + part.yFrac;
+  if (part.kind === 'box') return (part.centerYFrac ?? part.heightFrac * 0.5) + part.heightFrac * 0.5;
   return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
 }
 
@@ -199,6 +202,7 @@ export function getSegmentMidYAt(
     }
   }
   if (best.kind === 'circle') return circleCenterYFrac(best) * unitRadius;
+  if (best.kind === 'box') return (best.centerYFrac ?? best.heightFrac * 0.5) * unitRadius;
   if (best.kind === 'cylinder' || best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
   return (best.centerYFrac ?? best.yFrac) * unitRadius;
 }

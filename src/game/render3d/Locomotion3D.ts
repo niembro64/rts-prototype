@@ -59,11 +59,11 @@ import {
   updateFlippers,
 } from './FlipperRig3D';
 import {
-  buildStandRig,
-  poseStandRigAtRest,
-  updateStandRig,
-  type StandMesh,
-} from './StandRig3D';
+  buildStandingRig,
+  poseStandingRigAtRest,
+  updateStandingRig,
+  type StandingMesh,
+} from './StandingRig3D';
 import {
   type SwimMesh,
   buildSwimRig,
@@ -83,7 +83,7 @@ export type Locomotion3DMesh =
   | TreadMesh
   | WheelMesh
   | LegMesh
-  | StandMesh
+  | StandingMesh
   | FlipperMesh
   | HoverMesh
   | FlyingMesh
@@ -116,7 +116,7 @@ export type LocomotionStateSnapshot =
       lastBaseZ: number;
     }
   | {
-      type: 'stand';
+      type: 'standing';
       /** A tier rebuild must not restart the walk mid-stride. */
       contact: RollingContactSnapshot;
       phase: number;
@@ -194,9 +194,9 @@ export function captureLocomotionState(
         lastBaseY: locomotion.lastBaseY,
         lastBaseZ: locomotion.lastBaseZ,
       };
-    case 'stand':
+    case 'standing':
       return {
-        type: 'stand',
+        type: 'standing',
         contact: captureRollingContact(locomotion.contact),
         phase: locomotion.phase,
         gait: locomotion.gait,
@@ -262,8 +262,8 @@ export function applyLocomotionState(
       locomotion.lastBaseZ = state.lastBaseZ;
       return;
     }
-    case 'stand': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'stand' }>;
+    case 'standing': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'standing' }>;
       applyRollingContact(locomotion.contact, state.contact);
       locomotion.phase = state.phase;
       locomotion.gait = state.gait;
@@ -451,12 +451,12 @@ export function buildLocomotion(
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'stand': {
-      const mesh = buildStandRig(
+    case 'standing': {
+      const mesh = buildStandingRig(
         unitGroup, unitRadius, loc.config.legs, loc.config.arms,
         getChassisLift(bp, unitRadius), ownerId, geometryTier,
       );
-      poseStandRigAtRest(mesh);
+      poseStandingRigAtRest(mesh);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -538,8 +538,8 @@ export function updateLocomotion(
       return updateTreads(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'legs':
       return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
-    case 'stand':
-      return updateStandRig(mesh, pose, dtMs, mapWidth, mapHeight);
+    case 'standing':
+      return updateStandingRig(mesh, pose, dtMs, mapWidth, mapHeight);
     case 'flippers':
       return updateFlippers(mesh, pose, dtMs);
     case 'hover':

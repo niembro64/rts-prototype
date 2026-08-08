@@ -218,7 +218,7 @@ function allLocomotionMounts(
       return locomotion.config.jets.map((jet) => jet.offset);
     case 'legs':
       return locomotion.config.leftSide.map((leg) => leg.attachmentPoint);
-    case 'stand':
+    case 'standing':
       // A biped authors one hip and one shoulder; both are mirrored.
       return [locomotion.config.legs.hip, locomotion.config.arms.shoulder];
     default:

@@ -33,7 +33,7 @@ import {
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math/BarrelGeometry';
-import { buildStandRig, poseStandRigAtRest } from './StandRig3D';
+import { buildStandingRig, poseStandingRigAtRest } from './StandingRig3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Turret } from '../sim/types';
@@ -446,7 +446,7 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
   for (const type of [
-    'wheels', 'treads', 'amphibious-treads', 'legs', 'stand', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+    'wheels', 'treads', 'amphibious-treads', 'legs', 'standing', 'flippers', 'hover', 'flying', 'submarine', 'dive',
   ]) {
     assertContract(locomotionTypes.has(type), `authored roster exercises ${type} locomotion LOD`);
   }
@@ -579,12 +579,12 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'stand': {
-          const rig = buildStandRig(
+        case 'standing': {
+          const rig = buildStandingRig(
             root, radius, locomotion.config.legs, locomotion.config.arms,
             0, undefined, tier,
           );
-          poseStandRigAtRest(rig);
+          poseStandingRigAtRest(rig);
           assertContract(
             rig.legs.length === 2 && rig.arms.length === 2,
             `${unitId}/${tier} stand is a biped: two legs and two arms`,
@@ -614,7 +614,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               ]),
               arms: rig.arms.map((arm) => [
                 arm.side, n(arm.shoulderX), n(arm.shoulderY), n(arm.shoulderZ),
-                ...transformTuple(arm.pod),
+                n(arm.handX), n(arm.handY), ...transformTuple(arm.elbow),
               ]),
               stride: [n(rig.strideLength), n(rig.strideLift), n(rig.standHipY)],
             },

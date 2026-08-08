@@ -775,16 +775,16 @@ pub struct LegConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandArmSegments {
+pub struct StandingArmSegments {
     pub upper: LegSegment,
     pub lower: LegSegment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandArms {
+pub struct StandingArms {
     pub shoulder: LocomotionMount,
     pub radius: f64,
-    pub segments: StandArmSegments,
+    pub segments: StandingArmSegments,
     pub handRadiusRatio: f64,
     pub restSwingDeg: f64,
     pub walkSwingDeg: f64,
@@ -792,10 +792,10 @@ pub struct StandArms {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandLegs {
+pub struct StandingLegs {
     pub hip: LocomotionMount,
     pub radius: f64,
-    pub segments: StandArmSegments,
+    pub segments: StandingArmSegments,
     pub footLengthRatio: f64,
     pub footWidthRatio: f64,
     pub strideLengthRatio: f64,
@@ -804,9 +804,9 @@ pub struct StandLegs {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandConfig {
-    pub legs: StandLegs,
-    pub arms: StandArms,
+pub struct StandingConfig {
+    pub legs: StandingLegs,
+    pub arms: StandingArms,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -926,12 +926,12 @@ pub struct UnitLocomotionBlueprintLegs {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintStand {
+pub struct UnitLocomotionBlueprintStanding {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: StandConfig,
+    pub config: StandingConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -985,7 +985,7 @@ pub enum UnitLocomotionBlueprint {
     UnitLocomotionBlueprintTreads(UnitLocomotionBlueprintTreads),
     UnitLocomotionBlueprintAmphibiousTreads(UnitLocomotionBlueprintAmphibiousTreads),
     UnitLocomotionBlueprintLegs(UnitLocomotionBlueprintLegs),
-    UnitLocomotionBlueprintStand(UnitLocomotionBlueprintStand),
+    UnitLocomotionBlueprintStanding(UnitLocomotionBlueprintStanding),
     UnitLocomotionBlueprintFlippers(UnitLocomotionBlueprintFlippers),
     UnitLocomotionBlueprintHover(UnitLocomotionBlueprintHover),
     UnitLocomotionBlueprintFlying(UnitLocomotionBlueprintFlying),
@@ -1015,6 +1015,18 @@ pub struct UnitBodyShapePartOval {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitBodyShapePartBox {
+    pub kind: String,
+    pub offsetForward: f64,
+    pub offsetLateral: Option<f64>,
+    pub lengthFrac: f64,
+    pub widthFrac: f64,
+    pub heightFrac: f64,
+    pub centerYFrac: Option<f64>,
+    pub pitchRad: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitBodyShapePartCylinder {
     pub kind: String,
     pub offsetForward: f64,
@@ -1041,6 +1053,7 @@ pub enum UnitBodyShapePart {
     UnitBodyShapePartOval(UnitBodyShapePartOval),
     UnitBodyShapePartCylinder(UnitBodyShapePartCylinder),
     UnitBodyShapePartCone(UnitBodyShapePartCone),
+    UnitBodyShapePartBox(UnitBodyShapePartBox),
 }
 
 #[derive(Clone, Debug, PartialEq)]

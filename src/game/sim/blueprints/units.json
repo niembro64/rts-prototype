@@ -824,9 +824,9 @@
         "turretBlueprintId": "turretGunLight",
         "sensorTurretBlueprintId": "turretSensorUnitHuman",
         "mount": {
-          "x": 0.2,
-          "y": -0.78,
-          "z": 2.26
+          "x": 0.18,
+          "y": -0.56,
+          "z": 1.46
         },
         "requiredEngagedForFightStop": true,
         "mountId": "plasmaLight",
@@ -837,43 +837,113 @@
       "kind": "composite",
       "parts": [
         {
-          "kind": "oval",
-          "offsetForward": -0.04,
-          "xFrac": 0.38,
-          "yFrac": 0.2,
-          "zFrac": 0.5,
+          "kind": "box",
+          "offsetForward": -0.02,
+          "lengthFrac": 0.468,
+          "widthFrac": 0.5940000000000001,
+          "heightFrac": 0.27,
           "centerYFrac": 1.5
         },
         {
-          "kind": "oval",
+          "kind": "box",
           "offsetForward": 0.0,
-          "xFrac": 0.28,
-          "yFrac": 0.16,
-          "zFrac": 0.32,
+          "lengthFrac": 0.30600000000000005,
+          "widthFrac": 0.342,
+          "heightFrac": 0.234,
           "centerYFrac": 1.78
         },
         {
-          "kind": "oval",
+          "kind": "box",
           "offsetForward": 0.02,
-          "xFrac": 0.36,
-          "yFrac": 0.24,
-          "zFrac": 0.6,
+          "lengthFrac": 0.48600000000000004,
+          "widthFrac": 0.63,
+          "heightFrac": 0.36000000000000004,
           "centerYFrac": 2.06
         },
         {
-          "kind": "oval",
-          "offsetForward": -0.03,
-          "xFrac": 0.32,
-          "yFrac": 0.15,
-          "zFrac": 0.86,
-          "centerYFrac": 2.28
+          "kind": "box",
+          "offsetForward": -0.02,
+          "lengthFrac": 0.396,
+          "widthFrac": 0.9540000000000001,
+          "heightFrac": 0.198,
+          "centerYFrac": 2.3
         },
         {
-          "kind": "circle",
-          "offsetForward": 0.08,
-          "radiusFrac": 0.17,
-          "yFrac": 0.17,
-          "centerYFrac": 2.56
+          "kind": "box",
+          "offsetForward": 0.1,
+          "lengthFrac": 0.234,
+          "widthFrac": 0.25200000000000006,
+          "heightFrac": 0.216,
+          "centerYFrac": 2.58
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.44,
+          "lengthFrac": 0.234,
+          "widthFrac": 0.558,
+          "heightFrac": 0.468,
+          "centerYFrac": 2.1799999999999997
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": -0.18000000000000002,
+          "lengthFrac": 0.12600000000000003,
+          "widthFrac": 0.14400000000000002,
+          "heightFrac": 0.41400000000000003,
+          "centerYFrac": 2.1799999999999997
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": 0.0,
+          "lengthFrac": 0.12600000000000003,
+          "widthFrac": 0.14400000000000002,
+          "heightFrac": 0.41400000000000003,
+          "centerYFrac": 2.1799999999999997
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": 0.18000000000000002,
+          "lengthFrac": 0.12600000000000003,
+          "widthFrac": 0.14400000000000002,
+          "heightFrac": 0.41400000000000003,
+          "centerYFrac": 2.1799999999999997
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
+          "lengthFrac": 0.30600000000000005,
+          "widthFrac": 0.5940000000000001,
+          "heightFrac": 0.07200000000000001,
+          "centerYFrac": 2.432
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
+          "lengthFrac": 0.30600000000000005,
+          "widthFrac": 0.5940000000000001,
+          "heightFrac": 0.07200000000000001,
+          "centerYFrac": 1.9279999999999997
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.02,
+          "offsetLateral": -0.45,
+          "lengthFrac": 0.324,
+          "widthFrac": 0.216,
+          "heightFrac": 0.27,
+          "centerYFrac": 2.3
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.02,
+          "offsetLateral": 0.45,
+          "lengthFrac": 0.324,
+          "widthFrac": 0.216,
+          "heightFrac": 0.27,
+          "centerYFrac": 2.3
         }
       ]
     },
@@ -893,7 +963,7 @@
       "$audio": "event.death.unitHuman"
     },
     "unitLocomotion": {
-      "type": "stand",
+      "type": "standing",
       "physicsPresetId": "legs",
       "physics": {
         "ground": {
@@ -3841,9 +3911,9 @@
     "workEmitter": {
       "points": [
         {
-          "x": 0.34,
-          "y": 0.0,
-          "z": 2.6
+          "x": 0.2,
+          "y": 0.62,
+          "z": 1.42
         }
       ],
       "particleTravelSpeed": 180,
@@ -3854,9 +3924,9 @@
         "turretBlueprintId": "turretBeam",
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
-          "x": 0.22,
-          "y": -0.86,
-          "z": 2.48
+          "x": 0.18,
+          "y": -0.62,
+          "z": 1.58
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beam",
@@ -3866,9 +3936,9 @@
         "turretBlueprintId": "turretDisruptor",
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
-          "x": 0.22,
-          "y": 0.86,
-          "z": 2.48
+          "x": 0.18,
+          "y": -0.62,
+          "z": 1.34
         },
         "requiredEngagedForFightStop": false,
         "mountId": "disruptor",
@@ -3879,51 +3949,113 @@
       "kind": "composite",
       "parts": [
         {
-          "kind": "oval",
-          "offsetForward": -0.05,
-          "xFrac": 0.46,
-          "yFrac": 0.24,
-          "zFrac": 0.6,
+          "kind": "box",
+          "offsetForward": -0.02,
+          "lengthFrac": 0.52,
+          "widthFrac": 0.66,
+          "heightFrac": 0.3,
           "centerYFrac": 1.62
         },
         {
-          "kind": "oval",
-          "offsetForward": -0.02,
-          "xFrac": 0.32,
-          "yFrac": 0.18,
-          "zFrac": 0.38,
+          "kind": "box",
+          "offsetForward": 0.0,
+          "lengthFrac": 0.34,
+          "widthFrac": 0.38,
+          "heightFrac": 0.26,
           "centerYFrac": 1.92
         },
         {
-          "kind": "oval",
+          "kind": "box",
           "offsetForward": 0.02,
-          "xFrac": 0.44,
-          "yFrac": 0.28,
-          "zFrac": 0.7,
+          "lengthFrac": 0.54,
+          "widthFrac": 0.7,
+          "heightFrac": 0.4,
           "centerYFrac": 2.24
         },
         {
-          "kind": "oval",
-          "offsetForward": -0.04,
-          "xFrac": 0.38,
-          "yFrac": 0.18,
-          "zFrac": 1.0,
-          "centerYFrac": 2.5
+          "kind": "box",
+          "offsetForward": -0.02,
+          "lengthFrac": 0.44,
+          "widthFrac": 1.06,
+          "heightFrac": 0.22,
+          "centerYFrac": 2.52
         },
         {
-          "kind": "oval",
-          "offsetForward": -0.38,
-          "xFrac": 0.24,
-          "yFrac": 0.22,
-          "zFrac": 0.54,
-          "centerYFrac": 2.34
-        },
-        {
-          "kind": "circle",
+          "kind": "box",
           "offsetForward": 0.1,
-          "radiusFrac": 0.19,
-          "yFrac": 0.19,
-          "centerYFrac": 2.82
+          "lengthFrac": 0.26,
+          "widthFrac": 0.28,
+          "heightFrac": 0.24,
+          "centerYFrac": 2.84
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.44,
+          "lengthFrac": 0.26,
+          "widthFrac": 0.62,
+          "heightFrac": 0.52,
+          "centerYFrac": 2.38
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": -0.2,
+          "lengthFrac": 0.14,
+          "widthFrac": 0.16,
+          "heightFrac": 0.46,
+          "centerYFrac": 2.38
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": 0.0,
+          "lengthFrac": 0.14,
+          "widthFrac": 0.16,
+          "heightFrac": 0.46,
+          "centerYFrac": 2.38
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.56,
+          "offsetLateral": 0.2,
+          "lengthFrac": 0.14,
+          "widthFrac": 0.16,
+          "heightFrac": 0.46,
+          "centerYFrac": 2.38
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
+          "lengthFrac": 0.34,
+          "widthFrac": 0.66,
+          "heightFrac": 0.08,
+          "centerYFrac": 2.66
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.5,
+          "lengthFrac": 0.34,
+          "widthFrac": 0.66,
+          "heightFrac": 0.08,
+          "centerYFrac": 2.0999999999999996
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.02,
+          "offsetLateral": -0.5,
+          "lengthFrac": 0.36,
+          "widthFrac": 0.24,
+          "heightFrac": 0.3,
+          "centerYFrac": 2.52
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.02,
+          "offsetLateral": 0.5,
+          "lengthFrac": 0.36,
+          "widthFrac": 0.24,
+          "heightFrac": 0.3,
+          "centerYFrac": 2.52
         }
       ]
     },
@@ -3948,7 +4080,7 @@
       "$audio": "event.death.unitCommander"
     },
     "unitLocomotion": {
-      "type": "stand",
+      "type": "standing",
       "physicsPresetId": "amphibiousLegs",
       "physics": {
         "ground": {

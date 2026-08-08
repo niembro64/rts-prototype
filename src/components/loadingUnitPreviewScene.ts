@@ -90,7 +90,7 @@ import {
   type TeamOrnamentFit,
   ornamentProfileKey,
 } from '@/game/render3d/TeamOrnament3D';
-import { buildStandRig, poseStandRigAtRest, type StandMesh } from '@/game/render3d/StandRig3D';
+import { buildStandingRig, poseStandingRigAtRest, type StandingMesh } from '@/game/render3d/StandingRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -180,7 +180,7 @@ type PreviewLocomotionRig =
   | { type: 'flippers'; mesh: FlipperMesh }
   | { type: 'swim'; mesh: SwimMesh }
   | { type: 'legs'; group: THREE.Group }
-  | { type: 'stand'; mesh: StandMesh };
+  | { type: 'standing'; mesh: StandingMesh };
 
 type PreviewModel = {
   root: THREE.Group;
@@ -866,14 +866,14 @@ function buildPreviewLocomotion(
       };
     case 'legs':
       return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier) };
-    case 'stand': {
+    case 'standing': {
       // The card shows the real rig, standing still — same parts, same solve.
-      const mesh = buildStandRig(
+      const mesh = buildStandingRig(
         yawGroup, radius, locomotion.config.legs, locomotion.config.arms,
         0, HOST_PLAYER_ID, geometryTier,
       );
-      poseStandRigAtRest(mesh);
-      return { type: 'stand', mesh };
+      poseStandingRigAtRest(mesh);
+      return { type: 'standing', mesh };
     }
   }
   return null;
@@ -921,7 +921,7 @@ function buildPreviewLegs(
   geometryTier: PrimitiveGeometryTier,
 ): THREE.Group {
   const locomotion = blueprint.unitLocomotion;
-  // `stand` walks on the same leg rig; it just nests the leg half of its
+  // `standing` walks on the same leg rig; it just nests the leg half of its
   // config next to the arms.
   if (locomotion.type !== 'legs') return new THREE.Group();
   const legConfig = locomotion.config;
@@ -1047,7 +1047,7 @@ function animatePreviewLocomotion(
     case 'legs':
       animatePreviewLegs(rig.group, active ? stride : 0, active);
       return;
-    case 'stand':
+    case 'standing':
       // Held at rest: the walk is driven by ground distance, and a card has
       // no ground under it to cover.
       return;
