@@ -82,11 +82,10 @@ export function resolveDeathContext3D(
   event: NetworkServerSnapshotSimEvent,
   ent: Entity | undefined,
 ): SimDeathContext3D {
-  // Some kill paths (splash, bleed-out, shield zone damage) emit
-  // a death event with no deathContext. Rather than skipping the
-  // material explosion entirely, try to reconstruct a minimal context
-  // from the entity if it's still in view state; otherwise synthesize
-  // a generic fallback so debris still fires.
+  // Some kill paths (splash, bleed-out, shield zone damage) emit a death
+  // event with no deathContext. Reconstruct a minimal force context from the
+  // entity when possible; otherwise use a neutral fallback so retained render
+  // parts still receive a coherent death transition.
   let ctx = event.deathContext;
   if (!ctx && ent) {
     const pid = ent.ownership?.playerId;
@@ -148,10 +147,8 @@ export function resolveDeathContext3D(
     };
   }
   if (!ctx) {
-    // Entity already gone and no server-supplied context: synthesize a
-    // bare-minimum neutral context so Debris3D's generic-chunks fallback
-    // still produces something visible. Worse than a real debris
-    // burst but better than silence.
+    // Entity already gone and no server-supplied context: synthesize the
+    // bare-minimum neutral context for the death fire puff/disassembly.
     ctx = {
       unitVel: { x: 0, y: 0 },
       hitDir: { x: 0, y: 0 },

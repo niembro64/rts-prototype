@@ -65,6 +65,7 @@ import {
   type EntityBuildVisual,
 } from './EntityFade3D';
 import { DyingUnitScatter3D } from './DyingUnitScatter3D';
+import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -118,6 +119,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import { unitTurretsAllowVisualBank3D } from './turretRenderHelpers3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -143,11 +145,6 @@ type RenderEntityUpdatePacket3D = {
   scoped: boolean;
 };
 
-// Inverse of the tilt quaternion — used to project a world barrel
-// direction into the chassis-local (tiltGroup) frame so the turret's
-// articulated yaw + pitch can compensate for the chassis tilt and
-// the rendered barrel still points at the sim's world target.
-const _invTiltQuat = new THREE.Quaternion();
 // Force-field panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // shieldPanelCache.ts computes baseY/topY/halfWidth from the turret's
@@ -187,8 +184,8 @@ export class Render3DEntities {
   private unitMeshes = new IndexedEntityIdMap<EntityMesh>();
   // Shared death-out flow: a dying unit's mesh is kept (instanced slots
   // allocated, pose frozen) and its materialization fade ramped 1 → 0
-  // before teardown, so the body/turrets/locomotion scatter and fade while
-  // Debris3D flings its material pieces and Explosion3D fires the blast.
+  // before teardown, so every body/turret/locomotion part is the debris and
+  // keeps its real textured material while Explosion3D fires the blast.
   // Same controller buildings use — see EntityFade3D. Assigned in the
   // constructor (needs `this`).
   private dyingUnits!: DyingMeshFade<EntityMesh>;
@@ -299,8 +296,9 @@ export class Render3DEntities {
     createPrimitiveSphereGeometry('debug', 'close'),
   );
 
-  /** Per-frame scratch populated from UnitRenderPoseBatch3D's
-   *  `tilt · Ry(yaw)` output before chassis/turret writers consume it. */
+  /** Exact rendered parent orientation from UnitRenderPoseBatch3D:
+   *  authoritative body orientation plus any presentation-only bank.
+   *  Turret pose converts world aim through this same quaternion. */
   private _smoothParentQuat = new THREE.Quaternion();
   /** Lifted world position from the unit base-pose batch. Reproduces
    *  the scenegraph chain
@@ -375,9 +373,11 @@ export class Render3DEntities {
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
       getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
+      getTeamOrnamentMat: (playerId) => this.materialPalette.getTeamOrnamentMat(playerId),
       getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
       teamTrim: this.teamTrim,
-      disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
+      disposeWorldParentedOverlays: (mesh, releaseTeamTrim = true) =>
+        this.disposeWorldParentedOverlays(mesh, releaseTeamTrim),
       metalDeposits: this.metalDeposits,
       scopedMeshRetention: this.scopedMeshRetention,
       lodProxyRenderer: this.lodProxyRenderer,
@@ -403,7 +403,11 @@ export class Render3DEntities {
       barrelMat: this.materialPalette.getBarrelMat(),
       mirrorGeom: this.mirrorGeom,
     });
-    this.dyingUnitScatter = new DyingUnitScatter3D(this.legRenderer, this.unitDetailInstances);
+    this.dyingUnitScatter = new DyingUnitScatter3D(
+      this.legRenderer,
+      this.unitDetailInstances,
+      this.teamTrim,
+    );
     this.unitMeshBuilder = new UnitMeshBuilder3D({
       world: this.world,
       unitDetailInstances: this.unitDetailInstances,
@@ -442,6 +446,7 @@ export class Render3DEntities {
    *  out: drop the per-object fade clones, free the locomotion + instanced
    *  slots, and detach the group from the world. */
   private disposeDeadUnitMesh(id: EntityId, mesh: EntityMesh): void {
+    this.dyingUnitScatter.forget(mesh);
     disposeEntityGroupFade(mesh.group);
     destroyLocomotion(mesh.locomotion, this.legRenderer);
     this.world.remove(mesh.group);
@@ -459,10 +464,13 @@ export class Render3DEntities {
    *  'death' SimEvents (see RtsScene3D); entities that merely leave vision
    *  are never flagged. Runs before the render removal queue consumes the
    *  entity id, while the mesh is still live. */
-  markEntityKilled(id: EntityId): void {
+  markEntityKilled(id: EntityId, blast?: EntityDeathBlast3D): void {
     const m = this.unitMeshes.get(id);
-    if (m) m.killed = true;
-    this.buildingRenderer.markEntityKilled(id);
+    if (m) {
+      m.killed = true;
+      m.deathBlast = blast;
+    }
+    this.buildingRenderer.markEntityKilled(id, blast);
   }
 
   update(
@@ -513,6 +521,10 @@ export class Render3DEntities {
       this.entityDetailRung,
       this.entityLodProxyFadeAlpha,
     );
+    // Buildings and dying building collars write into the same world-pooled
+    // ornament renderer as units. Flush only after both entity paths have
+    // completed so visibility/death alpha is never one frame late.
+    this.teamTrim?.flush();
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(
       this.frameState,
@@ -538,8 +550,12 @@ export class Render3DEntities {
    *  horizontal ranges keyed to the turret mount / unit center. UNIT
    *  SPH spheres (VISUAL/HITBOX/COLLISION) ride the unit group and leave
    *  alongside m.group. */
-  private disposeWorldParentedOverlays(m: EntityMesh): void {
+  private disposeWorldParentedOverlays(
+    m: EntityMesh,
+    releaseTeamTrim: boolean = true,
+  ): void {
     this.selectionOverlays.removeWorldParentedOverlays(m);
+    if (!releaseTeamTrim) return;
     // Team trim lives in a world-parented instanced pool, so it does NOT
     // leave with m.group. Without this the slot keeps its last transform
     // and the trim hangs in the air at the spot the entity died.
@@ -588,6 +604,7 @@ export class Render3DEntities {
     build: EntityBuildVisual | null = null,
     groupFade: number = bodyFade,
   ): void {
+    m.entityLifecycleFade = bodyFade;
     applyUnitEntityFade3D(
       m,
       bodyFade,
@@ -597,6 +614,12 @@ export class Render3DEntities {
       build,
       groupFade,
     );
+    if (m.teamTrimSlot !== undefined) this.teamTrim?.fade(m.teamTrimSlot, bodyFade);
+    for (let i = 0; i < m.turrets.length; i++) {
+      const slot = m.turrets[i].teamCollar?.slot;
+      if (slot === undefined) continue;
+      this.teamTrim?.fade(slot, turretFades?.[i] ?? bodyFade);
+    }
   }
 
   private unitBuildVisualFor(
@@ -868,6 +891,7 @@ export class Render3DEntities {
       }
 
       const liftPos = m.liftGroup?.position;
+      const visualBankAllowed = unitTurretsAllowVisualBank3D(turrets);
       this.unitRenderPose.writeUnit(
         poseCount,
         tx,
@@ -883,8 +907,8 @@ export class Render3DEntities {
         unitRows.airborneAt(row),
         unitRows.velocityX[row],
         unitRows.velocityY[row],
-        unitRows.yawRate[row],
-        m.visualBankRoll ?? 0,
+        visualBankAllowed ? unitRows.yawRate[row] : 0,
+        visualBankAllowed ? (m.visualBankRoll ?? 0) : 0,
         spinDt,
         unitRows.orientationX[row],
         unitRows.orientationY[row],
@@ -944,16 +968,7 @@ export class Render3DEntities {
         poseOutput[poseBase + 3],
       );
       const poseMode = poseOutput[poseBase + 15];
-      const chassisTilted = poseMode === 1;
       const fullOrientation = poseMode === 2;
-      if (chassisTilted) {
-        _invTiltQuat.set(
-          poseOutput[poseBase + 4],
-          poseOutput[poseBase + 5],
-          poseOutput[poseBase + 6],
-          poseOutput[poseBase + 7],
-        );
-      }
       if (m.yawGroup) {
         setEulerIfChanged(m.yawGroup.rotation, 0, fullOrientation ? 0 : yaw, 0);
       }
@@ -1035,7 +1050,6 @@ export class Render3DEntities {
         unitRows.supportPointOffsetZ[row],
         this._smoothLiftedPos,
         this._smoothParentQuat,
-        chassisTilted ? _invTiltQuat : undefined,
         unitGfx.barrelSpin,
         this.barrelSpinState,
         this._currentDtMs,
@@ -1064,7 +1078,6 @@ export class Render3DEntities {
               shieldPanelTurretIndex,
               this._smoothLiftedPos,
               this._smoothParentQuat,
-              chassisTilted ? _invTiltQuat : undefined,
               shieldPanelTurret?.rotation,
               shieldPanelTurret?.pitch,
             );
@@ -1168,7 +1181,6 @@ export class Render3DEntities {
       this.turretMountCache,
       this.teamTrim,
     );
-    this.teamTrim?.flush();
     this.shieldPanelPose.flush(this.unitDetailInstances);
     this.airborneEmitterBatch.flush(this.hoverSmokeEmitters);
 
@@ -1246,12 +1258,14 @@ export class Render3DEntities {
     // World-parented overlays (range circles) and the selection ring leave
     // immediately for both removal paths; the body/turrets/locomotion remain
     // for the render-only fade.
-    this.disposeWorldParentedOverlays(m);
+    this.disposeWorldParentedOverlays(m, false);
     if (m.killed) {
-      this.dyingUnitScatter.prepare(m);
-      this.dyingUnits.markDying(id, m);
+      if (m.deathBlast !== undefined) {
+        this.dyingUnitScatter.prepare(m, m.deathBlast);
+      }
+      this.dyingUnits.markDying(id, m, m.entityLifecycleFade);
     } else {
-      this.vanishingUnits.markDying(id, m);
+      this.vanishingUnits.markDying(id, m, m.entityLifecycleFade);
     }
     this.unitMeshes.delete(id);
   }

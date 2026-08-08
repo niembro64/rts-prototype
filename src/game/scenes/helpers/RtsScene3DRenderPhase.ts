@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {
   getFogShade,
   getEntityShadows,
-  getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
   getEntityHudToggle,
@@ -34,7 +33,6 @@ import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { WindParticleField3D } from '../../render3d/WindParticleField3D';
-import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
 import {
   GroundPrintRenderPacket3D,
@@ -103,7 +101,6 @@ type RtsScene3DRenderPhaseResources = {
   explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
-  debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
   areaDragRenderer: AreaDrag3D;
@@ -168,7 +165,6 @@ export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
   private lastEffectsTickMs = 0;
   private fireExplosionAccumMs = 0;
-  private debrisAccumMs = 0;
   private burnMarkAccumMs = 0;
   private groundPrintAccumMs = 0;
   private smokeTrailAccumMs = 0;
@@ -307,12 +303,10 @@ export class RtsScene3DRenderPhase {
 
   beginEnabledFrame(): void {
     this.resources.explosionRenderer.beginFrame();
-    this.resources.debrisRenderer.beginFrame();
   }
 
   resetEffectAccumulators(): void {
     this.fireExplosionAccumMs = 0;
-    this.debrisAccumMs = 0;
     this.burnMarkAccumMs = 0;
     this.groundPrintAccumMs = 0;
     this.smokeTrailAccumMs = 0;
@@ -354,7 +348,6 @@ export class RtsScene3DRenderPhase {
       explosionRenderer,
       shieldImpactRenderer,
       waterSplashRenderer,
-      debrisRenderer,
       burnMarkRenderer,
       groundPrintRenderer,
       areaDragRenderer,
@@ -548,19 +541,9 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
     );
     this.fireExplosionAccumMs += effectDtMs;
-    this.debrisAccumMs += effectDtMs;
-    const materialExplosionsEnabled = getMaterialExplosions();
-    if (!materialExplosionsEnabled) {
-      debrisRenderer.clear();
-      this.debrisAccumMs = 0;
-    }
     if (updateEffectsThisFrame) {
       explosionRenderer.update(this.fireExplosionAccumMs, renderFrameState.view);
-      if (materialExplosionsEnabled) {
-        debrisRenderer.update(this.debrisAccumMs);
-      }
       this.fireExplosionAccumMs = 0;
-      this.debrisAccumMs = 0;
     }
     shieldImpactRenderer.setVisible(forceFieldsVisible);
     if (forceFieldsVisible) {

@@ -159,10 +159,6 @@ const FULL_GFX: GraphicsConfig = {
   groundPrintDensity: 1,
   projectileStyle: 'full',
   fireExplosionStyle: 'inferno',
-  materialExplosionStyle: 'obliterate',
-  materialExplosionPieceBudget: 1,
-  materialExplosionPhysicsFramesSkip: 1,
-  deathExplosionStyle: 'obliterate',
 };
 
 type TierCounts = Readonly<{ close: number; mid: number; far: number }>;

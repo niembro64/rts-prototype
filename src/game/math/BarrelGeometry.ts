@@ -14,8 +14,8 @@ export const TURRET_BARREL_MIN_DIAMETER = 2;
 
 /** Maximum barrel orbit radius — fractions of the turret body sphere
  *  radius — applied to authored blueprint orbit values so a barrel
- *  cluster cannot fan outside its own turret silhouette. Render, HUD,
- *  and debris paths use the helpers below so the same
+ *  cluster cannot fan outside its own turret silhouette. Render, HUD, and
+ *  collision paths use the helpers below so the same
  *  blueprint geometry is used everywhere. */
 const BARREL_ORBIT_CLAMP_FRAC = {
   /** simpleMultiBarrel — single orbit ring of parallel barrels. */

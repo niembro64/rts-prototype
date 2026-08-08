@@ -30,7 +30,7 @@ const STRAP_TRIANGLE_BUDGET: Record<PrimitiveGeometryTier, number> = {
 /** A capped cylinder of N radial segments is 4N triangles: 2N on the side,
  *  N per cap. The collar's own ladder is 16 / 8 / 4 sides. */
 const COLLAR_TRIANGLES: Record<PrimitiveGeometryTier, number> = {
-  close: 64,
+  close: 56,
   mid: 32,
   far: 16,
 };
@@ -276,10 +276,10 @@ export function runTeamOrnament3DContractTest(): void {
 }
 
 /**
- * ONE KIT, MANY FITS.
+ * ONE UNIT KIT, MANY FITS.
  *
  * The kit is a design, not a model: the same rails and ribs have to land on a
- * scout, a Queen and a factory, each time inside that host's own envelope. The
+ * scout and a Queen, each time inside that unit's own envelope. The
  * failure this catches is a kit authored against one body and instanced onto
  * every other — rails hanging off the nose of a short hull, or buried inside a
  * long one — which is exactly what a single normalized kit stretched per
@@ -290,7 +290,6 @@ function checkKitFitsEveryHost(): void {
     { label: 'reference walker', minX: -1.6, maxX: 1.2, halfWidth: 0.68, topY: 1.45 },
     { label: 'stubby scout', minX: -0.9, maxX: 0.9, halfWidth: 0.9, topY: 0.7 },
     { label: 'long hull', minX: -2.4, maxX: 2.4, halfWidth: 0.6, topY: 0.9 },
-    { label: 'structure box', minX: -30, maxX: 30, halfWidth: 30, topY: 22 },
   ];
   const keys = new Set<string>();
   for (const host of hosts) {

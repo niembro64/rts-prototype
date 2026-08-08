@@ -64,7 +64,6 @@ import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
 import type { ScopedRenderMeshRetentionTelemetry } from '../render3d/ScopedRenderMeshRetention3D';
-import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { AreaDrag3D } from '../render3d/AreaDrag3D';
@@ -169,7 +168,6 @@ export class RtsScene3D {
   private explosionRenderer!: Explosion3D;
   private shieldImpactRenderer!: ShieldImpactRenderer3D;
   private waterSplashRenderer!: WaterSplash3D;
-  private debrisRenderer!: Debris3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
    *  CLIENT `RENDER: WIN/PAD/ALL` toggle. Populated each frame from
    *  the same 4 corner raycasts the minimap already uses, so the
@@ -473,7 +471,6 @@ export class RtsScene3D {
     this.explosionRenderer = renderers.explosionRenderer;
     this.shieldImpactRenderer = renderers.shieldImpactRenderer;
     this.waterSplashRenderer = renderers.waterSplashRenderer;
-    this.debrisRenderer = renderers.debrisRenderer;
     this.burnMarkRenderer = renderers.burnMarkRenderer;
     this.groundPrintRenderer = renderers.groundPrintRenderer;
     this.areaDragRenderer = renderers.areaDragRenderer;
@@ -670,7 +667,6 @@ export class RtsScene3D {
         explosionRenderer: this.explosionRenderer,
         shieldImpactRenderer: this.shieldImpactRenderer,
         waterSplashRenderer: this.waterSplashRenderer,
-        debrisRenderer: this.debrisRenderer,
         burnMarkRenderer: this.burnMarkRenderer,
         groundPrintRenderer: this.groundPrintRenderer,
         areaDragRenderer: this.areaDragRenderer,
@@ -915,7 +911,6 @@ export class RtsScene3D {
       explosionRenderer: this.explosionRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
-      debrisRenderer: this.debrisRenderer,
       isPositionLowLod: (simX, simY, simZ) =>
         detailRungForLevel(this.positionVisualDetailLevel(simX, simY, simZ)) ===
           DETAIL_RUNG_GLYPH,
@@ -1669,7 +1664,6 @@ export class RtsScene3D {
       explosionRenderer: this.explosionRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
-      debrisRenderer: this.debrisRenderer,
       burnMarkRenderer: this.burnMarkRenderer,
       groundPrintRenderer: this.groundPrintRenderer,
       areaDragRenderer: this.areaDragRenderer,

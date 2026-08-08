@@ -18,7 +18,7 @@ import type { Entity, PlayerId } from '../sim/types';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
-import { getChassisLiftY } from '../math/BodyDimensions';
+import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { LEG_CHARTS } from './SurfaceChart3D';
 import {
@@ -29,7 +29,6 @@ import {
   captureLegState as captureLegStateImpl,
   fadeLegSlots,
   freeLegSlots,
-  translateLegSlots,
   updateLegs,
 } from './LegRig3D';
 import {
@@ -45,6 +44,7 @@ import {
 import {
   type HoverMesh,
   buildHoverFans,
+  getHoverFanVisualRootY,
   setHoverFanAnimationTime,
   updateHoverFans,
 } from './HoverRig3D';
@@ -440,10 +440,16 @@ export function buildLocomotion(
         ownerId,
         geometryTier,
       );
-      // Preserve the existing no-bank world pose while making the rig a
-      // child of the body-center roll pivot. The lift group supplies
-      // T(center) · R(bank); this offset supplies T(-center).
-      mesh.group.position.y -= airborneLiftY;
+      // Hover mounts remain authoritative blueprint data. Only their rendered
+      // array is translated to an overhead plane, high enough that even a
+      // tilted duct clears the visible body. The array remains a lift-group
+      // child so it banks with the chassis it is visibly attached to.
+      mesh.visualBaseY = getHoverFanVisualRootY(
+        getBodyTopY(bp.bodyShape, unitRadius),
+        unitRadius,
+        loc.config,
+      );
+      mesh.group.position.y = mesh.visualBaseY;
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -529,17 +535,6 @@ export function fadeLocomotion(
 ): void {
   if (!mesh || mesh.type !== 'legs') return;
   fadeLegSlots(mesh, legRenderer, fade);
-}
-
-export function translateLocomotion(
-  mesh: Locomotion3DMesh,
-  dx: number,
-  dy: number,
-  dz: number,
-  legRenderer: LegInstancedRenderer,
-): void {
-  if (!mesh || mesh.type !== 'legs') return;
-  translateLegSlots(mesh, legRenderer, dx, dy, dz);
 }
 
 export function destroyLocomotion(

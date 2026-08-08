@@ -40,6 +40,11 @@ import {
  *  The rig group lifts itself by enough to keep fans visible above
  *  the surface in that case. */
 const HOVER_FLOOR_MARGIN = 1;
+/** Presentation-only air gap between the top of the chassis and the lowest
+ * point of an overhead hover fan. Authored mount offsets remain unchanged:
+ * they still describe the locomotion layout used by the unit blueprint. */
+const HOVER_FAN_BODY_GAP_RADIUS_FRAC = 0.04;
+const HOVER_FAN_BODY_GAP_MIN = 0.5;
 
 const FAN_RING_COLOR = COLORS.units.locomotion.hover.fanRing.colorHex;
 const FAN_BLADE_COLOR = COLORS.units.locomotion.hover.fanBlade.colorHex;
@@ -336,6 +341,9 @@ export type HoverMesh = {
   type: 'hover';
   group: THREE.Group;
   fans: HoverFan[];
+  /** Chassis-local presentation height for the fan-array root. Terrain
+   * safety may add to this value, but must never replace it. */
+  visualBaseY: number;
   /** Most recent world-Y gap between the chassis and terrain below
    *  it. Updated every frame in updateHoverFans. Useful to other
    *  client systems (smoke length, dust kick-up, altitude shading)
@@ -355,6 +363,43 @@ type FanSpec = {
   exhaustDirection?: THREE.Vector3;
   smokeProfile: ResolvedSmokeProfile;
 };
+
+/**
+ * Resolve a render-only root height that seats every hover duct completely
+ * above the visible chassis. The blueprint mount's planar position and tilt
+ * are retained, including its logical z offset; one common visual translation
+ * moves the array without changing locomotion data or authoritative physics.
+ */
+export function getHoverFanVisualRootY(
+  bodyTopY: number,
+  unitRadius: number,
+  cfg: HoverConfig,
+): number {
+  const gapY = Math.max(HOVER_FAN_BODY_GAP_MIN, unitRadius * HOVER_FAN_BODY_GAP_RADIUS_FRAC);
+  let rootY = bodyTopY + gapY;
+
+  for (const mount of cfg.mounts) {
+    const fanRadius = Math.max(1, unitRadius * mount.radiusFrac);
+    const ringTubeRadius = Math.max(0.35, unitRadius * mount.ringTubeRadiusFrac);
+    const outwardAngleRad = THREE.MathUtils.degToRad(
+      Math.max(0, Math.min(35, mount.outwardAngleDeg)),
+    );
+    // A tilted duct's lowest point is its major-radius drop plus the
+    // orientation-independent radius of its circular tube. Include the hub
+    // sphere as well so a nearly-flat, small-duct configuration still clears.
+    const verticalHalfExtent = Math.max(
+      fanRadius * Math.sin(outwardAngleRad) + ringTubeRadius,
+      fanRadius * 0.22,
+    );
+    const authoredLocalY = unitRadius * mount.offset.zUnitRadiusRatio;
+    rootY = Math.max(
+      rootY,
+      bodyTopY + gapY + verticalHalfExtent - authoredLocalY,
+    );
+  }
+
+  return rootY;
+}
 
 function buildFan(
   parent: THREE.Group,
@@ -561,6 +606,7 @@ export function buildHoverFans(
     type: 'hover',
     group,
     fans,
+    visualBaseY: 0,
     clearance: 0,
     fanSpinRadPerSec,
     geometryKey: '',
@@ -580,16 +626,17 @@ export function updateHoverFans(
   // Per-frame clearance + soft floor safety. The chassis world Y is
   // sim altitude (entity.transform.z); the rendered rig group is a
   // child of the unitGroup, so local-Y adjustments shift it relative
-  // to that chassis. Lift the group by whatever it takes to keep the
-  // fans at least HOVER_FLOOR_MARGIN above terrain. On the common
-  // case (chassis floating cleanly above ground) this is a no-op.
+  // to that chassis. Preserve the overhead presentation height, then
+  // add whatever emergency correction is needed when the authoritative
+  // chassis itself falls inside HOVER_FLOOR_MARGIN. On the common case
+  // (chassis floating cleanly above ground) the correction is zero.
   const chassisWorldY = entity.transform.z;
   const groundY = getLocomotionSurfaceHeight(
     entity.transform.x, entity.transform.y, mapWidth, mapHeight, entity.id,
   );
   const rawClearance = chassisWorldY - groundY;
   const floorDeficit = HOVER_FLOOR_MARGIN - rawClearance;
-  const groupY = floorDeficit > 0 ? floorDeficit : 0;
+  const groupY = mesh.visualBaseY + (floorDeficit > 0 ? floorDeficit : 0);
   if (mesh.group.position.y !== groupY) mesh.group.position.y = groupY;
   mesh.clearance = Math.max(rawClearance, HOVER_FLOOR_MARGIN);
 

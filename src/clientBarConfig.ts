@@ -1327,9 +1327,9 @@ export function writeFogShadePresentationSettings(
   return out;
 }
 
-/** Material-explosion toggle: client-side death fire puff and Debris3D
- *  part breakup. Gameplay death, blast damage, knockback, and the
- *  dying shell fade remain authoritative / unchanged. */
+/** Material-explosion toggle: client-side death fire puff plus blast-biased
+ *  disassembly of the dying entity's actual textured render parts. Gameplay
+ *  death, blast damage, and knockback remain authoritative / unchanged. */
 export function getMaterialExplosions(): boolean {
   return currentMaterialExplosions;
 }

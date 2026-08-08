@@ -21,6 +21,7 @@ import {
   windNacelleMat,
   windTrimMat,
 } from './BuildingMeshPrimitives3D';
+import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
 
 /** Per-blade open/closed orientation pair. Animator slerps each blade
  *  between these as the wind turbine transitions in/out of its stowed
@@ -90,6 +91,24 @@ export function buildWindTurbineMesh(
   nacelle.rotation.x = Math.PI / 2;
   root.add(nacelle);
 
+  // The turbine carries its side high on the skyline: a short belt around
+  // the machine housing, not a generic stripe on the tower shaft. It turns
+  // with the wind-facing nacelle, so it always remains visually attached to
+  // the part whose function it identifies.
+  const nacelleBand = markBuildingTeamOrnament(
+    makeCylinder(
+      primaryMat,
+      nacelleRadius * 1.08,
+      Math.max(3.2, nacelleRadius * 0.52),
+      0,
+      0,
+      nacelleLen * 0.14,
+    ),
+    'windNacelleBand',
+  );
+  nacelleBand.rotation.x = Math.PI / 2;
+  root.add(nacelleBand);
+
   const tailCap = makeCone(windTrimMat, nacelleRadius * 0.72, nacelleRadius * 1.7, 0, 0, -nacelleLen * 0.52);
   tailCap.rotation.x = -Math.PI / 2;
   root.add(tailCap);
@@ -129,6 +148,20 @@ export function buildWindTurbineMesh(
   const hub = makeCylinder(windNacelleMat, nacelleRadius * 1.56, bladeThickness * 1.6, 0, 0, 0);
   hub.rotation.x = Math.PI / 2;
   rotor.add(hub);
+
+  const hubCap = markBuildingTeamOrnament(
+    makeCylinder(
+      primaryMat,
+      nacelleRadius * 1.22,
+      Math.max(1.4, bladeThickness * 0.42),
+      0,
+      0,
+      bladeThickness * 0.94,
+    ),
+    'windNacelleBand',
+  );
+  hubCap.rotation.x = Math.PI / 2;
+  rotor.add(hubCap);
 
   const nose = makeCone(windNacelleMat, nacelleRadius * 0.74, nacelleRadius * 1.38, 0, 0, nacelleRadius * 0.5);
   nose.rotation.x = Math.PI / 2;

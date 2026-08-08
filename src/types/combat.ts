@@ -50,10 +50,8 @@ export type SimDeathContext = {
   rotation?: number;
   /** Per-turret world-frame yaw + pitch at the moment of death,
    *  one entry per entry in the unit's blueprint `turrets` array.
-   *  Debris3D rotates the barrel templates by these so each
-   *  cylinder spawns at the world-space pose its live mesh held —
-   *  not the chassis-aligned default. Optional: when missing
-   *  Debris3D falls back to chassis-aligned (legacy behaviour). */
+   *  Retained for wire compatibility and non-3D consumers. The 3D death
+   *  disassembly now reuses the live turret/barrel render poses directly. */
   turretPoses?: Array<{ rotation: number; pitch: number }>;
 };
 

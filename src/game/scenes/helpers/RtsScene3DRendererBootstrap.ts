@@ -6,7 +6,6 @@ import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import { BurnMark3D } from '../../render3d/BurnMark3D';
 import { CursorGround } from '../../render3d/CursorGround';
-import { Debris3D } from '../../render3d/Debris3D';
 import { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import { WorldShade3D } from '../../render3d/WorldShade3D';
 import { Explosion3D } from '../../render3d/Explosion3D';
@@ -67,7 +66,6 @@ type RtsScene3DRendererBootstrapResult = {
   explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
-  debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
   areaDragRenderer: AreaDrag3D;
@@ -197,10 +195,6 @@ export function bootstrapRtsScene3DRenderers(
   const explosionRenderer = new Explosion3D(threeApp.world);
   const shieldImpactRenderer = new ShieldImpactRenderer3D(threeApp.world);
   const waterSplashRenderer = new WaterSplash3D(threeApp.world);
-  const debrisRenderer = new Debris3D(
-    threeApp.world,
-    (x, z) => getTerrainMeshHeight(x, z, mapWidth, mapHeight),
-  );
   const burnMarkRenderer = new BurnMark3D(
     threeApp.world,
     renderScope,
@@ -267,7 +261,6 @@ export function bootstrapRtsScene3DRenderers(
     explosionRenderer,
     shieldImpactRenderer,
     waterSplashRenderer,
-    debrisRenderer,
     burnMarkRenderer,
     groundPrintRenderer,
     areaDragRenderer,

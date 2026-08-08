@@ -23,6 +23,8 @@ import {
   writeSurfaceChart,
   type SurfaceChartAttribute,
 } from './SurfaceChartMaterial3D';
+import { patchInstancedFadeMaterial } from './EntityFade3D';
+import type { EntityDeathRenderablePart3D } from './EntityDeathDisassembly3D';
 
 /**
  * TeamTrimRenderer3D — shared team-coloured ornamentation.
@@ -32,13 +34,12 @@ import {
  * carries the side. Ornamentation is added geometry, not a recolour of the
  * body, so a unit reads as its alliance without giving up player identity.
  *
- * ONE KIT, MANY FITS. Every host wears the same designed kit (TeamOrnament3D)
- * fitted to its own body, and every turret wears the same collar sized from
- * its own head radius. There is no "generic" fallback ornament, because a
- * plain box is not ornamentation — it is the absence of it, wearing the team
- * colour as an alibi.
+ * ONE UNIT KIT, MANY FITS. Every mobile unit wears the same designed body kit
+ * (TeamOrnament3D) fitted to its hull, and every turret wears the same collar
+ * sized from its own head radius. Buildings are absent from these body-kit
+ * pools: each building mesh authors function-specific team ornamentation.
  *
- * PERFORMANCE. Pools are keyed by PROFILE, not by entity: every host whose kit
+ * PERFORMANCE. Pools are keyed by PROFILE, not by entity: every unit whose kit
  * would be visually identical shares one InstancedMesh, so a hundred of the
  * same unit type cost one draw call and no per-entity Object3D. Pools are
  * created on first use and grow by doubling, so a roster of a dozen body
@@ -85,6 +86,9 @@ type TrimPool = {
   nextSlot: number;
   matrixDirty: DirtySlotSpan;
   colorDirty: DirtySlotSpan;
+  fade: Float32Array;
+  fadeAttribute: THREE.InstancedBufferAttribute;
+  fadeDirty: DirtySlotSpan;
 };
 
 function addWhiteVertexColors(geometry: THREE.BufferGeometry): void {
@@ -113,6 +117,8 @@ export class TeamTrimRenderer3D {
   private readonly scratchQuaternion = new THREE.Quaternion();
   private readonly scratchScale = new THREE.Vector3();
   private readonly scratchColor = new THREE.Color();
+  private readonly scratchRotation = new THREE.Quaternion();
+  private readonly scratchEuler = new THREE.Euler();
   /** Read once per frame from the CLIENT bar. */
   private enabled = false;
 
@@ -122,6 +128,7 @@ export class TeamTrimRenderer3D {
       vertexColors: true,
     });
     patchSurfaceChartMaterial(this.material, { bump: true });
+    patchInstancedFadeMaterial(this.material);
   }
 
   private poolFor(
@@ -146,6 +153,10 @@ export class TeamTrimRenderer3D {
     capacity: number,
     chartId: SurfaceChartId,
   ): TrimPool {
+    const fade = new Float32Array(capacity);
+    const fadeAttribute = new THREE.InstancedBufferAttribute(fade, 1);
+    fadeAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('aFade', fadeAttribute);
     const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     mesh.name = name;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -171,6 +182,9 @@ export class TeamTrimRenderer3D {
       nextSlot: 0,
       matrixDirty: createDirtySlotSpan(),
       colorDirty: createDirtySlotSpan(),
+      fade,
+      fadeAttribute,
+      fadeDirty: createDirtySlotSpan(),
     };
   }
 
@@ -186,9 +200,12 @@ export class TeamTrimRenderer3D {
     // the geometry is shared between the two meshes, so createPool overwrites
     // the label buffer on the way past and the copy has to come first.
     const charts = pool.chart.arr.slice(0, pool.capacity * 4);
+    const fades = pool.fade.slice(0, pool.capacity);
     const next = this.createPool(pool.mesh.name, pool.geometry, capacity, pool.chartId);
     next.chart.arr.set(charts);
     next.chart.attr.needsUpdate = true;
+    next.fade.set(fades);
+    next.fadeAttribute.needsUpdate = true;
     next.mesh.count = pool.mesh.count;
     next.nextSlot = pool.nextSlot;
     next.free.push(...pool.free);
@@ -209,6 +226,9 @@ export class TeamTrimRenderer3D {
     pool.chart = next.chart;
     pool.matrixDirty = next.matrixDirty;
     pool.colorDirty = next.colorDirty;
+    pool.fade = next.fade;
+    pool.fadeAttribute = next.fadeAttribute;
+    pool.fadeDirty = next.fadeDirty;
     // createPool pushed nothing to this.pools; drop the temporary record.
     return true;
   }
@@ -234,14 +254,16 @@ export class TeamTrimRenderer3D {
       if (pool.mesh.count < pool.nextSlot) pool.mesh.count = pool.nextSlot;
     }
     writeSurfaceChart(pool.chart, index, pool.chartId, hostScale);
+    pool.fade[index] = 1;
+    markDirtySlot(pool.fadeDirty, index);
     return encodeTrimSlot(poolIndex, index);
   }
 
   /**
-   * A host's rail-and-rib kit, fitted to its own body.
+   * A unit's rail-and-rib kit, fitted to its own body.
    *
    * The profile decides both the geometry and which pool it lands in, so two
-   * hosts of the same shape share a draw call and a host of a new shape gets
+   * units of the same shape share a draw call and a unit of a new shape gets
    * its own kit the first time one is built.
    */
   allocHostKit(
@@ -325,8 +347,7 @@ export class TeamTrimRenderer3D {
     }
   }
 
-  /** A host kit rides one uniform scale — the host's render radius for a
-   *  unit, 1 for a structure whose kit is authored in world units. */
+  /** A unit body kit rides one uniform scale — the host's render radius. */
   setHostKit(
     slot: number,
     x: number,
@@ -372,12 +393,56 @@ export class TeamTrimRenderer3D {
     this.hideIn(pool, trimSlotIndex(slot));
   }
 
+  /** Apply the host entity's lifecycle alpha to this ornament instance. */
+  fade(slot: number, alpha: number): void {
+    if (slot < 0) return;
+    const pool = this.pools[trimSlotPool(slot)];
+    if (pool === undefined) return;
+    const index = trimSlotIndex(slot);
+    const clamped = Math.max(0, Math.min(1, alpha));
+    if (pool.fade[index] === clamped) return;
+    pool.fade[index] = clamped;
+    markDirtySlot(pool.fadeDirty, index);
+  }
+
+  /** Capture the live textured instance itself as a death piece. */
+  captureDeathPart(slot: number): EntityDeathRenderablePart3D | null {
+    if (slot < 0) return null;
+    const pool = this.pools[trimSlotPool(slot)];
+    if (pool === undefined) return null;
+    const index = trimSlotIndex(slot);
+    const matrix = new THREE.Matrix4().fromArray(
+      pool.mesh.instanceMatrix.array as ArrayLike<number>,
+      index * 16,
+    );
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(matrix);
+    return {
+      worldPosition,
+      applyDelta: (delta): void => {
+        matrix.fromArray(pool.mesh.instanceMatrix.array as ArrayLike<number>, index * 16);
+        matrix.decompose(this.scratchPosition, this.scratchQuaternion, this.scratchScale);
+        this.scratchPosition.x += delta.dx;
+        this.scratchPosition.y += delta.dy;
+        this.scratchPosition.z += delta.dz;
+        const rotation = this.scratchRotation.setFromEuler(
+          this.scratchEuler.set(delta.drx, delta.dry, delta.drz, 'XYZ'),
+        );
+        this.scratchQuaternion.premultiply(rotation);
+        matrix.compose(this.scratchPosition, this.scratchQuaternion, this.scratchScale);
+        pool.mesh.setMatrixAt(index, matrix);
+        markDirtySlot(pool.matrixDirty, index);
+      },
+    };
+  }
+
   release(slot: number): void {
     if (slot < 0) return;
     const pool = this.pools[trimSlotPool(slot)];
     if (pool === undefined) return;
     const index = trimSlotIndex(slot);
     this.hideIn(pool, index);
+    pool.fade[index] = 1;
+    markDirtySlot(pool.fadeDirty, index);
     writeSurfaceChart(pool.chart, index, 'none');
     pool.free.push(index);
   }
@@ -388,6 +453,7 @@ export class TeamTrimRenderer3D {
       uploadDirtySlotSpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
       const colors = pool.mesh.instanceColor;
       if (colors !== null) uploadDirtySlotSpan(colors, pool.colorDirty, 3);
+      uploadDirtySlotSpan(pool.fadeAttribute, pool.fadeDirty, 1);
       uploadSurfaceChart(pool.chart);
     }
   }

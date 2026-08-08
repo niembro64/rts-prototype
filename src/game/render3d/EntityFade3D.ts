@@ -355,11 +355,14 @@ type FadeMeshCache = {
   /** The real (shared) material this mesh renders with when fully built.
    *  Captured the frame the mesh first enters a fade so the per-object
    *  clone can be restored to it. */
-  _fadeReal?: THREE.Material;
+  _fadeReal?: THREE.Material | THREE.Material[];
   /** Lazily-built per-object fade clone wrapping `_fadeReal`. Reused
    *  across frames; rebuilt only when the real material instance changes
    *  (team recolor, ghost, engaged head). */
-  _fadeHandle?: PerObjectFade;
+  _fadeHandles?: PerObjectFade[];
+  /** Material (or material array) currently installed on the Mesh while its
+   *  real textured material waits in `_fadeReal`. */
+  _fadeApplied?: THREE.Material | THREE.Material[];
 };
 
 function fadeMeshMaterial(
@@ -371,10 +374,14 @@ function fadeMeshMaterial(
   if (fade >= 1 && build === null) {
     // Fully built and fully faded in: restore the real material and stop
     // paying the patch.
-    if (ud._fadeReal !== undefined) {
+    if (
+      ud._fadeApplied !== undefined &&
+      ud._fadeReal !== undefined &&
+      mesh.material === ud._fadeApplied
+    ) {
       mesh.material = ud._fadeReal;
-      ud._fadeReal = undefined;
     }
+    ud._fadeApplied = undefined;
     return;
   }
   const applyChannels = (handle: PerObjectFade): void => {
@@ -387,27 +394,31 @@ function fadeMeshMaterial(
       handle.setFade(build === null ? fade : fade * getBuildAlphaForFraction(build.progress));
     }
   };
-  const handle = ud._fadeHandle;
-  // Clone already applied (untouched since last frame): just set values.
-  if (handle !== undefined && mesh.material === handle.material) {
-    applyChannels(handle);
+  const handles = ud._fadeHandles;
+  // Clones already applied (untouched since last frame): just set values.
+  if (handles !== undefined && mesh.material === ud._fadeApplied) {
+    for (const handle of handles) applyChannels(handle);
     return;
   }
-  // Otherwise `mesh.material` is currently the real material. Reuse the
-  // existing clone iff it wraps that same real instance; rebuild only when
-  // the real material actually changed.
+  // Otherwise `mesh.material` is currently the real material (possibly an
+  // array). Reuse existing clones iff they wrap that exact real material
+  // carrier; rebuild only on an actual material/team-state change.
   const current = mesh.material;
-  if (Array.isArray(current)) return; // multi-material meshes not faded
-  if (handle !== undefined && ud._fadeReal === current) {
-    mesh.material = handle.material;
-    applyChannels(handle);
+  if (handles !== undefined && ud._fadeReal === current) {
+    mesh.material = ud._fadeApplied = Array.isArray(current)
+      ? handles.map((handle) => handle.material)
+      : handles[0].material;
+    for (const handle of handles) applyChannels(handle);
     return;
   }
   ud._fadeReal = current;
-  handle?.material.dispose();
-  ud._fadeHandle = makePerObjectFadeMaterial(current);
-  mesh.material = ud._fadeHandle.material;
-  applyChannels(ud._fadeHandle);
+  for (const handle of handles ?? []) handle.material.dispose();
+  const bases = Array.isArray(current) ? current : [current];
+  ud._fadeHandles = bases.map(makePerObjectFadeMaterial);
+  mesh.material = ud._fadeApplied = Array.isArray(current)
+    ? ud._fadeHandles.map((handle) => handle.material)
+    : ud._fadeHandles[0].material;
+  for (const handle of ud._fadeHandles) applyChannels(handle);
 }
 
 /** Apply a uniform materialization fade — and, while under
@@ -435,11 +446,14 @@ export function applyEntityGroupFade(
 export function disposeEntityGroupFade(group: THREE.Object3D): void {
   group.traverse((obj) => {
     const ud = obj.userData as FadeMeshCache;
-    if (ud._fadeHandle !== undefined) {
-      if (ud._fadeReal !== undefined) (obj as THREE.Mesh).material = ud._fadeReal;
-      ud._fadeHandle.material.dispose();
-      ud._fadeHandle = undefined;
+    if (ud._fadeHandles !== undefined) {
+      if (ud._fadeApplied !== undefined && ud._fadeReal !== undefined) {
+        (obj as THREE.Mesh).material = ud._fadeReal;
+      }
+      for (const handle of ud._fadeHandles) handle.material.dispose();
+      ud._fadeHandles = undefined;
       ud._fadeReal = undefined;
+      ud._fadeApplied = undefined;
     }
   });
 }
@@ -466,9 +480,9 @@ export class DyingMeshFade<TMesh> {
     return this.dying.has(id);
   }
 
-  /** Begin (or restart) a mesh's death fade at full opacity. */
-  markDying(id: EntityId, mesh: TMesh): void {
-    this.dying.set(id, { mesh, fade: 1 });
+  /** Begin (or restart) a mesh fade at its currently rendered opacity. */
+  markDying(id: EntityId, mesh: TMesh, startFade: number = 1): void {
+    this.dying.set(id, { mesh, fade: THREE.MathUtils.clamp(startFade, 0, 1) });
   }
 
   /** Tear down a dying mesh immediately (e.g. its id reappeared). */

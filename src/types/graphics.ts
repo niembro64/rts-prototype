@@ -8,12 +8,6 @@ export type FireExplosionStyle =
   | 'burst'
   | 'blaze'
   | 'inferno';
-export type DeathExplosionStyle =
-  | 'puff'
-  | 'scatter'
-  | 'shatter'
-  | 'detonate'
-  | 'obliterate';
 export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
@@ -46,8 +40,4 @@ export type GraphicsConfig = {
   groundPrintDensity: number;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;
-  materialExplosionStyle: DeathExplosionStyle;
-  materialExplosionPieceBudget: number;
-  materialExplosionPhysicsFramesSkip: number;
-  deathExplosionStyle: DeathExplosionStyle;
 };

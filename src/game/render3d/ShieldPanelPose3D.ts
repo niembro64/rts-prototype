@@ -53,7 +53,6 @@ export class ShieldPanelPose3D {
     shieldPanelTurretIndex: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    chassisTiltInverse: THREE.Quaternion | undefined,
     legacyRotation?: number,
     legacyPitch?: number,
   ): void {
@@ -82,7 +81,6 @@ export class ShieldPanelPose3D {
       entity.transform.rotation,
       shieldPanelRot,
       shieldPanelPitch,
-      chassisTiltInverse,
     );
   }
 
@@ -217,7 +215,6 @@ export class ShieldPanelPose3D {
     hostRotation: number,
     aimRotation: number,
     aimPitch: number,
-    chassisTiltInverse: THREE.Quaternion | undefined,
   ): void {
     const index = this.aimCount;
     this.aimCount++;
@@ -231,7 +228,7 @@ export class ShieldPanelPose3D {
       hostRotation,
       aimRotation,
       aimPitch,
-      chassisTiltInverse,
+      parentQuaternion,
     );
 
     const poseBase = index * 7;

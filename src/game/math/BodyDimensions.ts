@@ -5,7 +5,7 @@
 // proportional to the horizontal dimensions — see BodyShape3D.ts for
 // the render-side implementation.
 //
-// This module exposes body dimension math for chassis, legs, debris,
+// This module exposes body dimension math for chassis and legs,
 // and fallback helpers. Authoritative turret pivots are authored
 // directly in unit blueprints as 3D mount points.
 

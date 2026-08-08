@@ -1,9 +1,10 @@
 // BuildingShape3D — per-type 3D geometry for player-built buildings.
 //
 // Each building blueprint gets its own recognizable silhouette, built from a
-// team-colored primary body plus type-specific accents:
+// player-colored primary body plus type-specific accents and authored
+// team-colored ornamentation:
 //
-//   solar   — static pyramid-flower collector: a wide team-colored
+//   solar   — static pyramid-flower collector: a wide photovoltaic
 //             pyramid base, four opened photovoltaic leaves, and a
 //             dark photovoltaic inner pyramid.
 //   wind    — tower turbine with a globally wind-aligned nacelle and
@@ -50,6 +51,7 @@ import {
   makeBox,
   makeCylinder,
   makeSphere,
+  teamOrnamentDetail,
   withBuildingGeometryTier,
 } from './BuildingMeshPrimitives3D';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
@@ -74,6 +76,7 @@ import {
   getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -88,7 +91,7 @@ export type BuildingDetailRole =
   | 'constructionMarking'
   | 'solarLeaf'
   | 'solarPanel'
-  | 'solarTeamAccent'
+  | 'teamOrnament'
   | 'windRig'
   | 'extractorRotor'
   | 'radarRig'
@@ -208,7 +211,10 @@ export function buildBuildingShape(
       case 'towerBeamMega':
         return buildMegaBeamTowerMesh(primaryMat);
       case 'towerCannon':
-        return buildCannonTowerMesh(primaryMat);
+        return buildCannonTowerMesh(
+          primaryMat,
+          buildingBlueprintId === 'towerTorpedo' ? 'torpedo' : 'cannon',
+        );
       case 'towerAntiAir':
         return buildAntiAirTowerMesh(primaryMat);
       case 'buildingResourceConverter':
@@ -264,6 +270,18 @@ function buildRadarMesh(
     makeCylinder(radarFrameMat, baseRadius * 0.42, 5, 0, height * 0.78, 0, hexCylinderGeom),
     'low',
   ));
+  details.push(teamOrnamentDetail(
+    makeCylinder(
+      primaryMat,
+      baseRadius * 0.52,
+      Math.max(3, minDim * 0.018),
+      0,
+      height * 0.73,
+      0,
+      hexCylinderGeom,
+    ),
+    'radarDishRim',
+  ));
 
   const sweep = new THREE.Mesh(boxGeom, invisibleMat);
   sweep.position.set(0, height * 0.52, 0);
@@ -290,7 +308,10 @@ function buildRadarMesh(
   dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
   dishPivot.add(dish);
 
-  const rim = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarFrameMat);
+  const rim = markBuildingTeamOrnament(
+    new THREE.Mesh(getRadarRingGeometry(geometryTier), primaryMat),
+    'radarDishRim',
+  );
   rim.scale.set(dishRadiusX, dishRadiusY, 4);
   dishPivot.add(rim);
 
@@ -348,6 +369,18 @@ function buildSonarMesh(
     ),
     'low',
   ));
+  details.push(teamOrnamentDetail(
+    makeCylinder(
+      primaryMat,
+      collarRadius * 1.06,
+      Math.max(3.2, minDim * 0.09),
+      0,
+      waterlineY + Math.max(5.5, minDim * 0.055),
+      0,
+      hexCylinderGeom,
+    ),
+    'sonarBuoyCollar',
+  ));
   details.push(detail(
     makeSphere(
       radarSweepMat,
@@ -381,7 +414,10 @@ function buildSonarMesh(
   const dish = new THREE.Mesh(getRadarDishGeometry(geometryTier), radarDishMat);
   dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
   dishPivot.add(dish);
-  const rim = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarFrameMat);
+  const rim = markBuildingTeamOrnament(
+    new THREE.Mesh(getRadarRingGeometry(geometryTier), primaryMat),
+    'sonarBuoyCollar',
+  );
   rim.scale.set(dishRadiusX, dishRadiusY, 3);
   dishPivot.add(rim);
   const feedZ = Math.max(10, dishRadiusX * 0.36);
@@ -534,6 +570,37 @@ function buildResourceConverterMesh(
   details.push(detail(
     makeCylinder(converterDarkMat, pylonFootRadius, pylonFootH, pylonOffset, pylonBaseY - pylonFootH * 0.5, 0, hexCylinderGeom),
     'low',
+  ));
+
+  // The two resource channels are one converter, so its side identity lives
+  // where they join the machine: paired foot bands and a short bridge over
+  // the service block. The resource-colored moving beads remain untouched.
+  const teamBandH = Math.max(2.8, pylonFootH * 0.34);
+  for (const x of [-pylonOffset, pylonOffset]) {
+    details.push(teamOrnamentDetail(
+      makeCylinder(
+        primaryMat,
+        pylonFootRadius * 1.06,
+        teamBandH,
+        x,
+        pylonBaseY - pylonFootH + teamBandH * 0.5,
+        0,
+        hexCylinderGeom,
+      ),
+      'converterPylonBridge',
+    ));
+  }
+  details.push(teamOrnamentDetail(
+    makeBox(
+      primaryMat,
+      pylonOffset * 2,
+      Math.max(2.4, serviceH * 0.14),
+      Math.max(3.5, serviceD * 0.34),
+      0,
+      serviceY + serviceH * 0.55,
+      0,
+    ),
+    'converterPylonBridge',
   ));
 
   const energyPylon = buildResourcePylonRig({

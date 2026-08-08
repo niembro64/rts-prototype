@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getTeamTrim } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getTurretHeadRadius } from '../math';
@@ -16,21 +16,21 @@ import {
 import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import {
+  EntityDeathDisassembly3D,
+  type EntityDeathBlast3D,
+  type EntityDeathRenderablePart3D,
+} from './EntityDeathDisassembly3D';
+import {
   buildBuildingShape,
   type BuildingDetailMesh,
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
-import { hostOrnamentProfile } from './TeamOrnament3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import * as THREE_TRIM from 'three';
 import { entityTeamColorHexForPlayer } from './EntityInstanceColor3D';
-
-/** Roof band proportions. The band overhangs the footprint slightly so
- *  it reads as a lip rather than a decal painted on the roof. */
-const _buildingTrimQuat = new THREE_TRIM.Quaternion();
-const _buildingTrimUp = new THREE_TRIM.Vector3(0, 1, 0);
+import { collectBuildingTeamOrnaments } from './BuildingTeamOrnament3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
@@ -117,7 +117,8 @@ function buildingDetailVisibleAtLevel(
     return true;
   }
   const tower = isTowerShapeType(shapeType);
-  if (detailMesh.role === 'tinyTrim' || detailMesh.role === 'solarTeamAccent') {
+  if (detailMesh.role === 'teamOrnament') return true;
+  if (detailMesh.role === 'tinyTrim') {
     return visualFeatureVisibleAtDetail(
       tower ? 'tower' : 'building',
       tower ? 'smallTrim' : 'tinyTrim',
@@ -211,6 +212,7 @@ type BuildingEntityMeshFactoryOptions = {
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   detailLevel: number;
 };
@@ -227,6 +229,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     barrelGeom,
     coneBarrelGeom,
     getPrimaryMat,
+    getTeamOrnamentMat,
     getTurretAccentMat,
     detailLevel,
   } = options;
@@ -308,6 +311,10 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   // parked beside it.
   patchSurfaceChartTree(group);
 
+  const buildingTeamOrnaments = collectBuildingTeamOrnaments(group);
+  const teamOrnamentMat = getTeamOrnamentMat(ownerId);
+  for (const ornament of buildingTeamOrnaments) ornament.material = teamOrnamentMat;
+
   world.add(group);
 
   return {
@@ -320,6 +327,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     turrets: buildingTurretMeshes,
     geometryKey,
     buildingDetails: visibleDetails,
+    buildingTeamOrnaments,
     isFactoryConstructionHost: shape.isFactoryConstructionHost,
     windRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
       ? shape.windRig
@@ -360,10 +368,11 @@ type BuildingEntityRenderer3DOptions = {
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   /** Shared team-trim pool. Optional so harnesses can omit it. */
   teamTrim?: TeamTrimRenderer3D | null;
-  disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  disposeWorldParentedOverlays: (mesh: EntityMesh, releaseTeamTrim?: boolean) => void;
   metalDeposits: readonly MetalDeposit[];
   scopedMeshRetention: ScopedRenderMeshRetention3D;
   lodProxyRenderer: EntityLodProxyRenderer3D;
@@ -379,11 +388,15 @@ export class BuildingEntityRenderer3D {
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  private readonly getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   /** Shared team-trim pool, owned by Render3DEntities. Null in harnesses
    *  that construct this renderer without one. */
   private teamTrim: TeamTrimRenderer3D | null = null;
-  private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  private readonly disposeWorldParentedOverlays: (
+    mesh: EntityMesh,
+    releaseTeamTrim?: boolean,
+  ) => void;
   private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
   private readonly lodProxyRenderer: EntityLodProxyRenderer3D;
   private readonly animations: BuildingAnimationController3D;
@@ -396,11 +409,13 @@ export class BuildingEntityRenderer3D {
   private buildingRebuildBudgetLeft = 0;
   // Shared death-out flow (same controller units use, see EntityFade3D): a
   // dead building/tower is kept and its whole group dissolved 1 → 0 before
-  // teardown, while the blast + debris play out. Assigned in the constructor.
+  // teardown while its actual textured parts break apart. Assigned here
+  // because the callbacks close over this renderer.
   private readonly dyingBuildings: DyingMeshFade<EntityMesh>;
   // Buildings/towers that left the local player's vision. Same as unit
   // vision fade-out: quiet alpha dissolve in place, distinct from death.
   private readonly vanishingBuildings: DyingMeshFade<EntityMesh>;
+  private readonly deathDisassembly = new EntityDeathDisassembly3D();
   /** Per-entity vision fade-IN clock. Kept outside row updates because
    *  buildings are usually submitted only when dirty, unlike units. */
   private readonly spawnFadeElapsed = new IndexedEntityIdMap<number>();
@@ -435,6 +450,7 @@ export class BuildingEntityRenderer3D {
   private lastFrameStateKey: string | null = null;
   private lastRangeOverlayStateVersion = -1;
   private lastUnitOverlayStateVersion = -1;
+  private buildingTeamTrimEnabled: boolean | null = null;
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -446,6 +462,7 @@ export class BuildingEntityRenderer3D {
     this.barrelGeom = options.barrelGeom;
     this.coneBarrelGeom = options.coneBarrelGeom;
     this.getPrimaryMat = options.getPrimaryMat;
+    this.getTeamOrnamentMat = options.getTeamOrnamentMat;
     this.getTurretAccentMat = options.getTurretAccentMat;
     this.teamTrim = options.teamTrim ?? null;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
@@ -459,19 +476,26 @@ export class BuildingEntityRenderer3D {
     );
     this.dyingBuildings = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
-      (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
+      (mesh, fade, dtMs) => {
+        this.deathDisassembly.advance(mesh, dtMs);
+        applyEntityGroupFade(mesh.group, fade);
+        this.fadeBuildingTurretCollars(mesh, fade);
+      },
       (_id, mesh) => this.disposeBuildingMesh(mesh),
     );
     this.vanishingBuildings = new DyingMeshFade<EntityMesh>(
       VISION_FADE_OUT_MS,
-      (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
+      (mesh, fade) => this.applyBuildingEntityFade(mesh, fade),
       (_id, mesh) => this.disposeBuildingMesh(mesh),
     );
   }
 
-  markEntityKilled(id: EntityId): void {
+  markEntityKilled(id: EntityId, blast?: EntityDeathBlast3D): void {
     const mesh = this.meshes.get(id);
-    if (mesh) mesh.killed = true;
+    if (mesh) {
+      mesh.killed = true;
+      mesh.deathBlast = blast;
+    }
   }
 
   update(
@@ -485,6 +509,7 @@ export class BuildingEntityRenderer3D {
     entityLodProxyFadeAlpha?: (entity: Entity) => number,
   ): void {
     this.buildingRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_BUILDINGS;
+    this.syncBuildingTeamOrnamentState();
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const packetProvided = buildingRows !== undefined;
     const fallbackFullPrune = !packetProvided && entitySetVersion !== this.lastEntitySetVersion;
@@ -680,6 +705,7 @@ export class BuildingEntityRenderer3D {
   }
 
   private disposeBuildingMesh(mesh: EntityMesh): void {
+    this.deathDisassembly.forget(mesh);
     this.world.remove(mesh.group);
     disposeEntityGroupFade(mesh.group);
     this.disposeWorldParentedOverlays(mesh);
@@ -687,10 +713,9 @@ export class BuildingEntityRenderer3D {
 
   private detachBuildingMeshGroup(mesh: EntityMesh): void {
     if (mesh.group.parent === this.world) this.world.remove(mesh.group);
-    // Ornamentation is world-parented (it lives in a shared instanced pool),
-    // so detaching the group does NOT take it with it. Park the slots or the
-    // kit and collars keep drawing where a building the player can no longer
-    // see used to be.
+    // Building-specific ornamentation is group-parented and leaves with the
+    // building. Only turret collars remain world-parented in the shared trim
+    // pool, so park those slots while this building is out of scope.
     if (mesh.teamTrimSlot !== undefined) this.teamTrim?.hide(mesh.teamTrimSlot);
     for (const turret of mesh.turrets) {
       const slot = turret.teamCollar?.slot;
@@ -710,6 +735,7 @@ export class BuildingEntityRenderer3D {
   }
 
   private applyBuildingEntityFade(mesh: EntityMesh, fade: number): void {
+    mesh.entityLifecycleFade = fade;
     const build = mesh.entityBuildVisual !== undefined
       && mesh.entityBuildVisual.progress < 1
       ? mesh.entityBuildVisual
@@ -719,6 +745,27 @@ export class BuildingEntityRenderer3D {
       applyEntityGroupFade(mesh.group, fade, build);
       mesh.buildingGroupFadeActive = fadeActive;
     }
+    this.fadeBuildingTurretCollars(mesh, fade);
+  }
+
+  private fadeBuildingTurretCollars(mesh: EntityMesh, fade: number): void {
+    for (const turret of mesh.turrets) {
+      const slot = turret.teamCollar?.slot;
+      if (slot !== undefined) this.teamTrim?.fade(slot, fade);
+    }
+  }
+
+  private captureBuildingRendererDeathParts(
+    mesh: EntityMesh,
+  ): EntityDeathRenderablePart3D[] {
+    const parts: EntityDeathRenderablePart3D[] = [];
+    for (const turret of mesh.turrets) {
+      const slot = turret.teamCollar?.slot;
+      if (slot === undefined) continue;
+      const part = this.teamTrim?.captureDeathPart(slot);
+      if (part !== undefined && part !== null) parts.push(part);
+    }
+    return parts;
   }
 
   private updateBuildingSpawnFades(dtMs: number): void {
@@ -762,15 +809,25 @@ export class BuildingEntityRenderer3D {
     const mesh = this.meshes.get(id);
     if (!mesh) return;
 
-    this.disposeWorldParentedOverlays(mesh);
+    this.disposeWorldParentedOverlays(mesh, false);
     this.animations.unregister(id);
     this.meshes.delete(id);
     if (wasScopedHidden) {
       this.disposeBuildingMesh(mesh);
       return;
     }
-    if (mesh.killed) this.dyingBuildings.markDying(id, mesh);
-    else this.vanishingBuildings.markDying(id, mesh);
+    if (mesh.killed) {
+      if (mesh.deathBlast !== undefined) {
+        this.deathDisassembly.prepare(
+          mesh,
+          mesh.deathBlast,
+          this.captureBuildingRendererDeathParts(mesh),
+        );
+      }
+      this.dyingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
+    } else {
+      this.vanishingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
+    }
   }
 
   private pruneUnseenBuildingMeshes(
@@ -955,12 +1012,17 @@ export class BuildingEntityRenderer3D {
         barrelGeom: this.barrelGeom,
         coneBarrelGeom: this.coneBarrelGeom,
         getPrimaryMat: this.getPrimaryMat,
+        getTeamOrnamentMat: this.getTeamOrnamentMat,
         getTurretAccentMat: this.getTurretAccentMat,
         detailLevel,
       });
       applyEntityLodVisualState3D(mesh, retainedLodVisualState);
       mesh.buildingRenderDetailBand = detailBand;
       this.meshes.set(entity.id, mesh);
+      this.setBuildingTeamOrnamentsVisible(
+        mesh,
+        this.buildingTeamTrimEnabled ?? getTeamTrim(),
+      );
       this.animations.register(entity, mesh);
       this.registerBuildingSpinTurrets(entity, mesh);
       if (!this.spawnFadeElapsed.has(entity.id)) {
@@ -1062,16 +1124,10 @@ export class BuildingEntityRenderer3D {
       const primaryMat = this.getPrimaryMat(ownerId);
       for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
     }
-    if (mesh.buildingDetails) {
-      const primaryMat = this.getPrimaryMat(ownerId);
-      for (const detail of mesh.buildingDetails) {
-        if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
-      }
-    }
-    const extractorAccents = mesh.extractorRig?.teamAccents;
-    if (extractorAccents && extractorAccents.length > 0) {
-      const primaryMat = this.getPrimaryMat(ownerId);
-      for (const accent of extractorAccents) accent.material = primaryMat;
+    if (mesh.buildingTeamOrnaments && mesh.buildingTeamOrnaments.length > 0) {
+      const teamMat = this.getTeamOrnamentMat(ownerId);
+      for (const ornament of mesh.buildingTeamOrnaments) ornament.material = teamMat;
+      mesh.buildingTeamOrnamentColorHex = entityTeamColorHexForPlayer(ownerId);
     }
 
     // Transform.z is the building's vertical center in sim space.
@@ -1114,7 +1170,10 @@ export class BuildingEntityRenderer3D {
       }
     }
 
-    this.updateTeamTrim(mesh, ownerId, x, y, buildingBaseY, width, height, depth);
+    this.setBuildingTeamOrnamentsVisible(
+      mesh,
+      this.buildingTeamTrimEnabled ?? getTeamTrim(),
+    );
 
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
@@ -1130,61 +1189,29 @@ export class BuildingEntityRenderer3D {
     mesh.buildingCachedDetailsReady = detailsReady;
   }
 
-  /**
-   * A structure's team kit — the same rail-and-rib frame every unit wears,
-   * fitted to this building's own box.
-   *
-   * Buildings are read from above in an RTS, so the rails run over the roof
-   * where they are legible; a wall stripe would be hidden by the building's
-   * own footprint at normal camera pitch. The kit is TEAM colour while the
-   * structure body stays PLAYER colour, so allies share the frame and their
-   * hulls still tell them apart.
-   *
-   * The profile is derived in WORLD units here rather than in a normalized
-   * body space, so the kit instances at scale 1 and the rails land on the
-   * real roof of a real box.
-   */
-  private updateTeamTrim(
-    mesh: EntityMesh,
-    ownerId: PlayerId | undefined,
-    simX: number,
-    simY: number,
-    baseY: number,
-    width: number,
-    height: number,
-    depth: number,
-  ): void {
-    const trim = this.teamTrim;
-    if (trim === null) return;
-    if (mesh.teamTrimSlot === undefined) {
-      if (mesh.teamTrimProfile === undefined) {
-        mesh.teamTrimProfile = hostOrnamentProfile({
-          minX: -width * 0.5,
-          maxX: width * 0.5,
-          halfWidth: depth * 0.5,
-          topY: height,
-        });
+  private syncBuildingTeamOrnamentState(): void {
+    const enabled = this.teamTrim?.isEnabled() ?? getTeamTrim();
+    const visibilityChanged = enabled !== this.buildingTeamTrimEnabled;
+    if (visibilityChanged) this.buildingTeamTrimEnabled = enabled;
+    for (const mesh of this.meshes.values()) {
+      if (visibilityChanged) this.setBuildingTeamOrnamentsVisible(mesh, enabled);
+      const ownerId = mesh.buildingCachedOwnerId;
+      const teamColorHex = entityTeamColorHexForPlayer(ownerId);
+      if (mesh.buildingTeamOrnamentColorHex === teamColorHex) continue;
+      const teamMat = this.getTeamOrnamentMat(ownerId);
+      for (const ornament of mesh.buildingTeamOrnaments ?? []) {
+        ornament.material = teamMat;
       }
-      // Authored in world units, so the kit instances at scale 1 and its
-      // livery repeat follows the rails' real length on this structure.
-      const slot = trim.allocHostKit(mesh.teamTrimProfile, 1, mesh.geometryTier ?? 'close');
-      // A full pool just means no kit on this structure, never a broken frame.
-      if (slot < 0) return;
-      mesh.teamTrimSlot = slot;
+      mesh.buildingTeamOrnamentColorHex = teamColorHex;
     }
-    _buildingTrimQuat.setFromAxisAngle(_buildingTrimUp, mesh.buildingCachedRotation ?? 0);
-    // Sim (x, y) are both HORIZONTAL; three.js wants (simX, altitude, simY).
-    // The kit is authored from the structure's BASE upward, so it anchors at
-    // the base altitude and reaches its own roof.
-    trim.setHostKit(
-      mesh.teamTrimSlot,
-      simX,
-      baseY,
-      simY,
-      _buildingTrimQuat,
-      1,
-      entityTeamColorHexForPlayer(ownerId),
-    );
+  }
+
+  private setBuildingTeamOrnamentsVisible(mesh: EntityMesh, visible: boolean): void {
+    const ornaments = mesh.buildingTeamOrnaments;
+    if (ornaments === undefined) return;
+    for (const ornament of ornaments) {
+      setObjectVisibleIfChanged(ornament, visible);
+    }
   }
 
   private updateTurretPoses(

@@ -3077,14 +3077,63 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitQueenBee",
+        "turretBlueprintId": "turretBeamLong",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
-          "x": 0.92,
+          "x": 0.52,
           "y": 0,
-          "z": 0
+          "z": 0.20521739130434785
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamLong",
+        "controlMode": "hostPreferred"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
+        "mount": {
+          "x": 0.12,
+          "y": 0.35,
+          "z": 0.20521739130434785
         },
         "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
+        "mountId": "beamMiniLeftFront",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
+        "mount": {
+          "x": -0.48,
+          "y": 0.35,
+          "z": 0.20521739130434785
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniLeftRear",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
+        "mount": {
+          "x": 0.12,
+          "y": -0.35,
+          "z": 0.20521739130434785
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniRightFront",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
+        "mount": {
+          "x": -0.48,
+          "y": -0.35,
+          "z": 0.20521739130434785
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniRightRear",
         "controlMode": "autonomous"
       }
     ],
@@ -3097,13 +3146,6 @@
           "xFrac": 0.62,
           "yFrac": 0.36,
           "zFrac": 0.32
-        },
-        {
-          "kind": "oval",
-          "offsetForward": 0.52,
-          "xFrac": 0.28,
-          "yFrac": 0.24,
-          "zFrac": 0.22
         }
       ]
     },
@@ -3242,14 +3284,63 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretSensorUnitQueenTick",
+        "turretBlueprintId": "turretBeamLong",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
-          "x": 0.96,
+          "x": 0.54,
           "y": 0,
-          "z": 0
+          "z": 0.974468085106383
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamLong",
+        "controlMode": "hostPreferred"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
+        "mount": {
+          "x": 0.12,
+          "y": 0.385,
+          "z": 0.974468085106383
         },
         "requiredEngagedForFightStop": false,
-        "mountId": "sensor",
+        "mountId": "beamMiniLeftFront",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
+        "mount": {
+          "x": -0.5,
+          "y": 0.385,
+          "z": 0.974468085106383
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniLeftRear",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
+        "mount": {
+          "x": 0.12,
+          "y": -0.385,
+          "z": 0.974468085106383
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniRightFront",
+        "controlMode": "autonomous"
+      },
+      {
+        "turretBlueprintId": "turretBeamMini",
+        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
+        "mount": {
+          "x": -0.5,
+          "y": -0.385,
+          "z": 0.974468085106383
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "beamMiniRightRear",
         "controlMode": "autonomous"
       }
     ],
@@ -3262,13 +3353,6 @@
           "xFrac": 0.66,
           "yFrac": 0.4,
           "zFrac": 0.3
-        },
-        {
-          "kind": "oval",
-          "offsetForward": 0.54,
-          "xFrac": 0.3,
-          "yFrac": 0.27,
-          "zFrac": 0.2
         }
       ]
     },

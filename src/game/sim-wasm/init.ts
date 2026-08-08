@@ -4873,8 +4873,18 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntityLodGeometry3DContractTest();
         const { runTeamOrnament3DContractTest } = await import('../render3d/TeamOrnament3DContractTest');
         runTeamOrnament3DContractTest();
+        const { runBuildingTeamOrnament3DContractTest } = await import('../render3d/BuildingTeamOrnament3DContractTest');
+        runBuildingTeamOrnament3DContractTest();
         const { runSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runSurfaceChart3DContractTest();
+        const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');
+        runTurretAimPose3DContractTest();
+        const { runQueenArmamentContractTest } = await import('../sim/blueprints/queenArmamentContractTest');
+        runQueenArmamentContractTest();
+        const { runHoverFanPlacement3DContractTest } = await import('../render3d/HoverFanPlacement3DContractTest');
+        runHoverFanPlacement3DContractTest();
+        const { runEntityDeathDisassembly3DContractTest } = await import('../render3d/EntityDeathDisassembly3DContractTest');
+        runEntityDeathDisassembly3DContractTest();
         const { runShotArmingOverlay3DContractTest } = await import('../render3d/ShotArmingOverlay3DContractTest');
         runShotArmingOverlay3DContractTest();
         const { runHostVolumeOverlay3DContractTest } = await import('../render3d/HostVolumeOverlay3DContractTest');

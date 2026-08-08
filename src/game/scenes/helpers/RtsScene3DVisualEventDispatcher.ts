@@ -1,15 +1,12 @@
 import { getGraphicsConfig, getMaterialExplosions } from '@/clientBarConfig';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
-import type { Debris3D } from '../../render3d/Debris3D';
 import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
-import {
-  debrisSpawnScaleForDetail,
-  explosionSpawnScaleForDetail,
-} from '../../render3d/EntityDetailLevel3D';
+import { explosionSpawnScaleForDetail } from '../../render3d/EntityDetailLevel3D';
+import { entityDeathBlastFromContext3D } from '../../render3d/EntityDeathDisassembly3D';
 import { playSimEventAudio3D } from './RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
@@ -27,7 +24,6 @@ type RtsScene3DVisualEventDispatchContext = {
   explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
-  debrisRenderer: Debris3D;
   isPositionLowLod: (
     simX: number,
     simY: number,
@@ -179,14 +175,20 @@ export function dispatchSimEvent3DVisual(
       );
     }
   } else if (event.type === 'death') {
-    if (event.entityId !== null) {
-      context.entityRenderer.markEntityKilled(event.entityId);
-    }
-    if (!getMaterialExplosions()) return;
     const ent = event.entityId !== null
       ? context.clientViewState.getEntity(event.entityId)
       : undefined;
     const ctx = resolveDeathContext3D(event, ent);
+    const materialExplosionEnabled = getMaterialExplosions();
+    if (event.entityId !== null) {
+      context.entityRenderer.markEntityKilled(
+        event.entityId,
+        materialExplosionEnabled
+          ? entityDeathBlastFromContext3D(ctx)
+          : undefined,
+      );
+    }
+    if (!materialExplosionEnabled) return;
     if (context.isPositionLowLod(
       event.pos.x,
       event.pos.y,
@@ -213,14 +215,6 @@ export function dispatchSimEvent3DVisual(
       mx, mz,
       effectGfx.fireExplosionStyle,
       explosionSpawnScaleForDetail(eventDetailLevel),
-    );
-    context.debrisRenderer.spawn(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-      ctx,
-      effectGfx,
-      debrisSpawnScaleForDetail(eventDetailLevel),
     );
   }
 }

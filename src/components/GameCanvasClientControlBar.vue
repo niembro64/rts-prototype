@@ -658,7 +658,7 @@ function resetEveryCustomHotkey(): void {
         >SHADE</BarButton>
         <BarButton
           :active="model.materialExplosions"
-          title="Generate client-only death material explosions: death fire puff plus part-based debris chunks"
+          title="Break the dying entity's actual textured parts apart with the killing blast, plus the death fire puff"
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
         <BarButton

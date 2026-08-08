@@ -7,7 +7,13 @@
 // colour channels away, a livery band dark enough to kill the team read.
 
 import * as THREE from 'three';
-import { patchInstancedFadeMaterial } from './EntityFade3D';
+import {
+  applyEntityGroupFade,
+  DyingMeshFade,
+  disposeEntityGroupFade,
+  patchInstancedFadeMaterial,
+} from './EntityFade3D';
+import type { EntityId } from '../sim/types';
 import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
 import {
   BAND_COARSE_TIER,
@@ -998,9 +1004,79 @@ function checkShaderInterfaceContract(): void {
   material.dispose();
 }
 
+/** A visibility/death fade must wrap the already-charted material rather than
+ *  swapping to an untextured transparent substitute. Cover both the ordinary
+ *  one-material case and meshes whose faces use a material array. */
+function checkTexturedFadeComposition(): void {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const bases = [new THREE.MeshLambertMaterial(), new THREE.MeshLambertMaterial()];
+  patchSurfaceChartMaterial(bases[0], { bump: true });
+  patchSurfaceChartMaterial(bases[1], { bump: false });
+  const mesh = new THREE.Mesh(geometry, bases);
+  const group = new THREE.Group();
+  group.add(mesh);
+  applyEntityGroupFade(group, 0.5);
+  assertContract(
+    Array.isArray(mesh.material) && mesh.material.length === 2,
+    'a multi-material entity part must retain and fade every material slot',
+  );
+  for (const faded of mesh.material as THREE.Material[]) {
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      vertexShader: '#include <common>\n#include <begin_vertex>\n#include <project_vertex>',
+      fragmentShader: [
+        '#include <common>',
+        '#include <color_fragment>',
+        '#include <normal_fragment_begin>',
+        '#include <opaque_fragment>',
+      ].join('\n'),
+    };
+    faded.onBeforeCompile(
+      shader as unknown as THREE.WebGLProgramParametersWithUniforms,
+      null as unknown as THREE.WebGLRenderer,
+    );
+    assertContract(
+      shader.fragmentShader.includes('sampleSubstanceGrain') &&
+        shader.fragmentShader.includes('diffuseColor.a *= clamp(uFade'),
+      'surface-chart albedo/bump and lifecycle alpha must coexist in the same faded shader',
+    );
+    assertContract(
+      shader.uniforms.uTrimSheet !== undefined && shader.uniforms.uFade !== undefined,
+      'a faded textured material must upload both chart and fade uniforms',
+    );
+  }
+  disposeEntityGroupFade(group);
+  assertContract(
+    mesh.material === bases,
+    'finishing/disposing a fade must restore the exact real textured material array',
+  );
+  geometry.dispose();
+  for (const material of bases) material.dispose();
+}
+
+/** Reversing from reveal to conceal/death must continue from the opacity that
+ * is already on screen. Restarting at one produces a one-frame opaque flash. */
+function checkLifecycleFadeContinuity(): void {
+  let appliedFade = -1;
+  const fade = new DyingMeshFade<{ readonly name: string }>(
+    1_000,
+    (_mesh, alpha) => { appliedFade = alpha; },
+    () => undefined,
+  );
+  fade.markDying(1 as EntityId, { name: 'partially revealed' }, 0.35);
+  fade.update(100);
+  assertContract(
+    Math.abs(appliedFade - 0.25) < 1e-9,
+    `fade-out must continue from the current 0.35 opacity — got ${appliedFade}`,
+  );
+  fade.destroyAll();
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
   checkShaderInterfaceContract();
+  checkTexturedFadeComposition();
+  checkLifecycleFadeContinuity();
   checkLiverySeparation();
   checkProgramCacheKeys();
   checkFeatureScale();

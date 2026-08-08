@@ -11,14 +11,14 @@ export function writeTurretAimInput(
   hostRotation: number,
   aimRotation: number,
   aimPitch: number,
-  chassisTiltInverse: QuaternionLike | undefined,
+  parentWorldQuaternion: QuaternionLike | undefined,
 ): void {
   input[base] = hostRotation;
   input[base + 1] = aimRotation;
   input[base + 2] = aimPitch;
-  input[base + 3] = chassisTiltInverse?.x ?? 0;
-  input[base + 4] = chassisTiltInverse?.y ?? 0;
-  input[base + 5] = chassisTiltInverse?.z ?? 0;
-  input[base + 6] = chassisTiltInverse?.w ?? 1;
-  input[base + 7] = chassisTiltInverse ? 1 : 0;
+  input[base + 3] = parentWorldQuaternion?.x ?? 0;
+  input[base + 4] = parentWorldQuaternion?.y ?? 0;
+  input[base + 5] = parentWorldQuaternion?.z ?? 0;
+  input[base + 6] = parentWorldQuaternion?.w ?? 1;
+  input[base + 7] = parentWorldQuaternion ? 1 : 0;
 }

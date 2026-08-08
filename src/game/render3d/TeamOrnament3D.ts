@@ -1,18 +1,18 @@
-// TeamOrnament3D — the team-coloured kit every host in the game wears.
+// TeamOrnament3D — the shared team-coloured unit kit and turret collar.
 //
 // Team colour is carried by ADDED GEOMETRY, never by recolouring a body: the
 // body keeps the player colour and the ornament carries the ally-team colour,
 // so a unit reads as its alliance without giving up its owner. See
-// "Team ornamentation is one kit vocabulary on every host" in
+// "Team ornamentation follows the host's visual grammar" in
 // budget_design_philosophy.html.
 //
-// There is exactly one kit design — swept shoulder rails tied together by
-// arched cross ribs, seated into the hull with a spine ridge, plus a collar
-// ringing every turret where its barrels emerge. The Formik is where that kit
-// was drawn, and its proportions are kept here as the REFERENCE PROFILE, but
-// nothing branches on the Formik: the rail and rib shapes are normalized, and
-// fitting them to a host's own extents is what dresses a scout, a Queen, a
-// factory and a torpedo tower in the same design.
+// Mobile units share one body-kit design — swept shoulder rails tied together
+// by arched cross ribs and seated into the hull with a spine ridge. Every
+// turret also shares a collar where its barrels emerge. The Formik is the
+// reference profile, but nothing branches on that blueprint: fitting the
+// normalized rails and ribs to a unit's extents dresses a scout and a Queen
+// in one language. Buildings instead author function-specific geometry in
+// their individual mesh builders, tagged by BuildingTeamOrnament3D.
 //
 // The kit is authored in the HOST'S OWN SPACE and instanced with a single
 // uniform scale, rather than authored once and stretched per instance. That
@@ -23,7 +23,10 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 import {
   BAND_CAP_ZONES,
   REFERENCE_HOST_RADIUS,
@@ -53,16 +56,10 @@ const TURRET_COLLAR_RADIUS_FRAC = 0.76;
 /**
  * Collar sides per detail tier. The collar is a plain cylinder, so its
  * silhouette cost is entirely in this number and it can be tuned freely:
- * 16 reads as round up close, 8 is the shape shipped before this ladder
+ * 14 reads as round up close, 8 is the shape shipped before this ladder
  * existed, and 4 is a square — which is all that survives a few pixels
  * wide anyway. Triangles come out at 4n (2 per side quad, n per cap).
  */
-const TURRET_COLLAR_RADIAL_SEGMENTS: Record<PrimitiveGeometryTier, number> = {
-  close: 16,
-  mid: 8,
-  far: 4,
-};
-
 /**
  * Strap detail per tier. `strap` is the full five-vertex section; `fin`
  * collapses it to the bare spine triangle, which keeps the ornament's
@@ -155,9 +152,8 @@ const RIDGE_SINK = 0.06;
 /**
  * A host's ornament fit: where the rails run on THIS body.
  *
- * Everything is in the host's own instancing space — unit-radius-1 for units,
- * world units for structures — and the kit is scaled by one uniform factor
- * when it is placed.
+ * Everything is in the unit's own unit-radius-1 instancing space, and the kit
+ * is scaled by one uniform factor when it is placed.
  */
 export type HostOrnamentProfile = {
   /** Rearmost rail point along the host's forward axis. */
@@ -193,7 +189,7 @@ export type TeamOrnamentFit = {
   frontY: number;
 };
 
-/** What every host got before the fit was authorable, and what a host with
+/** What every unit got before the fit was authorable, and what a unit with
  *  nothing to say still gets. */
 export const DEFAULT_TEAM_ORNAMENT_FIT: TeamOrnamentFit = {
   backX: 0.82,
@@ -202,7 +198,7 @@ export const DEFAULT_TEAM_ORNAMENT_FIT: TeamOrnamentFit = {
   frontY: 1,
 };
 
-/** The Formik's own fit — the reference every other host's kit is the same
+/** The Formik's own fit — the reference every other unit's kit is the same
  *  design as. Kept explicit so the reference is a value you can read and
  *  compare against, not a shape buried in a table of fractions. */
 export const REFERENCE_ORNAMENT_PROFILE: HostOrnamentProfile = {
@@ -265,18 +261,17 @@ export function ornamentProfileKey(profile: HostOrnamentProfile): string {
 }
 
 /** The reference kit's rail length in world units — the Formik's rail on the
- *  Formik. A host's livery chart repeats by its own rail length against this,
+ *  Formik. A unit's livery chart repeats by its own rail length against this,
  *  which is what keeps the piping's plates and bolts the size they were drawn
- *  whether they run along a scout or around a factory. */
+ *  whether they run along a scout or a Queen. */
 const REFERENCE_RAIL_SPAN_WORLD =
   (REFERENCE_ORNAMENT_PROFILE.frontX - REFERENCE_ORNAMENT_PROFILE.backX)
   * REFERENCE_HOST_RADIUS;
 
 /** How many reference rails' worth of strap this host carries.
  *
- *  `instanceScale` is what the kit is instanced at — a unit's render radius
- *  for a kit authored in unit-radius-1 space, 1 for a structure's kit authored
- *  in world units. The reference host comes out at exactly 1 and therefore
+ *  `instanceScale` is the unit's render radius for a kit authored in
+ *  unit-radius-1 space. The reference unit comes out at exactly 1 and therefore
  *  renders its livery band exactly as drawn. */
 export function ornamentChartScale(
   profile: HostOrnamentProfile,
@@ -518,15 +513,8 @@ export function createHostOrnamentGeometry(
  */
 export function createTurretCollarGeometry(
   tier: PrimitiveGeometryTier = 'close',
-): THREE.CylinderGeometry {
-  const geometry = new THREE.CylinderGeometry(
-    1,
-    1,
-    1,
-    TURRET_COLLAR_RADIAL_SEGMENTS[tier],
-    1,
-    false,
-  );
+): THREE.BufferGeometry {
+  const geometry = createPrimitiveCylinderGeometry('building', tier, 1, 1);
   // BEFORE the rotate. The cap remap identifies faces by their normal pointing
   // along the cylinder's axis, and rotateZ turns that axis from +Y to +X — run
   // it afterwards and every vertex looks like wall.

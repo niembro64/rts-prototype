@@ -62,6 +62,11 @@ import {
   writeInstancedMatrix as writeMatrixAt,
 } from './instancedBufferUpdate';
 import { LEG_ATTACHMENT_RADIUS_MULTIPLIER } from './LocomotionRigShared3D';
+import type { LegMesh } from './LegRig3D';
+import type {
+  EntityDeathPartDelta3D,
+  EntityDeathRenderablePart3D,
+} from './EntityDeathDisassembly3D';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -348,6 +353,11 @@ function buildInstancedCylinderGeom(
 }
 
 class CylinderPool {
+  private readonly deathMidpoint = new THREE.Vector3();
+  private readonly deathHalfSegment = new THREE.Vector3();
+  private readonly deathRight = new THREE.Vector3();
+  private readonly deathRotation = new THREE.Quaternion();
+  private readonly deathEuler = new THREE.Euler();
   private startBuf: THREE.InstancedBufferAttribute;
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
@@ -576,20 +586,56 @@ class CylinderPool {
     markDirtySlot(this.fadeDirty, slot);
   }
 
-  translate(slot: number, dx: number, dy: number, dz: number): void {
-    if (slot < 0) return;
-    if (dx === 0 && dy === 0 && dz === 0) return;
+  captureDeathPart(slot: number): EntityDeathRenderablePart3D | null {
+    if (slot < 0) return null;
     const i3 = slot * 3;
     const starts = this.startBuf.array as Float32Array;
     const ends = this.endBuf.array as Float32Array;
-    starts[i3 + 0] += dx;
-    starts[i3 + 1] += dy;
-    starts[i3 + 2] += dz;
-    ends[i3 + 0] += dx;
-    ends[i3 + 1] += dy;
-    ends[i3 + 2] += dz;
+    const worldPosition = new THREE.Vector3(
+      (starts[i3] + ends[i3]) * 0.5,
+      (starts[i3 + 1] + ends[i3 + 1]) * 0.5,
+      (starts[i3 + 2] + ends[i3 + 2]) * 0.5,
+    );
+    return {
+      worldPosition,
+      applyDelta: (delta): void => this.applyDeathDelta(slot, delta),
+    };
+  }
+
+  private applyDeathDelta(slot: number, delta: EntityDeathPartDelta3D): void {
+    const i3 = slot * 3;
+    const starts = this.startBuf.array as Float32Array;
+    const ends = this.endBuf.array as Float32Array;
+    const rights = this.rightBuf.array as Float32Array;
+    const midpoint = this.deathMidpoint.set(
+      (starts[i3] + ends[i3]) * 0.5 + delta.dx,
+      (starts[i3 + 1] + ends[i3 + 1]) * 0.5 + delta.dy,
+      (starts[i3 + 2] + ends[i3 + 2]) * 0.5 + delta.dz,
+    );
+    const halfSegment = this.deathHalfSegment.set(
+      (ends[i3] - starts[i3]) * 0.5,
+      (ends[i3 + 1] - starts[i3 + 1]) * 0.5,
+      (ends[i3 + 2] - starts[i3 + 2]) * 0.5,
+    );
+    const rotation = this.deathRotation.setFromEuler(
+      this.deathEuler.set(delta.drx, delta.dry, delta.drz, 'XYZ'),
+    );
+    halfSegment.applyQuaternion(rotation);
+    starts[i3] = midpoint.x - halfSegment.x;
+    starts[i3 + 1] = midpoint.y - halfSegment.y;
+    starts[i3 + 2] = midpoint.z - halfSegment.z;
+    ends[i3] = midpoint.x + halfSegment.x;
+    ends[i3 + 1] = midpoint.y + halfSegment.y;
+    ends[i3 + 2] = midpoint.z + halfSegment.z;
+    const right = this.deathRight.set(
+      rights[i3], rights[i3 + 1], rights[i3 + 2],
+    ).applyQuaternion(rotation);
+    rights[i3] = right.x;
+    rights[i3 + 1] = right.y;
+    rights[i3 + 2] = right.z;
     markDirtySlot(this.startDirty, slot);
     markDirtySlot(this.endDirty, slot);
+    markDirtySlot(this.rightDirty, slot);
   }
 
   flush(): void {
@@ -649,6 +695,9 @@ class InstancedLegPartPool {
   private static readonly _scratchPos = new THREE.Vector3();
   private static readonly _scratchScale = new THREE.Vector3();
   private static readonly _scratchQuaternion = new THREE.Quaternion();
+  private static readonly _scratchRotation = new THREE.Quaternion();
+  private static readonly _scratchEuler = new THREE.Euler();
+  private static readonly _scratchDelta = new THREE.Vector3();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   private static readonly _scratchColor = new THREE.Color();
@@ -790,15 +839,36 @@ class InstancedLegPartPool {
     markDirtySlot(this.fadeDirty, slot);
   }
 
-  translate(slot: number, dx: number, dy: number, dz: number): void {
-    if (slot < 0) return;
-    if (dx === 0 && dy === 0 && dz === 0) return;
-    const arr = this.mesh.instanceMatrix.array as Float32Array;
-    const i16 = slot * 16;
-    arr[i16 + 12] += dx;
-    arr[i16 + 13] += dy;
-    arr[i16 + 14] += dz;
-    markDirtySlot(this.matrixDirty, slot);
+  captureDeathPart(slot: number): EntityDeathRenderablePart3D | null {
+    if (slot < 0) return null;
+    const initialMatrix = new THREE.Matrix4().fromArray(
+      this.mesh.instanceMatrix.array as ArrayLike<number>,
+      slot * 16,
+    );
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(initialMatrix);
+    return {
+      worldPosition,
+      applyDelta: (delta): void => {
+        const matrix = InstancedLegPartPool._scratchMat.fromArray(
+          this.mesh.instanceMatrix.array as ArrayLike<number>,
+          slot * 16,
+        );
+        const position = InstancedLegPartPool._scratchPos;
+        const quaternion = InstancedLegPartPool._scratchQuaternion;
+        const scale = InstancedLegPartPool._scratchScale;
+        matrix.decompose(position, quaternion, scale);
+        position.add(InstancedLegPartPool._scratchDelta.set(
+          delta.dx, delta.dy, delta.dz,
+        ));
+        quaternion.premultiply(InstancedLegPartPool._scratchRotation.setFromEuler(
+          InstancedLegPartPool._scratchEuler.set(
+            delta.drx, delta.dry, delta.drz, 'XYZ',
+          ),
+        ));
+        matrix.compose(position, quaternion, scale);
+        writeMatrixAt(this.mesh, slot, matrix, this.matrixDirty);
+      },
+    };
   }
 
   flush(): void {
@@ -926,20 +996,22 @@ export class LegInstancedRenderer {
     this.pool(tier).feet.fade(slot, fade);
   }
 
-  translateUpper(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier).upper.translate(slot, dx, dy, dz);
-  }
-  translateLower(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier).lower.translate(slot, dx, dy, dz);
-  }
-  translateLowerTaper(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier).lowerTaper.translate(slot, dx, dy, dz);
-  }
-  translateJoint(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier).joints.translate(slot, dx, dy, dz);
-  }
-  translateFoot(slot: number, dx: number, dy: number, dz: number, tier: PrimitiveGeometryTier = 'close'): void {
-    this.pool(tier).feet.translate(slot, dx, dy, dz);
+  /** Return one handle for every rendered strut, taper, joint and foot. */
+  captureEntityDeathParts(mesh: LegMesh): EntityDeathRenderablePart3D[] {
+    const parts: EntityDeathRenderablePart3D[] = [];
+    const push = (part: EntityDeathRenderablePart3D | null): void => {
+      if (part !== null) parts.push(part);
+    };
+    for (const leg of mesh.legs) {
+      const pools = this.pool(leg.geometryTier);
+      push(pools.upper.captureDeathPart(leg.upperSlot));
+      push(pools.lower.captureDeathPart(leg.lowerSlot));
+      push(pools.lowerTaper.captureDeathPart(leg.lowerTaperSlot));
+      push(pools.joints.captureDeathPart(leg.hipJointSlot));
+      push(pools.joints.captureDeathPart(leg.kneeJointSlot));
+      push(pools.feet.captureDeathPart(leg.footSlot));
+    }
+    return parts;
   }
 
   updateUpper(

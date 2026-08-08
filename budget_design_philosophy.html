@@ -1617,7 +1617,9 @@
         propulsive force remains wholly owned by the unit blueprint.</li>
         <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
         balances gravity with downward thrust against the air column underneath. Visually: spinning
-        fans, downward smoke columns, chassis riding a target altitude. The contract is
+        fans mounted above the chassis, downward smoke columns, chassis riding a target altitude.
+        The overhead fan translation is frontend presentation only: authored locomotion mounts and
+        authoritative lift forces stay in their original body-local locations. The contract is
         <em>anti-contact</em>: the gap is the feature, and that gap must be measurable per frame so
         smoke length and altitude shading look right.</li>
         <li><strong>Flying</strong> &mdash; a body supported and propelled in air. Wings, jets, and
@@ -1735,7 +1737,8 @@
         <li>The clamp uses the same smoothed surface normal the chassis tilt consumes
         (<code>updateUnitGroundNormal</code>). One canonical value, no drift between &ldquo;how the
         body leans&rdquo; and &ldquo;where the wheels sit.&rdquo;</li>
-        <li>Hover gets a soft floor too: the rendered rig group is clamped at least
+        <li>Hover gets a soft floor too: its above-body visual rest height is preserved, then the
+        rendered rig group is clamped at least
         <code>ε</code> above terrain, so a bad snapshot can never park fans inside dirt. The
         authoritative chassis altitude is untouched &mdash; the renderer just refuses to draw a
         contradiction.</li>
@@ -1754,15 +1757,15 @@
     </section>
 
     <section>
-      <h2>Airborne Banking Is Visual, Mounts Stay On The Roll Axis</h2>
+      <h2>Airborne Banking Is Visual; Combat Mounts Stay Authoritative</h2>
       <p>
         Hover and flying units should <em>look</em> like they bank into their turns &mdash; the
         chassis rolls about its forward axis as lateral velocity builds, then unwinds when the
         unit straightens out. Banking is the strongest visual cue that an airborne unit is
         physically committed to a turn, and the renderer is the only place that needs to know
         about it. The authoritative sim continues to track yaw (and yaw alone) for hover/flying
-        chassis; pitch and roll are derived from local body velocity at render time and never
-        touch sim state, the wire, or any combat math.
+        chassis; any extra presentation bank is derived from local body velocity at render time
+        and never touches sim state, the wire, or combat math.
       </p>
       <p>
         This is the same boundary as <strong>Locomotion Visuals Are Frontend</strong>: the sim
@@ -1774,21 +1777,19 @@
 
       <h3>Why this is a hard rule and not a convenience</h3>
       <p>
-        The sim&rsquo;s turret-world-mount math is yaw plus surface-normal tilt &mdash; not a
-        full 3-DOF orientation quaternion (<code>getTurretWorldMount</code>). If the renderer
-        applies pitch/roll to the chassis while the sim computes mount positions with yaw only,
-        the visible barrel and the sim&rsquo;s projectile-spawn point quietly diverge. The cure
-        is geometric: <strong>every turret mount on a hover or flying unit must sit on the
-        chassis&rsquo; body-forward axis, i.e. <code>mount.y === 0</code> and
-        <code>mount.z === 0</code></strong>. A pure roll about that axis leaves the mount
-        unchanged in world space, so the sim&rsquo;s yaw-only mount math and the renderer&rsquo;s
-        rolled chassis agree pixel-perfect.
+        The sim&rsquo;s turret-world-mount math uses the host&rsquo;s full authoritative body
+        quaternion (<code>getTurretWorldMount</code>). A visual-only bank is deliberately absent
+        from that quaternion. If the renderer applied it to an off-axis weapon mount anyway,
+        the visible turret center and authoritative shot origin would quietly diverge. The
+        combat contract wins: <strong>a host with any turret off the body-forward roll axis does
+        not receive presentation banking</strong>. Centerline-only aircraft may still bank
+        because a pure roll leaves all their mount centers unchanged.
       </p>
       <ul class="rule-list">
-        <li>The blueprint loader enforces <code>mount.y === 0</code> and <code>mount.z === 0</code> for every turret on a hover or flying unit. A non-centerline airborne mount is a startup error, not a runtime drift.</li>
-        <li>Hover/flying turrets do not use <code>zResolver</code>; the centerline rule would be violated the moment the resolver assigned a body-top z.</li>
-        <li>The free axis is <code>mount.x</code>. An airborne turret can sit forward or aft of the chassis center along the body&rsquo;s forward axis without breaking the invariant.</li>
-        <li>Ground-locomotion turrets keep authoring freedom on all three axes &mdash; they don&rsquo;t bank, and the slope-tilt path already runs through <code>getTurretWorldMount</code>.</li>
+        <li>Airborne turret mounts may use all three authored axes; mobile fortress and carrier silhouettes are not forced into a centerline-only weapon layout.</li>
+        <li>The renderer checks the resolved runtime mounts. If any has <code>mount.y !== 0</code> or <code>mount.z !== 0</code>, presentation bank is zero for that host.</li>
+        <li>Centerline-only aircraft retain banking because roll cannot move a point on the roll axis.</li>
+        <li>Ground-locomotion turrets keep the same freedom on all three axes; slope and full-body attitude already run through <code>getTurretWorldMount</code>.</li>
       </ul>
 
       <h3>What the sim writes, what the renderer composes</h3>
@@ -2314,16 +2315,18 @@
       <p>
         <strong>Death-out.</strong> The same channel runs backward, but death is still an
         explosion first &mdash; never a quiet fade-to-nothing (per <strong>Every death is an
-        explosion</strong>). The opacity ramp is the <em>aftermath layer</em>, not a replacement for
-        the blast: the dying body shell stays where it fell and de-rezzes from opaque to transparent
-        in place, while the death blast&rsquo;s force and the material explosion fling visual debris
-        outward. Killing the body does not gently dissolve it; it detonates, and the shell fades as
-        the debris flies. Mounted turrets are part of that host visual breakup, not live pieces.
+        explosion</strong>). The dying model itself becomes the material explosion: every retained
+        textured render part separates, tumbles, and fades on the death clock. Random launch vectors
+        open the silhouette while the killing attack&rsquo;s penetration direction, force, projectile
+        velocity, and the victim&rsquo;s inherited velocity bias the whole cloud. There is no second
+        approximate debris copy and no intact shell dissolving underneath it. Mounted turrets are
+        part of that host visual breakup, not live pieces.
       </p>
       <p>
         <strong>The material explosion uses the host&rsquo;s actual pieces, not generic shapes.</strong>
-        Every atomic visual part as rendered &mdash; chassis edges, turret heads, barrels, treads,
-        wheels, legs &mdash; can be thrown as matched debris. Those debris pieces are
+        Every atomic visual part as rendered &mdash; unit hull lobes, turret heads, barrels, treads,
+        wheels, individual leg segments and joints, team ornaments, and every authored building
+        wall, vane, rotor, pylon, dish, or brace &mdash; is thrown as itself. Those pieces are
         presentation artifacts, not live turret agents. The explosion applies gameplay force and
         damage to external bodies in its radius; the host&rsquo;s own mounted turret visuals simply
         participate in the material breakup and then fade.
@@ -3167,23 +3170,28 @@
         demonstrates, the roster receives, at the Formik&rsquo;s scale.
       </p>
 
-      <h3>Team ornamentation is one kit vocabulary on every host</h3>
+      <h3>Team ornamentation follows the host&rsquo;s visual grammar</h3>
       <p>
         Team colour is carried by added geometry, not by recolouring the
         body: the body keeps the <em>player</em> colour and the ornament
         carries the <em>ally team</em> colour, so a unit reads as its
         alliance without giving up its owner (see the player/team/ally-team
-        split). That ornament is one designed kit, and the Formik&rsquo;s is
-        the reference: swept shoulder rails tied together by arched cross
-        ribs, seated into the hull with a spine ridge, plus a collar ringing
-        every turret where its barrels emerge.
+        split). Mobile units share one designed body kit, and the Formik&rsquo;s
+        is the reference: swept shoulder rails tied together by arched cross
+        ribs and seated into the hull with a spine ridge. Buildings do not
+        share that body kit. Their silhouettes and moving machinery differ
+        too much for one fitted visual to read as intentional, so each
+        building authors team-colour geometry at the part that explains its
+        function. Turrets still share a collar where their barrels emerge,
+        because the turret interface is genuinely common across hosts.
       </p>
       <ul class="rule-list">
-        <li>Every host &mdash; unit and building alike &mdash; wears the rail-and-rib kit, fitted to its own body extents. A plain box, slab, stripe, or fin is not ornamentation; it is the absence of it.</li>
+        <li>Every mobile unit wears the rail-and-rib kit fitted to its own body extents; a unit never falls back to a plain box, slab, stripe, or fin.</li>
+        <li>Every building blueprint owns a distinct ornament treatment integrated into its machine: collector inlays, turbine bands, fabricator clamps, extractor seams or crown plates, sensor rims and collars, converter bridges, and defense-specific pedestal or emitter armour. A generic building roof frame is forbidden.</li>
         <li>Every turret wears a collar sized from its own head radius, whatever blueprint mounts it.</li>
-        <li>Ornament geometry is instanced per profile, rides its host&rsquo;s visibility, and never adds a per-entity scene object.</li>
-        <li>The kit degrades down the detail ladder by shedding thickness and then ribs &mdash; never by shedding the team colour, which is the one thing it exists to carry.</li>
-        <li>Only livery charts may carry team identity, which keeps livery coverage a number the renderer can compute rather than something a human eyeballs.</li>
+        <li>All ornament pieces carry one semantic team-ornament role, ride host visibility and ownership changes, and obey the same Team Trim toggle even though their geometry is authored separately.</li>
+        <li>The unit kit degrades by shedding thickness and then ribs; building ornaments simplify with their owning meshes. Neither path sheds team colour before the host becomes a distant glyph.</li>
+        <li>Unit kits and turret collars use livery charts. Building ornaments use the same world-density surface material as the machine part they are integrated with, so they remain geometry rather than decals.</li>
       </ul>
     </section>
 
@@ -3790,7 +3798,7 @@
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
-        <li>Texture every face of every unit, building, turret, locomotion part, and ornament at one world texel density &mdash; the same texels per world unit, on both axes, on every entity, with no per-blueprint override. Draw every band against ONE reference host whose charts are exactly one wrap, then mount those same bands everywhere else repeated by the host&rsquo;s own size, so a plate is the same physical size on a scout and on a Queen. Repeat only the axes carrying material; an axis carrying a placed feature (a pitch slot, a bore, an end collar, a piped edge) holds one wrap and scales with the part. Surfaces with no natural parameterization take a projected substance grain in the object&rsquo;s own scale-corrected frame, drawn from the same vocabulary at the same plate size, so &ldquo;untextured&rdquo; is unreachable. Accept the consequence that a big entity at range reads as more detailed than a small entity up close. Dress every host in the reference host&rsquo;s rail-and-rib team kit fitted to its own body and every turret in a collar sized from its head radius; never a bare box, stripe, or fin, and never a branch on a blueprint id.</li>
+        <li>Texture every face of every unit, building, turret, locomotion part, and ornament at one world texel density &mdash; the same texels per world unit, on both axes, on every entity, with no per-blueprint override. Draw every repeated unit band against ONE reference unit whose charts are exactly one wrap, then mount those same bands on other units repeated by the host&rsquo;s own size, so a plate is the same physical size on a scout and on a Queen. Repeat only the axes carrying material; an axis carrying a placed feature (a pitch slot, a bore, an end collar, a piped edge) holds one wrap and scales with the part. Surfaces with no natural parameterization take a projected substance grain in the object&rsquo;s own scale-corrected frame, drawn from the same vocabulary at the same plate size, so &ldquo;untextured&rdquo; is unreachable. Accept the consequence that a big entity at range reads as more detailed than a small entity up close. Dress units in the reference rail-and-rib kit, buildings in blueprint-specific functional ornamentation, and every turret in a collar sized from its head radius.</li>
         <li>Route every stockpile change through one typed resource-movement ledger carrying <code>(resource, amount, direction, source, optional target, reason)</code>. Keep that accounting/UI/debug truth independent from presentation. The normal battlefield view uses localized economy animation; a conserved pylon-ball view is an optional overlay. Builders and factories instead emit one team-coloured work stream whose density follows realized construction or repair work. Construction pays metal and energy as one coupled step; completed-entity repair pays neither.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>

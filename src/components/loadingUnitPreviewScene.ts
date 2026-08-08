@@ -6,7 +6,7 @@ import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
-import { getChassisLiftY } from '@/game/math/BodyDimensions';
+import { getBodyTopY, getChassisLiftY } from '@/game/math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '@/game/math/LegLayout';
 import {
   resolveLegOutwardGroundPointLocal,
@@ -14,6 +14,7 @@ import {
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { buildBuildingShape } from '@/game/render3d/BuildingShape3D';
+import { collectBuildingTeamOrnaments } from '@/game/render3d/BuildingTeamOrnament3D';
 import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom, type BodyGeomEntry } from '@/game/render3d/BodyShape3D';
@@ -22,6 +23,7 @@ import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
 import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
 import {
   buildHoverFans,
+  getHoverFanVisualRootY,
   setHoverFanAnimationTime,
   type HoverMesh,
 } from '@/game/render3d/HoverRig3D';
@@ -144,10 +146,6 @@ const PREVIEW_GFX: GraphicsConfig = {
   groundPrintDensity: 0,
   projectileStyle: 'full',
   fireExplosionStyle: 'inferno',
-  materialExplosionStyle: 'obliterate',
-  materialExplosionPieceBudget: 0,
-  materialExplosionPhysicsFramesSkip: 1,
-  deathExplosionStyle: 'obliterate',
 };
 
 const DEFAULT_WIDTH = 640;
@@ -197,7 +195,7 @@ type PreviewProductionRing = {
   ringOrientation: ProductionHoldRingOrientation;
 };
 
-// In-game units mix lit team-colored body/turret materials
+// In-game units mix lit player-colored body materials and team turret accents
 // (MeshLambertMaterial, see Render3DEntities) with unlit, team-tinted
 // locomotion pieces (MeshBasicMaterial, see TreadRig3D / colorUtils).
 // The preview reproduces that exact split for one player so the unit
@@ -519,9 +517,9 @@ function detailLevelForGeometryTier(tier: PrimitiveGeometryTier): number {
 }
 
 /** Build a static preview of a building/tower, mirroring the in-game
- *  building renderer (BuildingEntityRenderer3D): a team-colored primary
- *  body scaled to the grid footprint + shape height, the type-specific
- *  detail meshes, and any mounted turrets posed at their absolute mounts.
+ *  building renderer (BuildingEntityRenderer3D): a player-colored primary
+ *  body scaled to the grid footprint + shape height, type-specific detail
+ *  meshes, authored team ornamentation, and mounted turrets at their mounts.
  *  Animation rigs (spinning rotors, scanning radar, etc.) are left static
  *  — the whole model already spins on the loading stage. */
 function buildPreviewBuildingModel(
@@ -550,13 +548,11 @@ function buildPreviewBuildingModel(
     root.add(shape.primary);
   }
   for (const detail of shape.details) {
-    if (
-      geometryTier !== 'close' &&
-      (detail.role === 'tinyTrim' || detail.role === 'solarTeamAccent')
-    ) {
-      continue;
-    }
+    if (geometryTier !== 'close' && detail.role === 'tinyTrim') continue;
     root.add(detail.mesh);
+  }
+  for (const ornament of collectBuildingTeamOrnaments(root)) {
+    ornament.material = materials.teamOrnament;
   }
 
   buildPreviewBuildingTurrets(root, buildingBlueprintId, materials, geometryTier);
@@ -678,7 +674,7 @@ function buildPreviewBody(
   if (blueprint.unitBlueprintId === 'unitCommander') {
     chassis.add(previewCommanderVisualKit.buildKit(bodyMaterial, geometryTier));
   }
-  // Every host wears the kit, so every preview card shows it.
+  // Every unit wears the shared body kit, so every unit card shows it.
   chassis.add(new THREE.Mesh(
     previewOrnamentGeometry(bodyEntry, blueprint.teamOrnament),
     materials.teamOrnament,
@@ -828,19 +824,30 @@ function buildPreviewLocomotion(
         type: 'swim',
         mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
-    case 'hover':
+    case 'hover': {
+      const mesh = buildHoverFans(
+        yawGroup,
+        radius,
+        locomotion.config,
+        'locomotionHovercraft',
+        SHELL_ENTITY_ID,
+        HOST_PLAYER_ID,
+        geometryTier,
+      );
+      // The preview's locomotion root is the unlifted yaw group, whereas the
+      // battlefield fan root is a child of the lifted chassis. Compose the
+      // same shared render-only overhead placement in the preview's frame.
+      mesh.visualBaseY = getChassisLiftY(blueprint, radius) + getHoverFanVisualRootY(
+        getBodyTopY(blueprint.bodyShape, radius),
+        radius,
+        locomotion.config,
+      );
+      mesh.group.position.y = mesh.visualBaseY;
       return {
         type: 'hover',
-        mesh: buildHoverFans(
-          yawGroup,
-          radius,
-          locomotion.config,
-          'locomotionHovercraft',
-          SHELL_ENTITY_ID,
-          HOST_PLAYER_ID,
-          geometryTier,
-        ),
+        mesh,
       };
+    }
     case 'flying':
     case 'dive':
       return {
@@ -1015,7 +1022,9 @@ function animatePreviewLocomotion(
       return;
     case 'hover':
       setHoverFanAnimationTime(active ? timeSec * motionScale : 0);
-      rig.mesh.group.position.y = active ? Math.sin(stride * 2) * 1.4 : 0;
+      rig.mesh.group.position.y = rig.mesh.visualBaseY + (
+        active ? Math.sin(stride * 2) * 1.4 : 0
+      );
       return;
     case 'flying':
       rig.mesh.group.rotation.z = active ? Math.sin(stride) * 0.08 : 0;

@@ -166,9 +166,9 @@ export type ClientBarConfig = {
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
   readonly fogShade: BooleanSetting;
-  /** Client-only death material breakup: death fire puff plus part-based
-   *  Debris3D chunks. Does not affect authoritative death, damage,
-   *  knockback, or the dying shell materialization fade. */
+  /** Client-only death material breakup: death fire puff plus blast-biased
+   *  motion of the entity's actual textured render parts. Does not affect
+   *  authoritative death, damage, or knockback. */
   readonly materialExplosions: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   /** Draws the actual indexed triangle edges in the rendered water mesh. */

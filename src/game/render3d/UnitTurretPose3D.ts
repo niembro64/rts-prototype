@@ -107,7 +107,6 @@ export class UnitTurretPose3D {
     supportPointOffsetZ: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    chassisTiltInverse: THREE.Quaternion | undefined,
     barrelSpinEnabled: boolean,
     barrelSpinState: UnitBarrelSpinState3D,
     currentDtMs: number,
@@ -188,7 +187,7 @@ export class UnitTurretPose3D {
           entity.transform.rotation,
           aimRotationFromState,
           0,
-          chassisTiltInverse,
+          parentQuaternion,
         );
         if (turretMesh.pitchGroup) setEulerZIfChanged(turretMesh.pitchGroup.rotation, 0);
         if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
@@ -253,7 +252,6 @@ export class UnitTurretPose3D {
             entity.transform.rotation,
             aimRotationFromState,
             aimPitchFromState,
-            chassisTiltInverse,
           );
           continue;
         }
@@ -281,7 +279,6 @@ export class UnitTurretPose3D {
             entity.transform.rotation,
             aimRotationFromState,
             aimPitchFromState,
-            chassisTiltInverse,
           );
           continue;
         }
@@ -462,7 +459,6 @@ export class UnitTurretPose3D {
     hostRotation: number,
     aimRotation: number,
     aimPitch: number,
-    chassisTiltInverse: THREE.Quaternion | undefined,
   ): void {
     const index = this.aimCount;
     this.aimCount++;
@@ -476,7 +472,7 @@ export class UnitTurretPose3D {
       hostRotation,
       aimRotation,
       aimPitch,
-      chassisTiltInverse,
+      parentQuaternion,
     );
 
     const poseBase = index * 7;

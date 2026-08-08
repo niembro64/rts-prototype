@@ -10,6 +10,7 @@ import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './Bu
 import {
   getActiveBuildingGeometryTier,
   getBuildingCylinderGeometry,
+  teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
 import {
   getOrCreate,
@@ -122,7 +123,7 @@ const _solarPetalZAxis = new THREE.Vector3();
 function isSolarPetalDetail(detail: BuildingDetailMesh): boolean {
   return detail.role === 'solarLeaf' ||
     detail.role === 'solarPanel' ||
-    detail.role === 'solarTeamAccent';
+    detail.role === 'teamOrnament';
 }
 
 /** Apply one canonical open/closed pose to every visible solar leaf. This is
@@ -234,7 +235,7 @@ export function buildSolarCollector(
       frontBackClosedDir,
       frontBackPanelSide,
     ), 'low', undefined, 'solarLeaf'));
-    details.push(detail(makeTrianglePetal(
+    details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
       frontBackSpan * 0.58,
       frontBackLen * 0.42,
@@ -251,7 +252,7 @@ export function buildSolarCollector(
       teamAccentThickness,
       frontBackClosedDir,
       frontBackPanelSide,
-    ), 'medium', undefined, 'solarTeamAccent'));
+    ), 'solarPetalInlay'));
     details.push(detail(makeTrianglePetal(
       solarCellMat,
       frontBackSpan,
@@ -301,7 +302,7 @@ export function buildSolarCollector(
       sideClosedDir,
       sidePanelSide,
     ), 'low', undefined, 'solarLeaf'));
-    details.push(detail(makeTrianglePetal(
+    details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
       sideSpan * 0.58,
       sideLen * 0.42,
@@ -318,7 +319,7 @@ export function buildSolarCollector(
       teamAccentThickness,
       sideClosedDir,
       sidePanelSide,
-    ), 'medium', undefined, 'solarTeamAccent'));
+    ), 'solarPetalInlay'));
     details.push(detail(makeTrianglePetal(
       solarCellMat,
       sideSpan,

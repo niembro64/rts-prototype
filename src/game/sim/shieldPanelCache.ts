@@ -34,10 +34,9 @@ export const SHIELD_PANEL_SIZE_MULT = 2.0;
  *                          (offset out from the panel face by half the
  *                          support diameter).
  *
- *  Single source of truth shared by `ShieldPanelMesh3D` (live mirror) and
- *  `Debris3D` (post-death debris) so the dead-mirror tumbling pieces
- *  always match the live silhouette. Past drift bug:
- *  Debris3D fell out of sync when ShieldPanelMesh3D's constants moved. */
+ *  Single source of truth for `ShieldPanelMesh3D`; death disassembly throws
+ *  those exact live panel/frame parts, so no second geometry description can
+ *  drift away from the rendered silhouette. */
 type MirrorFrameGeometry = {
   side: number;
   supportDiameter: number;
@@ -64,11 +63,11 @@ export function getShieldFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
  *  where α = shieldPanelYaw and β = shieldPanelPitch.
  *
  *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
- *  by the aim solver, the panel hit test (collision), and the debris
- *  emitter (so dead Lorises drop debris in the same spot the live
+ *  by the aim solver, the panel hit test (collision), and the retained
+ *  death pieces (so dead Lorises break in the same spot the live
  *  panel was). The PIVOT itself is computed differently per call site
  *  (live aim/hit-test use a chassis-tilt-aware mount from
- *  resolveWeaponWorldMount; upright fallback/debris use the body-mid-Z
+ *  resolveWeaponWorldMount; upright fallback/death breakup use the body-mid-Z
  *  anchor) so the pivot stays at the call site, but the arm extension
  *  lives here.
  *

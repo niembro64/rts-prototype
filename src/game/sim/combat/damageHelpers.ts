@@ -121,11 +121,9 @@ export function buildUnitDeathEvent(
   const unitBlueprintId = targetUnit !== null ? targetUnit.unitBlueprintId : undefined;
   const deathUnitType = unitBlueprintId && isUnitBlueprintId(unitBlueprintId) ? unitBlueprintId : undefined;
   const rotation = targetTransform !== null ? targetTransform.rotation : 0;
-  // Per-turret yaw + pitch at death — Debris3D rotates each barrel
-  // template by these so the cylinder spawns where the live mesh
-  // was, not at the chassis-aligned default. Captured here on the
-  // authoritative side so remote clients don't have to rely on the
-  // entity still being present in their view state.
+  // Per-turret yaw + pitch at death remains on the wire for non-3D clients
+  // and compatibility. The 3D renderer now throws the live barrel instances
+  // themselves, so their last rendered pose is already exact.
   const targetTurrets = targetCombat !== null ? targetCombat.turrets : null;
   let turretPoses: { rotation: number; pitch: number }[] | undefined;
   if (targetTurrets !== null) {
@@ -140,7 +138,7 @@ export function buildUnitDeathEvent(
   }
   // ctx present → rich directional context from the killing blow.
   // ctx absent → synthesize a neutral one so the renderer still fires
-  //   material debris (splash kills, DoT, cleanup-pass kills).
+  //   a material breakup (splash kills, DoT, cleanup-pass kills).
   const deathContext = ctx
     ? {
         unitVel,
@@ -188,9 +186,8 @@ export function buildUnitDeathEvent(
 
 /**
  * Build a 'death' SimEvent for a building. Simpler than the unit
- * variant — buildings don't have velocity, rotation, or penetration
- * context worth preserving, so the deathContext is a fixed upward-
- * nudge fallback used by the debris system.
+ * variant. Buildings have no inherited velocity, but preserve the killing
+ * penetration/force context so their retained render parts follow the blast.
  */
 export function buildBuildingDeathEvent(
   building: Entity | undefined,
@@ -198,6 +195,7 @@ export function buildBuildingDeathEvent(
   sourceKey: string,
   sourceType: SimEventSourceType = 'turret',
   killerPlayerId: PlayerId | undefined = undefined,
+  ctx: DeathContext | undefined = undefined,
 ): SimEvent {
   const buildingOwnership = building !== undefined ? building.ownership : null;
   const buildingPlayerId = buildingOwnership !== null ? buildingOwnership.playerId : undefined;
@@ -232,9 +230,9 @@ export function buildBuildingDeathEvent(
     entityId: id,
     deathContext: {
       unitVel: { x: 0, y: 0 },
-      hitDir: { x: 0, y: -1 },
-      projectileVel: { x: 0, y: 0 },
-      attackMagnitude: 50,
+      hitDir: ctx?.penetrationDir ?? { x: 0, y: -1 },
+      projectileVel: ctx?.attackerVel ?? { x: 0, y: 0 },
+      attackMagnitude: ctx?.attackMagnitude ?? 50,
       radius: footprintRadius,
       visualRadius: footprintRadius,
       collisionRadius: buildingComponent !== null ? buildingComponent.depth : footprintRadius,
@@ -287,7 +285,15 @@ export function collectKillsAndDeathContexts(
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const killerPlayerId = result.killerPlayerIds.get(id);
-      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType, killerPlayerId ?? undefined));
+      const ctx = result.deathContexts.get(id);
+      audioEvents.push(buildBuildingDeathEvent(
+        building,
+        id,
+        sourceKey,
+        sourceType,
+        killerPlayerId ?? undefined,
+        ctx,
+      ));
       buildingsToRemove.add(id);
     }
   }

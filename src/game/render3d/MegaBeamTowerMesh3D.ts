@@ -11,7 +11,9 @@ import {
   detail,
   getBuildingCylinderGeometry,
   hexCylinderGeom,
+  makeBox,
   makeCylinder,
+  teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
 
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
@@ -135,25 +137,44 @@ const antiAirTowerProfile: DefenseTowerMeshProfile = {
  *  shape builder owns body geometry only; turret meshes are added on
  *  top by the caller from `entity.combat.turrets`. */
 export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShape {
-  return buildDefenseTowerMesh(primaryMat, megaBeamTowerBodyGeom, beamTowerProfile);
+  return buildDefenseTowerMesh(
+    primaryMat,
+    megaBeamTowerBodyGeom,
+    beamTowerProfile,
+    'beam',
+  );
 }
 
 /** Static cannon tower — a low, broad bunker-like platform with heavy
  *  dark braces and a larger top socket for the cannon turret. */
-export function buildCannonTowerMesh(primaryMat: THREE.Material): BuildingShape {
-  return buildDefenseTowerMesh(primaryMat, cannonTowerBodyGeom, cannonTowerProfile);
+export function buildCannonTowerMesh(
+  primaryMat: THREE.Material,
+  variant: 'cannon' | 'torpedo' = 'cannon',
+): BuildingShape {
+  return buildDefenseTowerMesh(
+    primaryMat,
+    cannonTowerBodyGeom,
+    cannonTowerProfile,
+    variant,
+  );
 }
 
 /** Static anti-air tower — compact missile-defense mast with a bright
  *  top collar under the fast-tracking launcher. */
 export function buildAntiAirTowerMesh(primaryMat: THREE.Material): BuildingShape {
-  return buildDefenseTowerMesh(primaryMat, antiAirTowerBodyGeom, antiAirTowerProfile);
+  return buildDefenseTowerMesh(
+    primaryMat,
+    antiAirTowerBodyGeom,
+    antiAirTowerProfile,
+    'antiAir',
+  );
 }
 
 function buildDefenseTowerMesh(
   primaryMat: THREE.Material,
   bodyGeom: THREE.BufferGeometry,
   profile: DefenseTowerMeshProfile,
+  variant: 'beam' | 'cannon' | 'antiAir' | 'torpedo',
 ): BuildingShape {
   const primary = new THREE.Mesh(bodyGeom, primaryMat);
 
@@ -243,7 +264,120 @@ function buildDefenseTowerMesh(
   );
   details.push(detail(socket, 'min', undefined, 'static'));
 
+  addDefenseTowerTeamOrnament(details, primaryMat, profile, variant);
+
   return { primary, details, height: h };
+}
+
+function addDefenseTowerTeamOrnament(
+  details: BuildingShape['details'],
+  primaryMat: THREE.Material,
+  profile: DefenseTowerMeshProfile,
+  variant: 'beam' | 'cannon' | 'antiAir' | 'torpedo',
+): void {
+  const foot = profile.foot;
+  if (variant === 'beam') {
+    // The beam tower's identity converges at the emitter: a tight crown and
+    // three small conductor tabs immediately below the firing assembly.
+    details.push(teamOrnamentDetail(
+      makeCylinder(
+        primaryMat,
+        foot * 0.29,
+        3.2,
+        0,
+        profile.height - profile.neckHeight - 1.6,
+        0,
+        hexCylinderGeom,
+      ),
+      'beamEmitterCrown',
+    ));
+    for (let i = 0; i < 3; i++) {
+      const angle = Math.PI / 2 + (i / 3) * Math.PI * 2;
+      const tab = makeBox(
+        primaryMat,
+        4.2,
+        6.5,
+        2.2,
+        Math.cos(angle) * foot * 0.3,
+        profile.height - profile.neckHeight - 4.5,
+        Math.sin(angle) * foot * 0.3,
+      );
+      tab.rotation.y = -angle;
+      details.push(teamOrnamentDetail(tab, 'beamEmitterCrown'));
+    }
+    return;
+  }
+
+  if (variant === 'cannon') {
+    // Broad lateral yoke cheeks visually carry the heavy cannon socket.
+    const cheekX = foot * 0.34;
+    for (const sign of [-1, 1]) {
+      details.push(teamOrnamentDetail(
+        makeBox(
+          primaryMat,
+          foot * 0.18,
+          5.5,
+          foot * 0.48,
+          sign * cheekX,
+          profile.height - 3.5,
+          0,
+        ),
+        'cannonYoke',
+      ));
+    }
+    return;
+  }
+
+  if (variant === 'antiAir') {
+    // Four narrow braces climb from the pedestal toward the fast launcher,
+    // giving the lighter AA tower a vertical team-colour rhythm.
+    const braceRadius = foot * 0.39;
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.PI / 4 + (i / 4) * Math.PI * 2;
+      const brace = makeBox(
+        primaryMat,
+        3,
+        profile.height * 0.42,
+        4.2,
+        Math.cos(angle) * braceRadius,
+        profile.baseHeight + profile.height * 0.21,
+        Math.sin(angle) * braceRadius,
+      );
+      brace.rotation.y = -angle;
+      details.push(teamOrnamentDetail(brace, 'antiAirPedestalBrace'));
+    }
+    return;
+  }
+
+  // The torpedo emplacement shares the cannon's underlying bunker profile,
+  // but its low waterline belt and twin side pontoons make its ornament (and
+  // therefore its battlefield read) independent from the cannon yoke.
+  details.push(teamOrnamentDetail(
+    makeCylinder(
+      primaryMat,
+      foot * 0.53,
+      3.4,
+      0,
+      profile.baseHeight + 2.5,
+      0,
+      hexCylinderGeom,
+    ),
+    'torpedoWaterlineBand',
+  ));
+  for (const sign of [-1, 1]) {
+    details.push(teamOrnamentDetail(
+      makeBox(
+        primaryMat,
+        foot * 0.2,
+        4.2,
+        foot * 0.58,
+        sign * foot * 0.44,
+        profile.baseHeight + 3.2,
+        0,
+      ),
+      'torpedoWaterlineBand',
+    ));
+  }
 }
 
 export function disposeMegaBeamTowerMeshGeoms(): void {

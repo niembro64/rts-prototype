@@ -32,12 +32,13 @@ export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
       let x = cosRot * cosPitch;
       let y = sinPitch;
       let z = sinRot * cosPitch;
-      if (input[ib + 7] !== 0) {
+      const hasParentWorldQuaternion = input[ib + 7] !== 0;
+      if (hasParentWorldQuaternion) {
         const rotated = rotateVectorByQuaternionInto(
           this.fallbackRotated,
-          input[ib + 3],
-          input[ib + 4],
-          input[ib + 5],
+          -input[ib + 3],
+          -input[ib + 4],
+          -input[ib + 5],
           input[ib + 6],
           x,
           y,
@@ -48,7 +49,8 @@ export class UnitTurretAimBatch3D extends WasmPoseBatch3D {
         z = rotated[2];
       }
 
-      output[ob] = Math.atan2(-z, x) + hostRotation;
+      output[ob] = Math.atan2(-z, x)
+        + (hasParentWorldQuaternion ? 0 : hostRotation);
       output[ob + 1] = Math.asin(clampUnit(y));
     }
   }

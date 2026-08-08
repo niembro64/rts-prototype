@@ -559,23 +559,6 @@ export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, f
   }
 }
 
-export function translateLegSlots(
-  mesh: LegMesh,
-  legRenderer: LegInstancedRenderer,
-  dx: number,
-  dy: number,
-  dz: number,
-): void {
-  for (const leg of mesh.legs) {
-    legRenderer.translateUpper(leg.upperSlot, dx, dy, dz, leg.geometryTier);
-    legRenderer.translateLower(leg.lowerSlot, dx, dy, dz, leg.geometryTier);
-    legRenderer.translateLowerTaper(leg.lowerTaperSlot, dx, dy, dz, leg.geometryTier);
-    legRenderer.translateFoot(leg.footSlot, dx, dy, dz, leg.geometryTier);
-    legRenderer.translateJoint(leg.hipJointSlot, dx, dy, dz, leg.geometryTier);
-    legRenderer.translateJoint(leg.kneeJointSlot, dx, dy, dz, leg.geometryTier);
-  }
-}
-
 /** Per-frame: advance each leg's snap-lerp physics + IK, write
  *  cylinder + joint-sphere transforms into the shared instanced
  *  renderer pools. Returns true while the rig needs another visual

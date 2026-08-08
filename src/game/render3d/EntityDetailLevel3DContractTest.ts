@@ -8,7 +8,6 @@ import {
   DETAIL_RUNG_MID,
   ICON_FADE_START_SCREEN_RADIUS_PX,
   beamStyleForDetail,
-  debrisSpawnScaleForDetail,
   detailLevelForRung,
   detailLevelForViewPosition,
   detailLevelForScreenRadius,
@@ -62,10 +61,6 @@ const FULL_GFX: GraphicsConfig = {
   groundPrintDensity: 1,
   projectileStyle: 'full',
   fireExplosionStyle: 'inferno',
-  materialExplosionStyle: 'obliterate',
-  materialExplosionPieceBudget: 1,
-  materialExplosionPhysicsFramesSkip: 1,
-  deathExplosionStyle: 'obliterate',
 };
 
 const DETAIL_FEATURES: readonly DetailFeature[] = [
@@ -391,9 +386,7 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph smoke is suppressed');
   assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full explosions are full scale');
   assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph explosions are suppressed');
-  assertContract(debrisSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full debris is full scale');
-  assertContract(debrisSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph debris is suppressed');
-  for (const scale of [smokeSpawnScaleForDetail, explosionSpawnScaleForDetail, debrisSpawnScaleForDetail]) {
+  for (const scale of [smokeSpawnScaleForDetail, explosionSpawnScaleForDetail]) {
     const low = scale(detailLevelForRung(DETAIL_RUNG_FAR));
     const medium = scale(detailLevelForRung(DETAIL_RUNG_MID));
     assertContract(low > 0 && medium >= low, 'each effect has ordered Low/Medium spawn scales');

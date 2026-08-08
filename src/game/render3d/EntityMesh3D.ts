@@ -16,6 +16,7 @@ import type {
 } from './BuildingShape3D';
 import type { SolarRig } from './SolarCollectorMesh3D';
 import type { HostOrnamentProfile } from './TeamOrnament3D';
+import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 
 /** One wireframe per debug-volume category the host actually carries.
  *  Keys mirror the unified VOLUMES bar group (`VolumeType`) exactly —
@@ -113,10 +114,10 @@ export type EntityMesh = {
    *  when toggled off. All three parent to the unit group at local
    *  y = collision radius so the sphere center sits on the unit's sim
    *  sphere center and rides along with altitude changes. */
-  /** Slot in the team-ornament pools holding this host's rail-and-rib kit.
+  /** Slot in the team-ornament pools holding this unit's rail-and-rib kit.
    *  The slot encodes which pool, so one field covers every body profile. */
   teamTrimSlot?: number;
-  /** The kit's fit for this host, derived from its body once and cached —
+  /** The kit's fit for this unit, derived from its body once and cached —
    *  the pose pass runs every frame and the body's extents do not change. */
   teamTrimProfile?: HostOrnamentProfile;
   radiusRings?: RadiusRingMeshes;
@@ -136,6 +137,11 @@ export type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
+  /** Authored, building-specific pieces that carry ally-team identity.
+   * May include descendants nested under an animation rig. */
+  buildingTeamOrnaments?: THREE.Mesh[];
+  /** Last ally-team colour applied to the authored building ornaments. */
+  buildingTeamOrnamentColorHex?: number;
   isFactoryConstructionHost?: boolean;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
@@ -209,6 +215,15 @@ export type EntityMesh = {
    *  the scatter + death-fade, killed buildings/towers use the death fade,
    *  and entities that just lost vision fade out quietly in place. */
   killed?: boolean;
+  /** Killing-blow motion consumed only by the death disassembly. Undefined
+   *  keeps the ordinary intact death fade (for example when the client-side
+   *  material-explosion toggle is off). */
+  deathBlast?: EntityDeathBlast3D;
+  /** Effective opacity most recently written to the entity's rendered parts.
+   *  A vision/death fade-out starts here instead of forcing opacity back to
+   *  one, which keeps a removal continuous when it interrupts a fade-in or
+   *  construction materialization. */
+  entityLifecycleFade?: number;
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */

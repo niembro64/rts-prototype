@@ -1,8 +1,8 @@
 // Explosion3D - short-lived fire explosion markers for projectile impacts
 // and unit deaths in the 3D view.
 //
-// Every impact emits exactly one bright white sphere that expands and fades. Material death
-// debris remains separate in Debris3D.
+// Every impact emits exactly one bright white sphere that expands and fades.
+// EntityDeathDisassembly3D owns the separate, synchronized host breakup.
 
 import * as THREE from 'three';
 import {

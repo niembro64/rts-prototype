@@ -1370,7 +1370,8 @@ pub fn render_turret_head_compute(count: u32) {
 //  Render pose helper — unit turret aim/root pose
 //
 //  Converts the authoritative sim aim into the local turret rig's root yaw
-//  and pitch. Every aiming turret supplies the same yaw/pitch pose contract.
+//  and pitch. Input slots 3..6 carry the exact rendered parent quaternion;
+//  slot 7 marks it present. Every aiming turret supplies this same contract.
 // ─────────────────────────────────────────────────────────────────
 
 pub const RENDER_TURRET_AIM_INPUT_STRIDE: usize = 8;
@@ -1423,6 +1424,33 @@ pub fn render_turret_aim_scratch_ensure(count: u32) {
     }
 }
 
+#[inline]
+fn render_turret_aim_pose(
+    host_rotation: f64,
+    aim_rotation: f64,
+    aim_pitch: f64,
+    parent_world_quaternion: Option<[f64; 4]>,
+) -> [f64; 2] {
+    let cos_rot = aim_rotation.cos();
+    let sin_rot = aim_rotation.sin();
+    let cos_pitch = aim_pitch.cos();
+    let sin_pitch = aim_pitch.sin();
+    let mut aim_dir = [cos_rot * cos_pitch, sin_pitch, sin_rot * cos_pitch];
+    if let Some(parent) = parent_world_quaternion {
+        let inverse_parent = [-parent[0], -parent[1], -parent[2], parent[3]];
+        aim_dir = quat_rotate_vec(inverse_parent, aim_dir);
+    }
+
+    let combined_yaw = (-aim_dir[2]).atan2(aim_dir[0]);
+    let y = aim_dir[1].clamp(-1.0, 1.0);
+    let host_yaw = if parent_world_quaternion.is_some() {
+        0.0
+    } else {
+        host_rotation
+    };
+    [combined_yaw + host_yaw, y.asin()]
+}
+
 #[wasm_bindgen]
 pub fn render_turret_aim_compute(count: u32) {
     let s = render_turret_aim_scratch();
@@ -1436,32 +1464,25 @@ pub fn render_turret_aim_compute(count: u32) {
         let host_rotation = s.input[ib] as f64;
         let aim_rotation = s.input[ib + 1] as f64;
         let aim_pitch = s.input[ib + 2] as f64;
-
-        let cos_rot = aim_rotation.cos();
-        let sin_rot = aim_rotation.sin();
-        let cos_pitch = aim_pitch.cos();
-        let sin_pitch = aim_pitch.sin();
-        let mut aim_dir = [cos_rot * cos_pitch, sin_pitch, sin_rot * cos_pitch];
-        if s.input[ib + 7] != 0.0 {
-            let inv_tilt = [
+        let has_parent_world_quaternion = s.input[ib + 7] != 0.0;
+        let parent_world_quaternion = if has_parent_world_quaternion {
+            Some([
                 s.input[ib + 3] as f64,
                 s.input[ib + 4] as f64,
                 s.input[ib + 5] as f64,
                 s.input[ib + 6] as f64,
-            ];
-            aim_dir = quat_rotate_vec(inv_tilt, aim_dir);
-        }
-
-        let combined_yaw = (-aim_dir[2]).atan2(aim_dir[0]);
-        let y = if aim_dir[1] < -1.0 {
-            -1.0
-        } else if aim_dir[1] > 1.0 {
-            1.0
+            ])
         } else {
-            aim_dir[1]
+            None
         };
-        s.output[ob] = (combined_yaw + host_rotation) as f32;
-        s.output[ob + 1] = y.asin() as f32;
+        let pose = render_turret_aim_pose(
+            host_rotation,
+            aim_rotation,
+            aim_pitch,
+            parent_world_quaternion,
+        );
+        s.output[ob] = pose[0] as f32;
+        s.output[ob + 1] = pose[1] as f32;
     }
 }
 
@@ -1518,6 +1539,49 @@ mod tests {
         approx(mapped[1], (-yaw * 0.5).sin(), 1e-12);
         approx(mapped[2], 0.0, 1e-12);
         approx(mapped[3], (-yaw * 0.5).cos(), 1e-12);
+    }
+
+    #[test]
+    fn turret_aim_cancels_the_exact_sloped_parent_orientation() {
+        let host_rotation = 0.8_f64;
+        let aim_rotation = 0.0_f64;
+        let aim_pitch = -0.35_f64;
+        let slope_angle = -core::f64::consts::PI / 6.0;
+        let slope_q = [
+            0.0,
+            0.0,
+            (slope_angle * 0.5).sin(),
+            (slope_angle * 0.5).cos(),
+        ];
+        let host_yaw_q = [
+            0.0,
+            (-host_rotation * 0.5).sin(),
+            0.0,
+            (-host_rotation * 0.5).cos(),
+        ];
+        let visual_bank = 0.12_f64;
+        let visual_bank_q = [
+            (-visual_bank * 0.5).sin(),
+            0.0,
+            0.0,
+            (-visual_bank * 0.5).cos(),
+        ];
+        let parent_q = quat_mul(quat_mul(slope_q, host_yaw_q), visual_bank_q);
+
+        let pose = render_turret_aim_pose(host_rotation, aim_rotation, aim_pitch, Some(parent_q));
+        let root_yaw_q = [0.0, (pose[0] * 0.5).sin(), 0.0, (pose[0] * 0.5).cos()];
+        let barrel_pitch_q = [0.0, 0.0, (pose[1] * 0.5).sin(), (pose[1] * 0.5).cos()];
+        let barrel_world_q = quat_mul(quat_mul(parent_q, root_yaw_q), barrel_pitch_q);
+        let rendered_direction = quat_rotate_vec(barrel_world_q, [1.0, 0.0, 0.0]);
+        let expected_direction = [
+            aim_rotation.cos() * aim_pitch.cos(),
+            aim_pitch.sin(),
+            aim_rotation.sin() * aim_pitch.cos(),
+        ];
+
+        approx(rendered_direction[0], expected_direction[0], 1e-12);
+        approx(rendered_direction[1], expected_direction[1], 1e-12);
+        approx(rendered_direction[2], expected_direction[2], 1e-12);
     }
 
     #[test]

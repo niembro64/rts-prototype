@@ -2625,6 +2625,19 @@ export class DamageSystem {
         if (killed && !result.killedBuildingIds.has(entity.id)) {
           result.killedBuildingIds.add(entity.id);
           this.recordKiller(result, entity.id, sourceEntityId);
+          if (_damageBatchHasDeathContext[i] !== 0) {
+            result.deathContexts.set(entity.id, {
+              penetrationDir: {
+                x: _damageBatchPenetrationDirX[i],
+                y: _damageBatchPenetrationDirY[i],
+              },
+              attackerVel: {
+                x: _damageBatchAttackerVelX[i],
+                y: _damageBatchAttackerVelY[i],
+              },
+              attackMagnitude: _damageBatchAttackMagnitude[i],
+            });
+          }
         }
       } else if (targetKind === DAMAGE_TARGET_KIND_PROJECTILE && entity.projectile !== null) {
         entity.projectile.hp = _damageBatchOutHp[i];

@@ -30,8 +30,6 @@ type RenderBudgetTierConfig = {
   readonly effectFrameStride: number;
   readonly burnMarkDensityScale: number;
   readonly groundPrintDensityScale: number;
-  readonly materialExplosionPieceBudgetCap: number;
-  readonly materialExplosionPhysicsFramesSkipMin: number;
 };
 
 const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
@@ -41,8 +39,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     effectFrameStride: 1,
     burnMarkDensityScale: 1,
     groundPrintDensityScale: 1,
-    materialExplosionPieceBudgetCap: Number.POSITIVE_INFINITY,
-    materialExplosionPhysicsFramesSkipMin: 0,
   },
   {
     tier: 'busy',
@@ -50,8 +46,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     effectFrameStride: 2,
     burnMarkDensityScale: 0.7,
     groundPrintDensityScale: 0.7,
-    materialExplosionPieceBudgetCap: 24,
-    materialExplosionPhysicsFramesSkipMin: 1,
   },
   {
     tier: 'heavy',
@@ -59,8 +53,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     effectFrameStride: 3,
     burnMarkDensityScale: 0.35,
     groundPrintDensityScale: 0.35,
-    materialExplosionPieceBudgetCap: 12,
-    materialExplosionPhysicsFramesSkipMin: 2,
   },
   {
     tier: 'extreme',
@@ -68,8 +60,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
     effectFrameStride: 4,
     burnMarkDensityScale: 0.15,
     groundPrintDensityScale: 0.15,
-    materialExplosionPieceBudgetCap: 4,
-    materialExplosionPhysicsFramesSkipMin: 3,
   },
 ];
 
@@ -166,13 +156,5 @@ export class RtsScene3DRenderBudget {
     out.effectFrameStride = Math.max(base.effectFrameStride | 0, tier.effectFrameStride);
     out.burnMarkDensity = clamp01(base.burnMarkDensity * tier.burnMarkDensityScale);
     out.groundPrintDensity = clamp01(base.groundPrintDensity * tier.groundPrintDensityScale);
-    out.materialExplosionPieceBudget = Math.min(
-      Math.max(0, Math.floor(base.materialExplosionPieceBudget)),
-      tier.materialExplosionPieceBudgetCap,
-    );
-    out.materialExplosionPhysicsFramesSkip = Math.max(
-      Math.max(0, Math.floor(base.materialExplosionPhysicsFramesSkip)),
-      tier.materialExplosionPhysicsFramesSkipMin,
-    );
   }
 }

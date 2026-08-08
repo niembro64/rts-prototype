@@ -10,6 +10,8 @@ import {
   detail,
   getActiveBuildingGeometryTier,
   getBuildingCylinderGeometry,
+  makeBox,
+  teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
 import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
 import {
@@ -21,7 +23,7 @@ import {
   disposeConstructionHostMarkingGeometries,
 } from './ConstructionHostMarking3D';
 
-/** Factory chassis: the team-colored hovering torus body. Realized
+/** Factory chassis: the player-colored hovering torus body. Realized
  *  construction work emits from the factory's host-authored work point. */
 export function buildFactoryMesh(
   width: number,
@@ -34,17 +36,41 @@ export function buildFactoryMesh(
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint('towerFabricator');
 
-  // Hovering torus body: a flat (horizontal) team-colored ring at the spawn
+  // Hovering torus body: a flat (horizontal) player-colored ring at the spawn
   // height, sized to the footprint. The unit shell is held in its center while
   // the factory applies build power.
+  const ringRadius = fabricatorTorusRingRadius(width, depth);
+  const hoverHeight = fabricatorTorusHoverHeight();
   const torus = buildProductionHoldRingMesh(
-    fabricatorTorusRingRadius(width, depth),
+    ringRadius,
     primaryMat,
     'horizontal',
     getActiveBuildingGeometryTier(),
   );
-  torus.position.y = fabricatorTorusHoverHeight();
+  torus.position.y = hoverHeight;
   details.push(detail(torus, 'medium', undefined, 'constructionHostBody'));
+
+  // Six tangential clamp faces break the broad assembly ring into readable
+  // work stations. They are team colour because these are the points where
+  // this side's construction field grips the unit shell; unlike a roof kit,
+  // they are inseparable from the fabricator's circular function.
+  const clampWidth = Math.max(8, ringRadius * 0.2);
+  const clampHeight = Math.max(3, ringRadius * 0.045);
+  const clampDepth = Math.max(5, ringRadius * 0.085);
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const clamp = makeBox(
+      primaryMat,
+      clampWidth,
+      clampHeight,
+      clampDepth,
+      Math.cos(angle) * ringRadius,
+      hoverHeight + clampHeight * 0.2,
+      Math.sin(angle) * ringRadius,
+    );
+    clamp.rotation.y = angle + Math.PI / 2;
+    details.push(teamOrnamentDetail(clamp, 'fabricatorClamps'));
+  }
 
   const markingProfile = getConstructionHostMarkingProfile('towerFabricator');
   if (markingProfile === null || markingProfile.kind !== 'ringBoxes') {
@@ -52,10 +78,10 @@ export function buildFactoryMesh(
   }
   const marking = buildConstructionHostMarking(
     markingProfile,
-    fabricatorTorusRingRadius(width, depth),
+    ringRadius,
     getActiveBuildingGeometryTier(),
   );
-  marking.position.y += fabricatorTorusHoverHeight();
+  marking.position.y += hoverHeight;
   marking.updateMatrix();
   for (const child of [...marking.children]) {
     if (!(child instanceof THREE.Mesh)) continue;

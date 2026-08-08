@@ -19,9 +19,5 @@
   "burnMarkDensity": 1,
   "groundPrintDensity": 1,
   "projectileStyle": "trail",
-  "fireExplosionStyle": "inferno",
-  "materialExplosionStyle": "obliterate",
-  "materialExplosionPieceBudget": 40,
-  "materialExplosionPhysicsFramesSkip": 0,
-  "deathExplosionStyle": "obliterate"
+  "fireExplosionStyle": "inferno"
 }

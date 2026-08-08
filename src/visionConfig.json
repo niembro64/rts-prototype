@@ -1,5 +1,5 @@
 {
   "fadeInMs": 1000,
   "fadeOutMs": 1000,
-  "deathFadeMs": 100
+  "deathFadeMs": 1200
 }

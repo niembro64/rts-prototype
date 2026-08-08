@@ -3,6 +3,10 @@ import { COLORS } from '@/colorsConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
 import {
+  markBuildingTeamOrnament,
+  type BuildingTeamOrnamentKind,
+} from './BuildingTeamOrnament3D';
+import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
@@ -279,6 +283,17 @@ export function detail(
   role: BuildingDetailRole = 'static',
 ): BuildingDetailMesh {
   return { mesh, role };
+}
+
+/** Register an authored, building-specific team-colour piece. The ordinary
+ * detail role controls LOD participation; the object tag survives nesting so
+ * the renderer can recolour and toggle the finished assembly uniformly. */
+export function teamOrnamentDetail(
+  mesh: THREE.Mesh,
+  kind: BuildingTeamOrnamentKind,
+): BuildingDetailMesh {
+  markBuildingTeamOrnament(mesh, kind);
+  return { mesh, role: 'teamOrnament' };
 }
 
 export function disposeBuildingMeshPrimitives(): void {

@@ -56,6 +56,10 @@ import {
   writeInstancedMatrix as writeInstanceMatrix,
   writeInstancedMatrixArray as writeInstanceMatrixArray,
 } from './instancedBufferUpdate';
+import type {
+  EntityDeathPartDelta3D,
+  EntityDeathRenderablePart3D,
+} from './EntityDeathDisassembly3D';
 
 const POLY_CHASSIS_CAP = 4096;
 const CONE_BARREL_CAP = 4096;
@@ -175,15 +179,6 @@ type UnitDetailInstanceRendererOptions = {
   coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   mirrorGeom: THREE.BoxGeometry;
-};
-
-export type DyingUnitPartDelta = {
-  dx: number;
-  dy: number;
-  dz: number;
-  drx: number;
-  dry: number;
-  drz: number;
 };
 
 /** Barrel geometry whose end caps address their own zone of the trim sheet
@@ -1232,82 +1227,110 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
-  applyDyingUnitScatter(
-    mesh: EntityMesh,
-    bodyDelta: DyingUnitPartDelta,
-    turretDeltas: readonly DyingUnitPartDelta[],
-  ): void {
+  /** Capture each entity-owned instance as one independently moving death
+   *  part. These closures keep the live slot's real geometry, color, surface
+   *  chart, and fade attribute instead of synthesizing approximate debris. */
+  captureEntityDeathParts(mesh: EntityMesh): EntityDeathRenderablePart3D[] {
+    const parts: EntityDeathRenderablePart3D[] = [];
     if (mesh.smoothChassisSlots) {
       for (const slot of mesh.smoothChassisSlots) {
         const pool = this.smoothChassisPools[tierSlotTier(slot)];
-        this.applyInstancedDelta(
+        parts.push(this.captureInstancedDeathPart(
           pool.mesh,
           tierSlotIndex(slot),
-          bodyDelta,
           pool.matrixDirty,
-        );
+        ));
       }
     }
     if (mesh.polyChassisSlot !== undefined && mesh.bodyShapeKey) {
       const pool = this.polyChassis.get(mesh.bodyShapeKey);
       if (pool) {
-        this.applyInstancedDelta(
+        parts.push(this.captureInstancedDeathPart(
           pool.mesh,
           mesh.polyChassisSlot,
-          bodyDelta,
           pool.matrixDirty,
-        );
+        ));
       }
     }
     for (let i = 0; i < mesh.turrets.length; i++) {
       const turret = mesh.turrets[i];
-      const delta = turretDeltas[i] ?? bodyDelta;
       if (turret.headSlot !== undefined) {
         const pool = this.turretHeadPools[tierSlotTier(turret.headSlot)];
-        this.applyInstancedDelta(
+        parts.push(this.captureInstancedDeathPart(
           pool.mesh,
           tierSlotIndex(turret.headSlot),
-          delta,
           pool.matrixDirty,
-        );
+        ));
       }
       if (turret.barrelSlots) {
         for (const slot of turret.barrelSlots) {
           if (turret.barrelUsesCone) {
-            // Scatter every emitter-rig layer with the same delta — the
-            // pieces drifting apart slightly during death-out is the
-            // scatter effect working as intended.
-            this.applyInstancedDelta(this.coneBarrelInstanced, slot, delta, this.coneBarrelMatrixDirty);
-            this.applyInstancedDelta(
-              this.coneBarrelInnerInstanced, slot, delta, this.coneBarrelInnerMatrixDirty,
-            );
-            this.applyInstancedDelta(this.emitterBallInstanced, slot, delta, this.emitterBallMatrixDirty);
-            this.applyInstancedDelta(
-              this.emitterBallInnerInstanced, slot, delta, this.emitterBallInnerMatrixDirty,
-            );
+            // These four instances are shader layers of one physical emitter,
+            // so they move as one piece rather than peeling apart.
+            parts.push(this.captureCompositeInstancedDeathPart([
+              [this.coneBarrelInstanced, slot, this.coneBarrelMatrixDirty],
+              [this.coneBarrelInnerInstanced, slot, this.coneBarrelInnerMatrixDirty],
+              [this.emitterBallInstanced, slot, this.emitterBallMatrixDirty],
+              [this.emitterBallInnerInstanced, slot, this.emitterBallInnerMatrixDirty],
+            ]));
           } else {
             const pool = this.barrelPools[tierSlotTier(slot)];
-            this.applyInstancedDelta(pool.mesh, tierSlotIndex(slot), delta, pool.matrixDirty);
+            parts.push(this.captureInstancedDeathPart(
+              pool.mesh,
+              tierSlotIndex(slot),
+              pool.matrixDirty,
+            ));
           }
         }
       }
     }
     if (mesh.mirrors?.panelSlots) {
       for (const slot of mesh.mirrors.panelSlots) {
-        this.applyInstancedDelta(
+        parts.push(this.captureInstancedDeathPart(
           this.shieldPanelInstanced,
           slot,
-          bodyDelta,
           this.shieldPanelMatrixDirty,
-        );
+        ));
       }
     }
+    return parts;
+  }
+
+  private captureCompositeInstancedDeathPart(
+    entries: ReadonlyArray<readonly [THREE.InstancedMesh, number, DirtySpan]>,
+  ): EntityDeathRenderablePart3D {
+    const first = entries[0];
+    readInstanceMatrix(first[0], first[1], this.scatterMat);
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(this.scatterMat);
+    return {
+      worldPosition,
+      applyDelta: (delta): void => {
+        for (const [instanced, slot, dirty] of entries) {
+          this.applyInstancedDelta(instanced, slot, delta, dirty);
+        }
+      },
+    };
+  }
+
+  private captureInstancedDeathPart(
+    instanced: THREE.InstancedMesh,
+    slot: number,
+    dirty: DirtySpan,
+  ): EntityDeathRenderablePart3D {
+    readInstanceMatrix(instanced, slot, this.scatterMat);
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(this.scatterMat);
+    return {
+      worldPosition,
+      applyDelta: (delta): void => {
+        this.applyInstancedDelta(instanced, slot, delta, dirty);
+      },
+    };
   }
 
   private applyInstancedDelta(
     instanced: THREE.InstancedMesh,
     slot: number,
-    delta: DyingUnitPartDelta,
+    delta: EntityDeathPartDelta3D,
     dirty: DirtySpan,
   ): void {
     readInstanceMatrix(instanced, slot, this.scatterMat);
