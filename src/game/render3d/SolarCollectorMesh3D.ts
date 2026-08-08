@@ -136,6 +136,7 @@ const _solarPetalOrigin = new THREE.Vector3();
 const _solarPetalXAxis = new THREE.Vector3();
 const _solarPetalYAxis = new THREE.Vector3();
 const _solarPetalZAxis = new THREE.Vector3();
+const _solarPyramidFaceSide = new THREE.Vector3();
 
 function isSolarPetalDetail(detail: BuildingDetailMesh): boolean {
   return detail.role === 'solarLeaf' ||
@@ -279,7 +280,10 @@ export function buildSolarCollector(
       0,
       0,
       frontBackClosedDir,
-      frontBackPanelSide,
+      // The OUTSIDE face. Its hint is the petal's negated: the lit side here
+      // is the one facing away from the pyramid, and a plate textured from
+      // behind reads mirrored against the inside face it wraps.
+      frontBackPanelSide.clone().negate(),
     ), 'low', undefined, 'solarPanel'));
     details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
@@ -375,7 +379,10 @@ export function buildSolarCollector(
       0,
       0,
       sideClosedDir,
-      sidePanelSide,
+      // The OUTSIDE face. Its hint is the petal's negated: the lit side here
+      // is the one facing away from the pyramid, and a plate textured from
+      // behind reads mirrored against the inside face it wraps.
+      sidePanelSide.clone().negate(),
     ), 'low', undefined, 'solarPanel'));
     details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
@@ -473,7 +480,7 @@ function makePyramidFace(
   tangentX: number,
   tangentZ: number,
   closedDirection: THREE.Vector3,
-  _panelSideHint: THREE.Vector3,
+  petalSideHint: THREE.Vector3,
 ): THREE.Mesh {
   return makeTrianglePlate(
     solarCellMat,
@@ -485,8 +492,13 @@ function makePyramidFace(
     0,
     0,
     0,
-    // PROBE: outward hint instead of the petal's inward one
-    undefined,
+    // The petal's hint points INWARD — at the pyramid, which is the side its
+    // photovoltaic face is on. A pyramid face is the other way round: its lit
+    // side is the one facing OUT. Reusing the petal's hint buries the plate's
+    // +Z in the body, and the grain — projected in that frame — is then read
+    // from behind, so the plating lands MIRRORED against the petal it is meant
+    // to match. Same texture, wrong side, and the two never line up.
+    _solarPyramidFaceSide.copy(petalSideHint).negate(),
   );
 }
 
