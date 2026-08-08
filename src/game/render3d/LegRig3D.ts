@@ -32,6 +32,7 @@ import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import type { Entity, PlayerId } from '../sim/types';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { locomotionPieceColorHex } from './colorUtils';
+import type { StandArmRig } from './StandArmRig3D';
 import {
   getLocomotionSurfaceHeight,
   locomotionTerrainModeForSupportHeight,
@@ -273,6 +274,14 @@ export type LegInstance = {
 
 export type LegMesh = {
   type: 'legs';
+  /** The arms of a `stand` biped, absent on every other walker.
+   *
+   *  Arms live on the LEG mesh rather than in a rig of their own because they
+   *  are the same rig: same instanced pools, same tier, same fade, same
+   *  teardown. Splitting them would mean a second locomotion mesh kind that
+   *  every switch in Locomotion3D, the LOD capture, the death scatter and the
+   *  ground print would have to learn, all to say "walker, but with arms". */
+  arms?: StandArmRig;
   /** Container for non-instanced leg parts — the LEGS-RAD viz
    *  sphere. Parented to the WORLD group so per-leg state stays in
    *  world coords. The CYLINDERS themselves are NOT children of

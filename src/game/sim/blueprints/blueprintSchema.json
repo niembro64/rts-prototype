@@ -2202,6 +2202,84 @@
       },
       "additionalProperties": false
     },
+    "StandArmSegments": {
+      "type": "object",
+      "required": [
+        "upper",
+        "lower"
+      ],
+      "properties": {
+        "upper": {
+          "$ref": "#/$defs/LegSegment"
+        },
+        "lower": {
+          "$ref": "#/$defs/LegSegment"
+        }
+      },
+      "additionalProperties": false
+    },
+    "StandArms": {
+      "type": "object",
+      "required": [
+        "shoulder",
+        "radius",
+        "segments",
+        "handRadiusRatio",
+        "restSwingDeg",
+        "walkSwingDeg",
+        "outwardDeg"
+      ],
+      "properties": {
+        "shoulder": {
+          "$ref": "#/$defs/LocomotionMount",
+          "description": "Left shoulder socket in unit-radius ratios; the right arm mirrors it."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Arm segment thickness in world units."
+        },
+        "segments": {
+          "$ref": "#/$defs/StandArmSegments"
+        },
+        "handRadiusRatio": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Hand ball radius as a ratio of the arm radius."
+        },
+        "restSwingDeg": {
+          "type": "number",
+          "description": "Shoulder pitch held while standing still, degrees; positive swings the hand forward."
+        },
+        "walkSwingDeg": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Peak shoulder swing either side of rest at full stride, degrees."
+        },
+        "outwardDeg": {
+          "type": "number",
+          "description": "Constant outward roll of the arm away from the torso, degrees."
+        }
+      },
+      "additionalProperties": false
+    },
+    "StandConfig": {
+      "type": "object",
+      "required": [
+        "legs",
+        "arms"
+      ],
+      "properties": {
+        "legs": {
+          "$ref": "#/$defs/LegConfig",
+          "description": "The walking half. A biped authors exactly one leftSide entry; it is mirrored."
+        },
+        "arms": {
+          "$ref": "#/$defs/StandArms"
+        }
+      },
+      "additionalProperties": false
+    },
     "FlipperConfig": {
       "type": "object",
       "required": [
@@ -2597,6 +2675,34 @@
       },
       "additionalProperties": false
     },
+    "UnitLocomotionBlueprintStand": {
+      "type": "object",
+      "required": [
+        "type",
+        "physicsPresetId",
+        "physics",
+        "environmentalHazards",
+        "config"
+      ],
+      "properties": {
+        "type": {
+          "const": "stand"
+        },
+        "physicsPresetId": {
+          "type": "string"
+        },
+        "physics": {
+          "$ref": "#/$defs/UnitUnitLocomotionBlueprintPhysics"
+        },
+        "environmentalHazards": {
+          "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
+        },
+        "config": {
+          "$ref": "#/$defs/StandConfig"
+        }
+      },
+      "additionalProperties": false
+    },
     "UnitLocomotionBlueprintFlippers": {
       "type": "object",
       "required": [
@@ -2752,6 +2858,9 @@
           "$ref": "#/$defs/UnitLocomotionBlueprintLegs"
         },
         {
+          "$ref": "#/$defs/UnitLocomotionBlueprintStand"
+        },
+        {
           "$ref": "#/$defs/UnitLocomotionBlueprintFlippers"
         },
         {
@@ -2824,6 +2933,10 @@
         },
         "zFrac": {
           "type": "number"
+        },
+        "centerYFrac": {
+          "type": "number",
+          "description": "Centre height. Defaults to yFrac, which seats the oval on the ground \u2014 the only placement it had, and the reason a stacked torso could not be authored out of ovals."
         }
       },
       "additionalProperties": false

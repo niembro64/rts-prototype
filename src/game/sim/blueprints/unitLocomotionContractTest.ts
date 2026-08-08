@@ -218,6 +218,13 @@ function allLocomotionMounts(
       return locomotion.config.jets.map((jet) => jet.offset);
     case 'legs':
       return locomotion.config.leftSide.map((leg) => leg.attachmentPoint);
+    case 'stand':
+      // A biped's mounts are its hips and its shoulders — the arms hang off
+      // authored sockets exactly as the legs do.
+      return [
+        ...locomotion.config.legs.leftSide.map((leg) => leg.attachmentPoint),
+        locomotion.config.arms.shoulder,
+      ];
     default:
       return [];
   }

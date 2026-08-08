@@ -41,6 +41,7 @@
         "unitBadger",
         "unitMongoose",
         "unitTick",
+        "unitHuman",
         "unitMammoth",
         "unitFormik",
         "unitWidow",
@@ -95,6 +96,7 @@
         "turretSensorUnitBadger",
         "turretSensorUnitMongoose",
         "turretSensorUnitTick",
+        "turretSensorUnitHuman",
         "turretSensorUnitMammoth",
         "turretSensorUnitFormik",
         "turretSensorUnitWidow",
@@ -192,6 +194,14 @@
       }
     },
     "unitTick": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitHuman": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -638,6 +648,9 @@
       "targets": "none"
     },
     "turretSensorUnitTick": {
+      "targets": "none"
+    },
+    "turretSensorUnitHuman": {
       "targets": "none"
     },
     "turretSensorUnitMammoth": {

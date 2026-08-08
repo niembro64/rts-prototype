@@ -775,6 +775,29 @@ pub struct LegConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct StandArmSegments {
+    pub upper: LegSegment,
+    pub lower: LegSegment,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StandArms {
+    pub shoulder: LocomotionMount,
+    pub radius: f64,
+    pub segments: StandArmSegments,
+    pub handRadiusRatio: f64,
+    pub restSwingDeg: f64,
+    pub walkSwingDeg: f64,
+    pub outwardDeg: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StandConfig {
+    pub legs: LegConfig,
+    pub arms: StandArms,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct FlipperConfig {
     pub mounts: Vec<FlipperMount>,
     pub rootChordFrac: f64,
@@ -891,6 +914,15 @@ pub struct UnitLocomotionBlueprintLegs {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitLocomotionBlueprintStand {
+    pub r#type: String,
+    pub physicsPresetId: String,
+    pub physics: UnitUnitLocomotionBlueprintPhysics,
+    pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
+    pub config: StandConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitLocomotionBlueprintFlippers {
     pub r#type: String,
     pub physicsPresetId: String,
@@ -941,6 +973,7 @@ pub enum UnitLocomotionBlueprint {
     UnitLocomotionBlueprintTreads(UnitLocomotionBlueprintTreads),
     UnitLocomotionBlueprintAmphibiousTreads(UnitLocomotionBlueprintAmphibiousTreads),
     UnitLocomotionBlueprintLegs(UnitLocomotionBlueprintLegs),
+    UnitLocomotionBlueprintStand(UnitLocomotionBlueprintStand),
     UnitLocomotionBlueprintFlippers(UnitLocomotionBlueprintFlippers),
     UnitLocomotionBlueprintHover(UnitLocomotionBlueprintHover),
     UnitLocomotionBlueprintFlying(UnitLocomotionBlueprintFlying),
@@ -966,6 +999,7 @@ pub struct UnitBodyShapePartOval {
     pub xFrac: f64,
     pub yFrac: f64,
     pub zFrac: f64,
+    pub centerYFrac: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

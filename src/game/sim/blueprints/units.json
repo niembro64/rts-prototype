@@ -798,6 +798,203 @@
     "preventLockOnIfMyTeamIsAboveMe": true,
     "supportPointOffsetZ": 8
   },
+  "unitHuman": {
+    "unitBlueprintId": "unitHuman",
+    "name": "Human",
+    "shortName": "HUM",
+    "hp": 340.0,
+    "radius": {
+      "other": 11.0,
+      "hitbox": 9,
+      "collision": 12
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 48.0,
+    "cost": {
+      "energy": 120,
+      "metal": 120
+    },
+    "constructionRate": null,
+    "allowedBuildBlueprintIds": null,
+    "workEmitter": null,
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunLight",
+        "sensorTurretBlueprintId": "turretSensorUnitHuman",
+        "mount": {
+          "x": 0.2,
+          "y": -0.78,
+          "z": 2.26
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "plasmaLight",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.04,
+          "xFrac": 0.38,
+          "yFrac": 0.2,
+          "zFrac": 0.5,
+          "centerYFrac": 1.5
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.0,
+          "xFrac": 0.28,
+          "yFrac": 0.16,
+          "zFrac": 0.32,
+          "centerYFrac": 1.78
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.02,
+          "xFrac": 0.36,
+          "yFrac": 0.24,
+          "zFrac": 0.6,
+          "centerYFrac": 2.06
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.03,
+          "xFrac": 0.32,
+          "yFrac": 0.15,
+          "zFrac": 0.86,
+          "centerYFrac": 2.28
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.08,
+          "radiusFrac": 0.17,
+          "yFrac": 0.17,
+          "centerYFrac": 2.56
+        }
+      ]
+    },
+    "teamOrnament": {
+      "backX": 0.3,
+      "frontX": 0.28,
+      "backY": 0.14,
+      "frontY": 0.14
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHuman"
+    },
+    "unitLocomotion": {
+      "type": "stand",
+      "physicsPresetId": "legs",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 14.5
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "legs": {
+          "radius": 3.6,
+          "kneeRadius": 3.6,
+          "lerpDuration": 250,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.74
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.82
+            }
+          },
+          "footSphere": {
+            "originExtensionRatio": 0.42
+          },
+          "choppingSphere": {
+            "radiusLegLengthRatio": 0.3
+          },
+          "snapRay": {
+            "originBoundarySpanRatio": 0.55
+          },
+          "leftSide": [
+            {
+              "attachmentPoint": {
+                "xUnitRadiusRatio": 0.0,
+                "yUnitRadiusRatio": -0.3,
+                "zUnitRadiusRatio": 1.42
+              }
+            }
+          ]
+        },
+        "arms": {
+          "shoulder": {
+            "xUnitRadiusRatio": -0.02,
+            "yUnitRadiusRatio": 0.8,
+            "zUnitRadiusRatio": 2.22
+          },
+          "radius": 2.3,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.48
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.46
+            }
+          },
+          "handRadiusRatio": 1.2,
+          "restSwingDeg": -4,
+          "walkSwingDeg": 30,
+          "outwardDeg": 8
+        }
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 120,
+        "metal": 120
+      },
+      "mass": 48.0,
+      "health": 340.0,
+      "deathExplosion": {
+        "radius": 14.5,
+        "force": 5200,
+        "damage": 95
+      },
+      "radius": {
+        "other": 11.0,
+        "hitbox": 9,
+        "collision": 12
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "supportPointOffsetZ": 26.0
+  },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
@@ -3654,9 +3851,9 @@
     "workEmitter": {
       "points": [
         {
-          "x": -0.42,
-          "y": 0,
-          "z": 2.28
+          "x": 0.34,
+          "y": 0.0,
+          "z": 2.6
         }
       ],
       "particleTravelSpeed": 180,
@@ -3667,9 +3864,9 @@
         "turretBlueprintId": "turretBeam",
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
-          "x": 0.36,
-          "y": -0.42,
-          "z": 1
+          "x": 0.22,
+          "y": -0.86,
+          "z": 2.48
         },
         "requiredEngagedForFightStop": true,
         "mountId": "beam",
@@ -3679,9 +3876,9 @@
         "turretBlueprintId": "turretDisruptor",
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
-          "x": 0.36,
-          "y": 0.42,
-          "z": 1
+          "x": 0.22,
+          "y": 0.86,
+          "z": 2.48
         },
         "requiredEngagedForFightStop": false,
         "mountId": "disruptor",
@@ -3693,34 +3890,61 @@
       "parts": [
         {
           "kind": "oval",
-          "offsetForward": -0.58,
-          "xFrac": 0.68,
-          "yFrac": 0.58,
-          "zFrac": 0.72
+          "offsetForward": -0.05,
+          "xFrac": 0.46,
+          "yFrac": 0.24,
+          "zFrac": 0.6,
+          "centerYFrac": 1.62
         },
         {
           "kind": "oval",
-          "offsetForward": 0.04,
-          "xFrac": 0.78,
-          "yFrac": 0.62,
-          "zFrac": 0.76
+          "offsetForward": -0.02,
+          "xFrac": 0.32,
+          "yFrac": 0.18,
+          "zFrac": 0.38,
+          "centerYFrac": 1.92
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.02,
+          "xFrac": 0.44,
+          "yFrac": 0.28,
+          "zFrac": 0.7,
+          "centerYFrac": 2.24
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.04,
+          "xFrac": 0.38,
+          "yFrac": 0.18,
+          "zFrac": 1.0,
+          "centerYFrac": 2.5
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.38,
+          "xFrac": 0.24,
+          "yFrac": 0.22,
+          "zFrac": 0.54,
+          "centerYFrac": 2.34
         },
         {
           "kind": "circle",
-          "offsetForward": 0.64,
-          "radiusFrac": 0.38,
-          "yFrac": 0.42
+          "offsetForward": 0.1,
+          "radiusFrac": 0.19,
+          "yFrac": 0.19,
+          "centerYFrac": 2.82
         }
       ]
     },
     "teamOrnament": {
-      "backX": 0.82,
-      "frontX": 0.79,
-      "backY": 1.0,
-      "frontY": 1.0
+      "backX": 0.3,
+      "frontX": 0.28,
+      "backY": 0.14,
+      "frontY": 0.14
     },
     "hud": {
-      "barsOffsetAboveTop": 12
+      "barsOffsetAboveTop": 14
     },
     "suspension": null,
     "builder": {
@@ -3734,7 +3958,7 @@
       "$audio": "event.death.unitCommander"
     },
     "unitLocomotion": {
-      "type": "legs",
+      "type": "stand",
       "physicsPresetId": "amphibiousLegs",
       "physics": {
         "ground": {
@@ -3756,42 +3980,57 @@
         }
       },
       "config": {
-        "radius": 7,
-        "kneeRadius": 7,
-        "lerpDuration": 300,
-        "segments": {
-          "upper": {
-            "lengthUnitRadiusRatio": 1.1
-          },
-          "lower": {
-            "lengthUnitRadiusRatio": 1.32
-          }
-        },
-        "footSphere": {
-          "originExtensionRatio": 0.45
-        },
-        "choppingSphere": {
-          "radiusLegLengthRatio": 0.3
-        },
-        "snapRay": {
-          "originBoundarySpanRatio": 0.55
-        },
-        "leftSide": [
-          {
-            "attachmentPoint": {
-              "xUnitRadiusRatio": 0.5,
-              "yUnitRadiusRatio": -0.5,
-              "zUnitRadiusRatio": 0.92
+        "legs": {
+          "radius": 7,
+          "kneeRadius": 7,
+          "lerpDuration": 300,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.8
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.88
             }
           },
-          {
-            "attachmentPoint": {
-              "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.5,
-              "zUnitRadiusRatio": 1.08
+          "footSphere": {
+            "originExtensionRatio": 0.45
+          },
+          "choppingSphere": {
+            "radiusLegLengthRatio": 0.3
+          },
+          "snapRay": {
+            "originBoundarySpanRatio": 0.55
+          },
+          "leftSide": [
+            {
+              "attachmentPoint": {
+                "xUnitRadiusRatio": 0.0,
+                "yUnitRadiusRatio": -0.34,
+                "zUnitRadiusRatio": 1.52
+              }
             }
-          }
-        ]
+          ]
+        },
+        "arms": {
+          "shoulder": {
+            "xUnitRadiusRatio": -0.02,
+            "yUnitRadiusRatio": 0.92,
+            "zUnitRadiusRatio": 2.44
+          },
+          "radius": 4.2,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.52
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.5
+            }
+          },
+          "handRadiusRatio": 1.25,
+          "restSwingDeg": -6,
+          "walkSwingDeg": 26,
+          "outwardDeg": 9
+        }
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 0
@@ -3819,7 +4058,7 @@
         "sonarStealth": false
       }
     },
-    "supportPointOffsetZ": 22.4
+    "supportPointOffsetZ": 30.0
   },
   "unitConstructionSubmarine": {
     "unitBlueprintId": "unitConstructionSubmarine",

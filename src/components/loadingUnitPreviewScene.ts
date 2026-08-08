@@ -863,7 +863,11 @@ function buildPreviewLocomotion(
         ),
       };
     case 'legs':
-      return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier) };
+    case 'stand': {
+      const group = buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier);
+      buildPreviewArms(yawGroup, blueprint, materials.leg, geometryTier);
+      return { type: 'legs', group };
+    }
   }
   return null;
 }
@@ -903,6 +907,61 @@ function buildPreviewMirrors(
   mirror.root.visible = true;
 }
 
+/** The arms of a `stand` biped, in the card's own non-instanced style.
+ *
+ *  The battle rig draws arms out of the shared leg pools; a preview has no
+ *  pools, so this mirrors the pose rather than the plumbing — same shoulder
+ *  socket, same hang, same outward roll — and leaves them at rest, which is
+ *  the pose the card is trying to sell. */
+function buildPreviewArms(
+  yawGroup: THREE.Group,
+  blueprint: UnitBlueprint,
+  legMaterial: THREE.Material,
+  geometryTier: PrimitiveGeometryTier,
+): void {
+  const locomotion = blueprint.unitLocomotion;
+  if (locomotion.type !== 'stand') return;
+  const cfg = locomotion.config.arms;
+  const radius = blueprint.radius.other;
+  const group = new THREE.Group();
+  yawGroup.add(group);
+  const upperLen = radius * cfg.segments.upper.lengthUnitRadiusRatio;
+  const lowerLen = radius * cfg.segments.lower.lengthUnitRadiusRatio;
+  const armRadius = Math.max(cfg.radius, 1) * 0.6;
+  const restPitch = THREE.MathUtils.degToRad(cfg.restSwingDeg);
+  const elbowPitch = restPitch * 0.45 - 0.22;
+
+  for (const side of [-1, 1] as const) {
+    const roll = side * THREE.MathUtils.degToRad(cfg.outwardDeg);
+    const shoulder = new THREE.Vector3(
+      radius * cfg.shoulder.xUnitRadiusRatio,
+      radius * cfg.shoulder.zUnitRadiusRatio,
+      side * radius * cfg.shoulder.yUnitRadiusRatio,
+    );
+    const elbow = new THREE.Vector3(
+      shoulder.x + Math.sin(restPitch) * Math.cos(roll) * upperLen,
+      shoulder.y - Math.cos(restPitch) * upperLen,
+      shoulder.z + Math.sin(roll) * upperLen,
+    );
+    const hand = new THREE.Vector3(
+      elbow.x + Math.sin(elbowPitch) * Math.cos(roll) * lowerLen,
+      elbow.y - Math.cos(elbowPitch) * lowerLen,
+      elbow.z + Math.sin(roll) * lowerLen,
+    );
+    scratchDir.subVectors(hand, shoulder);
+    scratchLegRight.crossVectors(scratchUp, scratchDir).normalize();
+    addCylinderBetween(
+      group, shoulder, elbow, armRadius, legMaterial, geometryTier, 'upper', scratchLegRight,
+    );
+    addCylinderBetween(
+      group, elbow, hand, armRadius, legMaterial, geometryTier, 'lower', scratchLegRight,
+    );
+    addSphere(group, shoulder, armRadius * 1.15, legMaterial, geometryTier);
+    addSphere(group, elbow, armRadius, legMaterial, geometryTier);
+    addSphere(group, hand, armRadius * cfg.handRadiusRatio, legMaterial, geometryTier);
+  }
+}
+
 function buildPreviewLegs(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
@@ -910,10 +969,15 @@ function buildPreviewLegs(
   geometryTier: PrimitiveGeometryTier,
 ): THREE.Group {
   const locomotion = blueprint.unitLocomotion;
-  if (locomotion.type !== 'legs') return new THREE.Group();
+  // `stand` walks on the same leg rig; it just nests the leg half of its
+  // config next to the arms.
+  const legConfig = locomotion.type === 'legs'
+    ? locomotion.config
+    : locomotion.type === 'stand' ? locomotion.config.legs : null;
+  if (legConfig === null) return new THREE.Group();
   const radius = blueprint.radius.other;
-  const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
-  const legRadius = Math.max(locomotion.config.radius, 1) * 0.6;
+  const { all } = resolveMirroredLegConfigs(legConfig, radius);
+  const legRadius = Math.max(legConfig.radius, 1) * 0.6;
   const hipJointRadius = legRadius * LEG_ATTACHMENT_SPHERE_RADIUS_MULTIPLIER;
   const kneeJointRadius = legRadius * LEG_KNEE_SPHERE_RADIUS_MULTIPLIER;
   const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;

@@ -188,6 +188,11 @@
         "volume": 1,
         "playSpeed": 0.3
       },
+      "unitHuman": {
+        "synth": "explosion",
+        "volume": 1,
+        "playSpeed": 0.3
+      },
       "unitMammoth": {
         "synth": "explosion",
         "volume": 1,

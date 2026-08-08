@@ -3015,6 +3015,87 @@
     "emissionKind": null,
     "emissionBlueprintId": null
   },
+  "turretSensorUnitHuman": {
+    "turretBlueprintId": "turretSensorUnitHuman",
+    "name": "Human Sensors",
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 1200,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
+    },
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "turretTurnAccel": 1,
+    "turretDrag": 1,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 0
+    },
+    "passive": true,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "other": null
+    },
+    "headOnly": true,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "sensor",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
   "turretSensorUnitMammoth": {
     "turretBlueprintId": "turretSensorUnitMammoth",
     "name": "Mammoth Sensors",

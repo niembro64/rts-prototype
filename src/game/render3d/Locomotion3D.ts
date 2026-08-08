@@ -59,6 +59,12 @@ import {
   updateFlippers,
 } from './FlipperRig3D';
 import {
+  buildStandArms,
+  fadeStandArmSlots,
+  freeStandArmSlots,
+  updateStandArms,
+} from './StandArmRig3D';
+import {
   type SwimMesh,
   buildSwimRig,
   updateSwimRig,
@@ -107,6 +113,10 @@ export type LocomotionStateSnapshot =
       lastBaseX: number;
       lastBaseY: number;
       lastBaseZ: number;
+      /** `stand` arm swing. Zero on every other walker — a tier rebuild must
+       *  not restart the swing mid-stride. */
+      armPhase: number;
+      armSwing: number;
     }
   | {
       type: 'wheels';
@@ -179,6 +189,8 @@ export function captureLocomotionState(
         lastBaseX: locomotion.lastBaseX,
         lastBaseY: locomotion.lastBaseY,
         lastBaseZ: locomotion.lastBaseZ,
+        armPhase: locomotion.arms?.phase ?? 0,
+        armSwing: locomotion.arms?.swing ?? 0,
       };
     case 'wheels':
       return {
@@ -239,6 +251,10 @@ export function applyLocomotionState(
       locomotion.lastBaseX = state.lastBaseX;
       locomotion.lastBaseY = state.lastBaseY;
       locomotion.lastBaseZ = state.lastBaseZ;
+      if (locomotion.arms) {
+        locomotion.arms.phase = state.armPhase;
+        locomotion.arms.swing = state.armSwing;
+      }
       return;
     }
     case 'wheels': {
@@ -423,6 +439,26 @@ export function buildLocomotion(
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
     }
+    case 'stand': {
+      // A biped walks on the ordinary leg rig — one authored leftSide entry,
+      // mirrored — and wears arms off the same chassis frame.
+      const chassisLiftY = getChassisLift(bp, unitRadius);
+      const mesh = buildLegs(
+        worldGroup, unitRadius, loc.config.legs,
+        gfx.legs, chassisLiftY,
+        legRenderer, ownerId,
+        geometryTier,
+        LEG_CHARTS,
+      );
+      if (mesh) {
+        mesh.geometryKey = geometryKey;
+        mesh.arms = buildStandArms(
+          unitRadius, loc.config.arms, chassisLiftY,
+          legRenderer, ownerId, geometryTier, LEG_CHARTS,
+        );
+      }
+      return mesh;
+    }
     case 'flippers': {
       const mesh = buildFlippers(
         unitGroup, unitRadius, loc.config, ownerId, geometryTier,
@@ -499,8 +535,13 @@ export function updateLocomotion(
       return updateWheels(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'treads':
       return updateTreads(mesh, entity, pose, dtMs, mapWidth, mapHeight);
-    case 'legs':
-      return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
+    case 'legs': {
+      const moved = updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
+      // Arms ride the same frame as the legs they belong to, so they are
+      // written here rather than from a second per-frame walk.
+      if (mesh.arms) updateStandArms(mesh.arms, pose, dtMs, legRenderer);
+      return moved;
+    }
     case 'flippers':
       return updateFlippers(mesh, pose, dtMs);
     case 'hover':
@@ -535,6 +576,7 @@ export function fadeLocomotion(
 ): void {
   if (!mesh || mesh.type !== 'legs') return;
   fadeLegSlots(mesh, legRenderer, fade);
+  if (mesh.arms) fadeStandArmSlots(mesh.arms, legRenderer, fade);
 }
 
 export function destroyLocomotion(
@@ -547,6 +589,7 @@ export function destroyLocomotion(
   // drop their group from the scene graph.
   if (mesh.type === 'legs') {
     freeLegSlots(mesh, legRenderer);
+    if (mesh.arms) freeStandArmSlots(mesh.arms, legRenderer);
   }
   mesh.group.parent?.remove(mesh.group);
 }

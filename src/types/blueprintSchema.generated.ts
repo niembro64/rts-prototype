@@ -534,6 +534,26 @@ export type LegConfig = {
   leftSide: LegLayoutEntry[];
 };
 
+export type StandArmSegments = {
+  upper: LegSegment;
+  lower: LegSegment;
+};
+
+export type StandArms = {
+  shoulder: LocomotionMount;
+  radius: number;
+  segments: StandArmSegments;
+  handRadiusRatio: number;
+  restSwingDeg: number;
+  walkSwingDeg: number;
+  outwardDeg: number;
+};
+
+export type StandConfig = {
+  legs: LegConfig;
+  arms: StandArms;
+};
+
 export type FlipperConfig = {
   mounts: FlipperMount[];
   rootChordFrac: number;
@@ -635,6 +655,14 @@ export type UnitLocomotionBlueprintLegs = {
   config: LegConfig;
 };
 
+export type UnitLocomotionBlueprintStand = {
+  type: 'stand';
+  physicsPresetId: string;
+  physics: UnitUnitLocomotionBlueprintPhysics;
+  environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
+  config: StandConfig;
+};
+
 export type UnitLocomotionBlueprintFlippers = {
   type: 'flippers';
   physicsPresetId: string;
@@ -675,7 +703,7 @@ export type UnitLocomotionBlueprintDive = {
   config: FlyingConfig;
 };
 
-export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintAmphibiousTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintDive;
+export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintAmphibiousTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintStand | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintDive;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';
@@ -693,6 +721,7 @@ export type UnitBodyShapePartOval = {
   xFrac: number;
   yFrac: number;
   zFrac: number;
+  centerYFrac?: number;
 };
 
 export type UnitBodyShapePartCylinder = {

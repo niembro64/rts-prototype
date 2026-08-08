@@ -122,10 +122,13 @@ function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; centerYFrac
   };
 }
 
-function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
+function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
+  // Default centre = yFrac, which seats the oval on the ground. That was the
+  // only height an oval could have, so a torso stacked out of them was not
+  // authorable — every other composite part already carries centerYFrac.
   return {
     geometry: getUnitSphere(tier),
-    x: part.offsetForward ?? 0, y: part.yFrac, z: part.offsetLateral ?? 0,
+    x: part.offsetForward ?? 0, y: part.centerYFrac ?? part.yFrac, z: part.offsetLateral ?? 0,
     scaleX: part.xFrac, scaleY: part.yFrac, scaleZ: part.zFrac,
   };
 }

@@ -18,6 +18,7 @@ import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
+import type { LegConfig, StandArms } from '@/types/blueprintSchema.generated';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -229,6 +230,133 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
   }
 }
 
+/** Leg layout is authored the same way whichever mechanism wears it: `legs` is
+ *  the config itself, `stand` carries it under `config.legs`. Both walk on the
+ *  same rig, so both answer to the same envelope rather than one of them
+ *  getting a second copy of these bounds to drift from. */
+function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
+  const choppingRatio = config.choppingSphere.radiusLegLengthRatio;
+  if (!Number.isFinite(choppingRatio) || choppingRatio <= 0) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be finite and positive`,
+    );
+  }
+  const globalValues = [
+    ['radius', config.radius],
+    ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
+    ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
+    ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
+    ['snapRay.originBoundarySpanRatio', config.snapRay.originBoundarySpanRatio],
+  ] as const;
+  for (const [name, value] of globalValues) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `Invalid leg layout for ${unitBlueprintId}: ${name} must be finite`,
+      );
+    }
+  }
+  if (
+    config.radius <= 0 ||
+    config.segments.upper.lengthUnitRadiusRatio <= 0 ||
+    config.segments.lower.lengthUnitRadiusRatio <= 0
+  ) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: radius and leg lengths must be positive`,
+    );
+  }
+  if (
+    config.footSphere.originExtensionRatio < 0
+    || config.footSphere.originExtensionRatio > 1
+  ) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: footSphere.originExtensionRatio must be between 0 and 1`,
+    );
+  }
+  // The chopping ratio is a WORKING margin inside the leg's own fold limit,
+  // so it may shrink the envelope but never define it — resolveLegReachShell
+  // floors it at |upper - lower|. Anything at or past 1 would ask the leg to
+  // hold its foot further out than it can while calling it the inner bound.
+  if (choppingRatio >= 1) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be below 1`,
+    );
+  }
+  if (
+    config.snapRay.originBoundarySpanRatio < 0
+    || config.snapRay.originBoundarySpanRatio > 1
+  ) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: snapRay.originBoundarySpanRatio must be between 0 and 1`,
+    );
+  }
+  const legs = config.leftSide;
+  if (!Array.isArray(legs) || legs.length === 0) {
+    throw new Error(
+      `Invalid leg layout for ${unitBlueprintId}: leftSide must define at least one leg`,
+    );
+  }
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const values = [
+      ['attachmentPoint.xUnitRadiusRatio', leg.attachmentPoint.xUnitRadiusRatio],
+      ['attachmentPoint.yUnitRadiusRatio', leg.attachmentPoint.yUnitRadiusRatio],
+    ] as const;
+    for (const [name, value] of values) {
+      if (!Number.isFinite(value)) {
+        throw new Error(
+          `Invalid leg layout for ${unitBlueprintId}[${i}]: ${name} must be finite`,
+        );
+      }
+    }
+    const attachLengthSq =
+      leg.attachmentPoint.xUnitRadiusRatio * leg.attachmentPoint.xUnitRadiusRatio +
+      leg.attachmentPoint.yUnitRadiusRatio * leg.attachmentPoint.yUnitRadiusRatio;
+    if (attachLengthSq <= 1e-12) {
+      throw new Error(
+        `Invalid leg layout for ${unitBlueprintId}[${i}]: attachment must be offset from the unit center`,
+      );
+    }
+  }
+}
+
+/** A biped's arms hang off the same stride its legs walk with. None of this
+ *  reaches the sim — arms are presentation — but a non-finite ratio poses the
+ *  whole limb at NaN, which reads as a missing arm rather than as a bad
+ *  blueprint. */
+function validateStandArms(unitBlueprintId: string, arms: StandArms): void {
+  const values = [
+    ['shoulder.xUnitRadiusRatio', arms.shoulder.xUnitRadiusRatio],
+    ['shoulder.yUnitRadiusRatio', arms.shoulder.yUnitRadiusRatio],
+    ['shoulder.zUnitRadiusRatio', arms.shoulder.zUnitRadiusRatio],
+    ['radius', arms.radius],
+    ['segments.upper.lengthUnitRadiusRatio', arms.segments.upper.lengthUnitRadiusRatio],
+    ['segments.lower.lengthUnitRadiusRatio', arms.segments.lower.lengthUnitRadiusRatio],
+    ['handRadiusRatio', arms.handRadiusRatio],
+    ['restSwingDeg', arms.restSwingDeg],
+    ['walkSwingDeg', arms.walkSwingDeg],
+    ['outwardDeg', arms.outwardDeg],
+  ] as const;
+  for (const [name, value] of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Invalid arm layout for ${unitBlueprintId}: ${name} must be finite`);
+    }
+  }
+  if (
+    arms.radius <= 0 ||
+    arms.segments.upper.lengthUnitRadiusRatio <= 0 ||
+    arms.segments.lower.lengthUnitRadiusRatio <= 0
+  ) {
+    throw new Error(
+      `Invalid arm layout for ${unitBlueprintId}: radius and arm lengths must be positive`,
+    );
+  }
+  if (arms.handRadiusRatio < 0 || arms.walkSwingDeg < 0) {
+    throw new Error(
+      `Invalid arm layout for ${unitBlueprintId}: handRadiusRatio and walkSwingDeg must be non-negative`,
+    );
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   assertValidEntityRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
@@ -251,89 +379,10 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   if (bp.unitLocomotion.type === 'legs') {
-    const config = bp.unitLocomotion.config;
-    const choppingRatio = config.choppingSphere.radiusLegLengthRatio;
-    if (!Number.isFinite(choppingRatio) || choppingRatio <= 0) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be finite and positive`,
-      );
-    }
-    const globalValues = [
-      ['radius', config.radius],
-      ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
-      ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
-      ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
-      ['snapRay.originBoundarySpanRatio', config.snapRay.originBoundarySpanRatio],
-    ] as const;
-    for (const [name, value] of globalValues) {
-      if (!Number.isFinite(value)) {
-        throw new Error(
-          `Invalid leg layout for ${bp.unitBlueprintId}: ${name} must be finite`,
-        );
-      }
-    }
-    if (
-      config.radius <= 0 ||
-      config.segments.upper.lengthUnitRadiusRatio <= 0 ||
-      config.segments.lower.lengthUnitRadiusRatio <= 0
-    ) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: radius and leg lengths must be positive`,
-      );
-    }
-    if (
-      config.footSphere.originExtensionRatio < 0
-      || config.footSphere.originExtensionRatio > 1
-    ) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: footSphere.originExtensionRatio must be between 0 and 1`,
-      );
-    }
-    // The chopping ratio is a WORKING margin inside the leg's own fold limit,
-    // so it may shrink the envelope but never define it — resolveLegReachShell
-    // floors it at |upper - lower|. Anything at or past 1 would ask the leg to
-    // hold its foot further out than it can while calling it the inner bound.
-    if (choppingRatio >= 1) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be below 1`,
-      );
-    }
-    if (
-      config.snapRay.originBoundarySpanRatio < 0
-      || config.snapRay.originBoundarySpanRatio > 1
-    ) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: snapRay.originBoundarySpanRatio must be between 0 and 1`,
-      );
-    }
-    const legs = config.leftSide;
-    if (!Array.isArray(legs) || legs.length === 0) {
-      throw new Error(
-        `Invalid leg layout for ${bp.unitBlueprintId}: leftSide must define at least one leg`,
-      );
-    }
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const values = [
-        ['attachmentPoint.xUnitRadiusRatio', leg.attachmentPoint.xUnitRadiusRatio],
-        ['attachmentPoint.yUnitRadiusRatio', leg.attachmentPoint.yUnitRadiusRatio],
-      ] as const;
-      for (const [name, value] of values) {
-        if (!Number.isFinite(value)) {
-          throw new Error(
-            `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: ${name} must be finite`,
-          );
-        }
-      }
-      const attachLengthSq =
-        leg.attachmentPoint.xUnitRadiusRatio * leg.attachmentPoint.xUnitRadiusRatio +
-        leg.attachmentPoint.yUnitRadiusRatio * leg.attachmentPoint.yUnitRadiusRatio;
-      if (attachLengthSq <= 1e-12) {
-        throw new Error(
-          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: attachment must be offset from the unit center`,
-        );
-      }
-    }
+    validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config);
+  } else if (bp.unitLocomotion.type === 'stand') {
+    validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
+    validateStandArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
   }
 
   // Mount-finiteness only — cross-blueprint turret-ID validation runs

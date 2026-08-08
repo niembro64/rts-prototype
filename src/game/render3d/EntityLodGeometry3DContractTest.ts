@@ -187,6 +187,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitBadger: { close: 1150, mid: 600, far: 230 },
   unitMongoose: { close: 420, mid: 280, far: 140 },
   unitTick: { close: 2550, mid: 950, far: 270 },
+  unitHuman: { close: 2550, mid: 950, far: 270 },
   unitMammoth: { close: 1200, mid: 620, far: 220 },
   unitFormik: { close: 4100, mid: 1500, far: 520 },
   unitWidow: { close: 3600, mid: 1450, far: 560 },
@@ -444,7 +445,7 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
   for (const type of [
-    'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+    'wheels', 'treads', 'amphibious-treads', 'legs', 'stand', 'flippers', 'hover', 'flying', 'submarine', 'dive',
   ]) {
     assertContract(locomotionTypes.has(type), `authored roster exercises ${type} locomotion LOD`);
   }
@@ -491,14 +492,29 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
   for (const unitId of UNIT_BLUEPRINT_IDS) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
-    if (locomotion.type === 'legs') {
+    if (locomotion.type === 'legs' || locomotion.type === 'stand') {
+      // A `stand` biped walks on the same rig; its config nests the leg half.
+      const legConfig = locomotion.type === 'legs' ? locomotion.config : locomotion.config.legs;
       const legCount = resolveMirroredLegConfigs(
-        locomotion.config, blueprint.radius.other,
+        legConfig, blueprint.radius.other,
       ).all.length;
+      if (locomotion.type === 'stand') {
+        assertContract(
+          legCount === 2,
+          `${unitId} stands on exactly two legs — a biped authors one leftSide entry`,
+        );
+      }
+      // Struts, joints and feet all live in the shared instanced pools rather
+      // than under this root, so these are the roster's standing per-limb
+      // accounting figures, not a triangle count taken off a scene graph. An
+      // arm carries one segment fewer than a leg; it is counted as a whole
+      // limb because what this number feeds is the tier-descends assertion,
+      // which a fractional limb would not change.
+      const limbCount = legCount + (locomotion.type === 'stand' ? 2 : 0);
       countsByUnit.set(unitId, {
-        close: legCount * 204,
-        mid: legCount * 68,
-        far: legCount * 20,
+        close: limbCount * 204,
+        mid: limbCount * 68,
+        far: limbCount * 20,
       });
       continue;
     }
@@ -1666,7 +1682,7 @@ export function runConstructionHostMarkingContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 25, 'visual roster covers all 25 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 26, 'visual roster covers all 26 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 12, 'visual roster covers all 12 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {

@@ -152,7 +152,7 @@ export function getBodyTopY(bodyShape: UnitBodyShape | null, unitRadius: number)
 
 function bodyPartTopFrac(part: UnitBodyShapePart): number {
   if (part.kind === 'circle') return circleCenterYFrac(part) + circleYFrac(part.radiusFrac, part.yFrac);
-  if (part.kind === 'oval') return 2 * part.yFrac;
+  if (part.kind === 'oval') return (part.centerYFrac ?? part.yFrac) + part.yFrac;
   return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
 }
 
@@ -200,5 +200,5 @@ export function getSegmentMidYAt(
   }
   if (best.kind === 'circle') return circleCenterYFrac(best) * unitRadius;
   if (best.kind === 'cylinder' || best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
-  return best.yFrac * unitRadius;
+  return (best.centerYFrac ?? best.yFrac) * unitRadius;
 }
