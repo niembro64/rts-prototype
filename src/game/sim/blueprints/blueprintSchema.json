@@ -200,7 +200,9 @@
       "required": [
         "fullSight",
         "contactSight",
-        "detectorRadius"
+        "detectorRadius",
+        "radarJamRadius",
+        "sonarJamRadius"
       ],
       "properties": {
         "fullSight": {
@@ -211,9 +213,18 @@
         },
         "detectorRadius": {
           "type": "number"
+        },
+        "radarJamRadius": {
+          "description": "Denies enemy RADAR (above-water contact) within this radius of the jammer. Jamming hides only contacts: anything in direct sight is still seen, which is what keeps a jammer a scouting problem rather than an invisibility field.",
+          "type": "number"
+        },
+        "sonarJamRadius": {
+          "description": "Denies enemy SONAR (underwater contact) within this radius. Separate from radar jamming so a naval jammer and a land jammer are different units rather than one that does both.",
+          "type": "number"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "One sensor suite. fullSight and contactSight are source-medium x target-medium matrices: what this observer can see, from the medium it sits in, of a target in that medium. detectorRadius reveals cloak. The jam radii are the opposite of a sensor \u2014 they DENY the enemy's contact sensors over an area around this entity, radar and sonar independently."
     },
     "TurretEngagementEnvelope": {
       "type": "object",
@@ -1316,6 +1327,25 @@
       },
       "additionalProperties": false
     },
+    "EntitySignature": {
+      "description": "How this entity appears to enemy CONTACT sensors. Stealth suppresses the blip, never the eyeball: a stealthed unit standing in an enemy's line of sight is seen normally. That asymmetry is the whole point \u2014 stealth buys you approach, not immunity.",
+      "type": "object",
+      "required": [
+        "radarStealth",
+        "sonarStealth"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "radarStealth": {
+          "description": "Produces no radar contact.",
+          "type": "boolean"
+        },
+        "sonarStealth": {
+          "description": "Produces no sonar contact.",
+          "type": "boolean"
+        }
+      }
+    },
     "EntityBaseLedger": {
       "type": "object",
       "required": [
@@ -1323,7 +1353,8 @@
         "mass",
         "health",
         "deathExplosion",
-        "radius"
+        "radius",
+        "signature"
       ],
       "properties": {
         "cost": {
@@ -1340,6 +1371,9 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
+        },
+        "signature": {
+          "$ref": "#/$defs/EntitySignature"
         }
       },
       "additionalProperties": false

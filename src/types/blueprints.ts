@@ -33,6 +33,7 @@ export type {
   FlipperConfig,
   HoverConfig,
   RayBlueprint,
+  EntitySignature,
   LockOnInclusionObject,
   LockOnRequiresTargetLockedOntoSelf,
   UnitLocomotionBlueprint,

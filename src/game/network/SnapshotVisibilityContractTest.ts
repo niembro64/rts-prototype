@@ -495,6 +495,16 @@ export function runSnapshotVisibilityContractTest(): void {
     (entity) => {
       // Keep the mounted sensor origin below the surface.
       entity.transform.z = WATER_LEVEL - 100;
+      // Author the underwater source row HERE rather than leaning on the
+      // roster's default. Dry units no longer carry one — a tank cannot see
+      // from a medium it cannot enter, and the medium gate now rejects
+      // underwater sight that is not backed by sonar. This test is about the
+      // matrix's source-row semantics, so it supplies its own sensor rather
+      // than depending on what some blueprint happens to be tuned to.
+      const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
+      sensors.fullSight.underwater.underwater = 1200;
+      sensors.fullSight.underwater.aboveWater = 0;
+      sensors.contactSight.underwater.underwater = 1200;
     },
   );
   const underwaterSameMediumTarget = createUnit(
@@ -624,6 +634,60 @@ export function runSnapshotVisibilityContractTest(): void {
     serializeScanPulses(pulseWorld, SnapshotVisibility.forRecipient(pulseWorld, 2 as PlayerId)) === undefined,
     'filtered scan pulses must stay team-owned',
   );
+  // ── STEALTH AND JAMMING SUPPRESS THE BLIP, NEVER THE EYEBALL ─────────────
+  //
+  // Both exist to deny CONTACT, and the one thing that must stay true of both
+  // is that neither grants invisibility: a stealthed unit inside a jamming
+  // field, standing in an enemy's line of sight, is seen normally. That
+  // asymmetry is what keeps them a scouting problem instead of a win button,
+  // and it is the assertion most likely to be quietly broken by a future
+  // refactor that "simplifies" the two suppressors into the visibility path.
+  const denialWorld = new WorldState(6107, 8192, 8192);
+  denialWorld.playerCount = 2;
+  denialWorld.fogOfWarEnabled = true;
+
+  createUnit(denialWorld, 1000, 1000, 1 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+    const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
+    // Radar reaching far, sight reaching barely — so "seen" and "contacted"
+    // are separable at different ranges.
+    sensors.fullSight.aboveWater.aboveWater = 400;
+    sensors.contactSight.aboveWater.aboveWater = 5000;
+  });
+
+  const plainTarget = createUnit(denialWorld, 3000, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const stealthInSightTarget = createUnit(denialWorld, 1200, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  const jammedTarget = createUnit(denialWorld, 4200, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+  });
+  // The jammer protects its OWN side and sits with the unit it is covering.
+  createUnit(denialWorld, 4200, 1000, 2 as PlayerId, (entity) => {
+    entity.transform.z = WATER_LEVEL + 100;
+    entity.combat!.turrets[0].config.targeting.observation.sensors.radarJamRadius = 800;
+  });
+
+  const denialVisibility = SnapshotVisibility.forRecipient(denialWorld, 1 as PlayerId);
+  const denialContacts = sorted(denialVisibility.getRadarEntityIds());
+  const denialVisible = sorted(denialVisibility.getVisibleEntityIds());
+
+  assertContract(
+    denialContacts.includes(plainTarget.id),
+    'an ordinary unit inside radar range must produce a contact',
+  );
+  assertContract(
+    !denialContacts.includes(jammedTarget.id),
+    'a unit standing inside its own side\'s radar jammer must produce no contact',
+  );
+  assertContract(
+    denialVisible.includes(stealthInSightTarget.id),
+    'a unit inside direct sight must be seen whatever the contact layer says — '
+      + 'stealth and jamming deny the blip, never the eyeball',
+  );
+
   getSimWasm()?.combatTargeting.clear();
   spatialGrid.clear();
 }

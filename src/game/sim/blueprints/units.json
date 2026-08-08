@@ -124,6 +124,10 @@
         "hitbox": 6,
         "collision": 9.6,
         "shotArmingRadius": 14.4
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -245,6 +249,10 @@
         "hitbox": 7,
         "collision": 13,
         "shotArmingRadius": 19.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -391,6 +399,10 @@
         "hitbox": 9,
         "collision": 15,
         "shotArmingRadius": 22.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -512,6 +524,10 @@
         "hitbox": 13,
         "collision": 22.4,
         "shotArmingRadius": 33.6
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -642,6 +658,10 @@
         "hitbox": 12,
         "collision": 24,
         "shotArmingRadius": 36
+      },
+      "signature": {
+        "radarStealth": true,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -781,6 +801,10 @@
         "hitbox": 8,
         "collision": 12.1,
         "shotArmingRadius": 18.15
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -902,6 +926,10 @@
         "hitbox": 24,
         "collision": 36,
         "shotArmingRadius": 54
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1068,6 +1096,10 @@
         "hitbox": 50,
         "collision": 65,
         "shotArmingRadius": 97.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1302,6 +1334,10 @@
         "hitbox": 40,
         "collision": 52,
         "shotArmingRadius": 78
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1426,6 +1462,10 @@
         "hitbox": 27,
         "collision": 54,
         "shotArmingRadius": 81
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1605,6 +1645,10 @@
         "hitbox": 24,
         "collision": 40,
         "shotArmingRadius": 60
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1768,6 +1812,10 @@
         "hitbox": 28,
         "collision": 45,
         "shotArmingRadius": 67.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": true
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -1920,6 +1968,10 @@
         "hitbox": 13,
         "collision": 19.8,
         "shotArmingRadius": 29.7
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -2056,6 +2108,10 @@
         "hitbox": 8,
         "collision": 24,
         "shotArmingRadius": 36
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 24
@@ -2181,6 +2237,10 @@
         "hitbox": 8,
         "collision": 10.8,
         "shotArmingRadius": 16.2
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -2334,6 +2394,10 @@
         "hitbox": 40,
         "collision": 50,
         "shotArmingRadius": 75
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -2511,6 +2575,10 @@
         "hitbox": 14,
         "collision": 19,
         "shotArmingRadius": 28.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 4.5
@@ -2652,6 +2720,10 @@
         "hitbox": 15,
         "collision": 21.6,
         "shotArmingRadius": 32.4
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -2799,6 +2871,10 @@
         "hitbox": 13,
         "collision": 19,
         "shotArmingRadius": 28.5
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -2958,6 +3034,10 @@
         "hitbox": 68,
         "collision": 92,
         "shotArmingRadius": 138
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
@@ -3120,6 +3200,10 @@
         "hitbox": 82,
         "collision": 112,
         "shotArmingRadius": 168
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 52
@@ -3291,6 +3375,10 @@
         "hitbox": 84,
         "collision": 114,
         "shotArmingRadius": 171
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 54
@@ -3457,6 +3545,10 @@
         "hitbox": 20,
         "collision": 28,
         "shotArmingRadius": 42
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 3.8
@@ -3655,6 +3747,10 @@
         "hitbox": 20,
         "collision": 20,
         "shotArmingRadius": 30
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "supportPointOffsetZ": 22.4
@@ -3832,6 +3928,10 @@
         "hitbox": 24,
         "collision": 36,
         "shotArmingRadius": 54
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,

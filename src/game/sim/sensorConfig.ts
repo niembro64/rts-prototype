@@ -37,6 +37,8 @@ export function cloneSensorCapabilityConfig(
     fullSight: cloneRadiusMatrix(sensors.fullSight),
     contactSight: cloneRadiusMatrix(sensors.contactSight),
     detectorRadius: sensors.detectorRadius,
+    radarJamRadius: sensors.radarJamRadius,
+    sonarJamRadius: sensors.sonarJamRadius,
   };
 }
 
@@ -77,6 +79,39 @@ export function validateSensorCapabilityConfig(
     `Invalid ${context}: sensors.detectorRadius`,
     sensors.detectorRadius,
   );
+  assertFiniteNonNegativeRadius(
+    `Invalid ${context}: sensors.radarJamRadius`,
+    sensors.radarJamRadius,
+  );
+  assertFiniteNonNegativeRadius(
+    `Invalid ${context}: sensors.sonarJamRadius`,
+    sensors.sonarJamRadius,
+  );
+
+  // THE MEDIUM GATE, and the reason it is a rule rather than a habit.
+  //
+  // Beyond All Reason states this once, in modrules, as
+  // `requireSonarUnderWater = true`: an underwater target is revealed by SONAR,
+  // and line of sight alone will not do it. We can express the same thing in
+  // the matrix by leaving every fullSight[*][underwater] cell at zero — and
+  // that is exactly what all 35 of our sensor suites do today.
+  //
+  // Expressed that way it is 70 zeros staying zero across 35 files, and one
+  // stray number silently makes some tank a submarine detector. So state it:
+  // a suite may see underwater only if it can also HEAR underwater.
+  for (const sourceMedium of SENSOR_MEDIA) {
+    const seesUnderwater = sensors.fullSight[sourceMedium].underwater > 0;
+    const hearsUnderwater = sensors.contactSight[sourceMedium].underwater > 0;
+    if (seesUnderwater && !hearsUnderwater) {
+      throw new Error(
+        `Invalid ${context}: sensors.fullSight.${sourceMedium}.underwater is `
+          + `${sensors.fullSight[sourceMedium].underwater} but `
+          + `sensors.contactSight.${sourceMedium}.underwater is 0. A submerged `
+          + 'target is found by sonar; sight alone does not reach it. Give this '
+          + 'suite a sonar radius or take its underwater sight away.',
+      );
+    }
+  }
 }
 
 export function getMaximumSensorMatrixRadius(

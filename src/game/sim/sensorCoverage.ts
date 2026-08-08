@@ -1,5 +1,6 @@
 import { getTransformCosSin } from '../math';
 import type {
+  EntitySignature,
   SensorCapabilityConfig,
   SensorMediumRadiusMatrix,
   SensorMediumTargetRadii,
@@ -12,7 +13,7 @@ import type {
 } from './types';
 import type { Vec3 } from '../../types/vec2';
 import { isEntityActive } from './buildableHelpers';
-import { getBuildingBlueprint, TURRET_BLUEPRINTS } from './blueprints';
+import { getBuildingBlueprint, getUnitBlueprint, TURRET_BLUEPRINTS } from './blueprints';
 import { resolveWeaponWorldMount } from './combat/combatUtils';
 import { WATER_LEVEL } from './Terrain';
 import {
@@ -308,6 +309,32 @@ export function getEntityRadarRadius(entity: Entity): number {
 export function getEntitySonarRadius(entity: Entity): number {
   return getEntityContactVisionRadius(entity, 'underwater');
 }
+
+/**
+ * How this entity reads to enemy CONTACT sensors.
+ *
+ * Stealth is a property of the TARGET, not of any sensor, which is why it
+ * lives on the shared entity base rather than on a turret: a unit is quiet or
+ * it is not, and mounting a different gun does not change that. Entities with
+ * no blueprint behind them (test fixtures, transient effects) read as ordinary
+ * — invisible-by-default would be a much worse failure than visible-by-default.
+ */
+export function getEntitySignature(entity: Entity): EntitySignature {
+  const unitBlueprintId = entity.unit?.unitBlueprintId;
+  if (unitBlueprintId !== undefined) {
+    return getUnitBlueprint(unitBlueprintId).base.signature;
+  }
+  const buildingBlueprintId = entity.buildingBlueprintId;
+  if (buildingBlueprintId !== null) {
+    return getBuildingBlueprint(buildingBlueprintId).base.signature;
+  }
+  return DEFAULT_ENTITY_SIGNATURE;
+}
+
+const DEFAULT_ENTITY_SIGNATURE: EntitySignature = {
+  radarStealth: false,
+  sonarStealth: false,
+};
 
 export function canEntityProvideCloakDetection(entity: Entity): boolean {
   return getEntityCloakDetectionRadius(entity) > 0;

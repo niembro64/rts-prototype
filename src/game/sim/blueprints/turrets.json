@@ -79,7 +79,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -179,7 +181,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -271,7 +275,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -363,7 +369,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -452,7 +460,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -552,7 +562,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -652,7 +664,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -735,7 +749,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -819,7 +835,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -902,7 +920,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -985,7 +1005,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1068,7 +1090,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1161,7 +1185,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1254,7 +1280,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1337,7 +1365,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1429,7 +1459,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1521,7 +1553,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1621,7 +1655,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1710,7 +1746,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1807,7 +1845,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1904,7 +1944,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -1993,7 +2035,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2082,7 +2126,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2187,7 +2233,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2292,7 +2340,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2379,7 +2429,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2466,7 +2518,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2501,7 +2555,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2514,7 +2568,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2580,7 +2636,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2593,7 +2649,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2659,7 +2717,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2672,7 +2730,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2738,7 +2798,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2751,7 +2811,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2817,7 +2879,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2830,7 +2892,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2896,7 +2960,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2909,7 +2973,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -2975,7 +3041,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -2988,7 +3054,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3054,7 +3122,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3067,7 +3135,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3133,7 +3203,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3146,7 +3216,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3218,14 +3290,16 @@
           "contactSight": {
             "aboveWater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 800
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 800
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3290,21 +3364,23 @@
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 0,
+              "aboveWater": 600,
               "underwater": 1200
             }
           },
           "contactSight": {
             "aboveWater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 1000
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 1000
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3369,21 +3445,23 @@
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 0,
+              "aboveWater": 700,
               "underwater": 1350
             }
           },
           "contactSight": {
             "aboveWater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 1350
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 1350
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3449,7 +3527,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3462,7 +3540,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3528,7 +3608,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3541,7 +3621,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3607,7 +3689,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3620,7 +3702,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3686,7 +3770,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3699,7 +3783,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3765,7 +3851,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3778,7 +3864,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3844,7 +3932,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -3857,7 +3945,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -3922,21 +4012,23 @@
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 0,
+              "aboveWater": 500,
               "underwater": 1200
             }
           },
           "contactSight": {
             "aboveWater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 900
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 0
+              "underwater": 900
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 800
         }
       },
       "effect": {
@@ -4002,7 +4094,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1700
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4015,7 +4107,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4081,7 +4175,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1700
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4094,7 +4188,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4160,7 +4256,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1700
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4173,7 +4269,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4239,7 +4337,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4252,7 +4350,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4318,7 +4418,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1600
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4331,7 +4431,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 600
+          "detectorRadius": 600,
+          "radarJamRadius": 900,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4397,7 +4499,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4410,7 +4512,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4476,7 +4580,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4489,7 +4593,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4555,7 +4661,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4568,7 +4674,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4634,7 +4742,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4647,7 +4755,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4726,7 +4836,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4792,7 +4904,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4805,7 +4917,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4884,7 +4998,9 @@
               "underwater": 4200
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -4950,7 +5066,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -4963,7 +5079,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -5029,7 +5147,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -5042,7 +5160,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -5108,7 +5228,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -5121,7 +5241,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {
@@ -5187,7 +5309,7 @@
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 0
             }
           },
           "contactSight": {
@@ -5200,7 +5322,9 @@
               "underwater": 0
             }
           },
-          "detectorRadius": 0
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
         }
       },
       "effect": {

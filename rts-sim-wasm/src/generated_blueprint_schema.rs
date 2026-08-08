@@ -72,6 +72,8 @@ pub struct SensorCapabilityConfig {
     pub fullSight: SensorMediumRadiusMatrix,
     pub contactSight: SensorMediumRadiusMatrix,
     pub detectorRadius: f64,
+    pub radarJamRadius: f64,
+    pub sonarJamRadius: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -491,12 +493,19 @@ pub struct EntityDeathExplosion {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct EntitySignature {
+    pub radarStealth: bool,
+    pub sonarStealth: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct EntityBaseLedger {
     pub cost: BlueprintJsonValue,
     pub mass: f64,
     pub health: f64,
     pub deathExplosion: EntityDeathExplosion,
     pub radius: EntityRadiusConfig,
+    pub signature: EntitySignature,
 }
 
 pub type TurretRadiusConfig = EntityRadiusConfig;

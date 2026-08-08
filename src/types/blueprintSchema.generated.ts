@@ -25,6 +25,8 @@ export type SensorCapabilityConfig = {
   fullSight: SensorMediumRadiusMatrix;
   contactSight: SensorMediumRadiusMatrix;
   detectorRadius: number;
+  radarJamRadius: number;
+  sonarJamRadius: number;
 };
 
 export type TurretEngagementEnvelope = {
@@ -322,12 +324,18 @@ export type EntityDeathExplosion = {
   damage: number;
 };
 
+export type EntitySignature = {
+  radarStealth: boolean;
+  sonarStealth: boolean;
+};
+
 export type EntityBaseLedger = {
   cost: ResourceCost;
   mass: number;
   health: number;
   deathExplosion: EntityDeathExplosion;
   radius: EntityRadiusConfig;
+  signature: EntitySignature;
 };
 
 export type TurretRadiusConfig = EntityRadiusConfig;

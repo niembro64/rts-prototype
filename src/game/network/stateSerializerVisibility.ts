@@ -3,6 +3,7 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
+import { getEntitySignature } from '../sim/sensorCoverage';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
@@ -166,6 +167,15 @@ export class SnapshotVisibility {
   private readonly sonarSourceCells: VisionSourceCells = [];
   private readonly detectorSources: VisionSource[] = [];
   private readonly detectorSourceCells: VisionSourceCells = [];
+  /** Jammers belonging to the entity's OWN side, which deny the recipient's
+   *  contact sensors over an area. Built lazily per emit like the auxiliary
+   *  observation sources, and separately per medium so a naval jammer and a
+   *  land jammer stay different units. */
+  private readonly enemyRadarJamSources: VisionSource[] = [];
+  private readonly enemyRadarJamSourceCells: VisionSourceCells = [];
+  private readonly enemySonarJamSources: VisionSource[] = [];
+  private readonly enemySonarJamSourceCells: VisionSourceCells = [];
+  private enemyJamSourcesReady = false;
   private readonly visibleEntityIds: EntityId[] = [];
   private readonly visibleEntitySlots: number[] = [];
   private readonly radarEntityIds: EntityId[] = [];
@@ -500,6 +510,7 @@ export class SnapshotVisibility {
     this.ensureAuxiliaryObservationSources();
     return (
       occupancy.underwater > 0 &&
+      !this.isContactSuppressed(entity, 'underwater') &&
       this.isPointVisibleIn(
           this.sonarSources,
           this.sonarSourceCells,
@@ -507,9 +518,22 @@ export class SnapshotVisibility {
           entity.transform.y,
           padding,
           'underwater',
+          // SONAR IS DELIBERATELY NOT TERRAIN-OCCLUDED, where radar is.
+          //
+          // Radar's occluder is the landscape you can see, and hiding behind a
+          // ridge is the mechanic. Sonar's occluder would be the SEABED — and
+          // a submerged position is below the ground surface by construction
+          // on any map that does not model bathymetry, which makes every
+          // sonar ray read as blocked by the ground the target is swimming
+          // above. Between two submerged units at similar depth over real
+          // bathymetry the ray is clear almost always anyway, so the check
+          // buys nearly nothing and fails catastrophically where seabed data
+          // is thin. Radar keeps it; sonar stays a range test.
+          null,
         )
     ) || (
       occupancy.aboveWater > 0 &&
+      !this.isContactSuppressed(entity, 'aboveWater') &&
       this.isPointVisibleIn(
           this.radarSources,
           this.radarSourceCells,
@@ -517,6 +541,18 @@ export class SnapshotVisibility {
           entity.transform.y,
           padding,
           'aboveWater',
+          // NOT terrain-occluded yet, and deliberately not half-done. Radar
+          // shadows are the change this system most wants — BAR's ridge-line
+          // radar shadow is a load-bearing mechanic and elevation currently
+          // buys a radar tower nothing — but radar visibility is computed
+          // TWICE here: this walk, and the native observation masks in
+          // combat_targeting.rs. Full sight already spans both (native culls
+          // by circle, then hands `losSlots` back for the raycast); radar has
+          // no such stage. Adding the raycast to only this side makes the two
+          // disagree, which the contract test catches immediately and
+          // correctly. Landing it means a radar LOS-candidate lane in Rust to
+          // match, which is a change of its own.
+          null,
         )
     );
 }
@@ -792,10 +828,34 @@ export class SnapshotVisibility {
   }
 
   private appendRadarEntityIdById(id: EntityId, slot = entitySlotRegistry.getSlot(id)): void {
+    // STEALTH AND JAMMING APPLY HERE, not only in the source walk.
+    //
+    // Radar contacts arrive by two routes — this class's own walk, and the
+    // native observation masks, which cull by radius and know nothing about
+    // either suppressor. Filtering only the walk would leave stealth and
+    // jamming silently inert on every frame the native path ran, which is
+    // most of them. One gate on the way into the set covers both routes.
+    if (this.isContactSuppressedById(id)) return;
     if (this.radarEntityIdSet.addIfAbsent(id)) {
       this.radarEntityIds.push(id);
       this.radarEntitySlots.push(slot);
     }
+  }
+
+  /** Suppression for an id whose Entity the caller does not already hold.
+   *  Media are resolved from where the entity actually sits, so a surfaced
+   *  submarine is judged by radar rules and a submerged one by sonar. */
+  private isContactSuppressedById(id: EntityId): boolean {
+    const entity = this.world.getEntity(id);
+    if (entity === undefined) return false;
+    const occupancy = getEntityMediumOccupancy(entity);
+    if (occupancy.aboveWater > 0 && !this.isContactSuppressed(entity, 'aboveWater')) {
+      return false;
+    }
+    if (occupancy.underwater > 0 && !this.isContactSuppressed(entity, 'underwater')) {
+      return false;
+    }
+    return true;
   }
 
   /** Full-vision point test. Audio events and projectile spawns hang
@@ -905,6 +965,96 @@ export class SnapshotVisibility {
         }
       });
     }
+  }
+
+  /**
+   * Jammers that deny THIS recipient's contact sensors.
+   *
+   * Beyond All Reason runs `separateJammers = true`: a jammer covers its own
+   * side, it does not blanket the map. So the sources collected here are the
+   * ones belonging to players this recipient cannot already see for free —
+   * a jammer protects the army standing next to it, and its owner gains
+   * nothing from being inside it.
+   *
+   * Built lazily and once per emit, exactly like the auxiliary observation
+   * sources, because most frames never ask.
+   */
+  private ensureEnemyJamSources(): void {
+    if (this.enemyJamSourcesReady) return;
+    this.enemyJamSourcesReady = true;
+    const playerCount = this.world.playerCount;
+    for (let id = 1; id <= playerCount; id++) {
+      const playerId = id as PlayerId;
+      if ((this.viewMask & (1 << (playerId - 1))) !== 0) continue;
+      this.addEnemyJamSourceEntities(this.world.getUnitsByPlayer(playerId));
+      this.addEnemyJamSourceEntities(this.world.getBuildingsByPlayer(playerId));
+    }
+  }
+
+  private addEnemyJamSourceEntities(source: readonly Entity[]): void {
+    for (let i = 0; i < source.length; i++) {
+      forEachEntityTurretSensorSource(source[i], (turretSource) => {
+        const { position, sensors, operational } = turretSource;
+        // A jammer that has lost power stops jamming, on the same operational
+        // channel its sensors use — a dead radar and a dead jammer are the
+        // same kind of dead.
+        if (!operational.contactSight) return;
+        if (sensors.radarJamRadius > 0) {
+          this.addSource(
+            this.enemyRadarJamSources,
+            this.enemyRadarJamSourceCells,
+            position.x, position.y, position.z,
+            sensors.radarJamRadius,
+            null,
+          );
+        }
+        if (sensors.sonarJamRadius > 0) {
+          this.addSource(
+            this.enemySonarJamSources,
+            this.enemySonarJamSourceCells,
+            position.x, position.y, position.z,
+            sensors.sonarJamRadius,
+            null,
+          );
+        }
+      });
+    }
+  }
+
+  /**
+   * Whether a contact in `targetMedium` is suppressed for this entity.
+   *
+   * Two independent suppressors, and they are deliberately different shapes:
+   * stealth belongs to the UNIT and travels with it, jamming belongs to a
+   * PLACE and covers whatever stands in it. Neither touches direct sight —
+   * a stealthed unit inside a jamming field is still seen plainly by anything
+   * that can actually look at it, which is what keeps both of them a scouting
+   * problem rather than an invisibility field.
+   */
+  private isContactSuppressed(entity: Entity, targetMedium: SensorMedium): boolean {
+    const signature = getEntitySignature(entity);
+    if (targetMedium === 'aboveWater') {
+      if (signature.radarStealth) return true;
+      this.ensureEnemyJamSources();
+      if (this.enemyRadarJamSources.length === 0) return false;
+      return this.isPointVisibleIn(
+        this.enemyRadarJamSources,
+        this.enemyRadarJamSourceCells,
+        entity.transform.x,
+        entity.transform.y,
+        0,
+      );
+    }
+    if (signature.sonarStealth) return true;
+    this.ensureEnemyJamSources();
+    if (this.enemySonarJamSources.length === 0) return false;
+    return this.isPointVisibleIn(
+      this.enemySonarJamSources,
+      this.enemySonarJamSourceCells,
+      entity.transform.x,
+      entity.transform.y,
+      0,
+    );
   }
 
   private ensureAuxiliaryObservationSources(): void {
@@ -1116,6 +1266,22 @@ export class SnapshotVisibility {
     }
   }
 
+  /**
+   * `losTargetZ` non-null means the source must also SEE the point, not merely
+   * be within range of it.
+   *
+   * Contact sensors used to be a flat circle test, so radar reached through
+   * mountains and sonar through the seabed. Beyond All Reason occludes radar
+   * on terrain, and the radar shadow behind a ridge is load-bearing: it is why
+   * you creep an attack along a valley and why a radar tower wants a hill.
+   * Without it, elevation bought a radar nothing.
+   *
+   * Altitude needs no special case here, which is the point of doing it
+   * geometrically rather than by category: the ray to a high-flying target
+   * clears the ridge on its own, so aircraft are hard to hide from radar for
+   * the same reason they are in the real world, and no "air medium" has to
+   * exist to say so.
+   */
   private isPointVisibleIn(
     sources: VisionSource[],
     cells: VisionSourceCells,
@@ -1123,6 +1289,7 @@ export class SnapshotVisibility {
     y: number,
     padding: number,
     targetMedium: SensorMedium | null = null,
+    losTargetZ: number | null = null,
   ): boolean {
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
@@ -1141,7 +1308,15 @@ export class SnapshotVisibility {
       const dx = x - source.x;
       const dy = y - source.y;
       const r = source.radius + padding;
-      if (dx * dx + dy * dy <= r * r) return true;
+      if (dx * dx + dy * dy > r * r) continue;
+      if (losTargetZ === null) return true;
+      if (hasFogOfWarLineOfSight(
+        this.world,
+        source.x, source.y, source.z,
+        x, y, losTargetZ,
+      )) {
+        return true;
+      }
     }
     return false;
   }
