@@ -73,6 +73,11 @@ type StandingTurretAimMemory = {
   yaw: number;
   pitch: number;
   manualHoldMs: number;
+  /** Manual fire arrives as a pose discontinuity rather than a targeting FSM
+   *  lock. Client interpolation can expose that one discontinuity as many
+   *  small pose changes, so it may trigger one assist window and cannot
+   *  trigger another until the pose has actually settled. */
+  manualPoseArmed: boolean;
 };
 
 /** One rigid part drawn between two points in the leg's own plane. Boxes, not
@@ -185,8 +190,8 @@ export type StandingMesh = {
   /** Stopped-pose foot offsets. Both blend to zero as the walk comes in. */
   stanceForward: number;
   stanceOutward: number;
-  /** Nominal hip height above the sole, from standHeightRatio. Sets where a
-   *  foot target is placed and keeps the solve inside the leg's reach. */
+  /** Nominal hip height above the sole, from standHeightRatio. Blueprint
+   * validation keeps this equal to the hip socket's flat-ground height. */
   standHipY: number;
   armSwingRad: number;
   armRestRad: number;
@@ -202,19 +207,13 @@ const IDLE_YAW_RATE = 0.12;
 const GAIT_EASE_SECONDS = 0.16;
 /** How far the elbow follows the shoulder, as a fraction of shoulder swing. */
 const ELBOW_FOLLOW = 0.28;
-/** Foot clearance and knee articulation are related but not identical. A full
- *  two-link fold is only appropriate for a high recovery step (one eighth of
- *  total leg length). Below that, scale the IK contribution with the actual
- *  clearance so a low BAR-style walk does not still lift its knee to its
- *  chest while the foot barely leaves the ground. */
-const FULL_KNEE_ARTICULATION_LIFT_RATIO = 0.125;
 /** Constant global forearm pitch. The source BAR commander carries roughly
  *  50 degrees of elbow fold through the walk; the old 17-degree fold made
  *  both arms hang like ropes. */
 const ELBOW_BEND_RAD = THREE.MathUtils.degToRad(52);
 /** No standing arm may become a straight hanging rod, even under turret or
  * construction assistance. */
-const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(18);
+const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 /** Arms ease from walk swing into a working pose rather than snapping. */
 const ARM_ACTION_EASE_SECONDS = 0.11;
 /** A standing torso quickly accepts a locked turret heading. */
@@ -229,6 +228,7 @@ const MANUAL_TURRET_ASSIST_HOLD_MS = 420;
 const MANUAL_TURRET_POSE_EPSILON = 1e-4;
 
 const _knee = new THREE.Vector3();
+const _resolvedFoot = new THREE.Vector3();
 const _chord = new THREE.Vector3();
 const _bendDirection = new THREE.Vector3();
 const _chassisVelocity = { x: 0, y: 0, z: 0 };
@@ -470,9 +470,11 @@ function poseStrut(strut: Strut, ax: number, ay: number, az: number, bx: number,
   strut.mesh.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
   strut.mesh.scale.set(strut.width * 0.64, length, strut.depth * 0.62);
   strut.armor.quaternion.copy(_segQuat);
-  strut.armor.position
-    .set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5)
-    .addScaledVector(_segDir, -length * 0.05);
+  strut.armor.position.set(
+    (ax + bx) * 0.5,
+    (ay + by) * 0.5,
+    (az + bz) * 0.5,
+  );
   strut.armor.scale.set(
     strut.width,
     length * (strut.mesh.visible ? 0.58 : 0.96),
@@ -491,34 +493,32 @@ function poseStrut(strut: Strut, ax: number, ay: number, az: number, bx: number,
   }
 }
 
-/** A loaded human/BAR-style leg reads as a support column, not a permanent
- * crouch. `bend` blends from a knee exactly on the 3D hip→foot chord toward a
- * two-link solution whose knee points forward. That keeps an opened idle
- * stance straight while still giving the airborne leg a real knee hinge. */
+/** Resolve a mechanically valid two-bone leg.
+ *
+ * The old pose interpolated the knee between a straight chord and an IK knee.
+ * That looked straight, but silently shortened both bones at partial bend and
+ * made the rendered struts stretch as the unit walked. Here hip→knee and
+ * knee→foot always remain the authored lengths. An unreachable terrain target
+ * is clamped to the leg's reach instead of disconnecting or stretching it. */
 function solveStandingKnee(
   hipX: number, hipY: number, hipZ: number,
   footX: number, footY: number, footZ: number,
   thigh: number, shin: number,
-  bend: number,
-  out: THREE.Vector3,
+  outKnee: THREE.Vector3,
+  outFoot: THREE.Vector3,
 ): void {
   _chord.set(footX - hipX, footY - hipY, footZ - hipZ);
   const rawSpan = _chord.length();
-  const span = Math.max(1e-4, rawSpan);
-  _chord.divideScalar(span);
-  const straightFraction = thigh / Math.max(1e-4, thigh + shin);
-  const straightX = hipX + (footX - hipX) * straightFraction;
-  const straightY = hipY + (footY - hipY) * straightFraction;
-  const straightZ = hipZ + (footZ - hipZ) * straightFraction;
-  const bendBlend = THREE.MathUtils.clamp(bend, 0, 1);
-  if (bendBlend <= 1e-6) {
-    out.set(straightX, straightY, straightZ);
-    return;
-  }
-  // Clamped so a foot placed further than the leg reaches straightens it
-  // instead of producing a NaN, and one placed too close folds rather than
-  // inverting.
-  const reach = Math.min(Math.max(span, Math.abs(thigh - shin) + 1e-3), thigh + shin - 1e-3);
+  if (rawSpan > 1e-5) _chord.divideScalar(rawSpan);
+  else _chord.set(0, -1, 0);
+  const minReach = Math.abs(thigh - shin) + 1e-4;
+  const maxReach = Math.max(minReach, thigh + shin - 1e-4);
+  const reach = THREE.MathUtils.clamp(rawSpan, minReach, maxReach);
+  outFoot.set(
+    hipX + _chord.x * reach,
+    hipY + _chord.y * reach,
+    hipZ + _chord.z * reach,
+  );
   const along = THREE.MathUtils.clamp(
     (thigh * thigh + reach * reach - shin * shin) / (2 * reach),
     0,
@@ -537,29 +537,11 @@ function solveStandingKnee(
       .addScaledVector(_chord, -_chord.z);
   }
   _bendDirection.normalize();
-  const bentX = hipX + _chord.x * along + _bendDirection.x * perpendicular;
-  const bentY = hipY + _chord.y * along + _bendDirection.y * perpendicular;
-  const bentZ = hipZ + _chord.z * along + _bendDirection.z * perpendicular;
-  out.set(
-    THREE.MathUtils.lerp(straightX, bentX, bendBlend),
-    THREE.MathUtils.lerp(straightY, bentY, bendBlend),
-    THREE.MathUtils.lerp(straightZ, bentZ, bendBlend),
+  outKnee.set(
+    hipX + _chord.x * along + _bendDirection.x * perpendicular,
+    hipY + _chord.y * along + _bendDirection.y * perpendicular,
+    hipZ + _chord.z * along + _bendDirection.z * perpendicular,
   );
-}
-
-function standingSwingKneeBend(
-  leg: StandingLeg,
-  strideLift: number,
-  recoveryWave: number,
-  gait = 1,
-): number {
-  const legLength = Math.max(1e-4, leg.thighLength + leg.shinLength);
-  const articulation = THREE.MathUtils.clamp(
-    strideLift / (legLength * FULL_KNEE_ARTICULATION_LIFT_RATIO),
-    0,
-    1,
-  );
-  return Math.pow(THREE.MathUtils.clamp(recoveryWave, 0, 1), 1.35) * articulation * gait;
 }
 
 function positiveUnitPhase(phase: number): number {
@@ -642,14 +624,6 @@ function poseCoupledStandingGait(
       ? mesh.groundLocalY
       : standingFootGroundLocalY(mesh, footX, footZ, pose, mapWidth, mapHeight);
     const footY = groundY + recoveryWave * mesh.strideLift * amplitude;
-    const kneeBend = standingSwingKneeBend(
-      leg,
-      mesh.strideLift,
-      recoveryWave,
-      amplitude,
-    );
-    leg.footLocalX = footX;
-    leg.footLocalZ = footZ;
     solveStandingKnee(
       leg.hipX,
       leg.hipY,
@@ -659,13 +633,23 @@ function poseCoupledStandingGait(
       footZ,
       leg.thighLength,
       leg.shinLength,
-      kneeBend,
       _knee,
+      _resolvedFoot,
     );
+    leg.footLocalX = _resolvedFoot.x;
+    leg.footLocalZ = _resolvedFoot.z;
     poseStrut(leg.thigh, leg.hipX, leg.hipY, leg.hipZ, _knee.x, _knee.y, _knee.z);
-    poseStrut(leg.shin, _knee.x, _knee.y, _knee.z, footX, footY, footZ);
+    poseStrut(
+      leg.shin,
+      _knee.x,
+      _knee.y,
+      _knee.z,
+      _resolvedFoot.x,
+      _resolvedFoot.y,
+      _resolvedFoot.z,
+    );
     leg.knee.position.copy(_knee);
-    leg.foot.position.set(footX, footY, footZ);
+    leg.foot.position.copy(_resolvedFoot);
     // Standing feet follow lower-body facing but stay ground-parallel through
     // recovery. Contact-locked foot yaw belongs only to the `legs` rig.
     leg.foot.rotation.set(0, 0, 0);
@@ -907,7 +891,12 @@ export function updateStandingHostTurretAim(
   turrets: readonly Turret[],
   dtMs: number,
 ): number {
-  for (const arm of mesh.arms) arm.turretAimActive = false;
+  for (const arm of mesh.arms) {
+    arm.turretAimActive = false;
+    // Pitch is a proposal owned by the currently selected turret, not sticky
+    // arm state. poseArms still eases actionBlend back to the rest pose.
+    arm.turretAimPitch = 0;
+  }
   mesh.turretLockActive = false;
 
   const elapsedMs = Math.max(0, dtMs);
@@ -934,6 +923,7 @@ export function updateStandingHostTurretAim(
         yaw: _hostTurretAimSample.yaw,
         pitch: _hostTurretAimSample.pitch,
         manualHoldMs: 0,
+        manualPoseArmed: true,
       };
       mesh.turretAimMemory.set(turret.mountId, memory);
     }
@@ -945,8 +935,13 @@ export function updateStandingHostTurretAim(
       )) > MANUAL_TURRET_POSE_EPSILON;
       const pitchChanged = Math.abs(memory.pitch - _hostTurretAimSample.pitch) >
         MANUAL_TURRET_POSE_EPSILON;
-      if (yawChanged || pitchChanged) {
+      const poseChanged = yawChanged || pitchChanged;
+      if (poseChanged && memory.manualPoseArmed) {
         memory.manualHoldMs = MANUAL_TURRET_ASSIST_HOLD_MS;
+        memory.manualPoseArmed = false;
+      } else if (!poseChanged && memory.manualHoldMs <= 0) {
+        // A stable idle sample re-arms the next explicit manual-fire snap.
+        memory.manualPoseArmed = true;
       }
     }
     memory.initialized = true;
@@ -1030,9 +1025,7 @@ function poseArms(
     // Any turret lock removes noisy gait from both arms. Only the arm named by
     // the selected attachment receives pitch; the other settles at rest.
     const walkShoulder = mesh.armRestRad + armWave * mesh.armSwingRad;
-    const restForearmBend = mesh.variant === 'commander'
-      ? THREE.MathUtils.degToRad(28)
-      : ELBOW_BEND_RAD;
+    const restForearmBend = ELBOW_BEND_RAD;
     const walkForearm = walkShoulder * ELBOW_FOLLOW
       + restForearmBend
       - armWave * mesh.armSwingRad * 0.32;
@@ -1045,7 +1038,7 @@ function poseArms(
       ? THREE.MathUtils.degToRad(18)
       : THREE.MathUtils.degToRad(24) + turretPitchAssist * 0.55;
     const actionForearm = arm.role === 'construction'
-      ? THREE.MathUtils.degToRad(mesh.variant === 'commander' ? 38 : 68)
+      ? THREE.MathUtils.degToRad(62)
       : THREE.MathUtils.degToRad(80) + turretPitchAssist * 0.45;
     const resolvedShoulder = THREE.MathUtils.lerp(
       walkShoulder,

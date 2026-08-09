@@ -372,6 +372,11 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
     legs.segments.upper.lengthUnitRadiusRatio +
     legs.segments.lower.lengthUnitRadiusRatio;
   const standingHeightRatio = legLengthRatio * legs.standHeightRatio;
+  if (Math.abs(standingHeightRatio - legs.hip.zUnitRadiusRatio) > 1e-5) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: hip height must equal the authored standing height so fixed-length bones meet the ground`,
+    );
+  }
   const stoppedReachRatio = Math.hypot(
     standingHeightRatio,
     legs.stanceForwardUnitRadiusRatio,
@@ -380,6 +385,13 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
   if (stoppedReachRatio > legLengthRatio + 1e-6) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: stopped stance cannot reach its authored forward/outward foot offsets`,
+    );
+  }
+  const walkingHalfStrideRatio = legLengthRatio * legs.strideLengthRatio * 0.48;
+  const walkingReachRatio = Math.hypot(standingHeightRatio, walkingHalfStrideRatio);
+  if (walkingReachRatio > legLengthRatio + 1e-6) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: walking stride exceeds the fixed-length leg reach`,
     );
   }
 }

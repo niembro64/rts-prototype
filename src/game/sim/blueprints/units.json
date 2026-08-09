@@ -956,9 +956,9 @@
       "config": {
         "legs": {
           "hip": {
-            "xUnitRadiusRatio": 0.15,
+            "xUnitRadiusRatio": 0.05,
             "yUnitRadiusRatio": 0.3,
-            "zUnitRadiusRatio": 1.8
+            "zUnitRadiusRatio": 1.86048
           },
           "radius": 3.8,
           "segments": {
@@ -971,9 +971,9 @@
           },
           "footLengthRatio": 0.44,
           "footWidthRatio": 1.25,
-          "strideLengthRatio": 0.65,
+          "strideLengthRatio": 0.5,
           "strideLiftRatio": 0.0275,
-          "standHeightRatio": 0.96,
+          "standHeightRatio": 0.969,
           "stanceForwardUnitRadiusRatio": 0.12,
           "stanceOutwardUnitRadiusRatio": 0.16
         },
@@ -4073,9 +4073,9 @@
       "config": {
         "legs": {
           "hip": {
-            "xUnitRadiusRatio": 0.15,
+            "xUnitRadiusRatio": 0.05,
             "yUnitRadiusRatio": 0.34,
-            "zUnitRadiusRatio": 1.48
+            "zUnitRadiusRatio": 1.66668
           },
           "radius": 8.4,
           "segments": {
@@ -4088,9 +4088,9 @@
           },
           "footLengthRatio": 0.46,
           "footWidthRatio": 1.25,
-          "strideLengthRatio": 0.65,
+          "strideLengthRatio": 0.5,
           "strideLiftRatio": 0.0275,
-          "standHeightRatio": 0.86,
+          "standHeightRatio": 0.969,
           "stanceForwardUnitRadiusRatio": 0.14,
           "stanceOutwardUnitRadiusRatio": 0.18
         },

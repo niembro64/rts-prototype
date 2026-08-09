@@ -599,14 +599,17 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               const hip = new THREE.Vector3(leg.hipX, leg.hipY, leg.hipZ);
               const hipToFoot = leg.foot.position.clone().sub(hip);
               const hipToKnee = leg.knee.position.clone().sub(hip);
+              const kneeToFoot = leg.foot.position.clone().sub(leg.knee.position);
               return leg.hipJoint.userData.standingHipJoint === true &&
                 leg.hipJoint.geometry.type === 'SphereGeometry' &&
                 leg.hipJoint.parent === rig.hips &&
                 leg.foot.position.x > leg.hipX &&
                 (leg.foot.position.z - leg.hipZ) * leg.side > 0 &&
-                hipToFoot.clone().cross(hipToKnee).length() < 1e-5;
+                Math.abs(hipToKnee.length() - leg.thighLength) < 1e-5 &&
+                Math.abs(kneeToFoot.length() - leg.shinLength) < 1e-5 &&
+                hipToFoot.clone().cross(hipToKnee).length() > 1e-5;
             }),
-            `${unitId}/${tier} stopped legs open forward/outward through visible hip joints while staying straight`,
+            `${unitId}/${tier} stopped legs open through visible hip joints with fixed-length articulated bones`,
           );
           assertContract(
             rig.pelvis.userData.standingPelvis === true &&

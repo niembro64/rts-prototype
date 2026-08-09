@@ -2349,7 +2349,7 @@
         "strideLengthRatio": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Ground covered by one full cycle, as a ratio of leg length."
+          "description": "Nominal left/right step length as a ratio of total leg length. The standing renderer derives its full no-slip gait-cycle distance from this value."
         },
         "strideLiftRatio": {
           "type": "number",
