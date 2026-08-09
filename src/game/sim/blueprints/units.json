@@ -956,8 +956,8 @@
       "config": {
         "legs": {
           "hip": {
-            "xUnitRadiusRatio": 0.0,
-            "yUnitRadiusRatio": 0.21,
+            "xUnitRadiusRatio": 0.15,
+            "yUnitRadiusRatio": 0.3,
             "zUnitRadiusRatio": 1.8
           },
           "radius": 3.8,
@@ -972,8 +972,10 @@
           "footLengthRatio": 0.44,
           "footWidthRatio": 1.25,
           "strideLengthRatio": 0.65,
-          "strideLiftRatio": 0.15,
-          "standHeightRatio": 0.96
+          "strideLiftRatio": 0.0275,
+          "standHeightRatio": 0.96,
+          "stanceForwardUnitRadiusRatio": 0.12,
+          "stanceOutwardUnitRadiusRatio": 0.16
         },
         "arms": {
           "shoulder": {
@@ -993,7 +995,7 @@
           "handRadiusRatio": 1.05,
           "restSwingDeg": 12,
           "walkSwingDeg": 14,
-          "outwardDeg": 3
+          "outwardDeg": 8
         }
       },
       "environmentalHazards": {
@@ -3881,7 +3883,7 @@
       "points": [
         {
           "x": 0.55,
-          "y": 0.79,
+          "y": -0.79,
           "z": 1.05
         }
       ],
@@ -3894,7 +3896,7 @@
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
           "x": 0.44,
-          "y": -0.79,
+          "y": 0.79,
           "z": 1.05
         },
         "requiredEngagedForFightStop": true,
@@ -3902,23 +3904,22 @@
         "controlMode": "hostPreferred",
         "hostAttachment": {
           "kind": "standingArm",
-          "arm": "rightArm"
+          "arm": "leftArm"
         }
       },
       {
         "turretBlueprintId": "turretDisruptor",
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
-          "x": 0.44,
-          "y": -0.79,
-          "z": 0.9
+          "x": 0.32,
+          "y": 0,
+          "z": 2.96
         },
         "requiredEngagedForFightStop": false,
         "mountId": "disruptor",
         "controlMode": "manual",
         "hostAttachment": {
-          "kind": "standingArm",
-          "arm": "rightArm"
+          "kind": "standingHead"
         }
       }
     ],
@@ -4072,8 +4073,8 @@
       "config": {
         "legs": {
           "hip": {
-            "xUnitRadiusRatio": 0.0,
-            "yUnitRadiusRatio": 0.24,
+            "xUnitRadiusRatio": 0.15,
+            "yUnitRadiusRatio": 0.34,
             "zUnitRadiusRatio": 1.48
           },
           "radius": 8.4,
@@ -4088,8 +4089,10 @@
           "footLengthRatio": 0.46,
           "footWidthRatio": 1.25,
           "strideLengthRatio": 0.65,
-          "strideLiftRatio": 0.15,
-          "standHeightRatio": 0.86
+          "strideLiftRatio": 0.0275,
+          "standHeightRatio": 0.86,
+          "stanceForwardUnitRadiusRatio": 0.14,
+          "stanceOutwardUnitRadiusRatio": 0.18
         },
         "arms": {
           "shoulder": {
@@ -4109,7 +4112,7 @@
           "handRadiusRatio": 0.82,
           "restSwingDeg": 8,
           "walkSwingDeg": 14,
-          "outwardDeg": 4
+          "outwardDeg": 10
         }
       },
       "environmentalHazards": {

@@ -124,12 +124,10 @@ export class CommanderVisualKit3D {
     geometryTier: PrimitiveGeometryTier,
   ): void {
     // The D-gun is intentionally a logical zero-radius turret in the shared
-    // registry. It still receives bespoke Commander-only forearm art here.
+    // registry. It still receives bespoke Commander-only head-emitter art.
     const headRadius = tm.headRadius ?? (isDgunTurret ? 4 : 6);
-    // The generic spherical turret head is appropriate for a chassis mount,
-    // but on the Commander it became two huge overlapping balls at the hand.
-    // The arm itself is the azimuth joint, so replace those balls and collars
-    // with compact, independently pitching beam and D-gun housings.
+    // Replace generic spheres and collars with compact integrated housings:
+    // an arm cannon for the beam and a crown/forehead emitter for the D-gun.
     if (tm.head !== undefined) tm.head.visible = false;
     tm.teamCollar = undefined;
     if (tm.pitchGroup === undefined) return;

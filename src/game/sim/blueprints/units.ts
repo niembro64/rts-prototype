@@ -319,9 +319,9 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
   }
 }
 
-/** A mech leg is a hinge in one vertical plane, so it is authored and checked
- *  on its own terms — there is no reach shell, no chopping sphere and no snap
- *  ray here, because there is no third degree of freedom for them to bound. */
+/** A standing mech owns a coupled biped pose, not independent reach shells.
+ *  Its authored idle stance may open forward and laterally at the hip, so the
+ *  reach check includes those two offsets as well as standing height. */
 function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void {
   const values = [
     ['hip.xUnitRadiusRatio', legs.hip.xUnitRadiusRatio],
@@ -335,6 +335,8 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
     ['strideLengthRatio', legs.strideLengthRatio],
     ['strideLiftRatio', legs.strideLiftRatio],
     ['standHeightRatio', legs.standHeightRatio],
+    ['stanceForwardUnitRadiusRatio', legs.stanceForwardUnitRadiusRatio],
+    ['stanceOutwardUnitRadiusRatio', legs.stanceOutwardUnitRadiusRatio],
   ] as const;
   for (const [name, value] of values) {
     if (!Number.isFinite(value)) {
@@ -346,7 +348,9 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
     legs.segments.upper.lengthUnitRadiusRatio <= 0 ||
     legs.segments.lower.lengthUnitRadiusRatio <= 0 ||
     legs.strideLengthRatio <= 0 ||
-    legs.standHeightRatio <= 0
+    legs.standHeightRatio <= 0 ||
+    legs.stanceForwardUnitRadiusRatio < 0 ||
+    legs.stanceOutwardUnitRadiusRatio < 0
   ) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: lengths, stride and stand height must be positive`,
@@ -362,6 +366,20 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
   if (legs.standHeightRatio > 1) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: standHeightRatio must be at most 1 — a leg cannot stand taller than it is long`,
+    );
+  }
+  const legLengthRatio =
+    legs.segments.upper.lengthUnitRadiusRatio +
+    legs.segments.lower.lengthUnitRadiusRatio;
+  const standingHeightRatio = legLengthRatio * legs.standHeightRatio;
+  const stoppedReachRatio = Math.hypot(
+    standingHeightRatio,
+    legs.stanceForwardUnitRadiusRatio,
+    legs.stanceOutwardUnitRadiusRatio,
+  );
+  if (stoppedReachRatio > legLengthRatio + 1e-6) {
+    throw new Error(
+      `Invalid stand leg layout for ${unitBlueprintId}: stopped stance cannot reach its authored forward/outward foot offsets`,
     );
   }
 }
@@ -391,10 +409,11 @@ function validateStandingArms(unitBlueprintId: string, arms: StandingArms): void
   if (
     arms.radius <= 0 ||
     arms.segments.upper.lengthUnitRadiusRatio <= 0 ||
-    arms.segments.lower.lengthUnitRadiusRatio <= 0
+    arms.segments.lower.lengthUnitRadiusRatio <= 0 ||
+    arms.outwardDeg < 5
   ) {
     throw new Error(
-      `Invalid arm layout for ${unitBlueprintId}: radius and arm lengths must be positive`,
+      `Invalid arm layout for ${unitBlueprintId}: radius and arm lengths must be positive, and outwardDeg must be at least 5`,
     );
   }
   if (arms.handRadiusRatio < 0 || arms.walkSwingDeg < 0) {
@@ -448,16 +467,16 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       );
     }
     const standingHost = bp.unitLocomotion.type === 'standing';
-    if (standingHost && turret.hostAttachment?.kind !== 'standingArm') {
+    if (standingHost && turret.hostAttachment === undefined) {
       throw new Error(
         `Invalid standing turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-        'every standing-host turret must identify its leftArm or rightArm attachment',
+        'every standing-host turret must identify its host attachment',
       );
     }
     if (!standingHost && turret.hostAttachment !== undefined) {
       throw new Error(
         `Invalid turret host attachment for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-        'standingArm attachments require standing locomotion',
+        'standing attachments require standing locomotion',
       );
     }
     // Airborne mounts may use all three axes. Presentation banking is

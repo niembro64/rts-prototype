@@ -592,31 +592,55 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           assertContract(
             rig.legs.every((leg) => Math.abs(leg.hipZ) > 1e-6)
               && rig.legs[0].hipZ === -rig.legs[1].hipZ,
-            `${unitId}/${tier} stand legs sit on a mirrored pair of planes`,
+            `${unitId}/${tier} stand legs attach at mirrored hip sockets`,
           );
-          // The whole point of the rig: a knee is a hinge in its leg's plane,
-          // so no part of a limb may leave the lateral offset it was built on.
           assertContract(
-            rig.legs.every((leg) =>
-              Math.abs(leg.knee.position.z - leg.hipZ) < 1e-6
-              && Math.abs(leg.foot.position.z - leg.hipZ) < 1e-6),
-            `${unitId}/${tier} stand knees and feet stay in their leg's plane`,
+            rig.legs.every((leg) => {
+              const hip = new THREE.Vector3(leg.hipX, leg.hipY, leg.hipZ);
+              const hipToFoot = leg.foot.position.clone().sub(hip);
+              const hipToKnee = leg.knee.position.clone().sub(hip);
+              return leg.hipJoint.userData.standingHipJoint === true &&
+                leg.hipJoint.geometry.type === 'SphereGeometry' &&
+                leg.hipJoint.parent === rig.hips &&
+                leg.foot.position.x > leg.hipX &&
+                (leg.foot.position.z - leg.hipZ) * leg.side > 0 &&
+                hipToFoot.clone().cross(hipToKnee).length() < 1e-5;
+            }),
+            `${unitId}/${tier} stopped legs open forward/outward through visible hip joints while staying straight`,
+          );
+          assertContract(
+            rig.pelvis.userData.standingPelvis === true &&
+              rig.pelvis.parent === rig.hips,
+            `${unitId}/${tier} central pelvis belongs to the lower-body leg frame`,
+          );
+          assertContract(
+            rig.arms.every((arm) =>
+              arm.shoulderJoint.userData.standingShoulderJoint === true &&
+              (arm.elbow.position.z - arm.shoulderZ) * arm.side > 0),
+            `${unitId}/${tier} stand arms leave visible shoulder joints at an outward angle`,
           );
           return {
             rig,
             count: objectTriangleCount(root),
             signature: {
               root: transformTuple(rig.group),
+              pelvis: transformTuple(rig.pelvis),
               legs: rig.legs.map((leg) => [
                 leg.side, n(leg.hipX), n(leg.hipY), n(leg.hipZ),
                 n(leg.thighLength), n(leg.shinLength),
+                ...transformTuple(leg.hipJoint),
                 ...transformTuple(leg.knee), ...transformTuple(leg.foot),
               ]),
               arms: rig.arms.map((arm) => [
                 arm.side, n(arm.shoulderX), n(arm.shoulderY), n(arm.shoulderZ),
-                n(arm.handX), n(arm.handY), ...transformTuple(arm.elbow),
+                n(arm.handX), n(arm.handY), ...transformTuple(arm.shoulderJoint),
+                ...transformTuple(arm.elbow),
               ]),
-              stride: [n(rig.stepLength), n(rig.strideLift), n(rig.standHipY)],
+              stride: [
+                n(rig.stepLength), n(rig.gaitCycleDistance),
+                n(rig.strideLift), n(rig.standHipY),
+                n(rig.stanceForward), n(rig.stanceOutward),
+              ],
             },
           };
         }

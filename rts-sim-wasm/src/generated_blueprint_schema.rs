@@ -685,9 +685,20 @@ pub struct UnitTurretMountZResolver {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitTurretHostAttachment {
+pub struct StandingArmTurretHostAttachment {
     pub kind: String,
     pub arm: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StandingHeadTurretHostAttachment {
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnitTurretHostAttachment {
+    StandingArmTurretHostAttachment(StandingArmTurretHostAttachment),
+    StandingHeadTurretHostAttachment(StandingHeadTurretHostAttachment),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -808,6 +819,8 @@ pub struct StandingLegs {
     pub strideLengthRatio: f64,
     pub strideLiftRatio: f64,
     pub standHeightRatio: f64,
+    pub stanceForwardUnitRadiusRatio: f64,
+    pub stanceOutwardUnitRadiusRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

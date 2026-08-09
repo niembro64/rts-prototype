@@ -816,19 +816,22 @@ function buildPreviewTurrets(
       productionPylonOrdinal++;
     }
     const hostAttachment = turret.config.hostAttachment;
-    const articulatedMount = standingRig === null || hostAttachment?.kind !== 'standingArm'
+    const articulatedArmId = hostAttachment?.kind === 'standingArm'
+      ? hostAttachment.arm
+      : null;
+    const articulatedMount = standingRig === null || articulatedArmId === null
       ? null
       : resolveStandingArmTurretRoot(
         standingRig.mesh,
-        hostAttachment.arm,
+        articulatedArmId,
         turret.mountId,
         headRadius,
       );
-    if (articulatedMount !== null) {
+    if (articulatedMount !== null && articulatedArmId !== null) {
       turretMesh.root.position.copy(articulatedMount);
       standingRig?.articulatedTurrets.push({
         root: turretMesh.root,
-        armId: hostAttachment!.arm,
+        armId: articulatedArmId,
         mountId: turret.mountId,
         headRadius,
       });

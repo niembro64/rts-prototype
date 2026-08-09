@@ -1915,7 +1915,7 @@
       },
       "additionalProperties": false
     },
-    "UnitTurretHostAttachment": {
+    "StandingArmTurretHostAttachment": {
       "type": "object",
       "required": [
         "kind",
@@ -1933,6 +1933,28 @@
         }
       },
       "additionalProperties": false
+    },
+    "StandingHeadTurretHostAttachment": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "standingHead"
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnitTurretHostAttachment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StandingArmTurretHostAttachment"
+        },
+        {
+          "$ref": "#/$defs/StandingHeadTurretHostAttachment"
+        }
+      ]
     },
     "TurretMount": {
       "type": "object",
@@ -2280,6 +2302,7 @@
         },
         "outwardDeg": {
           "type": "number",
+          "minimum": 5,
           "description": "Constant outward roll of the arm away from the torso, degrees."
         }
       },
@@ -2295,12 +2318,14 @@
         "footWidthRatio",
         "strideLengthRatio",
         "strideLiftRatio",
-        "standHeightRatio"
+        "standHeightRatio",
+        "stanceForwardUnitRadiusRatio",
+        "stanceOutwardUnitRadiusRatio"
       ],
       "properties": {
         "hip": {
           "$ref": "#/$defs/LocomotionMount",
-          "description": "Left hip socket in unit-radius ratios; the right leg mirrors it. The lateral component is the limb's plane and never changes."
+          "description": "Left hip socket in unit-radius ratios; the right leg mirrors it. The stopped foot may open farther outward from this socket."
         },
         "radius": {
           "type": "number",
@@ -2334,7 +2359,17 @@
         "standHeightRatio": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Hip height above the sole at a standstill, as a ratio of leg length. Below 1 leaves the knee bent."
+          "description": "Hip height above the sole at a standstill, as a ratio of leg length. Below 1 leaves reach available for the forward/outward stopped stance."
+        },
+        "stanceForwardUnitRadiusRatio": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Forward offset of both feet from their hip sockets in the stopped standing pose, as a unit-radius ratio. It blends away into the walk cycle."
+        },
+        "stanceOutwardUnitRadiusRatio": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Additional lateral opening from each hip socket to its foot in the stopped standing pose, as a unit-radius ratio. It blends away into the walk cycle."
         }
       },
       "additionalProperties": false

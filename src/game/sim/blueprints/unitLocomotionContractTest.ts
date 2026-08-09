@@ -258,41 +258,53 @@ function checkLocomotionMountsAuthored(): void {
   }
 }
 
-function checkStandingTurretArmAttachments(): void {
+function checkStandingTurretHostAttachments(): void {
   for (const blueprint of getAllUnitBlueprints()) {
     const standing = blueprint.unitLocomotion.type === 'standing';
     for (const turret of blueprint.turrets) {
       if (!standing) {
         assertContract(
           turret.hostAttachment === undefined,
-          `${blueprint.unitBlueprintId}/${turret.mountId} cannot name a standing arm on a non-standing host`,
+          `${blueprint.unitBlueprintId}/${turret.mountId} cannot name a standing attachment on a non-standing host`,
         );
         continue;
       }
+      const attachment = turret.hostAttachment;
       assertContract(
-        turret.hostAttachment?.kind === 'standingArm' &&
-          (turret.hostAttachment.arm === 'leftArm' || turret.hostAttachment.arm === 'rightArm'),
-        `${blueprint.unitBlueprintId}/${turret.mountId} must identify the standing arm carrying it`,
+        attachment?.kind === 'standingHead' ||
+          (attachment?.kind === 'standingArm' &&
+            (attachment.arm === 'leftArm' || attachment.arm === 'rightArm')),
+        `${blueprint.unitBlueprintId}/${turret.mountId} must identify its standing host attachment`,
       );
     }
   }
 
-  for (const unitBlueprintId of ['unitHuman', 'unitCommander'] as const) {
-    const blueprint = getUnitBlueprint(unitBlueprintId);
-    assertContract(
-      blueprint.turrets.every((turret) =>
-        turret.hostAttachment?.kind === 'standingArm' &&
-        turret.hostAttachment.arm === 'rightArm'),
-      `${unitBlueprintId} mounts every current combat turret on its authored right arm`,
-    );
-  }
+  const human = getUnitBlueprint('unitHuman');
+  assertContract(
+    human.turrets[0]?.hostAttachment?.kind === 'standingArm' &&
+      human.turrets[0].hostAttachment.arm === 'rightArm',
+    'Human mounts its gun on the authored right arm',
+  );
+
+  const commander = getUnitBlueprint('unitCommander');
+  const beam = commander.turrets.find((turret) => turret.mountId === 'beam');
+  const dgun = commander.turrets.find((turret) => turret.mountId === 'disruptor');
+  assertContract(
+    beam?.hostAttachment?.kind === 'standingArm' &&
+      beam.hostAttachment.arm === 'leftArm',
+    'Commander mounts its beam on the left arm',
+  );
+  assertContract(
+    dgun?.hostAttachment?.kind === 'standingHead',
+    'Commander mounts its D-gun on the head',
+  );
 }
 
 export function runUnitLocomotionContractTest(): void {
   checkLegAttachmentPoints();
   checkLocomotionMountsAuthored();
   checkLocomotionMountClearance();
-  checkStandingTurretArmAttachments();
+  checkStandingTurretHostAttachments();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
   const manySamples: Array<{ x: number; y: number }> = [];

@@ -117,21 +117,11 @@ export type LocomotionStateSnapshot =
     }
   | {
       type: 'standing';
-      /** A tier rebuild must not restart the walk mid-stride, and it must not
-       *  move a planted foot: the footholds ARE the leg state. */
+      /** A tier rebuild must not restart the coupled biped cycle mid-stride. */
       contact: RollingContactSnapshot;
+      gaitPhase: number;
       gait: number;
-      hipYaw: number;
-      swingingLeg: number;
-      wasMoving: boolean;
-      settling: boolean;
-      legs: Array<Readonly<{
-        footX: number; footY: number; footZ: number;
-        footLocalX: number;
-        stepping: boolean; stepT: number; stepSeconds: number;
-        fromX: number; fromY: number; fromZ: number;
-        toX: number; toY: number; toZ: number;
-      }>>;
+      upperBodyYaw: number;
     }
   | {
       type: 'wheels';
@@ -209,18 +199,9 @@ export function captureLocomotionState(
       return {
         type: 'standing',
         contact: captureRollingContact(locomotion.contact),
+        gaitPhase: locomotion.gaitPhase,
         gait: locomotion.gait,
-        hipYaw: locomotion.hipYaw,
-        swingingLeg: locomotion.swingingLeg,
-        wasMoving: locomotion.wasMoving,
-        settling: locomotion.settling,
-        legs: locomotion.legs.map((leg) => ({
-          footX: leg.footX, footY: leg.footY, footZ: leg.footZ,
-          footLocalX: leg.footLocalX,
-          stepping: leg.stepping, stepT: leg.stepT, stepSeconds: leg.stepSeconds,
-          fromX: leg.fromX, fromY: leg.fromY, fromZ: leg.fromZ,
-          toX: leg.toX, toY: leg.toY, toZ: leg.toZ,
-        })),
+        upperBodyYaw: locomotion.upperBodyYaw,
       };
     case 'wheels':
       return {
@@ -286,15 +267,10 @@ export function applyLocomotionState(
     case 'standing': {
       const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'standing' }>;
       applyRollingContact(locomotion.contact, state.contact);
+      locomotion.gaitPhase = state.gaitPhase;
       locomotion.gait = state.gait;
-      locomotion.hipYaw = state.hipYaw;
-      locomotion.hips.rotation.y = state.hipYaw;
-      locomotion.swingingLeg = state.swingingLeg;
-      locomotion.wasMoving = state.wasMoving;
-      locomotion.settling = state.settling;
-      for (let i = 0; i < locomotion.legs.length && i < state.legs.length; i++) {
-        Object.assign(locomotion.legs[i], state.legs[i]);
-      }
+      locomotion.upperBodyYaw = state.upperBodyYaw;
+      locomotion.hips.rotation.y = -locomotion.upperBodyYaw;
       return;
     }
     case 'wheels': {

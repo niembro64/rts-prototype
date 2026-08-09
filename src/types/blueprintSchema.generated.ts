@@ -455,10 +455,16 @@ export type UnitTurretMountZResolver = {
   bodyTopZFrac: number;
 };
 
-export type UnitTurretHostAttachment = {
+export type StandingArmTurretHostAttachment = {
   kind: 'standingArm';
   arm: 'leftArm' | 'rightArm';
 };
+
+export type StandingHeadTurretHostAttachment = {
+  kind: 'standingHead';
+};
+
+export type UnitTurretHostAttachment = StandingArmTurretHostAttachment | StandingHeadTurretHostAttachment;
 
 export type TurretMount = {
   mountId: string;
@@ -564,6 +570,8 @@ export type StandingLegs = {
   strideLengthRatio: number;
   strideLiftRatio: number;
   standHeightRatio: number;
+  stanceForwardUnitRadiusRatio: number;
+  stanceOutwardUnitRadiusRatio: number;
 };
 
 export type StandingConfig = {
