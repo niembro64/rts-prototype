@@ -107,6 +107,25 @@ vec3 transformed = vec3(
   -_rotS * position.x + _rotC * position.z
 );
 `;
+/**
+ * Rotor handedness for a duct sitting at `lateralLocalZ` in chassis space
+ * (the blueprint mount's `yUnitRadiusRatio`, which is the unit's left/right
+ * axis). Ducts left of the centreline mirror the authored rotor; ducts on
+ * the right — and any on the centreline itself — keep it, so a rear
+ * propulsion fan is unaffected.
+ *
+ * The returned sign is applied to blade pitch AND spin direction together,
+ * because a rotor's wash follows the handedness of that pair: a blade
+ * climbs the air its leading edge meets. Mirror the pitch alone and that
+ * side pumps upward while its twin pumps down; mirror the spin alone and
+ * it does the same. Flipping both is what makes a counter-rotating pair
+ * look opposite and still blow downward, which is also why one sign, not
+ * two knobs, is the whole contract here.
+ */
+export function fanRotorHandedness(lateralLocalZ: number): number {
+  return lateralLocalZ < 0 ? -1 : 1;
+}
+
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
@@ -471,7 +490,11 @@ function buildFan(
   const bladeLength = Math.max(0.2, bladeTipRadius - bladeRootRadius);
   const bladeChord = Math.max(0.55, bladeLength * 0.42);
   const bladeThickness = Math.max(0.14, ringTubeRadius * 0.32);
-  const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG);
+  // One sign drives both halves of this duct's handedness. The geometry and
+  // material caches are keyed by pitch and by spin, so a mirrored duct is
+  // simply another cache entry rather than a second code path.
+  const handedness = fanRotorHandedness(localZ);
+  const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG) * handedness;
   const rotor = new THREE.Mesh(
     getBladeRotorGeom(
       bladeLength,
@@ -481,7 +504,7 @@ function buildFan(
       bladePitchRad,
       geometryTier,
     ),
-    getRotorBladeMat(FAN_BLADE_COLOR, ownerId, fanSpinRadPerSec),
+    getRotorBladeMat(FAN_BLADE_COLOR, ownerId, fanSpinRadPerSec * handedness),
   );
   fanGroup.add(rotor);
 

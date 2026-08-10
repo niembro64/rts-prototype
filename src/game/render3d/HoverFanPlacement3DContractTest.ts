@@ -1,6 +1,6 @@
 import { getBodyTopY } from '../math/BodyDimensions';
 import { getAllUnitBlueprints } from '../sim/blueprints/units';
-import { getHoverFanVisualRootY } from './HoverRig3D';
+import { fanRotorHandedness, getHoverFanVisualRootY } from './HoverRig3D';
 
 const EXPECTED_LOGICAL_MOUNT_Z: Readonly<Record<string, number>> = Object.freeze({
   unitBee: -0.04444,
@@ -51,5 +51,40 @@ export function runHoverFanPlacement3DContractTest(): void {
         `${blueprint.unitBlueprintId} visual fan ring must clear the top of its chassis`,
       );
     }
+
+    checkCounterRotation(blueprint.unitBlueprintId, locomotion.config.mounts);
+  }
+}
+
+/** Counter-rotating ducts. The handedness sign multiplies blade pitch and
+ *  spin rate together, so the two properties worth pinning are that mirrored
+ *  ducts come out opposite-handed, and that the direction each one blows —
+ *  the sign of pitch x spin — survives the mirroring. Base magnitudes are
+ *  arbitrary positives: this is a sign contract, not a tuning one. */
+function checkCounterRotation(
+  unitBlueprintId: string,
+  mounts: readonly { offset: { yUnitRadiusRatio: number } }[],
+): void {
+  const BASE_PITCH = 1;
+  const BASE_SPIN = -1;
+  assertContract(
+    fanRotorHandedness(0) === 1,
+    'a duct on the centreline must keep the authored rotor handedness',
+  );
+
+  for (const mount of mounts) {
+    const lateral = mount.offset.yUnitRadiusRatio;
+    const handedness = fanRotorHandedness(lateral);
+    const mirrored = fanRotorHandedness(-lateral);
+    assertContract(
+      lateral === 0 || handedness === -mirrored,
+      `${unitBlueprintId} ducts at +/-${lateral} must counter-rotate`,
+    );
+    assertContract(
+      Math.sign(BASE_PITCH * handedness * BASE_SPIN * handedness)
+        === Math.sign(BASE_PITCH * mirrored * BASE_SPIN * mirrored),
+      `${unitBlueprintId} mirrored ducts must still blow the same way — `
+        + 'pitch and spin have to flip together',
+    );
   }
 }
