@@ -61,7 +61,7 @@ const constructionEmitterMaterial = new THREE.MeshBasicMaterial({
   color: COLORS.units.unitCommander.lens.colorHex,
 });
 
-type StandingVariant = 'commander' | 'human' | 'generic';
+type StandingVariant = 'commander' | 'human' | 'titan' | 'generic';
 type StandingArmRole = 'weapon' | 'construction' | 'free';
 type StandingArmHostAttachment = Extract<
   UnitTurretHostAttachment,
@@ -426,13 +426,16 @@ function makeFoot(
 function standingVariant(unitBlueprintId: string | undefined): StandingVariant {
   if (unitBlueprintId === 'unitCommander') return 'commander';
   if (unitBlueprintId === 'unitHuman') return 'human';
+  if (unitBlueprintId === 'unitRex') return 'titan';
   return 'generic';
 }
 
 function armRole(variant: StandingVariant, side: number): StandingArmRole {
   // The Human carries its weapon on the right. The Commander deliberately
   // separates equipment: construction on the right, beam weapon on the left.
+  // A titan carries a gun in each hand, so neither arm is ever free.
   if (variant === 'commander') return side < 0 ? 'construction' : 'weapon';
+  if (variant === 'titan') return 'weapon';
   if (side < 0) return 'weapon';
   return 'free';
 }

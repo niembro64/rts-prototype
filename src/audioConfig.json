@@ -193,6 +193,11 @@
         "volume": 1,
         "playSpeed": 0.3
       },
+      "unitRex": {
+        "synth": "explosion",
+        "volume": 1,
+        "playSpeed": 0.11
+      },
       "unitMammoth": {
         "synth": "explosion",
         "volume": 1,

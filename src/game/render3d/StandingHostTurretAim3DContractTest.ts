@@ -789,15 +789,15 @@ function assertCommanderEquipmentSides(mesh: StandingMesh): void {
 function assertCommanderScale(mesh: StandingMesh): void {
   const blueprint = getUnitBlueprint('unitCommander');
   assertContract(
-    blueprint.radius.other === 32 &&
-      blueprint.radius.hitbox === 32 &&
-      blueprint.radius.collision === 32 &&
-      blueprint.supportPointOffsetZ === 48,
-    'Commander body, physical envelope, and support height share the authored 1.6x scale',
+    blueprint.radius.other === 41.6 &&
+      blueprint.radius.hitbox === 41.6 &&
+      blueprint.radius.collision === 41.6 &&
+      blueprint.supportPointOffsetZ === 62.4,
+    'Commander body, physical envelope, and support height share the authored 2.08x scale',
   );
-  assertNear(mesh.unitRadius, 32, 'Commander standing rig consumes its 1.6x body radius');
-  assertNear(mesh.legs[0].thigh.width, 13.44, 'Commander leg thickness scales by 1.6x');
-  assertNear(mesh.arms[0].upper.width, 14.08, 'Commander arm thickness scales by 1.6x');
+  assertNear(mesh.unitRadius, 41.6, 'Commander standing rig consumes its 2.08x body radius');
+  assertNear(mesh.legs[0].thigh.width, 17.472, 'Commander leg thickness scales by 2.08x');
+  assertNear(mesh.arms[0].upper.width, 18.304, 'Commander arm thickness scales by 2.08x');
 }
 
 /** A gun held in a standing host's hand is rigid to that hand: its rendered

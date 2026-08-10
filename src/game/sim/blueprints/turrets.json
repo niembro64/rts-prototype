@@ -595,6 +595,92 @@
       "requiredIntel": "fullSight"
     }
   },
+  "turretGatlingHeavy": {
+    "turretBlueprintId": "turretGatlingHeavy",
+    "name": "Heavy Gatling",
+    "cooldown": {
+      "duration": 260,
+      "durationRandomness": 0.1
+    },
+    "launchForce": 6200,
+    "addTurretVelocityToEmissionLaunch": true,
+    "turretTurnAccel": 500,
+    "turretDrag": 1,
+    "emissionLaneCount": 5,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "eventsSmooth": true,
+    "color": 16777215,
+    "spread": {
+      "angle": 0.19634954084936207,
+      "pelletCount": 1
+    },
+    "burst": {
+      "count": 1,
+      "delay": 80
+    },
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretGatling"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": true,
+    "aimStyle": {
+      "angleType": "ballisticArcLow"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotPlasmaHeavy",
+    "targeting": {
+      "engagement": {
+        "range": 460,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
+    }
+  },
   "turretDisruptor": {
     "turretBlueprintId": "turretDisruptor",
     "name": "Disruptor",
@@ -4003,6 +4089,79 @@
           },
           "detectorRadius": 600,
           "radarJamRadius": 900,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "contactSight"
+    },
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "turretTurnAccel": 1,
+    "turretDrag": 1,
+    "emissionLaneCount": 1,
+    "passive": true,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": false,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "sensor",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretSensorUnitRex": {
+    "turretBlueprintId": "turretSensorUnitRex",
+    "name": "Rex Sensors",
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 2000,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "detectorRadius": 700,
+          "radarJamRadius": 0,
           "sonarJamRadius": 0
         }
       },

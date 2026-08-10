@@ -60,7 +60,8 @@
         "unitQueenTick",
         "unitTransport",
         "unitCommander",
-        "unitConstructionSubmarine"
+        "unitConstructionSubmarine",
+        "unitRex"
       ],
       "turrets": [
         "turretGunLight",
@@ -202,6 +203,14 @@
       }
     },
     "unitHuman": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitRex": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -430,6 +439,14 @@
       }
     },
     "turretGatling": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "units": "all"
+        }
+      }
+    },
+    "turretGatlingHeavy": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -705,6 +722,9 @@
       "targets": "none"
     },
     "turretSensorUnitCommander": {
+      "targets": "none"
+    },
+    "turretSensorUnitRex": {
       "targets": "none"
     },
     "turretSensorBuildingSolar": {

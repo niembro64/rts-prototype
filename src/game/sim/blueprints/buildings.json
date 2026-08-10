@@ -569,7 +569,8 @@
       "unitQueenTick",
       "unitTransport",
       "unitConstructionDrone",
-      "unitConstructionSubmarine"
+      "unitConstructionSubmarine",
+      "unitRex"
     ],
     "renderProfile": "towerFabricator",
     "visualHeight": 30,

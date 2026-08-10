@@ -238,6 +238,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitQueenTick: { close: 1250, mid: 780, far: 340 },
   unitTransport: { close: 2150, mid: 1050, far: 410 },
   unitCommander: { close: 4200, mid: 1900, far: 700 },
+  unitRex: { close: 1700, mid: 900, far: 520 },
 };
 
 const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
@@ -1827,7 +1828,7 @@ export function runConstructionHostMarkingContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 26, 'visual roster covers all 26 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 12, 'visual roster covers all 12 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {

@@ -108,7 +108,9 @@ function assertLogicalTurretPresentationOwnership(): void {
   const commanderBeam = commander.turrets.find((mount) => mount.mountId === 'beam')?.presentation;
   const commanderDgun = commander.turrets.find((mount) => mount.mountId === 'disruptor')?.presentation;
   assertContract(
-    commanderBeam?.headRadius === 6 &&
+    // Head radius is absolute world units, so it tracks the host's authored
+    // scale; barrelLength is a fraction of it and therefore does not.
+    commanderBeam?.headRadius === 7.8 &&
       commanderBeam.barrel?.type === 'singleConeBarrel' &&
       commanderBeam.barrel.barrelLength === 1.2,
     'Commander keeps the pre-migration beam physical representation on its host mount',

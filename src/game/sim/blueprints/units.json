@@ -1134,6 +1134,379 @@
     },
     "supportPointOffsetZ": 26.0
   },
+  "unitRex": {
+    "unitBlueprintId": "unitRex",
+    "name": "Rex",
+    "shortName": "REX",
+    "hp": 26000,
+    "radius": {
+      "other": 110.0,
+      "hitbox": 96,
+      "collision": 128
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 46000,
+    "cost": {
+      "energy": 32000,
+      "metal": 32000
+    },
+    "constructionRate": null,
+    "allowedBuildBlueprintIds": null,
+    "workEmitter": null,
+    "turrets": [
+      {
+        "turretBlueprintId": "turretBeamMega",
+        "presentation": {
+          "headRadius": 26,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleConeBarrel",
+            "barrelLength": 1.35
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": 0.16,
+          "y": 0,
+          "z": 2.86
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "beamMega",
+        "controlMode": "hostPreferred",
+        "hostAttachment": {
+          "kind": "standingHead"
+        }
+      },
+      {
+        "turretBlueprintId": "turretGatlingHeavy",
+        "presentation": {
+          "headRadius": 20,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelLength": 1.5
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": 0.42,
+          "y": -0.86,
+          "z": 1.42
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "gatlingRight",
+        "controlMode": "hostPreferred",
+        "hostAttachment": {
+          "kind": "standingArm",
+          "arm": "rightArm"
+        }
+      },
+      {
+        "turretBlueprintId": "turretGatlingHeavy",
+        "presentation": {
+          "headRadius": 20,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelLength": 1.5
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": 0.42,
+          "y": 0.86,
+          "z": 1.42
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "gatlingLeft",
+        "controlMode": "hostPreferred",
+        "hostAttachment": {
+          "kind": "standingArm",
+          "arm": "leftArm"
+        }
+      },
+      {
+        "turretBlueprintId": "turretRocketFast",
+        "presentation": {
+          "headRadius": 13,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelLength": 1.1
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": 0.34,
+          "y": 0,
+          "z": 2.3
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "missileFast",
+        "controlMode": "autonomous",
+        "hostAttachment": {
+          "kind": "standingHead"
+        }
+      },
+      {
+        "turretBlueprintId": "turretRocketSlow",
+        "presentation": {
+          "headRadius": 14,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelLength": 1.0
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": -0.1,
+          "y": -0.6,
+          "z": 2.74
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "siloRight",
+        "controlMode": "autonomous",
+        "hostAttachment": {
+          "kind": "standingHead"
+        }
+      },
+      {
+        "turretBlueprintId": "turretRocketSlow",
+        "presentation": {
+          "headRadius": 14,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelLength": 1.0
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": -0.1,
+          "y": 0.6,
+          "z": 2.74
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "siloLeft",
+        "controlMode": "autonomous",
+        "hostAttachment": {
+          "kind": "standingHead"
+        }
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "box",
+          "offsetForward": 0.03,
+          "lengthFrac": 0.78,
+          "widthFrac": 0.86,
+          "heightFrac": 0.72,
+          "centerYFrac": 2.1
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.42,
+          "lengthFrac": 0.2,
+          "widthFrac": 0.7,
+          "heightFrac": 0.5,
+          "centerYFrac": 2.16,
+          "pitchRad": -0.16
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.04,
+          "lengthFrac": 0.66,
+          "widthFrac": 1.42,
+          "heightFrac": 0.36,
+          "centerYFrac": 2.42
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.1,
+          "lengthFrac": 0.34,
+          "widthFrac": 1.86,
+          "heightFrac": 0.42,
+          "centerYFrac": 2.62
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.1,
+          "lengthFrac": 0.46,
+          "widthFrac": 0.46,
+          "heightFrac": 0.38,
+          "centerYFrac": 2.86
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.3,
+          "lengthFrac": 0.16,
+          "widthFrac": 0.3,
+          "heightFrac": 0.22,
+          "centerYFrac": 2.9
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.46,
+          "lengthFrac": 0.34,
+          "widthFrac": 0.94,
+          "heightFrac": 0.78,
+          "centerYFrac": 2.24
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.62,
+          "offsetLateral": -0.32,
+          "lengthFrac": 0.12,
+          "widthFrac": 0.14,
+          "heightFrac": 0.52,
+          "centerYFrac": 2.26
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.62,
+          "offsetLateral": 0.32,
+          "lengthFrac": 0.12,
+          "widthFrac": 0.14,
+          "heightFrac": 0.52,
+          "centerYFrac": 2.26
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.52,
+          "lengthFrac": 0.38,
+          "widthFrac": 0.9,
+          "heightFrac": 0.12,
+          "centerYFrac": 2.62
+        }
+      ]
+    },
+    "teamOrnament": {
+      "backX": 0.34,
+      "frontX": 0.3,
+      "backY": 0.16,
+      "frontY": 0.16
+    },
+    "hud": {
+      "barsOffsetAboveTop": 40
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitRex"
+    },
+    "unitLocomotion": {
+      "type": "standing",
+      "physicsPresetId": "standing",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 260
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 260,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "legs": {
+          "hip": {
+            "xUnitRadiusRatio": 0.05,
+            "yUnitRadiusRatio": 0.34,
+            "zUnitRadiusRatio": 1.66668
+          },
+          "radius": 46.2,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.86
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.86
+            }
+          },
+          "footLengthRatio": 0.46,
+          "footWidthRatio": 1.25,
+          "strideLengthRatio": 0.5,
+          "strideLiftRatio": 0.0275,
+          "standHeightRatio": 0.969,
+          "stanceForwardUnitRadiusRatio": 0.14,
+          "stanceOutwardUnitRadiusRatio": 0.18
+        },
+        "arms": {
+          "shoulder": {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 0.59,
+            "zUnitRadiusRatio": 2.36
+          },
+          "radius": 48.4,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.58
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.95
+            }
+          },
+          "handRadiusRatio": 0.82,
+          "restSwingDeg": 8,
+          "walkSwingDeg": 14,
+          "outwardDeg": 10
+        }
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 32000,
+        "metal": 32000
+      },
+      "mass": 46000,
+      "health": 26000,
+      "deathExplosion": {
+        "radius": 190,
+        "force": 1400000,
+        "damage": 9000
+      },
+      "radius": {
+        "other": 110.0,
+        "hitbox": 96,
+        "collision": 128
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "supportPointOffsetZ": 165.0
+  },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
@@ -4321,9 +4694,9 @@
     "shortName": "CMD",
     "hp": 1200,
     "radius": {
-      "other": 32,
-      "hitbox": 32,
-      "collision": 32
+      "other": 41.6,
+      "hitbox": 41.6,
+      "collision": 41.6
     },
     "supportSurface": {
       "kind": "none"
@@ -4354,13 +4727,13 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 1.5
+      "particleRadius": 1.95
     },
     "turrets": [
       {
         "turretBlueprintId": "turretBeam",
         "presentation": {
-          "headRadius": 6,
+          "headRadius": 7.8,
           "headOnly": false,
           "barrel": {
             "type": "singleConeBarrel",
@@ -4497,7 +4870,7 @@
       "frontY": 0.14
     },
     "hud": {
-      "barsOffsetAboveTop": 14
+      "barsOffsetAboveTop": 18.2
     },
     "suspension": null,
     "builder": {
@@ -4539,7 +4912,7 @@
             "yUnitRadiusRatio": 0.34,
             "zUnitRadiusRatio": 1.66668
           },
-          "radius": 13.44,
+          "radius": 17.472,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.86
@@ -4562,7 +4935,7 @@
             "yUnitRadiusRatio": 0.59,
             "zUnitRadiusRatio": 2.36
           },
-          "radius": 14.08,
+          "radius": 18.304,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.58
@@ -4594,16 +4967,16 @@
         "damage": 700
       },
       "radius": {
-        "other": 32,
-        "hitbox": 32,
-        "collision": 32
+        "other": 41.6,
+        "hitbox": 41.6,
+        "collision": 41.6
       },
       "signature": {
         "radarStealth": false,
         "sonarStealth": false
       }
     },
-    "supportPointOffsetZ": 48.0
+    "supportPointOffsetZ": 62.4
   },
   "unitConstructionSubmarine": {
     "unitBlueprintId": "unitConstructionSubmarine",
