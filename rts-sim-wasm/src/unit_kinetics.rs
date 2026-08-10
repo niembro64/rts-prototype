@@ -335,9 +335,14 @@ pub(crate) fn unit_force_entity_slot_for_body(
     Some(entity_slot)
 }
 
-const UNIT_ATTITUDE_INERTIA_FACTOR: f64 = 0.25;
-const UNIT_ATTITUDE_TURN_AUTHORITY_SCALE: f64 = 1.0;
-const UNIT_ATTITUDE_MAX_ANGULAR_SPEED: f64 = 2.5;
+// Dynamic unit bodies are modeled as solid spheres. Their attitude servo uses
+// that body's actual moment of inertia instead of an independently tuned turn
+// rate: I = 2/5 m r^2.
+const UNIT_ATTITUDE_INERTIA_FACTOR: f64 = 2.0 / 5.0;
+// Closed-loop response time relative to the fastest critically damped response
+// the available steering torque could support. Doubling time halves every
+// angular rate while preserving force/mass/radius ordering and no speed cap.
+const UNIT_ATTITUDE_RESPONSE_TIME_SCALE: f64 = 2.0;
 const UNIT_ATTITUDE_MIN_RADIUS: f64 = 1.0;
 const UNIT_ATTITUDE_SLEEP_EPSILON_SQ: f64 = 1e-12;
 
@@ -673,21 +678,6 @@ fn unit_force_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 }
 
 #[inline]
-fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
-    if max_mag <= 0.0 || !max_mag.is_finite() {
-        return;
-    }
-    let mag_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-    let max_sq = max_mag * max_mag;
-    if mag_sq > max_sq && mag_sq.is_finite() {
-        let scale = max_mag / mag_sq.sqrt();
-        v[0] *= scale;
-        v[1] *= scale;
-        v[2] *= scale;
-    }
-}
-
-#[inline]
 fn unit_force_air_water_surface_inverse_distance_response(
     pos_z: f64,
     ground_z: f64,
@@ -705,6 +695,48 @@ fn unit_force_air_water_surface_inverse_distance_response(
         pos_z - TERRAIN_WATER_LEVEL,
         minimum_distance_world,
     )
+}
+
+/// Steering is allowed to redirect only force the active locomotion media can
+/// actually supply. One body-weight is the conservative upper bound for that
+/// lateral control force; this bounds angular acceleration without imposing a
+/// shared angular-speed ceiling. Large bodies remain slow because the same
+/// edge force must rotate a moment of inertia proportional to m*r^2.
+#[inline]
+fn unit_force_attitude_control_force(body_mass: f64, available_force: f64) -> f64 {
+    if !body_mass.is_finite() || body_mass <= 0.0 || !available_force.is_finite() {
+        return 0.0;
+    }
+    let body_weight_force = body_mass * GRAVITY / 1_000_000.0;
+    available_force.max(0.0).min(body_weight_force)
+}
+
+#[inline]
+fn unit_force_attitude_max_angular_acceleration(
+    body_mass: f64,
+    radius: f64,
+    control_force: f64,
+) -> f64 {
+    if !body_mass.is_finite() || body_mass <= 0.0 || !control_force.is_finite() {
+        return 0.0;
+    }
+    let r = radius.max(UNIT_ATTITUDE_MIN_RADIUS);
+    let inertia = body_mass * r * r * UNIT_ATTITUDE_INERTIA_FACTOR;
+    let torque = control_force.max(0.0) * r;
+    let alpha = torque * 1_000_000.0 / inertia;
+    if alpha.is_finite() {
+        alpha
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+fn unit_force_attitude_spring_gain(max_alpha: f64) -> f64 {
+    max_alpha.max(0.0)
+        / (core::f64::consts::PI
+            * UNIT_ATTITUDE_RESPONSE_TIME_SCALE
+            * UNIT_ATTITUDE_RESPONSE_TIME_SCALE)
 }
 
 #[inline]
@@ -763,7 +795,7 @@ fn unit_force_attitude_step(
     base: usize,
     body_mass: f64,
     radius: f64,
-    coupled_force_mag: f64,
+    control_force_mag: f64,
     target_up: [f64; 3],
     medium_angular_damping: f64,
     dt_sec: f64,
@@ -796,13 +828,8 @@ fn unit_force_attitude_step(
     let target = unit_force_quat_from_forward_up([forward_x, forward_y, 0.0], target_up);
     let axis_angle = quat_shortest_axis_angle(orientation, target);
 
-    let r = radius.max(UNIT_ATTITUDE_MIN_RADIUS);
-    let inertia = body_mass * r * r * UNIT_ATTITUDE_INERTIA_FACTOR;
-    if inertia <= 1e-9 || !inertia.is_finite() {
-        return false;
-    }
-    let torque = coupled_force_mag.max(0.0) * r;
-    let max_alpha = torque * 1_000_000.0 / inertia * UNIT_ATTITUDE_TURN_AUTHORITY_SCALE;
+    let max_alpha =
+        unit_force_attitude_max_angular_acceleration(body_mass, radius, control_force_mag);
     if max_alpha <= 1e-9 || !max_alpha.is_finite() {
         let damp = if medium_angular_damping.is_finite() {
             (-medium_angular_damping.max(0.0) * dt_sec).exp()
@@ -812,7 +839,6 @@ fn unit_force_attitude_step(
         omega[0] *= damp;
         omega[1] *= damp;
         omega[2] *= damp;
-        unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
         quat_integrate_inplace(&mut orientation, omega, dt_sec);
         rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
         rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
@@ -834,13 +860,12 @@ fn unit_force_attitude_step(
     // instead. `axis_angle` is target minus current orientation, while the
     // solver stores current minus target, hence the negation below.
     //
-    // Medium angular damping is passive. An active attitude servo supplies
-    // whatever additional derivative torque is needed to reach critical
-    // damping; if passive damping alone is stronger, the physically possible
-    // result is overdamped, never underdamped.
-    let k = max_alpha / core::f64::consts::PI;
-    let critical_damping = 2.0 * k.sqrt();
-    let damping = critical_damping.max(medium_angular_damping.max(0.0));
+    // The active servo owns a critically damped closed-loop response. Medium
+    // damping governs unpowered spin in the branch above; while steering, the
+    // controller compensates that predictable resistance so air/water drag
+    // cannot turn a conservative force budget into a minute-long yaw.
+    let k = unit_force_attitude_spring_gain(max_alpha);
+    let damping = 2.0 * k.sqrt();
     let (relative_x, next_omega_x, _) = compute_damped_rotation(
         -axis_angle[0],
         omega[0],
@@ -877,20 +902,9 @@ fn unit_force_attitude_step(
     let next_axis_angle = [-relative_x, -relative_y, -relative_z];
     let previous_omega = omega;
     omega = [next_omega_x, next_omega_y, next_omega_z];
-    unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
-    let rate_limited = (omega[0] - next_omega_x).abs() > 1e-12
-        || (omega[1] - next_omega_y).abs() > 1e-12
-        || (omega[2] - next_omega_z).abs() > 1e-12;
-    if rate_limited {
-        // The exact state transition assumes an unconstrained velocity. Once
-        // the physical angular-speed limit engages, advance with that bounded
-        // velocity and derive a fresh error next tick.
-        quat_integrate_inplace(&mut orientation, omega, dt_sec);
-    } else {
-        let error = unit_force_quat_from_axis_angle(next_axis_angle);
-        orientation = quat_mul(unit_force_quat_conjugate(error), target);
-        quat_normalize_inplace(&mut orientation);
-    }
+    let error = unit_force_quat_from_axis_angle(next_axis_angle);
+    orientation = quat_mul(unit_force_quat_conjugate(error), target);
+    quat_normalize_inplace(&mut orientation);
     let alpha = [
         (omega[0] - previous_omega[0]) / dt_sec,
         (omega[1] - previous_omega[1]) / dt_sec,
@@ -1368,6 +1382,7 @@ pub fn unit_force_step_batch(
             0.0
         };
 
+        let mut attitude_ground_control_force = 0.0;
         if ground_contact {
             // Contact drive is constrained by Coulomb grip and the effective
             // normal load. Any already-applied upward medium support unloads
@@ -1386,6 +1401,7 @@ pub fn unit_force_step_batch(
             let contact_force_limit =
                 normal_load * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             let available_ground_force = ground_max_propulsive_force.min(contact_force_limit);
+            attitude_ground_control_force = available_ground_force;
             if let Some(runtime_slot) = runtime_slot {
                 runtime.available_ground_force[runtime_slot] = available_ground_force;
             }
@@ -1451,24 +1467,24 @@ pub fn unit_force_step_batch(
                 water_angular_damping_rate,
                 water_fraction,
             );
-            let attitude_max_propulsive_force = (if attitude_ground_contact {
-                ground_max_propulsive_force
-            } else {
-                0.0
-            }) + unit_force_occupancy_weighted_positive_value(
-                air_max_propulsive_force,
-                air_fraction,
-            ) + unit_force_occupancy_weighted_positive_value(
-                water_max_propulsive_force,
-                water_fraction,
-            );
+            let available_attitude_force = attitude_ground_control_force
+                + unit_force_occupancy_weighted_positive_value(
+                    air_max_propulsive_force,
+                    air_fraction,
+                )
+                + unit_force_occupancy_weighted_positive_value(
+                    water_max_propulsive_force,
+                    water_fraction,
+                );
+            let attitude_control_force =
+                unit_force_attitude_control_force(body_mass, available_attitude_force);
 
             if unit_force_attitude_step(
                 rows,
                 base,
                 body_mass,
                 p.radius[slot],
-                attitude_max_propulsive_force,
+                attitude_control_force,
                 target_up,
                 angular_damping,
                 dt_sec,
@@ -1836,6 +1852,59 @@ mod tests {
     }
 
     #[test]
+    fn attitude_control_uses_available_force_with_a_one_body_weight_ceiling() {
+        let body_mass = 6_500.0;
+        let body_weight = body_mass * GRAVITY / 1_000_000.0;
+        assert_near(
+            unit_force_attitude_control_force(body_mass, body_weight * 0.25),
+            body_weight * 0.25,
+        );
+        assert_near(
+            unit_force_attitude_control_force(body_mass, body_weight * 100.0),
+            body_weight,
+        );
+    }
+
+    #[test]
+    fn attitude_authority_falls_with_mass_and_radius() {
+        let force = 0.05;
+        let base = unit_force_attitude_max_angular_acceleration(1_000.0, 10.0, force);
+        let heavier = unit_force_attitude_max_angular_acceleration(2_000.0, 10.0, force);
+        let larger = unit_force_attitude_max_angular_acceleration(1_000.0, 20.0, force);
+        let heavier_and_larger = unit_force_attitude_max_angular_acceleration(2_000.0, 20.0, force);
+        assert_near(heavier, base * 0.5);
+        assert_near(larger, base * 0.5);
+        assert_near(heavier_and_larger, base * 0.25);
+    }
+
+    #[test]
+    fn attitude_response_time_scale_halves_the_turn_rate() {
+        let max_alpha = 8.0;
+        assert_near(
+            unit_force_attitude_spring_gain(max_alpha),
+            max_alpha / (core::f64::consts::PI * 4.0),
+        );
+    }
+
+    #[test]
+    fn attitude_servo_does_not_impose_an_angular_speed_ceiling() {
+        let mut rows = vec![0.0; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+        rows[UF_ROW_OMEGA_Z] = 4.0;
+        assert!(unit_force_attitude_step(
+            &mut rows,
+            0,
+            1_000.0,
+            10.0,
+            0.0,
+            [0.0, 0.0, 1.0],
+            0.0,
+            0.1,
+        ));
+        assert_near(rows[UF_ROW_OMEGA_Z], 4.0);
+    }
+
+    #[test]
     fn high_authority_attitude_servo_converges_without_heading_overshoot() {
         // Jackal-class force/mass/radius values make sqrt(k) * dt greater
         // than one. The previous semi-implicit update entered a visible
@@ -1851,7 +1920,7 @@ mod tests {
             assert!(unit_force_attitude_step(
                 &mut rows,
                 0,
-                4_500.0,
+                450.0,
                 9.6,
                 26.666_666_666_667,
                 [0.0, 0.0, 1.0],
