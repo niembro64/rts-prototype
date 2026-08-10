@@ -332,16 +332,16 @@ function getBuildingPlacementDiagnosticsAtGrid(
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
   if (includeMetalDiagnostics) {
-    const footprintCellKeys = new Set<string>();
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i];
-      footprintCellKeys.add(cellKey(cell.gx, cell.gy));
-    }
     metalDepositCells = [];
     const depositCells = getMetalDepositGridCells(metalDeposits);
+    const footprintEndX = gridX + footprint.gridWidth;
+    const footprintEndY = gridY + footprint.gridHeight;
     for (let i = 0; i < depositCells.length; i++) {
       const cell = depositCells[i];
-      if (footprintCellKeys.has(cellKey(cell.gx, cell.gy))) continue;
+      if (
+        cell.gx >= gridX && cell.gx < footprintEndX &&
+        cell.gy >= gridY && cell.gy < footprintEndY
+      ) continue;
       metalDepositCells.push({
         gx: cell.gx,
         gy: cell.gy,
@@ -391,18 +391,17 @@ function waterSurfaceCellHasClearance(
   mapHeight: number,
 ): boolean {
   const maxBedZ = WATER_LEVEL - minimumDepth;
-  const samples = [
-    [centerX, centerY],
-    [centerX - halfCell, centerY - halfCell],
-    [centerX + halfCell, centerY - halfCell],
-    [centerX - halfCell, centerY + halfCell],
-    [centerX + halfCell, centerY + halfCell],
-  ] as const;
-  for (let i = 0; i < samples.length; i++) {
-    const [x, y] = samples[i];
-    if (getTerrainBedHeight(x, y, mapWidth, mapHeight) > maxBedZ) return false;
-  }
-  return true;
+  if (getTerrainBedHeight(centerX, centerY, mapWidth, mapHeight) > maxBedZ) return false;
+  const minX = centerX - halfCell;
+  const maxX = centerX + halfCell;
+  const minY = centerY - halfCell;
+  const maxY = centerY + halfCell;
+  return (
+    getTerrainBedHeight(minX, minY, mapWidth, mapHeight) <= maxBedZ &&
+    getTerrainBedHeight(maxX, minY, mapWidth, mapHeight) <= maxBedZ &&
+    getTerrainBedHeight(minX, maxY, mapWidth, mapHeight) <= maxBedZ &&
+    getTerrainBedHeight(maxX, maxY, mapWidth, mapHeight) <= maxBedZ
+  );
 }
 
 export function getBuildingPlacementDiagnosticsForGrid(

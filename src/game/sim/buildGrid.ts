@@ -144,19 +144,20 @@ export class BuildingGrid {
 
   // Check if we can place a building at the given grid position
   canPlace(gx: number, gy: number, gridWidth: number, gridHeight: number): boolean {
-    // Check all cells the building would occupy
-    for (let dx = 0; dx < gridWidth; dx++) {
-      for (let dy = 0; dy < gridHeight; dy++) {
-        const checkX = gx + dx;
-        const checkY = gy + dy;
-
-        // Check bounds
-        if (!this.isInBounds(checkX, checkY)) {
-          return false;
-        }
-
-        // Check if occupied
-        const cell = this.getCell(checkX, checkY);
+    // Preserve the historical empty-footprint result: the nested loops did
+    // no work and accepted it regardless of origin.
+    if (gridWidth <= 0 || gridHeight <= 0) return true;
+    // Bounds are invariant across the footprint. Hoist them out of the hot
+    // nested loop, then address the numeric map key directly row by row.
+    if (
+      gx < 0 || gy < 0 ||
+      gx + gridWidth > this.gridWidth ||
+      gy + gridHeight > this.gridHeight
+    ) return false;
+    for (let dy = 0; dy < gridHeight; dy++) {
+      const rowKey = (gy + dy) * this.gridWidth + gx;
+      for (let dx = 0; dx < gridWidth; dx++) {
+        const cell = this.cells.get(rowKey + dx);
         if (cell !== undefined && cell.occupied) {
           return false;
         }
@@ -225,16 +226,16 @@ export class BuildingGrid {
 
   // Remove by entity ID (find and remove all cells for this entity)
   removeByEntityId(entityId: EntityId): void {
-    const keysToRemove: number[] = [];
+    let removed = false;
     for (const [key, cell] of this.cells) {
       if (cell.entityId === entityId) {
-        keysToRemove.push(key);
+        // Deleting the current Map entry while iterating is defined and does
+        // not disturb the order of entries that remain.
+        this.cells.delete(key);
+        removed = true;
       }
     }
-    for (const key of keysToRemove) {
-      this.cells.delete(key);
-    }
-    if (keysToRemove.length > 0) this._version++;
+    if (removed) this._version++;
   }
 
   // Get all valid placement positions for a building within commander's range

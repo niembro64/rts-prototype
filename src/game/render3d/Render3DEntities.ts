@@ -620,6 +620,22 @@ export class Render3DEntities {
     build: EntityBuildVisual | null = null,
     groupFade: number = bodyFade,
   ): void {
+    // The overwhelmingly common steady state is a finished, fully visible
+    // unit whose instanced, locomotion, group, trim, and turret channels were
+    // already restored on an earlier frame. Avoid walking every owned slot
+    // and turret just to rediscover that all fade values are still one.
+    if (
+      bodyFade >= 1 &&
+      turretFades === null &&
+      build === null &&
+      groupFade >= 1 &&
+      m.entityLifecycleFade === 1 &&
+      m.unitFadeActive !== true &&
+      m.unitGroupFadeActive !== true &&
+      m.unitTurretGroupFadeActive === undefined
+    ) {
+      return;
+    }
     m.entityLifecycleFade = bodyFade;
     applyUnitEntityFade3D(
       m,

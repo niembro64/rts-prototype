@@ -212,6 +212,15 @@ let _combatTargetingTargetCount = 0;
 const _stampViewMaskByPlayer = new Uint32Array(32);
 let _stampViewMaskComputedBits = 0;
 let _stampSlotUsed = new Uint8Array(0);
+// Hull yaw changes much less often than the targeting slab is restamped.
+// Keep the deterministic sin/cos beside the stable entity slot so an
+// unchanged host does not pay two scalar JS -> WASM calls every simulation
+// tick. Entity id + Object.is(rotation) make slot reuse and signed zero exact.
+let _stampRotationEntityIds = new Int32Array(0);
+let _stampRotations = new Float64Array(0);
+let _stampRotationCos = new Float64Array(0);
+let _stampRotationSin = new Float64Array(0);
+const _stampRotationOut = { cos: 0, sin: 0 };
 const _mountReadContext: CombatTargetingEntityReadContext = {
   views: null as never,
   slot: -1,
@@ -257,12 +266,48 @@ function ensureCombatTargetingSlotUseCapacity(slot: number): void {
   const slots = new Uint8Array(next);
   slots.set(_stampSlotUsed);
   _stampSlotUsed = slots;
+
+  const entityIds = new Int32Array(next);
+  entityIds.fill(-1);
+  entityIds.set(_stampRotationEntityIds);
+  _stampRotationEntityIds = entityIds;
+  const rotations = new Float64Array(next);
+  rotations.set(_stampRotations);
+  _stampRotations = rotations;
+  const rotationCos = new Float64Array(next);
+  rotationCos.set(_stampRotationCos);
+  _stampRotationCos = rotationCos;
+  const rotationSin = new Float64Array(next);
+  rotationSin.set(_stampRotationSin);
+  _stampRotationSin = rotationSin;
 }
 
 function reserveCombatTargetingSlot(slot: number): void {
   if (slot < 0) return;
   ensureCombatTargetingSlotUseCapacity(slot);
   _stampSlotUsed[slot] = 1;
+}
+
+function getStampedRotationCosSin(entity: Entity, slot: number): { cos: number; sin: number } {
+  const rotation = entity.transform.rotation;
+  ensureCombatTargetingSlotUseCapacity(slot);
+  if (
+    _stampRotationEntityIds[slot] !== entity.id ||
+    !Object.is(_stampRotations[slot], rotation)
+  ) {
+    _stampRotationEntityIds[slot] = entity.id;
+    _stampRotations[slot] = rotation;
+    _stampRotationCos[slot] = DMath.cos(rotation);
+    _stampRotationSin[slot] = DMath.sin(rotation);
+  }
+  const cos = _stampRotationCos[slot];
+  const sin = _stampRotationSin[slot];
+  // Preserve the transform-level cache used by mount and sensor helpers.
+  entity.transform.rotCos = cos;
+  entity.transform.rotSin = sin;
+  _stampRotationOut.cos = cos;
+  _stampRotationOut.sin = sin;
+  return _stampRotationOut;
 }
 
 function ensureCombatTargetingTargetCapacity(count: number): void {
@@ -794,10 +839,9 @@ function stampCombatTargetingEntityInto(
     velZ = projectile.velocityZ;
   }
   const groundZ = getUnitGroundZ(entity);
-  const rotCos = DMath.cos(entity.transform.rotation);
-  const rotSin = DMath.sin(entity.transform.rotation);
-  entity.transform.rotCos = rotCos;
-  entity.transform.rotSin = rotSin;
+  const rotationCS = getStampedRotationCosSin(entity, slot);
+  const rotCos = rotationCS.cos;
+  const rotSin = rotationCS.sin;
   const surfaceN = unit ? unit.surfaceNormal : undefined;
   const surfaceNx = surfaceN ? surfaceN.nx : 0;
   const surfaceNy = surfaceN ? surfaceN.ny : 0;
@@ -1092,7 +1136,7 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   // Drop every slot's ALIVE flag and turret count so dead entities and
   // shrunk turret arrays naturally disappear; kernels gate on those
   // two and treat unmarked slots as empty.
-  targeting.clear();
+  targeting.beginStamp();
   if (wind !== null) {
     targeting.setWind(wind.x, wind.y, wind.z);
   } else {
@@ -1221,10 +1265,12 @@ export function stampShieldSurfacePool(world: WorldState): void {
     const shieldPanelRot = shieldPanelTurret.rotation;
     const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
-    const unitRotCos = DMath.cos(unit.transform.rotation);
-    const unitRotSin = DMath.sin(unit.transform.rotation);
-    unit.transform.rotCos = unitRotCos;
-    unit.transform.rotSin = unitRotSin;
+    const unitSlot = entitySlotRegistry.getEntitySlot(unit);
+    const unitRotationCS = unitSlot >= 0
+      ? getStampedRotationCosSin(unit, unitSlot)
+      : null;
+    const unitRotCos = unitRotationCS?.cos ?? DMath.cos(unit.transform.rotation);
+    const unitRotSin = unitRotationCS?.sin ?? DMath.sin(unit.transform.rotation);
     _shieldMountOptions.currentTick = currentTick;
     _shieldMountOptions.unitGroundZ = unitGroundZ;
     _shieldMountOptions.surfaceN = unit.unit.surfaceNormal;

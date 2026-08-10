@@ -708,7 +708,7 @@ impl CombatTargetingPool {
         }
     }
 
-    pub(crate) fn clear_all(&mut self) {
+    pub(crate) fn begin_stamp(&mut self) {
         let max_turrets = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
         let active_len = self.active_entity_slots.len();
         for i in 0..active_len {
@@ -748,8 +748,12 @@ impl CombatTargetingPool {
             }
             self.stamp_epoch = 1;
         }
-        self.entity_slot_by_id.clear();
         combat_targeting_clear_observation_index(self);
+    }
+
+    pub(crate) fn clear_all(&mut self) {
+        self.begin_stamp();
+        self.entity_slot_by_id.clear();
     }
 
     pub(crate) fn unset_entity(&mut self, entity_slot: u32) {
@@ -758,7 +762,9 @@ impl CombatTargetingPool {
             return;
         }
         let old_entity_id = self.entity_id[s];
-        if old_entity_id >= 0 {
+        if old_entity_id >= 0
+            && self.entity_slot_by_id.get(&old_entity_id).copied() == Some(entity_slot)
+        {
             self.entity_slot_by_id.remove(&old_entity_id);
         }
         self.entity_flags[s] = 0;
@@ -959,6 +965,14 @@ pub fn combat_targeting_clear() {
     combat_targeting_pool().clear_all();
 }
 
+/// Begins a new per-tick targeting input stamp while retaining the stable
+/// entity-id-to-slot index. Stale entries are excluded by `stamp_epoch`, and
+/// slot reuse repairs the index in `combat_targeting_set_entity`.
+#[wasm_bindgen]
+pub fn combat_targeting_begin_stamp() {
+    combat_targeting_pool().begin_stamp();
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_set_wind(x: f64, y: f64, z: f64) {
     let pool = combat_targeting_pool();
@@ -1073,16 +1087,26 @@ pub fn combat_targeting_set_entity(
         pool.active_entity_slots.push(entity_slot);
     }
     let old_entity_id = pool.entity_id[s];
-    if old_entity_id >= 0 && old_entity_id != entity_id {
-        pool.entity_slot_by_id.remove(&old_entity_id);
+    let same_entity = old_entity_id == entity_id;
+    if !same_entity {
+        if old_entity_id >= 0
+            && pool.entity_slot_by_id.get(&old_entity_id).copied() == Some(entity_slot)
+        {
+            pool.entity_slot_by_id.remove(&old_entity_id);
+        }
+        if entity_id >= 0 {
+            pool.entity_slot_by_id.insert(entity_id, entity_slot);
+        }
+    } else if entity_id >= 0 && pool.entity_slot_by_id.get(&entity_id).copied() != Some(entity_slot)
+    {
+        // Rebuild the entry after a hard clear without paying an insertion on
+        // every stable restamp.
+        pool.entity_slot_by_id.insert(entity_id, entity_slot);
     }
     // Same-entity restamps preserve the slab-owned FSM tuple in the
     // turret rows that follow; slot reuse re-seeds it (see set_turret).
-    pool.entity_stamp_same_entity[s] = (old_entity_id == entity_id) as u8;
+    pool.entity_stamp_same_entity[s] = same_entity as u8;
     pool.entity_id[s] = entity_id;
-    if entity_id >= 0 {
-        pool.entity_slot_by_id.insert(entity_id, entity_slot);
-    }
     pool.entity_owner_player_id[s] = owner_player_id;
     pool.entity_team_id[s] = team_id;
     pool.entity_owner_bit[s] = combat_targeting_player_bit(owner_player_id);
@@ -3112,15 +3136,14 @@ pub(crate) fn combat_targeting_turret_prefer_reacquire_current_target_non_threat
     {
         return false;
     }
-    pool.entity_slot_by_id
-        .get(&pool.turret_target_id[source_turret_idx])
+    combat_targeting_entity_slot_for_id(pool, pool.turret_target_id[source_turret_idx])
         .map(|slot| {
             !combat_targeting_target_slot_locked_onto_source(
                 pool,
                 source_entity_slot,
                 source_entity_id,
                 source_turret_idx,
-                *slot as usize,
+                slot,
             )
         })
         .unwrap_or(false)
@@ -4050,7 +4073,10 @@ pub(crate) fn combat_targeting_entity_slot_for_id(
         return None;
     }
     let slot = *pool.entity_slot_by_id.get(&entity_id)? as usize;
-    if slot >= pool.entity_id.len() || pool.entity_id[slot] != entity_id {
+    if slot >= pool.entity_id.len()
+        || pool.entity_id[slot] != entity_id
+        || pool.entity_stamp_epoch[slot] != pool.stamp_epoch
+    {
         return None;
     }
     Some(slot)
@@ -4643,11 +4669,11 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         // prefer higher-DPS lock-on opportunities. Non-passive turrets
         // leave the score at the 0 cleared above.
         if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
-            if let Some(&target_slot) = pool.entity_slot_by_id.get(&target_id) {
+            if let Some(target_slot) = combat_targeting_entity_slot_for_id(pool, target_id) {
                 seed_shield_panel_scores[turret_idx] =
                     combat_targeting_shield_panel_target_score_for_slot(
                         pool,
-                        target_slot as usize,
+                        target_slot,
                         entity_slot as usize,
                         source_entity_id,
                     );

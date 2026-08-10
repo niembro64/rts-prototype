@@ -340,6 +340,7 @@ import __wbg_init, {
   turret_pool_target_id_ptr,
   combat_targeting_init,
   combat_targeting_clear,
+  combat_targeting_begin_stamp,
   combat_targeting_max_turrets_per_entity,
   combat_targeting_entity_capacity,
   combat_targeting_set_entity,
@@ -2465,6 +2466,8 @@ export const CT_TARGETING_TICK_MODE_SKIP = 255;
 export interface CombatTargetingApi {
   init: (initialEntityCapacity: number) => void;
   clear: () => void;
+  /** Starts a tick stamp while retaining stable entity-id slot mappings. */
+  beginStamp: () => void;
   /** Mirrors `COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY` (= 8). */
   maxTurretsPerEntity: () => number;
   entityCapacity: () => number;
@@ -4377,6 +4380,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         combatTargeting: {
           init: combat_targeting_init,
           clear: combat_targeting_clear,
+          beginStamp: combat_targeting_begin_stamp,
           maxTurretsPerEntity: combat_targeting_max_turrets_per_entity,
           entityCapacity: combat_targeting_entity_capacity,
           setEntity: combat_targeting_set_entity,
