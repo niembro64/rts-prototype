@@ -125,3 +125,7 @@ src/game/sim-wasm/pkg/
 # Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# Python bytecode from scripts/ (generate_backdrops import in tooling)
+__pycache__/
+*.pyc
