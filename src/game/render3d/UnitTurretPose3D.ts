@@ -63,6 +63,8 @@ export class UnitTurretPose3D {
   private readonly aimHeadSlots: number[] = [];
   private readonly aimHeadRadii: number[] = [];
   private readonly aimColorOverrides: (number | undefined)[] = [];
+  private readonly aimLocalYaw: number[] = [];
+  private readonly aimLocalPitch: number[] = [];
   private readonly deferredParentPosition = new THREE.Vector3();
   private readonly deferredParentQuaternion = new THREE.Quaternion();
   private readonly anchorPosition = new THREE.Vector3();
@@ -94,6 +96,8 @@ export class UnitTurretPose3D {
     this.aimHeadSlots.length = 0;
     this.aimHeadRadii.length = 0;
     this.aimColorOverrides.length = 0;
+    this.aimLocalYaw.length = 0;
+    this.aimLocalPitch.length = 0;
     this.barrelCount = 0;
     this.barrelSlots.length = 0;
     this.barrelUsesCone.length = 0;
@@ -285,6 +289,11 @@ export class UnitTurretPose3D {
       // also yaw and pitch would express one aim twice and visibly detach the
       // barrel from the arm holding it. Nothing about the turret's authority
       // changes: mount, aim solver, firing gate, and wire rows are untouched.
+      //
+      // The pose rides the ordinary aim record as a local override rather than
+      // being written here. Skipping the flush skips everything the flush also
+      // does for a turret — barrels, spin, team collar, instanced head — and a
+      // held gun needs all of it exactly as much as a hull mount does.
       const armAim = articulatedMount !== null &&
         hostAttachment?.kind === 'standingArm' &&
         mesh.locomotion?.type === 'standing'
@@ -294,25 +303,6 @@ export class UnitTurretPose3D {
           this.articulatedAim,
         )
         : null;
-      if (armAim !== null) {
-        setEulerYIfChanged(turretMesh.yawGroup.rotation, armAim.yaw);
-        if (turretMesh.pitchGroup) {
-          setEulerZIfChanged(turretMesh.pitchGroup.rotation, armAim.pitch);
-        }
-        this.enqueueHeadMount(
-          entity,
-          turretIdx,
-          headSlot,
-          headColorOverride,
-          parentPosition,
-          parentQuaternion,
-          turretMesh.root,
-          turretMesh.yawGroup,
-          aimHeadRadius,
-        );
-        continue;
-      }
-
       this.enqueueAim(
         entity,
         turretIdx,
@@ -325,6 +315,8 @@ export class UnitTurretPose3D {
         entity.transform.rotation,
         aimRotationFromState,
         aimPitchFromState,
+        armAim?.yaw ?? Number.NaN,
+        armAim?.pitch ?? Number.NaN,
       );
     }
   }
@@ -351,9 +343,22 @@ export class UnitTurretPose3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.aimTurretMeshes[i];
       const outputBase = i * outputStride;
-      setEulerYIfChanged(turretMesh.yawGroup.rotation, output[outputBase]);
+      // A held gun authored its own local pose from the arm carrying it (see
+      // the standing-host branch in poseTurrets). Everything below this —
+      // barrels, spin, team collar, instanced head — must still run for it,
+      // which is exactly why it rides this record rather than short-cutting
+      // past the flush.
+      const localYaw = this.aimLocalYaw[i];
+      const held = Number.isFinite(localYaw);
+      setEulerYIfChanged(
+        turretMesh.yawGroup.rotation,
+        held ? localYaw : output[outputBase],
+      );
       if (turretMesh.pitchGroup) {
-        setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
+        setEulerZIfChanged(
+          turretMesh.pitchGroup.rotation,
+          held ? this.aimLocalPitch[i] : output[outputBase + 1],
+        );
       }
 
       const poseBase = i * 7;
@@ -490,6 +495,11 @@ export class UnitTurretPose3D {
     hostRotation: number,
     aimRotation: number,
     aimPitch: number,
+    /** Local yaw/pitch authored by the caller, overriding the batch result.
+     *  Held guns on standing hosts use it; every other mount leaves it NaN
+     *  and takes the solved turret aim. */
+    localYaw = Number.NaN,
+    localPitch = Number.NaN,
   ): void {
     const index = this.aimCount;
     this.aimCount++;
@@ -520,6 +530,8 @@ export class UnitTurretPose3D {
     this.aimHeadSlots[index] = headSlot ?? -1;
     this.aimHeadRadii[index] = headRadius;
     this.aimColorOverrides[index] = colorOverride;
+    this.aimLocalYaw[index] = localYaw;
+    this.aimLocalPitch[index] = localPitch;
   }
 
   private writeBarrelInstances(
