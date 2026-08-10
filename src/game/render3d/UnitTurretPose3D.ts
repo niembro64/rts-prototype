@@ -25,6 +25,7 @@ import {
 import {
   TURRET_HEAD_INPUT_STRIDE,
   UnitTurretHeadMatrixBatch3D,
+  writeTurretHeadInput,
 } from './UnitTurretHeadMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
@@ -133,7 +134,7 @@ export class UnitTurretPose3D {
       const aimRotationFromState = useState ? stateViews.rotation[stateRow] : turret.rotation;
       const aimPitchFromState = useState ? stateViews.pitch[stateRow] : turret.pitch;
       const headRadius = turretMesh.headRadius
-        ?? (useState ? stateViews.headRadius[stateRow] : getTurretHeadRadius(turret.config));
+        ?? (useState ? stateViews.headRadius[stateRow] : getTurretHeadRadius(turret.presentation));
       const visible = bodyVisible;
       setObjectVisibleIfChanged(turretMesh.root, visible);
       if (!visible) {
@@ -193,6 +194,14 @@ export class UnitTurretPose3D {
           turretMesh.constructionEmitter.group.rotation,
           entity.unit?.unitBlueprintId === 'unitConstructionDrone' ? Math.PI : 0,
         );
+        setObjectVisibleIfChanged(turretMesh.root, true);
+        applyTurretAimPose3D(
+          turretMesh,
+          entity.transform.rotation,
+          aimRotationFromState,
+          0,
+          parentQuaternion,
+        );
         this.enqueueHeadMount(
           entity,
           turretIdx,
@@ -201,15 +210,8 @@ export class UnitTurretPose3D {
           parentPosition,
           parentQuaternion,
           turretMesh.root,
+          turretMesh.yawGroup,
           headRadius,
-        );
-        setObjectVisibleIfChanged(turretMesh.root, true);
-        applyTurretAimPose3D(
-          turretMesh,
-          entity.transform.rotation,
-          aimRotationFromState,
-          0,
-          parentQuaternion,
         );
         if (turretMesh.pitchGroup) setEulerZIfChanged(turretMesh.pitchGroup.rotation, 0);
         if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
@@ -230,9 +232,11 @@ export class UnitTurretPose3D {
         continue;
       }
 
-      let deferAim = false;
-      if (!(useState ? (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0 : turret.config.headOnly)) {
-        deferAim = true;
+      // Yaw belongs to the logical turret even when its host presentation is
+      // head-only or supplies no generic barrel. Always enqueue the aim pose
+      // so the host-owned physical body beneath yawGroup turns with it;
+      // headOnly only suppresses barrel-specific animation.
+      if (!(useState ? (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0 : turret.presentation.headOnly)) {
         if (turretMesh.spinGroup) {
           setEulerXIfChanged(
             turretMesh.spinGroup.rotation,
@@ -261,68 +265,36 @@ export class UnitTurretPose3D {
               )
               : entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
-        if (deferAim) {
-          this.enqueueAim(
-            entity,
-            turretIdx,
-            turretMesh,
-            turretMesh.headSlot,
-            turretMesh.headRadius,
-            headColorOverride,
-            parentPosition,
-            parentQuaternion,
-            entity.transform.rotation,
-            aimRotationFromState,
-            aimPitchFromState,
-          );
-          continue;
-        }
-        this.enqueueHeadMount(
+        this.enqueueAim(
           entity,
           turretIdx,
+          turretMesh,
           turretMesh.headSlot,
+          turretMesh.headRadius,
           headColorOverride,
           parentPosition,
           parentQuaternion,
-          turretMesh.root,
-          turretMesh.headRadius,
+          entity.transform.rotation,
+          aimRotationFromState,
+          aimPitchFromState,
         );
+        continue;
       } else {
-        if (deferAim) {
-          this.enqueueAim(
-            entity,
-            turretIdx,
-            turretMesh,
-            undefined,
-            headRadius,
-            undefined,
-            parentPosition,
-            parentQuaternion,
-            entity.transform.rotation,
-            aimRotationFromState,
-            aimPitchFromState,
-          );
-          continue;
-        }
-        this.enqueueHeadMount(
+        this.enqueueAim(
           entity,
           turretIdx,
+          turretMesh,
           undefined,
+          headRadius,
           undefined,
           parentPosition,
           parentQuaternion,
-          turretMesh.root,
-          headRadius,
+          entity.transform.rotation,
+          aimRotationFromState,
+          aimPitchFromState,
         );
+        continue;
       }
-
-      this.writeBarrelInstances(
-        turretMesh,
-        parentPosition,
-        parentQuaternion,
-        entity,
-        teamTrim,
-      );
     }
   }
 
@@ -348,7 +320,7 @@ export class UnitTurretPose3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.aimTurretMeshes[i];
       const outputBase = i * outputStride;
-      setEulerYIfChanged(turretMesh.root.rotation, output[outputBase]);
+      setEulerYIfChanged(turretMesh.yawGroup.rotation, output[outputBase]);
       if (turretMesh.pitchGroup) {
         setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
       }
@@ -373,6 +345,7 @@ export class UnitTurretPose3D {
         this.deferredParentPosition,
         this.deferredParentQuaternion,
         turretMesh.root,
+        turretMesh.yawGroup,
         this.aimHeadRadii[i],
       );
       this.writeBarrelInstances(
@@ -448,6 +421,7 @@ export class UnitTurretPose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     root: THREE.Group,
+    yawGroup: THREE.Group,
     headRadius: number,
   ): void {
     const index = this.headCount;
@@ -456,11 +430,15 @@ export class UnitTurretPose3D {
 
     const base = index * TURRET_HEAD_INPUT_STRIDE;
     const input = this.headInput;
-    writePositionQuaternion(input, base, parentPosition, parentQuaternion);
-    input[base + 7] = root.position.x;
-    input[base + 8] = root.position.y;
-    input[base + 9] = root.position.z;
-    input[base + 10] = headRadius;
+    writeTurretHeadInput(
+      input,
+      base,
+      parentPosition,
+      parentQuaternion,
+      root.position,
+      headRadius,
+      yawGroup.quaternion,
+    );
 
     this.headSlots[index] = headSlot ?? -1;
     this.headEntities[index] = entity;
@@ -542,6 +520,7 @@ export class UnitTurretPose3D {
         parentPosition,
         parentQuaternion,
         turretMesh.root,
+        turretMesh.yawGroup,
         turretMesh.pitchGroup,
         turretMesh.spinGroup,
         turretMesh.barrels[barrelIdx],
@@ -570,6 +549,8 @@ export class UnitTurretPose3D {
       .set(anchor.centerX, 0, 0)
       .applyQuaternion(pitchQuaternion ?? this.scratchIdentityQuaternion)
       .add(pitchPosition ?? this.scratchZeroPosition)
+      .applyQuaternion(turretMesh.yawGroup.quaternion)
+      .add(turretMesh.yawGroup.position)
       .applyQuaternion(turretMesh.root.quaternion)
       .add(turretMesh.root.position)
       .applyQuaternion(parentQuaternion)
@@ -577,6 +558,7 @@ export class UnitTurretPose3D {
     this.anchorQuaternion
       .copy(parentQuaternion)
       .multiply(turretMesh.root.quaternion)
+      .multiply(turretMesh.yawGroup.quaternion)
       .multiply(pitchQuaternion ?? this.scratchIdentityQuaternion);
     teamTrim.setTurretCollar(
       anchor.slot,
@@ -596,6 +578,7 @@ export class UnitTurretPose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     root: THREE.Group,
+    yawGroup: THREE.Group,
     pitchGroup: THREE.Group | undefined,
     spinGroup: THREE.Group | undefined,
     barrel: THREE.Mesh,
@@ -614,10 +597,13 @@ export class UnitTurretPose3D {
     input[base + 7] = root.position.x;
     input[base + 8] = root.position.y;
     input[base + 9] = root.position.z;
-    input[base + 10] = root.quaternion.x;
-    input[base + 11] = root.quaternion.y;
-    input[base + 12] = root.quaternion.z;
-    input[base + 13] = root.quaternion.w;
+    // root supplies the fixed mount translation; yawGroup supplies the
+    // logical turret body's rotation. root has no authored rotation, so the
+    // batch can represent both scenegraph levels as this single transform.
+    input[base + 10] = yawGroup.quaternion.x;
+    input[base + 11] = yawGroup.quaternion.y;
+    input[base + 12] = yawGroup.quaternion.z;
+    input[base + 13] = yawGroup.quaternion.w;
     input[base + 14] = pitchPos?.x ?? 0;
     input[base + 15] = pitchPos?.y ?? 0;
     input[base + 16] = pitchPos?.z ?? 0;

@@ -225,7 +225,7 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
   next.angularAcceleration = prev.angularAcceleration;
   next.pitchVelocity = prev.pitchVelocity;
   next.pitchAcceleration = prev.pitchAcceleration;
-  next.barrelFireIndex = prev.barrelFireIndex;
+  next.emissionLaneIndex = prev.emissionLaneIndex;
   next.worldPos.x = prev.worldPos.x;
   next.worldPos.y = prev.worldPos.y;
   next.worldPos.z = prev.worldPos.z;

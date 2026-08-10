@@ -4540,7 +4540,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           turretHeadOutputScratchPtr: render_turret_head_output_scratch_ptr,
           turretHeadScratchEnsure: render_turret_head_scratch_ensure,
           turretHeadCompute: render_turret_head_compute,
-          turretHeadInputStride: 11,
+          turretHeadInputStride: 15,
           turretHeadOutputStride: 16,
           turretAimInputScratchPtr: render_turret_aim_input_scratch_ptr,
           turretAimOutputScratchPtr: render_turret_aim_output_scratch_ptr,
@@ -4863,6 +4863,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTransparentRenderOrder3DContractTest();
         const { runParallaxBackdropRenderer3DContractTest } = await import('../render3d/ParallaxBackdropRenderer3DContractTest');
         runParallaxBackdropRenderer3DContractTest();
+        const { runMapPresetLabel3DContractTest } = await import('../render3d/MapPresetLabel3DContractTest');
+        runMapPresetLabel3DContractTest();
         const { runClientRenderSpatialIndexContractTest } = await import('../network/ClientRenderSpatialIndexContractTest');
         runClientRenderSpatialIndexContractTest();
         const { runClientProjectileRenderStateSlabContractTest } = await import('../network/ClientProjectileRenderStateSlabContractTest');
@@ -4883,6 +4885,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretAimPose3DContractTest();
         const { runStandingHostTurretAim3DContractTest } = await import('../render3d/StandingHostTurretAim3DContractTest');
         runStandingHostTurretAim3DContractTest();
+        const { runCommanderGeometry3DContractTest } = await import('../render3d/CommanderGeometry3DContractTest');
+        runCommanderGeometry3DContractTest();
         const { runBuildingTurretPresentation3DContractTest } = await import('../render3d/BuildingTurretPresentation3DContractTest');
         runBuildingTurretPresentation3DContractTest();
         const { runQueenArmamentContractTest } = await import('../sim/blueprints/queenArmamentContractTest');

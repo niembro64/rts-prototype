@@ -6,6 +6,7 @@ import {
   loadStoredShieldsObstructSight,
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
+  loadStoredSlowDownAtFinalWaypoint,
   loadStoredSlopePathMode,
   loadStoredTerrainSurfaceMode,
   loadStoredLiquidSurfaceMode,
@@ -26,6 +27,9 @@ type StoredBattleServerSettingsOptions = {
    *  battle leaves it undefined so the DEMO BATTLE bar toggle still
    *  drives the value via stored 'demo' preferences. */
   fogOfWarEnabled?: boolean;
+  /** Canonical handoff value for real battles. Demo/background callers omit
+   *  it and use their mode's persisted BATTLE toggle. */
+  slowDownAtFinalWaypoint?: boolean;
 };
 
 const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
@@ -83,6 +87,13 @@ export function buildStoredBattleServerSettingCommands(
       type: 'setFogOfWarEnabled',
       tick: 0,
       enabled: options.fogOfWarEnabled ?? loadStoredFogOfWarEnabled(mode),
+    },
+    {
+      type: 'setSlowDownAtFinalWaypoint',
+      tick: 0,
+      enabled:
+        options.slowDownAtFinalWaypoint ??
+        loadStoredSlowDownAtFinalWaypoint(mode),
     },
     {
       type: 'setSlopePathMode',

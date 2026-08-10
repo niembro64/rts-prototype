@@ -34,6 +34,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingSolar",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -44,6 +45,7 @@
       },
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -111,6 +113,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingWind",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -121,6 +124,7 @@
       },
       {
         "turretBlueprintId": "turretResourcePylonExtractionEnergy",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -188,6 +192,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingExtractor",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -198,6 +203,7 @@
       },
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -265,6 +271,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingExtractorT2",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -275,6 +282,7 @@
       },
       {
         "turretBlueprintId": "turretResourcePylonExtractionMetal",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -342,6 +350,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingRadar",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -409,6 +418,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingResourceConverter",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -473,6 +483,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingSonar",
+        "presentation": null,
         "mount": {
           "x": 0,
           "y": 0,
@@ -574,6 +585,7 @@
     "turrets": [
       {
         "turretBlueprintId": "turretSensorBuildingFabricator",
+        "presentation": null,
         "mount": {
           "x": -110,
           "y": 0,
@@ -641,6 +653,16 @@
     "turrets": [
       {
         "turretBlueprintId": "turretBeamLong",
+        "presentation": {
+          "headRadius": 16,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleConeBarrel",
+            "barrelLength": 0.8
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
         "sensorTurretBlueprintId": "turretSensorBuildingBeamMega",
         "mount": {
           "x": 0,
@@ -709,6 +731,16 @@
     "turrets": [
       {
         "turretBlueprintId": "turretCannonLong",
+        "presentation": {
+          "headRadius": 16,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 2
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
         "sensorTurretBlueprintId": "turretSensorBuildingCannon",
         "mount": {
           "x": 0,
@@ -777,6 +809,24 @@
     "turrets": [
       {
         "turretBlueprintId": "turretAntiAir",
+        "presentation": {
+          "headRadius": 20,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelCount": 6,
+            "barrelLength": 1.2,
+            "orbitRadius": 0.45,
+            "spin": {
+              "idle": 2,
+              "max": 12,
+              "accel": 26,
+              "decel": 10
+            }
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
         "sensorTurretBlueprintId": "turretSensorBuildingAntiAir",
         "mount": {
           "x": 0,
@@ -845,6 +895,16 @@
     "turrets": [
       {
         "turretBlueprintId": "turretTorpedo",
+        "presentation": {
+          "headRadius": 8,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.8
+          },
+          "constructionEmitter": null,
+          "constructionEmitterSize": null
+        },
         "sensorTurretBlueprintId": "turretSensorBuildingSonar",
         "mount": {
           "x": 0,

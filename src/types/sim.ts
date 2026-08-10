@@ -1,6 +1,5 @@
 // Simulation entity types extracted from game/sim/types.ts
 
-import type { BarrelShape } from './config';
 import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type {
@@ -9,8 +8,8 @@ import type {
   TurretEmitterKind,
   TurretIntelRequirement,
   TurretMountControlMode,
+  TurretPresentation,
   UnitTurretHostAttachment,
-  TurretRadiusConfig,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
   SpawnTurretConfig,
@@ -32,7 +31,6 @@ import type {
   WaypointType,
 } from './commandTypes';
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
-import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import { NO_ENTITY_ID, type EntityId, type PlayerId } from './entityTypes';
 import type { UnitLocomotion, UnitSuspensionState } from './unitLocomotionTypes';
 import type { ResourceCost } from './economyTypes';
@@ -69,7 +67,6 @@ export type { EntityId, PlayerId } from './entityTypes';
 export { NO_ENTITY_ID } from './entityTypes';
 export type { UnitLocomotion } from './unitLocomotionTypes';
 export type { ResourceCost } from './economyTypes';
-export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 export type {
   SensorCapabilityConfig,
   TurretAimStyle,
@@ -493,7 +490,10 @@ export type TurretConfig = {
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
   color: number;
-  barrel: BarrelShape;
+  /** Number of deterministic emission lanes used for barrel-index event
+   * cadence. This is gameplay/event routing, not a description of how a host
+   * chooses to draw those lanes. */
+  emissionLaneCount: number;
   angular: { turnAccel: number; drag: number };
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
@@ -524,12 +524,10 @@ export type TurretConfig = {
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
   groundAimFraction: number | null;
-  /** World-space radius of the rendered turret body sphere. */
-  radius: TurretRadiusConfig;
-  /** See TurretBlueprint.headOnly — utility mounts with no orientable barrel.
-   *  Rendered as a bare head and omitted from turret aim snapshots. Combat
-   *  ray emitters are ordinary full-barrel aiming turrets. */
-  headOnly: boolean;
+  /** Whether authoritative yaw/pitch motion is useful to clients. This is a
+   * logical publication rule; visible host geometry is independently owned by
+   * the mount's TurretPresentation. */
+  aimMotionSnapshotVisible: boolean;
   /** Per-mount task source. Host consumes compatible host intents,
    *  autonomous runs a kind-specific policy, and manual waits for an ability. */
   controlMode: TurretMountControlMode;
@@ -542,8 +540,6 @@ export type TurretConfig = {
    *  publishes its yaw/pitch; a compatible host may echo that pose through
    *  the named body attachment without changing the turret's own aim. */
   hostAttachment: UnitTurretHostAttachment | null;
-  constructionEmitter: ConstructionEmitterVisualSpec | null;
-  visualVariant: ConstructionEmitterSize | null;
   spawn: SpawnTurretConfig | null;
   resourcePylon: ResourcePylonConfig | null;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
@@ -583,9 +579,6 @@ export type ProjectileConfig = {
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
   cooldown: TurretCooldownConfig | null;
-  /** Source-turret visual barrel geometry. Present only for turret-fired shots. */
-  barrel: BarrelShape | null;
-  radius: TurretRadiusConfig | null;
   /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
   turretIndex: number;
 };
@@ -644,6 +637,8 @@ export type Turret = {
   rootHostId: EntityId;
   mountIndex: number;
   config: TurretConfig;
+  /** Host-authored physical representation for this mounted logical turret. */
+  presentation: TurretPresentation;
   /** Current typed emitter assignment. `target` remains the compact entity-ID
    *  mirror used by snapshots and aiming when the task addresses an entity. */
   task: TurretTask | null;
@@ -724,11 +719,9 @@ export type Turret = {
    *  SHIELD_MIN_ON_TIME_MS, debouncing rapid on/off flicker. Not
    *  shipped on the wire — only `range` is. */
   shield: { transition: number; range: number; onTimeMs: number } | null;
-  /** Round-robin pointer across the physical barrels on this turret.
-   *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
-   *  % barrelCount, then the pointer advances by the pellet count.
-   *  Single-barrel turrets always see barrelIndex = 0. */
-  barrelFireIndex: number;
+  /** Round-robin pointer across logical emission lanes. Hosts may map these
+   * lanes onto any physical presentation they choose. */
+  emissionLaneIndex: number;
 };
 
 // Projectile component. Fully 3D: velocity + prev/start/end points

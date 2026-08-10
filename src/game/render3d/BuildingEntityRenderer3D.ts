@@ -150,9 +150,9 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
   if (!turrets || turrets.length === 0) return false;
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    const barrel = turret.config.barrel;
+    const barrel = turret.presentation.barrel;
     if (
-      barrel !== undefined &&
+      barrel !== null &&
       (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel')
     ) {
       return true;
@@ -162,7 +162,7 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
 }
 
 function positionBuildingTurretRoot(turretMesh: TurretMesh, turret: Turret): void {
-  const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
+  const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.presentation);
   setVector3IfChanged(
     turretMesh.root.position,
     turret.mount.x,
@@ -1246,7 +1246,7 @@ export class BuildingEntityRenderer3D {
       // Legacy construction-emitter geometry has no head sphere or barrels.
       // No live builder/factory mounts it; this branch only preserves stable
       // rendering for old captured fixtures.
-      if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
+      if (turretState?.constructionEmitter === true || turret?.presentation.constructionEmitter) {
         // Building construction pylons (the fabricator's) stand fused to
         // the TOP of the torus ring, pointing straight up — the rig stays
         // upright (no construction-drone flip).
@@ -1263,32 +1263,32 @@ export class BuildingEntityRenderer3D {
         );
         continue;
       }
-      // Head-only utility turrets draw a bare head and skip barrel posing.
-      // Treat that head as body geometry: keep it on
+      // Head-only utility turrets draw a bare body and skip barrel posing,
+      // but their body still consumes the logical turret yaw. Treat that
+      // head as body geometry: keep it on
       // player primary so state/LOD changes do not shift the body tone.
       // While the shell override owns the head material during
       // construction, leave it alone.
-      if (turretState?.headOnly ?? turret.config.headOnly) {
+      const headOnly = turretState?.headOnly ?? turret.presentation.headOnly;
+      if (headOnly) {
         if (turretMesh.head && !underConstruction) {
           this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
         }
-        continue;
-      }
-      if (!underConstruction) {
+      } else if (!underConstruction) {
         this.setTurretBarrelMaterial(turretMesh, this.barrelMat);
       }
       this.enqueueTurretAim(
         turretMesh,
         rows.rotation[row],
         turretState?.rotation ?? turret.rotation,
-        turretState?.pitch ?? turret.pitch,
+        headOnly ? 0 : (turretState?.pitch ?? turret.pitch),
         mesh,
         teamColorHex,
       );
       // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
       // rocket cluster). Single-barrel turrets have no spin state, so
       // angleFor returns undefined and the cluster stays still.
-      if (turretMesh.spinGroup) {
+      if (!headOnly && turretMesh.spinGroup) {
         this.setTurretSpinRotation(
           turretMesh,
           this.barrelSpinEnabled
@@ -1313,9 +1313,9 @@ export class BuildingEntityRenderer3D {
     ) {
       const turretMesh = mesh.turrets[turretIndex];
       if (!turretMesh.spinGroup) continue;
-      const barrel = turrets[turretIndex].config.barrel;
+      const barrel = turrets[turretIndex].presentation.barrel;
       if (
-        barrel === undefined ||
+        barrel === null ||
         (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')
       ) {
         continue;
@@ -1485,7 +1485,7 @@ export class BuildingEntityRenderer3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.turretAimMeshes[i];
       const outputBase = i * outputStride;
-      setEulerYIfChanged(turretMesh.root.rotation, output[outputBase]);
+      setEulerYIfChanged(turretMesh.yawGroup.rotation, output[outputBase]);
       if (turretMesh.pitchGroup) {
         setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
       }
@@ -1525,6 +1525,8 @@ export class BuildingEntityRenderer3D {
       .set(collar.centerX, 0, 0)
       .applyQuaternion(pitchQuaternion ?? this.collarIdentity)
       .add(pitchPosition ?? this.collarZero)
+      .applyQuaternion(turretMesh.yawGroup.quaternion)
+      .add(turretMesh.yawGroup.position)
       .applyQuaternion(turretMesh.root.quaternion)
       .add(turretMesh.root.position)
       .applyQuaternion(host.group.quaternion)
@@ -1532,6 +1534,7 @@ export class BuildingEntityRenderer3D {
     this.collarQuaternion
       .copy(host.group.quaternion)
       .multiply(turretMesh.root.quaternion)
+      .multiply(turretMesh.yawGroup.quaternion)
       .multiply(pitchQuaternion ?? this.collarIdentity);
     trim.setTurretCollar(
       collar.slot,

@@ -43,6 +43,7 @@ export type BaseTrimBandId =
   | 'barrelShaft'
   | 'hydraulicStrut'
   | 'boltBoss'
+  | 'legSocket'
   | 'liveryPiping'
   | 'liveryChevron'
   | 'tyreTread'
@@ -76,6 +77,7 @@ const BASE_TRIM_BAND_ORDER: readonly BaseTrimBandId[] = [
   'barrelShaft',
   'hydraulicStrut',
   'boltBoss',
+  'legSocket',
   'liveryPiping',
   'liveryChevron',
   'tyreTread',
@@ -235,6 +237,8 @@ const BASE_BAND_TILE_AXES: Record<BaseTrimBandId, BandTileAxes> = {
   hydraulicStrut: { u: true, v: false },
   // Flange ringing the middle of v; bolts repeat around u.
   boltBoss: { u: true, v: false },
+  // One vertical travel slot at the leg's current yaw; neither axis repeats.
+  legSocket: { u: false, v: false },
   // u is arc length along the strap and repeats; v is its cross-section.
   liveryPiping: { u: true, v: false },
   // u is around the collar; v carries the reserved forward-face zone.
@@ -338,6 +342,7 @@ const BASE_BAND_SURFACE: Record<BaseTrimBandId, BandSurface> = {
   barrelShaft: { uExtent: 6.3, vExtent: 65.5, featureSize: 6 },
   hydraulicStrut: { uExtent: 32, vExtent: 39, featureSize: 11 },
   boltBoss: { uExtent: 47, vExtent: 24, featureSize: 12 },
+  legSocket: { uExtent: 47, vExtent: 24, featureSize: 12 },
   liveryPiping: { uExtent: 104, vExtent: 60, featureSize: 16 },
   // 37.8-unit collar plus a reserved zone for its forward face, which is a
   // 24.3-radius disc — big enough to be the first thing you see down the
@@ -610,6 +615,7 @@ export type SurfaceChartId =
   | 'barrelShaft'
   | 'legStrut'
   | 'legJoint'
+  | 'legAttachment'
   | 'liveryStrap'
   | 'liveryCollar'
   | 'wheelTyre'
@@ -637,6 +643,7 @@ const CHART_DEFS: Record<Exclude<SurfaceChartId, 'none'>, SurfaceChartDef> = {
   barrelShaft: { band: 'barrelShaft', livery: false },
   legStrut: { band: 'hydraulicStrut', livery: false },
   legJoint: { band: 'boltBoss', livery: false },
+  legAttachment: { band: 'legSocket', livery: false },
   liveryStrap: { band: 'liveryPiping', livery: true },
   liveryCollar: { band: 'liveryChevron', livery: true },
   wheelTyre: { band: 'tyreTread', livery: false },
@@ -823,12 +830,14 @@ export function bodyLobeChart(isForwardLobe: boolean): SurfaceChartId {
 export type LegSurfaceCharts = {
   upper: SurfaceChartId;
   lower: SurfaceChartId;
+  attachment: SurfaceChartId;
   joint: SurfaceChartId;
 };
 
 export const LEG_CHARTS: LegSurfaceCharts = {
   upper: 'legStrut',
   lower: 'legStrut',
+  attachment: 'legAttachment',
   joint: 'legJoint',
 };
 
@@ -842,6 +851,7 @@ export const ROSTER_CHARTS: readonly SurfaceChartId[] = [
   'barrelShaft',
   LEG_CHARTS.upper,
   LEG_CHARTS.lower,
+  LEG_CHARTS.attachment,
   LEG_CHARTS.joint,
   'liveryStrap',
   'liveryCollar',

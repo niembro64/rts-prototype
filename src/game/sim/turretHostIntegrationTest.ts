@@ -1,5 +1,5 @@
 import { getTransformCosSin } from '../math';
-import { getUnitBlueprint } from './blueprints';
+import { getBuildingBlueprint, getUnitBlueprint, TURRET_BLUEPRINTS } from './blueprints';
 import { createBuildable } from './buildableHelpers';
 import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
 import { DamageSystem } from './damage';
@@ -69,6 +69,62 @@ function getFirstAttackTurret(entity: Entity): { turret: Turret; turretIndex: nu
     throw new Error('[turret host integration] entity must mount an attack turret');
   }
   return { turret: turrets[turretIndex], turretIndex };
+}
+
+function assertLogicalTurretPresentationOwnership(): void {
+  const forbiddenVisualFields = [
+    'barrel',
+    'radius',
+    'headOnly',
+    'constructionEmitter',
+    'shieldPanels',
+  ] as const;
+  for (const [turretId, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
+    for (const field of forbiddenVisualFields) {
+      assertContract(
+        !Object.prototype.hasOwnProperty.call(blueprint, field),
+        `${turretId} logical blueprint must not own visual field ${field}`,
+      );
+    }
+  }
+
+  for (const host of [getUnitBlueprint('unitHuman'), getUnitBlueprint('unitCommander')]) {
+    for (const mount of host.turrets) {
+      const logical = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+      assertContract(
+        logical.kind === 'attack' ? mount.presentation !== null : mount.presentation === null,
+        `${host.unitBlueprintId}/${mount.mountId} presentation ownership matches mounted role`,
+      );
+    }
+  }
+  const humanWeapon = getUnitBlueprint('unitHuman').turrets[0].presentation;
+  assertContract(
+    humanWeapon?.headRadius === 3 &&
+      humanWeapon.barrel?.type === 'singleCylinderBarrel' &&
+      humanWeapon.barrel.barrelLength === 2,
+    'Human keeps the pre-migration light-gun physical representation on its host mount',
+  );
+  const commander = getUnitBlueprint('unitCommander');
+  const commanderBeam = commander.turrets.find((mount) => mount.mountId === 'beam')?.presentation;
+  const commanderDgun = commander.turrets.find((mount) => mount.mountId === 'disruptor')?.presentation;
+  assertContract(
+    commanderBeam?.headRadius === 6 &&
+      commanderBeam.barrel?.type === 'singleConeBarrel' &&
+      commanderBeam.barrel.barrelLength === 1.2,
+    'Commander keeps the pre-migration beam physical representation on its host mount',
+  );
+  assertContract(
+    commanderDgun?.headRadius === null &&
+      commanderDgun.barrel?.type === 'singleCylinderBarrel',
+    'Commander keeps its body-integrated zero-head-radius D-gun presentation',
+  );
+  const antiAir = getBuildingBlueprint('towerAntiAir').turrets[0].presentation;
+  assertContract(
+    antiAir?.headRadius === 20 &&
+      antiAir.barrel?.type === 'simpleMultiBarrel' &&
+      antiAir.barrel.barrelCount === 6,
+    'Anti-Air tower keeps its pre-migration six-barrel host presentation',
+  );
 }
 
 let nextTestWorldEntityIdFloor = 64;
@@ -300,7 +356,10 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   stampCombatTargetingPool(world);
   const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
   const { turret: beamTurret } = getFirstAttackTurret(daddy);
-  assertContract(!beamTurret.config.headOnly, 'beam turret must publish ordinary full-barrel aim');
+  assertContract(
+    beamTurret.config.aimMotionSnapshotVisible,
+    'beam turret must publish ordinary full-barrel aim',
+  );
 
   // Prove there is no beam-only snap hidden ahead of the shared spring:
   // with deliberately weak tuning, one update must leave a visible error
@@ -552,6 +611,7 @@ export function runWaterWeaponMediumTargetingContractTest(): void {
 export function runTurretHostIntegrationContractTest(): void {
   resetTurretHostIntegrationState();
   try {
+    assertLogicalTurretPresentationOwnership();
     const world = createIsolatedTestWorld(1234, 512, 512);
     world.playerCount = 2;
     const host = world.createUnitFromBlueprint(

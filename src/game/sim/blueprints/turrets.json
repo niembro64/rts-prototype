@@ -10,10 +10,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 2
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -23,7 +20,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretGunLight"
@@ -32,11 +28,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 3
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -101,18 +93,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 1,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 2,
-      "barrelLength": 1.2,
-      "orbitRadius": 0.65,
-      "spin": {
-        "idle": 2,
-        "max": 10,
-        "accel": 80,
-        "decel": 30
-      }
-    },
+    "emissionLaneCount": 2,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": true,
@@ -125,7 +106,6 @@
       "count": 1,
       "delay": 30
     },
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretGunBurst"
@@ -134,11 +114,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 9
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcHigh"
     },
@@ -203,10 +179,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 10,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 1.4
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -216,7 +189,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretCannon"
@@ -225,11 +197,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 10
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -297,10 +265,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.75
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -310,7 +275,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretMortarSlow"
@@ -319,11 +283,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": 1,
-    "radius": {
-      "other": 12
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcHigh"
     },
@@ -391,10 +351,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 140,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.55
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -404,7 +361,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretMortarDrop"
@@ -413,11 +369,7 @@
     "verticalLauncher": false,
     "idlePitch": -1.5707963267948966,
     "groundAimFraction": 1,
-    "radius": {
-      "other": 9
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -482,18 +434,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 3,
-      "barrelLength": 1,
-      "orbitRadius": 0.7,
-      "spin": {
-        "idle": 2,
-        "max": 10,
-        "accel": 5,
-        "decel": 5
-      }
-    },
+    "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -503,7 +444,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretMortarFast"
@@ -512,11 +452,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": 1,
-    "radius": {
-      "other": 32
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcHigh"
     },
@@ -584,18 +520,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 500,
     "turretDrag": 1,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 5,
-      "barrelLength": 0.8,
-      "orbitRadius": 0.4,
-      "spin": {
-        "idle": 2,
-        "max": 10,
-        "accel": 20,
-        "decel": 10
-      }
-    },
+    "emissionLaneCount": 5,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": true,
@@ -608,7 +533,6 @@
       "count": 1,
       "delay": 80
     },
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretGatling"
@@ -617,11 +541,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 16
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -683,17 +603,13 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 1
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
     "color": 16746496,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretDisruptor"
@@ -702,11 +618,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -768,9 +680,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "shieldPanelEmitter"
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -780,16 +690,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayBisectTurretAndBody"
     },
@@ -854,17 +759,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 900000,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleConeBarrel",
-      "barrelLength": 1.2
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretBeam"
@@ -873,11 +774,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 6
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -939,17 +836,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 900000,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleConeBarrel",
-      "barrelLength": 1.5
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretBeamMini"
@@ -958,11 +851,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 3
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1024,17 +913,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 900000,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleConeBarrel",
-      "barrelLength": 1.1
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretBeamMega"
@@ -1043,11 +928,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1109,27 +990,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "complexSingleEmitter",
-      "grate": {
-        "shape": "circle",
-        "count": 5,
-        "length": 0,
-        "width": 0.45,
-        "taper": 0.5,
-        "baseOffset": 0,
-        "originOffset": 0,
-        "thickness": 1.5,
-        "reversePhase": true
-      }
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretShieldSphere"
@@ -1138,11 +1005,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 12
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1204,27 +1067,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "complexSingleEmitter",
-      "grate": {
-        "shape": "circle",
-        "count": 5,
-        "length": 0,
-        "width": 0.45,
-        "taper": 0.5,
-        "baseOffset": 0,
-        "originOffset": 0,
-        "thickness": 1.5,
-        "reversePhase": true
-      }
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretShieldSphere"
@@ -1233,11 +1082,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 10
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1299,17 +1144,13 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 900000,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleConeBarrel",
-      "barrelLength": 0.8
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretBeamLong"
@@ -1318,11 +1159,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 16
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1387,10 +1224,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 180,
     "turretDrag": 20,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 2
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -1400,7 +1234,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretCannon"
@@ -1409,11 +1242,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 16
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -1481,10 +1310,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 90,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 2.2
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -1494,7 +1320,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretCannon"
@@ -1503,11 +1328,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 18
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "ballisticArcLow"
     },
@@ -1575,18 +1396,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 3,
-      "barrelLength": 1.4,
-      "orbitRadius": 0.45,
-      "spin": {
-        "idle": 1.5,
-        "max": 9,
-        "accel": 18,
-        "decel": 8
-      }
-    },
+    "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -1596,7 +1406,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretRocketSlow"
@@ -1605,11 +1414,7 @@
     "verticalLauncher": true,
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1677,10 +1482,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 600,
     "turretDrag": 3,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 1.8
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -1690,7 +1492,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretRocketSlow"
@@ -1699,11 +1500,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1768,18 +1565,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 9000,
     "turretDrag": 1,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 3,
-      "barrelLength": 1,
-      "orbitRadius": 0.7,
-      "spin": {
-        "idle": 2,
-        "max": 14,
-        "accel": 30,
-        "decel": 12
-      }
-    },
+    "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -1789,7 +1575,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretRocketFast"
@@ -1798,11 +1583,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 6
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1867,18 +1648,7 @@
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 9000,
     "turretDrag": 1,
-    "barrel": {
-      "type": "simpleMultiBarrel",
-      "barrelCount": 6,
-      "barrelLength": 1.2,
-      "orbitRadius": 0.45,
-      "spin": {
-        "idle": 2,
-        "max": 12,
-        "accel": 26,
-        "decel": 10
-      }
-    },
+    "emissionLaneCount": 6,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
     "eventsSmooth": false,
@@ -1888,7 +1658,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": {
       "fireSound": {
         "$audio": "event.fire.turretRocketFast"
@@ -1897,11 +1666,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 20
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -1963,10 +1728,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -1976,16 +1738,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2054,10 +1811,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -2067,16 +1821,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2145,10 +1894,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -2158,34 +1904,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": {
-      "defaultSize": "small",
-      "particleTravelSpeed": 50,
-      "particleRadius": 1.5,
-      "sizes": {
-        "small": {
-          "towerSize": "small",
-          "pylonHeight": 10,
-          "pylonOffset": 3,
-          "innerPylonRadius": 1.5
-        },
-        "large": {
-          "towerSize": "large",
-          "pylonHeight": 45,
-          "pylonOffset": 110,
-          "innerPylonRadius": 3.6
-        }
-      }
-    },
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2252,10 +1975,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -2265,34 +1985,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": 8
-    },
-    "headOnly": false,
-    "constructionEmitter": {
-      "defaultSize": "small",
-      "particleTravelSpeed": 50,
-      "particleRadius": 1.5,
-      "sizes": {
-        "small": {
-          "towerSize": "small",
-          "pylonHeight": 10,
-          "pylonOffset": 3,
-          "innerPylonRadius": 1.5
-        },
-        "large": {
-          "towerSize": "large",
-          "pylonHeight": 45,
-          "pylonOffset": 110,
-          "innerPylonRadius": 3.6
-        }
-      }
-    },
+    "aimMotionSnapshotVisible": true,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2359,10 +2056,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -2372,16 +2066,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2448,10 +2137,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
@@ -2461,16 +2147,11 @@
       "pelletCount": 1
     },
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2583,26 +2264,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2664,26 +2337,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2745,26 +2410,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2826,26 +2483,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2907,26 +2556,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -2988,26 +2629,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3069,26 +2702,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3150,26 +2775,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3231,26 +2848,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3312,26 +2921,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3393,26 +2994,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3474,26 +3067,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3555,26 +3140,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3636,26 +3213,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3717,26 +3286,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3798,26 +3359,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3879,26 +3432,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -3960,26 +3505,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4041,26 +3578,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4122,26 +3651,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4203,26 +3724,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4284,26 +3797,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4365,26 +3870,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4446,26 +3943,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4527,26 +4016,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4608,26 +4089,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4689,26 +4162,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4770,26 +4235,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4851,26 +4308,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -4932,26 +4381,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5013,26 +4454,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5094,26 +4527,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5175,26 +4600,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5256,26 +4673,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5337,26 +4746,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },
@@ -5418,26 +4819,18 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1,
     "turretDrag": 1,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0
-    },
+    "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "shieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": {
-      "other": null
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
+    "aimMotionSnapshotVisible": false,
     "aimStyle": {
       "angleType": "rayDirect"
     },

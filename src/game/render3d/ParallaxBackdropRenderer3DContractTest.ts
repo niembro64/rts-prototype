@@ -14,17 +14,25 @@ export function runParallaxBackdropRenderer3DContractTest(): void {
     'layer IDs must stay ordered from nearest transparent shell to terminal sky',
   );
   const urls = backdropUrlsForPresetName('Angels Flat');
-  assertContract(urls !== null && urls.length === 4, 'stock presets must resolve four URLs');
+  assertContract(urls.length === 4, 'stock presets must resolve four URLs');
   for (let index = 0; index < PRESET_BACKDROP_LAYER_IDS.length; index++) {
     assertContract(
-      urls?.[index].endsWith(`angels-flat-${PRESET_BACKDROP_LAYER_IDS[index]}.ktx2`) === true,
+      urls[index].endsWith(`angels-flat-${PRESET_BACKDROP_LAYER_IDS[index]}.ktx2`),
       `URL ${index} must use its layer ID suffix`,
     );
   }
-  assertContract(
-    backdropUrlsForPresetName('not a preset') === null,
-    'unmatched settings must retain the gradient fallback',
-  );
+  // Off-preset settings get the generated `default` set — never a bare
+  // gradient sky, and never a stock preset's panorama.
+  for (const name of [null, 'not a preset']) {
+    const fallback = backdropUrlsForPresetName(name);
+    assertContract(fallback.length === 4, 'the fallback must resolve four URLs');
+    for (let index = 0; index < PRESET_BACKDROP_LAYER_IDS.length; index++) {
+      assertContract(
+        fallback[index].endsWith(`default-${PRESET_BACKDROP_LAYER_IDS[index]}.ktx2`),
+        `fallback URL ${index} must use the default slug and its layer ID suffix`,
+      );
+    }
+  }
 
   for (const mapAxis of [700, 7900, 11900]) {
     const layers = resolvePresetBackdropLayerConfig(mapAxis, mapAxis);

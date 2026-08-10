@@ -70,6 +70,7 @@ type CommandType =
   | 'setShieldsObstructSight'
   | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
+  | 'setSlowDownAtFinalWaypoint'
   | 'setSlopePathMode'
   | 'setTerrainSurfaceMode'
   | 'setLiquidSurfaceMode'
@@ -613,6 +614,11 @@ export type SetFogOfWarEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetSlowDownAtFinalWaypointCommand = BaseCommand & {
+  type: 'setSlowDownAtFinalWaypoint';
+  enabled: boolean;
+};
+
 export type SetSlopePathModeCommand = BaseCommand & {
   type: 'setSlopePathMode';
   mode: SlopePathMode;
@@ -696,6 +702,7 @@ export type Command =
   | SetShieldsObstructSightCommand
   | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
+  | SetSlowDownAtFinalWaypointCommand
   | SetSlopePathModeCommand
   | SetTerrainSurfaceModeCommand
   | SetLiquidSurfaceModeCommand

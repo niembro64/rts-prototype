@@ -395,6 +395,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setFogOfWarEnabled':
       ctx.world.fogOfWarEnabled = command.enabled;
       break;
+    case 'setSlowDownAtFinalWaypoint':
+      ctx.world.slowDownAtFinalWaypoint = command.enabled;
+      break;
     case 'setSlopePathMode':
       if (ctx.world.slopePathMode !== command.mode) {
         ctx.world.slopePathMode = command.mode;

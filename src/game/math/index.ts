@@ -32,7 +32,6 @@ export {
 } from './TerrainFollowThrust';
 
 export {
-  countBarrels,
   getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,
@@ -40,7 +39,6 @@ export {
   getTurretBarrelDiameter,
   getTurretBarrelCenterToTipLength,
   getTurretHeadRadius,
-  turretBodyRadiusFromRadius,
   TURRET_BARREL_MIN_DIAMETER,
 } from './BarrelGeometry';
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Generate four-layer UASTC KTX2 panoramas for every stock battle preset.
 
+A ``default`` set is emitted alongside them for battle-bar settings that match
+no preset exactly, so custom maps get the same layered horizon rather than a
+bare gradient sky.
+
 Each preset emits coordinated equirectangular textures named
 ``<slug>-near/middle/far/terminal.ktx2``. The first three are RGBA scenery and
 cloud layers with transparent skies, soft skyline alpha, and progressively
@@ -728,6 +732,36 @@ def encode_layer(
 # ---------------------------------------------------------------------------
 
 
+def default_backdrop() -> list[np.ndarray]:
+    """Fallback panorama for BATTLE settings that match no stock preset.
+
+    Deliberately unsigned: the neutral daylight palette with plain rolling
+    land and no preset tell (no lava, metal, sunset, spikes or islands), so
+    hand-tuned terrain still gets four parallax shells instead of dropping
+    back to the flat gradient sky.
+    """
+    rng = np.random.default_rng(909)
+    terminal = sky_gradient([(90.0, SKY_TOP), (28.0, SKY_MID), (0.0, SKY_HORIZON)])
+    layers = make_layers(terminal)
+    paint_horizon_glow(terminal, mix(SKY_HORIZON, SUN_HALO, 0.3), 0.13, 2.8)
+    below_horizon_sea(terminal, mix(WATER, SKY_HORIZON, 0.38), OUT_OF_BOUNDS)
+    haze = mix(SKY_HORIZON, SKY_MID, 0.3)
+
+    far = rounded(harmonic_ridge(rng, range(3, 26), 1.18) * 0.5 + 0.5, 0.88) * 4.0
+    paint_silhouette_layer(layers[2], far, -1.5, mix(IN_BOUNDS, WATER, 0.45), haze, 0.8, top_feather_deg=1.6, atmosphere_alpha=0.18)
+    paint_cloud_layer(layers[2], rng, 24.0, 42.0, mix(SKY_MID, SUN_COLOR, 0.25), SKY_MID, 0.3, cells_x=7, cells_y=3, max_alpha=0.44)
+
+    middle = rounded(harmonic_ridge(rng, range(3, 20), 1.14) * 0.5 + 0.5, 0.84) * 7.0
+    paint_silhouette_layer(layers[1], middle, -3.5, mix(IN_BOUNDS, GROUND, 0.35), haze, 0.62, top_feather_deg=1.15, atmosphere_alpha=0.13)
+    paint_cloud_layer(layers[1], rng, 10.0, 22.0, mix(SUN_CORE, SKY_MID, 0.3), mix(SKY_MID, SKY_TOP, 0.35), 0.36, cells_x=10, cells_y=4, max_alpha=0.6)
+
+    broad = rounded(harmonic_ridge(rng, range(2, 15), 1.1) * 0.5 + 0.5, 0.8) * 10.0
+    near = tree_topped_ridge(rng, broad, 1.8)
+    paint_silhouette_layer(layers[0], near, -6.0, mix(GROUND, IN_BOUNDS, 0.4), haze, 0.42, top_feather_deg=0.7, atmosphere_alpha=0.08, rim_color=SUN_CORE, rim_strength=0.2, rim_width_deg=0.6)
+    paint_cloud_layer(layers[0], rng, 7.0, 19.0, mix(SUN_CORE, SKY_MID, 0.25), mix(SKY_MID, SKY_TOP, 0.45), 0.26, cells_x=12, cells_y=5, max_alpha=0.5)
+    return layers
+
+
 def large_circle() -> list[np.ndarray]:
     rng = np.random.default_rng(101)
     layers = make_layers(sky_gradient([(90.0, SKY_TOP), (20.0, SKY_MID), (0.0, SKY_HORIZON)]))
@@ -919,6 +953,9 @@ def metal_plate() -> list[np.ndarray]:
 
 
 PRESETS = {
+    # First entry is the fallback the renderer resolves for any battle-bar
+    # settings that match no stock preset; it is not selectable in the bar.
+    "default": default_backdrop,
     "large-circle": large_circle,
     "angels-flat": angels_flat,
     "boulder-mountain": boulder_mountain,

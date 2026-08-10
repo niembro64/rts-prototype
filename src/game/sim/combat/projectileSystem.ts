@@ -13,7 +13,6 @@ import { beamIndex } from '../BeamIndex';
 import {
   getTransformCosSin,
   computeTerrainFollowVerticalThrustAccel,
-  countBarrels,
   normalizeAngle,
 } from '../../math';
 import {
@@ -822,8 +821,8 @@ export function fireTurrets(
         const speed = getProjectileLaunchSpeed(projShot);
         const pellets = spec.spread.pelletCount;
         const spreadAngle = spec.spread.angle;
-        const barrelCount = countBarrels(config);
-        const fireBaseIndex = weapon.barrelFireIndex;
+        const emissionLaneCount = config.emissionLaneCount;
+        const fireBaseIndex = weapon.emissionLaneIndex;
         const shotSource = createTurretShotSource(
           world,
           unit,
@@ -833,7 +832,7 @@ export function fireTurrets(
         );
 
         for (let i = 0; i < pellets; i++) {
-          const barrelIndex = (fireBaseIndex + i) % barrelCount;
+          const barrelIndex = (fireBaseIndex + i) % emissionLaneCount;
           const pitchCos = DMath.cos(weapon.pitch);
           let dirX = DMath.cos(weapon.rotation) * pitchCos;
           let dirY = DMath.sin(weapon.rotation) * pitchCos;
@@ -937,7 +936,7 @@ export function fireTurrets(
             );
           }
         }
-        weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
+        weapon.emissionLaneIndex = (fireBaseIndex + pellets) % emissionLaneCount;
         manualLaunchFired = true;
         continue;
       }
@@ -1004,11 +1003,11 @@ export function fireTurrets(
       const spreadConfig = config.spread;
       const pellets = spreadConfig !== null ? spreadConfig.pelletCount : 1;
       const spreadAngle = spreadConfig !== null ? spreadConfig.angle : 0;
-      const barrelCount = countBarrels(config);
-      const fireBaseIndex = weapon.barrelFireIndex;
+      const emissionLaneCount = config.emissionLaneCount;
+      const fireBaseIndex = weapon.emissionLaneIndex;
 
       for (let i = 0; i < pellets; i++) {
-        const barrelIndex = (fireBaseIndex + i) % barrelCount;
+        const barrelIndex = (fireBaseIndex + i) % emissionLaneCount;
         const spawnX = weaponX;
         const spawnY = weaponY;
         const spawnZ = mountZ;
@@ -1231,7 +1230,7 @@ export function fireTurrets(
       }
       // Advance the round-robin so render/audio metadata continues to
       // cycle through the barrel set (index % N, wraps automatically).
-      weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
+      weapon.emissionLaneIndex = (fireBaseIndex + pellets) % emissionLaneCount;
     }
     if (combat.manualLaunchActive && manualLaunchFired) {
       combat.priorityTargetId = null;

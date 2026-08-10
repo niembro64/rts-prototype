@@ -1261,14 +1261,18 @@ pub fn render_turret_barrel_compute(count: u32) {
 // ─────────────────────────────────────────────────────────────────
 //  Render pose helper — unit turret head/mount matrices
 //
-//  Each row composes the visible turret mount center:
-//    parentPos + R(parentQuat) · (rootPos + (0, headRadius, 0))
+//  Each row composes the visible turret mount center and body orientation:
+//    mountWorld = parentPos + R(parentQuat) · rootPos
+//    bodyWorldQ = parentQuat · bodyYawQuat
+//    center = mountWorld + R(bodyWorldQ) · (0, headRadius, 0)
 //
-//  The output is the head sphere's scale matrix with that translation;
-//  TS also reads translation columns 12..14 back into TurretMountCache3D.
+//  The output is the head sphere's complete oriented matrix. Its geometry is
+//  symmetric but its surface chart has a directional black pitch slot, so
+//  discarding yaw makes the visible turret body disagree with its barrel.
+//  TS also reads translation columns 12..14 into TurretMountCache3D.
 // ─────────────────────────────────────────────────────────────────
 
-pub const RENDER_TURRET_HEAD_INPUT_STRIDE: usize = 11;
+pub const RENDER_TURRET_HEAD_INPUT_STRIDE: usize = 15;
 pub const RENDER_TURRET_HEAD_OUTPUT_STRIDE: usize = 16;
 
 pub(crate) struct RenderTurretHeadScratch {
@@ -1340,29 +1344,32 @@ pub fn render_turret_head_compute(count: u32) {
             s.input[ib + 6] as f64,
         ];
         let head_radius = s.input[ib + 10] as f64;
-        let local_center = [
-            s.input[ib + 7] as f64,
-            s.input[ib + 8] as f64 + head_radius,
-            s.input[ib + 9] as f64,
+        let body_yaw_q = [
+            s.input[ib + 11] as f64,
+            s.input[ib + 12] as f64,
+            s.input[ib + 13] as f64,
+            s.input[ib + 14] as f64,
         ];
-        let center = render_compose_child_offset(parent_q, parent_pos, local_center);
+        let mount_world = render_compose_child_offset(
+            parent_q,
+            parent_pos,
+            [
+                s.input[ib + 7] as f64,
+                s.input[ib + 8] as f64,
+                s.input[ib + 9] as f64,
+            ],
+        );
+        let body_world_q = quat_mul(parent_q, body_yaw_q);
+        let center =
+            render_compose_child_offset(body_world_q, mount_world, [0.0, head_radius, 0.0]);
 
-        s.output[ob] = head_radius as f32;
-        s.output[ob + 1] = 0.0;
-        s.output[ob + 2] = 0.0;
-        s.output[ob + 3] = 0.0;
-        s.output[ob + 4] = 0.0;
-        s.output[ob + 5] = head_radius as f32;
-        s.output[ob + 6] = 0.0;
-        s.output[ob + 7] = 0.0;
-        s.output[ob + 8] = 0.0;
-        s.output[ob + 9] = 0.0;
-        s.output[ob + 10] = head_radius as f32;
-        s.output[ob + 11] = 0.0;
-        s.output[ob + 12] = center[0] as f32;
-        s.output[ob + 13] = center[1] as f32;
-        s.output[ob + 14] = center[2] as f32;
-        s.output[ob + 15] = 1.0;
+        render_write_mat4_compose_scaled(
+            &mut s.output,
+            ob,
+            center,
+            body_world_q,
+            [head_radius, head_radius, head_radius],
+        );
     }
 }
 
@@ -1582,6 +1589,44 @@ mod tests {
         approx(rendered_direction[0], expected_direction[0], 1e-12);
         approx(rendered_direction[1], expected_direction[1], 1e-12);
         approx(rendered_direction[2], expected_direction[2], 1e-12);
+    }
+
+    #[test]
+    fn turret_head_matrix_preserves_visual_body_yaw() {
+        let parent_yaw = -0.25_f64;
+        let body_yaw = 0.9_f64;
+        let parent_q = [0.0, (parent_yaw * 0.5).sin(), 0.0, (parent_yaw * 0.5).cos()];
+        let body_q = [0.0, (body_yaw * 0.5).sin(), 0.0, (body_yaw * 0.5).cos()];
+        let parent_pos = [10.0, 20.0, 30.0];
+        let mount_pos = [2.0, 4.0, -1.0];
+        let radius = 5.0_f64;
+        {
+            let scratch = render_turret_head_scratch();
+            scratch.input[..RENDER_TURRET_HEAD_INPUT_STRIDE].fill(0.0);
+            scratch.input[0..3].copy_from_slice(&parent_pos.map(|value| value as f32));
+            scratch.input[3..7].copy_from_slice(&parent_q.map(|value| value as f32));
+            scratch.input[7..10].copy_from_slice(&mount_pos.map(|value| value as f32));
+            scratch.input[10] = radius as f32;
+            scratch.input[11..15].copy_from_slice(&body_q.map(|value| value as f32));
+        }
+
+        render_turret_head_compute(1);
+        let scratch = render_turret_head_scratch();
+        let world_q = quat_mul(parent_q, body_q);
+        let expected_x = quat_rotate_vec(world_q, [radius, 0.0, 0.0]);
+        approx(scratch.output[0] as f64, expected_x[0], 1e-5);
+        approx(scratch.output[1] as f64, expected_x[1], 1e-5);
+        approx(scratch.output[2] as f64, expected_x[2], 1e-5);
+        assert!(
+            scratch.output[2].abs() > 1.0,
+            "the charted sphere's local +X pitch slot must visibly turn with yaw"
+        );
+
+        let mount_world = render_compose_child_offset(parent_q, parent_pos, mount_pos);
+        let expected_center = render_compose_child_offset(world_q, mount_world, [0.0, radius, 0.0]);
+        approx(scratch.output[12] as f64, expected_center[0], 1e-5);
+        approx(scratch.output[13] as f64, expected_center[1], 1e-5);
+        approx(scratch.output[14] as f64, expected_center[2], 1e-5);
     }
 
     #[test]

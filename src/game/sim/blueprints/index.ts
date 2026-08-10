@@ -326,15 +326,7 @@ validateStableWireIds(
   TURRET_BLUEPRINT_CODE_UNKNOWN,
 );
 
-resolveUnitTurretMounts((turretBlueprintId) => {
-  const turretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
-  if (!turretBlueprint) {
-    throw new Error(
-      `Invalid unit turret mount resolver: unknown turretBlueprintId "${turretBlueprintId}"`,
-    );
-  }
-  return turretBlueprint.radius.other;
-});
+resolveUnitTurretMounts();
 
 function assertFiniteRangeMultiplier(
   turretBlueprintId: string,
@@ -680,36 +672,29 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     turretBlueprintId,
     turretBlueprint,
   );
-  // `radius.other: null` is the explicit "draw no body sphere" signal —
-  // the turret renders no head sphere (and barrels, which scale off it,
-  // collapse to nothing). Any other non-positive / non-finite value is an
-  // authoring mistake.
-  const radiusOther = turretBlueprint.radius.other;
-  if (radiusOther != null && (!Number.isFinite(radiusOther) || radiusOther <= 0)) {
+  if (!Number.isInteger(turretBlueprint.emissionLaneCount) || turretBlueprint.emissionLaneCount <= 0) {
     throw new Error(
-      `Turret blueprint ${turretBlueprintId} radius.other must be a positive number or null`,
+      `Turret blueprint ${turretBlueprintId} emissionLaneCount must be a positive integer`,
     );
   }
 
-  // Determine emission config. Construction emitters have no shot/ray/shield
-  // emission: pylons are renderer-owned cosmetics.
+  // Determine the logical emission config. Physical emitter art is owned by
+  // each host mount and never participates in this compilation step.
   const shot = buildEmissionConfig(turretBlueprintId, turretBlueprint);
   // Spawn turrets bring entities into existence; resource-pylon turrets move
   // resources. Both are non-combat emitters with their own authoritative
-  // config (read from TURRET_BLUEPRINTS at runtime), so they need no
-  // shot/constructionEmitter to justify their existence.
+  // config, so they need no shot to justify their existence.
   const spawn = turretBlueprint.spawn ?? null;
   const resourcePylon = turretBlueprint.resourcePylon ?? null;
 
   if (
     shot === null &&
-    turretBlueprint.constructionEmitter === null &&
     spawn === null &&
     resourcePylon === null &&
     turretBlueprint.kind !== 'sensor'
   ) {
     throw new Error(
-      `Turret ${turretBlueprintId} has no emissionBlueprintId, constructionEmitter, spawn, resourcePylon, nor sensor role`,
+      `Turret ${turretBlueprintId} has no emissionBlueprintId, spawn, resourcePylon, nor sensor role`,
     );
   }
   validateTurretAimStyle(turretBlueprintId, turretBlueprint, shot);
@@ -739,7 +724,7 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     launchForce: turretBlueprint.launchForce,
     addTurretVelocityToEmissionLaunch: turretBlueprint.addTurretVelocityToEmissionLaunch,
     color: turretBlueprint.color,
-    barrel: turretBlueprint.barrel,
+    emissionLaneCount: turretBlueprint.emissionLaneCount,
     angular: {
       turnAccel: turretBlueprint.turretTurnAccel,
       drag: turretBlueprint.turretDrag,
@@ -756,12 +741,7 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     verticalLauncher: turretBlueprint.verticalLauncher,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
-    // Turrets author only `radius.other` (the body sphere). hitbox/collision
-    // are pinned to 0 here: a turret is not a separate hit/collide body — it
-    // extends no hit-surface and does its own muzzle self-clearance off 0
-    // (the host body's own collision covers clearance). See turretHostIntegration.
-    radius: { other: turretBlueprint.radius.other, hitbox: 0, collision: 0 },
-    headOnly: turretBlueprint.headOnly,
+    aimMotionSnapshotVisible: turretBlueprint.aimMotionSnapshotVisible,
     // Control mode is a per-mount contract. The shared blueprint-derived
     // config uses autonomous as a harmless default; runtime materialization
     // always overwrites it from the authored mount.
@@ -773,18 +753,6 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // Host presentation attachments are also per unit mount. Most hosts do
     // nothing with turret aim, so the shared blueprint has no attachment.
     hostAttachment: null,
-    constructionEmitter: turretBlueprint.constructionEmitter !== null
-      ? {
-          defaultSize: turretBlueprint.constructionEmitter.defaultSize,
-          particleTravelSpeed: turretBlueprint.constructionEmitter.particleTravelSpeed,
-          particleRadius: turretBlueprint.constructionEmitter.particleRadius,
-          sizes: {
-            small: { ...turretBlueprint.constructionEmitter.sizes.small },
-            large: { ...turretBlueprint.constructionEmitter.sizes.large },
-          },
-        }
-      : null,
-    visualVariant: null,
     spawn,
     resourcePylon,
     lockOnRelationshipIncludeMask: lockOn.relationship,
@@ -796,35 +764,6 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     lockOnShotIncludeMask: lockOn.shot,
     lockOnRequiresTargetLockedOntoSelfMode: lockOn.reciprocal,
   };
-
-  // Resolve an absolute barrel thickness from the emitted shot/ray size when
-  // the blueprint does not intentionally override it. Skip the barrel-less
-  // shield emitters (sphere + panel): they carry no gun barrel to thicken.
-  if (
-    turretBlueprint.emissionKind !== null &&
-    turretBlueprint.emissionBlueprintId !== null &&
-    config.barrel &&
-    config.barrel.type !== 'complexSingleEmitter' &&
-    config.barrel.type !== 'shieldPanelEmitter'
-  ) {
-    let rawThickness: number;
-    if (turretBlueprint.emissionKind === 'ray') {
-      const rayBlueprint = RAY_BLUEPRINTS[turretBlueprint.emissionBlueprintId as keyof typeof RAY_BLUEPRINTS];
-      rawThickness = rayBlueprint?.width ?? 2;
-    } else if (turretBlueprint.emissionKind === 'shield') {
-      rawThickness = 2;
-    } else {
-      const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.emissionBlueprintId as ShotBlueprintId];
-      rawThickness =
-        shotBlueprint && shotBlueprint.radius.other > 0
-          ? shotBlueprint.radius.other * 2
-          : 2;
-    }
-    config.barrel = {
-      ...config.barrel,
-      barrelThickness: config.barrel.barrelThickness ?? rawThickness,
-    };
-  }
 
   // Optional firing modifiers
   if (turretBlueprint.spread !== null) config.spread = { ...turretBlueprint.spread };
@@ -851,6 +790,47 @@ export function buildAllTurretConfigs(): Record<TurretBlueprintId, TurretConfig>
 // import, not deep inside a runtime call. Leaf blueprint modules keep
 // sibling imports minimal; the aggregation file owns relationship
 // validation.
+function validateHostTurretPresentation(
+  hostLabel: string,
+  hostId: string,
+  mountIndex: number,
+  mount: { turretBlueprintId: TurretBlueprintId; presentation: unknown },
+): void {
+  const turret = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+  const label = `${hostLabel} ${hostId}[${mountIndex}] ${mount.turretBlueprintId}`;
+  if (turret.kind !== 'attack') {
+    if (mount.presentation !== null) {
+      throw new Error(`Invalid ${label}: non-attack logical mounts must author presentation: null`);
+    }
+    return;
+  }
+  const presentation = mount.presentation;
+  if (presentation === null || typeof presentation !== 'object') {
+    throw new Error(`Invalid ${label}: attack mounts require a host-authored presentation`);
+  }
+  const p = presentation as {
+    headRadius?: unknown;
+    headOnly?: unknown;
+    constructionEmitterSize?: unknown;
+  };
+  if (
+    p.headRadius !== null &&
+    (typeof p.headRadius !== 'number' || !Number.isFinite(p.headRadius) || p.headRadius <= 0)
+  ) {
+    throw new Error(`Invalid ${label}.presentation.headRadius: expected positive number or null`);
+  }
+  if (typeof p.headOnly !== 'boolean') {
+    throw new Error(`Invalid ${label}.presentation.headOnly: expected boolean`);
+  }
+  if (
+    p.constructionEmitterSize !== null &&
+    p.constructionEmitterSize !== 'small' &&
+    p.constructionEmitterSize !== 'large'
+  ) {
+    throw new Error(`Invalid ${label}.presentation.constructionEmitterSize`);
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
@@ -865,6 +845,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
         `Invalid turret reference for ${bp.unitBlueprintId}[${i}]: legacy host capability "${turretBlueprintId}" cannot be mounted`,
       );
     }
+    validateHostTurretPresentation('unit blueprint', bp.unitBlueprintId, i, mount);
     if (
       mount.sensorTurretBlueprintId !== undefined &&
       TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId]?.kind !== 'sensor'
@@ -901,6 +882,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
         `Invalid building turret reference for ${bp.buildingBlueprintId}[${i}]: legacy host capability "${turretBlueprintId}" cannot be mounted`,
       );
     }
+    validateHostTurretPresentation('building blueprint', bp.buildingBlueprintId, i, mount);
     if (
       mount.sensorTurretBlueprintId !== undefined &&
       TURRET_BLUEPRINTS[mount.sensorTurretBlueprintId]?.kind !== 'sensor'

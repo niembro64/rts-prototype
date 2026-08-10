@@ -105,7 +105,11 @@ export class CommanderVisualKit3D {
     addCylinder(this.darkArmorMat, -0.03, 2.96, 0, 0.17, 0.1, 0.17);
     addDome(this.lensMat, 0.03, 3.07, 0, 0.075, 0.075, 0.075);
 
-    addBox(this.darkArmorMat, -0.57, 2.29, 0, 0.12, 0.54, 0.62);
+    // Sink the pack shell forward of the three blueprint-authored rear ribs.
+    // The old x=-0.57 center put its rear face exactly on the ribs' rear
+    // faces, so two independently textured surfaces competed for one depth
+    // plane. The ribs now stand physically proud of one continuous shell.
+    addBox(this.darkArmorMat, -0.555, 2.29, 0, 0.12, 0.54, 0.62);
     if (mediumDetail) {
       addBox(primaryMat, -0.61, 2.5, -0.29, 0.13, 0.22, 0.12);
       addBox(primaryMat, -0.61, 2.5, 0.29, 0.13, 0.22, 0.12);

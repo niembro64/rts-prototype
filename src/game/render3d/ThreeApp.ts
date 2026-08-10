@@ -16,6 +16,8 @@ import { registerLightingTargets } from './RenderLighting3D';
 import { configureSpriteTexture } from './threeUtils';
 import { registerBackdropTarget } from './presetBackdrops';
 import { ParallaxBackdropRenderer3D } from './ParallaxBackdropRenderer3D';
+import { registerMapPresetLabelTarget } from './presetMapLabel';
+import { MapPresetLabel3D } from './MapPresetLabel3D';
 import { WebGlFrameProfiler, type WebGlFrameProfile } from './WebGlFrameProfiler';
 import { ZoomTerrainPointsOverlay3D } from './ZoomTerrainPointsOverlay3D';
 import {
@@ -124,6 +126,8 @@ export class ThreeApp {
   private _skyTexture: THREE.Texture | null = null;
   private readonly _parallaxBackdrop: ParallaxBackdropRenderer3D;
   private _unregisterBackdropTarget: (() => void) | null = null;
+  private _mapPresetLabel: MapPresetLabel3D | null = null;
+  private _unregisterMapPresetLabelTarget: (() => void) | null = null;
   private _visibleSunDisk: THREE.Object3D | null = null;
   private _lastSeaBackgroundEnabled: boolean | null = null;
   private readonly _seaBackgroundColor = new THREE.Color().setRGB(
@@ -311,9 +315,20 @@ export class ThreeApp {
     });
     this._resizeObserver.observe(parent);
 
-    // Pick up the current preset backdrop (and future preset switches).
-    // Registered last so the initial layer set never reaches a half-built app.
+    this._mapPresetLabel = new MapPresetLabel3D(
+      this.world,
+      this.renderer,
+      mapWidth,
+      mapHeight,
+    );
+
+    // Pick up the current preset backdrop + corner caption (and future
+    // preset switches). Registered last so the initial layer set / caption
+    // never reaches a half-built app.
     this._unregisterBackdropTarget = registerBackdropTarget(this._parallaxBackdrop);
+    this._unregisterMapPresetLabelTarget = registerMapPresetLabelTarget(
+      this._mapPresetLabel,
+    );
   }
 
   get canvas(): HTMLCanvasElement {
@@ -513,6 +528,10 @@ export class ThreeApp {
     this._unregisterBackdropTarget?.();
     this._unregisterBackdropTarget = null;
     this._parallaxBackdrop.destroy();
+    this._unregisterMapPresetLabelTarget?.();
+    this._unregisterMapPresetLabelTarget = null;
+    this._mapPresetLabel?.destroy();
+    this._mapPresetLabel = null;
     this.scene.environment = null;
     this.scene.background = null;
     this._environmentTexture?.dispose();

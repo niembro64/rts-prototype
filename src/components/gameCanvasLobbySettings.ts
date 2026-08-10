@@ -15,6 +15,7 @@ import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
+  loadStoredSlowDownAtFinalWaypoint,
   loadStoredRealCap,
   normalizeCenterMagnitude,
   normalizeConverterTax,
@@ -32,6 +33,7 @@ import {
   saveMetalDepositStep,
   savePerimeterMagnitude,
   saveStoredCap,
+  saveSlowDownAtFinalWaypoint,
   saveTerrainDTerrain,
   saveTerrainDetail,
   type BattleMode,
@@ -82,6 +84,7 @@ type GameCanvasLobbySettingsOptions = {
   terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
+  slowDownAtFinalWaypointStoreVersion: Ref<number>;
   stopBackgroundBattle: () => void;
   startBackgroundBattle: () => void;
 };
@@ -111,6 +114,7 @@ export function useGameCanvasLobbySettings({
   terrainDetail,
   mapWidthLandCells,
   mapLengthLandCells,
+  slowDownAtFinalWaypointStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
 }: GameCanvasLobbySettingsOptions): GameCanvasLobbySettings {
@@ -152,6 +156,7 @@ export function useGameCanvasLobbySettings({
       mapLengthLandCells: mapLengthLandCells.value,
       maxTotalUnits: loadStoredRealCap(),
       converterTax: loadStoredConverterTax('real'),
+      slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
     };
   }
 
@@ -316,6 +321,11 @@ export function useGameCanvasLobbySettings({
       settings.terrainDetail === undefined
         ? terrainDetail.value
         : normalizeTerrainDetail(settings.terrainDetail);
+    const nextSlowDownAtFinalWaypoint =
+      settings.slowDownAtFinalWaypoint === true;
+    const slowDownAtFinalWaypointChanged =
+      nextSlowDownAtFinalWaypoint !==
+      loadStoredSlowDownAtFinalWaypoint('real');
     const changed =
       nextCenterMagnitude !== centerMagnitude.value ||
       nextDividersMagnitude !== dividersMagnitude.value ||
@@ -325,7 +335,8 @@ export function useGameCanvasLobbySettings({
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
-      settings.mapLengthLandCells !== mapLengthLandCells.value;
+      settings.mapLengthLandCells !== mapLengthLandCells.value ||
+      slowDownAtFinalWaypointChanged;
 
     centerMagnitude.value = nextCenterMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
@@ -352,6 +363,10 @@ export function useGameCanvasLobbySettings({
     );
     if (settings.converterTax !== undefined) {
       saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
+    }
+    saveSlowDownAtFinalWaypoint(nextSlowDownAtFinalWaypoint, 'real');
+    if (slowDownAtFinalWaypointChanged) {
+      slowDownAtFinalWaypointStoreVersion.value++;
     }
     if (
       settings.maxTotalUnits !== undefined &&

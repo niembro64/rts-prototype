@@ -112,6 +112,7 @@ export const BATTLE_CONFIG = {
   forceFieldsVisible: { default: _demoPreset.forceFieldsVisible },
   shieldsObstructSight: { default: _demoPreset.shieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
+  slowDownAtFinalWaypoint: { default: _demoPreset.slowDownAtFinalWaypoint },
   shieldReflectionMode: {
     default: _demoPreset.shieldReflectionMode,
   },
@@ -218,6 +219,8 @@ const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
 const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
+const STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.demoSlowDownAtFinalWaypoint;
+const STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.realSlowDownAtFinalWaypoint;
 const STORAGE_DEMO_SLOPE_PATH_MODE = sk.demoSlopePathMode;
 const STORAGE_REAL_SLOPE_PATH_MODE = sk.realSlopePathMode;
 const STORAGE_DEMO_TERRAIN_SURFACE_MODE = sk.demoTerrainSurfaceMode;
@@ -574,6 +577,24 @@ export function saveFogOfWarEnabled(enabled: boolean, mode: BattleMode): void {
     mode === 'real'
       ? STORAGE_REAL_FOG_OF_WAR_ENABLED
       : STORAGE_DEMO_FOG_OF_WAR_ENABLED,
+    String(enabled),
+  );
+}
+
+export function loadStoredSlowDownAtFinalWaypoint(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT,
+    STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT,
+    getModeDefaultPreset(mode).slowDownAtFinalWaypoint,
+  );
+}
+
+export function saveSlowDownAtFinalWaypoint(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT
+      : STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT,
     String(enabled),
   );
 }

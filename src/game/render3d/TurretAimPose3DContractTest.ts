@@ -4,6 +4,11 @@ import {
   TURRET_AIM_INPUT_STRIDE,
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
+import {
+  TURRET_HEAD_INPUT_STRIDE,
+  UnitTurretHeadMatrixBatch3D,
+  writeTurretHeadInput,
+} from './UnitTurretHeadMatrixBatch3D';
 import { writeTurretAimInput } from './turretAimInput';
 
 const BARREL_AXIS = new THREE.Vector3(1, 0, 0);
@@ -120,10 +125,13 @@ function assertDirectionAligned(
 function checkImmediatePose(): void {
   for (const testCase of AIM_CASES) {
     const root = new THREE.Group();
+    const yawGroup = new THREE.Group();
     const pitchGroup = new THREE.Group();
+    root.add(yawGroup);
+    yawGroup.add(pitchGroup);
     const parentQuaternion = parentWorldQuaternion(testCase);
     applyTurretAimPose3D(
-      { root, pitchGroup },
+      { yawGroup, pitchGroup },
       testCase.hostRotation,
       testCase.aimRotation,
       testCase.aimPitch,
@@ -134,9 +142,13 @@ function checkImmediatePose(): void {
       'immediate pose:',
       renderedWorldDirection(
         parentQuaternion,
-        root.rotation.y,
+        yawGroup.rotation.y,
         pitchGroup.rotation.z,
       ),
+    );
+    assertContract(
+      root.rotation.y === 0,
+      `immediate pose: ${testCase.name} leaves the fixed mount anchor unrotated`,
     );
   }
 }
@@ -171,7 +183,87 @@ function checkBatchedPose(): void {
   }
 }
 
+/** The sphere is symmetric, but its sensor-dome surface chart is not: the
+ * black pitch slot must rotate with logical yaw. This checks the actual
+ * instanced-head matrix path that previously emitted scale + translation and
+ * silently discarded the body orientation. */
+function checkInstancedTurretBodyYaw(): void {
+  const batch = new UnitTurretHeadMatrixBatch3D();
+  const input = batch.begin(AIM_CASES.length);
+  const expectedQuaternions: THREE.Quaternion[] = [];
+  const expectedCenters: THREE.Vector3[] = [];
+  for (let i = 0; i < AIM_CASES.length; i++) {
+    const testCase = AIM_CASES[i];
+    const parentQuaternion = parentWorldQuaternion(testCase);
+    const yawGroup = new THREE.Group();
+    applyTurretAimPose3D(
+      { yawGroup },
+      testCase.hostRotation,
+      testCase.aimRotation,
+      testCase.aimPitch,
+      parentQuaternion,
+    );
+    const parentPosition = new THREE.Vector3(13, 7, -4);
+    const mountPosition = new THREE.Vector3(2.5, 3, -1.25);
+    const radius = 4.5;
+    writeTurretHeadInput(
+      input,
+      i * TURRET_HEAD_INPUT_STRIDE,
+      parentPosition,
+      parentQuaternion,
+      mountPosition,
+      radius,
+      yawGroup.quaternion,
+    );
+    const expectedQuaternion = parentQuaternion.clone().multiply(yawGroup.quaternion);
+    expectedQuaternions.push(expectedQuaternion);
+    expectedCenters.push(
+      mountPosition.clone()
+        .applyQuaternion(parentQuaternion)
+        .add(parentPosition)
+        .add(new THREE.Vector3(0, radius, 0).applyQuaternion(expectedQuaternion)),
+    );
+  }
+
+  const output = batch.compute(AIM_CASES.length);
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  const matrixAxis = new THREE.Vector3();
+  const expectedAxis = new THREE.Vector3();
+  for (let i = 0; i < AIM_CASES.length; i++) {
+    const matrix = new THREE.Matrix4().fromArray(output, i * batch.outputStride);
+    matrix.decompose(position, quaternion, scale);
+    const elements = matrix.elements;
+    matrixAxis.set(elements[0], elements[1], elements[2]).normalize();
+    expectedAxis.set(1, 0, 0).applyQuaternion(expectedQuaternions[i]);
+    const slotAxisAlignment = matrixAxis.dot(expectedAxis);
+    assertContract(
+      slotAxisAlignment > 1 - 2e-6,
+      `instanced turret body ${AIM_CASES[i].name} turns its black slot with logical yaw `
+        + `(alignment ${slotAxisAlignment})`,
+    );
+    matrixAxis.set(elements[4], elements[5], elements[6]).normalize();
+    expectedAxis.set(0, 1, 0).applyQuaternion(expectedQuaternions[i]);
+    assertContract(
+      matrixAxis.dot(expectedAxis) > 1 - 2e-6,
+      `instanced turret body ${AIM_CASES[i].name} preserves the slot's vertical axis`,
+    );
+    assertContract(
+      position.distanceTo(expectedCenters[i]) < 2e-5,
+      `instanced turret body ${AIM_CASES[i].name} keeps its authored mount center`,
+    );
+    assertContract(
+      Math.abs(scale.x - 4.5) < 2e-6 &&
+        Math.abs(scale.y - 4.5) < 2e-6 &&
+        Math.abs(scale.z - 4.5) < 2e-6,
+      `instanced turret body ${AIM_CASES[i].name} retains uniform head scale`,
+    );
+  }
+}
+
 export function runTurretAimPose3DContractTest(): void {
   checkImmediatePose();
   checkBatchedPose();
+  checkInstancedTurretBodyYaw();
 }

@@ -95,6 +95,8 @@ export const DEFAULT_SHIELDS_OBSTRUCT_SIGHT =
   BATTLE_CONFIG.shieldsObstructSight.default;
 export const DEFAULT_SHIELD_REFLECTION_MODE =
   BATTLE_CONFIG.shieldReflectionMode.default;
+export const DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT =
+  BATTLE_CONFIG.slowDownAtFinalWaypoint.default;
 
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING
@@ -328,6 +330,10 @@ export const SKY_RENDER_CONFIG = COLORS.world.sky;
  *  remains the useful Z-offset equivalent: 0 keeps authored placement,
  *  negative lowers every layer, and positive raises every layer. */
 export const PRESET_BACKDROP_RENDER_CONFIG = worldRenderConfigJson.presetBackdrop;
+
+/** Ground caption painted outside the map's near-left corner while the
+ *  battle bar sits exactly on a stock preset. See MapPresetLabel3D. */
+export const MAP_PRESET_LABEL_RENDER_CONFIG = worldRenderConfigJson.mapPresetLabel;
 
 export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.colorHex;
 export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.colorHex;

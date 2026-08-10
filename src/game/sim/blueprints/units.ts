@@ -6,7 +6,6 @@
  * force profile alongside the unit's explicit pathing class.
  */
 
-import type { TurretBlueprintId } from '../../../types/blueprintIds';
 import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
@@ -246,6 +245,7 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
     ['segments.upper.lengthUnitRadiusRatio', config.segments.upper.lengthUnitRadiusRatio],
     ['segments.lower.lengthUnitRadiusRatio', config.segments.lower.lengthUnitRadiusRatio],
     ['footSphere.originExtensionRatio', config.footSphere.originExtensionRatio],
+    ['footSphere.radiusLegLengthRatio', config.footSphere.radiusLegLengthRatio],
     ['snapRay.originBoundarySpanRatio', config.snapRay.originBoundarySpanRatio],
   ] as const;
   for (const [name, value] of globalValues) {
@@ -272,13 +272,9 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
       `Invalid leg layout for ${unitBlueprintId}: footSphere.originExtensionRatio must be between 0 and 1`,
     );
   }
-  // The chopping ratio is a WORKING margin inside the leg's own fold limit,
-  // so it may shrink the envelope but never define it — resolveLegReachShell
-  // floors it at |upper - lower|. Anything at or past 1 would ask the leg to
-  // hold its foot further out than it can while calling it the inner bound.
-  if (choppingRatio >= 1) {
+  if (config.footSphere.radiusLegLengthRatio <= 0) {
     throw new Error(
-      `Invalid leg layout for ${unitBlueprintId}: choppingSphere.radiusLegLengthRatio must be below 1`,
+      `Invalid leg layout for ${unitBlueprintId}: footSphere.radiusLegLengthRatio must be positive`,
     );
   }
   if (
@@ -514,9 +510,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 
 let unitTurretMountsResolved = false;
 
-export function resolveUnitTurretMounts(
-  getTurretBodyRadius: (turretBlueprintId: TurretBlueprintId) => number,
-): void {
+export function resolveUnitTurretMounts(): void {
   if (unitTurretMountsResolved) return;
 
   for (const bp of Object.values(UNIT_BLUEPRINTS)) {
@@ -529,10 +523,10 @@ export function resolveUnitTurretMounts(
           `Invalid turret mount resolver for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: unsupported kind`,
         );
       }
-      const turretRadius = getTurretBodyRadius(turret.turretBlueprintId);
-      if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
+      const turretRadius = turret.presentation?.headRadius;
+      if (typeof turretRadius !== 'number' || !Number.isFinite(turretRadius) || turretRadius <= 0) {
         throw new Error(
-          `Invalid top-mounted turret for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: turret radius.other must be positive`,
+          `Invalid top-mounted turret for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: presentation.headRadius must be positive`,
         );
       }
       turret.mount.z = resolver.bodyTopZFrac + turretRadius / bp.radius.other;

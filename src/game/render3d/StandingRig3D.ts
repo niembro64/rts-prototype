@@ -31,7 +31,7 @@ import type {
 import type { Entity, PlayerId, Turret } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
-  getSharedPrimitiveSphereGeometry,
+  getSharedPrimitiveCylinderGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import {
@@ -87,8 +87,8 @@ type Strut = {
   mesh: THREE.Mesh;
   /** A shorter, wider plate rides the outside of the actuator core. BAR's
    *  walkers read as nested armour and piston housings, not four sticks. */
-  armor: THREE.Mesh;
-  /** Commander-only team-light strip on the outward armour face. */
+  armor?: THREE.Mesh;
+  /** Commander-only team-light strip on the outward limb-shell face. */
   accent?: THREE.Mesh;
   accentSide: number;
   /** Cross-section, world units. Length comes from the endpoints. */
@@ -166,8 +166,15 @@ export type StandingMesh = {
    * yaw. */
   pelvis: THREE.Mesh;
   /** Presentation-only local Three.js yaw applied by the host to its upper
-   *  body. Turret world aim remains authoritative and independently posed. */
+   *  body. This is derived each frame from the independently smoothed world
+   *  heading below and the locomotion-owned host heading. */
   upperBodyYaw: number;
+  /** Retained upper-body heading in simulation/world yaw coordinates. Keeping
+   *  the EMA here, rather than on the local waist twist, prevents a leg turn
+   *  from dragging a locked torso and lets an unlocked torso visibly follow
+   *  locomotion-forward instead of snapping to it. Null means the first live
+   *  pose should initialize from the host heading. */
+  upperBodyWorldYaw: number | null;
   /** True whenever any attached turret owns the host presentation. This is a
    *  host-wide animation gate: combat aim suppresses gait on both arms even
    *  when only one arm receives the selected turret's pitch proposal. */
@@ -218,14 +225,16 @@ const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 const ARM_ACTION_EASE_SECONDS = 0.11;
 /** A standing torso quickly accepts a locked turret heading. */
 const UPPER_BODY_YAW_EASE_SECONDS = 0.12;
-/** With no turret asking for host assistance, the torso is carried directly
- *  by the locomotion frame and quickly sheds any leftover aiming offset. */
+/** With no turret asking for host assistance, the torso's world-facing EMA
+ *  follows locomotion-forward. */
 const UPPER_BODY_RETURN_EASE_SECONDS = 0.45;
 /** Manual emitters such as the Commander's D-gun have no tracking FSM lock.
  *  A changed authoritative pose therefore grants them a short host-assist
  *  window, long enough for the torso/arm echo to visibly follow the shot. */
 const MANUAL_TURRET_ASSIST_HOLD_MS = 420;
 const MANUAL_TURRET_POSE_EPSILON = 1e-4;
+const STANDING_PELVIS_CENTER_LIFT_RATIO = 0.26;
+const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
 
 const _knee = new THREE.Vector3();
 const _resolvedFoot = new THREE.Vector3();
@@ -269,11 +278,15 @@ function makeStrut(
   ownerId: PlayerId | undefined,
   accentSide = 0,
   layered = true,
+  armored = true,
 ): Strut {
   const mesh = new THREE.Mesh(unitBox, material(ownerId));
-  const armor = new THREE.Mesh(unitBox, material(ownerId));
-  mesh.visible = layered;
-  parent.add(mesh, armor);
+  const armor = armored ? new THREE.Mesh(unitBox, material(ownerId)) : undefined;
+  // A bare actuator remains the whole limb at far LOD; a layered strut lets
+  // its broader armour sleeve carry the silhouette there instead.
+  mesh.visible = layered || !armored;
+  parent.add(mesh);
+  if (armor !== undefined) parent.add(armor);
   let accent: THREE.Mesh | undefined;
   if (accentSide !== 0) {
     accent = new THREE.Mesh(unitBox, constructionEmitterMaterial);
@@ -293,19 +306,38 @@ function makeBlock(
   return mesh;
 }
 
-function makeStandingJointSphere(
+/** A standing limb joint is a hinge housing, not another limb block. The shared
+ * cylinder's authored axis is local Y; rotate it onto standing-local Z so the
+ * axle runs across the limb while the round profile reads in its bend plane. */
+function makeStandingHingeCylinder(
   parent: THREE.Group,
-  radius: number,
+  diameter: number,
+  axleLength: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(
-    getSharedPrimitiveSphereGeometry('locomotion', geometryTier),
+    getSharedPrimitiveCylinderGeometry('locomotion', geometryTier),
     material(ownerId),
   );
-  mesh.scale.setScalar(radius);
+  mesh.scale.set(diameter * 0.5, axleLength, diameter * 0.5);
+  mesh.rotation.x = Math.PI * 0.5;
   parent.add(mesh);
   return mesh;
+}
+
+/** Upper seam of the lower-body pelvis in the lifted standing-rig frame.
+ * Standing chassis art begins on this exact plane so no hidden upper-body
+ * blocks extend down inside the independently yawing hips. */
+export function getStandingPelvisTopLocalY(
+  unitRadius: number,
+  cfgLegs: StandingLegs,
+  chassisLiftY: number,
+): number {
+  const hipY = unitRadius * cfgLegs.hip.zUnitRadiusRatio - chassisLiftY;
+  return hipY +
+    cfgLegs.radius * STANDING_PELVIS_CENTER_LIFT_RATIO +
+    cfgLegs.radius * STANDING_PELVIS_HEIGHT_RATIO * 0.5;
 }
 
 /** Compact BAR-style mech boot: a real outsole with a raised heel, quarter,
@@ -450,11 +482,30 @@ function addCommanderConstructionTool(
  *  is harmless for a cylinder but makes an armoured box visibly corkscrew as
  *  an arm crosses vertical. Projecting the standing rig's lateral axis onto
  *  the segment-normal plane gives every limb a stable rectangular frame. */
-function poseStrut(strut: Strut, ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
+function poseStrut(
+  strut: Strut,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  startInset = 0,
+  endInset = 0,
+): void {
   _segDir.set(bx - ax, by - ay, bz - az);
   const length = _segDir.length();
   if (length < 1e-5) return;
   _segDir.divideScalar(length);
+  // Bone endpoints remain joint centers for IK. Only the visible shell is
+  // trimmed, so it touches each housing instead of continuing invisibly
+  // through the hip/knee/shoulder/elbow volume.
+  const insetScale = startInset + endInset > length - 1e-4
+    ? Math.max(0, length - 1e-4) / Math.max(1e-5, startInset + endInset)
+    : 1;
+  const visibleStart = Math.max(0, startInset) * insetScale;
+  const visibleEnd = Math.max(0, endInset) * insetScale;
+  const visibleLength = Math.max(1e-4, length - visibleStart - visibleEnd);
+  const centerAlong = visibleStart + visibleLength * 0.5;
+  const centerX = ax + _segDir.x * centerAlong;
+  const centerY = ay + _segDir.y * centerAlong;
+  const centerZ = az + _segDir.z * centerAlong;
   _segDepthAxis.copy(_segLateralReference)
     .addScaledVector(_segDir, -_segLateralReference.dot(_segDir));
   if (_segDepthAxis.lengthSq() < 1e-8) {
@@ -467,30 +518,56 @@ function poseStrut(strut: Strut, ax: number, ay: number, az: number, bx: number,
   _segBasis.makeBasis(_segWidthAxis, _segDir, _segDepthAxis);
   _segQuat.setFromRotationMatrix(_segBasis);
   strut.mesh.quaternion.copy(_segQuat);
-  strut.mesh.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
-  strut.mesh.scale.set(strut.width * 0.64, length, strut.depth * 0.62);
-  strut.armor.quaternion.copy(_segQuat);
-  strut.armor.position.set(
-    (ax + bx) * 0.5,
-    (ay + by) * 0.5,
-    (az + bz) * 0.5,
-  );
-  strut.armor.scale.set(
-    strut.width,
-    length * (strut.mesh.visible ? 0.58 : 0.96),
-    strut.depth,
-  );
+  strut.mesh.position.set(centerX, centerY, centerZ);
+  strut.mesh.scale.set(strut.width * 0.64, visibleLength, strut.depth * 0.62);
+  if (strut.armor !== undefined) {
+    strut.armor.quaternion.copy(_segQuat);
+    strut.armor.position.set(centerX, centerY, centerZ);
+    strut.armor.scale.set(
+      strut.width,
+      visibleLength * (strut.mesh.visible ? 0.58 : 0.96),
+      strut.depth,
+    );
+  }
   if (strut.accent !== undefined) {
     _accentOffset
-      .set(0, 0, strut.depth * 0.52 * strut.accentSide)
+      .set(
+        0,
+        0,
+        strut.depth * (strut.armor !== undefined ? 0.52 : 0.33) * strut.accentSide,
+      )
       .applyQuaternion(_segQuat);
     strut.accent.quaternion.copy(_segQuat);
     strut.accent.position
-      .set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5)
+      .set(centerX, centerY, centerZ)
       .add(_accentOffset)
-      .addScaledVector(_segDir, -length * 0.04);
-    strut.accent.scale.set(strut.width * 0.2, length * 0.42, strut.depth * 0.08);
+      .addScaledVector(_segDir, -visibleLength * 0.04);
+    strut.accent.scale.set(
+      strut.width * 0.2,
+      visibleLength * 0.42,
+      strut.depth * 0.08,
+    );
   }
+}
+
+/** Distance from an axis-aligned box center to the first face hit by the
+ * center-to-child ray. Standing shoulder housings are unrotated boxes. */
+function boxJointSurfaceDistance(
+  box: THREE.Mesh,
+  dx: number,
+  dy: number,
+  dz: number,
+): number {
+  const length = Math.hypot(dx, dy, dz);
+  if (length < 1e-5) return 0;
+  const nx = Math.abs(dx / length);
+  const ny = Math.abs(dy / length);
+  const nz = Math.abs(dz / length);
+  let distance = Infinity;
+  if (nx > 1e-8) distance = Math.min(distance, box.scale.x * 0.5 / nx);
+  if (ny > 1e-8) distance = Math.min(distance, box.scale.y * 0.5 / ny);
+  if (nz > 1e-8) distance = Math.min(distance, box.scale.z * 0.5 / nz);
+  return Number.isFinite(distance) ? distance : 0;
 }
 
 /** Resolve a mechanically valid two-bone leg.
@@ -638,7 +715,13 @@ function poseCoupledStandingGait(
     );
     leg.footLocalX = _resolvedFoot.x;
     leg.footLocalZ = _resolvedFoot.z;
-    poseStrut(leg.thigh, leg.hipX, leg.hipY, leg.hipZ, _knee.x, _knee.y, _knee.z);
+    poseStrut(
+      leg.thigh,
+      leg.hipX, leg.hipY, leg.hipZ,
+      _knee.x, _knee.y, _knee.z,
+      leg.hipJoint.scale.x,
+      leg.knee.scale.x,
+    );
     poseStrut(
       leg.shin,
       _knee.x,
@@ -647,6 +730,7 @@ function poseCoupledStandingGait(
       _resolvedFoot.x,
       _resolvedFoot.y,
       _resolvedFoot.z,
+      leg.knee.scale.x,
     );
     leg.knee.position.copy(_knee);
     leg.foot.position.copy(_resolvedFoot);
@@ -688,19 +772,20 @@ export function buildStandingRig(
   const pelvis = makeBlock(
     hips,
     legWidth * 1.42,
-    legWidth * 0.82,
+    legWidth * STANDING_PELVIS_HEIGHT_RATIO,
     hipHalfTrack * 2,
     ownerId,
   );
-  pelvis.position.set(hipX, hipY + legWidth * 0.26, 0);
+  pelvis.position.set(hipX, hipY + legWidth * STANDING_PELVIS_CENTER_LIFT_RATIO, 0);
   pelvis.userData.standingPelvis = true;
 
   const legs: StandingLeg[] = [];
   for (const side of [-1, 1] as const) {
     const hipZ = side * hipHalfTrack;
-    const hipJoint = makeStandingJointSphere(
+    const hipJoint = makeStandingHingeCylinder(
       hips,
-      hipJointRadius,
+      hipJointRadius * 2,
+      legWidth * 0.95,
       ownerId,
       geometryTier,
     );
@@ -725,7 +810,13 @@ export function buildStandingRig(
         variant === 'commander' && geometryTier === 'close' ? side : 0,
         geometryTier !== 'far',
       ),
-      knee: makeBlock(hips, legWidth * 0.95, legWidth * 0.95, legWidth * 0.9, ownerId),
+      knee: makeStandingHingeCylinder(
+        hips,
+        legWidth * 0.95,
+        legWidth * 0.9,
+        ownerId,
+        geometryTier,
+      ),
       foot: makeFoot(hips, footLength, footWidth, ownerId, variant, geometryTier),
       footLocalX: hipX,
       footLocalZ: hipZ,
@@ -789,13 +880,20 @@ export function buildStandingRig(
         group, armWidth, armWidth * 0.9, ownerId,
         variant === 'commander' && geometryTier === 'close' ? side : 0,
         geometryTier !== 'far',
+        false,
       ),
       forearm: makeStrut(
         group, armWidth * 0.86, armWidth * 0.78, ownerId,
         variant === 'commander' && geometryTier === 'close' ? side : 0,
         geometryTier !== 'far',
       ),
-      elbow: makeBlock(group, armWidth * 0.92, armWidth * 0.92, armWidth * 0.86, ownerId),
+      elbow: makeStandingHingeCylinder(
+        group,
+        armWidth * 0.92,
+        armWidth * 0.86,
+        ownerId,
+        geometryTier,
+      ),
       wrist,
       attachment,
       handX: 0,
@@ -811,6 +909,7 @@ export function buildStandingRig(
     hips,
     pelvis,
     upperBodyYaw: 0,
+    upperBodyWorldYaw: null,
     turretLockActive: false,
     turretAimMemory: new Map(),
     legs,
@@ -846,15 +945,26 @@ function poseArm(
   const handX = elbowX + Math.sin(forearmPitch) * forearmPlanar;
   const handY = elbowY - Math.cos(forearmPitch) * forearmPlanar;
   const handZ = elbowZ + arm.side * Math.sin(forearmOutward) * arm.forearmLength;
+  const shoulderInset = boxJointSurfaceDistance(
+    arm.shoulderJoint,
+    elbowX - arm.shoulderX,
+    elbowY - arm.shoulderY,
+    elbowZ - arm.shoulderZ,
+  );
+  const elbowInset = arm.elbow.scale.x;
   poseStrut(
     arm.upper,
     arm.shoulderX, arm.shoulderY, arm.shoulderZ,
     elbowX, elbowY, elbowZ,
+    shoulderInset,
+    elbowInset,
   );
   poseStrut(
     arm.forearm,
     elbowX, elbowY, elbowZ,
     handX, handY, handZ,
+    elbowInset,
+    arm.wrist.visible ? arm.wrist.scale.y * 0.5 : 0,
   );
   arm.elbow.position.set(elbowX, elbowY, elbowZ);
   arm.wrist.position.set(handX, handY, handZ);
@@ -962,11 +1072,12 @@ export function updateStandingHostTurretAim(
 
   mesh.turretLockActive = selectedPriority > 0;
 
-  const localSimYaw = selectedPriority > 0
-    ? shortestAngleDelta(hostYaw, selectedYaw)
-    : 0;
-  // Sim yaw is around +Z; Three yaw is around +Y with the opposite sign.
-  const targetUpperBodyYaw = -localSimYaw;
+  if (mesh.upperBodyWorldYaw === null) {
+    // upperBodyYaw is Three-local and therefore the inverse of sim-local yaw:
+    // localThree = hostSim - torsoWorldSim.
+    mesh.upperBodyWorldYaw = hostYaw - mesh.upperBodyYaw;
+  }
+  const targetWorldYaw = selectedPriority > 0 ? selectedYaw : hostYaw;
   const dt = elapsedMs / 1000;
   const yawEaseSeconds = selectedPriority > 0
     ? UPPER_BODY_YAW_EASE_SECONDS
@@ -974,10 +1085,14 @@ export function updateStandingHostTurretAim(
   const yawEase = dt <= 0
     ? (selectedPriority > 0 ? 1 : 0)
     : 1 - Math.exp(-dt / yawEaseSeconds);
-  mesh.upperBodyYaw += shortestAngleDelta(
-    mesh.upperBodyYaw,
-    targetUpperBodyYaw,
+  mesh.upperBodyWorldYaw += shortestAngleDelta(
+    mesh.upperBodyWorldYaw,
+    targetWorldYaw,
   ) * yawEase;
+  // The lifted upper body is parented under the locomotion yaw. Derive only
+  // the local counter/assist twist here; the persistent EMA above never sees
+  // that moving parent frame.
+  mesh.upperBodyYaw = shortestAngleDelta(mesh.upperBodyWorldYaw, hostYaw);
 
   if (selectedArm !== null) {
     const arm = mesh.arms.find((candidate) => candidate.id === selectedArm);

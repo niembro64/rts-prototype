@@ -371,6 +371,12 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
         >{{ model.currentSlopePathMode === 'symmetric' ? 'BOTH DIRECTIONS' : 'UPHILL ONLY' }}</BarButton>
         <BarDivider />
+        <BarButton
+          :active="model.currentSlowDownAtFinalWaypoint"
+          title="Toggle velocity-aware braking as units approach the final waypoint of their final order. Off keeps full thrust through the destination; corner-speed shaping is unchanged."
+          @click="model.setSlowDownAtFinalWaypoint(!model.currentSlowDownAtFinalWaypoint)"
+        >FINAL WAYPOINT SLOWDOWN</BarButton>
+        <BarDivider />
       </BarControlGroup>
     </div>
   </div>

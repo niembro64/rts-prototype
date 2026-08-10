@@ -24,6 +24,8 @@ export type BattlePreset = {
   readonly shieldsObstructSight: boolean;
   readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
+  /** Apply velocity-aware braking near the last point of the last action. */
+  readonly slowDownAtFinalWaypoint: boolean;
   /** Ground pathfinding slope policy (SLOPE LIMIT bar toggle). */
   readonly slopePathMode: SlopePathMode;
   /** Ground material policy (WORLD bar group). `metal` makes the whole map
@@ -73,6 +75,9 @@ const SUBSYSTEM_DEFAULTS = {
   turretShieldSpheresEnabled: true,
   forceFieldsVisible: true,
   shieldReflectionMode: 'both' as ShieldReflectionMode,
+  // BAR-style full-speed arrival is the default; the BATTLE toggle opts into
+  // the smoother velocity-aware final approach.
+  slowDownAtFinalWaypoint: false,
   slopePathMode: 'directional' as SlopePathMode,
   // Every stock preset ships the authored world; only METAL HELL flips these.
   terrainSurfaceMode: 'normal' as TerrainSurfaceMode,
@@ -300,6 +305,7 @@ function presetMatchesCurrent(
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&
+    p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&
@@ -311,6 +317,25 @@ function presetMatchesCurrent(
     p.mapWidthLandCells === c.mapWidthLandCells &&
     p.mapLengthLandCells === c.mapLengthLandCells
   );
+}
+
+/** Caption for the map-corner preset sign (MapPresetLabel3D): the preset
+ *  name followed by the handful of fields that actually distinguish the
+ *  stock presets from each other. `null` for anything that is not a stock
+ *  preset — off-preset settings show no sign at all. */
+export function mapPresetLabelLines(name: string | null): readonly string[] | null {
+  const preset = name === null
+    ? undefined
+    : BATTLE_PRESETS.find((p) => p.name === name);
+  if (preset === undefined) return null;
+  const terrain = preset.terrainSurfaceMode === 'metal' ? 'METAL GROUND' : 'LAND';
+  const liquid = preset.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
+  return [
+    preset.name.toUpperCase(),
+    `${preset.mapWidthLandCells} x ${preset.mapLengthLandCells} CELLS`
+      + `  ·  ${preset.cap} UNIT CAP`,
+    `${terrain}  ·  ${liquid}  ·  DETAIL ${preset.terrainDetail}`,
+  ];
 }
 
 export function findMatchingPresetName(c: BattlePresetSnapshot): string | null {

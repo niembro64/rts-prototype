@@ -118,6 +118,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setShieldsObstructSight':
     case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':
+    case 'setSlowDownAtFinalWaypoint':
       return false;
     default:
       return true;

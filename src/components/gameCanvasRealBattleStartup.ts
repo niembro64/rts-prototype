@@ -4,6 +4,7 @@ import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
   loadStoredRealCap,
+  loadStoredSlowDownAtFinalWaypoint,
   loadStoredTerrainRuntimeConfig,
   type BattleTerrainRuntimeConfig,
 } from '../battleBarConfig';
@@ -195,6 +196,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     maxTotalUnits: loadStoredRealCap(),
     converterTax: loadStoredConverterTax('real'),
+    slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
   };
 }
 
@@ -1082,6 +1084,8 @@ async function createDeterministicLockstepBackendRuntime({
         ipAddress: localIpAddress,
         maxTotalUnits: initialMaxTotalUnits,
         fogOfWarEnabled: true,
+        slowDownAtFinalWaypoint:
+          matchContext.settings.slowDownAtFinalWaypoint ?? false,
       });
       scheduler.markPeerReady(localPlayerId);
       if (network !== undefined) {

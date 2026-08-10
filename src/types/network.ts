@@ -526,6 +526,9 @@ export type LobbySettings = {
   /** Gameplay unit cap for real battles. Undefined only for legacy handoffs. */
   maxTotalUnits: number | undefined;
   converterTax: number | undefined;
+  /** Whether units brake on approach to their last waypoint. Undefined only
+   *  for legacy lobby messages, which use the off default. */
+  slowDownAtFinalWaypoint: boolean | undefined;
 };
 
 export type NetworkServerSnapshotSimEvent = {

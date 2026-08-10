@@ -759,7 +759,7 @@ function forEachConstructionEmitterRig(
   const combatTurrets = entity.combat?.turrets;
   if (!combatTurrets) return;
   for (let i = 0; i < combatTurrets.length && i < mesh.turrets.length; i++) {
-    if (combatTurrets[i].config.constructionEmitter) {
+    if (combatTurrets[i].presentation.constructionEmitter) {
       const rig = mesh.turrets[i].constructionEmitter;
       if (rig) fn(rig);
     }

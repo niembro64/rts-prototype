@@ -637,6 +637,11 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
+      case 'setSlowDownAtFinalWaypoint':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.world.slowDownAtFinalWaypoint = sanitizedCommand.enabled;
+        return;
       case 'setSlopePathMode':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);

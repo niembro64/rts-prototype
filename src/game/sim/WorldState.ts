@@ -35,6 +35,7 @@ import {
   DEFAULT_SHIELDS_OBSTRUCT_SIGHT,
   DEFAULT_SHIELD_REFLECTION_MODE,
   DEFAULT_FORCE_FIELDS_VISIBLE,
+  DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { DEFAULT_SLOPE_PATH_MODE, type SlopePathMode } from '../../types/slopePathMode';
@@ -224,6 +225,9 @@ export class WorldState {
   public shieldReflectionMode: ShieldReflectionMode = DEFAULT_SHIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
   public fogOfWarEnabled: boolean = true;
+  /** Whether ordinary final actions use velocity-aware braking before their
+   *  last waypoint. Off preserves full thrust until the tight arrival gate. */
+  public slowDownAtFinalWaypoint: boolean = DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT;
   // Slope-traversal policy for ground pathfinding. `directional` lets units
   // descend/fall any slope and only gates uphill; `symmetric` gates both.
   public slopePathMode: SlopePathMode = DEFAULT_SLOPE_PATH_MODE;

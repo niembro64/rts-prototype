@@ -513,8 +513,8 @@ export function updateProjectileSourceClearance(
       const dx = pointX - mount.x;
       const dy = pointY - mount.y;
       const dz = pointZ - mount.z;
-      const turretRadius = turret.config.radius.collision;
-      const clearance = turretRadius + clearancePad;
+      // Turret presentation never expands the authoritative host collider.
+      const clearance = clearancePad;
       clearOfTurret = dx * dx + dy * dy + dz * dz > clearance * clearance;
       break;
     }

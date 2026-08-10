@@ -18,9 +18,9 @@ import {
   type BuildingBlueprintId,
   type UtilityMountCapability,
 } from './types';
-import type { BuildingTurretMount } from '../../types/blueprints';
 import type { TurretMountControlMode } from '../../types/blueprints';
 import type { UnitTurretHostAttachment } from '../../types/blueprints';
+import type { TurretPresentation } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
@@ -34,6 +34,29 @@ import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
 import { cloneSensorCapabilityConfig } from './sensorConfig';
 
+function cloneTurretPresentation(presentation: TurretPresentation): TurretPresentation {
+  const barrel = presentation.barrel;
+  return {
+    ...presentation,
+    barrel: barrel === null
+      ? null
+      : barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel'
+        ? { ...barrel, spin: { ...barrel.spin } }
+        : barrel.type === 'complexSingleEmitter'
+          ? { ...barrel, grate: { ...barrel.grate } }
+          : { ...barrel },
+    constructionEmitter: presentation.constructionEmitter === null
+      ? null
+      : {
+          ...presentation.constructionEmitter,
+          sizes: {
+            small: { ...presentation.constructionEmitter.sizes.small },
+            large: { ...presentation.constructionEmitter.sizes.large },
+          },
+        },
+  };
+}
+
 function makeRuntimeTurret(
   turretBlueprintId: string,
   mountId: string,
@@ -43,14 +66,19 @@ function makeRuntimeTurret(
   sensorTurretBlueprintId: string | null,
   slavedToMountId: string | null,
   hostAttachment: UnitTurretHostAttachment | null,
+  presentation: TurretPresentation | null,
   identity: {
     id: EntityId;
     parentId: EntityId;
     rootHostId: EntityId;
     mountIndex: number;
   },
-  visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
+  if (presentation === null) {
+    throw new Error(
+      `Attack turret ${turretBlueprintId} on mount ${mountId} requires a host-authored presentation`,
+    );
+  }
   const turretConfig = getTurretConfig(turretBlueprintId);
   if (sensorTurretBlueprintId !== null) {
     const sensorBlueprint = getTurretBlueprint(sensorTurretBlueprintId);
@@ -77,7 +105,6 @@ function makeRuntimeTurret(
     slavedToMountId,
     requiredEngagedForFightStop,
     hostAttachment,
-    visualVariant: visualVariant ?? turretConfig.visualVariant,
   };
   const mountOffset2d = DMath.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
@@ -92,6 +119,7 @@ function makeRuntimeTurret(
     rootHostId: identity.rootHostId,
     mountIndex: identity.mountIndex,
     config,
+    presentation: cloneTurretPresentation(presentation),
     task: null,
     target: null,
     ranges,
@@ -117,7 +145,7 @@ function makeRuntimeTurret(
     ballisticAimInRange: true,
     burst: null,
     shield: null,
-    barrelFireIndex: 0,
+    emissionLaneIndex: 0,
   };
 }
 
@@ -185,8 +213,8 @@ export function createUnitRuntimeTurrets(
       mount.sensorTurretBlueprintId ?? null,
       mount.slavedToMountId ?? null,
       mount.hostAttachment ?? null,
+      mount.presentation,
       identity,
-      mount.visualVariant,
     ));
   }
   return turrets;
@@ -221,8 +249,8 @@ export function createBuildingRuntimeTurrets(
       m.sensorTurretBlueprintId ?? null,
       m.slavedToMountId ?? null,
       null,
+      m.presentation,
       identity,
-      m.visualVariant,
     ));
   }
   return turrets;

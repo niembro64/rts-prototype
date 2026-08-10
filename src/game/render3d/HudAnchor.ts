@@ -23,7 +23,7 @@ import { SHELL_BAR_WORLD_HEIGHT } from '@/shellConfig';
 import { NAME_LABEL_WORLD_HEIGHT } from '@/nameLabelConfig';
 
 function getBarrelRadius(turret: Turret): number {
-  const barrel = turret.config.barrel;
+  const barrel = turret.presentation.barrel;
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
@@ -31,11 +31,11 @@ function getBarrelRadius(turret: Turret): number {
   ) {
     return 0;
   }
-  return getTurretBarrelDiameter(turret.config) / 2;
+  return getTurretBarrelDiameter(turret.presentation, turret.config.shot) / 2;
 }
 
 function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
-  const barrel = turret.config.barrel;
+  const barrel = turret.presentation.barrel;
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
@@ -44,8 +44,8 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
     return mountY;
   }
   const pitch = turret.pitch ?? 0;
-  const headRadius = getTurretHeadRadius(turret.config);
-  const barrelLen = getTurretBarrelCenterToTipLength(turret.config);
+  const headRadius = getTurretHeadRadius(turret.presentation);
+  const barrelLen = getTurretBarrelCenterToTipLength(turret.presentation);
   const forwardUp = Math.max(0, Math.sin(pitch)) * barrelLen;
   let orbitUp = 0;
   if (barrel.type === 'simpleMultiBarrel') {
@@ -87,10 +87,10 @@ function getUnitHudTopY(unit: Entity): number {
   const turrets = unit.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    const isShield = turret.config.barrel?.type === 'complexSingleEmitter';
+    const isShield = turret.presentation.barrel?.type === 'complexSingleEmitter';
     const isMirrorHost = hasMirrors && i === 0;
     const mountY = turret.mount.z;
-    const headRadius = getTurretHeadRadius(turret.config);
+    const headRadius = getTurretHeadRadius(turret.presentation);
     if (!isShield && !isMirrorHost) {
       topAboveGround = Math.max(topAboveGround, mountY + headRadius);
     }
@@ -165,12 +165,12 @@ export function getBuildingHudNameY(building: Entity): number {
  *  authored HUD layout. */
 const PIECE_BAR_GAP = SHELL_BAR_WORLD_HEIGHT;
 
-function getTurretHudBarsY(mountWorldZ: number, config: Turret['config']): number {
-  return mountWorldZ + getTurretHeadRadius(config) + PIECE_BAR_GAP;
+function getTurretHudBarsY(mountWorldZ: number, presentation: Turret['presentation']): number {
+  return mountWorldZ + getTurretHeadRadius(presentation) + PIECE_BAR_GAP;
 }
 
-export function getTurretHudNameY(mountWorldZ: number, config: Turret['config']): number {
-  return getHudNameYFromBarsY(getTurretHudBarsY(mountWorldZ, config));
+export function getTurretHudNameY(mountWorldZ: number, presentation: Turret['presentation']): number {
+  return getHudNameYFromBarsY(getTurretHudBarsY(mountWorldZ, presentation));
 }
 
 

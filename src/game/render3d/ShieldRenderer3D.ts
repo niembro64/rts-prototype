@@ -192,7 +192,7 @@ void main() {
 `;
 
 function isShieldTurret(t: Turret): boolean {
-  return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+  return t.presentation.barrel?.type === 'complexSingleEmitter';
 }
 
 type FieldMesh = {

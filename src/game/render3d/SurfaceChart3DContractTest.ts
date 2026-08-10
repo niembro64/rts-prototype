@@ -366,6 +366,7 @@ function checkLiverySeparation(): void {
   assertContract(
     !isLiveryChart(LEG_CHARTS.upper) &&
       !isLiveryChart(LEG_CHARTS.lower) &&
+      !isLiveryChart(LEG_CHARTS.attachment) &&
       !isLiveryChart(LEG_CHARTS.joint),
     'locomotion is substance, not livery',
   );
@@ -501,7 +502,7 @@ function checkTrimSheet(): void {
 
   checkNoBakedDirectionalShading(pixels);
   checkBaseColourSurvives(pixels);
-  checkPitchSlot(pixels);
+  checkDirectionalTravelSlots(pixels);
 
   // Gutters, all four sides. The v gutters extend the band's own edge rows;
   // the u gutters WRAP — a surface's u seam joins its right edge to its left,
@@ -690,6 +691,7 @@ function lowHarmonicStats(
  *  slot, which is a hole at local +X by construction. */
 const DIRECTIONAL_EXEMPT_BANDS: ReadonlySet<TrimBandId> = new Set<TrimBandId>([
   'sensorDome',
+  'legSocket',
 ]);
 
 function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
@@ -737,8 +739,12 @@ export function measureBandLowHarmonics(): Record<string, string> {
  *    shut at both poles — the exact failure the user would see as the slot
  *    "closing up" at the top and bottom of its travel.
  */
-function checkPitchSlot(pixels: Uint8ClampedArray): void {
-  const b = bandPixelBounds('sensorDome');
+function checkMeridianTravelSlot(
+  pixels: Uint8ClampedArray,
+  band: 'sensorDome' | 'legSocket',
+  role: 'pitch' | 'leg-travel',
+): void {
+  const b = bandPixelBounds(band);
   const top = b.y0;
   const height = b.height;
   const DARK = 40;
@@ -756,8 +762,8 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
     const y = top + i;
     assertContract(
       isDark(y, centerX),
-      `pitch slot is absent at row ${i}/${height} of the sensor dome — the `
-        + 'barrels would leave the slot partway through their travel',
+      `${role} slot is absent at row ${i}/${height} of ${band} — the `
+        + 'articulated part would leave the slot partway through its travel',
     );
     let run = 1;
     for (let d = 1; d <= b.width / 2 && isDark(y, centerX - d); d++) run++;
@@ -775,14 +781,14 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
   for (let i = equator; i + 1 < height; i++) {
     assertContract(
       darkRun[i + 1] >= darkRun[i] - slack,
-      `pitch slot narrows toward the north pole (row ${i}: ${darkRun[i]}px, `
+      `${role} slot narrows toward the north pole (row ${i}: ${darkRun[i]}px, `
         + `row ${i + 1}: ${darkRun[i + 1]}px)`,
     );
   }
   for (let i = equator; i > 0; i--) {
     assertContract(
       darkRun[i - 1] >= darkRun[i] - slack,
-      `pitch slot narrows toward the south pole (row ${i}: ${darkRun[i]}px, `
+      `${role} slot narrows toward the south pole (row ${i}: ${darkRun[i]}px, `
         + `row ${i - 1}: ${darkRun[i - 1]}px)`,
     );
   }
@@ -800,14 +806,14 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
   }
   assertContract(
     arcWidths.length > height * 0.5,
-    `pitch slot must be narrow enough to measure over most of its run — only `
+    `${role} slot must be narrow enough to measure over most of its run — only `
       + `${arcWidths.length}/${height} rows qualified`,
   );
   const min = Math.min(...arcWidths);
   const max = Math.max(...arcWidths);
   assertContract(
     max - min < 0.04,
-    `pitch slot must hold a constant ARC width — measured ${min.toFixed(3)} to `
+    `${role} slot must hold a constant ARC width — measured ${min.toFixed(3)} to `
       + `${max.toFixed(3)} rad across the rows where it is directly measurable`,
   );
 
@@ -829,16 +835,34 @@ function checkPitchSlot(pixels: Uint8ClampedArray): void {
     holeBare += pixels[i + 2];
     samples++;
   }
-  assertContract(samples > 0, 'pitch slot has width at the equator');
+  assertContract(samples > 0, `${role} slot has width at the equator`);
   assertContract(
     holeHeight / samples < 24,
-    `pitch slot must read as recessed — mean height ${(holeHeight / samples).toFixed(1)}`,
+    `${role} slot must read as recessed — mean height ${(holeHeight / samples).toFixed(1)}`,
   );
   assertContract(
     holeBare / samples < 8,
-    `pitch slot must not reveal bare metal — a hole is an absence of surface `
+    `${role} slot must not reveal bare metal — a hole is an absence of surface `
       + `(mean ${(holeBare / samples).toFixed(1)})`,
   );
+}
+
+function checkDirectionalTravelSlots(pixels: Uint8ClampedArray): void {
+  checkMeridianTravelSlot(pixels, 'sensorDome', 'pitch');
+  checkMeridianTravelSlot(pixels, 'legSocket', 'leg-travel');
+}
+
+/** Focused visual-art gate for the two yawed spherical attachment bodies.
+ * Kept independently runnable so unrelated material/fade shader contracts do
+ * not hide a missing or malformed directional slot. */
+export function runDirectionalTravelSlotSurfaceChart3DContractTest(): void {
+  const canvas = buildTrimSheetCanvasForTest();
+  const context = canvas.getContext('2d');
+  assertContract(context !== null, 'directional travel-slot canvas has a 2D context');
+  const pixels = context.getImageData(
+    0, 0, TRIM_SHEET_PIXELS, TRIM_SHEET_PIXELS,
+  ).data;
+  checkDirectionalTravelSlots(pixels);
 }
 
 /**

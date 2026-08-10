@@ -250,17 +250,13 @@ export class ParallaxBackdropRenderer3D implements BackdropTarget {
     scene.add(this.group);
   }
 
-  setBackdropLayerUrls(urls: PresetBackdropLayerUrls | null): void {
+  setBackdropLayerUrls(urls: PresetBackdropLayerUrls): void {
     if (this.destroyed) return;
-    const key = urls?.join('|') ?? null;
+    const key = urls.join('|');
     if (key === this.activeKey) return;
     this.activeKey = key;
     const generation = ++this.loadGeneration;
-    if (!urls) {
-      this.replaceTextures([]);
-      return;
-    }
-    void this.loadLayerSet(urls, generation, urls.join('|'));
+    void this.loadLayerSet(urls, generation, key);
   }
 
   setSuppressed(suppressed: boolean): void {

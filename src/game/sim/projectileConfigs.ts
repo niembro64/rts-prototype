@@ -35,8 +35,6 @@ export function createProjectileConfigFromTurret(
     sourceTurretBlueprintId: turretConfig.turretBlueprintId,
     range: turretConfig.targeting.effect.range,
     cooldown: turretConfig.cooldown,
-    barrel: turretConfig.barrel,
-    radius: { ...turretConfig.radius },
     turretIndex,
   };
 }
@@ -55,16 +53,14 @@ export function createProjectileConfigFromShot(
     sourceTurretBlueprintId,
     range: 0,
     cooldown: null,
-    barrel: null,
-    radius: null,
     turretIndex: -1,
   };
 }
 
 /** Resolve the runtime config for a projectile spawn.
  *
- *  Normal turret-fired shots hydrate from the real source turret so barrel
- *  geometry, range, cooldown, and source smoothing stay blueprint-authored.
+ *  Normal turret-fired shots hydrate from the real source turret so range,
+ *  cooldown, and source smoothing stay blueprint-authored.
  *  Submunitions hydrate from their child shot blueprint id and keep sourceTurretBlueprintId as
  *  provenance only; they do not become fake turrets. */
 export function getProjectileConfigForSpawn(

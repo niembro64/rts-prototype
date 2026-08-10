@@ -15,5 +15,6 @@ export type ArachnidLegConfig = {
   upperLegLength: number;
   lowerLegLength: number;
   footSphereOriginExtensionRatio: number;
+  footSphereRadiusLegLengthRatio: number;
   lerpDuration?: number;
 };

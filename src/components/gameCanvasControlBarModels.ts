@@ -66,6 +66,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentForceFieldsVisible: boolean;
   readonly currentShieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
+  readonly currentSlowDownAtFinalWaypoint: boolean;
   readonly currentSlopePathMode: SlopePathMode;
   readonly currentTerrainSurfaceMode: TerrainSurfaceMode;
   readonly currentLiquidSurfaceMode: LiquidSurfaceMode;
@@ -96,6 +97,7 @@ export type GameCanvasBattleControlBarModel = {
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
+  setSlowDownAtFinalWaypoint(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
   setTerrainSurfaceMode(mode: TerrainSurfaceMode): void;
   setLiquidSurfaceMode(mode: LiquidSurfaceMode): void;

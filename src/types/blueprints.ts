@@ -15,6 +15,7 @@ export type {
 } from './config';
 export type {
   ConstructionEmitterSize,
+  ConstructionEmitterVisualSpec,
   WorkEmitterSpec,
 } from './constructionTypes';
 
@@ -54,8 +55,8 @@ export type {
   
   TurretLockOnRelationshipInclusion,
   TurretMount,
+  TurretPresentation,
   UnitTurretHostAttachment,
-  TurretRadiusConfig,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
   UnitBlueprint,

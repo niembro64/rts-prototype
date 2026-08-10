@@ -22,6 +22,8 @@ export type BattleBarConfig = {
     readonly default: ShieldReflectionMode;
   };
   readonly fogOfWarEnabled: BooleanSetting;
+  /** Whether ordinary units use arrival braking near their final waypoint. */
+  readonly slowDownAtFinalWaypoint: BooleanSetting;
   readonly slopePathMode: {
     readonly default: SlopePathMode;
   };

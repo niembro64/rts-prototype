@@ -122,6 +122,7 @@ export type LocomotionStateSnapshot =
       gaitPhase: number;
       gait: number;
       upperBodyYaw: number;
+      upperBodyWorldYaw: number | null;
     }
   | {
       type: 'wheels';
@@ -202,6 +203,7 @@ export function captureLocomotionState(
         gaitPhase: locomotion.gaitPhase,
         gait: locomotion.gait,
         upperBodyYaw: locomotion.upperBodyYaw,
+        upperBodyWorldYaw: locomotion.upperBodyWorldYaw,
       };
     case 'wheels':
       return {
@@ -270,6 +272,7 @@ export function applyLocomotionState(
       locomotion.gaitPhase = state.gaitPhase;
       locomotion.gait = state.gait;
       locomotion.upperBodyYaw = state.upperBodyYaw;
+      locomotion.upperBodyWorldYaw = state.upperBodyWorldYaw;
       locomotion.hips.rotation.y = -locomotion.upperBodyYaw;
       return;
     }

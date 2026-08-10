@@ -40,7 +40,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v6';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v7';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
@@ -73,6 +73,7 @@ export type CanonicalMatchInitialization = {
     readonly maxTotalUnits: number | null;
     readonly converterTax: number | null;
     readonly fogOfWarEnabled: true;
+    readonly slowDownAtFinalWaypoint: boolean;
   };
   readonly content: {
     readonly appSourceVersion: string;
@@ -161,6 +162,8 @@ export function buildCanonicalMatchInitialization({
       maxTotalUnits: finiteOrNull(settings?.maxTotalUnits),
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
+      // Undefined legacy messages inherit the explicit new default: off.
+      slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,
     },
     content: {
       appSourceVersion: APP_SOURCE_VERSION,

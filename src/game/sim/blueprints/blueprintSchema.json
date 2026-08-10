@@ -1375,9 +1375,6 @@
       },
       "additionalProperties": false
     },
-    "TurretRadiusConfig": {
-      "$ref": "#/$defs/EntityRadiusConfig"
-    },
     "TurretAimAngleType": {
       "enum": [
         "rayDirect",
@@ -1641,7 +1638,7 @@
         "color",
         "turretTurnAccel",
         "turretDrag",
-        "barrel",
+        "emissionLaneCount",
         "eventsSmooth",
         "launchForce",
         "addTurretVelocityToEmissionLaunch",
@@ -1649,15 +1646,12 @@
         "requiresNonObstructedLineOfSight",
         "spread",
         "burst",
-        "shieldPanels",
         "audio",
-        "radius",
-        "headOnly",
+        "aimMotionSnapshotVisible",
         "aimStyle",
         "verticalLauncher",
         "idlePitch",
         "groundAimFraction",
-        "constructionEmitter",
         "includeLockOnLevel0FriendsAndEnemies",
         "includeLockOnLevel0Entities",
         "includeLockOnLevel1Buildings",
@@ -1698,8 +1692,9 @@
         "turretDrag": {
           "type": "number"
         },
-        "barrel": {
-          "$ref": "#/$defs/BarrelShape"
+        "emissionLaneCount": {
+          "type": "integer",
+          "minimum": 1
         },
         "eventsSmooth": {
           "type": "boolean"
@@ -1746,12 +1741,6 @@
             }
           ]
         },
-        "shieldPanels": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ShieldPanel"
-          }
-        },
         "audio": {
           "oneOf": [
             {
@@ -1762,10 +1751,7 @@
             }
           ]
         },
-        "radius": {
-          "$ref": "#/$defs/TurretRadiusConfig"
-        },
-        "headOnly": {
+        "aimMotionSnapshotVisible": {
           "type": "boolean"
         },
         "aimStyle": {
@@ -1781,16 +1767,6 @@
           "oneOf": [
             {
               "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "constructionEmitter": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/ConstructionEmitterVisualSpec"
             },
             {
               "type": "null"
@@ -1870,6 +1846,63 @@
           "oneOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretPresentation": {
+      "type": "object",
+      "required": [
+        "headRadius",
+        "headOnly",
+        "barrel",
+        "constructionEmitter",
+        "constructionEmitterSize"
+      ],
+      "properties": {
+        "headRadius": {
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "headOnly": {
+          "type": "boolean"
+        },
+        "barrel": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BarrelShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "constructionEmitter": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ConstructionEmitterVisualSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "constructionEmitterSize": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ConstructionEmitterSize"
             },
             {
               "type": "null"
@@ -1962,6 +1995,7 @@
         "mountId",
         "turretBlueprintId",
         "mount",
+        "presentation",
         "controlMode",
         "requiredEngagedForFightStop"
       ],
@@ -1978,6 +2012,16 @@
         },
         "mount": {
           "$ref": "#/$defs/MountOffset"
+        },
+        "presentation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TurretPresentation"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "shieldPanels": {
           "type": "array",
@@ -2000,9 +2044,6 @@
         },
         "hostAttachment": {
           "$ref": "#/$defs/UnitTurretHostAttachment"
-        },
-        "visualVariant": {
-          "$ref": "#/$defs/ConstructionEmitterSize"
         },
         "producedBlueprintId": {
           "$ref": "#/$defs/UnitBlueprintId"
@@ -2031,6 +2072,7 @@
         "mountId",
         "turretBlueprintId",
         "mount",
+        "presentation",
         "controlMode"
       ],
       "properties": {
@@ -2047,6 +2089,16 @@
         "mount": {
           "$ref": "#/$defs/MountOffset"
         },
+        "presentation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TurretPresentation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "shieldPanels": {
           "type": "array",
           "items": {
@@ -2059,9 +2111,6 @@
         "slavedToMountId": {
           "type": "string",
           "minLength": 1
-        },
-        "visualVariant": {
-          "$ref": "#/$defs/ConstructionEmitterSize"
         }
       },
       "additionalProperties": false
@@ -2157,15 +2206,19 @@
     "LegFootSphere": {
       "type": "object",
       "required": [
-        "originExtensionRatio"
+        "originExtensionRatio",
+        "radiusLegLengthRatio"
       ],
       "properties": {
         "originExtensionRatio": {
           "type": "number"
+        },
+        "radiusLegLengthRatio": {
+          "type": "number"
         }
       },
       "additionalProperties": false,
-      "description": "Where along its own outward reach a leg likes to stand, as a fraction of total segment length. This is the rest STATION only. How far the leg can reach is not authored \u2014 it is the two segment lengths, measured from the hip in three dimensions (see LegGait3D)."
+      "description": "The outward-biased gait sphere for one leg. originExtensionRatio offsets its center from the attachment; radiusLegLengthRatio controls how far the planted foot may wander before snapping. Mechanical reach remains derived from the two segment lengths."
     },
     "LegLayoutEntry": {
       "type": "object",

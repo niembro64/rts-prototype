@@ -53,6 +53,8 @@
     "realShieldsObstructSight": "real-battle-shields-obstruct-sight",
     "demoFogOfWarEnabled": "demo-battle-fog-of-war-enabled",
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
+    "demoSlowDownAtFinalWaypoint": "demo-battle-slow-down-at-final-waypoint",
+    "realSlowDownAtFinalWaypoint": "real-battle-slow-down-at-final-waypoint",
     "demoShieldReflectionMode": "demo-battle-shield-reflection-mode",
     "realShieldReflectionMode": "real-battle-shield-reflection-mode",
     "demoSlopePathMode": "demo-battle-slope-path-mode",

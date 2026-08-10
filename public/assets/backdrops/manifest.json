@@ -1,6 +1,46 @@
 {
   "assets": [
     {
+      "bytes": 168541,
+      "file": "default-near.ktx2",
+      "hasAlpha": true,
+      "height": 2048,
+      "layer": "near",
+      "sha256": "b5f31eea93a6399cd58aefb33cdb45abcb313e5e35e861cd512a44d66f102258",
+      "slug": "default",
+      "width": 4096
+    },
+    {
+      "bytes": 155766,
+      "file": "default-middle.ktx2",
+      "hasAlpha": true,
+      "height": 1536,
+      "layer": "middle",
+      "sha256": "21fb1307832218ae4756ebf767c670df740d8375ad29b670f1904bf78efae33f",
+      "slug": "default",
+      "width": 3072
+    },
+    {
+      "bytes": 77913,
+      "file": "default-far.ktx2",
+      "hasAlpha": true,
+      "height": 1024,
+      "layer": "far",
+      "sha256": "47fc09bc080d907030fba885e536bbc5457be938927e4a51ed46b344c8c7e459",
+      "slug": "default",
+      "width": 2048
+    },
+    {
+      "bytes": 41653,
+      "file": "default-terminal.ktx2",
+      "hasAlpha": false,
+      "height": 2048,
+      "layer": "terminal",
+      "sha256": "a7841258056aefa1826034e924c24711e76249f6bca7e46f337974fbea897fc5",
+      "slug": "default",
+      "width": 4096
+    },
+    {
       "bytes": 67452,
       "file": "large-circle-near.ktx2",
       "hasAlpha": true,

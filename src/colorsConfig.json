@@ -582,6 +582,10 @@
       "ownerFillColor": "#ffd66b",
       "ownerStrokeColor": "#111111"
     },
+    "mapPresetLabel": {
+      "fillColor": "#ffffff",
+      "strokeColor": "#000000"
+    },
     "minimap": {
       "radarBlip": {
         "cssColor": "#9aa3ad"

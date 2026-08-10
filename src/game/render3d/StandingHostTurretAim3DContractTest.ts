@@ -222,32 +222,59 @@ function assertStandingStrutBetween(
   strut: StandingMesh['legs'][number]['thigh'],
   start: THREE.Vector3,
   end: THREE.Vector3,
+  startInset: number,
+  endInset: number,
   label: string,
 ): void {
   const direction = end.clone().sub(start);
   const length = direction.length();
   direction.normalize();
-  const midpoint = start.clone().add(end).multiplyScalar(0.5);
+  const visibleLength = length - startInset - endInset;
+  const midpoint = start.clone().addScaledVector(
+    direction,
+    startInset + visibleLength * 0.5,
+  );
   const strutDirection = new THREE.Vector3(0, 1, 0)
     .applyQuaternion(strut.mesh.quaternion)
     .normalize();
   assertContract(
     strut.mesh.position.distanceTo(midpoint) < 1e-5,
-    `${label} is centered between its two joints`,
+    `${label} is centered between its two joint surfaces`,
   );
-  assertNear(strut.mesh.scale.y, length, `${label} spans exactly between its two joints`);
+  assertNear(strut.mesh.scale.y, visibleLength, `${label} stops exactly at both joint surfaces`);
   assertContract(
     strutDirection.dot(direction) > 1 - 1e-6,
     `${label} points from its parent joint to its child joint`,
   );
 
-  const armorAlong = strut.armor.position.clone().sub(start).dot(direction);
-  const armorHalfLength = strut.armor.scale.y * 0.5;
-  assertContract(
-    armorAlong - armorHalfLength >= -1e-5 &&
-      armorAlong + armorHalfLength <= length + 1e-5,
-    `${label} armour remains inside the joint-to-joint segment`,
-  );
+  if (strut.armor !== undefined) {
+    const armorAlong = strut.armor.position.clone().sub(start).dot(direction) - startInset;
+    const armorHalfLength = strut.armor.scale.y * 0.5;
+    assertContract(
+      armorAlong - armorHalfLength >= -1e-5 &&
+        armorAlong + armorHalfLength <= visibleLength + 1e-5,
+      `${label} armour remains outside both joint volumes`,
+    );
+  }
+}
+
+function boxSurfaceDistanceAlong(
+  box: THREE.Mesh,
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+): number {
+  const direction = end.clone().sub(start).normalize();
+  let distance = Infinity;
+  if (Math.abs(direction.x) > 1e-8) {
+    distance = Math.min(distance, box.scale.x * 0.5 / Math.abs(direction.x));
+  }
+  if (Math.abs(direction.y) > 1e-8) {
+    distance = Math.min(distance, box.scale.y * 0.5 / Math.abs(direction.y));
+  }
+  if (Math.abs(direction.z) > 1e-8) {
+    distance = Math.min(distance, box.scale.z * 0.5 / Math.abs(direction.z));
+  }
+  return distance;
 }
 
 function assertStandingLimbChains(mesh: StandingMesh, label: string): void {
@@ -260,12 +287,16 @@ function assertStandingLimbChains(mesh: StandingMesh, label: string): void {
         leg.thigh,
         hip,
         leg.knee.position,
+        leg.hipJoint.scale.x,
+        leg.knee.scale.x,
         `${label} phase ${phase} upper leg ${index}`,
       );
       assertStandingStrutBetween(
         leg.shin,
         leg.knee.position,
         leg.foot.position,
+        leg.knee.scale.x,
+        0,
         `${label} phase ${phase} lower leg ${index}`,
       );
     }
@@ -286,12 +317,16 @@ function assertStandingLimbChains(mesh: StandingMesh, label: string): void {
         arm.upper,
         shoulder,
         arm.elbow.position,
+        boxSurfaceDistanceAlong(arm.shoulderJoint, shoulder, arm.elbow.position),
+        arm.elbow.scale.x,
         `${label} phase ${phase} ${arm.id} upper arm`,
       );
       assertStandingStrutBetween(
         arm.forearm,
         arm.elbow.position,
         hand,
+        arm.elbow.scale.x,
+        arm.wrist.visible ? arm.wrist.scale.y * 0.5 : 0,
         `${label} phase ${phase} ${arm.id} forearm`,
       );
       assertContract(
@@ -393,11 +428,17 @@ function assertJointedOpenStandingPose(mesh: StandingMesh, label: string): void 
   );
   for (const leg of mesh.legs) {
     assertContract(
+      leg.knee.geometry.type === 'CylinderGeometry' &&
+        Math.abs(leg.knee.rotation.x - Math.PI * 0.5) < 1e-9,
+      `${label} side ${leg.side} knee is a lateral cylindrical hinge`,
+    );
+    assertContract(
       leg.hipJoint.userData.standingHipJoint === true &&
-        leg.hipJoint.geometry.type === 'SphereGeometry' &&
+        leg.hipJoint.geometry.type === 'CylinderGeometry' &&
+        Math.abs(leg.hipJoint.rotation.x - Math.PI * 0.5) < 1e-9 &&
         leg.hipJoint.parent === mesh.hips &&
         leg.hipJoint.position.distanceTo(new THREE.Vector3(leg.hipX, leg.hipY, leg.hipZ)) < 1e-6,
-      `${label} side ${leg.side} has a spherical hip socket on the lower-body frame`,
+      `${label} side ${leg.side} has a lateral cylindrical hip socket on the lower-body frame`,
     );
     assertContract(
       leg.foot.position.x > leg.hipX &&
@@ -413,12 +454,21 @@ function assertJointedOpenStandingPose(mesh: StandingMesh, label: string): void 
 
   for (const arm of mesh.arms) {
     assertContract(
+      arm.elbow.geometry.type === 'CylinderGeometry' &&
+        Math.abs(arm.elbow.rotation.x - Math.PI * 0.5) < 1e-9,
+      `${label} ${arm.id} elbow is a lateral cylindrical hinge`,
+    );
+    assertContract(
       arm.shoulderJoint.userData.standingShoulderJoint === true &&
         arm.shoulderJoint.parent === mesh.group &&
         arm.shoulderJoint.position.distanceTo(
           new THREE.Vector3(arm.shoulderX, arm.shoulderY, arm.shoulderZ),
         ) < 1e-6,
       `${label} ${arm.id} has a visible shoulder socket at its attachment`,
+    );
+    assertContract(
+      arm.upper.armor === undefined,
+      `${label} ${arm.id} upper arm has no oversized armour sleeve`,
     );
     assertContract(
       (arm.elbow.position.z - arm.shoulderZ) * arm.side > 0 &&
@@ -660,10 +710,11 @@ function assertUnlockedTorsoTracksLegs(
 ): void {
   for (const turret of turrets) turret.state = 'idle';
   mesh.upperBodyYaw = 0;
+  mesh.upperBodyWorldYaw = null;
   updateStandingHostTurretAim(mesh, 0, undefined, turrets, 0);
 
   const lowerBodyTurn = Math.PI * 0.5;
-  const relativeYaw = updateStandingHostTurretAim(
+  const initialRelativeYaw = updateStandingHostTurretAim(
     mesh,
     lowerBodyTurn,
     undefined,
@@ -671,12 +722,11 @@ function assertUnlockedTorsoTracksLegs(
     0,
   );
   assertNear(
-    relativeYaw,
-    0,
-    `${label} unlocked torso is carried with a leg turn`,
+    initialRelativeYaw,
+    lowerBodyTurn,
+    `${label} leg turn does not instantly drag the unlocked torso in world space`,
   );
 
-  mesh.upperBodyYaw = 0.6;
   const easedRelativeYaw = updateStandingHostTurretAim(
     mesh,
     lowerBodyTurn,
@@ -685,11 +735,12 @@ function assertUnlockedTorsoTracksLegs(
     100,
   );
   assertContract(
-    easedRelativeYaw > 0.46 && easedRelativeYaw < 0.50,
-    `${label} unlocked torso quickly sheds its leftover local aim offset`,
+    easedRelativeYaw > 1.24 && easedRelativeYaw < 1.28,
+    `${label} unlocked torso EMA follows the new locomotion-forward heading`,
   );
 
   mesh.upperBodyYaw = 0;
+  mesh.upperBodyWorldYaw = null;
   poseStandingRigAtRest(mesh);
 }
 
@@ -698,17 +749,25 @@ function assertTorsoAimSurvivesLodRebuild(
   label: string,
 ): void {
   mesh.upperBodyYaw = 0.42;
+  mesh.upperBodyWorldYaw = 1.17;
   mesh.gaitPhase = 0.37;
   const snapshot = captureLocomotionState(mesh);
   assertContract(snapshot?.type === 'standing', `${label} captures standing locomotion state`);
 
   mesh.upperBodyYaw = 0;
+  mesh.upperBodyWorldYaw = null;
   mesh.gaitPhase = 0;
   applyLocomotionState(mesh, snapshot);
   assertNear(mesh.upperBodyYaw, 0.42, `${label} preserves torso aim across LOD rebuild`);
+  assertNear(
+    mesh.upperBodyWorldYaw ?? NaN,
+    1.17,
+    `${label} preserves the torso world-heading EMA across LOD rebuild`,
+  );
   assertNear(mesh.gaitPhase, 0.37, `${label} preserves its coupled gait phase across LOD rebuild`);
 
   mesh.upperBodyYaw = 0;
+  mesh.upperBodyWorldYaw = null;
   poseStandingRigAtRest(mesh);
 }
 
@@ -724,6 +783,20 @@ function assertCommanderEquipmentSides(mesh: StandingMesh): void {
     if (object.userData.standingConstructionTool === true) constructionToolVisible = true;
   });
   assertContract(constructionToolVisible, 'Commander right arm carries visible construction-tool geometry');
+}
+
+function assertCommanderScale(mesh: StandingMesh): void {
+  const blueprint = getUnitBlueprint('unitCommander');
+  assertContract(
+    blueprint.radius.other === 32 &&
+      blueprint.radius.hitbox === 32 &&
+      blueprint.radius.collision === 32 &&
+      blueprint.supportPointOffsetZ === 48,
+    'Commander body, physical envelope, and support height share the authored 1.6x scale',
+  );
+  assertNear(mesh.unitRadius, 32, 'Commander standing rig consumes its 1.6x body radius');
+  assertNear(mesh.legs[0].thigh.width, 13.44, 'Commander leg thickness scales by 1.6x');
+  assertNear(mesh.arms[0].upper.width, 14.08, 'Commander arm thickness scales by 1.6x');
 }
 
 export function runStandingHostTurretAim3DContractTest(): void {
@@ -771,6 +844,20 @@ export function runStandingHostTurretAim3DContractTest(): void {
     0.3,
     'Human right arm receives the gun pitch',
   );
+  const turnedHostYaw = 1.1;
+  const lockedTurnRelativeYaw = updateStandingHostTurretAim(
+    human.mesh,
+    turnedHostYaw,
+    undefined,
+    human.turrets,
+    100,
+  );
+  assertNear(
+    turnedHostYaw - lockedTurnRelativeYaw,
+    humanGun.rotation,
+    'a leg-frame turn cannot shake a turret-locked torso off its world heading',
+  );
+  updateStandingHostTurretAim(human.mesh, 0, undefined, human.turrets, 0);
   poseStandingRigAtRest(human.mesh);
   const humanRightArm = human.mesh.arms.find((arm) => arm.id === 'rightArm');
   assertContract(humanRightArm !== undefined, 'Human has its authored right arm');
@@ -798,10 +885,12 @@ export function runStandingHostTurretAim3DContractTest(): void {
     humanYaw,
   );
   const turretRoot = new THREE.Group();
+  const turretYaw = new THREE.Group();
   const turretPitch = new THREE.Group();
-  turretRoot.add(turretPitch);
+  turretRoot.add(turretYaw);
+  turretYaw.add(turretPitch);
   applyTurretAimPose3D(
-    { root: turretRoot, pitchGroup: turretPitch },
+    { yawGroup: turretYaw, pitchGroup: turretPitch },
     0,
     humanGun.rotation,
     humanGun.pitch,
@@ -809,7 +898,7 @@ export function runStandingHostTurretAim3DContractTest(): void {
   );
   const assistedDirection = new THREE.Vector3(1, 0, 0)
     .applyQuaternion(turretPitch.quaternion)
-    .applyQuaternion(turretRoot.quaternion)
+    .applyQuaternion(turretYaw.quaternion)
     .applyQuaternion(assistedParent);
   assertNear(
     assistedDirection.x,
@@ -843,6 +932,7 @@ export function runStandingHostTurretAim3DContractTest(): void {
   );
 
   const commander = buildStanding('unitCommander');
+  assertCommanderScale(commander.mesh);
   assertStandingHipsCenteredUnderTorso(commander.mesh, 'Commander');
   assertStandingLegExtension(commander.mesh, 'Commander');
   assertLongStandingStride(commander.mesh, 'Commander');
@@ -856,6 +946,8 @@ export function runStandingHostTurretAim3DContractTest(): void {
   assertRuntimeTravelClocksPlantedFoot(commander.mesh, 'Commander');
   assertContralateralStandingGait(commander.mesh, 'Commander');
   assertAnyTurretLockSuppressesArmGait(commander.mesh, 'Commander');
+  assertUnlockedTorsoTracksLegs(commander.mesh, commander.turrets, 'Commander');
+  assertTorsoAimSurvivesLodRebuild(commander.mesh, 'Commander');
   assertCommanderEquipmentSides(commander.mesh);
   assertEveryTurretPublishesAim(commander.turrets);
   const beam = commander.turrets.find((turret) => turret.mountId === 'beam');
@@ -872,7 +964,7 @@ export function runStandingHostTurretAim3DContractTest(): void {
       commander.mesh,
       'leftArm',
       beam.mountId,
-      beam.config.radius.other,
+      beam.presentation.headRadius ?? 0,
     ) !== null,
     'Commander beam resolves from its authored standing-arm attachment',
   );
@@ -892,6 +984,20 @@ export function runStandingHostTurretAim3DContractTest(): void {
   beam.rotation = 0.75;
   updateStandingHostTurretAim(commander.mesh, 0, undefined, commander.turrets, 0);
   assertNear(commander.mesh.upperBodyYaw, -0.75, 'Commander torso follows engaged beam yaw');
+  const commanderTurnYaw = 1.2;
+  const commanderLockedTurnYaw = updateStandingHostTurretAim(
+    commander.mesh,
+    commanderTurnYaw,
+    undefined,
+    commander.turrets,
+    100,
+  );
+  assertNear(
+    commanderTurnYaw - commanderLockedTurnYaw,
+    beam.rotation,
+    'Commander leg-frame turns cannot shake its beam-locked torso world heading',
+  );
+  updateStandingHostTurretAim(commander.mesh, 0, undefined, commander.turrets, 0);
   assertNear(
     commander.mesh.arms.find((arm) => arm.id === 'leftArm')?.turretAimPitch ?? NaN,
     0.4,

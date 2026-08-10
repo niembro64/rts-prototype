@@ -54,7 +54,7 @@ export class UnitBarrelSpinState3D {
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
       if (!isAttackEmitter(turret)) continue;
-      const barrel = turret.config.barrel;
+      const barrel = turret.presentation.barrel;
       if (
         !barrel ||
         (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')

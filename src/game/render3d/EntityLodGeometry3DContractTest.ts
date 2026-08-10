@@ -14,7 +14,6 @@ import {
   SHIELD_BLUEPRINT_IDS,
   SHOT_BLUEPRINT_IDS,
   STRUCTURE_BLUEPRINT_IDS,
-  TURRET_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
   type StructureBlueprintId,
   type UnitBlueprintId,
@@ -33,10 +32,15 @@ import {
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math/BarrelGeometry';
-import { buildStandingRig, poseStandingRigAtRest } from './StandingRig3D';
+import {
+  buildStandingRig,
+  getStandingPelvisTopLocalY,
+  poseStandingRigAtRest,
+} from './StandingRig3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Turret } from '../sim/types';
+import type { TurretPresentation } from '@/types/blueprints';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import { getBodyGeom, type BodyMeshPart } from './BodyShape3D';
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
@@ -128,6 +132,32 @@ const BEAM_TURRET_IDS: ReadonlySet<string> = new Set([
   'turretBeamLong',
 ]);
 
+const CONSTRUCTION_EMITTER_TEST_PRESENTATION: TurretPresentation = {
+  headRadius: 8,
+  headOnly: false,
+  barrel: { type: 'singleCylinderBarrel', barrelLength: 0 },
+  constructionEmitter: {
+    defaultSize: 'small',
+    particleTravelSpeed: 50,
+    particleRadius: 1.5,
+    sizes: {
+      small: {
+        towerSize: 'small',
+        pylonHeight: 10,
+        pylonOffset: 3,
+        innerPylonRadius: 1.5,
+      },
+      large: {
+        towerSize: 'large',
+        pylonHeight: 45,
+        pylonOffset: 110,
+        innerPylonRadius: 3.6,
+      },
+    },
+  },
+  constructionEmitterSize: null,
+};
+
 /**
  * Canonical side-by-side visual-regression roster. Keeping this sourced from
  * the wire-stable registries makes additions fail the contract until the new
@@ -210,13 +240,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitCommander: { close: 4200, mid: 1900, far: 700 },
 };
 
-const INTENTIONAL_ZERO_TURRETS = new Set<string>([
-  'turretDisruptor',
-  'turretSpawnBuildingsAndTowers',
-  'turretSpawnUnits',
-  'turretResourcePylonExtractionMetal',
-  'turretResourcePylonExtractionEnergy',
-]);
+const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[entity lod geometry contract] ${message}`);
@@ -277,9 +301,13 @@ function bodyPartSignature(part: BodyMeshPart): readonly number[] {
   ];
 }
 
-function syntheticTurret(turretBlueprintId: string): Turret {
+function syntheticTurret(
+  turretBlueprintId: string,
+  presentation: TurretPresentation,
+): Turret {
   return {
     config: getTurretConfig(turretBlueprintId),
+    presentation,
     mount: { x: 0, y: 0, z: 0 },
   } as Turret;
 }
@@ -292,6 +320,7 @@ type TurretBuild = {
 
 function buildTurretForTier(
   turretBlueprintId: string,
+  presentation: TurretPresentation,
   tierIndex: number,
   material: THREE.Material,
   closeHead: THREE.SphereGeometry,
@@ -299,7 +328,7 @@ function buildTurretForTier(
   closeCone: THREE.CylinderGeometry,
 ): TurretBuild {
   const parent = new THREE.Group();
-  const mesh = buildTurretMesh3D(parent, syntheticTurret(turretBlueprintId), FULL_GFX, {
+  const mesh = buildTurretMesh3D(parent, syntheticTurret(turretBlueprintId, presentation), FULL_GFX, {
     headGeom: closeHead,
     barrelGeom: closeBarrel,
     coneBarrelGeom: closeCone,
@@ -313,6 +342,7 @@ function buildTurretForTier(
   });
   const signature = {
     root: transformTuple(mesh.root),
+    yaw: transformTuple(mesh.yawGroup),
     head: mesh.head ? transformTuple(mesh.head) : null,
     pitch: mesh.pitchGroup ? transformTuple(mesh.pitchGroup) : null,
     spin: mesh.spinGroup ? transformTuple(mesh.spinGroup) : null,
@@ -487,6 +517,33 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
   return countsByUnit;
 }
 
+export function runStandingBodySeamContracts(): void {
+  for (const unitId of ['unitHuman', 'unitCommander'] as const) {
+    const blueprint = getUnitBlueprint(unitId);
+    const locomotion = blueprint.unitLocomotion;
+    const body = blueprint.bodyShape;
+    assertContract(locomotion.type === 'standing', `${unitId} uses standing locomotion`);
+    assertContract(body?.kind === 'composite', `${unitId} owns a composite upper body`);
+    const boxBottoms = body.parts
+      .filter((part): part is Extract<typeof part, { kind: 'box' }> => part.kind === 'box')
+      .map((part) => (
+        (part.centerYFrac ?? part.heightFrac * 0.5) - part.heightFrac * 0.5
+      ) * blueprint.radius.other);
+    assertContract(boxBottoms.length > 0, `${unitId} upper body has box volumes`);
+    const lowestUpperBodyY = Math.min(...boxBottoms);
+    const pelvisTopY = getStandingPelvisTopLocalY(
+      blueprint.radius.other,
+      locomotion.config.legs,
+      getChassisLift(blueprint, blueprint.radius.other),
+    );
+    assertRelativeNear(
+      `${unitId} upper body terminates at lower-body seam`,
+      lowestUpperBodyY,
+      pelvisTopY,
+    );
+  }
+}
+
 function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
   const countsByUnit = new Map<UnitBlueprintId, TierCounts>();
   runLegLocomotionStateContract();
@@ -601,8 +658,11 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               const hipToKnee = leg.knee.position.clone().sub(hip);
               const kneeToFoot = leg.foot.position.clone().sub(leg.knee.position);
               return leg.hipJoint.userData.standingHipJoint === true &&
-                leg.hipJoint.geometry.type === 'SphereGeometry' &&
+                leg.hipJoint.geometry.type === 'CylinderGeometry' &&
+                Math.abs(leg.hipJoint.rotation.x - Math.PI * 0.5) < 1e-9 &&
                 leg.hipJoint.parent === rig.hips &&
+                leg.knee.geometry.type === 'CylinderGeometry' &&
+                Math.abs(leg.knee.rotation.x - Math.PI * 0.5) < 1e-9 &&
                 leg.foot.position.x > leg.hipX &&
                 (leg.foot.position.z - leg.hipZ) * leg.side > 0 &&
                 Math.abs(hipToKnee.length() - leg.thighLength) < 1e-5 &&
@@ -619,6 +679,9 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           assertContract(
             rig.arms.every((arm) =>
               arm.shoulderJoint.userData.standingShoulderJoint === true &&
+              arm.upper.armor === undefined &&
+              arm.elbow.geometry.type === 'CylinderGeometry' &&
+              Math.abs(arm.elbow.rotation.x - Math.PI * 0.5) < 1e-9 &&
               (arm.elbow.position.z - arm.shoulderZ) * arm.side > 0),
             `${unitId}/${tier} stand arms leave visible shoulder joints at an outward angle`,
           );
@@ -888,16 +951,35 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
   const closeHead = createPrimitiveSphereGeometry('turret', 'close');
   const closeBarrel = createPrimitiveCylinderGeometry('turret', 'close');
   const closeCone = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
-  const countsByTurret = new Map<string, TierCounts>();
-  for (const turretId of TURRET_BLUEPRINT_IDS) {
+  const countsByMount = new Map<string, TierCounts>();
+  const hosts = [
+    ...UNIT_BLUEPRINT_IDS.map((hostId) => ({ hostId, mounts: getUnitBlueprint(hostId).turrets })),
+    ...STRUCTURE_BLUEPRINT_IDS.map((hostId) => ({ hostId, mounts: getBuildingBlueprint(hostId).turrets })),
+  ];
+  for (const host of hosts) for (const mount of host.mounts) {
+    const mountKey = `${host.hostId}/${mount.mountId}`;
+    const turretId = mount.turretBlueprintId;
+    const presentation = mount.presentation;
+    if (presentation === null) {
+      countsByMount.set(mountKey, { close: 0, mid: 0, far: 0 });
+      continue;
+    }
     const builds = TIERS.map((_, tierIndex) => buildTurretForTier(
       turretId,
+      presentation,
       tierIndex,
       material,
       closeHead,
       closeBarrel,
       closeCone,
     ));
+    assertContract(
+      builds.every((build) => (
+        build.mesh.yawGroup.parent === build.mesh.root &&
+        (build.mesh.pitchGroup === undefined || build.mesh.pitchGroup.parent === build.mesh.yawGroup)
+      )),
+      `${mountKey} presents through fixed mount → logical yaw body → optional pitch hierarchy`,
+    );
     assertSame(`${turretId} High/Medium functional layout`, builds[0].signature, builds[1].signature);
     assertSame(`${turretId} Medium/Low functional layout`, builds[1].signature, builds[2].signature);
     if (turretId === 'turretGatling') {
@@ -915,21 +997,21 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
     if (BEAM_TURRET_IDS.has(turretId)) {
       const blueprint = TURRET_BLUEPRINTS[turretId];
       const config = getTurretConfig(turretId);
-      const barrel = config.barrel;
-      assertContract(!config.headOnly, `${turretId} is an ordinary full-barrel turret`);
+      const barrel = presentation.barrel;
+      assertContract(!presentation.headOnly, `${mountKey} presents an ordinary full-barrel turret`);
       assertContract(
         barrel?.type === 'singleConeBarrel',
-        `${turretId} uses one aimed focusing-cone barrel`,
+        `${mountKey} uses one aimed focusing-cone barrel`,
       );
       assertContract(config.shot?.type === 'beam', `${turretId} emits a beam ray`);
       assertContract(
-        !Object.prototype.hasOwnProperty.call(blueprint.barrel, 'barrelThickness'),
-        `${turretId} derives barrel width from its beam instead of an arbitrary override`,
+        !Object.prototype.hasOwnProperty.call(blueprint, 'barrel'),
+        `${turretId} logical blueprint owns no barrel geometry`,
       );
 
-      const headRadius = getTurretHeadRadius(config);
-      const barrelDiameter = getTurretBarrelDiameter(config);
-      const centerToTipLength = getTurretBarrelCenterToTipLength(config);
+      const headRadius = getTurretHeadRadius(presentation);
+      const barrelDiameter = getTurretBarrelDiameter(presentation, config.shot);
+      const centerToTipLength = getTurretBarrelCenterToTipLength(presentation);
       assertRelativeNear(`${turretId} barrel/beam width`, barrelDiameter, config.shot.width);
       assertContract(
         barrelDiameter <= headRadius * 2,
@@ -960,19 +1042,23 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
     } else {
       assertContract(counts.every((count) => count > 0), `${turretId} resolves visible H/M/L geometry`);
     }
-    countsByTurret.set(turretId, { close: counts[0], mid: counts[1], far: counts[2] });
+    countsByMount.set(mountKey, { close: counts[0], mid: counts[1], far: counts[2] });
   }
-  const metalPylon = countsByTurret.get('turretResourcePylonConstructionMetal');
-  // base + hazard band + straw outer/inner + 4-triangle tetrahedron cap
-  // (the pylon head is a vertex-down tetrahedron at every tier).
-  assertContract(
-    metalPylon?.close === 148 && metalPylon.mid === 84 && metalPylon.far === 32,
-    `construction pylon expected 148/84/32, got ${JSON.stringify(metalPylon)}`,
-  );
   closeHead.dispose();
   closeBarrel.dispose();
   closeCone.dispose();
-  return countsByTurret;
+  return countsByMount;
+}
+
+/** Focused host-presentation gate that can run independently of unrelated
+ * chassis/structure budget assertions in the full gallery contract. */
+export function runHostTurretPresentationGeometry3DContractTest(): void {
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  try {
+    runTurretContracts(material);
+  } finally {
+    material.dispose();
+  }
 }
 
 function runShieldPanelContract(material: THREE.Material): TierCounts {
@@ -1026,7 +1112,7 @@ function runUnitCompositeContracts(
     const composite = TIERS.map((tier) => {
       let count = body[tier] + locomotion[tier];
       for (const mount of blueprint.turrets) {
-        const turret = turretCounts.get(mount.turretBlueprintId);
+        const turret = turretCounts.get(`${unitId}/${mount.mountId}`);
         assertContract(turret !== undefined, `${unitId} mount ${mount.turretBlueprintId} has tiered counts`);
         count += turret[tier];
       }
@@ -1074,7 +1160,7 @@ function runStructureContracts(
       return objectTriangleCount(root);
     });
     const mountedCounts = TIERS.map((tier) => blueprint.turrets.reduce((sum, mount) => {
-      const counts = turretCounts.get(mount.turretBlueprintId);
+      const counts = turretCounts.get(`${structureId}/${mount.mountId}`);
       assertContract(counts !== undefined, `${structureId} mount ${mount.turretBlueprintId} has H/M/L geometry`);
       return sum + counts[tier];
     }, 0));
@@ -1187,10 +1273,12 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
   const cone = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
   try {
     const high = buildTurretForTier(
-      'turretResourcePylonConstructionMetal', 0, material, head, barrel, cone,
+      'turretResourcePylonConstructionMetal', CONSTRUCTION_EMITTER_TEST_PRESENTATION,
+      0, material, head, barrel, cone,
     ).mesh;
     const low = buildTurretForTier(
-      'turretResourcePylonConstructionMetal', 2, material, head, barrel, cone,
+      'turretResourcePylonConstructionMetal', CONSTRUCTION_EMITTER_TEST_PRESENTATION,
+      2, material, head, barrel, cone,
     ).mesh;
     const emitter = high.constructionEmitter;
     assertContract(emitter !== undefined, 'construction pylon exposes its visual-state rig');
@@ -1746,6 +1834,7 @@ export function runEntityLodGeometry3DContractTest(): void {
     runEnvironmentLodMaterialContracts();
     runReferenceGeometryCountContracts();
     const bodyCounts = runBodyContracts(material);
+    runStandingBodySeamContracts();
     const locomotionCounts = runLocomotionContracts();
     const turretCounts = runTurretContracts(material);
     const shieldPanelCounts = runShieldPanelContract(material);

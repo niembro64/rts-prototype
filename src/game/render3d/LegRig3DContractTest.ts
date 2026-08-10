@@ -1,19 +1,21 @@
 import * as THREE from 'three';
 import {
   clampPointToLegShell,
-  legFootNeedsStep,
+  legChoppedSphereNeedsStep,
   legSurfaceWithinReach,
-  resolveLegGroundAnnulus,
-  resolveLegGroundRayOrigin,
-  resolveLegGroundStepTarget,
+  resolveLegChoppedSphereVelocityTarget,
+  resolveLegChoppingSphereRadius,
   resolveLegOutwardGroundPointLocal,
   resolveLegReachShell,
+  resolveLegSnapRayOrigin,
   resolveLegSnapRayPointVelocity,
+  resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
 import { WATER_LEVEL } from '../sim/Terrain';
 import {
   resolveContactLockedFootOrientation,
+  resolveLegAttachmentYawQuaternion,
   resolveKneeJointQuaternion,
   resolveLegFootSurfaceQuaternion,
   resolveLegSegmentRight,
@@ -168,6 +170,35 @@ export function runLegRig3DContractTest(): void {
   assertContract(
     Math.abs(Math.hypot(segmentRight.x, segmentRight.y, segmentRight.z) - 1) < 1e-9,
     'the shared leg roll axis remains normalized on a tilted chassis',
+  );
+  const hipSocketQuaternion = resolveLegAttachmentYawQuaternion(
+    hip.x, hip.z,
+    knee.x, knee.z,
+    new THREE.Quaternion(),
+  );
+  const hipSocketSlotAxis = new THREE.Vector3(1, 0, 0)
+    .applyQuaternion(hipSocketQuaternion);
+  const expectedUpperLegYaw = new THREE.Vector3(
+    knee.x - hip.x,
+    0,
+    knee.z - hip.z,
+  ).normalize();
+  assertContract(
+    hipSocketSlotAxis.dot(expectedUpperLegYaw) > 1 - 1e-9,
+    'the hip attachment black slot yaws into the upper leg travel plane',
+  );
+  const sweptHipSocketQuaternion = resolveLegAttachmentYawQuaternion(
+    hip.x, hip.z,
+    knee.x - 12, knee.z + 9,
+    new THREE.Quaternion(),
+  );
+  assertContract(
+    hipSocketQuaternion.angleTo(sweptHipSocketQuaternion) > 0.25,
+    'the hip attachment visibly yaws when the leg sweeps forward or backward',
+  );
+  assertContract(
+    new THREE.Vector3(0, 1, 0).applyQuaternion(hipSocketQuaternion).y > 1 - 1e-9,
+    'hip attachment motion is yaw-only so its black travel slot stays vertical',
   );
   const footYaw = resolveLegFootYaw(
     segmentRight.x,
@@ -327,72 +358,24 @@ export function runLegRig3DContractTest(): void {
   resolveLegSnapRayPointVelocity(13, 24, 10, 20, 500, pointVelocity);
   assertContract(pointVelocity.x === 6 && pointVelocity.z === 8,
     'snap targeting measures the ray-origin point own frame-to-frame velocity');
-  // ── REACH IS A SHELL, NOT A CYLINDER ───────────────────────────────────
+  // ── AUTHORED GAIT ENVELOPE, MECHANICAL REACH SHELL ─────────────────────
   //
-  // A two-segment leg reaches [|A - B|, A + B] from its hip and nothing else.
-  // The old envelope was horizontal discs on the ground with the hip's own
-  // height discarded, which claimed a full leg length of sideways reach no
-  // matter how tall the body stood.
-  const shell = resolveLegReachShell(4, 6, 0.3);
+  // Gait stays outward-biased: the offset outer foot sphere selects a leg's
+  // working region and the attachment-ground chopping sphere removes the
+  // under-hull region. The hip-centred shell is an independent IK limit.
+  const shell = resolveLegReachShell(4, 6);
   assertContract(
     shell.outerRadius === 10,
     'the outer bound is the leg straight — the two bones added, nothing else',
   );
   assertContract(
-    shell.innerRadius === 3,
-    'the authored gait margin sets the inner bound when it clears the fold limit',
+    shell.innerRadius === 2,
+    'the mechanical inner bound is the true fold limit |upper - lower|',
   );
-  const foldFloored = resolveLegReachShell(4, 9, 0.1);
+  const foldFloored = resolveLegReachShell(4, 9);
   assertContract(
     foldFloored.innerRadius === 5,
-    'the authored margin may shrink the envelope but never reach inside the '
-      + 'fold limit |A - B|, which is a pose the knee cannot make',
-  );
-
-  // The correction itself: the reachable GROUND shrinks as the hip rises.
-  const flat = resolveLegGroundAnnulus(shell, 0);
-  assertContract(
-    flat.reachable && Math.abs(flat.outerRadius - 10) < 1e-9,
-    'a hip at ground level reaches a full leg length along the ground',
-  );
-  const raised = resolveLegGroundAnnulus(shell, 6);
-  assertContract(
-    raised.reachable && Math.abs(raised.outerRadius - 8) < 1e-9,
-    'a hip 6 above the ground reaches sqrt(10^2 - 6^2) = 8 along it, not 10 — '
-      + 'this is the cylinder-to-sphere fix in one number',
-  );
-  assertContract(
-    raised.outerRadius < shell.outerRadius,
-    'ground reach is strictly inside shell reach whenever the hip is raised',
-  );
-  assertContract(
-    raised.innerRadius === 0,
-    'once the vertical drop alone exceeds the fold limit the annulus has no '
-      + 'hole — every horizontal offset is already far enough out',
-  );
-  assertContract(
-    !resolveLegGroundAnnulus(shell, 10.0001).reachable,
-    'ground further from the hip than the leg is long is NOT reachable, and '
-      + 'must be reported as such rather than answered with a target',
-  );
-
-  // The trigger is a 3D shell test from the hip, both bounds.
-  assertContract(
-    !legFootNeedsStep(9.99 * 9.99, shell) && !legFootNeedsStep(3.01 * 3.01, shell),
-    'a foot inside the shell stays planted',
-  );
-  assertContract(
-    !legFootNeedsStep(100, shell) && !legFootNeedsStep(9, shell),
-    'both shell boundaries remain valid planting sites',
-  );
-  assertContract(
-    legFootNeedsStep(10.01 * 10.01, shell),
-    'a foot past full extension starts a step',
-  );
-  assertContract(
-    legFootNeedsStep(2.99 * 2.99, shell),
-    'a foot folded inside the inner bound starts a step — the half of this '
-      + 'test that a ground-projected disc could never see',
+    'the shell never reaches inside |A - B|, which is a pose the knee cannot make',
   );
 
   // Clamping puts a point back on the shell, from either side.
@@ -404,7 +387,7 @@ export function runLegRig3DContractTest(): void {
   );
   assertContract(
     clampPointToLegShell(0, 0, 0, 1, 0, 0, shell, clamped)
-      && Math.abs(clamped.x - 3) < 1e-9,
+      && Math.abs(clamped.x - 2) < 1e-9,
     'a foot inside the fold limit is pushed back out to the inner bound',
   );
   assertContract(
@@ -420,31 +403,75 @@ export function runLegRig3DContractTest(): void {
     );
   }
 
-  // The station is still authored; only the envelope stopped being flat.
+  const gaitLocal = {
+    centerX: 0,
+    centerZ: 0,
+    outwardX: 0,
+    outwardZ: 0,
+    radius: 0,
+  };
+  resolveLegSnapSphereLocal(2, 0, 10, 0.5, 0.5, gaitLocal);
+  assertContract(
+    gaitLocal.centerX === 7 && gaitLocal.centerZ === 0 &&
+      gaitLocal.outwardX === 12 && gaitLocal.outwardZ === 0 &&
+      gaitLocal.radius === 5,
+    'the gait sphere remains offset outward from the hip by its authored station',
+  );
+  const choppingRadius = resolveLegChoppingSphereRadius(10, 0.3);
+  assertContract(
+    choppingRadius === 3,
+    'the attachment-ground chopping radius remains independently authored',
+  );
+  assertContract(
+    legChoppedSphereNeedsStep(5 * 5, 5, 0, choppingRadius),
+    'a foot directly beneath its attachment enters the chopping sphere and must step',
+  );
+  assertContract(
+    !legChoppedSphereNeedsStep(1, 5, 4 * 4, choppingRadius),
+    'a foot inside the outward sphere and outside the chopping sphere stays planted',
+  );
+
+  const outerCenter = { x: 7, y: 0, z: 0 };
+  const choppingCenter = { x: 2, y: 0, z: 0 };
+  const outward = { x: 12, y: 0, z: 0 };
+  const snapRayOrigin = { x: 0, y: 0, z: 0 };
+  resolveLegSnapRayOrigin(
+    outerCenter,
+    gaitLocal.radius,
+    choppingCenter,
+    choppingRadius,
+    0.5,
+    snapRayOrigin,
+  );
+  assertContract(
+    Math.abs(snapRayOrigin.x - 8.5) < 1e-9,
+    'the ray origin spans the authored space between chopping and outer boundaries',
+  );
+  const velocityTarget = { x: 0, y: 0, z: 0 };
+  resolveLegChoppedSphereVelocityTarget(
+    snapRayOrigin, outerCenter, gaitLocal.radius,
+    choppingCenter, choppingRadius,
+    1, 0, outward, velocityTarget,
+  );
+  assertContract(
+    Math.abs(velocityTarget.x - 12) < 1e-9,
+    'outward motion plants on the outward foot-sphere boundary',
+  );
+  resolveLegChoppedSphereVelocityTarget(
+    snapRayOrigin, outerCenter, gaitLocal.radius,
+    choppingCenter, choppingRadius,
+    -1, 0, outward, velocityTarget,
+  );
+  assertContract(
+    Math.abs(velocityTarget.x - 5) < 1e-9,
+    'inward motion stops on the chopping boundary before a foot can pass under the unit',
+  );
+
   const station = { x: 0, z: 0 };
   resolveLegOutwardGroundPointLocal(3, 4, 5, station);
   assertContract(
     Math.abs(station.x - 6) < 1e-9 && Math.abs(station.z - 8) < 1e-9,
     'the outward station runs along the attachment ray from the attachment',
-  );
-
-  const groundRayOrigin = { x: 0, y: 0, z: 0 };
-  resolveLegGroundRayOrigin(0, 0, 1, 0, { reachable: true, innerRadius: 4, outerRadius: 8 }, 0.5, groundRayOrigin);
-  assertContract(
-    Math.abs(groundRayOrigin.x - 6) < 1e-9 && groundRayOrigin.z === 0,
-    'the ray origin spans the annulus along the outward ray',
-  );
-  const velocityTarget = { x: 0, y: 0, z: 0 };
-  const annulus = { reachable: true, innerRadius: 4, outerRadius: 8 };
-  resolveLegGroundStepTarget(6, 0, 0, 0, annulus, 1, 0, 8, 0, velocityTarget);
-  assertContract(
-    Math.abs(velocityTarget.x - 8) < 1e-9,
-    'an outward velocity ray reaches the annulus outer edge',
-  );
-  resolveLegGroundStepTarget(6, 0, 0, 0, annulus, -1, 0, 8, 0, velocityTarget);
-  assertContract(
-    Math.abs(velocityTarget.x - 4) < 1e-9,
-    'an inward velocity ray stops at the annulus inner edge',
   );
 
   assertContract(

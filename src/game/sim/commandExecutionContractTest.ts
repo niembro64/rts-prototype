@@ -10,6 +10,7 @@ import {
 } from './commandExecution';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { Simulation } from './Simulation';
+import { shouldBypassFinalWaypointSlowdown } from './SimulationArrivalController';
 import type { Entity, UnitAction } from './types';
 import {
   getUnitGroundNormalEmaMode,
@@ -1652,6 +1653,36 @@ export function runCommandExecutionContractTest(): void {
   assertContract(queueWorld.converterTax === 0.25, 'scheduled converter-tax setting must update world truth');
   executeCommand(queueCtx, { type: 'setFogOfWarEnabled', tick: 0, enabled: false });
   assertContract(queueWorld.fogOfWarEnabled === false, 'scheduled fog setting must update world truth');
+  const defaultSlowDownAtFinalWaypoint = queueWorld.slowDownAtFinalWaypoint;
+  assertContract(
+    defaultSlowDownAtFinalWaypoint === false,
+    'final-waypoint slowdown must default off',
+  );
+  executeCommand(queueCtx, {
+    type: 'setSlowDownAtFinalWaypoint',
+    tick: 0,
+    enabled: true,
+  });
+  assertContract(
+    queueWorld.slowDownAtFinalWaypoint === true,
+    'scheduled final-waypoint slowdown setting must update world truth',
+  );
+  assertContract(
+    shouldBypassFinalWaypointSlowdown(false, true, false),
+    'the off default must bypass braking at the final point of the final action',
+  );
+  assertContract(
+    !shouldBypassFinalWaypointSlowdown(false, true, true),
+    'the enabled setting must preserve final-action arrival braking',
+  );
+  assertContract(
+    !shouldBypassFinalWaypointSlowdown(false, false, false),
+    'the global toggle must not bypass intermediate-waypoint corner shaping',
+  );
+  assertContract(
+    shouldBypassFinalWaypointSlowdown(true, false, true),
+    'authored full-thrust locomotion must retain its existing priority',
+  );
   setUnitGroundNormalEmaMode('fast');
   executeCommand(queueCtx, { type: 'setUnitGroundNormalEmaMode', tick: 0, mode: 'slow' });
   assertContract(

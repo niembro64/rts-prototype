@@ -12,7 +12,7 @@ const _inverseParentQuat = new THREE.Quaternion();
  *  rendered parent orientation so the articulated turret can transform
  *  that authoritative world aim into its local frame. */
 export function applyTurretAimPose3D(
-  mesh: Pick<TurretMesh, 'root' | 'pitchGroup'>,
+  mesh: Pick<TurretMesh, 'yawGroup' | 'pitchGroup'>,
   hostRotation: number,
   turretRotation: number,
   turretPitch: number,
@@ -33,7 +33,7 @@ export function applyTurretAimPose3D(
 
   const combinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
   setEulerYIfChanged(
-    mesh.root.rotation,
+    mesh.yawGroup.rotation,
     combinedYaw + (parentWorldQuaternion ? 0 : hostRotation),
   );
   if (mesh.pitchGroup) {

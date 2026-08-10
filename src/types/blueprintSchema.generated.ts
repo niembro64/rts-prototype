@@ -337,8 +337,6 @@ export type EntityBaseLedger = {
   signature: EntitySignature;
 };
 
-export type TurretRadiusConfig = EntityRadiusConfig;
-
 export type TurretAimAngleType = 'rayDirect' | 'rayBisectTurretAndBody' | 'ballisticArcLow' | 'ballisticArcLowOnlyUnder' | 'ballisticArcHigh';
 
 export type TurretAimStyle = {
@@ -413,7 +411,7 @@ export type TurretBlueprint = {
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
-  barrel: BarrelShape;
+  emissionLaneCount: number;
   eventsSmooth: boolean;
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
@@ -422,15 +420,12 @@ export type TurretBlueprint = {
   spread: TurretSpreadConfig | null;
   submunitions?: TurretSubmunitionEmitterConfig | null;
   burst: TurretBurstConfig | null;
-  shieldPanels: ShieldPanel[];
   audio: TurretAudioConfig | null;
-  radius: TurretRadiusConfig;
-  headOnly: boolean;
+  aimMotionSnapshotVisible: boolean;
   aimStyle: TurretAimStyle;
   verticalLauncher: boolean;
   idlePitch: number;
   groundAimFraction: number | null;
-  constructionEmitter: ConstructionEmitterVisualSpec | null;
   spawn?: SpawnTurretConfig | null;
   resourcePylon?: ResourcePylonConfig | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
@@ -442,6 +437,14 @@ export type TurretBlueprint = {
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
   emissionKind: EmissionKind | null;
   emissionBlueprintId: string | null;
+};
+
+export type TurretPresentation = {
+  headRadius: number | null;
+  headOnly: boolean;
+  barrel: BarrelShape | null;
+  constructionEmitter: ConstructionEmitterVisualSpec | null;
+  constructionEmitterSize: ConstructionEmitterSize | null;
 };
 
 export type MountOffset = {
@@ -471,13 +474,13 @@ export type TurretMount = {
   turretBlueprintId: TurretBlueprintId;
   sensorTurretBlueprintId?: TurretBlueprintId;
   mount: MountOffset;
+  presentation: TurretPresentation | null;
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
   slavedToMountId?: string;
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   hostAttachment?: UnitTurretHostAttachment;
-  visualVariant?: ConstructionEmitterSize;
   producedBlueprintId?: UnitBlueprintId;
   allowedBuildBlueprintIds?: StructureBlueprintId[];
   productionHoldAnchor?: 'host';
@@ -489,10 +492,10 @@ export type BuildingTurretMount = {
   turretBlueprintId: TurretBlueprintId;
   sensorTurretBlueprintId?: TurretBlueprintId;
   mount: MountOffset;
+  presentation: TurretPresentation | null;
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
   slavedToMountId?: string;
-  visualVariant?: ConstructionEmitterSize;
 };
 
 export type WheelConfig = {
@@ -521,6 +524,7 @@ export type LegSegments = {
 
 export type LegFootSphere = {
   originExtensionRatio: number;
+  radiusLegLengthRatio: number;
 };
 
 export type LegLayoutEntry = {

@@ -99,7 +99,7 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     const mesh = (renderer as unknown as BuildingRendererProbe).meshes.get(tower.id);
     assertContract(mesh !== undefined, 'first frame must create the tower mesh');
     assertContract(mesh.turrets.length === 1, 'tower mesh must expose its cannon turret');
-    const initialVisualYaw = mesh.turrets[0].root.rotation.y;
+    const initialVisualYaw = mesh.turrets[0].yawGroup.rotation.y;
 
     tower.combat.turrets[0].rotation = Math.PI / 2;
     rows.reset();
@@ -114,7 +114,7 @@ export function runBuildingTurretPresentation3DContractTest(): void {
       () => DETAIL_RUNG_CLOSE,
     );
 
-    const nextVisualYaw = mesh.turrets[0].root.rotation.y;
+    const nextVisualYaw = mesh.turrets[0].yawGroup.rotation.y;
     assertContract(
       Math.abs(nextVisualYaw - initialVisualYaw) > 1,
       'turret pose must update on a clean static-building frame',
@@ -122,6 +122,10 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     assertContract(
       Math.abs(nextVisualYaw + Math.PI / 2) < 1e-5,
       'tower mesh must consume the current interpolated turret yaw',
+    );
+    assertContract(
+      Math.abs(mesh.turrets[0].root.rotation.y) < 1e-8,
+      'logical yaw turns the presented turret body without rotating its fixed mount anchor',
     );
   } finally {
     renderer.destroy();

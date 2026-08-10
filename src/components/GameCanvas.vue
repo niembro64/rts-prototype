@@ -95,8 +95,13 @@ import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
-import { BATTLE_PRESETS, findMatchingPresetName } from './battlePresets';
+import {
+  BATTLE_PRESETS,
+  findMatchingPresetName,
+  mapPresetLabelLines,
+} from './battlePresets';
 import { setActiveBackdropPresetName } from '../game/render3d/presetBackdrops';
+import { setActiveMapPresetLabel } from '../game/render3d/presetMapLabel';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
@@ -1467,6 +1472,7 @@ const displayServerTime = computed(
 const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
+const slowDownAtFinalWaypointStoreVersion = ref(0);
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
@@ -1496,6 +1502,7 @@ const {
   terrainDetail,
   mapWidthLandCells,
   mapLengthLandCells,
+  slowDownAtFinalWaypointStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
 });
@@ -1519,6 +1526,7 @@ const {
   currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
+  currentSlowDownAtFinalWaypoint,
   currentSlopePathMode,
   currentTerrainSurfaceMode,
   currentLiquidSurfaceMode,
@@ -1531,6 +1539,7 @@ const {
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
+  setSlowDownAtFinalWaypoint,
   setSlopePathMode,
   setTerrainSurfaceMode,
   setLiquidSurfaceMode,
@@ -1540,6 +1549,7 @@ const {
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
   currentBattleMode,
+  slowDownAtFinalWaypointStoreVersion,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
   getActiveConnection: () => activeConnection,
@@ -1772,6 +1782,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
+  currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
   currentSlopePathMode: currentSlopePathMode.value,
   currentTerrainSurfaceMode: currentTerrainSurfaceMode.value,
   currentLiquidSurfaceMode: currentLiquidSurfaceMode.value,
@@ -1802,6 +1813,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
+  setSlowDownAtFinalWaypoint,
   setSlopePathMode,
   setTerrainSurfaceMode,
   setLiquidSurfaceMode,
@@ -1844,6 +1856,7 @@ watchEffect(() => {
   m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
+  m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
   m.currentTerrainSurfaceMode = currentTerrainSurfaceMode.value;
   m.currentLiquidSurfaceMode = currentLiquidSurfaceMode.value;
@@ -1859,6 +1872,7 @@ watchEffect(() => {
     shieldsObstructSight: currentShieldsObstructSight.value,
     shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
+    slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
     terrainSurfaceMode: currentTerrainSurfaceMode.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
     slopePathMode: BATTLE_CONFIG.slopePathMode.default,
@@ -1875,8 +1889,12 @@ watchEffect(() => {
     barsCollapsed: bottomBarsCollapsed.value,
   });
   // Sky backdrop panorama follows the matched preset; null (settings
-  // drifted off every stock preset) falls back to the gradient colors.
+  // drifted off every stock preset) resolves to the default panorama, so
+  // a custom map still gets a layered horizon rather than a flat sky.
   setActiveBackdropPresetName(m.activePresetName);
+  // The map-corner sign is the opposite: it only exists for an exact
+  // preset match, so off-preset settings clear it.
+  setActiveMapPresetLabel(mapPresetLabelLines(m.activePresetName));
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy

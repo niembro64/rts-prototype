@@ -398,8 +398,8 @@ export class UnitMeshBuilder3D {
     const isCommanderUnit = isCommander(entity);
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
-      const isShield = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
-      const isConstructionEmitter = turret.config.constructionEmitter !== undefined;
+      const isShield = turret.presentation.barrel?.type === 'complexSingleEmitter';
+      const isConstructionEmitter = turret.presentation.constructionEmitter !== null;
       const showShieldEmitterCore = isShield &&
         turret.config.shot?.type === 'shield' &&
         turret.config.shot.barrier !== undefined;

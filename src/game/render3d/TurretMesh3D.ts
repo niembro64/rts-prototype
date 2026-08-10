@@ -1,11 +1,13 @@
 // Turret mesh builder (3D). Free function so EntityRenderer doesn't
 // have to host this 200-line method on its already-busy class.
 //
-// Builds: a turret root group at (0,0,0) parented to `parent`, an
-// optional head sphere, and 0..N barrel cylinders nested under
-// pitchGroup → spinGroup. The renderer's per-tick update writes into
-// pitchGroup.rotation.z (pitch) and spinGroup.rotation.x (gatling
-// spin); barrel positions/orientations are baked at build time.
+// Builds: a fixed mount root at (0,0,0) parented to `parent`, a yawing
+// turret-body group, an optional head sphere, and 0..N barrel cylinders
+// nested under yawGroup → pitchGroup → spinGroup. The renderer's
+// per-tick update writes the logical turret yaw into yawGroup.rotation.y,
+// pitch into pitchGroup.rotation.z, and gatling spin into
+// spinGroup.rotation.x; barrel positions/orientations are baked at build
+// time.
 //
 // Vertical layout assumes the parent places root at
 // blueprintMount.z - headRadius: the head center and barrels pivot at
@@ -25,7 +27,7 @@ import {
   getTurretHeadRadius,
 } from '../math';
 import {
-  buildConstructionEmitterRigFromTurretConfig,
+  buildConstructionEmitterRigFromPresentation,
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
 import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
@@ -43,7 +45,12 @@ import {
 } from './TeamOrnament3D';
 
 export type TurretMesh = {
+  /** Fixed attachment anchor. Host mount placement belongs here and must not
+   *  be conflated with the logical turret's aim pose. */
   root: THREE.Group;
+  /** Physical turret body pose. Every host-owned presentation that should
+   *  turn with logical turret yaw must be parented beneath this group. */
+  yawGroup: THREE.Group;
   /** Absent for:
    *   - shields (the glowing sphere is the whole visual)
    *   - units routing the head through the shared `turretHeadInstanced`
@@ -107,8 +114,8 @@ export type TurretMesh = {
    *  already-pitched firing axis — spin rotates the barrel cluster
    *  around the real pitched direction, not around world-X. */
   spinGroup?: THREE.Group;
-  /** Visual-only construction turret rig. Built from the turret
-   *  blueprint instead of bespoke commander/factory art. */
+  /** Visual-only construction turret rig built from the host mount's
+   * presentation instead of the logical turret blueprint. */
   constructionEmitter?: ConstructionEmitterRig;
   /** Per-mesh render caches used by the building/tower renderer to avoid
    *  repeating static scenegraph/material writes on active turret hosts. */
@@ -178,29 +185,32 @@ export function buildTurretMesh3D(
   deps: TurretMesh3DDeps,
 ): TurretMesh {
   const root = new THREE.Group();
-  const barrel = turret.config.barrel;
+  const yawGroup = new THREE.Group();
+  root.add(yawGroup);
+  const barrel = turret.presentation.barrel;
   const isShield = barrel?.type === 'complexSingleEmitter';
-  const headRadius = getTurretHeadRadius(turret.config);
-  const headOnly = turret.config.headOnly === true;
+  const headRadius = getTurretHeadRadius(turret.presentation);
+  const headOnly = turret.presentation.headOnly === true;
   const detailLevel = deps.detailLevel ?? 1;
-  if (turret.config.constructionEmitter !== null) {
+  if (turret.presentation.constructionEmitter !== null) {
     // Resource-pylon turrets render only their own resource's pylon; a
     // constructionEmitter with no resourcePylon falls back to the energy+metal
     // pair. Read the resource off the blueprint registry (not the runtime
     // TurretConfig, which doesn't carry pylon data).
     const pylonResource =
       TURRET_BLUEPRINTS[turret.config.turretBlueprintId]?.resourcePylon?.resource ?? null;
-    const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
-      turret.config,
-      turret.config.visualVariant ?? undefined,
+    const constructionEmitter = buildConstructionEmitterRigFromPresentation(
+      turret.presentation.constructionEmitter,
+      turret.presentation.constructionEmitterSize ?? undefined,
       deps.primaryMat,
       pylonResource,
       geometryTierForDetail(detailLevel),
     );
-    root.add(constructionEmitter.group);
+    yawGroup.add(constructionEmitter.group);
     parent.add(root);
     return {
       root,
+      yawGroup,
       headRadius,
       barrels: [],
       constructionEmitter,
@@ -252,7 +262,7 @@ export function buildTurretMesh3D(
     head = new THREE.Mesh(headGeom, headMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
-    root.add(head);
+    yawGroup.add(head);
   }
 
   // Cache headRadius on the returned mesh whenever the head is
@@ -268,6 +278,7 @@ export function buildTurretMesh3D(
     parent.add(root);
     return {
       root,
+      yawGroup,
       head,
       headRadius: cachedHeadRadius,
       barrels,
@@ -281,18 +292,18 @@ export function buildTurretMesh3D(
   // local space is the head radius.
   const barrelCenterY = headRadius;
 
-  // Barrel thickness resolves from the runtime turret config, whose
-  // shot and barrel were built from the turret + shot blueprints.
-  const diameter = getTurretBarrelDiameter(turret.config);
+  // Barrel thickness combines the host-owned shape with its logical shot.
+  const diameter = getTurretBarrelDiameter(turret.presentation, turret.config.shot);
   // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
   const cylRadius = diameter / 2;
 
   // Two nested pivots so pitch and spin don't fight each other:
   //
-  //   root
-  //   └── pitchGroup   — rotation.z = pitch (tilts firing direction)
-  //       └── spinGroup — rotation.x = gatling spin
-  //           └── barrel meshes
+  //   root             — fixed host attachment
+  //   └── yawGroup      — rotation.y = logical turret yaw
+  //       └── pitchGroup  — rotation.z = pitch (tilts firing direction)
+  //           └── spinGroup — rotation.x = gatling spin
+  //               └── barrel meshes
   //
   // Because spinGroup is a child of pitchGroup, spinGroup's local +X
   // is ALREADY the pitched firing direction. Rotating around its
@@ -300,7 +311,7 @@ export function buildTurretMesh3D(
   // firing axis at any pitch.
   const pitchGroup = new THREE.Group();
   pitchGroup.position.set(0, barrelCenterY, 0);
-  root.add(pitchGroup);
+  yawGroup.add(pitchGroup);
   const spinGroup = new THREE.Group();
   pitchGroup.add(spinGroup);
   const barrelParent: THREE.Object3D = spinGroup;
@@ -355,17 +366,15 @@ export function buildTurretMesh3D(
     barrels.push(m);
   };
 
-  // Barrel length and multi-barrel orbits are authored against the
-  // TURRET HEAD radius, not the host unit's body radius. That keeps
-  // every instance of the same turret blueprint rendering at the same
-  // size regardless of which unit mounts it.
+  // Barrel length and multi-barrel orbits are authored against this mount's
+  // presented head radius, not the host unit's body radius.
   const barrelScale = headRadius;
-  const length = getTurretBarrelCenterToTipLength(turret.config);
+  const length = getTurretBarrelCenterToTipLength(turret.presentation);
   // barrelLength=0 (e.g. shield panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
     return {
-      root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
+      root, yawGroup, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
       headOnly,
     };
   }
@@ -421,7 +430,7 @@ export function buildTurretMesh3D(
 
   parent.add(root);
   return {
-    root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
+    root, yawGroup, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly,
     teamCollar,
   };

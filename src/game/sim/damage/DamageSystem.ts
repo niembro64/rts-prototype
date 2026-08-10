@@ -1713,7 +1713,8 @@ export class DamageSystem {
               mount.x,
               mount.y,
               mount.z,
-              turret.config.radius.hitbox + sphereInflation,
+              // Mounted logical turrets add no independent host hit volume.
+              sphereInflation,
             );
           }
         }
@@ -2089,7 +2090,7 @@ export class DamageSystem {
             const tx = mount.x - source.center.x;
             const ty = mount.y - source.center.y;
             const tz = mount.z - source.center.z;
-            const turretMaxDist = source.radius + turret.config.radius.hitbox;
+            const turretMaxDist = source.radius;
             if (tx * tx + ty * ty + tz * tz <= turretMaxDist * turretMaxDist) {
               _areaTurretDamageRefFlags[turretRow] = DAMAGE_AREA_FLAG_OVERLAP;
             }

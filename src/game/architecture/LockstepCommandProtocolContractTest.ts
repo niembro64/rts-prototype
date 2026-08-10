@@ -24,6 +24,10 @@ import {
 
 type SetConverterTaxCommand = Extract<import('../sim/commands').Command, { type: 'setConverterTax' }>;
 type SetSlopePathModeCommand = Extract<import('../sim/commands').Command, { type: 'setSlopePathMode' }>;
+type SetSlowDownAtFinalWaypointCommand = Extract<
+  import('../sim/commands').Command,
+  { type: 'setSlowDownAtFinalWaypoint' }
+>;
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -272,6 +276,16 @@ export function runLockstepCommandProtocolContractTest(): void {
     'converter tax changes gameplay truth and must be frame-scheduled',
   );
 
+  const finalWaypointSlowdown: SetSlowDownAtFinalWaypointCommand = {
+    type: 'setSlowDownAtFinalWaypoint',
+    tick: 0,
+    enabled: true,
+  };
+  assertContract(
+    classifyCommandForArchitecture(finalWaypointSlowdown) === 'gameplay-truth',
+    'final-waypoint braking changes movement truth and must be frame-scheduled',
+  );
+
   const slopePathMode: SetSlopePathModeCommand = {
     type: 'setSlopePathMode',
     tick: 0,
@@ -310,7 +324,7 @@ export function runLockstepCommandProtocolContractTest(): void {
     ...validStopEnvelope,
     playerId: 2 as PlayerId,
     playerSequence: 31,
-    command: slopePathMode,
+    command: finalWaypointSlowdown,
   }, world, hostPlayerId);
   assertContract(
     !nonHostSetting.accepted &&
@@ -322,11 +336,11 @@ export function runLockstepCommandProtocolContractTest(): void {
     ...validStopEnvelope,
     playerId: hostPlayerId,
     playerSequence: 32,
-    command: slopePathMode,
+    command: finalWaypointSlowdown,
   }, world, hostPlayerId);
   assertContract(
     hostSetting.accepted &&
-      hostSetting.command.type === 'setSlopePathMode' &&
+      hostSetting.command.type === 'setSlowDownAtFinalWaypoint' &&
       hostSetting.command.tick === validStopEnvelope.executeFrame,
     'gameplay setting commands from the host must schedule on the envelope frame',
   );

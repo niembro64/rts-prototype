@@ -72,14 +72,14 @@ function barrierShapeCode(shape: string | undefined): number {
 
 function turretFlags(turret: Turret): number {
   let flags = CLIENT_RENDER_TURRET_FLAG_ACTIVE;
-  if (turret.config.headOnly) flags |= CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY;
-  if (turret.config.constructionEmitter !== null) {
+  if (turret.presentation.headOnly) flags |= CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY;
+  if (turret.presentation.constructionEmitter !== null) {
     flags |= CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER;
   }
   if (!isAttackEmitter(turret)) flags |= CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER;
-  const barrel = turret.config.barrel;
+  const barrel = turret.presentation.barrel;
   if (
-    barrel !== undefined &&
+    barrel !== null &&
     (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel')
   ) {
     flags |= CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN;
@@ -238,7 +238,7 @@ export class ClientRenderTurretStateSlab {
       assertNear(`mountX ${i}`, this.views.mountX[row], turret.mount.x);
       assertNear(`mountY ${i}`, this.views.mountY[row], turret.mount.y);
       assertNear(`mountZ ${i}`, this.views.mountZ[row], turret.mount.z);
-      assertNear(`headRadius ${i}`, this.views.headRadius[row], getTurretHeadRadius(turret.config));
+      assertNear(`headRadius ${i}`, this.views.headRadius[row], getTurretHeadRadius(turret.presentation));
       assertNear(
         `range ${i}`,
         this.views.range[row],
@@ -266,10 +266,10 @@ export class ClientRenderTurretStateSlab {
     const barrier = turret.config.shot?.type === 'shield'
       ? turret.config.shot.barrier
       : undefined;
-    const spin = turret.config.barrel !== undefined &&
-      (turret.config.barrel.type === 'simpleMultiBarrel' ||
-        turret.config.barrel.type === 'coneMultiBarrel')
-      ? turret.config.barrel.spin
+    const barrel = turret.presentation.barrel;
+    const spin = barrel !== null &&
+      (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel')
+      ? barrel.spin
       : undefined;
 
     views.hostEntityIds[row] = entity.id;
@@ -281,7 +281,7 @@ export class ClientRenderTurretStateSlab {
     views.mountX[row] = turret.mount.x;
     views.mountY[row] = turret.mount.y;
     views.mountZ[row] = turret.mount.z;
-    views.headRadius[row] = getTurretHeadRadius(turret.config);
+    views.headRadius[row] = getTurretHeadRadius(turret.presentation);
     views.range[row] = turret.config.targeting.engagement.range;
     views.shieldRange[row] = turret.shield?.range ?? 0;
     views.barrierOuterRange[row] = barrier?.outerRange ?? 0;

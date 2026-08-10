@@ -22,6 +22,7 @@ function resolveLeftSideLegConfigs(
       upperLegLength: config.segments.upper.lengthUnitRadiusRatio * radius,
       lowerLegLength: config.segments.lower.lengthUnitRadiusRatio * radius,
       footSphereOriginExtensionRatio: config.footSphere.originExtensionRatio,
+      footSphereRadiusLegLengthRatio: config.footSphere.radiusLegLengthRatio,
       lerpDuration: config.lerpDuration,
     };
   }

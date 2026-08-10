@@ -41,6 +41,17 @@
     ],
     "detail": "Four map-centered panorama shells, ordered near to terminal. Effective distance is max(minimumDistanceWorldUnits, distanceMapFactor times the larger map axis). The first three generated UASTC KTX2 textures are transparent RGBA scenery/cloud layers; terminal is the fully opaque sky and is the only layer allowed to contain stars. verticalOffsetDegrees applies to all four: 0 is authored placement, negative lowers, positive raises. Generator blur must increase with distance."
   },
+  "mapPresetLabel": {
+    "titleFontPx": 84,
+    "infoFontPx": 38,
+    "lineGapPx": 16,
+    "canvasPadPx": 24,
+    "strokeWidthPx": 9,
+    "blockHeightMapFraction": 0.07,
+    "cornerMarginMapFraction": 0.022,
+    "groundLift": 40,
+    "detail": "Preset caption painted flat on the ground just outside the map's (0,0) corner — the near-left corner at the default camera yaw — and only while the battle bar matches a stock preset exactly. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface."
+  },
   "sun": {
     "azimuthRad": 1.5707963267948966,
     "elevationRad": 0.7853981633974483,

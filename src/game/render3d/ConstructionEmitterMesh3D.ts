@@ -13,8 +13,7 @@
 //     belongs to the factory/unit body mesh, not this emitter rig.
 
 import * as THREE from 'three';
-import type { ConstructionEmitterSize } from '@/types/blueprints';
-import type { TurretConfig } from '../sim/types';
+import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from '@/types/blueprints';
 import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_MARKING_STYLE } from '@/constructionVisualConfig';
@@ -257,8 +256,8 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
   };
 }
 
-export function buildConstructionEmitterRigFromTurretConfig(
-  turretConfig: Pick<TurretConfig, 'constructionEmitter'>,
+export function buildConstructionEmitterRigFromPresentation(
+  spec: ConstructionEmitterVisualSpec,
   visualVariant: ConstructionEmitterSize | undefined,
   primaryMat: THREE.Material = frameMat,
   // Resource-pylon turrets carry exactly ONE resource pylon (the legacy
@@ -266,10 +265,6 @@ export function buildConstructionEmitterRigFromTurretConfig(
   singleResource: ConstructionTowerResource | null = null,
   geometryTier: PrimitiveGeometryTier = 'close',
 ): ConstructionEmitterRig {
-  const spec = turretConfig.constructionEmitter;
-  if (!spec) {
-    throw new Error('Construction emitter rig requires a constructionEmitter turret config');
-  }
   const variant = visualVariant ?? spec.defaultSize;
   const dims = spec.sizes[variant];
   if (!dims) {

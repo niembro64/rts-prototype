@@ -883,7 +883,7 @@ export class RtsScene3DRenderPhase {
         host.id,
         turretPieceTag(i),
         mount.x,
-        getTurretHudNameY(mount.z, turret.config),
+        getTurretHudNameY(mount.z, turret.presentation),
         mount.y,
         name,
       );

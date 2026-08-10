@@ -20,6 +20,7 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 const expectedLayerIds = ['near', 'middle', 'far', 'terminal'];
 const expectedSlugs = [
+  'default',
   'large-circle',
   'angels-flat',
   'boulder-mountain',
@@ -139,7 +140,7 @@ const expectedAssetNames = expectedSlugs.flatMap((slug) => (
 ));
 assertAudit(
   Array.isArray(manifest.assets) && manifest.assets.length === expectedAssetNames.length,
-  'manifest must describe all 32 backdrop textures',
+  `manifest must describe all ${expectedAssetNames.length} backdrop textures`,
 );
 assertAudit(
   manifest.assets.map((asset) => asset.file).join(',') === expectedAssetNames.join(','),

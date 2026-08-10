@@ -158,6 +158,7 @@ function assertInitializationHashMismatch(): void {
       mapLengthLandCells: 9,
       maxTotalUnits: 128,
       converterTax: 0,
+      slowDownAtFinalWaypoint: false,
     },
   };
   const first = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization(base));
@@ -169,6 +170,17 @@ function assertInitializationHashMismatch(): void {
       },
     }));
   assertContract(first !== second, 'canonical initialization hash must catch config mismatches');
+  const third = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
+    ...base,
+    settings: {
+      ...base.settings,
+      slowDownAtFinalWaypoint: true,
+    },
+  }));
+  assertContract(
+    first !== third,
+    'canonical initialization hash must include final-waypoint slowdown',
+  );
 }
 
 function createTerrain(): RealBattleStartupTerrain {
@@ -207,6 +219,7 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     maxTotalUnits: 128,
     converterTax: 0,
+    slowDownAtFinalWaypoint: false,
   };
 }
 

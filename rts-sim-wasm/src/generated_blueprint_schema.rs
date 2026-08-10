@@ -507,8 +507,6 @@ pub struct EntityBaseLedger {
     pub signature: EntitySignature,
 }
 
-pub type TurretRadiusConfig = EntityRadiusConfig;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum TurretAimAngleType {
     RayDirect,
@@ -640,7 +638,7 @@ pub struct TurretBlueprint {
     pub color: f64,
     pub turretTurnAccel: f64,
     pub turretDrag: f64,
-    pub barrel: BlueprintJsonValue,
+    pub emissionLaneCount: i32,
     pub eventsSmooth: bool,
     pub launchForce: f64,
     pub addTurretVelocityToEmissionLaunch: bool,
@@ -649,15 +647,12 @@ pub struct TurretBlueprint {
     pub spread: Option<TurretSpreadConfig>,
     pub submunitions: Option<TurretSubmunitionEmitterConfig>,
     pub burst: Option<TurretBurstConfig>,
-    pub shieldPanels: Vec<ShieldPanel>,
     pub audio: Option<TurretAudioConfig>,
-    pub radius: TurretRadiusConfig,
-    pub headOnly: bool,
+    pub aimMotionSnapshotVisible: bool,
     pub aimStyle: TurretAimStyle,
     pub verticalLauncher: bool,
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
-    pub constructionEmitter: Option<BlueprintJsonValue>,
     pub spawn: Option<SpawnTurretConfig>,
     pub resourcePylon: Option<ResourcePylonConfig>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
@@ -669,6 +664,15 @@ pub struct TurretBlueprint {
     pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
     pub emissionKind: Option<EmissionKind>,
     pub emissionBlueprintId: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretPresentation {
+    pub headRadius: Option<f64>,
+    pub headOnly: bool,
+    pub barrel: Option<BlueprintJsonValue>,
+    pub constructionEmitter: Option<BlueprintJsonValue>,
+    pub constructionEmitterSize: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -707,13 +711,13 @@ pub struct TurretMount {
     pub turretBlueprintId: String,
     pub sensorTurretBlueprintId: Option<String>,
     pub mount: MountOffset,
+    pub presentation: Option<TurretPresentation>,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
     pub slavedToMountId: Option<String>,
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub hostAttachment: Option<UnitTurretHostAttachment>,
-    pub visualVariant: Option<String>,
     pub producedBlueprintId: Option<String>,
     pub allowedBuildBlueprintIds: Option<Vec<String>>,
     pub productionHoldAnchor: Option<String>,
@@ -726,10 +730,10 @@ pub struct BuildingTurretMount {
     pub turretBlueprintId: String,
     pub sensorTurretBlueprintId: Option<String>,
     pub mount: MountOffset,
+    pub presentation: Option<TurretPresentation>,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
     pub slavedToMountId: Option<String>,
-    pub visualVariant: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -763,6 +767,7 @@ pub struct LegSegments {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LegFootSphere {
     pub originExtensionRatio: f64,
+    pub radiusLegLengthRatio: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

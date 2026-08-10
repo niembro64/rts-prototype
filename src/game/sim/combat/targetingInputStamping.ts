@@ -1035,7 +1035,8 @@ function stampCombatTargetingEntityInto(
       t.rootHostId,
       t.mountIndex,
       t.worldPos.x, t.worldPos.y, t.worldPos.z,
-      t.config.radius.hitbox,
+      // Mounted logical turrets have no independent hit sphere.
+      0,
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
       t.angularVelocity, t.pitchVelocity,

@@ -598,7 +598,7 @@ function buildPreviewBuildingTurrets(
     // Building mounts are authored in absolute world units (see
     // BuildingEntityRenderer3D.updateTurretPoses): head pivots at
     // mount.z - headRadius, x/y map straight through.
-    const headRadius = getTurretHeadRadius(turret.config);
+    const headRadius = getTurretHeadRadius(turret.presentation);
     turretMesh.root.position.set(turret.mount.x, turret.mount.z - headRadius, turret.mount.y);
     applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
   }
@@ -774,7 +774,7 @@ function buildPreviewTurrets(
   for (const turret of turrets) {
     const showShieldEmitterCore =
       (unitBlueprintId === 'unitAlbatros' || bodyIsShieldEmitter) &&
-      turret.config.barrel?.type === 'complexSingleEmitter';
+      turret.presentation.barrel?.type === 'complexSingleEmitter';
     const hideBeamHead =
       bodyIsShieldEmitter &&
       turret.config.shot?.type === 'beam';
@@ -804,11 +804,11 @@ function buildPreviewTurrets(
         materials.primary,
       );
     }
-    const headRadius = getTurretHeadRadius(turret.config);
+    const headRadius = getTurretHeadRadius(turret.presentation);
     let mountX = turret.mount.x;
     let mountY = turret.mount.z - chassisLift;
     let mountZ = turret.mount.y;
-    if (productionRing !== null && turret.config.constructionEmitter !== null) {
+    if (productionRing !== null && turret.presentation.constructionEmitter !== null) {
       const side = productionPylonOrdinal === 0 ? -1 : 1;
       mountX = productionRing.centerX;
       mountY = productionRing.centerY;

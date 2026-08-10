@@ -27,6 +27,21 @@ const ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 0;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 2;
 
+/** Resolve the one policy shared by arrival thrust and arrival completion.
+ * Authored full-thrust locomotion always wins. The global BATTLE setting only
+ * changes the final point of the final non-patrol action, leaving path corners
+ * and intermediate waypoints under the normal corner-speed controller. */
+export function shouldBypassFinalWaypointSlowdown(
+  maintainFullThrustAtWaypoints: boolean,
+  isLastAction: boolean,
+  slowDownAtFinalWaypoint: boolean,
+): boolean {
+  return (
+    maintainFullThrustAtWaypoints ||
+    (isLastAction && !slowDownAtFinalWaypoint)
+  );
+}
+
 export class SimulationArrivalController {
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
@@ -59,7 +74,7 @@ export class SimulationArrivalController {
   private completionCount = 0;
 
   constructor(
-    _world: WorldState,
+    private readonly world: WorldState,
     callbacks: {
       advanceAction: (entity: Entity) => void;
       advanceActivePathPoint: (entity: Entity) => void;
@@ -95,11 +110,16 @@ export class SimulationArrivalController {
     this.completionDy[index] = dy;
     this.completionFallbackVx[index] = unit.velocityX;
     this.completionFallbackVy[index] = unit.velocityY;
-    let flags = unit.actions.length <= 1 && action.type !== 'patrol'
-      && isFinalActionPoint
-      ? ARRIVAL_BATCH_FLAG_LAST_ACTION
-      : 0;
-    if (unit.locomotion.motionControl.maintainFullThrustAtWaypoints) {
+    const isLastAction =
+      unit.actions.length <= 1 && action.type !== 'patrol' && isFinalActionPoint;
+    let flags = isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0;
+    if (
+      shouldBypassFinalWaypointSlowdown(
+        unit.locomotion.motionControl.maintainFullThrustAtWaypoints,
+        isLastAction,
+        this.world.slowDownAtFinalWaypoint,
+      )
+    ) {
       flags |= ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST;
     }
     this.completionFlags[index] = flags;
@@ -184,6 +204,14 @@ export class SimulationArrivalController {
 
     const maintainFullThrustAtWaypoints = unit.locomotion.motionControl.maintainFullThrustAtWaypoints;
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
+    const bypassFinalWaypointSlowdown = shouldBypassFinalWaypointSlowdown(
+      maintainFullThrustAtWaypoints,
+      isLastAction,
+      this.world.slowDownAtFinalWaypoint,
+    );
+    // Explicit action speed limits remain active when the global final-arrival
+    // brake is off. Only an authored full-thrust locomotion policy bypasses
+    // those limits.
     const speedLimitFactor = maintainFullThrustAtWaypoints
       ? 1
       : normalizeActionSpeedLimitFactor(action.speedLimitFactor);
@@ -199,7 +227,7 @@ export class SimulationArrivalController {
     this.speedLimitFactor[index] = speedLimitFactor;
     this.cornerBendCos[index] = cornerBendCos;
     this.flags[index] =
-      (maintainFullThrustAtWaypoints ? ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST : 0)
+      (bypassFinalWaypointSlowdown ? ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST : 0)
       | (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
   }
 

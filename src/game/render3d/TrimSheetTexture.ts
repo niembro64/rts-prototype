@@ -66,6 +66,7 @@ const BASE_BAND_SEEDS: Record<BaseTrimBandId, number> = {
   barrelShaft: 0x1de4a6,
   hydraulicStrut: 0x93b70c,
   boltBoss: 0x4a2f88,
+  legSocket: 0x5d31a9,
   liveryPiping: 0xc16d21,
   liveryChevron: 0x38e5b9,
   tyreTread: 0x2f7ab4,
@@ -869,6 +870,17 @@ function drawBoltBoss(
   seamRow(layer, rect, ringY + ringHeight, 3);
 }
 
+/** Hip attachment housing. It keeps the ordinary bolted-knuckle vocabulary,
+ * then cuts one black pole-to-pole travel slot through it. The slot is centered
+ * on local +X just like a turret head's barrel slot; per-frame hip yaw turns it
+ * into the vertical plane occupied by that leg. */
+function drawLegSocket(
+  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
+): void {
+  drawBoltBoss(layer, rect, rng, band);
+  drawPitchSlot(layer, rect);
+}
+
 /** Team piping — the strap kit's livery.
  *
  *  Livery bands stay near neutral ON AVERAGE on purpose: the whole job of these
@@ -1381,6 +1393,7 @@ const BASE_BAND_DRAWERS: Record<BaseTrimBandId, BandDrawerSpec> = {
   barrelShaft: { base: { albedo: 0.92, height: 0.62, bare: 0.92 }, draw: drawBarrelShaft },
   hydraulicStrut: { base: { albedo: 0.04, height: 0.18, bare: 0.15 }, draw: drawHydraulicStrut },
   boltBoss: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawBoltBoss },
+  legSocket: { base: { albedo: 0.04, height: 0.18, bare: 0.20 }, draw: drawLegSocket },
   liveryPiping: { base: { albedo: 0.62, height: 0.74, bare: 0.02 }, draw: drawLiveryPiping },
   liveryChevron: { base: { albedo: 0.60, height: 0.66, bare: 0.02 }, draw: drawLiveryChevron },
   tyreTread: { base: { albedo: 0.36, height: 0.44, bare: 0.02 }, draw: drawTyreTread },

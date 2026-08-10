@@ -2528,7 +2528,7 @@ export class Input3DManager {
       const turrets = units[i].combat?.turrets;
       if (turrets === undefined) continue;
       for (let j = 0; j < turrets.length; j++) {
-        if (turrets[j].config.constructionEmitter === null) return true;
+        if (turrets[j].presentation.constructionEmitter === null) return true;
       }
     }
     return false;

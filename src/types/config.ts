@@ -86,8 +86,9 @@ export type SpinConfig = {
 // from the turret head's center along chassis-local +X. Each barrel is
 // a cylinder positioned by its BASE (anchor on the head) and TIP (where
 // shots leave). All `*RadiusFrac` / `barrelLength` values are scalar
-// FRACTIONS of the turret's body sphere radius (= TurretBlueprint.radius.other);
-// world-space sizing happens at render time. Cylinder thickness resolves in
+// FRACTIONS of the host mount's presented head radius
+// (= TurretPresentation.headRadius); world-space sizing happens at render time.
+// Cylinder thickness resolves in
 // absolute world units, normally from the emitted shot/ray width; the optional
 // `barrelThickness` is reserved for an intentional visual override.
 //
@@ -106,7 +107,7 @@ export type SpinConfig = {
 // (the glowing bubble; head hidden, drawn by ShieldRenderer3D).
 // `shieldPanelEmitter` — shield PANEL emitter: the turret head
 // stays visible but there is no gun barrel. The reflecting slabs are the
-// emitter and are drawn separately from the turret's `shieldPanels`
+// emitter and are drawn separately from the host mount's `shieldPanels`
 // config (ShieldPanelPose3D). Distinct from complexSingleEmitter
 // because the panel keeps its head and does NOT use the sphere shader.
 export type BarrelShape =

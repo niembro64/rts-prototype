@@ -37,13 +37,12 @@ const TURRET_EXPLICIT_FIELDS = [
   'requiresNonObstructedLineOfSight',
   'spread',
   'burst',
-  'shieldPanels',
   'audio',
   'verticalLauncher',
   'idlePitch',
   'groundAimFraction',
-  'headOnly',
-  'constructionEmitter',
+  'emissionLaneCount',
+  'aimMotionSnapshotVisible',
   'kind',
 ] as const;
 
@@ -188,12 +187,6 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
       `Invalid turret blueprint ${id}: shield emission data belongs in shields.json and must be referenced by emissionBlueprintId`,
     );
   }
-  if (blueprint.shieldPanels.length > 0) {
-    throw new Error(
-      `Invalid turret blueprint ${id}: shield panel geometry belongs on the host mount, not the turret blueprint`,
-    );
-  }
-
   const label = `turret blueprint ${id}`;
   if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
     throw new Error(`Invalid ${label}: missing display name`);
@@ -202,6 +195,12 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     throw new Error(
       `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...TURRET_EMITTER_KIND_SET].join(', ')}]`,
     );
+  }
+  if (!Number.isInteger(blueprint.emissionLaneCount) || blueprint.emissionLaneCount <= 0) {
+    throw new Error(`Invalid ${label}.emissionLaneCount: expected positive integer`);
+  }
+  if (typeof blueprint.aimMotionSnapshotVisible !== 'boolean') {
+    throw new Error(`Invalid ${label}.aimMotionSnapshotVisible: expected boolean`);
   }
   validateTurretCooldown(label, blueprint.cooldown);
   validateSensorCapabilityConfig(

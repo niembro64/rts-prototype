@@ -221,6 +221,7 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
         : null;
     case 'setShieldsObstructSight':
     case 'setFogOfWarEnabled':
+    case 'setSlowDownAtFinalWaypoint':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setShieldReflectionMode':
       return isShieldReflectionMode(command.mode)
