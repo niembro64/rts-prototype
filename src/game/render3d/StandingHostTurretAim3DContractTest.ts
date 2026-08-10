@@ -25,6 +25,7 @@ import {
   buildStandingRig,
   poseStandingRigAtPreviewCycle,
   poseStandingRigAtRest,
+  resolveStandingArmTurretAim,
   resolveStandingArmTurretRoot,
   type StandingMesh,
   updateStandingRig,
@@ -799,6 +800,51 @@ function assertCommanderScale(mesh: StandingMesh): void {
   assertNear(mesh.arms[0].upper.width, 14.08, 'Commander arm thickness scales by 1.6x');
 }
 
+/** A gun held in a standing host's hand is rigid to that hand: its rendered
+ *  direction IS the carrying arm's direction, and the turret contributes no
+ *  articulation of its own. The turret's authority is untouched — this only
+ *  pins which of the two bodies expresses the aim on screen. */
+function assertHeldGunTakesItsArmPose(
+  human: ReturnType<typeof buildStanding>,
+  humanGun: Turret,
+): void {
+  const armId = 'rightArm';
+  const carryingArm = human.mesh.arms.find((arm) => arm.id === armId);
+  assertContract(carryingArm !== undefined, 'Human has the arm carrying its gun');
+
+  const heldAim = resolveStandingArmTurretAim(human.mesh, armId, { yaw: 0, pitch: 0 });
+  assertContract(heldAim !== null, 'an arm-held gun resolves a pose from its arm');
+  const heldYaw = new THREE.Group();
+  const heldPitch = new THREE.Group();
+  heldYaw.add(heldPitch);
+  heldYaw.rotation.y = heldAim.yaw;
+  heldPitch.rotation.z = heldAim.pitch;
+  const heldDirection = new THREE.Vector3(1, 0, 0)
+    .applyQuaternion(heldPitch.quaternion)
+    .applyQuaternion(heldYaw.quaternion);
+  assertNear(heldDirection.x, carryingArm.aimX, 'a held gun points along its forearm (x)');
+  assertNear(heldDirection.y, carryingArm.aimY, 'a held gun points along its forearm (y)');
+  assertNear(heldDirection.z, carryingArm.aimZ, 'a held gun points along its forearm (z)');
+
+  // The arm is what carries elevation, so a different turret pitch has to
+  // reach the gun through the arm rather than around it.
+  const restingPitch = heldAim.pitch;
+  const restoreTurretPitch = humanGun.pitch;
+  humanGun.pitch = restoreTurretPitch + 0.6;
+  updateStandingHostTurretAim(human.mesh, 0, undefined, human.turrets, 0);
+  poseStandingRigAtRest(human.mesh);
+  const raisedAim = resolveStandingArmTurretAim(human.mesh, armId, { yaw: 0, pitch: 0 });
+  assertContract(raisedAim !== null, 'the raised arm still resolves a held pose');
+  assertContract(
+    Math.abs(raisedAim.pitch - restingPitch) > 1e-3,
+    'a held gun follows its arm when turret pitch moves that arm',
+  );
+
+  humanGun.pitch = restoreTurretPitch;
+  updateStandingHostTurretAim(human.mesh, 0, undefined, human.turrets, 0);
+  poseStandingRigAtRest(human.mesh);
+}
+
 export function runStandingHostTurretAim3DContractTest(): void {
   assertRosterTurretsPublishAim();
   const human = buildStanding('unitHuman');
@@ -900,21 +946,24 @@ export function runStandingHostTurretAim3DContractTest(): void {
     .applyQuaternion(turretPitch.quaternion)
     .applyQuaternion(turretYaw.quaternion)
     .applyQuaternion(assistedParent);
+  // The ordinary turret pose still owns every mount that is not held in a
+  // hand — hull mounts on every other host, and a standing head attachment.
   assertNear(
     assistedDirection.x,
     Math.cos(humanGun.rotation) * Math.cos(humanGun.pitch),
-    'turret self-yaw survives host upper-body assistance',
+    'an unheld turret self-yaws through host upper-body assistance',
   );
   assertNear(
     assistedDirection.y,
     Math.sin(humanGun.pitch),
-    'turret self-pitch survives host arm/upper-body assistance',
+    'an unheld turret self-pitches through host arm/upper-body assistance',
   );
   assertNear(
     assistedDirection.z,
     Math.sin(humanGun.rotation) * Math.cos(humanGun.pitch),
-    'turret retains its authoritative world heading after the host turns',
+    'an unheld turret retains its authoritative world heading after the host turns',
   );
+  assertHeldGunTakesItsArmPose(human, humanGun);
   const aimedTorsoYaw = human.mesh.upperBodyYaw;
   humanGun.state = 'idle';
   const returningTorsoYaw = updateStandingHostTurretAim(

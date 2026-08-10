@@ -1819,6 +1819,37 @@
         yaw/pitch servo, aim-error firing gate, snapshot, interpolation, and renderer
         pose path. An emission family does not get a private targeting path.
       </p>
+      <h3>Standing hosts hold their guns: the arm aims, the turret is static</h3>
+      <p>
+        Every host on that shared aim expresses it the same way &mdash; the hull holds still
+        and the turret swivels on top of it &mdash; with one exception. A standing host is a
+        biped with articulated legs and arms, and it aims with its <em>body</em>: the torso
+        carries the weapon heading, the arm carries the elevation, and the weapon is bolted
+        to the hand at the end of that chain. The arm direction <em>is</em> the gun direction.
+      </p>
+      <p>
+        So a turret with a <code>standingArm</code> host attachment renders as a
+        <strong>static gun held in a hand</strong>. Its rendered orientation comes from the
+        carrying arm&rsquo;s solved forearm direction, and the turret contributes no yaw or
+        pitch of its own. The alternative is not neutral: a held turret that also articulated
+        would express one aim twice and leave the barrel visibly disagreeing with the arm
+        holding it &mdash; a rifle rotating inside a closed fist.
+      </p>
+      <p>
+        <strong>None of this touches turret authority.</strong> Mount resolution, target
+        acquisition, the aim solver, the damped yaw/pitch servo, the aim-error firing gate,
+        and the presentation rows on the wire are byte-for-byte what they are on a tank; a
+        standing host&rsquo;s gun hits exactly what it would hit anywhere else. This is a
+        presentation swap of the same family as <strong>Locomotion Visuals Are Frontend</strong>:
+        the renderer chooses which body expresses an authoritative pose, never what that pose is.
+      </p>
+      <ul class="rule-list">
+        <li>The renderer reads the arm&rsquo;s own solved elbow&rarr;hand direction, chassis-local, and applies it as the held turret&rsquo;s local yaw/pitch. One source, so the drawn gun can never drift off the hand it is drawn in.</li>
+        <li>Only <code>standingArm</code> attachments are held. A <code>standingHead</code> mount &mdash; the Commander&rsquo;s D-gun &mdash; is hull-fixed and keeps the ordinary self-articulating turret pose, as does every mount on every other locomotion type.</li>
+        <li>Gameplay keeps the authored blueprint mount as the shot origin. The hand is an articulated <em>presentation</em> mount, which is what stops a held gun from sitting in the torso while its arm walks away; it does not redefine where the emission comes from.</li>
+        <li>Torso heading and arm elevation are host presentation, smoothed on the client, so a held gun trails its authoritative aim by the same easing its body does. That lag is the feature: the weapon carries the weight of the thing carrying it.</li>
+        <li>Head instancing, barrel geometry, detail tiers, and team trim are untouched. It is still an ordinary turret mesh &mdash; only the rotation feeding it comes from somewhere else.</li>
+      </ul>
       <h3>Rocket turrets are spinning gatlings</h3>
       <p>
         The three rocket turrets (<code>turretRocketSlow</code>,

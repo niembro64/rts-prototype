@@ -30,7 +30,10 @@ import {
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
-import { resolveStandingArmTurretRoot } from './StandingRig3D';
+import {
+  resolveStandingArmTurretAim,
+  resolveStandingArmTurretRoot,
+} from './StandingRig3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
@@ -67,6 +70,7 @@ export class UnitTurretPose3D {
   private readonly scratchZeroPosition = new THREE.Vector3();
   private readonly scratchIdentityQuaternion = new THREE.Quaternion();
   private readonly articulatedMount = new THREE.Vector3();
+  private readonly articulatedAim = { yaw: 0, pitch: 0 };
 
   private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
   private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
@@ -247,11 +251,19 @@ export class UnitTurretPose3D {
         }
       }
 
-      if (
-        turretMesh.headSlot !== undefined &&
+      const instancedHead = turretMesh.headSlot !== undefined &&
+        turretMesh.headRadius !== undefined;
+      const headSlot = turretMesh.headSlot !== undefined &&
         turretMesh.headRadius !== undefined
-      ) {
-        const headColorOverride = turretMesh.headOnly
+        ? turretMesh.headSlot
+        : undefined;
+      const aimHeadRadius = turretMesh.headSlot !== undefined &&
+        turretMesh.headRadius !== undefined
+        ? turretMesh.headRadius
+        : headRadius;
+      const headColorOverride = !instancedHead
+        ? undefined
+        : turretMesh.headOnly
           ? useState
             ? entityHeadOnlyTurretHeadColorHexForStateCode(entity, stateViews.stateCode[stateRow])
             : entityHeadOnlyTurretHeadColorHex(entity, turret.state)
@@ -265,36 +277,55 @@ export class UnitTurretPose3D {
               )
               : entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
-        this.enqueueAim(
+
+      // STANDING HOSTS HOLD THEIR GUNS. A biped aims with its body — the torso
+      // carries the heading, the arm carries the elevation — and the weapon is
+      // rigid to the hand at the end of that chain. So its rendered pose comes
+      // from the arm, and the turret adds no articulation of its own; letting it
+      // also yaw and pitch would express one aim twice and visibly detach the
+      // barrel from the arm holding it. Nothing about the turret's authority
+      // changes: mount, aim solver, firing gate, and wire rows are untouched.
+      const armAim = articulatedMount !== null &&
+        hostAttachment?.kind === 'standingArm' &&
+        mesh.locomotion?.type === 'standing'
+        ? resolveStandingArmTurretAim(
+          mesh.locomotion,
+          hostAttachment.arm,
+          this.articulatedAim,
+        )
+        : null;
+      if (armAim !== null) {
+        setEulerYIfChanged(turretMesh.yawGroup.rotation, armAim.yaw);
+        if (turretMesh.pitchGroup) {
+          setEulerZIfChanged(turretMesh.pitchGroup.rotation, armAim.pitch);
+        }
+        this.enqueueHeadMount(
           entity,
           turretIdx,
-          turretMesh,
-          turretMesh.headSlot,
-          turretMesh.headRadius,
+          headSlot,
           headColorOverride,
           parentPosition,
           parentQuaternion,
-          entity.transform.rotation,
-          aimRotationFromState,
-          aimPitchFromState,
-        );
-        continue;
-      } else {
-        this.enqueueAim(
-          entity,
-          turretIdx,
-          turretMesh,
-          undefined,
-          headRadius,
-          undefined,
-          parentPosition,
-          parentQuaternion,
-          entity.transform.rotation,
-          aimRotationFromState,
-          aimPitchFromState,
+          turretMesh.root,
+          turretMesh.yawGroup,
+          aimHeadRadius,
         );
         continue;
       }
+
+      this.enqueueAim(
+        entity,
+        turretIdx,
+        turretMesh,
+        headSlot,
+        aimHeadRadius,
+        headColorOverride,
+        parentPosition,
+        parentQuaternion,
+        entity.transform.rotation,
+        aimRotationFromState,
+        aimPitchFromState,
+      );
     }
   }
 

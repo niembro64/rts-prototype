@@ -52,6 +52,7 @@ import {
   readHostTurretAimSample3D,
   type HostTurretAimSample3D,
 } from './HostTurretAim3D';
+import { clampUnit } from '../math';
 
 const SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const segmentMaterials = new Map<number, THREE.MeshLambertMaterial>();
@@ -67,6 +68,9 @@ type StandingArmHostAttachment = Extract<
   { kind: 'standingArm' }
 >;
 export type StandingArmId = StandingArmHostAttachment['arm'];
+
+/** Local yaw/pitch a held turret takes from the arm carrying it. */
+export type StandingArmTurretAim = { yaw: number; pitch: number };
 
 type StandingTurretAimMemory = {
   initialized: boolean;
@@ -148,6 +152,13 @@ export type StandingArm = {
   handX: number;
   handY: number;
   handZ: number;
+  /** Unit vector elbow -> hand, chassis-local: the direction this arm is
+   *  currently pointing. A gun held in the hand is rigid to it, so this is
+   *  the whole of that gun's rendered orientation — see
+   *  resolveStandingArmTurretAim. */
+  aimX: number;
+  aimY: number;
+  aimZ: number;
 };
 
 export type StandingMesh = {
@@ -899,6 +910,9 @@ export function buildStandingRig(
       handX: 0,
       handY: 0,
       handZ: 0,
+      aimX: 1,
+      aimY: 0,
+      aimZ: 0,
     });
   }
 
@@ -974,6 +988,18 @@ function poseArm(
   arm.handX = handX;
   arm.handY = handY;
   arm.handZ = handZ;
+  // Where this arm points, for whatever it is holding. A folded arm is never
+  // zero-length, so the guard is only there so a degenerate authored segment
+  // leaves the last direction alone instead of publishing NaN.
+  const reachX = handX - elbowX;
+  const reachY = handY - elbowY;
+  const reachZ = handZ - elbowZ;
+  const reach = Math.hypot(reachX, reachY, reachZ);
+  if (reach > 1e-6) {
+    arm.aimX = reachX / reach;
+    arm.aimY = reachY / reach;
+    arm.aimZ = reachZ / reach;
+  }
 }
 
 function standingTurretAssistPriority(
@@ -1201,6 +1227,32 @@ export function resolveStandingArmTurretRoot(
     arm.handY + centerYOffset - headRadius,
     arm.handZ + lateralOffset,
   );
+  return out;
+}
+
+/** Rendered orientation of a gun held by `armId`, as the local yaw/pitch a
+ *  turret rig applies to its own yaw and pitch groups.
+ *
+ *  A standing host aims with its body: the torso carries the weapon heading
+ *  and the arm carries the elevation, and the gun is bolted to the hand at
+ *  the end of that chain. So the arm direction IS the gun direction, and a
+ *  held turret must not also articulate on its own — that would express one
+ *  aim twice and leave the barrel visibly disagreeing with the arm holding
+ *  it. Every other host keeps the ordinary turret pose, where the mount is
+ *  fixed to the hull and only the turret moves.
+ *
+ *  Returned in the same chassis-local frame `resolveStandingArmTurretRoot`
+ *  reports its position in, and using the same convention as
+ *  applyTurretAimPose3D: barrel along local +X, yaw about Y, pitch about Z. */
+export function resolveStandingArmTurretAim(
+  mesh: StandingMesh,
+  armId: StandingArmId,
+  out: StandingArmTurretAim,
+): StandingArmTurretAim | null {
+  const arm = mesh.arms.find((candidate) => candidate.id === armId);
+  if (arm === undefined) return null;
+  out.yaw = Math.atan2(-arm.aimZ, arm.aimX);
+  out.pitch = Math.asin(clampUnit(arm.aimY));
   return out;
 }
 

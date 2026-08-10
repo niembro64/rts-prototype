@@ -18,7 +18,7 @@ import { collectBuildingTeamOrnaments } from '@/game/render3d/BuildingTeamOrname
 import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom, type BodyGeomEntry } from '@/game/render3d/BodyShape3D';
-import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
+import { buildTurretMesh3D, type TurretMesh } from '@/game/render3d/TurretMesh3D';
 import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
 import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
 import {
@@ -94,8 +94,10 @@ import {
   buildStandingRig,
   poseStandingRigAtPreviewCycle,
   poseStandingRigAtRest,
+  resolveStandingArmTurretAim,
   resolveStandingArmTurretRoot,
   type StandingArmId,
+  type StandingArmTurretAim,
   type StandingMesh,
 } from '@/game/render3d/StandingRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
@@ -191,7 +193,10 @@ type PreviewLocomotionRig =
     type: 'standing';
     mesh: StandingMesh;
     articulatedTurrets: Array<{
-      root: THREE.Group;
+      /** The whole rig, not just its root: a held gun takes its rotation
+       *  from the carrying arm too, so the preview has to drive the yaw
+       *  and pitch groups every frame alongside the mount position. */
+      turretMesh: TurretMesh;
       armId: StandingArmId;
       mountId: string;
       headRadius: number;
@@ -309,6 +314,7 @@ const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
 const turretCollarGeom = createTurretCollarGeometry();
+const _previewArmAim: StandingArmTurretAim = { yaw: 0, pitch: 0 };
 /** The preview builds one kit per body shape it is asked to draw, keyed the
  *  same way the live renderer pools them, so the card shows exactly the kit
  *  the unit wears in the battle. */
@@ -830,19 +836,23 @@ function buildPreviewTurrets(
     if (articulatedMount !== null && articulatedArmId !== null) {
       turretMesh.root.position.copy(articulatedMount);
       standingRig?.articulatedTurrets.push({
-        root: turretMesh.root,
+        turretMesh,
         armId: articulatedArmId,
         mountId: turret.mountId,
         headRadius,
       });
+      // A gun held in a hand is static relative to that hand — the arm poses
+      // it, here exactly as in the battle renderer. See "Standing hosts hold
+      // their guns" in budget_design_philosophy.html.
+      poseArticulatedPreviewTurret(standingRig, articulatedArmId, turretMesh);
     } else {
       turretMesh.root.position.set(
         mountX,
         mountY - headRadius,
         mountZ,
       );
+      applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
     }
-    applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
     const anchor = turretMesh.teamCollar;
     if (anchor !== undefined && turretMesh.pitchGroup !== undefined) {
       const anchorMesh = new THREE.Mesh(
@@ -854,6 +864,20 @@ function buildPreviewTurrets(
       turretMesh.pitchGroup.add(anchorMesh);
     }
   }
+}
+
+/** Point a held gun down its carrying arm. Null rig or unknown arm leaves the
+ *  turret alone, which is the same fallback the battle renderer takes. */
+function poseArticulatedPreviewTurret(
+  standingRig: { mesh: StandingMesh } | null | undefined,
+  armId: StandingArmId,
+  turretMesh: TurretMesh,
+): void {
+  if (!standingRig) return;
+  const aim = resolveStandingArmTurretAim(standingRig.mesh, armId, _previewArmAim);
+  if (aim === null) return;
+  turretMesh.yawGroup.rotation.y = aim.yaw;
+  if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = aim.pitch;
 }
 
 function buildPreviewLocomotion(
@@ -1123,7 +1147,8 @@ function animatePreviewLocomotion(
           turret.mountId,
           turret.headRadius,
         );
-        if (mount !== null) turret.root.position.copy(mount);
+        if (mount !== null) turret.turretMesh.root.position.copy(mount);
+        poseArticulatedPreviewTurret(rig, turret.armId, turret.turretMesh);
       }
       return;
   }
