@@ -178,7 +178,16 @@ export function runResourceMovementConformanceContractTest(): void {
   });
   const buildTarget = buildWorld.createBuilding(235, 220, 40, 40, 40, playerId);
   buildTarget.buildable = createBuildable({ energy: 12, metal: 8 });
-  if (builder.builder) builder.builder.currentBuildTarget = buildTarget.id;
+  // The head build order is what makes a site the builder's current work;
+  // builder.currentBuildTarget is its per-tick mirror, not an input.
+  assertContract(builder.unit !== null, 'build funding test builder must have a unit component');
+  setUnitActions(builder.unit, [{
+    type: 'build',
+    x: buildTarget.transform.x,
+    y: buildTarget.transform.y,
+    z: buildTarget.transform.z,
+    buildingId: buildTarget.id,
+  }]);
   buildWorld.addEntity(builder);
   buildWorld.addEntity(buildTarget);
 

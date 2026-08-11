@@ -17,7 +17,7 @@ import {
   getUnitBlueprint,
 } from './blueprints';
 import type { ResourceCost } from '../../types/economyTypes';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
+import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 type ConstructionLifecycleResult = {
@@ -360,14 +360,6 @@ function isConstructionAlive(entity: Entity): boolean {
   return false;
 }
 
-function clearDirectBuilderTargets(world: WorldState, targetId: number): void {
-  for (const builder of world.getBuilderUnits()) {
-    if (builder.builder === null || builder.builder.currentBuildTarget !== targetId) continue;
-    builder.builder.currentBuildTarget = NO_ENTITY_ID;
-    world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
-  }
-}
-
 function completeConstruction(
   world: WorldState,
   entity: Entity,
@@ -382,7 +374,6 @@ function completeConstruction(
 
   if (entity.building) {
     applyCompletedBuildingEffects(world, entity);
-    clearDirectBuilderTargets(world, entity.id);
     result.completedBuildings.push(entity);
   } else if (entity.unit) {
     result.completedUnits.push(entity);

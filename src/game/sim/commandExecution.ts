@@ -137,7 +137,6 @@ import {
   getActionIntentStart,
   getFirstActionIntentEnd,
   getLastActionIntentFinalIndex,
-  getUnitActionTargetId,
 } from './unitActionIntents';
 import { expandPathPoints } from './Pathfinder';
 import { pathTerrainFilterForLocomotion } from './pathfindingTraversal';
@@ -834,7 +833,6 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
       entity.unit.stuckTicks = 0;
       resetFlyingLoiterToCurrentPosition(entity, ctx.world);
       entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entity.entitySlotId);
-      if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
       changed = true;
     } else if (!entityHasBarStopCommand(entity)) {
       if (changed) ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
@@ -852,17 +850,6 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
   }
 }
 
-function clearBuilderTargetIfRemoved(entity: Entity, removedActions: readonly UnitAction[]): void {
-  const builder = entity.builder;
-  if (!builder || builder.currentBuildTarget === NO_ENTITY_ID) return;
-  for (let i = 0; i < removedActions.length; i++) {
-    if (getUnitActionTargetId(removedActions[i]) === builder.currentBuildTarget) {
-      builder.currentBuildTarget = NO_ENTITY_ID;
-      return;
-    }
-  }
-}
-
 function executeClearQueuedOrdersCommand(ctx: CommandContext, command: ClearQueuedOrdersCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
@@ -872,12 +859,11 @@ function executeClearQueuedOrdersCommand(ctx: CommandContext, command: ClearQueu
     const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
     if (activeIntentEnd < 0 || activeIntentEnd === unit.actions.length - 1) continue;
 
-    const removedActions = spliceUnitActions(
+    spliceUnitActions(
       unit,
       activeIntentEnd + 1,
       unit.actions.length - activeIntentEnd - 1,
     );
-    clearBuilderTargetIfRemoved(entity, removedActions);
     refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
@@ -894,12 +880,11 @@ function executeRemoveLastQueuedOrderCommand(ctx: CommandContext, command: Remov
     if (activeIntentEnd < 0 || lastIntentFinalIndex <= activeIntentEnd) continue;
 
     const lastIntentStart = getActionIntentStart(unit.actions, lastIntentFinalIndex);
-    const removedActions = spliceUnitActions(
+    spliceUnitActions(
       unit,
       lastIntentStart,
       unit.actions.length - lastIntentStart,
     );
-    clearBuilderTargetIfRemoved(entity, removedActions);
     refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
@@ -914,8 +899,7 @@ function executeSkipCurrentOrderCommand(ctx: CommandContext, command: SkipCurren
     const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
     if (activeIntentEnd < 0) continue;
 
-    const removedActions = spliceUnitActions(unit, 0, activeIntentEnd + 1);
-    clearBuilderTargetIfRemoved(entity, removedActions);
+    spliceUnitActions(unit, 0, activeIntentEnd + 1);
     refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }

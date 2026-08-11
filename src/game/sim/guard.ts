@@ -51,15 +51,11 @@ function resolveUnitBuilderJob(world: WorldState, target: Entity): GuardService 
   // (a) The unit is itself an in-progress building/tower shell -> finish it.
   if (target.building !== null && isBuildInProgress(target.buildable)) return { target, kind: 'build' };
 
-  // (b) The unit is constructing a building (direct target or build/repair
-  //     order) -> help build the same nanoframe.
-  const targetBuilder = target.builder;
-  if (targetBuilder !== null && targetBuilder.currentBuildTarget !== NO_ENTITY_ID) {
-    const site = world.getEntity(targetBuilder.currentBuildTarget);
-    if (site !== undefined && site.building !== null && isBuildInProgress(site.buildable)) {
-      return { target: site, kind: 'build' };
-    }
-  }
+  // (b) The unit is constructing a building (its head build/repair order)
+  //     -> help build the same nanoframe. The head order is the truth here,
+  //     not the builder's mirrored currentBuildTarget: that mirror is
+  //     refreshed once per tick by the energy pass, so reading it would make
+  //     the assist target depend on builder iteration order.
   const targetAction = target.unit?.actions[0];
   if (targetAction !== undefined && (targetAction.type === 'build' || targetAction.type === 'repair')) {
     const siteId = targetAction.type === 'build' ? targetAction.buildingId : targetAction.targetId;

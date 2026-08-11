@@ -11,6 +11,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
+import { syncBuilderActiveBuildTarget } from './builderBuildTarget';
 import { getBuilderConstructionRate } from './hostCapabilities';
 import { resolveGuardServiceTarget } from './guard';
 import {
@@ -597,9 +598,14 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const builder = entity.builder;
     if (builder === null) continue;
     const builderRate = getBuilderConstructionRate(entity);
+    // The action queue is the truth about what this builder is working on;
+    // the component field is its mirror, refreshed here once per tick for
+    // snapshots and the renderer. Commanders and every other builder share
+    // this one path — there is no separate commander build lane.
+    const activeBuildTargetId = syncBuilderActiveBuildTarget(world, entity);
     // While actively guarding, a builder services its guard target (BAR
-    // assist) — not any stale direct build target; otherwise it funds its
-    // own currentBuildTarget.
+    // assist) — not any stale direct build target; otherwise it funds the
+    // site named by its head build order.
     let targetId = NO_ENTITY_ID;
     if (entity.unit !== null && entity.unit.actions[0]?.type === 'guard') {
       const svc = resolveGuardServiceTarget(world, entity);
@@ -626,7 +632,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         continue; // 'heal' is handled by the heal pass below
       }
     } else {
-      targetId = builder.currentBuildTarget;
+      targetId = activeBuildTargetId;
     }
     let sweepAssist = false;
     if (targetId === NO_ENTITY_ID) {
@@ -740,41 +746,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
   }
 
-  // 3) Direct build/repair consumers. Commander build actions keep their
-  //    existing special path; repair actions are BAR-builder generic, so any
-  //    mobile builder with a repair order can fund the damaged allied unit.
-  for (const commander of world.getCommanderUnits()) {
-    if (!commander.commander || !commander.builder || !commander.ownership) continue;
-    if (!commander.unit || commander.unit.hp <= 0) continue;
-    const actions = commander.unit.actions;
-    if (actions.length === 0) continue;
-    const action = actions[0];
-    if (action.type !== 'build') continue;
-    if (action.buildingId === undefined) continue;
-    const target = world.getEntity(action.buildingId);
-    if (!target) continue;
-    if (!isBuildTargetInRange(commander, target)) continue;
-    const commanderRateCap = getBuilderConstructionRate(commander) * dtSec;
-
-    if (isBuildInProgress(target.buildable)) {
-      if (!buildingConsumerIds.has(target.id)) {
-        const remainingCost = getTotalRemainingCost(target.buildable);
-        if (remainingCost > 0) {
-          addEnergyConsumer(
-            buffers,
-            commander.ownership.playerId,
-            target,
-            'build',
-            remainingCost,
-            commanderRateCap,
-            commander.id,
-            null,
-          );
-        }
-      }
-    }
-  }
-
+  // 3) Direct repair consumers. Build orders — the commander's included —
+  //    are funded by pass 1 + 2b through the shared per-target accumulator,
+  //    so build power from several builders sums onto one nanoframe. Repair
+  //    is BAR-builder generic: any mobile builder with a repair order can
+  //    fund the damaged allied unit.
   for (const entity of world.getBuilderUnits()) {
     if (entity.builder === null || entity.unit === null || entity.ownership === null) continue;
     if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;

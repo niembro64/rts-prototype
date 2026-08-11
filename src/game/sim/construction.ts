@@ -9,10 +9,8 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
-import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
-import { isBuildTargetInRange } from './builderRange';
-import { createBuildable, isBuildInProgress } from './buildableHelpers';
+import { createBuildable } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
@@ -247,20 +245,13 @@ export class ConstructionSystem {
       pathTopZ,
     );
 
-    // Add to world
+    // Add to world. Placing the nanoframe does NOT make it the builder's
+    // current work: the caller queues a build order for it, and
+    // syncBuilderActiveBuildTarget derives currentBuildTarget from whichever
+    // build order is at the head. Claiming the site here made a shift-queued
+    // list fund the last-placed frame while the builder walked to the first.
     world.addEntity(entity);
     if (!producesNanoframe) applyCompletedBuildingEffects(world, entity);
-    // Assign builder (only for non-commanders - commanders use their own action queue)
-    const builder = builderEntity;
-    if (
-      producesNanoframe &&
-      builder !== undefined &&
-      builder.builder !== null &&
-      builder.commander === null
-    ) {
-      builder.builder.currentBuildTarget = entity.id;
-      world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
-    }
 
     return entity;
   }
@@ -383,34 +374,6 @@ export class ConstructionSystem {
     this.buildingGrid.removeByEntityId(entity.id);
 
     removeCompletedBuildingEffects(world, entity);
-  }
-
-  // Assign a builder to a construction site
-  assignBuilder(world: WorldState, builderId: EntityId, targetId: EntityId): boolean {
-    const builder = world.getEntity(builderId);
-    const target = world.getEntity(targetId);
-
-    if (
-      builder === undefined ||
-      builder.builder === null ||
-      target === undefined ||
-      target.buildable === null
-    ) {
-      return false;
-    }
-
-    // Check if target is not complete
-    if (!isBuildInProgress(target.buildable)) {
-      return false;
-    }
-
-    if (!isBuildTargetInRange(builder, target)) {
-      return false;
-    }
-
-    builder.builder.currentBuildTarget = targetId;
-    world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
-    return true;
   }
 
   // Get snap position for building placement

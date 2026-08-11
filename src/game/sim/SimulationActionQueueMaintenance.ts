@@ -11,7 +11,6 @@ import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport } from './transports';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import { spliceUnitActions } from './unitActions';
-import { NO_ENTITY_ID } from './types';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 
@@ -34,13 +33,8 @@ export class SimulationActionQueueMaintenance {
       const action = actions[i];
       if (!this.isTargetedActionInvalid(entity, action)) continue;
 
-      const targetId = getUnitActionTargetId(action);
       const removeStart = getActionIntentStart(actions, i);
       spliceUnitActions(unit, removeStart, i - removeStart + 1);
-      const builder = entity.builder;
-      if (targetId !== undefined && builder !== null && builder.currentBuildTarget === targetId) {
-        builder.currentBuildTarget = NO_ENTITY_ID;
-      }
       changed = true;
       i = removeStart - 1;
     }
