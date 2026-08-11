@@ -156,7 +156,75 @@ function bodyPartTopFrac(part: UnitBodyShapePart): number {
   if (part.kind === 'circle') return circleCenterYFrac(part) + circleYFrac(part.radiusFrac, part.yFrac);
   if (part.kind === 'oval') return (part.centerYFrac ?? part.yFrac) + part.yFrac;
   if (part.kind === 'box') return (part.centerYFrac ?? part.heightFrac * 0.5) + part.heightFrac * 0.5;
+  if (part.kind === 'cylinder') {
+    // A tilted rod's highest point is its RAISED END, not its middle. Reading
+    // the centre alone let a boom swing up through the height every other
+    // system measures the hull by.
+    const pose = getCylinderSegmentPose(part);
+    return Math.max(pose.startYFrac, pose.endYFrac) + part.radiusFrac;
+  }
   return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
+}
+
+export type CylinderSegmentPose = {
+  /** Mid-height of the rod, in unit-radius-1 space. */
+  centerYFrac: number;
+  /** Tilt about the lateral axis; positive lifts the forward (+X) end. */
+  pitchRad: number;
+  /** Height of the forward (+X) end. */
+  startYFrac: number;
+  /** Height of the rearward (-X) end. */
+  endYFrac: number;
+};
+
+/**
+ * A CYLINDER SEGMENT'S TWO ENDS.
+ *
+ * A rod — the Dragonfly's tail boom, a drone's spine — is placed by saying
+ * where each of its ends sits. Centre-plus-pitch cannot say that: the tip's
+ * height is hidden behind a sine of two other numbers, and nudging either one
+ * moves BOTH ends, so "drop the tail a little" is a solve rather than an edit.
+ * Segments may author either form and this resolves whichever was used into
+ * all four numbers, so the renderer and the height math read one description.
+ *
+ * `start` is the FORWARD end (+X, toward the nose) and `end` the rearward one,
+ * matching the direction offsetForward already measures. Tilting preserves the
+ * rod's own lengthFrac: raising one end SWINGS the rod about its middle rather
+ * than stretching it, which is exactly what pitchRad did.
+ */
+export function getCylinderSegmentPose(part: {
+  lengthFrac: number;
+  radiusFrac: number;
+  centerYFrac?: number;
+  pitchRad?: number;
+  startYFrac?: number;
+  endYFrac?: number;
+}): CylinderSegmentPose {
+  const length = Math.max(1e-6, part.lengthFrac);
+  if (part.startYFrac !== undefined || part.endYFrac !== undefined) {
+    const seated = part.centerYFrac ?? part.radiusFrac;
+    const startYFrac = part.startYFrac ?? seated;
+    const endYFrac = part.endYFrac ?? seated;
+    // Rotation about +Z lifts the +X end, so the rise the ends ask for is
+    // (start - end) over the rod's length. Clamping keeps a rod asked to rise
+    // further than it is long standing vertical instead of resolving to NaN.
+    const sinPitch = Math.max(-1, Math.min(1, (startYFrac - endYFrac) / length));
+    return {
+      centerYFrac: (startYFrac + endYFrac) / 2,
+      pitchRad: Math.asin(sinPitch),
+      startYFrac,
+      endYFrac,
+    };
+  }
+  const centerYFrac = part.centerYFrac ?? part.radiusFrac;
+  const pitchRad = part.pitchRad ?? 0;
+  const rise = Math.sin(pitchRad) * length * 0.5;
+  return {
+    centerYFrac,
+    pitchRad,
+    startYFrac: centerYFrac + rise,
+    endYFrac: centerYFrac - rise,
+  };
 }
 
 
@@ -203,6 +271,7 @@ export function getSegmentMidYAt(
   }
   if (best.kind === 'circle') return circleCenterYFrac(best) * unitRadius;
   if (best.kind === 'box') return (best.centerYFrac ?? best.heightFrac * 0.5) * unitRadius;
-  if (best.kind === 'cylinder' || best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
+  if (best.kind === 'cylinder') return getCylinderSegmentPose(best).centerYFrac * unitRadius;
+  if (best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
   return (best.centerYFrac ?? best.yFrac) * unitRadius;
 }

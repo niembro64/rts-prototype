@@ -17,7 +17,12 @@ import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
-import type { LegConfig, StandingArms, StandingLegs } from '@/types/blueprintSchema.generated';
+import type {
+  LegConfig,
+  StandingArms,
+  StandingLegs,
+  UnitBodyShape,
+} from '@/types/blueprintSchema.generated';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -431,7 +436,51 @@ function validateStandingArms(unitBlueprintId: string, arms: StandingArms): void
   }
 }
 
+/**
+ * A ROD IS PLACED ONE WAY OR THE OTHER, NEVER BOTH.
+ *
+ * A cylinder segment states its height either as a centre plus a tilt or as
+ * its two end heights (see getCylinderSegmentPose). Authoring both forms
+ * leaves two descriptions of one rod, and the resolver can only obey one —
+ * so the loser silently does nothing, which is the kind of dead knob someone
+ * tunes for a while before noticing.
+ */
+function validateBodyShapeSegments(
+  unitBlueprintId: string,
+  bodyShape: UnitBodyShape | null,
+): void {
+  if (bodyShape === null || bodyShape.kind !== 'composite') return;
+  for (let i = 0; i < bodyShape.parts.length; i++) {
+    const part = bodyShape.parts[i];
+    if (part.kind !== 'cylinder') continue;
+    const authorsEnds = part.startYFrac !== undefined || part.endYFrac !== undefined;
+    if (!authorsEnds) continue;
+    if (part.centerYFrac !== undefined || part.pitchRad !== undefined) {
+      throw new Error(
+        `Invalid body shape for ${unitBlueprintId}[${i}]: a cylinder segment authors ` +
+        'either centerYFrac/pitchRad or startYFrac/endYFrac, not both',
+      );
+    }
+    if (
+      !Number.isFinite(part.startYFrac ?? NaN) ||
+      !Number.isFinite(part.endYFrac ?? NaN)
+    ) {
+      throw new Error(
+        `Invalid body shape for ${unitBlueprintId}[${i}]: a cylinder segment placed by ` +
+        'its ends must author both startYFrac and endYFrac as finite numbers',
+      );
+    }
+    if (Math.abs((part.startYFrac ?? 0) - (part.endYFrac ?? 0)) > part.lengthFrac) {
+      throw new Error(
+        `Invalid body shape for ${unitBlueprintId}[${i}]: a cylinder segment ${part.lengthFrac} ` +
+        `long cannot rise ${Math.abs((part.startYFrac ?? 0) - (part.endYFrac ?? 0))} between its ends`,
+      );
+    }
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateBodyShapeSegments(bp.unitBlueprintId, bp.bodyShape);
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   assertValidEntityRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
   if (bp.turrets.length === 0) {

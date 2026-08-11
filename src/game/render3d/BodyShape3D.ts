@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import type { UnitBodyShape } from '@/types/blueprints';
 import {
   getBodyTopFrac,
+  getCylinderSegmentPose,
   getUnitBodyShapeKey,
 } from '../math/BodyDimensions';
 import {
@@ -154,13 +155,15 @@ function buildBoxSpec(part: { lengthFrac: number; widthFrac: number; heightFrac:
   };
 }
 
-function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; pitchRad?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
-  const y = part.centerYFrac ?? part.radiusFrac;
+function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; pitchRad?: number; startYFrac?: number; endYFrac?: number; offsetForward?: number; offsetLateral?: number }, tier: PrimitiveGeometryTier): BodyMeshPart {
+  // Centre and tilt come from one resolver, so a rod authored by its two end
+  // heights draws where the height math says it does.
+  const pose = getCylinderSegmentPose(part);
   return {
     geometry: getUnitCylinder(tier),
-    x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
+    x: part.offsetForward ?? 0, y: pose.centerYFrac, z: part.offsetLateral ?? 0,
     scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
-    rotZ: part.pitchRad,
+    rotZ: pose.pitchRad,
   };
 }
 

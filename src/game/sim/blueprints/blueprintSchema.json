@@ -3172,10 +3172,20 @@
           "type": "number"
         },
         "centerYFrac": {
-          "type": "number"
+          "type": "number",
+          "description": "Mid-height of the rod. Defaults to radiusFrac, which rests it on the ground. Belongs to the centre+pitch authoring form; do not mix with startYFrac/endYFrac."
         },
         "pitchRad": {
-          "type": "number"
+          "type": "number",
+          "description": "Tilt about the lateral axis, positive lifting the FORWARD end. Belongs to the centre+pitch authoring form; do not mix with startYFrac/endYFrac."
+        },
+        "startYFrac": {
+          "type": "number",
+          "description": "Height of the rod's FORWARD end (+X, the end nearer the nose). Authored together with endYFrac as an alternative to centerYFrac+pitchRad: tuning where a boom's two ends sit is the thing you actually want, whereas centre+pitch moves both ends whenever either number is touched. Tilting keeps the rod's own lengthFrac, so raising one end swings the rod rather than stretching it."
+        },
+        "endYFrac": {
+          "type": "number",
+          "description": "Height of the rod's REARWARD end (-X, the tail tip). See startYFrac; author both or neither."
         }
       },
       "additionalProperties": false

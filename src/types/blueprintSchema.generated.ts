@@ -772,6 +772,8 @@ export type UnitBodyShapePartCylinder = {
   radiusFrac: number;
   centerYFrac?: number;
   pitchRad?: number;
+  startYFrac?: number;
+  endYFrac?: number;
 };
 
 export type UnitBodyShapePartCone = {

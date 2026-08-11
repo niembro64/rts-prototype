@@ -1060,6 +1060,8 @@ pub struct UnitBodyShapePartCylinder {
     pub radiusFrac: f64,
     pub centerYFrac: Option<f64>,
     pub pitchRad: Option<f64>,
+    pub startYFrac: Option<f64>,
+    pub endYFrac: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
