@@ -191,13 +191,21 @@ export class EntityCacheManager {
       let hasCombatTurret = false;
       for (let i = 0; i < turrets.length; i++) {
         const config = turrets[i].config;
+        const shot = config.shot;
+        // A persistent sphere/cylinder barrier is mounted equipment, not a
+        // target-acquiring weapon, so isAttackEmitterConfig rejects it -- but
+        // its FIELD is still gameplay-readable geometry the shield renderer
+        // has to draw. Classify the shield before the attack-emitter gate or
+        // every sphere host silently drops out of the shield render list.
+        if (shot !== null && shot.type === 'shield' && shot.barrier !== undefined) {
+          hasShield = true;
+          if (hasBeam) break;
+          continue;
+        }
         if (!isAttackEmitterConfig(config)) continue;
         hasCombatTurret = true;
-        const shot = config.shot;
         if (shot === null) continue;
-        const t = shot.type;
-        if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
-        else if (t === 'beam') hasBeam = true;
+        if (shot.type === 'beam') hasBeam = true;
         if (hasShield && hasBeam) break;
       }
       if (hasCombatTurret) addEntityToList(this.cachedArmedEntities, entity, sortedInsert);

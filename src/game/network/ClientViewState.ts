@@ -3541,7 +3541,38 @@ export class ClientViewState {
       this.projectileStore.activeProjectileMotionIds.clear();
       return stats;
     }
-    return this.supplementalPresentation.apply(deltaMs);
+    const stats = this.supplementalPresentation.apply(deltaMs);
+    // Hot-motion typed rows write only a server TARGET and deliberately skip
+    // the snapshot dirty mark, because the prediction pass is what is supposed
+    // to materialize them. Only the lockstep branch above ever did that, so on
+    // the authoritative-snapshot path a moving unit sat at its last full-row
+    // pose while the render row and spatial slot went stale.
+    //
+    // This is materialization, not extrapolation: the newest authoritative
+    // target becomes the pose, exactly as the retired DTO path wrote it inline.
+    // Nothing here invents motion past what the snapshot said.
+    for (const id of this.activeEntityPredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity === undefined) continue;
+      if (entity.unit !== null) this.dirtyUnitRenderIds.add(id);
+      else if (entity.building !== null) this.dirtyBuildingRenderIds.add(id);
+      else continue;
+      const target = this.serverTargets.get(id);
+      if (target !== undefined) {
+        entity.transform.x = target.x;
+        entity.transform.y = target.y;
+        entity.transform.z = target.z;
+        entity.transform.rotation = target.rotation;
+        const unit = entity.unit;
+        if (unit !== null) {
+          unit.velocityX = target.velocityX;
+          unit.velocityY = target.velocityY;
+          unit.velocityZ = target.velocityZ;
+        }
+      }
+      this.refreshRenderableEntityStateAndSpatialIndex(entity);
+    }
+    return stats;
   }
 
   // === Accessors for rendering and input ===
