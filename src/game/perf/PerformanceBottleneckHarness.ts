@@ -94,7 +94,7 @@ export type PerformanceBottleneckHarnessSuiteReport = {
   };
 };
 
-type SimOnlyReport = {
+export type SimOnlyReport = {
   readonly units: number;
   readonly buildings: number;
   readonly projectiles: number;
@@ -180,6 +180,19 @@ type FullStackReport = {
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
+  readonly renderSceneWorkload: readonly RenderSceneWorkloadRow[];
+};
+
+type RenderSceneWorkloadRow = {
+  readonly key: string;
+  readonly calls: number;
+  readonly instances: number;
+  readonly triangles: number;
+};
+
+type RenderSceneNode = {
+  readonly visible: boolean;
+  readonly parent: RenderSceneNode | null;
 };
 
 type SnapshotWireStatsReport = {
@@ -323,6 +336,16 @@ export async function runPerformanceBottleneckHarness(
       fullStack,
     }),
   };
+}
+
+/** Runs only the authoritative fixed-step portion of the benchmark. This is
+ * useful when profiling simulation changes and avoids making the result
+ * contingent on renderer startup or unrelated presentation work. */
+export async function runPerformanceSimulationHarness(
+  options: PerformanceBottleneckHarnessOptions = {},
+): Promise<SimOnlyReport> {
+  const resolved = normalizeOptions(options);
+  return runSimOnly(resolved, 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz);
 }
 
 export async function runPerformanceBottleneckHarnessSuite(
@@ -561,6 +584,110 @@ async function runSimSnapshot(
     connection.disconnect();
     server.stop();
   }
+}
+
+function collectRenderSceneWorkload(scene: GameInstance['app']['scene']): RenderSceneWorkloadRow[] {
+  const rows = new Map<string, { calls: number; instances: number; triangles: number }>();
+  scene.traverse((object) => {
+    const renderable = object as typeof object & {
+      isMesh?: boolean;
+      isInstancedMesh?: boolean;
+      count?: number;
+      geometry?: {
+        type?: string;
+        name?: string;
+        index?: { count: number } | null;
+        attributes?: { position?: { count: number } };
+        groups?: readonly { start: number; count: number; materialIndex?: number }[];
+        drawRange?: { start: number; count: number };
+        instanceCount?: number;
+        isInstancedBufferGeometry?: boolean;
+      };
+      material?: {
+        type?: string;
+        name?: string;
+        visible?: boolean;
+      } | readonly {
+        type?: string;
+        name?: string;
+        visible?: boolean;
+      }[];
+    };
+    if (
+      !renderSceneObjectHierarchyVisible(renderable, scene) ||
+      renderable.isMesh !== true ||
+      renderable.geometry === undefined
+    ) {
+      return;
+    }
+    const geometry = renderable.geometry;
+    const materials = Array.isArray(renderable.material)
+      ? renderable.material
+      : renderable.material === undefined
+        ? []
+        : [renderable.material];
+    const instances = renderable.isInstancedMesh === true
+      ? Math.max(0, renderable.count ?? 0)
+      : geometry.isInstancedBufferGeometry === true
+        ? Math.max(0, geometry.instanceCount ?? 0)
+        : 1;
+    if (instances === 0) return;
+    const sourceCount = geometry.index?.count ?? geometry.attributes?.position?.count ?? 0;
+    const drawStart = Math.max(0, geometry.drawRange?.start ?? 0);
+    const drawCount = Number.isFinite(geometry.drawRange?.count)
+      ? Math.min(sourceCount - drawStart, Math.max(0, geometry.drawRange!.count))
+      : sourceCount - drawStart;
+    const drawEnd = drawStart + Math.max(0, drawCount);
+    const groups = geometry.groups ?? [];
+    let groupCount = 0;
+    let submittedIndices = 0;
+    if (groups.length > 0) {
+      for (const group of groups) {
+        const material = materials[group.materialIndex ?? 0];
+        if (material?.visible === false) continue;
+        const start = Math.max(drawStart, group.start);
+        const end = Math.min(drawEnd, group.start + group.count);
+        if (end <= start) continue;
+        groupCount++;
+        submittedIndices += end - start;
+      }
+    } else if (materials[0]?.visible !== false && drawCount > 0) {
+      groupCount = 1;
+      submittedIndices = drawCount;
+    }
+    if (groupCount === 0 || submittedIndices === 0) return;
+    const materialKey = materials
+      .map((material) => material.name || material.type || 'material')
+      .join('+') || 'material';
+    const perInstanceTriangles = Math.floor(submittedIndices / 3);
+    const instancingKey = renderable.isInstancedMesh === true || geometry.isInstancedBufferGeometry === true
+      ? 'instanced'
+      : 'direct';
+    const key = `${geometry.name || geometry.type || 'geometry'}[${perInstanceTriangles}] ` +
+      `${instancingKey} | ${materialKey}`;
+    const row = rows.get(key) ?? { calls: 0, instances: 0, triangles: 0 };
+    row.calls += groupCount;
+    row.instances += instances;
+    row.triangles += perInstanceTriangles * instances;
+    rows.set(key, row);
+  });
+  return [...rows.entries()]
+    .map(([key, row]) => ({ key, ...row }))
+    .sort((a, b) => b.triangles - a.triangles)
+    .slice(0, 20);
+}
+
+function renderSceneObjectHierarchyVisible(
+  object: RenderSceneNode,
+  scene: RenderSceneNode,
+): boolean {
+  let current: RenderSceneNode | null = object;
+  while (current !== null) {
+    if (!current.visible) return false;
+    if (current === scene) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 async function runFullStack(
@@ -819,6 +946,7 @@ async function runFullStack(
       wasmBoundary,
       snapshotMaterializationStats,
       snapshotWireStats,
+      renderSceneWorkload: collectRenderSceneWorkload(game.app.scene),
     };
   } finally {
     finishWasmBoundaryTracking();

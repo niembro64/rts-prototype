@@ -64,12 +64,15 @@ try {
 
     let report;
     try {
-      report = await page.evaluate(({ suite, browserOptions }) => {
+      report = await page.evaluate(({ suite, simOnly, browserOptions }) => {
+        if (simOnly) {
+          return window.__runPerformanceSimulationHarness?.(browserOptions);
+        }
         if (suite) {
           return window.__runPerformanceBottleneckHarnessSuite?.(browserOptions);
         }
         return window.__runPerformanceBottleneckHarness?.(browserOptions);
-      }, { suite: options.suite, browserOptions: options.harnessOptions });
+      }, { suite: options.suite, simOnly: options.simOnly, browserOptions: options.harnessOptions });
     } finally {
       if (profilerSession !== null) {
         const stopped = await profilerSession.send('Profiler.stop');
@@ -90,7 +93,8 @@ try {
     const cpuProfileSummary = cpuProfile !== null
       ? summarizeCpuProfile(cpuProfile, options.profileTop)
       : null;
-    if (isSuiteReport(report)) printSuiteReport(report);
+    if (options.simOnly) printSimulationReport(report);
+    else if (isSuiteReport(report)) printSuiteReport(report);
     else printReport(report);
     if (snapshotWireStats !== null) printSnapshotWireStats(snapshotWireStats);
     if (cpuProfileSummary !== null) printCpuProfileSummary(cpuProfileSummary);
@@ -118,6 +122,7 @@ function parseArgs(args) {
   let snapshotWireStats = false;
   let jsonPath = null;
   let suite = false;
+  let simOnly = false;
   for (const arg of args) {
     if (arg === '--headed') {
       headless = false;
@@ -129,6 +134,10 @@ function parseArgs(args) {
     }
     if (arg === '--profile-cpu') {
       profileCpu = true;
+      continue;
+    }
+    if (arg === '--sim-only') {
+      simOnly = true;
       continue;
     }
     if (arg === '--snapshot-wire-stats' || arg === '--dp02') {
@@ -199,10 +208,20 @@ function parseArgs(args) {
     snapshotWireStats,
     jsonPath,
     suite,
+    simOnly,
     width: harnessOptions.width,
     height: harnessOptions.height,
     harnessOptions,
   };
+}
+
+function printSimulationReport(report) {
+  console.log('Performance bottleneck harness — simulation only');
+  console.log(`  units/buildings/projectiles: ${report.units}/${report.buildings}/${report.projectiles}`);
+  console.log(`  step ms avg/p95/max: ${triplet(report.stepMs)}`);
+  console.log(`  p95 ceiling: ${fmt(report.simCeilingTpsP95)} TPS`);
+  printMemoryLine('  memory', report.memory);
+  printWasmBoundaryLine('  JS/WASM boundary', report.wasmBoundary);
 }
 
 function printReport(report) {
@@ -280,6 +299,12 @@ function printReport(report) {
   printSnapshotMaterializationStats('  materialization', report.fullStack.snapshotMaterializationStats);
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
+  if (report.fullStack.renderSceneWorkload?.length > 0) {
+    console.log('  visible-scene potential workload by geometry/material family:');
+    for (const row of report.fullStack.renderSceneWorkload.slice(0, 8)) {
+      console.log(`    ${row.key}: triangles=${fmt(row.triangles)} calls=${fmt(row.calls)} instances=${fmt(row.instances)}`);
+    }
+  }
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
   console.log(
     `  render budget: ${report.fullStack.renderBudgetTier} ` +

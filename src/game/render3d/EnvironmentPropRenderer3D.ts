@@ -41,10 +41,21 @@ import {
 
 type EnvironmentPropNode = {
   prop: VegetationProp;
-  root: THREE.Group;
-  lods: Record<PrimitiveGeometryTier, THREE.Object3D>;
+  root: THREE.Group | null;
+  lods: Record<PrimitiveGeometryTier, THREE.Object3D> | null;
+  batch: EnvironmentPropBatch | null;
+  /** Immutable prop-local transform used by instanced vegetation batches. */
+  matrix: THREE.Matrix4 | null;
   /** Latched camera-coverage rung (mode-independent); see the update loop. */
   coverageRung: DetailRung;
+};
+
+type EnvironmentPropBatch = {
+  tiers: Record<PrimitiveGeometryTier, {
+    meshes: THREE.InstancedMesh[];
+    templateMatrices: THREE.Matrix4[];
+  }>;
+  counts: Record<PrimitiveGeometryTier, number>;
 };
 
 type LoadedEnvironmentAsset = {
@@ -57,6 +68,12 @@ type LoadedEnvironmentAsset = {
  *  so a prop whose center just left the scope but whose canopy still
  *  overlaps it keeps drawing. */
 const SCOPE_PADDING_EXTRA = 120;
+const ENVIRONMENT_TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
+const ENVIRONMENT_BATCH_MATRIX = new THREE.Matrix4();
+const ENVIRONMENT_BATCH_POSITION = new THREE.Vector3();
+const ENVIRONMENT_BATCH_SCALE = new THREE.Vector3();
+const ENVIRONMENT_BATCH_QUATERNION = new THREE.Quaternion();
+const ENVIRONMENT_BATCH_UP = new THREE.Vector3(0, 1, 0);
 
 export type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
 
@@ -249,6 +266,7 @@ export class EnvironmentPropRenderer3D {
   /** Node per prop index, so a reclaimed prop is found in O(1) when the
    *  removal log names it. Sparse: disabled assets create no node. */
   private readonly nodesByPropIndex = new Map<number, EnvironmentPropNode>();
+  private readonly propBatches = new Map<string, EnvironmentPropBatch>();
   /** Cursor into the sim's append-only removal log. */
   private removedCursor = 0;
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -333,6 +351,11 @@ export class EnvironmentPropRenderer3D {
       this.lastFovYRad = view.fovYRad;
       this.lastViewportHeightPx = view.viewportHeightPx;
     }
+    for (const batch of this.propBatches.values()) {
+      batch.counts.close = 0;
+      batch.counts.mid = 0;
+      batch.counts.far = 0;
+    }
     for (const node of this.nodes) {
       const p = node.prop;
       // Sim coords are (x, y) horizontal with z up; three.js is (x, z)
@@ -343,7 +366,7 @@ export class EnvironmentPropRenderer3D {
         p.radius + SCOPE_PADDING_EXTRA,
       );
       if (!inScope) {
-        node.root.visible = false;
+        if (node.root !== null) node.root.visible = false;
         continue;
       }
       // Off-camera props still cost: three.js frustum-culls per Mesh, so it
@@ -363,7 +386,7 @@ export class EnvironmentPropRenderer3D {
           Math.max(p.radius, p.height * 0.5) + SCOPE_PADDING_EXTRA,
         )
       ) {
-        node.root.visible = false;
+        if (node.root !== null) node.root.visible = false;
         continue;
       }
       // The node latches the CAMERA-COVERAGE rung so its hysteresis survives a
@@ -379,12 +402,46 @@ export class EnvironmentPropRenderer3D {
           )
         : DETAIL_RUNG_CLOSE;
       const rung = detailRungForMode(node.coverageRung);
-      node.root.visible = environmentPropVisibleAtDetailRung(rung);
-      if (!node.root.visible) continue;
+      const visible = environmentPropVisibleAtDetailRung(rung);
+      if (node.root !== null) node.root.visible = visible;
+      if (!visible) continue;
       const tier = geometryTierForDetail(detailLevelForRung(rung));
-      node.lods.close.visible = tier === 'close';
-      node.lods.mid.visible = tier === 'mid';
-      node.lods.far.visible = tier === 'far';
+      if (node.batch !== null && node.matrix !== null) {
+        const slot = node.batch.counts[tier]++;
+        const batchTier = node.batch.tiers[tier];
+        for (let i = 0; i < batchTier.meshes.length; i++) {
+          ENVIRONMENT_BATCH_MATRIX.multiplyMatrices(
+            node.matrix,
+            batchTier.templateMatrices[i],
+          );
+          batchTier.meshes[i].setMatrixAt(slot, ENVIRONMENT_BATCH_MATRIX);
+        }
+        continue;
+      }
+      if (node.lods !== null) {
+        node.lods.close.visible = tier === 'close';
+        node.lods.mid.visible = tier === 'mid';
+        node.lods.far.visible = tier === 'far';
+      }
+    }
+    for (const batch of this.propBatches.values()) {
+      for (let i = 0; i < ENVIRONMENT_TIERS.length; i++) {
+        const tier = ENVIRONMENT_TIERS[i];
+        const count = batch.counts[tier];
+        const meshes = batch.tiers[tier].meshes;
+        for (let meshIndex = 0; meshIndex < meshes.length; meshIndex++) {
+          const mesh = meshes[meshIndex];
+          mesh.count = count;
+          if (count > 0) {
+            // Capacity covers every prop using this asset, while a frame
+            // normally packs only the scoped, visible subset. Restrict the
+            // dynamic upload to matrices actually consumed by this draw.
+            mesh.instanceMatrix.clearUpdateRanges();
+            mesh.instanceMatrix.addUpdateRange(0, count * 16);
+            mesh.instanceMatrix.needsUpdate = true;
+          }
+        }
+      }
     }
   }
 
@@ -440,6 +497,7 @@ export class EnvironmentPropRenderer3D {
     this.nodesByPropIndex.delete(propIndex);
     const at = this.nodes.indexOf(node);
     if (at >= 0) this.nodes.splice(at, 1);
+    if (node.root === null) return;
     this.root.remove(node.root);
     // Geometry and materials are shared with the asset templates and the
     // material cache, which `destroy` owns; only the cloned scene graph
@@ -465,8 +523,9 @@ export class EnvironmentPropRenderer3D {
     this.volumeOverlay.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
-    for (const node of this.nodes)
-      collectDisposableResources(node.root, geometries, materials);
+    for (const node of this.nodes) {
+      if (node.root !== null) collectDisposableResources(node.root, geometries, materials);
+    }
     for (const asset of this.assets.values()) {
       for (const template of Object.values(asset.templates)) {
         collectDisposableResources(template, geometries, materials);
@@ -478,6 +537,15 @@ export class EnvironmentPropRenderer3D {
     this.materialCache.clear();
     this.nodes.length = 0;
     this.nodesByPropIndex.clear();
+    for (const batch of this.propBatches.values()) {
+      for (let i = 0; i < ENVIRONMENT_TIERS.length; i++) {
+        const meshes = batch.tiers[ENVIRONMENT_TIERS[i]].meshes;
+        for (let meshIndex = 0; meshIndex < meshes.length; meshIndex++) {
+          meshes[meshIndex].dispose();
+        }
+      }
+    }
+    this.propBatches.clear();
     this.assets.clear();
     this.root.clear();
     this.root.parent?.remove(this.root);
@@ -816,9 +884,46 @@ export class EnvironmentPropRenderer3D {
   }
 
   private buildNodes(): void {
+    const batchCapacities = new Map<string, number>();
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i];
+      const asset = this.assets.get(prop.assetId);
+      if (!asset) continue;
+      batchCapacities.set(prop.assetId, (batchCapacities.get(prop.assetId) ?? 0) + 1);
+    }
+    for (const [assetId, capacity] of batchCapacities) {
+      const asset = this.assets.get(assetId);
+      if (!asset) continue;
+      const batch = this.createPropBatch(asset, capacity);
+      if (batch !== null) this.propBatches.set(assetId, batch);
+    }
+
     for (const prop of this.props) {
       const asset = this.assets.get(prop.assetId);
       if (!asset) continue;
+      const batch = this.propBatches.get(prop.assetId) ?? null;
+      if (batch !== null) {
+        const scale = prop.height / asset.unitHeight;
+        ENVIRONMENT_BATCH_POSITION.set(prop.x, prop.z, prop.y);
+        ENVIRONMENT_BATCH_SCALE.setScalar(scale);
+        ENVIRONMENT_BATCH_QUATERNION.setFromAxisAngle(ENVIRONMENT_BATCH_UP, prop.rotation);
+        const matrix = new THREE.Matrix4().compose(
+          ENVIRONMENT_BATCH_POSITION,
+          ENVIRONMENT_BATCH_QUATERNION,
+          ENVIRONMENT_BATCH_SCALE,
+        );
+        const node: EnvironmentPropNode = {
+          prop,
+          root: null,
+          lods: null,
+          batch,
+          matrix,
+          coverageRung: DETAIL_RUNG_CLOSE,
+        };
+        this.nodes.push(node);
+        this.nodesByPropIndex.set(prop.index, node);
+        continue;
+      }
       const root = new THREE.Group();
       root.name = `vegetation-${prop.kind}-${prop.assetId}`;
       const lods = {
@@ -862,6 +967,8 @@ export class EnvironmentPropRenderer3D {
         prop,
         root,
         lods,
+        batch: null,
+        matrix: null,
         coverageRung: DETAIL_RUNG_CLOSE,
       };
       this.nodes.push(node);
@@ -870,6 +977,113 @@ export class EnvironmentPropRenderer3D {
     // New props need one world-matrix pass; after that the subtree is static.
     this.root.childMatricesDirty = true;
   }
+
+  private createPropBatch(
+    asset: LoadedEnvironmentAsset,
+    capacity: number,
+  ): EnvironmentPropBatch | null {
+    const tiers = {} as EnvironmentPropBatch['tiers'];
+    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    for (let i = 0; i < ENVIRONMENT_TIERS.length; i++) {
+      const tier = ENVIRONMENT_TIERS[i];
+      const template = asset.templates[tier];
+      template.updateMatrixWorld(true);
+      const meshes: THREE.InstancedMesh[] = [];
+      const templateMatrices: THREE.Matrix4[] = [];
+      let unsupported = false;
+      template.traverse((object) => {
+        if (!objectVisibleWithinTemplate(object, template)) return;
+        const renderable = object as THREE.Object3D & {
+          isLight?: boolean;
+          isLine?: boolean;
+          isLOD?: boolean;
+          isPoints?: boolean;
+          isSprite?: boolean;
+        };
+        const source = object as THREE.Mesh;
+        if (!source.isMesh) {
+          // A plain transform/group is harmless, but silently omitting another
+          // renderable kind would change the asset. Keep that unusual asset on
+          // the original cloned-tree path instead.
+          if (
+            renderable.isLight ||
+            renderable.isLine ||
+            renderable.isLOD ||
+            renderable.isPoints ||
+            renderable.isSprite
+          ) {
+            unsupported = true;
+          }
+          return;
+        }
+        const materials = Array.isArray(source.material)
+          ? source.material
+          : [source.material];
+        if ((source as THREE.SkinnedMesh).isSkinnedMesh) {
+          unsupported = true;
+          return;
+        }
+        if (
+          materials.some((material) => material.transparent) ||
+          Object.keys(source.geometry.morphAttributes).length > 0 ||
+          source.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender ||
+          source.onAfterRender !== THREE.Object3D.prototype.onAfterRender
+        ) {
+          // Transparent instances cannot retain per-prop depth sorting, while
+          // morphs and custom callbacks can carry per-object state. The direct
+          // fallback preserves those semantics exactly.
+          unsupported = true;
+          return;
+        }
+        templateMatrices.push(source.matrixWorld.clone());
+        const mesh = new THREE.InstancedMesh(source.geometry, source.material, capacity);
+        mesh.name = `vegetation-batch-${asset.spec.id}-${tier}-${meshes.length}`;
+        mesh.count = 0;
+        mesh.castShadow = source.castShadow;
+        mesh.receiveShadow = source.receiveShadow;
+        mesh.renderOrder = source.renderOrder;
+        mesh.layers.mask = source.layers.mask;
+        mesh.customDepthMaterial = source.customDepthMaterial;
+        mesh.customDistanceMaterial = source.customDistanceMaterial;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        // Visibility is packed explicitly from the same scope/frustum/LOD
+        // test used by direct prop nodes; aggregate bounds would be looser.
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
+        meshes.push(mesh);
+        this.root.add(mesh);
+      });
+      if (unsupported || meshes.length === 0) {
+        for (const builtTier of Object.values(tiers)) {
+          for (let meshIndex = 0; meshIndex < builtTier.meshes.length; meshIndex++) {
+            this.root.remove(builtTier.meshes[meshIndex]);
+            builtTier.meshes[meshIndex].dispose();
+          }
+        }
+        for (let meshIndex = 0; meshIndex < meshes.length; meshIndex++) {
+          this.root.remove(meshes[meshIndex]);
+          meshes[meshIndex].dispose();
+        }
+        return null;
+      }
+      tiers[tier] = { meshes, templateMatrices };
+    }
+    return { tiers, counts };
+  }
+}
+
+function objectVisibleWithinTemplate(
+  object: THREE.Object3D,
+  template: THREE.Object3D,
+): boolean {
+  let current: THREE.Object3D | null = object;
+  while (current !== null) {
+    if (!current.visible) return false;
+    if (current === template) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 /** Scratch for the removal-log drain. Sized well past the few props a
