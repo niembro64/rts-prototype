@@ -283,6 +283,13 @@ function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
 
   const lit = isLitMaterial(base);
   const baseCacheKey = base.customProgramCacheKey();
+  // THREE.Material.copy() does not carry onBeforeCompile -- it is an own
+  // property the patcher assigns, and copy() only walks known material
+  // parameters -- so the clone silently reverts to the prototype no-op and
+  // drops every earlier patch. Read the hook off the BASE and compose with it
+  // explicitly, or a fading entity loses its surface-chart grain for the whole
+  // build-in and death-fade (the exact case the chart contract asserts).
+  const baseOnBeforeCompile = base.onBeforeCompile;
   const material = base.clone();
   material.transparent = true;
   material.depthWrite = true;
@@ -292,9 +299,8 @@ function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
   const uBuildBaseY = { value: 0 };
   const uBuildInvHeight = { value: 1 };
   const cacheKey = `${PER_OBJECT_FADE_CACHE_KEY}:${lit ? 'lit' : 'unlit'}:${baseCacheKey}`;
-  const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
-    if (prev) prev.call(material, shader, renderer);
+    if (baseOnBeforeCompile) baseOnBeforeCompile.call(material, shader, renderer);
     shader.uniforms.uFade = uFade;
     shader.uniforms.uBuild = uBuild;
     shader.uniforms.uBuildTeam = uBuildTeam;
