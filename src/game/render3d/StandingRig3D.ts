@@ -126,12 +126,14 @@ export type StandingLeg = {
    *  pose, so same-side counter-swing cannot acquire a second gait clock. */
   footLocalX: number;
   footLocalZ: number;
-  /** A standing shoe takes the contacted support's complete world
-   * orientation once at touchdown. The local quaternion is recomputed from
-   * this retained pose while planted so chassis yaw cannot drag the sole off
-   * the slope it landed on. */
+  /** A standing shoe takes the contacted support's complete world orientation
+   * once at touchdown and holds it — absolute in all three axes — until it
+   * lands somewhere new. The local quaternion is rebuilt from this retained
+   * world pose every frame against the shoe's real parent, so neither hull yaw
+   * nor the hips' independent lower-body yaw can drag the sole off the slope
+   * it landed on, and a lifted shoe carries that same angle through the air. */
   footTouchingSurface: boolean;
-  footOrientationLocked: boolean;
+  footOrientationCaptured: boolean;
   footWorldQuaternionX: number;
   footWorldQuaternionY: number;
   footWorldQuaternionZ: number;
@@ -288,6 +290,11 @@ const _bendDirection = new THREE.Vector3();
 const _chassisVelocity = { x: 0, y: 0, z: 0 };
 const _poseQuat = new THREE.Quaternion();
 const _inversePoseQuat = new THREE.Quaternion();
+/** World orientation of the LOWER body — the hull pose composed with the hips'
+ *  own yaw. Legs and shoes hang off `hips`, so this, not the hull quaternion,
+ *  is the frame their local poses live in and the frame a world-absolute foot
+ *  angle must be counter-rotated out of. */
+const _lowerBodyWorldQuaternion = new THREE.Quaternion();
 const _footWorld = new THREE.Vector3();
 const _standingFootForward = new THREE.Vector3();
 const _standingFootWorldQuaternion = new THREE.Quaternion();
@@ -734,15 +741,26 @@ function positiveUnitPhase(phase: number): number {
 }
 
 /** Resolve one standing shoe's local pose from its touchdown-latched world
- * orientation. A lifted shoe is level in the lower-body frame and releases
- * the lock. The first touching frame captures the support slope; every later
- * touching frame counter-rotates the parent so the complete world pose stays
- * unchanged until lift-off. */
+ * orientation.
+ *
+ * The retained pose is ABSOLUTE world, in all three axes: the sole's tilt
+ * comes from the support normal and its heading freezes at the yaw the leg
+ * had on contact. Only the touching rising edge — an actual new footfall —
+ * may replace it. Every other frame counter-rotates the shoe's parent out of
+ * that world pose, so neither hull yaw nor the hips' independent lower-body
+ * yaw moves the sole.
+ *
+ * A lifted shoe holds the same angle rather than levelling out: it carries the
+ * ground it LAST touched through the air and only takes a new one when it
+ * lands. `parentWorldQuaternion` must be the shoe's true parent world
+ * orientation (hull ⊗ hips), not the hull alone — the hips yaw inside the hull,
+ * and compensating for only part of the chain leaves the remainder visible as
+ * the foot swinging with the body. */
 export function resolveStandingFootContactOrientation(
   foot: Pick<
     StandingLeg,
     | 'footTouchingSurface'
-    | 'footOrientationLocked'
+    | 'footOrientationCaptured'
     | 'footWorldQuaternionX'
     | 'footWorldQuaternionY'
     | 'footWorldQuaternionZ'
@@ -756,16 +774,11 @@ export function resolveStandingFootContactOrientation(
   surfaceNormalZ: number,
   outLocalQuaternion: THREE.Quaternion,
 ): void {
-  if (!touchingSurface) {
-    foot.footTouchingSurface = false;
-    foot.footOrientationLocked = false;
-    outLocalQuaternion.identity();
-    return;
-  }
+  const newFootfall = touchingSurface &&
+    (!foot.footTouchingSurface || !foot.footOrientationCaptured);
+  foot.footTouchingSurface = touchingSurface;
 
-  if (!foot.footTouchingSurface) foot.footOrientationLocked = false;
-  foot.footTouchingSurface = true;
-  if (!foot.footOrientationLocked) {
+  if (newFootfall) {
     resolveFootSurfaceQuaternion(
       candidateWorldYaw,
       surfaceNormalX,
@@ -777,14 +790,19 @@ export function resolveStandingFootContactOrientation(
     foot.footWorldQuaternionY = _standingFootWorldQuaternion.y;
     foot.footWorldQuaternionZ = _standingFootWorldQuaternion.z;
     foot.footWorldQuaternionW = _standingFootWorldQuaternion.w;
-    foot.footOrientationLocked = true;
-  } else {
+    foot.footOrientationCaptured = true;
+  } else if (foot.footOrientationCaptured) {
     _standingFootWorldQuaternion.set(
       foot.footWorldQuaternionX,
       foot.footWorldQuaternionY,
       foot.footWorldQuaternionZ,
       foot.footWorldQuaternionW,
     );
+  } else {
+    // Never touched ground — a rig posed before its first footfall has no
+    // angle to hold, so the shoe simply sits level in its parent frame.
+    outLocalQuaternion.identity();
+    return;
   }
 
   _standingFootInverseParentQuaternion
@@ -809,19 +827,17 @@ function standingFootGroundLocalY(
   footX: number,
   footZ: number,
   pose: LocomotionRenderPose,
+  lowerBodyWorldQuaternion: THREE.Quaternion,
   mapWidth: number,
   mapHeight: number,
   ignoreEntityId: EntityId | null,
 ): number {
-  _poseQuat.set(
-    pose.quaternionX,
-    pose.quaternionY,
-    pose.quaternionZ,
-    pose.quaternionW,
-  );
+  // Foot coordinates are authored in the hips frame, so the round trip to
+  // world and back rides the lower-body quaternion. Using the hull alone put
+  // the terrain probe at the wrong spot whenever the hips were yawed.
   _footWorld
     .set(footX, mesh.groundLocalY, footZ)
-    .applyQuaternion(_poseQuat);
+    .applyQuaternion(lowerBodyWorldQuaternion);
   _footWorld.x += pose.rootX;
   _footWorld.z += pose.rootZ;
   _footWorld.y = getLocomotionSurfaceHeight(
@@ -834,7 +850,9 @@ function standingFootGroundLocalY(
   _footWorld.x -= pose.rootX;
   _footWorld.y -= pose.rootY;
   _footWorld.z -= pose.rootZ;
-  _footWorld.applyQuaternion(_inversePoseQuat.copy(_poseQuat).invert());
+  _footWorld.applyQuaternion(
+    _inversePoseQuat.copy(lowerBodyWorldQuaternion).invert(),
+  );
   return _footWorld.y;
 }
 
@@ -866,6 +884,20 @@ function poseCoupledStandingGait(
   const amplitude = THREE.MathUtils.clamp(gait, 0, 1);
   const stanceBlend = 1 - amplitude;
   const halfStride = mesh.gaitCycleDistance * 0.25;
+  if (pose !== undefined) {
+    _poseQuat.set(
+      pose.quaternionX,
+      pose.quaternionY,
+      pose.quaternionZ,
+      pose.quaternionW,
+    );
+    // `hips` is the shoes' actual parent and yaws inside the hull, so the
+    // frame their local poses live in is hull ⊗ hips — never the hull alone.
+    _lowerBodyWorldQuaternion
+      .copy(_poseQuat)
+      .multiply(mesh.hips.quaternion)
+      .normalize();
+  }
   for (const leg of mesh.legs) {
     const legPhase = positiveUnitPhase(cycle + (leg.side > 0 ? 0.5 : 0));
     const longitudinalWave = standingLongitudinalWave(legPhase);
@@ -882,6 +914,7 @@ function poseCoupledStandingGait(
         footX,
         footZ,
         pose,
+        _lowerBodyWorldQuaternion,
         mapWidth,
         mapHeight,
         ignoreEntityId,
@@ -931,13 +964,15 @@ function poseCoupledStandingGait(
       // without changing the retained battlefield contact state.
       leg.foot.quaternion.identity();
     } else {
+      // A footfall — the touching rising edge — is the only moment a shoe may
+      // read the ground. Every other frame reuses the captured world angle.
       const acquiringOrientation = touchingSurface && (
-        !leg.footTouchingSurface || !leg.footOrientationLocked
+        !leg.footTouchingSurface || !leg.footOrientationCaptured
       );
       if (acquiringOrientation) {
         _footWorld
           .copy(_resolvedFoot)
-          .applyQuaternion(_poseQuat);
+          .applyQuaternion(_lowerBodyWorldQuaternion);
         _footWorld.x += pose.rootX;
         _footWorld.y += pose.rootY;
         _footWorld.z += pose.rootZ;
@@ -950,7 +985,9 @@ function poseCoupledStandingGait(
           _standingFootSurfaceNormal,
         );
       }
-      _standingFootForward.set(1, 0, 0).applyQuaternion(_poseQuat);
+      // The heading a shoe freezes is the LEG's heading at touchdown, so it
+      // comes from the lower body rather than the independently aiming hull.
+      _standingFootForward.set(1, 0, 0).applyQuaternion(_lowerBodyWorldQuaternion);
       const candidateWorldYaw = Math.atan2(
         -_standingFootForward.z,
         _standingFootForward.x,
@@ -958,7 +995,7 @@ function poseCoupledStandingGait(
       resolveStandingFootContactOrientation(
         leg,
         touchingSurface,
-        _poseQuat,
+        _lowerBodyWorldQuaternion,
         candidateWorldYaw,
         // Terrain/support normals use sim X/Y horizontal and Z up; Three
         // uses X/Z horizontal and Y up.
@@ -1055,7 +1092,7 @@ export function buildStandingRig(
       footLocalX: hipX,
       footLocalZ: hipZ,
       footTouchingSurface: false,
-      footOrientationLocked: false,
+      footOrientationCaptured: false,
       footWorldQuaternionX: 0,
       footWorldQuaternionY: 0,
       footWorldQuaternionZ: 0,

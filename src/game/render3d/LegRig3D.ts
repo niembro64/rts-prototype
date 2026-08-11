@@ -206,14 +206,18 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  /** Full world orientation of the foot hemisphere. Swinging feet remain
-   * world-up and follow the leg yaw; touchdown aligns local +Y with the local
-   * support normal, then keeps this quaternion fixed until lift-off. */
+  /** Full ABSOLUTE world orientation of the foot hemisphere, captured from the
+   * ground at touchdown: local +Y aligns with the support normal and the
+   * heading freezes at the yaw the leg had on contact. It is world-space in
+   * every axis, so chassis yaw never moves it, and it persists through the
+   * swing — a lifted foot holds the last ground it touched until it lands. */
   footQuaternionX: number;
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
-  plantedFootOrientationLocked: boolean;
+  /** False only before a foot's first-ever touchdown (or after a teleport
+   * reset), when there is no ground angle to hold yet. */
+  footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -305,7 +309,7 @@ export type LegStateSnapshot = ReadonlyArray<{
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
-  plantedFootOrientationLocked: boolean;
+  footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
@@ -330,7 +334,7 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       footQuaternionY: leg.footQuaternionY,
       footQuaternionZ: leg.footQuaternionZ,
       footQuaternionW: leg.footQuaternionW,
-      plantedFootOrientationLocked: leg.plantedFootOrientationLocked,
+      footContactOrientationCaptured: leg.footContactOrientationCaptured,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
       initialized: leg.initialized,
@@ -363,7 +367,7 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.footQuaternionY = src.footQuaternionY;
     dst.footQuaternionZ = src.footQuaternionZ;
     dst.footQuaternionW = src.footQuaternionW;
-    dst.plantedFootOrientationLocked = src.plantedFootOrientationLocked;
+    dst.footContactOrientationCaptured = src.footContactOrientationCaptured;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
     dst.initialized = src.initialized;
@@ -439,7 +443,7 @@ export function buildLegs(
       footQuaternionY: 0,
       footQuaternionZ: 0,
       footQuaternionW: 1,
-      plantedFootOrientationLocked: false,
+      footContactOrientationCaptured: false,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
@@ -996,7 +1000,7 @@ export function updateLegs(
     const touchdownSurfaceNormal =
       leg.footSlot >= 0 &&
       leg.contactState === 'planted' &&
-      !leg.plantedFootOrientationLocked
+      !leg.footContactOrientationCaptured
         ? sampleLocomotionFootSurfaceNormal(
           footX,
           footZ,
@@ -1056,6 +1060,9 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.contactState = 'free';
       leg.lerpProgress = 0;
       leg.snapRayOriginInitialized = false;
+      // A teleport or recycled slot resets contact history rather than
+      // carrying a world angle captured at the old location.
+      leg.footContactOrientationCaptured = false;
     }
   }
   mesh.lastBaseX = pose.rootX;
@@ -1101,7 +1108,8 @@ function beginGroundedLegSlideTo(
   leg.targetWorldY = targetY;
   leg.targetWorldZ = targetZ;
   leg.contactState = 'stepping';
-  leg.plantedFootOrientationLocked = false;
+  // The capture deliberately survives the swing: a lifted foot carries the
+  // angle of the ground it last touched until it lands somewhere new.
   leg.lerpProgress = 0;
   leg.lerpDuration = legSwingDurationMs(leg);
   leg.initialized = true;
@@ -1176,6 +1184,10 @@ function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
     leg.worldY = leg.targetWorldY;
     leg.worldZ = leg.targetWorldZ;
     leg.contactState = 'planted';
+    // Touchdown is the one moment a foot may take a new angle. Dropping the
+    // capture here — not at lift-off — makes this same frame resample the
+    // support normal and latch the ground it just landed on.
+    leg.footContactOrientationCaptured = false;
     return;
   }
 
@@ -1835,9 +1847,18 @@ export function resolveLegFootSurfaceQuaternion(
 }
 
 /** Apply the foot's contact-orientation rule without allocating per frame.
- * Swinging feet remain upright and follow the leg yaw. The first planted pose
- * aligns to the sampled support normal and captures the complete quaternion;
- * later planted poses retain it without resampling or following the chassis. */
+ *
+ * A foot's orientation is a WORLD fact captured from the ground it touched,
+ * and it is absolute in all three axes: the sole's tilt comes from the support
+ * normal and its heading is frozen at the yaw it had on touchdown. Nothing the
+ * chassis does afterwards may move it — a host that spins in place twists its
+ * legs against stationary feet rather than dragging them around.
+ *
+ * The capture survives lift-off: a swinging foot carries the angle of the
+ * ground it LAST touched through the air, and only replaces it when it lands
+ * somewhere new (advanceGroundedLegSlide drops the capture on touchdown).
+ * The yaw-only fallback applies solely to a foot that has never touched
+ * ground at all — a leg initialized airborne — which has nothing to hold. */
 export function resolveContactLockedFootOrientation(
   leg: Pick<
     LegInstance,
@@ -1846,21 +1867,14 @@ export function resolveContactLockedFootOrientation(
     | 'footQuaternionY'
     | 'footQuaternionZ'
     | 'footQuaternionW'
-    | 'plantedFootOrientationLocked'
+    | 'footContactOrientationCaptured'
   >,
   candidateFootYaw: number,
   surfaceNormalX: number,
   surfaceNormalY: number,
   surfaceNormalZ: number,
 ): void {
-  if (leg.contactState !== 'planted') {
-    const halfYaw = candidateFootYaw * 0.5;
-    leg.footQuaternionX = 0;
-    leg.footQuaternionY = Math.sin(halfYaw);
-    leg.footQuaternionZ = 0;
-    leg.footQuaternionW = Math.cos(halfYaw);
-    leg.plantedFootOrientationLocked = false;
-  } else if (!leg.plantedFootOrientationLocked) {
+  if (leg.contactState === 'planted' && !leg.footContactOrientationCaptured) {
     resolveLegFootSurfaceQuaternion(
       candidateFootYaw,
       surfaceNormalX,
@@ -1872,8 +1886,17 @@ export function resolveContactLockedFootOrientation(
     leg.footQuaternionY = _footTouchdownQuaternion.y;
     leg.footQuaternionZ = _footTouchdownQuaternion.z;
     leg.footQuaternionW = _footTouchdownQuaternion.w;
-    leg.plantedFootOrientationLocked = true;
+    leg.footContactOrientationCaptured = true;
+    return;
   }
+  // Hold the captured world orientation — planted, stepping, or airborne.
+  if (leg.footContactOrientationCaptured) return;
+
+  const halfYaw = candidateFootYaw * 0.5;
+  leg.footQuaternionX = 0;
+  leg.footQuaternionY = Math.sin(halfYaw);
+  leg.footQuaternionZ = 0;
+  leg.footQuaternionW = Math.cos(halfYaw);
 }
 
 function initializeLegOnSnapSphere(
@@ -1934,6 +1957,6 @@ function initializeLegOnSnapSphere(
   leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
   leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;
   leg.contactState = 'planted';
-  leg.plantedFootOrientationLocked = false;
+  leg.footContactOrientationCaptured = false;
   leg.initialized = true;
 }

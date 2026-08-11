@@ -126,7 +126,7 @@ export type LocomotionStateSnapshot =
       upperBodyYawVelocity: number;
       feet: Array<Readonly<{
         touchingSurface: boolean;
-        orientationLocked: boolean;
+        orientationCaptured: boolean;
         worldQuaternion: readonly [number, number, number, number];
         localQuaternion: readonly [number, number, number, number];
       }>>;
@@ -214,7 +214,7 @@ export function captureLocomotionState(
         upperBodyYawVelocity: locomotion.upperBodyYawVelocity,
         feet: locomotion.legs.map((leg) => ({
           touchingSurface: leg.footTouchingSurface,
-          orientationLocked: leg.footOrientationLocked,
+          orientationCaptured: leg.footOrientationCaptured,
           worldQuaternion: [
             leg.footWorldQuaternionX,
             leg.footWorldQuaternionY,
@@ -299,7 +299,7 @@ export function applyLocomotionState(
         if (!saved) continue;
         const leg = locomotion.legs[i];
         leg.footTouchingSurface = saved.touchingSurface;
-        leg.footOrientationLocked = saved.orientationLocked;
+        leg.footOrientationCaptured = saved.orientationCaptured;
         leg.footWorldQuaternionX = saved.worldQuaternion[0];
         leg.footWorldQuaternionY = saved.worldQuaternion[1];
         leg.footWorldQuaternionZ = saved.worldQuaternion[2];

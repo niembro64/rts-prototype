@@ -392,7 +392,7 @@ function assertStandingFeetFollowLegFacing(mesh: StandingMesh, label: string): v
 function assertStandingFootContactSlopeLatch(): void {
   const state = {
     footTouchingSurface: false,
-    footOrientationLocked: false,
+    footOrientationCaptured: false,
     footWorldQuaternionX: 0,
     footWorldQuaternionY: 0,
     footWorldQuaternionZ: 0,
@@ -417,7 +417,7 @@ function assertStandingFootContactSlopeLatch(): void {
   const touchdownWorld = parentAtTouchdown.clone().multiply(local);
   assertContract(
     state.footTouchingSurface &&
-      state.footOrientationLocked &&
+      state.footOrientationCaptured &&
       new THREE.Vector3(0, 1, 0)
         .applyQuaternion(touchdownWorld)
         .dot(touchdownNormal) > 1 - 1e-9,
@@ -445,6 +445,8 @@ function assertStandingFootContactSlopeLatch(): void {
     'a touching standing shoe retains its complete touchdown orientation while its parent turns',
   );
 
+  // Lift-off keeps the angle. A shoe in the air carries the ground it last
+  // touched, and keeps carrying it while its parent goes on turning.
   resolveStandingFootContactOrientation(
     state,
     false,
@@ -455,11 +457,31 @@ function assertStandingFootContactSlopeLatch(): void {
     0,
     local,
   );
+  const liftedWorld = turnedParent.clone().multiply(local);
   assertContract(
     !state.footTouchingSurface &&
-      !state.footOrientationLocked &&
-      local.angleTo(new THREE.Quaternion()) < 1e-9,
-    'lifting a standing shoe releases its surface-orientation latch',
+      state.footOrientationCaptured &&
+      retainedWorld.angleTo(liftedWorld) < 1e-9,
+    'a lifted standing shoe keeps the absolute angle of the ground it last touched',
+  );
+
+  const furtherTurnedParent = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    2.1,
+  );
+  resolveStandingFootContactOrientation(
+    state,
+    false,
+    furtherTurnedParent,
+    2.1,
+    0,
+    1,
+    0,
+    local,
+  );
+  assertContract(
+    retainedWorld.angleTo(furtherTurnedParent.clone().multiply(local)) < 1e-9,
+    'an airborne standing shoe does not follow its parent turning underneath it',
   );
 
   const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
@@ -892,7 +914,7 @@ function assertTorsoAimSurvivesLodRebuild(
       new THREE.Euler(-0.05, 0.15 + index * 0.03, 0.09),
     );
     leg.footTouchingSurface = true;
-    leg.footOrientationLocked = true;
+    leg.footOrientationCaptured = true;
     leg.footWorldQuaternionX = world.x;
     leg.footWorldQuaternionY = world.y;
     leg.footWorldQuaternionZ = world.z;
@@ -909,7 +931,7 @@ function assertTorsoAimSurvivesLodRebuild(
   mesh.gaitPhase = 0;
   for (const leg of mesh.legs) {
     leg.footTouchingSurface = false;
-    leg.footOrientationLocked = false;
+    leg.footOrientationCaptured = false;
     leg.footWorldQuaternionX = 0;
     leg.footWorldQuaternionY = 0;
     leg.footWorldQuaternionZ = 0;
@@ -940,13 +962,13 @@ function assertTorsoAimSurvivesLodRebuild(
     );
     assertContract(
       leg.footTouchingSurface &&
-        leg.footOrientationLocked &&
+        leg.footOrientationCaptured &&
         restoredWorld.angleTo(expected.world) < 1e-9 &&
         leg.foot.quaternion.angleTo(expected.local) < 1e-9,
       `${label} foot ${i} preserves its touchdown orientation across LOD rebuild`,
     );
     leg.footTouchingSurface = false;
-    leg.footOrientationLocked = false;
+    leg.footOrientationCaptured = false;
     leg.footWorldQuaternionX = 0;
     leg.footWorldQuaternionY = 0;
     leg.footWorldQuaternionZ = 0;

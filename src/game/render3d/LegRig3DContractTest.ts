@@ -244,7 +244,7 @@ export function runLegRig3DContractTest(): void {
     footQuaternionY: 0,
     footQuaternionZ: 0,
     footQuaternionW: 1,
-    plantedFootOrientationLocked: false,
+    footContactOrientationCaptured: false,
   };
   resolveContactLockedFootOrientation(
     footOrientationState,
@@ -261,8 +261,8 @@ export function runLegRig3DContractTest(): void {
   );
   assertContract(
     new THREE.Vector3(0, 1, 0).applyQuaternion(swingQuaternion).y > 1 - 1e-9 &&
-      !footOrientationState.plantedFootOrientationLocked,
-    'a stepping foot follows leg yaw while remaining world-up and unlocked',
+      !footOrientationState.footContactOrientationCaptured,
+    'a foot that has never touched ground follows leg yaw and stays world-up',
   );
   footOrientationState.contactState = 'planted';
   resolveContactLockedFootOrientation(
@@ -280,7 +280,7 @@ export function runLegRig3DContractTest(): void {
   );
   assertContract(
     new THREE.Vector3(0, 1, 0).applyQuaternion(touchdownQuaternion).dot(slopeNormal) > 1 - 1e-9 &&
-      footOrientationState.plantedFootOrientationLocked,
+      footOrientationState.footContactOrientationCaptured,
     'touchdown captures the complete terrain-aligned foot orientation',
   );
   const plantedQuaternion = touchdownQuaternion.toArray();
@@ -292,13 +292,32 @@ export function runLegRig3DContractTest(): void {
       footOrientationState.footQuaternionW === plantedQuaternion[3],
     'a planted foot ignores later leg-yaw and terrain-normal changes',
   );
+  // Lift-off must NOT release the angle: a foot in the air carries the ground
+  // it last touched, on a flat-normal frame with a completely different leg
+  // yaw, and holds it for the whole swing.
   footOrientationState.contactState = 'stepping';
   resolveContactLockedFootOrientation(footOrientationState, 1.25, 0, 1, 0);
   assertContract(
-    !footOrientationState.plantedFootOrientationLocked,
-    'lifting the foot releases its orientation lock for the next step',
+    footOrientationState.footContactOrientationCaptured &&
+      footOrientationState.footQuaternionX === plantedQuaternion[0] &&
+      footOrientationState.footQuaternionY === plantedQuaternion[1] &&
+      footOrientationState.footQuaternionZ === plantedQuaternion[2] &&
+      footOrientationState.footQuaternionW === plantedQuaternion[3],
+    'a lifted foot keeps the absolute angle of the ground it last touched',
   );
+  footOrientationState.contactState = 'free';
+  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  assertContract(
+    footOrientationState.footQuaternionX === plantedQuaternion[0] &&
+      footOrientationState.footQuaternionY === plantedQuaternion[1] &&
+      footOrientationState.footQuaternionZ === plantedQuaternion[2] &&
+      footOrientationState.footQuaternionW === plantedQuaternion[3],
+    'a fully airborne foot holds that same angle instead of levelling out',
+  );
+  // Only touchdown may replace it, and the rig marks that by dropping the
+  // capture the frame the slide lands (advanceGroundedLegSlide).
   footOrientationState.contactState = 'planted';
+  footOrientationState.footContactOrientationCaptured = false;
   const nextSlopeNormal = new THREE.Vector3(-0.35, 0.9, 0.2).normalize();
   resolveContactLockedFootOrientation(
     footOrientationState,
@@ -315,7 +334,7 @@ export function runLegRig3DContractTest(): void {
   );
   assertContract(
     new THREE.Vector3(0, 1, 0).applyQuaternion(nextTouchdownQuaternion).dot(nextSlopeNormal) > 1 - 1e-9 &&
-      footOrientationState.plantedFootOrientationLocked,
+      footOrientationState.footContactOrientationCaptured,
     'the next touchdown captures its new local terrain orientation',
   );
   const kneeQuaternion = resolveKneeJointQuaternion(
