@@ -106,16 +106,9 @@ export type SelectionInfo = {
   /** True when every active-state building in the selection is currently
    *  ON (open). Drives the ON/OFF button label. */
   buildingsActive: boolean;
-  /** BAR exposes ON/OFF only for the matching player-facing economy active
-   *  states (metal extractors, solar collectors, and energy converters), even
-   *  though the prototype active-state mechanic covers more utility buildings. */
-  hasBarBuildingActiveControl: boolean;
   /** True when selected pure buildings keep BAR CMD.STOP visible because their
    *  BAR unitDef does not set customParams.removestop. */
   hasBarBuildingStopControl: boolean;
-  /** True when every BAR-onoff-capable active-state building in the selection
-   *  is currently ON. */
-  barBuildingsActive: boolean;
   /** True when any selected entity belongs to the local player and can
    *  be removed by a self-destruct command. */
   hasSelfDestructable: boolean;

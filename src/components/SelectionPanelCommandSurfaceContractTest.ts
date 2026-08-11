@@ -1,6 +1,7 @@
 import selectionPanelSource from './SelectionPanel.vue?raw';
 import { COLORS, WAYPOINT_COLOR_CSS } from '../colorsConfig';
 import { resolveCommandHotkey } from '../game/input/commandHotkeys';
+import { factoryProductionClickModeFromEvent } from '../game/input/queueModifiers';
 import { BAR_MAX_SELECTED_BUILDER_TYPES } from '../game/sim/hostCapabilities';
 import hostCapabilitiesSource from '../game/sim/hostCapabilities.ts?raw';
 import buildMenuLayoutSource from '../game/input/buildMenuLayout.ts?raw';
@@ -725,14 +726,25 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       /\.bar-factory-preset-thumb-img \{[\s\S]{0,100}filter:\s*brightness\(0\.8\);/.test(selectionPanelSource),
     'BAR factory preset rows must mirror cmd_factoryqmanager.lua repeat/queue label colors and 0.8 thumbnail brightness',
   );
+  // The quota bypass rides the shared click-mode helper's `front` flag rather
+  // than reading event.altKey inline, so assert the behavior at its source
+  // (Alt sets front, Meta must not) and that both cell handlers gate on it.
   assertContract(
-    /function queueFactoryUnitFromClick\(factoryId: number, unitBlueprintId: string, event: MouseEvent\): void \{[\s\S]{0,260}if \(props\.selection\.factoryQueueMode && !event\.altKey\) \{[\s\S]{0,120}changeFactoryUnitQuota/.test(selectionPanelSource) &&
-      /function removeFactoryQueuedUnitFromCell\(factoryId: number, unitBlueprintId: string, event: MouseEvent\): void \{[\s\S]{0,260}if \(props\.selection\.factoryQueueMode && !event\.altKey && factoryQuotaTarget\(unitBlueprintId\) > 0\) \{[\s\S]{0,120}changeFactoryUnitQuota/.test(selectionPanelSource) &&
-      !/factoryQueueMode && !event\.altKey && !event\.metaKey/.test(selectionPanelSource),
+    factoryProductionClickModeFromEvent(
+      { shiftKey: false, altKey: true, ctrlKey: false, metaKey: false },
+      false,
+    ).front &&
+      !factoryProductionClickModeFromEvent(
+        { shiftKey: false, altKey: false, ctrlKey: false, metaKey: true },
+        false,
+      ).front &&
+      /function queueFactoryUnitFromClick\(factoryId: number, unitBlueprintId: string, event: MouseEvent\): void \{[\s\S]{0,320}if \(props\.selection\.factoryQueueMode && !productionMode\.front\) \{[\s\S]{0,120}changeFactoryUnitQuota/.test(selectionPanelSource) &&
+      /function removeFactoryQueuedUnitFromCell\(factoryId: number, unitBlueprintId: string, event: MouseEvent\): void \{[\s\S]{0,320}if \(props\.selection\.factoryQueueMode && !productionMode\.front && factoryQuotaTarget\(unitBlueprintId\) > 0\) \{[\s\S]{0,120}changeFactoryUnitQuota/.test(selectionPanelSource) &&
+      !/factoryQueueMode && !(?:event\.altKey|productionMode\.front) && !event\.metaKey/.test(selectionPanelSource),
     'BAR factory production-cell clicks must follow gui_gridmenu.lua quota-mode bypass semantics: Alt bypasses quota mode, Meta does not',
   );
   assertContract(
-    /function queueFactoryUnitFromClick[\s\S]{0,900}if \(event\.altKey && !productionMode\.repeat && queueLengthBeforeAdd > 0\) \{\s*props\.actions\.editFactoryQueue\(factoryId, 'move', queueLengthBeforeAdd, productionMode\.count, 0\);/.test(selectionPanelSource),
+    /function queueFactoryUnitFromClick[\s\S]{0,900}if \(productionMode\.front && !productionMode\.repeat && queueLengthBeforeAdd > 0\) \{\s*props\.actions\.editFactoryQueue\(factoryId, 'move', queueLengthBeforeAdd, productionMode\.count, 0\);/.test(selectionPanelSource),
     'BAR Alt factory clicks must compose queueUnit + editFactoryQueue move-to-front like gui_gridmenu.lua alt insert',
   );
   assertContract(

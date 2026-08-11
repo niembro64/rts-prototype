@@ -24,10 +24,7 @@ import { resolveFactoryProductionPresetReplay } from '../../input/factoryProduct
 import { getStructureFactoryAllowedUnitBlueprintIds } from '../factoryProductionRoster';
 import { getUnitBuilderAllowedBuildBlueprintIds } from '../hostCapabilities';
 import { createTransportComponentForUnitBlueprint } from '../transports';
-import {
-  buildingBlueprintHasActiveState,
-  buildingBlueprintHasBarOnOffCommand,
-} from '../buildingActiveState';
+import { buildingBlueprintHasActiveState } from '../buildingActiveState';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import {
   structureRosterDisplay,
@@ -925,13 +922,16 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingSonar',
     'buildingResourceConverter',
   ]);
-  const barOnOffStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarOnOffCommand);
-  assertSameMembers('BAR-equivalent ON/OFF command structures', barOnOffStructureIds, [
-    'buildingSolar',
-    'buildingExtractor',
-    'buildingExtractorT2',
-    'buildingResourceConverter',
-  ]);
+  // ON/OFF is capability-gated on the local active-state mechanic, not on BAR's
+  // onoffable unitDef flag: BAR's armwin/armrad/armsonar analogues carry the
+  // same authoritative production + 0.1x-damage fortify tradeoff here, so every
+  // active-state structure must expose the command in every preset. A structure
+  // with the state and no toggle is a live mechanic the player cannot reach.
+  assertSameMembers(
+    'ON/OFF command structures',
+    STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasActiveState),
+    activeStateStructureIds,
+  );
 
   for (const commandId of REQUIRED_SPECIAL_COMMAND_IDS) {
     assertContract(

@@ -48,6 +48,16 @@ import {
   type SlopePathMode,
 } from '../../types/slopePathMode';
 import {
+  isLiquidSurfaceMode,
+  isTerrainSurfaceMode,
+  type LiquidSurfaceMode,
+  type TerrainSurfaceMode,
+} from '../../types/worldSurfaceMode';
+import {
+  setLiquidSurfaceMode as setBattleLiquidSurfaceMode,
+  setTerrainSurfaceMode as setBattleTerrainSurfaceMode,
+} from '../sim/worldSurfaceState';
+import {
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
@@ -647,6 +657,16 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setSlopePathMode(sanitizedCommand.mode);
         return;
+      case 'setTerrainSurfaceMode':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setTerrainSurfaceMode(sanitizedCommand.mode);
+        return;
+      case 'setLiquidSurfaceMode':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setLiquidSurfaceMode(sanitizedCommand.mode);
+        return;
       case 'setConverterTax':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -707,6 +727,21 @@ export class GameServer {
     // A live policy change reroutes everyone: drop cached plans so the next
     // movement step re-plans under the new slope rule.
     this.world.invalidateAllActivePaths();
+  }
+
+  // WORLD group ground material. WorldState carries the canonical copy (it is
+  // in the state hash); worldSurfaceState mirrors it for the renderers, which
+  // are constructed with a THREE.Group rather than the sim world.
+  private setTerrainSurfaceMode(mode: TerrainSurfaceMode): void {
+    if (!isTerrainSurfaceMode(mode) || this.world.terrainSurfaceMode === mode) return;
+    this.world.terrainSurfaceMode = mode;
+    setBattleTerrainSurfaceMode(mode);
+  }
+
+  private setLiquidSurfaceMode(mode: LiquidSurfaceMode): void {
+    if (!isLiquidSurfaceMode(mode) || this.world.liquidSurfaceMode === mode) return;
+    this.world.liquidSurfaceMode = mode;
+    setBattleLiquidSurfaceMode(mode);
   }
 
   private setConverterTax(tax: number): void {

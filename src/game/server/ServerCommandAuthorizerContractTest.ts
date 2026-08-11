@@ -26,10 +26,37 @@ import type {
 import { WorldState } from '../sim/WorldState';
 import type { Entity } from '../sim/types';
 import { authorizeGameServerGameplayCommand } from './ServerCommandAuthorizer';
+import { LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES } from '../architecture/LockstepCommandProtocol';
+import gameServerSource from './GameServer.ts?raw';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`[server command authorizer contract] ${message}`);
+  }
+}
+
+/** Gameplay-setting commands carry no per-entity ownership, so
+ *  authorizeGameServerGameplayCommand deliberately drops them (`default:
+ *  return null`). That makes GameServer.receiveCommand's host-only
+ *  server-control switch their ONLY path on the authoritative architecture:
+ *  a type missing from that switch is silently dead for every non-host-admin
+ *  authority, which is exactly how the WORLD group's TERRAIN/LIQUID toggles
+ *  stopped working. The lockstep set is the single registry of the family, so
+ *  assert the switch still covers all of it. */
+function assertServerControlSwitchCoversEveryGameplaySetting(): void {
+  for (const commandType of LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES) {
+    assertContract(
+      gameServerSource.includes(`      case '${commandType}':`),
+      `GameServer.receiveCommand must intercept gameplay-setting command ${commandType}; the authorizer drops it, so an unhandled case is dead UI`,
+    );
+    assertContract(
+      authorizeGameServerGameplayCommand(
+        new WorldState(11, 128, 128),
+        { type: commandType, tick: 0 } as never,
+        { mode: 'player', playerId: 1 },
+      ) === null,
+      `${commandType} must stay host-only: the ownership authorizer must not hand it to an arbitrary player`,
+    );
   }
 }
 
@@ -46,6 +73,8 @@ function createResurrectableWreck(world: WorldState): Entity {
 }
 
 export function runServerCommandAuthorizerContractTest(): void {
+  assertServerControlSwitchCoversEveryGameplaySetting();
+
   const world = new WorldState(1, 512, 512);
   const commander = world.createUnitFromBlueprint(80, 80, 1, 'unitCommander', {
     allocateSubEntityIds: false,

@@ -4817,6 +4817,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runNetworkManagerLockstepBufferContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
+        const { runShieldFarLodRenderPacketContractTest, runTypedSensorHydrationContractTest } = await import('../network/ClientSnapshotApplierContractTest');
+        runShieldFarLodRenderPacketContractTest();
+        runTypedSensorHydrationContractTest();
         const { runClientEntityStoreContractTest } = await import('../network/ClientEntityStoreContractTest');
         runClientEntityStoreContractTest();
         const { runClientEntityIdSetContractTest } = await import('../network/ClientEntityIdSetContractTest');
@@ -4831,6 +4834,23 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandHotkeysContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
+        // Command-surface gates. These enforce that every button, hotkey, and
+        // order the player can reach has an authoritative system behind it
+        // (budget_design_philosophy.html "Commands require real systems").
+        const { runSelectionPanelCommandSurfaceContractTest } = await import('../../components/SelectionPanelCommandSurfaceContractTest');
+        runSelectionPanelCommandSurfaceContractTest();
+        const { runServerCommandAuthorizerContractTest } = await import('../server/ServerCommandAuthorizerContractTest');
+        runServerCommandAuthorizerContractTest();
+        const { runInputSelectedCommandsContractTest } = await import('../input/helpers/InputSelectedCommandsContractTest');
+        runInputSelectedCommandsContractTest();
+        const { runFactoryProductionPresetsContractTest } = await import('../input/factoryProductionPresetsContractTest');
+        runFactoryProductionPresetsContractTest();
+        const { runUIUpdateManagerContractTest } = await import('../scenes/helpers/UIUpdateManagerContractTest');
+        runUIUpdateManagerContractTest();
+        const { runSimulationIdleBuilderAutoRepairContractTest } = await import('../sim/SimulationIdleBuilderAutoRepairContractTest');
+        runSimulationIdleBuilderAutoRepairContractTest();
+        const { runBackgroundBattleStandaloneContractTest } = await import('../server/BackgroundBattleStandaloneContractTest');
+        runBackgroundBattleStandaloneContractTest();
         const { runUnitLocomotionContractTest } = await import('../sim/blueprints/unitLocomotionContractTest');
         runUnitLocomotionContractTest();
         const { runWaterLocomotionSeparationContractTest } = await import('../sim/blueprints/waterLocomotionSeparationContractTest');
@@ -4879,12 +4899,16 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runPrimitiveGeometryQuality3DContractTest();
         const { runEntityLodGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
         runEntityLodGeometry3DContractTest();
+        const { runHostTurretPresentationGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
+        runHostTurretPresentationGeometry3DContractTest();
         const { runTeamOrnament3DContractTest } = await import('../render3d/TeamOrnament3DContractTest');
         runTeamOrnament3DContractTest();
         const { runBuildingTeamOrnament3DContractTest } = await import('../render3d/BuildingTeamOrnament3DContractTest');
         runBuildingTeamOrnament3DContractTest();
         const { runSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runSurfaceChart3DContractTest();
+        const { runDirectionalTravelSlotSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
+        runDirectionalTravelSlotSurfaceChart3DContractTest();
         const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');
         runTurretAimPose3DContractTest();
         const { runStandingHostTurretAim3DContractTest } = await import('../render3d/StandingHostTurretAim3DContractTest');
@@ -4937,6 +4961,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runResourceMovementConformanceContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
+        const { runFabricatorProductionRingContractTest, runQueenFactoryProductionContractTest } = await import('../sim/supportSurfaceContractTest');
+        runFabricatorProductionRingContractTest();
+        runQueenFactoryProductionContractTest();
         const { runWaterSurfaceBuildingContractTest } = await import('../sim/waterSurfaceBuildingContractTest');
         runWaterSurfaceBuildingContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
@@ -4945,6 +4972,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTeamRosterContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
+        const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');
+        runTerrainUnderwaterDarkeningContractTest();
       }
       return handle;
     })();

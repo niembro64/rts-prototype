@@ -80,7 +80,6 @@ import {
 import { isBallisticArcWeapon, isCommander } from '../sim/combat/combatUtils';
 import {
   buildingBlueprintHasActiveState,
-  buildingBlueprintHasBarOnOffCommand,
 } from '../sim/buildingActiveState';
 import {
   entityHasBarAttackCommand,
@@ -1194,12 +1193,19 @@ export class Input3DManager {
     this.selectedCommands.setFireEnabled(fireState);
   }
 
+  // ON/OFF is gated by the local active-state capability in every preset, not
+  // by BAR's onoffable unitDef flag. The fortify tradeoff (production stops,
+  // incoming damage x0.1) is a real authoritative system on wind, radar, and
+  // sonar too, so narrowing the command to BAR's set left those three with a
+  // live mechanic and no way to command it. See budget_design_philosophy.html
+  // "Building selection panel: ON/OFF toggle (buildings with an active-state
+  // capability)" and "Producer Buildings Are ON/OFF".
   toggleBuildingActive(): void {
-    this.selectedCommands.setBuildingActive(undefined, this.selectedBuildingActivePredicateForActivePreset());
+    this.selectedCommands.setBuildingActive(undefined, buildingBlueprintHasActiveState);
   }
 
   setBuildingActive(open: boolean): void {
-    this.selectedCommands.setBuildingActive(open, this.selectedBuildingActivePredicateForActivePreset());
+    this.selectedCommands.setBuildingActive(open, buildingBlueprintHasActiveState);
   }
 
   selfDestructSelected(queue = false, queueFront = false, queueInsertIndex?: number): void {
@@ -2214,20 +2220,13 @@ export class Input3DManager {
   }
 
   private hasSelectedBuildingActiveControl(): boolean {
-    const includeBuilding = this.selectedBuildingActivePredicateForActivePreset();
     const selectedStatic = this.entitySource.getSelectedBuildings();
     for (let i = 0; i < selectedStatic.length; i++) {
       const entity = selectedStatic[i];
       if (entity.type !== 'building') continue;
-      if (includeBuilding(entity.buildingBlueprintId)) return true;
+      if (buildingBlueprintHasActiveState(entity.buildingBlueprintId)) return true;
     }
     return false;
-  }
-
-  private selectedBuildingActivePredicateForActivePreset(): typeof buildingBlueprintHasActiveState {
-    return isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
-      ? buildingBlueprintHasBarOnOffCommand
-      : buildingBlueprintHasActiveState;
   }
 
   private hasSelectedCommander(): boolean {

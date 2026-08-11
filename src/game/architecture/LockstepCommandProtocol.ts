@@ -82,7 +82,7 @@ const ARCHITECTURE_CONTROL_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set
 // of authorizeGameServerGameplayCommand they are restricted to the host
 // player at validation time — mirroring the authoritative path's host-only
 // server-control gate.
-const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
+export const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'setUnitGroundNormalEmaMode',
   'setMaxTotalUnits',
   'setTurretShieldPanelsEnabled',

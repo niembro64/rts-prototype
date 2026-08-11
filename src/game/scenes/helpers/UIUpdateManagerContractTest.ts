@@ -202,9 +202,9 @@ export function runUIUpdateManagerContractTest(): void {
     undefined,
   );
   assertContract(
-    t1MexSelection.hasBarBuildingActiveControl &&
+    t1MexSelection.hasBuildingActiveControl &&
       !t1MexSelection.hasBarBuildingStopControl &&
-      t2MexSelection.hasBarBuildingActiveControl &&
+      t2MexSelection.hasBuildingActiveControl &&
       t2MexSelection.hasBarBuildingStopControl,
     'BAR armamex/buildingExtractorT2 must expose Stop while armmex/buildingExtractor keeps removestop=true and only exposes ON/OFF',
   );
@@ -213,7 +213,7 @@ export function runUIUpdateManagerContractTest(): void {
     undefined,
   );
   assertContract(
-    converterSelection.hasBarBuildingActiveControl &&
+    converterSelection.hasBuildingActiveControl &&
       !converterSelection.hasBarBuildingStopControl &&
       converterSelection.details.some((row) => row.label === 'Power' && row.value === 'On'),
     'BAR armmakr/buildingResourceConverter analogue must expose ON/OFF and selected-info active state without Stop',

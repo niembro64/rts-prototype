@@ -181,12 +181,12 @@ const showBuildingStopButton = computed(() =>
   showBuildingActions.value &&
   props.selection.hasBarBuildingStopControl,
 );
-const showBuildingActiveButton = computed(() =>
-  isBarHotkeyPreset.value ? props.selection.hasBarBuildingActiveControl : props.selection.hasBuildingActiveControl,
-);
-const selectedBuildingsActive = computed(() =>
-  isBarHotkeyPreset.value ? props.selection.barBuildingsActive : props.selection.buildingsActive,
-);
+// ON/OFF follows the local active-state capability in every preset. BAR's
+// onoffable unitDefs are a strict subset (armwin/armrad/armsonar lack it), but
+// the prototype's fortify tradeoff is authoritative on those hosts too, so
+// gating on BAR membership left a live mechanic uncommandable.
+const showBuildingActiveButton = computed(() => props.selection.hasBuildingActiveControl);
+const selectedBuildingsActive = computed(() => props.selection.buildingsActive);
 const showQueueInsertPicker = computed(() =>
   !isBarHotkeyPreset.value
   && showUnitActions.value
@@ -3146,10 +3146,10 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Building ON/OFF. Prototype active-state covers the broader
-         budget_design_philosophy.html mechanic; BAR-visible ON/OFF follows
-         BAR onoffable unit defs, so only solar and metal extractor analogues
-         expose this command in BAR presets. -->
+    <!-- Building ON/OFF. Capability-gated on the budget_design_philosophy.html
+         active-state mechanic (solar/wind/extractor/radar/sonar/converter): ON
+         produces and takes normal damage, OFF stops producing and takes 0.1x
+         damage. Every host that owns that state exposes the toggle. -->
     <div v-if="showBuildingActiveButton && showBuildingActions" class="button-group">
       <div class="group-label">Power</div>
       <div class="buttons bar-command-grid">

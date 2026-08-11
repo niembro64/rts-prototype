@@ -38,7 +38,6 @@ import {
 } from '../../sim/unitActionIntents';
 import {
   buildingBlueprintHasActiveState,
-  buildingBlueprintHasBarOnOffCommand,
 } from '../../sim/buildingActiveState';
 import {
   getActiveSelectedBuilderTypeInfo,
@@ -909,8 +908,6 @@ export function buildSelectionInfo(
   // controls, including energy converters.
   let activeBuildingCount = 0;
   let allBuildingsOpen = true;
-  let barActiveBuildingCount = 0;
-  let allBarBuildingsOpen = true;
   let barStopBuildingCount = 0;
   for (let i = 0; i < selectedBuildings.length; i++) {
     const b = selectedBuildings[i];
@@ -919,10 +916,6 @@ export function buildSelectionInfo(
       activeBuildingCount++;
       const state = b.building !== null ? b.building.activeState : null;
       if (state === null || state.open === false) allBuildingsOpen = false;
-      if (buildingBlueprintHasBarOnOffCommand(b.buildingBlueprintId)) {
-        barActiveBuildingCount++;
-        if (state === null || state.open === false) allBarBuildingsOpen = false;
-      }
     }
   }
 
@@ -1076,9 +1069,7 @@ export function buildSelectionInfo(
     carrierSpawnEnabled: carrierSpawnControlCount > 0 && carrierSpawnEnabledCount === carrierSpawnControlCount,
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
-    hasBarBuildingActiveControl: barActiveBuildingCount > 0,
     hasBarBuildingStopControl: barStopBuildingCount > 0,
-    barBuildingsActive: barActiveBuildingCount > 0 && allBarBuildingsOpen,
     hasSelfDestructable,
     hasReclaimableSelection: activeBuilderType !== null && hasReclaimableSelection,
     hasTowerTargetControl: targetControlCount > 0,
