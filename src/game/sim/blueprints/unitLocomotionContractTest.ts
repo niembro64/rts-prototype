@@ -76,6 +76,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitQueenTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitTransport: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitCommander: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitRex: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
 
 
@@ -314,16 +315,30 @@ export function runUnitLocomotionContractTest(): void {
   forEachSurfaceProbePoint('many', 0, 0, 1, 0, (x, y) => {
     manySamples.push({ x, y });
   });
+  // The rule is that every probe set is laid out on ONE shared spacing lattice,
+  // not that a set uses particular multiples of it -- `many` is authored at
+  // even multiples so it spreads wider than `few` over the same lattice.
+  // Assert the lattice, so re-authoring a set's reach stays a data change.
+  const offLattice = [...fewSamples, ...manySamples].filter((sample) => {
+    const fx = sample.x / probeSpacing;
+    const fy = sample.y / probeSpacing;
+    return Math.abs(fx - Math.round(fx)) > 1e-9 || Math.abs(fy - Math.round(fy)) > 1e-9;
+  });
   assertContract(
-    fewSamples[1]?.x === probeSpacing &&
-      manySamples[1]?.x === probeSpacing &&
-      manySamples[2]?.x === 2 * probeSpacing &&
-      manySamples[3]?.x === 3 * probeSpacing &&
-      manySamples[4]?.x === 4 * probeSpacing &&
-      manySamples[5]?.y === probeSpacing &&
-      manySamples[6]?.y === -probeSpacing &&
-      manySamples[7]?.x === -probeSpacing,
-    'all multi-point surface-probe layouts use the one shared spacing lattice',
+    probeSpacing > 0 &&
+      offLattice.length === 0 &&
+      fewSamples.length > 1 &&
+      manySamples.length > fewSamples.length - 1 &&
+      // Both sets must actually leave the origin, or the "lattice" is vacuous.
+      fewSamples.some((sample) => sample.x !== 0 || sample.y !== 0) &&
+      manySamples.some((sample) => sample.x !== 0 || sample.y !== 0),
+    'all multi-point surface-probe layouts use the one shared spacing lattice: ' +
+      `off-lattice=${JSON.stringify(offLattice)}`,
+  );
+  assertContract(
+    Math.max(...manySamples.map((sample) => Math.abs(sample.x))) >
+      Math.max(...fewSamples.map((sample) => Math.abs(sample.x))),
+    'the many-probe set must reach further along the lattice than the few-probe set',
   );
 
   for (const [presetId, rawPreset] of Object.entries(rawLocomotionConfig.presets)) {

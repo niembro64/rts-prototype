@@ -12,6 +12,10 @@ import {
 } from './CanonicalCheckpoint';
 import { LOCKSTEP_FIXED_DT_MS } from './LockstepFrameScheduler';
 import { resetReusableSimulationStateForDeterministicReplay } from './DeterministicReplayHarness';
+import {
+  getAuthoritativeTerrainTileMap,
+  setAuthoritativeTerrainTileMap,
+} from '../sim/terrain/terrainState';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -19,7 +23,22 @@ function assertContract(condition: boolean, message: string): void {
   }
 }
 
+/** resetReusableSimulationStateForDeterministicReplay tears down the SHARED
+ *  terrain mesh, which is correct for a replay starting from a clean world and
+ *  wrong for a contract test running inside a live battle: every later
+ *  terrain-dependent test then samples a world with no map installed. That one
+ *  leak was enough to fail snapshot visibility, both support-surface spawn
+ *  contracts, and the demo extractor layout downstream. Put the mesh back. */
 export function runCanonicalCheckpointContractTest(): void {
+  const installedTerrain = getAuthoritativeTerrainTileMap();
+  try {
+    runCanonicalCheckpointContract();
+  } finally {
+    setAuthoritativeTerrainTileMap(installedTerrain);
+  }
+}
+
+function runCanonicalCheckpointContract(): void {
   const config: GameServerConfig = {
     playerIds: [1 as PlayerId, 2 as PlayerId],
     centerMagnitude: 0,
