@@ -14,7 +14,7 @@ import {
   type HoverSmokeUseId,
   type ResolvedSmokeProfile,
 } from '@/smokeConfig';
-import type { HoverConfig } from '@/types/blueprints';
+import type { HoverConfig, HoverFanMount } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import type {
   AirborneEmitterBatch3D,
@@ -124,6 +124,40 @@ vec3 transformed = vec3(
  */
 export function fanRotorHandedness(lateralLocalZ: number): number {
   return lateralLocalZ < 0 ? -1 : 1;
+}
+
+/** A lateral offset this close to the middle IS the middle. Mirroring such a
+ *  mount would land its twin on top of it: one fan wearing another, at twice
+ *  the draw cost and no visual difference. */
+const HOVER_MOUNT_CENTRELINE_EPS = 1e-6;
+
+/**
+ * A HOVER BLUEPRINT AUTHORS HALF A FAN ARRAY.
+ *
+ * A duct that lifts one flank always has a twin lifting the other, at the same
+ * station, height, size and tilt, so authoring both sides meant writing every
+ * number twice and keeping the copies in step by hand — six mounts for the
+ * Queen Bee's three distinct ducts. The blueprint now authors the unit's LEFT
+ * side (+y, the same handedness the standing rig uses) plus anything standing
+ * on the centreline, and each off-centre mount grows its starboard mirror
+ * here. A centreline duct — the Construction Drone's tail fan — stands alone.
+ *
+ * Mirroring negates the LATERAL axis and nothing else, exactly as the legs do
+ * in resolveMirroredLegConfigs. Rotor handedness is already derived from that
+ * sign in buildFan, so the generated twin counter-rotates on its own.
+ */
+export function resolveHoverFanMounts(cfg: HoverConfig): HoverFanMount[] {
+  const mounts: HoverFanMount[] = [];
+  for (const mount of cfg.mounts) {
+    mounts.push(mount);
+    const lateral = mount.offset.yUnitRadiusRatio;
+    if (Math.abs(lateral) <= HOVER_MOUNT_CENTRELINE_EPS) continue;
+    mounts.push({
+      ...mount,
+      offset: { ...mount.offset, yUnitRadiusRatio: -lateral },
+    });
+  }
+  return mounts;
 }
 
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
@@ -409,6 +443,8 @@ export function getHoverFanVisualRootY(
   const gapY = Math.max(HOVER_FAN_BODY_GAP_MIN, unitRadius * HOVER_FAN_BODY_GAP_RADIUS_FRAC);
   let rootY = bodyTopY + gapY;
 
+  // The AUTHORED half is enough: mirroring negates the lateral axis, and no
+  // term below reads it — a duct and its twin clear the chassis identically.
   for (const mount of cfg.mounts) {
     const fanRadius = Math.max(1, unitRadius * mount.radiusFrac);
     const ringTubeRadius = Math.max(0.35, unitRadius * mount.ringTubeRadiusFrac);
@@ -611,13 +647,15 @@ export function buildHoverFans(
   const fans: HoverFan[] = [];
   const smokeProfile = getSmokeProfile(smokeUseId);
 
-  // ONE AUTHORED MOUNT PER FAN. This used to be four layout branches — twin,
-  // quad, triFront, and a dragonfly special case with its own tail fan — each
-  // deriving positions from a (fanDistX, fanDistY) pair. A layout enum can
+  // ONE AUTHORED MOUNT PER FAN PAIR. This used to be four layout branches —
+  // twin, quad, triFront, and a dragonfly special case with its own tail fan —
+  // each deriving positions from a (fanDistX, fanDistY) pair. A layout enum can
   // only ever name arrangements someone already thought of, and every new one
   // meant another branch here; a list of mounts names all of them, needs no
-  // branch, and lets one fan differ from its neighbours in size or tilt.
-  for (const mount of cfg.mounts) {
+  // branch, and lets one fan differ from its neighbours in size or tilt. Only
+  // the left half of that list is authored; resolveHoverFanMounts grows the
+  // other half.
+  for (const mount of resolveHoverFanMounts(cfg)) {
     fans.push(buildFan(
       group,
       {

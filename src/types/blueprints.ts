@@ -33,6 +33,7 @@ export type {
   SwimConfig,
   FlipperConfig,
   HoverConfig,
+  HoverFanMount,
   RayBlueprint,
   EntitySignature,
   LockOnInclusionObject,

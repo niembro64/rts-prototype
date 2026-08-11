@@ -2669,6 +2669,7 @@
       ],
       "properties": {
         "mounts": {
+          "description": "HALF the fan array: the unit's left side (+y) plus any duct standing on the centreline. Every off-centre mount grows its starboard mirror at render time, so a pair can never drift out of step by being edited on one flank only; a centreline duct stands alone, since mirroring it would stack a second fan on the first. Authoring a starboard (-y) duct by hand is a contract failure.",
           "type": "array",
           "minItems": 1,
           "items": {

@@ -3053,16 +3053,6 @@
           {
             "offset": {
               "xUnitRadiusRatio": 0,
-              "yUnitRadiusRatio": -0.62,
-              "zUnitRadiusRatio": -0.04444
-            },
-            "radiusFrac": 0.32,
-            "ringTubeRadiusFrac": 0.035,
-            "outwardAngleDeg": 14
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": 0,
               "yUnitRadiusRatio": 0.62,
               "zUnitRadiusRatio": -0.04444
             },
@@ -3228,16 +3218,6 @@
           {
             "offset": {
               "xUnitRadiusRatio": 0,
-              "yUnitRadiusRatio": -2,
-              "zUnitRadiusRatio": -0.09
-            },
-            "radiusFrac": 1.4,
-            "ringTubeRadiusFrac": 0.1,
-            "outwardAngleDeg": 18
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": 0,
               "yUnitRadiusRatio": 2,
               "zUnitRadiusRatio": -0.09
             },
@@ -3395,16 +3375,6 @@
       },
       "config": {
         "mounts": [
-          {
-            "offset": {
-              "xUnitRadiusRatio": 0.41012,
-              "yUnitRadiusRatio": -0.71035,
-              "zUnitRadiusRatio": -0.0315
-            },
-            "radiusFrac": 0.26,
-            "ringTubeRadiusFrac": 0.035,
-            "outwardAngleDeg": 12
-          },
           {
             "offset": {
               "xUnitRadiusRatio": 0.41012,
@@ -4165,16 +4135,6 @@
           {
             "offset": {
               "xUnitRadiusRatio": -0.8135,
-              "yUnitRadiusRatio": -0.62,
-              "zUnitRadiusRatio": -0.036
-            },
-            "radiusFrac": 0.2,
-            "ringTubeRadiusFrac": 0.045,
-            "outwardAngleDeg": 12
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": -0.8135,
               "yUnitRadiusRatio": 0.62,
               "zUnitRadiusRatio": -0.036
             },
@@ -4185,31 +4145,11 @@
           {
             "offset": {
               "xUnitRadiusRatio": -0.18,
-              "yUnitRadiusRatio": -0.7425,
-              "zUnitRadiusRatio": -0.036
-            },
-            "radiusFrac": 0.3,
-            "ringTubeRadiusFrac": 0.0675,
-            "outwardAngleDeg": 12
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": -0.18,
               "yUnitRadiusRatio": 0.7425,
               "zUnitRadiusRatio": -0.036
             },
             "radiusFrac": 0.3,
             "ringTubeRadiusFrac": 0.0675,
-            "outwardAngleDeg": 12
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": 0.4535,
-              "yUnitRadiusRatio": -0.62,
-              "zUnitRadiusRatio": -0.036
-            },
-            "radiusFrac": 0.2,
-            "ringTubeRadiusFrac": 0.045,
             "outwardAngleDeg": 12
           },
           {
@@ -4620,27 +4560,7 @@
           {
             "offset": {
               "xUnitRadiusRatio": -0.72,
-              "yUnitRadiusRatio": -0.8,
-              "zUnitRadiusRatio": -0.036
-            },
-            "radiusFrac": 0.34,
-            "ringTubeRadiusFrac": 0.04,
-            "outwardAngleDeg": 12
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": -0.72,
               "yUnitRadiusRatio": 0.8,
-              "zUnitRadiusRatio": -0.036
-            },
-            "radiusFrac": 0.34,
-            "ringTubeRadiusFrac": 0.04,
-            "outwardAngleDeg": 12
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": 0.72,
-              "yUnitRadiusRatio": -0.8,
               "zUnitRadiusRatio": -0.036
             },
             "radiusFrac": 0.34,
