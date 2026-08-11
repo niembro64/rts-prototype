@@ -286,11 +286,34 @@ D-h. Under prototype presets only, a separate Attack Ground button is shown
      the BAR-faithful path has no dead affordance.
 
 
-6. Pre-existing failures outside the command surface
-====================================================
+6. How to run the gate
+======================
 
-These fail at HEAD and are unrelated to commands; recorded so the next pass
-does not rediscover them:
+  npm run contract:tests                       whole suite, boot order
+  node scripts/contractTestHarness.mjs --only=Command    substring filter
+
+`?contractTests=1` is not a usable gate on its own: init.ts awaits each test
+in sequence, so the first one that hangs or rejects silently suppresses every
+later one and the page still looks clean. That is how fourteen registered
+tests came to run nowhere. The harness boots the app normally and then invokes
+each test individually with its own timeout, so nothing can mask anything else.
+
+Several sim contract tests share module-level singletons (the entity slot
+registry, the spatial grid, the terrain module) and are therefore
+order-dependent -- runEntitySlotRegistryContractTest passes in boot order and
+fails in a filtered subset. Run the whole suite before believing a result.
+
+
+7. Remaining failures, all outside the command surface
+======================================================
+
+Score after this pass: 82/95. Every command-surface gate passes. The rest fail
+at HEAD for unrelated reasons; recorded so the next pass does not rediscover
+them:
+
+  runDeterministicLockstepBackendContractTest  environmental: the lobby's
+      background battle holds the session sim singleton this test wants, so it
+      times out under the harness. Deliberately not skipped.
 
   runClientSnapshotApplierContractTest       prediction render-row dirtying
   runShieldFarLodRenderPacketContractTest    shield packet emission LOD
@@ -304,8 +327,3 @@ does not rediscover them:
   runSupportSurfaceContractTest              flippers spawn support
   runFabricatorProductionRingContractTest    factory shell spawn support
   runDemoMetalExtractorSpawnContractTest     Spikey Lake repeat lines
-
-Note that several sim contract tests share module-level singletons (the
-entity slot registry, the spatial grid, and the terrain module), so they are
-order-dependent: run the suite in boot order, not a filtered subset, before
-believing a pass or a failure.
