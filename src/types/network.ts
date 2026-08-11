@@ -834,6 +834,13 @@ export type NetworkServerSnapshotMinimapEntity = {
    *  positional intel. Omitted (treated as false) for entities the
    *  recipient sees in full. */
   radarOnly: boolean | null;
+  /** For a contact-only entry, which sensor lane could have earned it: true
+   *  when the body's volume is mostly under the surface (a sonar return), false
+   *  when it is mostly above (a radar return). Null for fully visible entries,
+   *  which are drawn from the real entity instead. The world blip sits at the
+   *  surface this names, which is the coarsening: a contact gives map position
+   *  and lane, never altitude. */
+  contactUnderwater: boolean | null;
 };
 
 export type NetworkServerSnapshotSprayTarget = {

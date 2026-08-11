@@ -87,6 +87,11 @@ pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
 /// Unlike ballistic aim this uses no gravity or drag, but writes through the
 /// same reusable aim-pose fields consumed by turret rotation and firing.
 pub const CT_TURRET_CFG_CONSTANT_SPEED_LEAD: u32 = 1 << 18;
+/// The mirror of REQUIRES_AIR_TARGET: the emission operates in water but not
+/// air, so this turret may only acquire a target with some physical volume
+/// under the waterline. A torpedo turret had no such rule and would happily
+/// lock a fully airborne target it could never reach.
+pub const CT_TURRET_CFG_REQUIRES_WATER_TARGET: u32 = 1 << 19;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -3917,11 +3922,23 @@ pub(crate) fn combat_targeting_range_volume_allows_target_domain(
 }
 
 #[inline]
+/// Medium legality, evaluated against the target's VOLUME rather than its
+/// centre. A hull crossing the surface is genuinely present in both media, so
+/// an air-only weapon may engage anything with its top above the waterline and
+/// a water-only weapon anything with its bottom below it. A Sea Turtle is not
+/// safe from aircraft until it is fully submerged, and a Duck is not safe from
+/// torpedoes until it is fully clear of the water.
 pub(crate) fn combat_targeting_flags_allow_target_medium(
     flags: u32,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    (flags & CT_TURRET_CFG_REQUIRES_AIR_TARGET) == 0 || target.top_z > TERRAIN_WATER_LEVEL
+    if (flags & CT_TURRET_CFG_REQUIRES_AIR_TARGET) != 0 && target.top_z <= TERRAIN_WATER_LEVEL {
+        return false;
+    }
+    if (flags & CT_TURRET_CFG_REQUIRES_WATER_TARGET) != 0 && target.bottom_z > TERRAIN_WATER_LEVEL {
+        return false;
+    }
+    true
 }
 
 #[inline]

@@ -25,6 +25,10 @@ const PACKED_MINIMAP_ENTITIES_V1_VERSION = 1;
 const PACKED_MINIMAP_ENTITIES_VERSION = 2;
 const PACKED_MINIMAP_ENTITY_STRIDE = 6;
 const MINIMAP_ENTITY_FLAG_RADAR_ONLY = 0x01;
+/** Set only on contact rows: the body's volume is mostly under the surface, so
+ *  the contact reads as a sonar return and its world blip sits at the water
+ *  line rather than on the ground. */
+const MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER = 0x02;
 
 export type PackedMinimapEntitiesWireV1 = {
   v: typeof PACKED_MINIMAP_ENTITIES_V1_VERSION;
@@ -145,9 +149,11 @@ export function unpackMinimapEntitiesFromWire(
       type: wireTypeToMinimapType(rows[base + 3] ?? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT),
       playerId: (rows[base + 4] ?? 1) as NetworkServerSnapshotMinimapEntity['playerId'],
       radarOnly: null,
+      contactUnderwater: null,
     };
     if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
       entry.radarOnly = true;
+      entry.contactUnderwater = (flags & MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER) !== 0;
     }
     entries[i] = entry;
   }
@@ -202,7 +208,8 @@ function packMinimapEntitiesV2(
       entry.pos.y,
       minimapTypeToWireType(entry.type),
       entry.playerId,
-      entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0,
+      (entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0) |
+        (entry.contactUnderwater === true ? MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER : 0),
       estimatedGroupBytes,
     );
   }
@@ -277,9 +284,11 @@ function unpackMinimapEntitiesV2(
         type: wireTypeToMinimapType(typeTag),
         playerId,
         radarOnly: null,
+        contactUnderwater: null,
       };
       if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
         entry.radarOnly = true;
+        entry.contactUnderwater = (flags & MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER) !== 0;
       }
       entries[outIndex++] = entry;
     }

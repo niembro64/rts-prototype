@@ -27,6 +27,10 @@ import {
   type Float64WireRows,
 } from './snapshotWireRows';
 import { quantizeMinimapPosition as qPos } from './snapshotQuantization';
+import {
+  getEntityMediumOccupancy,
+  getSphericalUnderwaterFraction,
+} from '../sim/entityMediumOccupancy';
 
 export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
 
@@ -64,6 +68,14 @@ function minimapOwnerId(playerId: number, radarOnly: boolean): number {
   return radarOnly ? CONTACT_ONLY_OWNER_ID : playerId;
 }
 
+/** Which lane a contact reads as. A body straddling the surface is present in
+ *  both media, so pick the one holding most of its volume: that is the surface
+ *  the blip sits at, and the only altitude information a contact ever grants. */
+function contactUnderwaterFlag(entity: Entity, radarOnly: boolean): boolean | null {
+  if (!radarOnly) return null;
+  return getEntityMediumOccupancy(entity).underwater >= 0.5;
+}
+
 function writeMinimapEntityValues(
   out: NetworkServerSnapshotMinimapEntity,
   id: number,
@@ -72,10 +84,12 @@ function writeMinimapEntityValues(
   x: number,
   y: number,
   radarOnly: boolean,
+  contactUnderwater: boolean | null,
 ): NetworkServerSnapshotMinimapEntity {
   out.id = id;
   out.type = type;
   out.playerId = minimapOwnerId(playerId, radarOnly) as PlayerId;
+  out.contactUnderwater = contactUnderwater;
   out.pos.x = x;
   out.pos.y = y;
   // Reset the pool slot's flag — pool entries are reused so a slot
@@ -99,6 +113,7 @@ function writeMinimapEntity(
     qPos(entity.transform.x),
     qPos(entity.transform.y),
     radarOnly,
+    contactUnderwaterFlag(entity, radarOnly),
   );
 }
 
@@ -145,6 +160,9 @@ function writeMinimapEntityFromSlot(
     qPos(views.posX[slot]),
     qPos(views.posY[slot]),
     radarOnly,
+    radarOnly
+      ? getSphericalUnderwaterFraction(views.posZ[slot], views.radiusHitbox[slot]) >= 0.5
+      : null,
   );
 }
 

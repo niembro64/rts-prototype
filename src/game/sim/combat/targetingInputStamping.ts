@@ -81,6 +81,7 @@ import {
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
   CT_TURRET_CFG_REQUIRES_AIR_TARGET,
+  CT_TURRET_CFG_REQUIRES_WATER_TARGET,
   CT_TURRET_CFG_NO_AUTO_ACQUIRE,
   CT_TURRET_CFG_CONSTANT_SPEED_LEAD,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
@@ -721,14 +722,26 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (shot !== null && shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
-  if (
-    shot !== null &&
+  // Medium legality is a property of the EMISSION, not of the chassis. An
+  // emission that only works in one medium restricts what its turret may
+  // acquire, because a lock it can never reach is a turret standing idle with
+  // its barrel pointed at something.
+  //
+  // Rays carry no medium model, so they take BAR's default: a beam is not a
+  // `waterweapon` and cannot engage a submerged target. Authoring an underwater
+  // beam means giving rays the same media pair shots have, not relaxing this.
+  const emissionAirOnly = shot !== null && (
+    shot.type === 'beam' ||
+    (isProjectileShot(shot) &&
+      shot.shotLocomotion.media.air.operational &&
+      !shot.shotLocomotion.media.water.operational)
+  );
+  const emissionWaterOnly = shot !== null &&
     isProjectileShot(shot) &&
-    shot.shotLocomotion.media.air.operational &&
-    !shot.shotLocomotion.media.water.operational
-  ) {
-    f |= CT_TURRET_CFG_REQUIRES_AIR_TARGET;
-  }
+    shot.shotLocomotion.media.water.operational &&
+    !shot.shotLocomotion.media.air.operational;
+  if (emissionAirOnly) f |= CT_TURRET_CFG_REQUIRES_AIR_TARGET;
+  if (emissionWaterOnly) f |= CT_TURRET_CFG_REQUIRES_WATER_TARGET;
   if (turretIgnoresForceMaterialSightObstruction(turret)) {
     f |= CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION;
   }

@@ -4906,6 +4906,33 @@ mod sim_kernel_tests {
             exposed,
         ));
         assert!(combat_targeting_flags_allow_target_medium(0, submerged));
+
+        // The water-only mirror: a torpedo may engage a hull with any volume
+        // under the surface, and never one that is fully clear of it.
+        let airborne = CombatTargetingCylinderTarget {
+            bottom_z: TERRAIN_WATER_LEVEL + 0.001,
+            top_z: TERRAIN_WATER_LEVEL + 40.0,
+            ..submerged
+        };
+        let straddling = CombatTargetingCylinderTarget {
+            bottom_z: TERRAIN_WATER_LEVEL - 10.0,
+            top_z: TERRAIN_WATER_LEVEL + 10.0,
+            ..submerged
+        };
+        assert!(!combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_REQUIRES_WATER_TARGET,
+            airborne,
+        ));
+        assert!(combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_REQUIRES_WATER_TARGET,
+            straddling,
+        ));
+        // A straddling hull is present in BOTH media, so an air-only weapon
+        // reaches it as well.
+        assert!(combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
+            straddling,
+        ));
     }
 
     #[test]

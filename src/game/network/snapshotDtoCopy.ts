@@ -148,6 +148,7 @@ export function createMinimapEntityDto(): NetworkServerSnapshotMinimapEntity {
     type: 'unit',
     playerId: 1,
     radarOnly: null,
+    contactUnderwater: null,
   };
 }
 

@@ -2393,6 +2393,10 @@ export const CT_TURRET_CFG_REQUIRES_AIR_TARGET = 1 << 16;
 export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
 /** Constant-speed guided shots aim at their velocity interception point. */
 export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
+/** Mirror of REQUIRES_AIR_TARGET for emissions that operate in water but not
+ *  air. Gated on the target's bottom being under the waterline, so a hull
+ *  crossing the surface stays engageable from both media. */
+export const CT_TURRET_CFG_REQUIRES_WATER_TARGET = 1 << 19;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the

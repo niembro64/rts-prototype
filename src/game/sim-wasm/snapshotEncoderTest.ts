@@ -1319,6 +1319,8 @@ function networkMinimapFixture(entries: MinimapEntityFixture[]): NetworkMinimapF
     type: entry.type,
     playerId: entry.playerId as NetworkMinimapFixture[number]['playerId'],
     radarOnly: entry.radarOnly === undefined ? null : entry.radarOnly,
+    // Contacts round-trip their lane; fully visible rows carry none.
+    contactUnderwater: entry.radarOnly === true ? false : null,
   }));
 }
 
