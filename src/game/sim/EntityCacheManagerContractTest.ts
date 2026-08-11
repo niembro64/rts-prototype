@@ -49,7 +49,13 @@ function unitEntity(
     hp: options.hp ?? 100,
     maxHp: options.maxHp ?? 100,
     shieldPanels: options.shieldPanel === true ? [{}] : [],
-    locomotion: { type: options.flying === true ? 'flying' : 'ground' },
+    // cachedFlyingUnits keys off motionControl.cruiseWhenUncommanded (the
+    // continuous idle-air drive), not the rig name, so the stub has to carry
+    // it or EntityCacheManager throws while indexing.
+    locomotion: {
+      type: options.flying === true ? 'flying' : 'ground',
+      motionControl: { cruiseWhenUncommanded: options.flying === true },
+    },
   } as Entity['unit'];
   if (options.builder === true) entity.builder = {} as Entity['builder'];
   if (options.commander === true) entity.commander = {} as Entity['commander'];
