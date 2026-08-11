@@ -18,6 +18,8 @@ import {
 } from './unitGroundNormal';
 import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
+import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
+import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { deterministicMath as DMath } from './deterministicMath';
@@ -163,6 +165,41 @@ function createQuotaTestFactory(world: WorldState, x: number, y: number): Entity
 
 function factoryQuotaCount(factory: Entity, unitBlueprintId: string): number {
   return factory.factory?.productionQuotaCounts[unitBlueprintId] ?? 0;
+}
+
+/** A bare Simulation resolves the commander win condition on its first tick:
+ *  with no living commander for a side, markDefeatedPlayerEntitiesForDestruction
+ *  zeroes every entity that side owns before any assertion can observe it. Any
+ *  multi-player contract world that steps the sim must therefore keep a living
+ *  commander per side, or its "enemy" is already dead by tick one. */
+function keepContractMatchLive(world: WorldState, playerIds: readonly number[]): Entity[] {
+  const commanders: Entity[] = [];
+  for (let i = 0; i < playerIds.length; i++) {
+    const commander = world.createUnitFromBlueprint(
+      480 - (i * 24),
+      480,
+      playerIds[i] as never,
+      'unitCommander',
+      { allocateSubEntityIds: false },
+    );
+    world.addEntity(commander);
+    commanders.push(commander);
+  }
+  return commanders;
+}
+
+/** updateUnits skips body-less entities (a transported passenger has no body),
+ *  so any assertion that drives real unit actions through Simulation.update
+ *  needs physics bodies attached or the whole case silently no-ops. */
+function attachContractPhysicsBodies(world: WorldState, units: readonly Entity[]): void {
+  const physics = new PhysicsEngine3D(world.mapWidth, world.mapHeight);
+  physics.setGroundLookup(
+    (x, y) => world.getGroundZ(x, y),
+    (x, y) => world.getCachedSurfaceNormal(x, y),
+  );
+  for (let i = 0; i < units.length; i++) {
+    createPhysicsBodyForUnit(world, physics, units[i]);
+  }
 }
 
 export function runCommandExecutionContractTest(): void {
@@ -1252,6 +1289,7 @@ export function runCommandExecutionContractTest(): void {
   });
   liveAttackWorld.addEntity(liveAttacker);
   liveAttackWorld.addEntity(liveAttackTarget);
+  attachContractPhysicsBodies(liveAttackWorld, [liveAttacker, liveAttackTarget]);
   executeCommand({
     world: liveAttackWorld,
     constructionSystem: new ConstructionSystem(liveAttackWorld.mapWidth, liveAttackWorld.mapHeight),
@@ -1267,6 +1305,7 @@ export function runCommandExecutionContractTest(): void {
   });
   liveAttackTarget.transform.x = 220;
   liveAttackTarget.transform.y = 300;
+  liveAttackWorld.refreshEntitySlotState(liveAttackTarget);
   liveAttackSim.update(16);
   const liveAttackAction = liveAttacker.unit?.actions[0];
   assertContract(
@@ -1605,12 +1644,39 @@ export function runCommandExecutionContractTest(): void {
     'gather wait should release every ready group member once all remaining markers are active',
   );
 
-  const open = resolvePathableFormationTarget(world, unit, 180, 240);
+  // A bare WorldState carries no generated heightmap: the shared terrain
+  // module answers WATER_LEVEL everywhere, so a land-only waypoint filter
+  // legitimately refuses every point and collapses the plan onto the unit.
+  // The property under test (an unobstructed target is not displaced, and a
+  // build reservation never displaces one either) is locomotion-agnostic, so
+  // drive it with an amphibious host that can legally stand on that ambient
+  // surface while still respecting the build grid.
+  const formationProbe = world.createUnitFromBlueprint(80, 240, 1, 'unitHippo', {
+    allocateSubEntityIds: false,
+  });
+  world.addEntity(formationProbe);
+
+  const open = resolvePathableFormationTarget(world, formationProbe, 180, 240);
   assertNear(open.x, 180, 'open formation target x should remain exact');
   assertNear(open.y, 240, 'open formation target y should remain exact');
-  assertNear(open.z, world.getGroundZ(180, 240), 'open formation target z should use terrain');
+  // The resolver hands the pathfinder a terrain-bed goal height and falls back
+  // to the bed at the resolved point, so bed is what it returns. On a generated
+  // land map bed and gameplay ground agree; they only separate under water,
+  // which is exactly the ambient no-heightmap surface this test runs on.
+  assertNear(open.z, world.getTerrainBedZ(180, 240), 'open formation target z should use terrain');
 
   const blockedTarget = { x: 260, y: 240 };
+  const unreservedTarget = resolvePathableFormationTarget(
+    world,
+    formationProbe,
+    blockedTarget.x,
+    blockedTarget.y,
+  );
+  assertNear(
+    unreservedTarget.x,
+    blockedTarget.x,
+    'unobstructed formation target x should remain exact before any reservation',
+  );
   const blockedCell = grid.worldToGrid(blockedTarget.x, blockedTarget.y);
   const blockGridX = blockedCell.gx - 4;
   const blockGridY = blockedCell.gy - 4;
@@ -1618,7 +1684,7 @@ export function runCommandExecutionContractTest(): void {
 
   const reservedTarget = resolvePathableFormationTarget(
     world,
-    unit,
+    formationProbe,
     blockedTarget.x,
     blockedTarget.y,
   );
@@ -1634,7 +1700,7 @@ export function runCommandExecutionContractTest(): void {
   );
   assertNear(
     reservedTarget.z,
-    world.getGroundZ(reservedTarget.x, reservedTarget.y),
+    world.getTerrainBedZ(reservedTarget.x, reservedTarget.y),
     'formation target inside a build reservation should use terrain height',
   );
 
@@ -1986,6 +2052,8 @@ export function runCommandExecutionContractTest(): void {
   });
   captureWorld.addEntity(capturer);
   captureWorld.addEntity(enemy);
+  keepContractMatchLive(captureWorld, [2]);
+  attachContractPhysicsBodies(captureWorld, [capturer, enemy]);
   assertContract(capturer.unit !== null, 'capture test commander must have a unit component');
   setUnitActions(capturer.unit, [
     {
@@ -2016,6 +2084,7 @@ export function runCommandExecutionContractTest(): void {
   });
   const simWreck = createResurrectableWreck(resurrectWorld, 70, 80, 10);
   resurrectWorld.addEntity(simResurrector);
+  attachContractPhysicsBodies(resurrectWorld, [simResurrector]);
   assertContract(simResurrector.unit !== null, 'sim resurrector must have a unit component');
   setUnitActions(simResurrector.unit, [
     {
