@@ -235,9 +235,12 @@ export function runEntitySlotRegistryContractTest(): void {
     foundRangeBuildingSlot,
     'unit/building radius slot range must expose building slots',
   );
+  // getBuildFraction is coupled, not averaged: both resources fund the same
+  // work step, so the less-complete lane is authoritative. Energy is half paid
+  // and metal is fully paid, so the shell reads 0.5.
   assertContract(
-    Math.abs(buildingViews.buildProgress[buildingSlot] - 0.75) < 1e-9,
-    'building build progress must mirror paid resource fraction',
+    Math.abs(buildingViews.buildProgress[buildingSlot] - 0.5) < 1e-9,
+    'building build progress must mirror the least-funded paid resource lane',
   );
   assertContract(
     buildingViews.buildPaidEnergy[buildingSlot] === 50 &&

@@ -1,0 +1,311 @@
+Beyond All Reason command inventory vs Budget Annihilation
+Date: 2026-08-11
+
+Scope
+=====
+
+budget_design_philosophy.html is the authority. "BAR Inspiration, Project
+Identity" makes BAR the ergonomics reference and the gameplay fallback, and
+"Commands require real systems" makes an authoritative system the precondition
+for any button, hotkey, cursor, or preview. So this audit answers two
+questions per command, not one:
+
+  1. Does BAR expose it, and on which unitDefs?
+  2. Does OUR equivalent exist end to end -- hotkey, input path, server
+     authorization, sim execution, presentation -- for every host that owns
+     the capability?
+
+A command we expose without a system behind it is dead UI and must go. A
+system we own without a command is unreachable functionality and must gain
+one. Both are defects; this document lists what was found of each.
+
+Sources: ../Beyond-All-Reason luaui/Widgets/gui_ordermenu.lua (commandInfo +
+hiddenCommands), language/en/interface.json ui.orderMenu.*, the CMD./CMD_
+constants actually referenced by BAR's Lua, and the units/ unitDef flags
+(onoffable, removestop, removewait, cancapture, cancloak, canmanualfire,
+canattackground, hightrajectory, transportcapacity, builddistance,
+workertime).
+
+
+1. The BAR player-facing order inventory, by class
+=================================================
+
+This is the parity inventory: player-facing order descriptions, not every
+internal engine command ID. BAR's own gui_ordermenu.lua hides LOAD_ONTO,
+SELFD, GATHERWAIT, SQUADWAIT, DEATHWAIT, TIMEWAIT, AUTOREPAIRLEVEL, raw move
+(39812), and set-unit-target-no-ground (34922) from the order menu, so those
+are hotkey-or-internal in BAR too.
+
+1a. Movement and queues
+-----------------------
+  move            CMD.MOVE            every mobile unit
+  stop            CMD.STOP            every mobile unit; static hosts unless
+                                      customParams.removestop
+  patrol          CMD.PATROL          every mobile unit
+  fight           CMD.FIGHT           every mobile unit
+  guard           CMD.GUARD           every mobile unit
+  wait            CMD.WAIT            hosts with a queue, unless
+                                      customParams.removewait
+  repeat          CMD.REPEAT   state  queue-owning hosts
+  movestate       CMD.MOVE_STATE state mobile units (hidden on bombers)
+  insert/remove   CMD.INSERT/REMOVE   queue editing modifiers, not buttons
+
+1b. Combat
+----------
+  attack          CMD.ATTACK          unit-or-map; map form suppressed where
+                                      weapons set canattackground=false
+  areaattack      CMD.AREA_ATTACK     customParams.canareaattack unitDefs only
+  firestate       CMD.FIRE_STATE state armed hosts
+  trajectory      CMD.TRAJECTORY state hightrajectory-capable artillery
+  settarget       CMD_UNIT_SET_TARGET armed hosts
+  canceltarget    CMD_UNIT_CANCEL_TARGET   armed hosts with a live lock
+  (set target no ground)               order-menu-hidden variant
+  manualfire      CMD.DGUN            canmanualfire (commander D-Gun)
+  manuallaunch    CMD_MANUAL_LAUNCH   authored launcher weapons
+  stockpile       CMD.STOCKPILE       weapons with stockpile=true
+
+1c. Builders
+------------
+  build           negative cmd ids    buildoptions roster per builder
+  repair          CMD.REPAIR          builders
+  reclaim         CMD.RECLAIM         builders
+  resurrect       CMD.RESURRECT       canresurrect builders
+  capture         CMD.CAPTURE         cancapture builders
+  restore         CMD.RESTORE         builders, only when map damage is on
+  areamex         CMD_AREA_MEX        builders that can build an extractor
+  upgrademex                          builders that can build the T2 extractor
+  priority        CMD_PRIORITY  state builders/labs/nanos
+  morph                               morph-capable unitDefs
+
+1d. Factories
+-------------
+  unit production negative cmd ids    buildoptions roster per factory
+  stopproduction  CMD_STOP_PRODUCTION "Clear Queue" (queue + quotas)
+  factoryqueuemode CMD_QUOTA_BUILD_TOGGLE  Queue vs Quota mode
+  factoryguard    CMD_FACTORY_GUARD state builder-producing factories
+  repeat          CMD.REPEAT    state
+  aplandat/idlemode CMD_LAND_AT  state air plants / aircraft
+  priority        CMD_PRIORITY  state
+  rally + output orders               produced-unit command queue
+
+1e. Transports and host state
+-----------------------------
+  loadunits       CMD.LOAD_UNITS      transportcapacity > 0
+  unloadunits     CMD.UNLOAD_UNITS    transports carrying cargo
+  onoff           CMD.ONOFF     state onoffable unitDefs
+  wantcloak       CMD_WANT_CLOAK state cancloak unitDefs
+  selfd           CMD.SELFD           everything (order-menu-hidden in BAR)
+
+1f. Conditional custom (BAR gadget/widget commands)
+---------------------------------------------------
+  csspawning      CMD_CARRIER_SPAWN_ONOFF  drone carriers
+  sellunit                            unit-selling economy
+  quicksharetotarget                  ally unit sharing
+  blueprint_place / blueprint_create  saved build blueprints
+  hound_weapon_toggle                 per-unit weapon select
+
+
+2. Which BAR flags the mapped analogues actually carry
+======================================================
+
+Read from the BAR unitDefs, not from memory:
+
+  armcom   builddistance=145 workertime=300 cancapture cancloak canmanualfire
+  armca    builddistance=136 workertime=60
+  armfig   canattackground=false
+  armart   hightrajectory=1
+  armatlas transportcapacity=1
+  armap    workertime=150, no removestop, no removewait
+  armsolar onoffable=true,  removestop, removewait
+  armwin   (no onoffable),  removestop, removewait
+  armmex   onoffable=true,  removestop, removewait
+  armamex  onoffable=true,  removewait     <- keeps Stop
+  armmakr  (no onoffable),  removestop, removewait
+  armrad   onoffable=false, removestop, removewait
+  armsonar onoffable=false, removestop, removewait
+  armllt / armbeamer / armtl   removewait  <- keep Stop
+  armrl    removewait, canattackground=false
+
+Notably absent: armcom has no canresurrect and no onoffable; armca has no
+capture/resurrect/cloak; no mapped analogue carries stockpile.
+
+
+3. Our per-blueprint command surface
+====================================
+
+Measured, not asserted: each row is buildSelectionInfo() over a one-entity
+selection of that blueprint, so it is exactly what the panel would offer.
+
+  1 Move/Fight/Patrol/Stop  10 Set/Clear Target      19 Builder Priority
+  2 Wait + queue edit       11 Manual Launch         20 Transport Load/Unload
+  3 Guard                   12 D-Gun                 21 Production menu
+  4 Attack (unit)           13 Cloak                 22 Carrier Spawn
+  5 Attack Ground           14 Build menu            23 ON/OFF
+  6 Area Attack             15 Repair/Reclaim        24 Stop (static)
+  7 Fire State              16 Capture               25 Self-Destruct
+  8 Move State              17 Resurrect
+  9 Trajectory              18 Area Mex / Mex upgrade
+
+blueprint                 loco               1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+unitJackal                wheels             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitLynx                  treads             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitBadger                treads             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitMongoose              wheels             Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitMammoth               treads             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitTick                  legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitTarantula             legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitLoris                 treads             Y  Y  Y  .  .  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitDaddy                 legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitWidow                 legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitFormik                legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitHippo                 amphibious-treads  Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitCommander             standing           Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  Y  Y  Y  Y  Y  .  Y  Y  .  .  .  .  .  Y
+unitBee                   hover              Y  Y  Y  .  .  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitDragonfly             hover              Y  Y  Y  Y  Y  .  Y  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitEagle                 flying             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitConstructionDrone     hover              Y  Y  Y  .  .  .  .  Y  .  .  .  .  .  Y  Y  .  .  Y  Y  .  .  .  .  .  Y
+unitAlbatros              flying             Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitTransport             hover              Y  Y  Y  .  .  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  Y  .  .  .  .  Y
+unitQueenBee              hover              Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  Y  .  .  .  Y
+unitQueenTick             legs               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  Y  .  .  .  Y
+unitSeaTurtle             flippers           Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitOrca                  submarine          Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitDuck                  dive               Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitConstructionSubmarine submarine          Y  Y  Y  .  .  .  .  Y  .  .  .  .  .  Y  Y  .  .  Y  Y  .  .  .  .  .  Y
+unitHuman                 standing           Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+unitRex                   standing           Y  Y  Y  Y  Y  .  Y  Y  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y
+buildingSolar             active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+buildingWind              active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+buildingExtractor         active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+buildingExtractorT2       active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  Y  Y
+buildingResourceConverter active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+buildingRadar             active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+buildingSonar             active-state       .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  .  Y
+towerFabricator           static             .  Y  .  .  .  .  .  Y  .  .  .  .  .  .  .  .  .  .  Y  .  Y  .  .  .  Y
+towerCannon               static             .  .  .  Y  Y  .  Y  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  Y
+towerBeamMega             static             .  .  .  Y  Y  .  Y  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  Y
+towerAntiAir              static             .  .  .  Y  Y  .  Y  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  Y
+towerTorpedo              static             .  .  .  Y  Y  .  Y  .  .  Y  .  .  .  .  .  .  .  .  .  .  .  .  .  Y  Y
+
+
+4. Defects found and fixed
+==========================
+
+D1. Fourteen contract tests were never invoked.
+    src/game/sim-wasm/init.ts registered 81 boot contract tests; 14 more
+    existed on disk and ran nowhere, including the three that guard this
+    exact surface: SelectionPanelCommandSurface, ServerCommandAuthorizer,
+    and InputSelectedCommands. All 14 are wired in now, and a script check
+    confirms no exported run*ContractTest is left unregistered.
+
+D2. The WORLD group's TERRAIN and LIQUID toggles did nothing.
+    Gameplay-setting commands carry no per-entity ownership, so
+    authorizeGameServerGameplayCommand deliberately falls through to
+    `default: return null` for them, which makes GameServer.receiveCommand's
+    host-only server-control switch their only route on the authoritative
+    architecture. setTerrainSurfaceMode and setLiquidSurfaceMode were the
+    only two members of LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES missing from
+    that switch, so both were dropped for every non-host-admin authority --
+    which includes ordinary local play. Fixed, plus a contract assertion
+    that the switch covers the whole set so the two registries cannot drift.
+
+D3. Three buildings owned a live mechanic with no command.
+    ON/OFF was gated on BAR's onoffable unitDef flag. That flag is a strict
+    subset of our active-state mechanic: armwin has no onoffable and
+    armrad/armsonar set it false, yet buildingWind, buildingRadar, and
+    buildingSonar all carry the authoritative production + 0.1x-damage
+    fortify tradeoff here. Under the default bar-grid preset the player
+    could not reach it. Now capability-gated per the philosophy's building
+    panel vocabulary ("ON/OFF toggle (buildings with an active-state
+    capability)"), and the BAR-narrowed path is deleted.
+    This is a deliberate divergence from BAR's unitDefs, chosen because the
+    local system is real and the philosophy names wind turbines explicitly.
+
+D4. The command-execution gate was dead from its Attack case onward.
+    runCommandExecutionContractTest threw at the Attack live-center
+    assertion, so roughly its last third -- capture, resurrect, transport,
+    formation, scheduled settings -- had not run. Three fixture faults, all
+    of which no-op silently rather than failing loudly:
+      - updateUnits skips body-less entities, so any case driving unit
+        actions through Simulation.update needs real physics bodies;
+      - a bare Simulation resolves the commander win condition on tick one
+        and zeroes every entity belonging to a commander-less side, so the
+        capture target was dead before capture could accrue;
+      - a bare WorldState has no generated heightmap, so the terrain module
+        answers WATER_LEVEL everywhere and a land-only waypoint filter
+        refuses every point.
+    The whole file passes now, including the Attack live-center refresh.
+
+D5. Two stale assertions were masking working behavior.
+    The factory quota-bypass check still regexed `event.altKey` after the
+    handler moved to factoryProductionClickModeFromEvent; it now asserts
+    Alt-bypasses/Meta-does-not at the helper itself. The entity-slab build
+    progress check still expected the averaged fill fraction after
+    getBuildFraction became coupled (min across resource lanes, commit
+    592ea19e), and the EntityCacheManager unit stub predated
+    locomotion.motionControl and crashed the whole test.
+
+
+5. Deliberate differences from BAR, with reasons
+================================================
+
+D-a. No Restore. Terrain is immutable here, so per "Commands require real
+     systems" the BAR grid's M binding stays unbound rather than promising
+     terrain deformation. Listed in the philosophy as the worked example.
+
+D-b. No Stockpile. No authored weapon in the roster stockpiles, and no
+     mapped BAR analogue sets stockpile=true.
+
+D-c. No Manual Launch host yet. The command, hotkey, colour token, and
+     panel button exist and are capability-gated to the empty set, so
+     nothing renders. armcom's canmanualfire is surfaced as D-Gun instead.
+
+D-d. No sell, unit sharing, or blueprint place/create. These are BAR gadget
+     commands with no local economy or system behind them.
+
+D-e. Factory Stop is named "Clear Queue". BAR's armap sets neither
+     removestop nor removewait, so BAR shows CMD.STOP and its custom
+     stopproduction separately. We expose stopproduction (queue + quotas)
+     and Wait, which covers the same authoritative behaviour; a second
+     button doing the same thing would be the panel creep the philosophy
+     retires. Difference is in the label, not in what the player can do.
+
+D-f. ON/OFF is broader than BAR (see D3), and the converter keeps it even
+     though armmakr has no onoffable.
+
+D-g. Commander Resurrect exists in the sim (entityCanIssueResurrectCommand
+     accepts any commander) and is offered under prototype presets, but BAR
+     presets hide it because armcom has no canresurrect. The wreck
+     resurrection system behind it is real, so this is an abstraction above
+     BAR rather than dead UI.
+
+D-h. Under prototype presets only, a separate Attack Ground button is shown
+     for every armed host; air-only weapons (unitEagle, towerAntiAir) then
+     have the command filtered at input, authorization, and execution. BAR
+     presets hide the button entirely and use BAR's unit-or-map Attack, so
+     the BAR-faithful path has no dead affordance.
+
+
+6. Pre-existing failures outside the command surface
+====================================================
+
+These fail at HEAD and are unrelated to commands; recorded so the next pass
+does not rediscover them:
+
+  runClientSnapshotApplierContractTest       prediction render-row dirtying
+  runShieldFarLodRenderPacketContractTest    shield packet emission LOD
+  runSnapshotVisibilityContractTest          above-water sight reveal
+  runUnitLocomotionContractTest              shared surface-probe lattice
+  runUnitWaterLiftLocomotionContractTest     Sea Turtle water-to-air actuator
+  runClientRenderEntityStateSlabContractTest Loris shield-panel mount
+  runClientProjectileRenderStateSlabContractTest  projectile spatial slot
+  runEntityLodGeometry3DContractTest         Commander High/Medium kit
+  runSurfaceChart3DContractTest              chart albedo + lifecycle alpha
+  runSupportSurfaceContractTest              flippers spawn support
+  runFabricatorProductionRingContractTest    factory shell spawn support
+  runDemoMetalExtractorSpawnContractTest     Spikey Lake repeat lines
+
+Note that several sim contract tests share module-level singletons (the
+entity slot registry, the spatial grid, and the terrain module), so they are
+order-dependent: run the suite in boot order, not a filtered subset, before
+believing a pass or a failure.
