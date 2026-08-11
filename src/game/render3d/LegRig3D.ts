@@ -206,17 +206,24 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  /** Full ABSOLUTE world orientation of the foot hemisphere, captured from the
-   * ground at touchdown: local +Y aligns with the support normal and the
-   * heading freezes at the yaw the leg had on contact. It is world-space in
-   * every axis, so chassis yaw never moves it, and it persists through the
-   * swing — a lifted foot holds the last ground it touched until it lands. */
+  /** Rendered world orientation of the foot hemisphere. Rebuilt every frame as
+   * the LIVE leg heading laid into the RETAINED contact plane below, so the
+   * foot turns with its leg while its sole stays on the plane it landed on. */
   footQuaternionX: number;
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
+  /** The plane the sole lies in, as its ABSOLUTE world normal, captured from
+   * the ground at touchdown and held until the foot lands somewhere else —
+   * through the swing and through any amount of chassis rotation. This is the
+   * only latched part of the foot pose: the foot may rotate freely WITHIN the
+   * plane, it may not leave it. Three coordinates (Y up). Defaults to world
+   * up, which is what a foot that has never touched ground stands on. */
+  footContactNormalX: number;
+  footContactNormalY: number;
+  footContactNormalZ: number;
   /** False only before a foot's first-ever touchdown (or after a teleport
-   * reset), when there is no ground angle to hold yet. */
+   * reset), when there is no contact plane to hold yet. */
   footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
@@ -309,6 +316,9 @@ export type LegStateSnapshot = ReadonlyArray<{
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
+  footContactNormalX: number;
+  footContactNormalY: number;
+  footContactNormalZ: number;
   footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
@@ -334,6 +344,9 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       footQuaternionY: leg.footQuaternionY,
       footQuaternionZ: leg.footQuaternionZ,
       footQuaternionW: leg.footQuaternionW,
+      footContactNormalX: leg.footContactNormalX,
+      footContactNormalY: leg.footContactNormalY,
+      footContactNormalZ: leg.footContactNormalZ,
       footContactOrientationCaptured: leg.footContactOrientationCaptured,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
@@ -367,6 +380,9 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.footQuaternionY = src.footQuaternionY;
     dst.footQuaternionZ = src.footQuaternionZ;
     dst.footQuaternionW = src.footQuaternionW;
+    dst.footContactNormalX = src.footContactNormalX;
+    dst.footContactNormalY = src.footContactNormalY;
+    dst.footContactNormalZ = src.footContactNormalZ;
     dst.footContactOrientationCaptured = src.footContactOrientationCaptured;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
@@ -443,6 +459,9 @@ export function buildLegs(
       footQuaternionY: 0,
       footQuaternionZ: 0,
       footQuaternionW: 1,
+      footContactNormalX: 0,
+      footContactNormalY: 1,
+      footContactNormalZ: 0,
       footContactOrientationCaptured: false,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
@@ -1061,7 +1080,10 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.lerpProgress = 0;
       leg.snapRayOriginInitialized = false;
       // A teleport or recycled slot resets contact history rather than
-      // carrying a world angle captured at the old location.
+      // carrying a contact plane captured at the old location.
+      leg.footContactNormalX = 0;
+      leg.footContactNormalY = 1;
+      leg.footContactNormalZ = 0;
       leg.footContactOrientationCaptured = false;
     }
   }
@@ -1846,19 +1868,19 @@ export function resolveLegFootSurfaceQuaternion(
   );
 }
 
-/** Apply the foot's contact-orientation rule without allocating per frame.
+/** Apply the foot's contact-plane rule without allocating per frame.
  *
- * A foot's orientation is a WORLD fact captured from the ground it touched,
- * and it is absolute in all three axes: the sole's tilt comes from the support
- * normal and its heading is frozen at the yaw it had on touchdown. Nothing the
- * chassis does afterwards may move it — a host that spins in place twists its
- * legs against stationary feet rather than dragging them around.
+ * The retained fact is the PLANE the sole lies in — the absolute world normal
+ * of the ground the foot last touched — and nothing else. The foot keeps that
+ * plane through the swing and through any amount of chassis rotation; it may
+ * rise and fall freely, and it may rotate freely WITHIN the plane, but it may
+ * never leave it. So the pose is rebuilt every frame as the LIVE leg heading
+ * laid into the retained plane: `resolveLegFootSurfaceQuaternion` projects the
+ * heading tangent to the normal, which turns the foot without tilting it.
  *
- * The capture survives lift-off: a swinging foot carries the angle of the
- * ground it LAST touched through the air, and only replaces it when it lands
- * somewhere new (advanceGroundedLegSlide drops the capture on touchdown).
- * The yaw-only fallback applies solely to a foot that has never touched
- * ground at all — a leg initialized airborne — which has nothing to hold. */
+ * Only a real touchdown may replace the plane. The default normal is world up,
+ * so a foot that has never touched ground reduces to the ordinary flat,
+ * leg-following pose through the same one code path. */
 export function resolveContactLockedFootOrientation(
   leg: Pick<
     LegInstance,
@@ -1867,6 +1889,9 @@ export function resolveContactLockedFootOrientation(
     | 'footQuaternionY'
     | 'footQuaternionZ'
     | 'footQuaternionW'
+    | 'footContactNormalX'
+    | 'footContactNormalY'
+    | 'footContactNormalZ'
     | 'footContactOrientationCaptured'
   >,
   candidateFootYaw: number,
@@ -1875,28 +1900,22 @@ export function resolveContactLockedFootOrientation(
   surfaceNormalZ: number,
 ): void {
   if (leg.contactState === 'planted' && !leg.footContactOrientationCaptured) {
-    resolveLegFootSurfaceQuaternion(
-      candidateFootYaw,
-      surfaceNormalX,
-      surfaceNormalY,
-      surfaceNormalZ,
-      _footTouchdownQuaternion,
-    );
-    leg.footQuaternionX = _footTouchdownQuaternion.x;
-    leg.footQuaternionY = _footTouchdownQuaternion.y;
-    leg.footQuaternionZ = _footTouchdownQuaternion.z;
-    leg.footQuaternionW = _footTouchdownQuaternion.w;
+    leg.footContactNormalX = surfaceNormalX;
+    leg.footContactNormalY = surfaceNormalY;
+    leg.footContactNormalZ = surfaceNormalZ;
     leg.footContactOrientationCaptured = true;
-    return;
   }
-  // Hold the captured world orientation — planted, stepping, or airborne.
-  if (leg.footContactOrientationCaptured) return;
-
-  const halfYaw = candidateFootYaw * 0.5;
-  leg.footQuaternionX = 0;
-  leg.footQuaternionY = Math.sin(halfYaw);
-  leg.footQuaternionZ = 0;
-  leg.footQuaternionW = Math.cos(halfYaw);
+  resolveLegFootSurfaceQuaternion(
+    candidateFootYaw,
+    leg.footContactNormalX,
+    leg.footContactNormalY,
+    leg.footContactNormalZ,
+    _footTouchdownQuaternion,
+  );
+  leg.footQuaternionX = _footTouchdownQuaternion.x;
+  leg.footQuaternionY = _footTouchdownQuaternion.y;
+  leg.footQuaternionZ = _footTouchdownQuaternion.z;
+  leg.footQuaternionW = _footTouchdownQuaternion.w;
 }
 
 function initializeLegOnSnapSphere(

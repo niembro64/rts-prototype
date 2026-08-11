@@ -126,18 +126,18 @@ export type StandingLeg = {
    *  pose, so same-side counter-swing cannot acquire a second gait clock. */
   footLocalX: number;
   footLocalZ: number;
-  /** A standing shoe takes the contacted support's complete world orientation
-   * once at touchdown and holds it — absolute in all three axes — until it
-   * lands somewhere new. The local quaternion is rebuilt from this retained
-   * world pose every frame against the shoe's real parent, so neither hull yaw
-   * nor the hips' independent lower-body yaw can drag the sole off the slope
-   * it landed on, and a lifted shoe carries that same angle through the air. */
+  /** The plane the sole lies in, as its ABSOLUTE world normal, captured from
+   * the support at touchdown and held until the shoe lands somewhere new —
+   * through the swing, through hull aim, and through the hips' independent
+   * lower-body yaw. It is the ONLY latched part of the pose: the shoe still
+   * faces wherever the lower body faces and still rises and falls with the
+   * gait, but it always lies in this plane. World up until the first
+   * footfall. */
   footTouchingSurface: boolean;
   footOrientationCaptured: boolean;
-  footWorldQuaternionX: number;
-  footWorldQuaternionY: number;
-  footWorldQuaternionZ: number;
-  footWorldQuaternionW: number;
+  footContactNormalX: number;
+  footContactNormalY: number;
+  footContactNormalZ: number;
 };
 
 export type StandingArm = {
@@ -740,31 +740,29 @@ function positiveUnitPhase(phase: number): number {
   return ((phase % 1) + 1) % 1;
 }
 
-/** Resolve one standing shoe's local pose from its touchdown-latched world
- * orientation.
+/** Resolve one standing shoe's local pose against its touchdown-latched
+ * contact plane.
  *
- * The retained pose is ABSOLUTE world, in all three axes: the sole's tilt
- * comes from the support normal and its heading freezes at the yaw the leg
- * had on contact. Only the touching rising edge — an actual new footfall —
- * may replace it. Every other frame counter-rotates the shoe's parent out of
- * that world pose, so neither hull yaw nor the hips' independent lower-body
- * yaw moves the sole.
+ * The retained fact is the PLANE the sole lies in — the absolute world normal
+ * of the support the shoe last touched — and nothing else. Only the touching
+ * rising edge, an actual new footfall, may replace it. Everything else about
+ * the shoe stays live: it faces wherever the lower body faces, and the gait
+ * still raises and lowers it. It simply never leaves that plane.
  *
- * A lifted shoe holds the same angle rather than levelling out: it carries the
- * ground it LAST touched through the air and only takes a new one when it
- * lands. `parentWorldQuaternion` must be the shoe's true parent world
- * orientation (hull ⊗ hips), not the hull alone — the hips yaw inside the hull,
- * and compensating for only part of the chain leaves the remainder visible as
- * the foot swinging with the body. */
+ * So the world pose is rebuilt every frame as the live heading laid into the
+ * retained plane, then counter-rotated into the shoe's parent frame.
+ * `parentWorldQuaternion` must be the shoe's TRUE parent world orientation
+ * (hull ⊗ hips), not the hull alone — the hips yaw inside the hull, and
+ * compensating for only part of that chain leaves the remainder visible as the
+ * sole tipping off its plane whenever the lower body turns. */
 export function resolveStandingFootContactOrientation(
   foot: Pick<
     StandingLeg,
     | 'footTouchingSurface'
     | 'footOrientationCaptured'
-    | 'footWorldQuaternionX'
-    | 'footWorldQuaternionY'
-    | 'footWorldQuaternionZ'
-    | 'footWorldQuaternionW'
+    | 'footContactNormalX'
+    | 'footContactNormalY'
+    | 'footContactNormalZ'
   >,
   touchingSurface: boolean,
   parentWorldQuaternion: Readonly<{ x: number; y: number; z: number; w: number }>,
@@ -779,31 +777,19 @@ export function resolveStandingFootContactOrientation(
   foot.footTouchingSurface = touchingSurface;
 
   if (newFootfall) {
-    resolveFootSurfaceQuaternion(
-      candidateWorldYaw,
-      surfaceNormalX,
-      surfaceNormalY,
-      surfaceNormalZ,
-      _standingFootWorldQuaternion,
-    );
-    foot.footWorldQuaternionX = _standingFootWorldQuaternion.x;
-    foot.footWorldQuaternionY = _standingFootWorldQuaternion.y;
-    foot.footWorldQuaternionZ = _standingFootWorldQuaternion.z;
-    foot.footWorldQuaternionW = _standingFootWorldQuaternion.w;
+    foot.footContactNormalX = surfaceNormalX;
+    foot.footContactNormalY = surfaceNormalY;
+    foot.footContactNormalZ = surfaceNormalZ;
     foot.footOrientationCaptured = true;
-  } else if (foot.footOrientationCaptured) {
-    _standingFootWorldQuaternion.set(
-      foot.footWorldQuaternionX,
-      foot.footWorldQuaternionY,
-      foot.footWorldQuaternionZ,
-      foot.footWorldQuaternionW,
-    );
-  } else {
-    // Never touched ground — a rig posed before its first footfall has no
-    // angle to hold, so the shoe simply sits level in its parent frame.
-    outLocalQuaternion.identity();
-    return;
   }
+
+  resolveFootSurfaceQuaternion(
+    candidateWorldYaw,
+    foot.footContactNormalX,
+    foot.footContactNormalY,
+    foot.footContactNormalZ,
+    _standingFootWorldQuaternion,
+  );
 
   _standingFootInverseParentQuaternion
     .set(
@@ -1093,10 +1079,9 @@ export function buildStandingRig(
       footLocalZ: hipZ,
       footTouchingSurface: false,
       footOrientationCaptured: false,
-      footWorldQuaternionX: 0,
-      footWorldQuaternionY: 0,
-      footWorldQuaternionZ: 0,
-      footWorldQuaternionW: 1,
+      footContactNormalX: 0,
+      footContactNormalY: 1,
+      footContactNormalZ: 0,
     };
     legs.push(leg);
   }

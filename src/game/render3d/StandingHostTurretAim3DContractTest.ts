@@ -393,17 +393,27 @@ function assertStandingFootContactSlopeLatch(): void {
   const state = {
     footTouchingSurface: false,
     footOrientationCaptured: false,
-    footWorldQuaternionX: 0,
-    footWorldQuaternionY: 0,
-    footWorldQuaternionZ: 0,
-    footWorldQuaternionW: 1,
+    footContactNormalX: 0,
+    footContactNormalY: 1,
+    footContactNormalZ: 0,
   };
-  const parentAtTouchdown = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 1, 0),
-    0.35,
-  );
-  const touchdownNormal = new THREE.Vector3(0.24, 0.92, -0.31).normalize();
   const local = new THREE.Quaternion();
+  const yawQuaternion = (angle: number): THREE.Quaternion =>
+    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+  /** The shoe's real parent: the hull composed with the hips' own yaw. */
+  const parentFrame = (hullYaw: number, hipsYaw: number): THREE.Quaternion =>
+    yawQuaternion(hullYaw).multiply(yawQuaternion(hipsYaw));
+  const soleNormal = (parent: THREE.Quaternion): THREE.Vector3 =>
+    new THREE.Vector3(0, 1, 0).applyQuaternion(parent.clone().multiply(local));
+  const soleHeading = (parent: THREE.Quaternion): THREE.Vector3 =>
+    new THREE.Vector3(1, 0, 0).applyQuaternion(parent.clone().multiply(local));
+  const headingInPlane = (yaw: number, normal: THREE.Vector3): THREE.Vector3 =>
+    new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
+      .projectOnPlane(normal)
+      .normalize();
+
+  const parentAtTouchdown = parentFrame(0.35, -0.6);
+  const touchdownNormal = new THREE.Vector3(0.24, 0.92, -0.31).normalize();
   resolveStandingFootContactOrientation(
     state,
     true,
@@ -414,92 +424,89 @@ function assertStandingFootContactSlopeLatch(): void {
     touchdownNormal.z,
     local,
   );
-  const touchdownWorld = parentAtTouchdown.clone().multiply(local);
   assertContract(
     state.footTouchingSurface &&
       state.footOrientationCaptured &&
-      new THREE.Vector3(0, 1, 0)
-        .applyQuaternion(touchdownWorld)
-        .dot(touchdownNormal) > 1 - 1e-9,
-    'a standing shoe captures the contacted surface normal at touchdown',
+      soleNormal(parentAtTouchdown).dot(touchdownNormal) > 1 - 1e-9,
+    'a standing shoe captures the contacted plane at touchdown',
   );
 
-  const retainedWorld = touchdownWorld.clone();
-  const turnedParent = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 1, 0),
-    -0.8,
-  );
+  // The hull spins AND the hips yaw independently underneath it. The sole
+  // stays on its world plane; the shoe turns within that plane to keep facing
+  // the way the lower body faces.
+  const turnedParent = parentFrame(-2.0, 1.3);
   resolveStandingFootContactOrientation(
     state,
     true,
     turnedParent,
-    -0.8,
+    -0.7,
     0,
     1,
     0,
     local,
   );
-  const heldWorld = turnedParent.clone().multiply(local);
   assertContract(
-    retainedWorld.angleTo(heldWorld) < 1e-9,
-    'a touching standing shoe retains its complete touchdown orientation while its parent turns',
+    soleNormal(turnedParent).dot(touchdownNormal) > 1 - 1e-9,
+    'a touching shoe holds its plane through hull and hips yaw',
+  );
+  assertContract(
+    soleHeading(turnedParent).dot(headingInPlane(-0.7, touchdownNormal)) > 1 - 1e-9,
+    'a touching shoe rotates within that plane to follow the lower body',
   );
 
-  // Lift-off keeps the angle. A shoe in the air carries the ground it last
-  // touched, and keeps carrying it while its parent goes on turning.
+  // Lift-off releases neither. The gait may raise the shoe; the plane stays.
   resolveStandingFootContactOrientation(
     state,
     false,
     turnedParent,
-    -0.8,
+    -0.7,
     0,
     1,
     0,
     local,
   );
-  const liftedWorld = turnedParent.clone().multiply(local);
   assertContract(
     !state.footTouchingSurface &&
       state.footOrientationCaptured &&
-      retainedWorld.angleTo(liftedWorld) < 1e-9,
-    'a lifted standing shoe keeps the absolute angle of the ground it last touched',
+      soleNormal(turnedParent).dot(touchdownNormal) > 1 - 1e-9,
+    'a lifted standing shoe keeps the plane of the ground it last touched',
   );
 
-  const furtherTurnedParent = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 1, 0),
-    2.1,
-  );
+  const furtherTurnedParent = parentFrame(2.1, 0.4);
   resolveStandingFootContactOrientation(
     state,
     false,
     furtherTurnedParent,
-    2.1,
+    2.5,
     0,
     1,
     0,
     local,
   );
   assertContract(
-    retainedWorld.angleTo(furtherTurnedParent.clone().multiply(local)) < 1e-9,
-    'an airborne standing shoe does not follow its parent turning underneath it',
+    soleNormal(furtherTurnedParent).dot(touchdownNormal) > 1 - 1e-9,
+    'an airborne shoe does not tip off its plane as its parent turns underneath',
+  );
+  assertContract(
+    soleHeading(furtherTurnedParent).dot(headingInPlane(2.5, touchdownNormal)) > 1 - 1e-9,
+    'an airborne shoe still turns within that plane to follow the lower body',
   );
 
   const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
   resolveStandingFootContactOrientation(
     state,
     true,
-    turnedParent,
-    -0.8,
+    furtherTurnedParent,
+    2.5,
     nextNormal.x,
     nextNormal.y,
     nextNormal.z,
     local,
   );
-  const nextWorld = turnedParent.clone().multiply(local);
   assertContract(
-    new THREE.Vector3(0, 1, 0).applyQuaternion(nextWorld).dot(nextNormal) > 1 - 1e-9 &&
-      retainedWorld.angleTo(nextWorld) > 0.1,
-    'the next standing-shoe touchdown captures the new support slope',
+    soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9 &&
+      nextNormal.dot(touchdownNormal) < 1 - 1e-3,
+    'the next standing-shoe footfall captures the new plane',
   );
 }
 
@@ -906,21 +913,19 @@ function assertTorsoAimSurvivesLodRebuild(
   mesh.upperBodyWorldYaw = 1.17;
   mesh.upperBodyYawVelocity = 0.29;
   mesh.gaitPhase = 0.37;
-  const expectedFootWorldQuaternions = mesh.legs.map((leg, index) => {
-    const world = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(0.1 + index * 0.07, 0.2 - index * 0.04, -0.08),
-    );
+  const expectedFootContactPlanes = mesh.legs.map((leg, index) => {
+    const normal = new THREE.Vector3(0.18 - index * 0.09, 0.94, 0.27 + index * 0.05)
+      .normalize();
     const local = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(-0.05, 0.15 + index * 0.03, 0.09),
     );
     leg.footTouchingSurface = true;
     leg.footOrientationCaptured = true;
-    leg.footWorldQuaternionX = world.x;
-    leg.footWorldQuaternionY = world.y;
-    leg.footWorldQuaternionZ = world.z;
-    leg.footWorldQuaternionW = world.w;
+    leg.footContactNormalX = normal.x;
+    leg.footContactNormalY = normal.y;
+    leg.footContactNormalZ = normal.z;
     leg.foot.quaternion.copy(local);
-    return { world, local };
+    return { normal, local };
   });
   const snapshot = captureLocomotionState(mesh);
   assertContract(snapshot?.type === 'standing', `${label} captures standing locomotion state`);
@@ -932,10 +937,9 @@ function assertTorsoAimSurvivesLodRebuild(
   for (const leg of mesh.legs) {
     leg.footTouchingSurface = false;
     leg.footOrientationCaptured = false;
-    leg.footWorldQuaternionX = 0;
-    leg.footWorldQuaternionY = 0;
-    leg.footWorldQuaternionZ = 0;
-    leg.footWorldQuaternionW = 1;
+    leg.footContactNormalX = 0;
+    leg.footContactNormalY = 1;
+    leg.footContactNormalZ = 0;
     leg.foot.quaternion.identity();
   }
   applyLocomotionState(mesh, snapshot);
@@ -953,26 +957,24 @@ function assertTorsoAimSurvivesLodRebuild(
   assertNear(mesh.gaitPhase, 0.37, `${label} preserves its coupled gait phase across LOD rebuild`);
   for (let i = 0; i < mesh.legs.length; i++) {
     const leg = mesh.legs[i];
-    const expected = expectedFootWorldQuaternions[i];
-    const restoredWorld = new THREE.Quaternion(
-      leg.footWorldQuaternionX,
-      leg.footWorldQuaternionY,
-      leg.footWorldQuaternionZ,
-      leg.footWorldQuaternionW,
+    const expected = expectedFootContactPlanes[i];
+    const restoredNormal = new THREE.Vector3(
+      leg.footContactNormalX,
+      leg.footContactNormalY,
+      leg.footContactNormalZ,
     );
     assertContract(
       leg.footTouchingSurface &&
         leg.footOrientationCaptured &&
-        restoredWorld.angleTo(expected.world) < 1e-9 &&
+        restoredNormal.dot(expected.normal) > 1 - 1e-9 &&
         leg.foot.quaternion.angleTo(expected.local) < 1e-9,
-      `${label} foot ${i} preserves its touchdown orientation across LOD rebuild`,
+      `${label} foot ${i} preserves its contact plane across LOD rebuild`,
     );
     leg.footTouchingSurface = false;
     leg.footOrientationCaptured = false;
-    leg.footWorldQuaternionX = 0;
-    leg.footWorldQuaternionY = 0;
-    leg.footWorldQuaternionZ = 0;
-    leg.footWorldQuaternionW = 1;
+    leg.footContactNormalX = 0;
+    leg.footContactNormalY = 1;
+    leg.footContactNormalZ = 0;
   }
 
   mesh.upperBodyYaw = 0;
