@@ -7,6 +7,10 @@ export type RayConfigRangeCylinder = {
   centerZ: number;
   radius: number;
   rangeVolume: TurretRangeVolume;
+  /** Every ray effect is also confined to this source-centered sphere.
+   *  This makes authored vertically-unbounded targeting volumes safe for
+   *  collision work while preserving their horizontal/top restrictions. */
+  hardRadius: number;
 };
 
 const LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL = 0;
@@ -50,7 +54,8 @@ export function distanceToRayConfigRangeCylinder(
   dirZ: number,
   cylinder: RayConfigRangeCylinder,
 ): number | null {
-  const distance = requireLineShotWasm().lineShotDistanceToRangeVolume(
+  const sim = requireLineShotWasm();
+  const volumeDistance = sim.lineShotDistanceToRangeVolume(
     startX, startY, startZ,
     dirX, dirY, dirZ,
     cylinder.centerX,
@@ -59,5 +64,17 @@ export function distanceToRayConfigRangeCylinder(
     cylinder.radius,
     encodeLineShotRangeVolume(cylinder.rangeVolume),
   );
-  return distance >= 0 ? distance : null;
+  const hardDistance = sim.lineShotDistanceToRangeVolume(
+    startX, startY, startZ,
+    dirX, dirY, dirZ,
+    cylinder.centerX,
+    cylinder.centerY,
+    cylinder.centerZ,
+    cylinder.hardRadius,
+    LINE_SHOT_RANGE_VOLUME_SPHERE,
+  );
+  if (hardDistance < 0) return null;
+  return volumeDistance >= 0
+    ? Math.min(volumeDistance, hardDistance)
+    : hardDistance;
 }

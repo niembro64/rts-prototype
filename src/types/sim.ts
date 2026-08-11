@@ -722,6 +722,34 @@ export type Turret = {
   /** Round-robin pointer across logical emission lanes. Hosts may map these
    * lanes onto any physical presentation they choose. */
   emissionLaneIndex: number;
+  /** One-time deterministic delay applied to the first eligible attack-beam
+   * pulse. This spreads newly-engaged beam batteries across a few fixed ticks;
+   * subsequent pulses retain that phase through their fixed off cooldown. */
+  beamPulseInitialDelayMs: number;
+};
+
+/** Open-loop trajectory captured once when an attack beam fires. Both
+ * endpoints are constant-velocity world-space fits; those kinematic
+ * coefficients remain immutable while the two sample-time fields advance the
+ * coarse collision cadence. Neither turret nor beam reads the live target. */
+export type BeamPulsePlan = {
+  durationMs: number;
+  sourceX: number;
+  sourceY: number;
+  sourceZ: number;
+  sourceVelocityX: number;
+  sourceVelocityY: number;
+  sourceVelocityZ: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  targetVelocityX: number;
+  targetVelocityY: number;
+  targetVelocityZ: number;
+  /** Finite source-turret effect radius used as the hard trace budget. */
+  traceDistance: number;
+  nextCollisionSampleMs: number;
+  lastCollisionSampleMs: number;
 };
 
 // Projectile component. Fully 3D: velocity + prev/start/end points
@@ -729,11 +757,9 @@ export type Turret = {
 // projectile system each tick (ballistic arc); beams and lasers
 // ignore vz and gravity (they're instantaneous line weapons).
 // Beam polylines (start → reflections → end) live in `points`; each
-// point carries its own (vx, vy, vz). The client may extrapolate an
-// unreflected open beam from those velocities, but reflector vertices
-// and vertices downstream of the first reflector are ray/plane trace
-// results, not free particles; without a local retrace they remain
-// constrained to the latest authoritative path.
+// point carries its own (vx, vy, vz) for diagnostics/wire compatibility.
+// Presentation copies each sampled topology atomically because endpoints and
+// reflector vertices are collision constraints rather than free particles.
 export type Projectile = {
   ownerId: PlayerId;
   /** Legacy host shortcut. The full immutable provenance lives in shotSource. */
@@ -775,11 +801,17 @@ export type Projectile = {
    *  the array length and overwrites the per-vertex fields, so the
    *  array reference is stable. */
   points: BeamPoint[] | null;
-  /** False when the path has no physical impact endpoint, such as a
-   *  no-hit range boundary or BEAM_MAX_SEGMENTS ending on a reflector.
-   *  The beam is still rendered, but no endpoint damage sphere applies. */
+  /** False only when the terminal point must not emit endpoint damage, such
+   *  as BEAM_MAX_SEGMENTS ending on a reflector. Body, terrain, and finite
+   *  air-boundary terminations all produce the authored endpoint sphere. */
   endpointDamageable: boolean | null;
   segmentLimitReached: boolean;
+  /** Authoritative committed trajectory for attack-beam pulses. Null for
+   * travelling shots, lasers, and remotely hydrated presentation entities. */
+  beamPulsePlan: BeamPulsePlan | null;
+  /** Damage/force integration window produced by this tick's coarse beam
+   * collision sample. Zero means the cached path must not deal damage again. */
+  beamDamageWindowMs: number;
   /** Source barrel index for visual/audio cadence metadata on turret shots. */
   sourceBarrelIndex: number;
   /** Internal: previous tick's start position. Used to compute
@@ -851,6 +883,8 @@ type ProjectileAbsenceSlots = Pick<Projectile,
   | 'points'
   | 'endpointDamageable'
   | 'segmentLimitReached'
+  | 'beamPulsePlan'
+  | 'beamDamageWindowMs'
   | 'sourceBarrelIndex'
   | 'prevStartX'
   | 'prevStartY'
@@ -882,6 +916,8 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   points: null,
   endpointDamageable: null,
   segmentLimitReached: false,
+  beamPulsePlan: null,
+  beamDamageWindowMs: 0,
   sourceBarrelIndex: -1,
   prevStartX: null,
   prevStartY: null,

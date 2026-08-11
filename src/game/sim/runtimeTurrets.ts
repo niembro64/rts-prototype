@@ -33,6 +33,18 @@ import {
 import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
 import { cloneSensorCapabilityConfig } from './sensorConfig';
+import { BEAM_PULSE_INITIAL_STAGGER_MAX_MS } from '../../config';
+
+function getBeamPulseInitialDelayMs(turretId: EntityId): number {
+  if (turretId < 0 || BEAM_PULSE_INITIAL_STAGGER_MAX_MS <= 0) return 0;
+  // Integer avalanche keeps sequential entity ids from landing in adjacent
+  // time slots. The result is deterministic on every peer/replay.
+  let hash = turretId | 0;
+  hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
+  hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) % (BEAM_PULSE_INITIAL_STAGGER_MAX_MS + 1);
+}
 
 function cloneTurretPresentation(presentation: TurretPresentation): TurretPresentation {
   const barrel = presentation.barrel;
@@ -146,6 +158,7 @@ function makeRuntimeTurret(
     burst: null,
     shield: null,
     emissionLaneIndex: 0,
+    beamPulseInitialDelayMs: getBeamPulseInitialDelayMs(identity.id),
   };
 }
 

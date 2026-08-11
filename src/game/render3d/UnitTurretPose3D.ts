@@ -79,6 +79,9 @@ export class UnitTurretPose3D {
   private barrelCount = 0;
   private readonly barrelSlots: number[] = [];
   private readonly barrelUsesCone: boolean[] = [];
+  private readonly barrelEntityIds: number[] = [];
+  private readonly barrelTurretIndexes: number[] = [];
+  private readonly barrelLaneIndexes: number[] = [];
   private readonly headBatch = new UnitTurretHeadMatrixBatch3D();
   private headInput = new Float32Array(TURRET_HEAD_INPUT_STRIDE * 2048);
   private headCount = 0;
@@ -101,6 +104,9 @@ export class UnitTurretPose3D {
     this.barrelCount = 0;
     this.barrelSlots.length = 0;
     this.barrelUsesCone.length = 0;
+    this.barrelEntityIds.length = 0;
+    this.barrelTurretIndexes.length = 0;
+    this.barrelLaneIndexes.length = 0;
     this.headCount = 0;
     this.headSlots.length = 0;
     this.headEntities.length = 0;
@@ -328,7 +334,7 @@ export class UnitTurretPose3D {
   ): void {
     this.flushAimRecords(teamTrim);
     this.flushHeadMounts(unitDetailInstances, turretMountCache);
-    this.flushBarrels(unitDetailInstances);
+    this.flushBarrels(unitDetailInstances, turretMountCache);
   }
 
   private flushAimRecords(teamTrim: TeamTrimRenderer3D | null): void {
@@ -389,6 +395,7 @@ export class UnitTurretPose3D {
         this.deferredParentPosition,
         this.deferredParentQuaternion,
         this.aimEntities[i],
+        this.aimTurretIndexes[i],
         teamTrim,
       );
     }
@@ -430,7 +437,10 @@ export class UnitTurretPose3D {
     }
   }
 
-  private flushBarrels(unitDetailInstances: UnitDetailInstanceRenderer3D): void {
+  private flushBarrels(
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+    turretMountCache: TurretMountCache3D,
+  ): void {
     const count = this.barrelCount;
     if (count <= 0) return;
 
@@ -440,11 +450,33 @@ export class UnitTurretPose3D {
     const outputStride = this.barrelBatch.outputStride;
 
     for (let i = 0; i < count; i++) {
+      const offset = i * outputStride;
       unitDetailInstances.writeBarrelMatrixArray(
         this.barrelSlots[i],
         output,
-        i * outputStride,
+        offset,
         this.barrelUsesCone[i],
+      );
+      if (this.barrelLaneIndexes[i] !== 0) continue;
+      const columnX = output[offset + 4];
+      const columnY = output[offset + 5];
+      const columnZ = output[offset + 6];
+      const length = Math.hypot(columnX, columnY, columnZ);
+      if (length <= 1e-9) continue;
+      // Cylinder geometry spans local y=-0.5..+0.5. Every barrel data
+      // carrier is authored base-to-tip, making local +Y its muzzle.
+      const muzzleThreeX = output[offset + 12] + columnX * 0.5;
+      const muzzleThreeY = output[offset + 13] + columnY * 0.5;
+      const muzzleThreeZ = output[offset + 14] + columnZ * 0.5;
+      turretMountCache.writeMuzzle(
+        this.barrelEntityIds[i],
+        this.barrelTurretIndexes[i],
+        muzzleThreeX,
+        muzzleThreeZ,
+        muzzleThreeY,
+        columnX / length,
+        columnZ / length,
+        columnY / length,
       );
     }
   }
@@ -539,6 +571,7 @@ export class UnitTurretPose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     entity: Entity,
+    turretIdx: number,
     teamTrim: TeamTrimRenderer3D | null,
   ): void {
     this.writeTurretTeamCollar(
@@ -567,6 +600,9 @@ export class UnitTurretPose3D {
         turretMesh.pitchGroup,
         turretMesh.spinGroup,
         turretMesh.barrels[barrelIdx],
+        entity.id,
+        turretIdx,
+        barrelIdx,
       );
     }
   }
@@ -625,6 +661,9 @@ export class UnitTurretPose3D {
     pitchGroup: THREE.Group | undefined,
     spinGroup: THREE.Group | undefined,
     barrel: THREE.Mesh,
+    entityId: number,
+    turretIdx: number,
+    laneIdx: number,
   ): void {
     const index = this.barrelCount;
     this.barrelCount++;
@@ -674,6 +713,9 @@ export class UnitTurretPose3D {
 
     this.barrelSlots[index] = slot;
     this.barrelUsesCone[index] = useCone;
+    this.barrelEntityIds[index] = entityId;
+    this.barrelTurretIndexes[index] = turretIdx;
+    this.barrelLaneIndexes[index] = laneIdx;
   }
 
   private ensureBarrelInputCapacity(count: number): void {

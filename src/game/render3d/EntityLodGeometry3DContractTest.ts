@@ -65,6 +65,7 @@ import {
   beamImposterWorldRadiusForSegment,
   beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
+  constrainDirectBeamEndpointToMuzzleRay,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
 import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
@@ -1415,6 +1416,18 @@ function runEmissionPoseContracts(): void {
   assertContract(
     BEAM_UPDATE_BUCKET_COUNT === 1,
     'beam paths and live turret origins refresh every render frame',
+  );
+  const constrainedEndpoint = { x: 100, y: 80, z: 50 };
+  assertContract(
+    constrainDirectBeamEndpointToMuzzleRay(
+      constrainedEndpoint,
+      10, 20, 30,
+      2, 0, 0,
+    ) &&
+      constrainedEndpoint.x === 100 &&
+      constrainedEndpoint.y === 20 &&
+      constrainedEndpoint.z === 30,
+    'a direct beam endpoint must remain exactly collinear with its rendered muzzle forward',
   );
   const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
   for (let entityId = 1; entityId <= 256; entityId++) {

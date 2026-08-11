@@ -392,6 +392,7 @@ export class Render3DEntities {
       metalDeposits: this.metalDeposits,
       scopedMeshRetention: this.scopedMeshRetention,
       lodProxyRenderer: this.lodProxyRenderer,
+      turretMountCache: this.turretMountCache,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,

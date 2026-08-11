@@ -6,6 +6,7 @@ import {
 import { getSimWasm } from '../sim-wasm/init';
 import {
   checkProjectileCollisions,
+  collectTurretRotationUnits,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
   emitShieldStopsForEntity,
@@ -108,7 +109,8 @@ export class SimulationCombatController {
     }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
-    updateTurretRotation(this.world, dtMs, activeCombatUnits);
+    const turretRotationUnits = collectTurretRotationUnits(this.world, activeCombatUnits);
+    updateTurretRotation(this.world, dtMs, turretRotationUnits);
 
     // Update shield state before projectile emission. Aimed tube shields
     // are one turret with two emissions: the physical tube and the
@@ -137,7 +139,13 @@ export class SimulationCombatController {
     }
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
-    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
+    const fireResult = fireTurrets(
+      this.world,
+      dtMs,
+      this.damageSystem,
+      this.forceAccumulator,
+      activeCombatUnits,
+    );
     fireResult.projectiles.sort(byEntityIdField);
     fireResult.spawnEvents.sort(byEntityIdField);
     for (const proj of fireResult.projectiles) {
@@ -153,7 +161,7 @@ export class SimulationCombatController {
     // Emit fire audio events
     this.emitSimEvents(fireResult.events, onSimEvent);
 
-    for (const unit of activeCombatUnits) {
+    for (const unit of turretRotationUnits) {
       if (turretSnapshotRowsChangedSinceLastSample(unit)) {
         this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
       }

@@ -148,6 +148,7 @@ function directProjectileSpawnSnapshot(
 function directBeamUpdateSnapshot(
   tick: number,
   id: number,
+  endpointX: number = 420,
 ): NetworkServerSnapshot {
   const snapshot = projectileSnapshot(tick, undefined);
   const projectiles = snapshot.projectiles!;
@@ -187,7 +188,7 @@ function directBeamUpdateSnapshot(
         normalZ: 0,
       },
       {
-        x: qProjPos(420),
+        x: qProjPos(endpointX),
         y: qProjPos(390),
         z: qProjPos(29),
         vx: qVel(8),
@@ -385,13 +386,13 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   view.applyPrediction(16);
   const lineVersionAfterInitialBeamMotion = view.getLineProjectileRenderVersion();
   assertContract(
-    lineVersionAfterInitialBeamMotion !== lineVersionAfterInitialBeamApply,
-    'initial beam target application must invalidate line rendering when it seeds display points',
+    lineVersionAfterInitialBeamMotion === lineVersionAfterInitialBeamApply,
+    'beam presentation must not keep independently moving after an authoritative path is applied',
   );
   view.applyNetworkState(directBeamUpdateSnapshot(5, 304));
   assertContract(
     view.getLineProjectileRenderVersion() === lineVersionAfterInitialBeamMotion,
-    'steady beam target snapshots must not invalidate line rendering before display points move',
+    'steady beam target snapshots must not invalidate an unchanged authoritative path',
   );
   const beamTarget = getProjectileStoreDebug(view).beamPathTargets.get(304);
   if (beamTarget === undefined) {
@@ -402,12 +403,15 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   view.applyPrediction(16);
   assertContract(
     beamTarget.points[2].x === authoritativeEndpointX,
-    'beam EMA must not mutate authoritative target points',
+    'beam presentation must not mutate authoritative target points between samples',
   );
-  view.applyNetworkState(directBeamUpdateSnapshot(6, 304));
+  const lineVersionBeforeEndpointSnap = view.getLineProjectileRenderVersion();
+  view.applyNetworkState(directBeamUpdateSnapshot(6, 304, 460));
   assertContract(
-    beamTarget.points[2].x === authoritativeEndpointX,
-    'steady beam target snapshots must not rewrite authoritative target state',
+    beamTarget.points[2].x === 460 &&
+      view.getEntity(304)?.projectile?.points?.[2]?.x === 460 &&
+      view.getLineProjectileRenderVersion() !== lineVersionBeforeEndpointSnap,
+    'beam endpoint changes must snap atomically without retaining an EMA position',
   );
 
   view.applyNetworkState(directProjectileSpawnSnapshot(7, beamSpawn(305, 360, 300)));

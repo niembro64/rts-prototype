@@ -13,6 +13,7 @@ export type {
 } from './combat/types';
 
 export {
+  collectTurretRotationUnits,
   updateTurretRotation,
 } from './combat/turretSystem';
 

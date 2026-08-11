@@ -464,8 +464,6 @@ export class ClientViewState {
       projectileSpawns: this.projectileStore.projectileSpawns,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
-      markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
-      updateProjectileRenderSpatialIndex: (entity) => this.projectileStore.updateRenderSpatialIndex(entity),
     });
   }
 

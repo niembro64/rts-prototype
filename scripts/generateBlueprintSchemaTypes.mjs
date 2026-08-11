@@ -299,5 +299,21 @@ function generateRust() {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
-fs.writeFileSync(tsOutPath, generateTs());
-fs.writeFileSync(rustOutPath, generateRust());
+function writeFileIfChanged(filePath, nextContents) {
+  let previousContents = null;
+  try {
+    previousContents = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (previousContents === nextContents) return false;
+  fs.writeFileSync(filePath, nextContents);
+  return true;
+}
+
+// Preserve mtimes when schema output is identical. Cargo's dependency
+// fingerprinting treats a freshly-written generated Rust file as changed;
+// rewriting it on every web build forced the entire large WASM crate through
+// LLVM and LTO even when no Rust/schema input had changed.
+writeFileIfChanged(tsOutPath, generateTs());
+writeFileIfChanged(rustOutPath, generateRust());

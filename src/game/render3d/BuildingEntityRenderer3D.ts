@@ -26,6 +26,7 @@ import {
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
+import type { TurretMountCache3D } from './TurretMountCache3D';
 import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import * as THREE_TRIM from 'three';
@@ -376,6 +377,7 @@ type BuildingEntityRenderer3DOptions = {
   metalDeposits: readonly MetalDeposit[];
   scopedMeshRetention: ScopedRenderMeshRetention3D;
   lodProxyRenderer: EntityLodProxyRenderer3D;
+  turretMountCache?: TurretMountCache3D | null;
 };
 
 export class BuildingEntityRenderer3D {
@@ -390,6 +392,7 @@ export class BuildingEntityRenderer3D {
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly barrelMat: THREE.Material;
+  private readonly turretMountCache: TurretMountCache3D | null;
   /** Shared team-trim pool, owned by Render3DEntities. Null in harnesses
    *  that construct this renderer without one. */
   private teamTrim: TeamTrimRenderer3D | null = null;
@@ -434,6 +437,9 @@ export class BuildingEntityRenderer3D {
    *  pass that writes the turret's own aim. */
   private readonly turretAimHosts: EntityMesh[] = [];
   private readonly turretAimTeamColors: number[] = [];
+  private readonly turretAimEntityIds: EntityId[] = [];
+  private readonly turretAimIndexes: number[] = [];
+  private readonly turretMountWorld = new THREE_TRIM.Vector3();
   private readonly collarPosition = new THREE_TRIM.Vector3();
   private readonly collarQuaternion = new THREE_TRIM.Quaternion();
   private readonly collarIdentity = new THREE_TRIM.Quaternion();
@@ -464,6 +470,7 @@ export class BuildingEntityRenderer3D {
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTeamOrnamentMat = options.getTeamOrnamentMat;
     this.barrelMat = options.barrelMat;
+    this.turretMountCache = options.turretMountCache ?? null;
     this.teamTrim = options.teamTrim ?? null;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
@@ -1260,6 +1267,8 @@ export class BuildingEntityRenderer3D {
           0,
           mesh,
           teamColorHex,
+          entity.id,
+          turretIndex,
         );
         continue;
       }
@@ -1284,6 +1293,8 @@ export class BuildingEntityRenderer3D {
         headOnly ? 0 : (turretState?.pitch ?? turret.pitch),
         mesh,
         teamColorHex,
+        entity.id,
+        turretIndex,
       );
       // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
       // rocket cluster). Single-barrel turrets have no spin state, so
@@ -1438,6 +1449,8 @@ export class BuildingEntityRenderer3D {
     this.turretAimMeshes.length = 0;
     this.turretAimHosts.length = 0;
     this.turretAimTeamColors.length = 0;
+    this.turretAimEntityIds.length = 0;
+    this.turretAimIndexes.length = 0;
   }
 
   private beginBuildingPoseFrame(): void {
@@ -1494,6 +1507,41 @@ export class BuildingEntityRenderer3D {
         this.turretAimHosts[i],
         this.turretAimTeamColors[i],
       );
+      const mountCache = this.turretMountCache;
+      const host = this.turretAimHosts[i];
+      const head = turretMesh.head;
+      if (mountCache !== null && host !== undefined && head !== undefined) {
+        host.group.updateMatrixWorld(true);
+        head.getWorldPosition(this.turretMountWorld);
+        mountCache.write(
+          this.turretAimEntityIds[i],
+          this.turretAimIndexes[i],
+          this.turretMountWorld.x,
+          this.turretMountWorld.z,
+          this.turretMountWorld.y,
+        );
+        const barrel = turretMesh.barrels[0];
+        if (barrel !== undefined) {
+          barrel.updateWorldMatrix(true, false);
+          const elements = barrel.matrixWorld.elements;
+          const columnX = elements[4];
+          const columnY = elements[5];
+          const columnZ = elements[6];
+          const length = Math.hypot(columnX, columnY, columnZ);
+          if (length > 1e-9) {
+            mountCache.writeMuzzle(
+              this.turretAimEntityIds[i],
+              this.turretAimIndexes[i],
+              elements[12] + columnX * 0.5,
+              elements[14] + columnZ * 0.5,
+              elements[13] + columnY * 0.5,
+              columnX / length,
+              columnZ / length,
+              columnY / length,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -1555,6 +1603,8 @@ export class BuildingEntityRenderer3D {
     aimPitch: number,
     host: EntityMesh,
     teamColorHex: number,
+    entityId: EntityId,
+    turretIndex: number,
   ): void {
     const index = this.turretAimCount;
     this.turretAimCount++;
@@ -1573,6 +1623,8 @@ export class BuildingEntityRenderer3D {
     this.turretAimMeshes[index] = turretMesh;
     this.turretAimHosts[index] = host;
     this.turretAimTeamColors[index] = teamColorHex;
+    this.turretAimEntityIds[index] = entityId;
+    this.turretAimIndexes[index] = turretIndex;
   }
 
   private enqueueBuildingPose(

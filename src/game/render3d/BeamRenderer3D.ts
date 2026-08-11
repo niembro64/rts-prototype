@@ -65,7 +65,14 @@ type TurretMountResolver = {
   getTurretMountWorldState(
     entityId: number,
     turretIdx: number,
-  ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
+  ): {
+    x: number; y: number; z: number;
+    muzzleX: number; muzzleY: number; muzzleZ: number;
+    forwardX: number; forwardY: number; forwardZ: number;
+    hasMuzzle: boolean;
+    vx: number; vy: number; vz: number;
+    ax: number; ay: number; az: number;
+  } | null;
 };
 
 type OpenEndedLineConfig = {
@@ -133,6 +140,33 @@ export function composeBeamSegmentMatrix3D(
   scratch.quaternion.setFromUnitVectors(scratch.up, scratch.direction);
   scratch.scale.set(cylinderRadius, Math.max(length, 1e-3), cylinderRadius);
   return out.compose(scratch.mid, scratch.quaternion, scratch.scale);
+}
+
+export function constrainDirectBeamEndpointToMuzzleRay(
+  end: { x: number; y: number; z: number },
+  muzzleX: number,
+  muzzleY: number,
+  muzzleZ: number,
+  forwardX: number,
+  forwardY: number,
+  forwardZ: number,
+): boolean {
+  const forwardLength = Math.sqrt(
+    forwardX * forwardX + forwardY * forwardY + forwardZ * forwardZ,
+  );
+  if (forwardLength <= 1e-9) return false;
+  const fx = forwardX / forwardLength;
+  const fy = forwardY / forwardLength;
+  const fz = forwardZ / forwardLength;
+  const along = Math.max(0,
+    (end.x - muzzleX) * fx +
+    (end.y - muzzleY) * fy +
+    (end.z - muzzleZ) * fz,
+  );
+  end.x = muzzleX + fx * along;
+  end.y = muzzleY + fy * along;
+  end.z = muzzleZ + fz * along;
+  return true;
 }
 
 const NEVER_EMISSION_LOW_LOD: BeamEmissionLodResolver = () => false;
@@ -541,9 +575,25 @@ export class BeamRenderer3D {
         turretIdx,
       );
       if (mount) {
-        path.baseStartX = mount.x;
-        path.baseStartY = mount.y;
-        path.baseStartZ = mount.z;
+        path.baseStartX = mount.hasMuzzle ? mount.muzzleX : mount.x;
+        path.baseStartY = mount.hasMuzzle ? mount.muzzleY : mount.y;
+        path.baseStartZ = mount.hasMuzzle ? mount.muzzleZ : mount.z;
+        if (mount.hasMuzzle && sourcePoints.length === 2) {
+          // A direct beam is one constrained turret ray. Re-project the
+          // authoritative terminal distance onto the same rendered muzzle
+          // forward used by the barrel mesh instead of independently moving
+          // its two endpoints. Reflected paths retain their surface vertices.
+          const end = path.points[1];
+          if (end !== undefined) constrainDirectBeamEndpointToMuzzleRay(
+            end,
+            path.baseStartX,
+            path.baseStartY,
+            path.baseStartZ,
+            mount.forwardX,
+            mount.forwardY,
+            mount.forwardZ,
+          );
+        }
       }
     }
   }

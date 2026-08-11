@@ -1,25 +1,16 @@
 // Laser sound system - manages continuous beam weapon audio
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, TurretState } from '../types';
+import type { Entity, EntityId } from '../types';
 import { NO_ENTITY_ID } from '../types';
 import { beamIndex } from '../BeamIndex';
 import type { SimEvent } from './types';
-import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import { getBeamWeaponsTargeting } from './targetIndex';
-import {
-  readCombatTargetingTurretFsmInto,
-  type CombatTargetingTurretFsmOut,
-} from './targetingInputStamping';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
 const _laserSimEvents: SimEvent[] = [];
 const _laserStopOwner: SimEvent[] = [];
 const _laserStopTarget: SimEvent[] = [];
-const _laserFsm: CombatTargetingTurretFsmOut = {
-  stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: -1,
-};
 const LASER_SOUND_REFRESH_TICKS = 60;
 const activeLaserSoundIds = new Set<number>();
 let laserSoundRefreshTick = 0;
@@ -29,21 +20,6 @@ function turretSoundEntityId(entity: Entity, weaponIndex: number): EntityId {
   return turret !== undefined && turret.id !== NO_ENTITY_ID
     ? turret.id
     : entity.id * 100 + weaponIndex;
-}
-
-function isBeamEngagedWithTargetingState(
-  unit: Entity,
-  weaponIndex: number,
-  jsState: TurretState,
-  jsTargetId: EntityId | null,
-): boolean {
-  const priorityTargetPoint = unit.combat !== null ? unit.combat.priorityTargetPoint : null;
-  if (!readCombatTargetingTurretFsmInto(unit, weaponIndex, _laserFsm)) {
-    return jsState === 'engaged'
-      && (jsTargetId !== null || priorityTargetPoint !== null);
-  }
-  return _laserFsm.stateCode === CT_TURRET_STATE_ENGAGED
-    && (_laserFsm.targetId !== -1 || priorityTargetPoint !== null);
 }
 
 // Emit laserStop events for all beam weapons on a dying entity (the beam owner).
@@ -144,18 +120,11 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         continue;
       }
 
-      // Targeting already validated the full 3D fire envelope, including
-      // optional minimum fire range. Reuse that state here instead of
-      // doing a second 2D distance check for every beam turret.
-      const hasTargetInRange = isBeamEngagedWithTargetingState(
-        unit,
-        i,
-        weapon.state,
-        weapon.target,
-      );
       const hasActiveBeam = beamIndex.hasActiveBeam(unit.id, i);
 
-      if (hasTargetInRange || hasActiveBeam) {
+      // Attack-beam audio follows the actual pulse entity. An engaged turret
+      // remains silent during its two-second off window.
+      if (hasActiveBeam) {
         if (!wasActive) activeLaserSoundIds.add(soundEntityId);
         if (!wasActive || shouldRefreshActive) {
           audioEvents.push({

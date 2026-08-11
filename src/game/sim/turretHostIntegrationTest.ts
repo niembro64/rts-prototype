@@ -1,4 +1,5 @@
 import { getTransformCosSin } from '../math';
+import { deterministicMath as DMath } from './deterministicMath';
 import { getBuildingBlueprint, getUnitBlueprint, TURRET_BLUEPRINTS } from './blueprints';
 import { createBuildable } from './buildableHelpers';
 import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
@@ -9,6 +10,8 @@ import { beamIndex } from './BeamIndex';
 import type { Entity, EntityId, PlayerId, Turret } from './types';
 import { isProjectileShot, NO_ENTITY_ID } from './types';
 import {
+  checkProjectileCollisions,
+  collectTurretRotationUnits,
   finalizePendingProjectileLaunchVelocities,
   fireTurrets,
   hasPendingProjectileLaunchVelocityFinalization,
@@ -24,6 +27,9 @@ import {
 import { turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
 import { resetProjectileBuffers } from './combat/projectileSystem';
 import {
+  readTurretCooldownForFire,
+} from './combat/combatActivitySlab';
+import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
 } from './combat/targetingInputStamping';
@@ -33,6 +39,25 @@ import { getUnitGroundZ } from './unitGeometry';
 import { WATER_LEVEL } from './Terrain';
 import type { WindState } from './wind';
 import { WorldState } from './WorldState';
+import {
+  beamPulseNeedsCollisionSample,
+  canTurretTrackBeamPulse,
+  consumeBeamPulseCollisionWindow,
+  createBeamPulsePlan,
+  evaluateBeamPulsePlan,
+  getMaximumBeamPulseOnTimeMs,
+  rollBeamPulseOffTimeMs,
+  rollBeamPulseOnTimeMs,
+} from './combat/beamPulse';
+import {
+  BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER,
+  BEAM_PULSE_COLLISION_SAMPLE_MS,
+  BEAM_PULSE_OFF_TIME_MS,
+  BEAM_PULSE_OFF_TIME_RANDOMNESS,
+  BEAM_PULSE_ON_TIME_MS,
+  BEAM_PULSE_ON_TIME_RANDOMNESS,
+} from '../../config';
+import { rollTurretCooldownDuration } from './turretCooldown';
 
 const TEST_UNIT_BLUEPRINT_ID = 'unitFormik';
 const TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID = 'unitBadger';
@@ -186,7 +211,13 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     stampCombatTargetingPool(launchWorld);
     const activeCombatUnits = updateTargetingAndFiringState(launchWorld, dtMs);
     updateTurretRotation(launchWorld, dtMs, activeCombatUnits);
-    const fireResult = fireTurrets(launchWorld, dtMs, new ForceAccumulator(), activeCombatUnits);
+    const fireResult = fireTurrets(
+      launchWorld,
+      dtMs,
+      new DamageSystem(launchWorld),
+      new ForceAccumulator(),
+      activeCombatUnits,
+    );
     assertContract(fireResult.projectiles.length === 1, 'badger slow rocket should fire one projectile');
     assertContract(fireResult.spawnEvents.length === 1, 'badger slow rocket should emit one spawn event');
 
@@ -330,6 +361,10 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   );
   world.addEntity(daddy);
   world.addEntity(target);
+  if (target.unit === null) {
+    throw new Error('[turret host integration] beam target must be a unit');
+  }
+  target.unit.velocityX = 20;
   spatialGrid.updateUnit(daddy);
   spatialGrid.updateUnit(target);
   if (daddy.combat === null) {
@@ -358,6 +393,9 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   stampCombatTargetingPool(world);
   const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
   const { turret: beamTurret } = getFirstAttackTurret(daddy);
+  // Staggering has its own pulse contract; this test isolates the shared
+  // servo/launch-direction relationship.
+  beamTurret.beamPulseInitialDelayMs = 0;
   assertContract(
     beamTurret.config.aimMotionSnapshotVisible,
     'beam turret must publish ordinary full-barrel aim',
@@ -373,7 +411,14 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
     Math.abs(beamTurret.aimErrorYaw) > 0.1,
     'beam aim must retain spring error when its shared servo is deliberately slowed',
   );
-  const earlyFireResult = fireTurrets(world, dtMs, new ForceAccumulator(), activeCombatUnits);
+  const beamDamageSystem = new DamageSystem(world);
+  const earlyFireResult = fireTurrets(
+    world,
+    dtMs,
+    beamDamageSystem,
+    new ForceAccumulator(),
+    activeCombatUnits,
+  );
   assertContract(
     !earlyFireResult.spawnEvents.some((event) => event.beam !== undefined),
     'beam must not bypass the shared aim-error firing gate',
@@ -387,13 +432,44 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   assertNear(beamTurret.rotation, expectedYaw, 'beam shared servo must settle to target yaw in one tick');
   assertNear(beamTurret.aimErrorYaw, 0, 'beam shared servo must leave negligible yaw error');
 
-  const fireResult = fireTurrets(world, dtMs, new ForceAccumulator(), activeCombatUnits);
+  // The ordinary fixed angular tolerance alone is wider than a small target's
+  // silhouette at range. Prove the new spawn trace rejects such a geometric
+  // near-miss even though it remains inside the generic 0.16-radian aim gate.
+  beamTurret.rotation = expectedYaw - 0.1;
+  beamTurret.aimErrorYaw = 0.1;
+  const randomStateBeforeNearMiss = world.getRandomStreamState();
+  const nearMissFireResult = fireTurrets(
+    world,
+    dtMs,
+    beamDamageSystem,
+    new ForceAccumulator(),
+    activeCombatUnits,
+  );
+  assertContract(
+    !nearMissFireResult.spawnEvents.some((event) => event.beam !== undefined),
+    'beam spawn must wait when the physical barrel ray misses its selected target',
+  );
+  assertContract(
+    world.getRandomStreamState() === randomStateBeforeNearMiss,
+    'a rejected beam attempt must not consume a duration-variance RNG sample',
+  );
+  beamTurret.rotation = expectedYaw;
+  beamTurret.aimErrorYaw = 0;
+
+  const randomStateBeforeCommittedPulse = world.getRandomStreamState();
+  const fireResult = fireTurrets(
+    world,
+    dtMs,
+    beamDamageSystem,
+    new ForceAccumulator(),
+    activeCombatUnits,
+  );
   const beamSpawn = fireResult.spawnEvents.find((event) => event.beam !== undefined);
   assertContract(beamSpawn !== undefined, 'mini beam turret must spawn a beam event');
   const beam = beamSpawn.beam;
   assertContract(beam !== undefined, 'beam spawn must carry start/end metadata');
   assertNear(
-    Math.atan2(beam.end.y - beam.start.y, beam.end.x - beam.start.x),
+    DMath.atan2(beam.end.y - beam.start.y, beam.end.x - beam.start.x),
     beamTurret.rotation,
     'beam spawn line must follow the authoritative turret yaw',
   );
@@ -401,6 +477,210 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
     beamSpawn.rotation,
     beamTurret.rotation,
     'beam spawn metadata must follow shared turret aim',
+  );
+  const beamEntity = fireResult.projectiles.find((entity) => entity.id === beamSpawn.id);
+  const pulsePlan = beamEntity?.projectile?.beamPulsePlan;
+  assertContract(pulsePlan !== null && pulsePlan !== undefined, 'attack beam must capture a committed pulse plan');
+  assertContract(
+    world.getRandomStreamState() !== randomStateBeforeCommittedPulse,
+    'a committed beam must consume one canonical duration-variance RNG sample',
+  );
+  const initialBeamPoints = beamEntity?.projectile?.points;
+  const initialBeamEnd = initialBeamPoints?.[initialBeamPoints.length - 1];
+  assertContract(
+    initialBeamPoints !== null && initialBeamPoints !== undefined &&
+      initialBeamPoints.length >= 2 &&
+      initialBeamEnd !== undefined &&
+      beamEntity?.projectile?.prevEndEntityId === target.id,
+    'a committed beam pulse must be seeded by a real trace that terminates on its selected target',
+  );
+  const initialBeamStart = initialBeamPoints![0];
+  assertContract(
+    DMath.hypot(
+      initialBeamEnd!.x - initialBeamStart.x,
+      initialBeamEnd!.y - initialBeamStart.y,
+      initialBeamEnd!.z - initialBeamStart.z,
+    ) <= beamTurret.config.targeting.effect.range + 1e-6,
+    'the initial authoritative beam path must remain inside its finite turret effect radius',
+  );
+  const airBoundaryPath = beamDamageSystem.findBeamPath(
+    initialBeamStart.x,
+    initialBeamStart.y,
+    initialBeamStart.z,
+    initialBeamStart.x,
+    initialBeamStart.y,
+    initialBeamStart.z + 100000,
+    daddy.id,
+    beamEntity!.projectile!.config.shotProfile.runtime.radius.collision,
+    6,
+    {
+      centerX: initialBeamStart.x,
+      centerY: initialBeamStart.y,
+      centerZ: initialBeamStart.z,
+      radius: beamTurret.config.targeting.effect.range,
+      rangeVolume: 'turret-range-top-and-bottom-unbounded',
+      hardRadius: beamTurret.config.targeting.effect.range,
+    },
+    0,
+    true,
+  );
+  assertContract(
+    airBoundaryPath.endEntityId === NO_ENTITY_ID &&
+      airBoundaryPath.endpointDamageable &&
+      DMath.hypot(
+        airBoundaryPath.endX - initialBeamStart.x,
+        airBoundaryPath.endY - initialBeamStart.y,
+        airBoundaryPath.endZ - initialBeamStart.z,
+      ) <= beamTurret.config.targeting.effect.range + 1e-6,
+    'a collision-free beam must terminate as a damageable air endpoint at its finite effect boundary',
+  );
+  assertContract(
+    pulsePlan.durationMs >= BEAM_PULSE_ON_TIME_MS * (1 - BEAM_PULSE_ON_TIME_RANDOMNESS) &&
+      pulsePlan.durationMs <= BEAM_PULSE_ON_TIME_MS * (1 + BEAM_PULSE_ON_TIME_RANDOMNESS) &&
+      beamEntity?.projectile?.maxLifespan === pulsePlan.durationMs &&
+      beamSpawn.maxLifespan === pulsePlan.durationMs,
+    'attack beam pulse, projectile, and spawn wire metadata must share one bounded rolled on-time',
+  );
+  assertNear(
+    pulsePlan.targetVelocityX,
+    20,
+    'beam pulse must capture target velocity once at emission',
+  );
+  const capturedTargetX = pulsePlan.targetX;
+  target.transform.x += 500;
+  target.unit.velocityX = -100;
+  assertNear(
+    pulsePlan.targetX,
+    capturedTargetX,
+    'an emitted beam plan must not follow later live-target position changes',
+  );
+  assertNear(
+    pulsePlan.targetVelocityX,
+    20,
+    'an emitted beam plan must not follow later live-target velocity changes',
+  );
+
+  const evaluation = {
+    sourceX: 0, sourceY: 0, sourceZ: 0,
+    targetX: 0, targetY: 0, targetZ: 0,
+    dirX: 1, dirY: 0, dirZ: 0,
+    yaw: 0, pitch: 0,
+  };
+  evaluateBeamPulsePlan(pulsePlan, pulsePlan.durationMs, evaluation);
+  assertContract(
+    evaluation.targetX > pulsePlan.targetX,
+    'committed pulse evaluation must advance the captured constant-velocity target fit',
+  );
+
+  const cadencePlan = {
+    ...pulsePlan,
+    nextCollisionSampleMs: BEAM_PULSE_COLLISION_SAMPLE_MS,
+    lastCollisionSampleMs: 0,
+  };
+  let integratedWindowMs = 0;
+  let sampleCount = 0;
+  const pulseExpiryTickMs = Math.ceil(pulsePlan.durationMs / 50) * 50;
+  for (let elapsedMs = 50; elapsedMs <= pulseExpiryTickMs; elapsedMs += 50) {
+    if (!beamPulseNeedsCollisionSample(cadencePlan, elapsedMs)) continue;
+    integratedWindowMs += consumeBeamPulseCollisionWindow(cadencePlan, elapsedMs);
+    sampleCount++;
+  }
+  assertContract(
+    integratedWindowMs === pulsePlan.durationMs,
+    'coarse collision samples must integrate every millisecond of the active pulse exactly once',
+  );
+  assertContract(
+    sampleCount === Math.ceil(pulsePlan.durationMs / BEAM_PULSE_COLLISION_SAMPLE_MS),
+    'attack beam must perform exactly the configured number of coarse collision samples',
+  );
+  assertNear(
+    BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER * BEAM_PULSE_ON_TIME_MS /
+      (BEAM_PULSE_ON_TIME_MS + BEAM_PULSE_OFF_TIME_MS),
+    1,
+    'pulse duty cycle must preserve authored sustained beam output',
+  );
+  let onRollCalls = 0;
+  const fixedSample = 0.25;
+  const rolledOnTime = rollBeamPulseOnTimeMs(() => {
+    onRollCalls++;
+    return fixedSample;
+  });
+  assertNear(
+    rolledOnTime,
+    rollTurretCooldownDuration(
+      {
+        duration: BEAM_PULSE_ON_TIME_MS,
+        durationRandomness: BEAM_PULSE_ON_TIME_RANDOMNESS,
+      },
+      () => fixedSample,
+    ),
+    'beam on-time must use the same centered duration roll as plasma cooldowns',
+  );
+  assertContract(onRollCalls === 1, 'beam on-time must consume exactly one RNG sample');
+  assertNear(
+    rollBeamPulseOffTimeMs(() => fixedSample),
+    rollTurretCooldownDuration(
+      {
+        duration: BEAM_PULSE_OFF_TIME_MS,
+        durationRandomness: BEAM_PULSE_OFF_TIME_RANDOMNESS,
+      },
+      () => fixedSample,
+    ),
+    'beam off-time must use the same centered duration roll as plasma cooldowns',
+  );
+  assertNear(
+    getMaximumBeamPulseOnTimeMs(),
+    BEAM_PULSE_ON_TIME_MS * (1 + BEAM_PULSE_ON_TIME_RANDOMNESS),
+    'beam tracking feasibility must cover the longest possible rolled pulse',
+  );
+
+  const impossiblePlan = createBeamPulsePlan(
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 100, z: 0 },
+    1000,
+  );
+  assertContract(
+    !canTurretTrackBeamPulse(impossiblePlan, 1, 0),
+    'pulse fire gate must reject a trajectory whose line-of-sight rate exceeds the turret servo',
+  );
+
+  world.addEntity(beamEntity!);
+  assertContract(
+    collectTurretRotationUnits(world, []).some((entity) => entity.id === daddy.id),
+    'committed beam host must keep rotating from its pulse plan after live targeting goes idle',
+  );
+  const pulseDamageSystem = new DamageSystem(world);
+  const pulseForces = new ForceAccumulator();
+  for (let elapsedMs = 50; elapsedMs <= pulseExpiryTickMs; elapsedMs += 50) {
+    pulseForces.clear();
+    updateTurretRotation(world, 50, collectTurretRotationUnits(world, []));
+    updateProjectiles(world, 50, pulseDamageSystem, STILL_AIR);
+    const liveBeam = world.getEntity(beamEntity!.id);
+    if (liveBeam !== undefined) {
+      assertNear(
+        liveBeam.transform.rotation,
+        beamTurret.rotation,
+        'committed beam ray must always leave along the physical turret barrel pose',
+      );
+    }
+    checkProjectileCollisions(world, 50, pulseDamageSystem, pulseForces);
+  }
+  assertContract(
+    Math.abs(beamTurret.rotation - beamSpawn.rotation) > 0.05,
+    'beam turret must advance along the captured target-velocity trajectory during the pulse',
+  );
+  assertContract(
+    world.getEntity(beamEntity!.id) === undefined &&
+      !beamIndex.hasActiveBeam(daddy.id, 0),
+    'attack beam must despawn and release its active-beam index at one second',
+  );
+  const rolledOffCooldownMs = readTurretCooldownForFire(daddy, 0);
+  assertContract(
+    rolledOffCooldownMs >= BEAM_PULSE_OFF_TIME_MS * (1 - BEAM_PULSE_OFF_TIME_RANDOMNESS) &&
+      rolledOffCooldownMs <= BEAM_PULSE_OFF_TIME_MS * (1 + BEAM_PULSE_OFF_TIME_RANDOMNESS),
+    'attack beam expiry must arm a bounded rolled off cooldown',
   );
   resetTurretHostIntegrationState();
 }

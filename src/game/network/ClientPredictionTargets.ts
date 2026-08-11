@@ -266,6 +266,23 @@ export function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.normalZ = src.normalZ;
 }
 
+function beamPointStateDiffers(a: BeamPoint, b: BeamPoint): boolean {
+  return (
+    Math.abs(a.x - b.x) > 1e-4 ||
+    Math.abs(a.y - b.y) > 1e-4 ||
+    Math.abs(a.z - b.z) > 1e-4 ||
+    Math.abs(a.vx - b.vx) > 1e-4 ||
+    Math.abs(a.vy - b.vy) > 1e-4 ||
+    Math.abs(a.vz - b.vz) > 1e-4 ||
+    a.reflectorEntityId !== b.reflectorEntityId ||
+    a.reflectorKind !== b.reflectorKind ||
+    a.reflectorPlayerId !== b.reflectorPlayerId ||
+    a.normalX !== b.normalX ||
+    a.normalY !== b.normalY ||
+    a.normalZ !== b.normalZ
+  );
+}
+
 export function snapBeamPathDisplayToTarget(entity: Entity, target: BeamPathTarget): boolean {
   const proj = entity.projectile;
   if (proj === null) return false;
@@ -273,6 +290,7 @@ export function snapBeamPathDisplayToTarget(entity: Entity, target: BeamPathTarg
   const targetPoints = target.points;
   const displayPoints = proj.points ?? (proj.points = []);
   const oldLength = displayPoints.length;
+  let changed = oldLength !== targetPoints.length;
   if (oldLength > targetPoints.length) {
     shrinkBeamPoints(displayPoints, targetPoints.length);
   } else if (oldLength < targetPoints.length) {
@@ -280,22 +298,36 @@ export function snapBeamPathDisplayToTarget(entity: Entity, target: BeamPathTarg
   }
 
   for (let i = 0; i < targetPoints.length; i++) {
-    copyBeamPointState(ensureBeamPoint(displayPoints, i), targetPoints[i]);
+    const previous = displayPoints[i];
+    const next = targetPoints[i];
+    if (previous === undefined || beamPointStateDiffers(previous, next)) changed = true;
+    copyBeamPointState(ensureBeamPoint(displayPoints, i), next);
   }
 
+  if (
+    proj.obstructionT !== target.obstructionT ||
+    proj.endpointDamageable !== (target.endpointDamageable !== false)
+  ) changed = true;
   proj.obstructionT = target.obstructionT;
   proj.endpointDamageable = target.endpointDamageable !== false;
 
   const start = displayPoints[0];
   if (start !== undefined) {
+    if (
+      Math.abs(entity.transform.x - start.x) > 1e-4 ||
+      Math.abs(entity.transform.y - start.y) > 1e-4 ||
+      Math.abs(entity.transform.z - start.z) > 1e-4
+    ) changed = true;
     entity.transform.x = start.x;
     entity.transform.y = start.y;
     entity.transform.z = start.z;
     const second = displayPoints[1];
     if (second !== undefined) {
-      entity.transform.rotation = Math.atan2(second.y - start.y, second.x - start.x);
+      const nextRotation = Math.atan2(second.y - start.y, second.x - start.x);
+      if (Math.abs(entity.transform.rotation - nextRotation) > 1e-4) changed = true;
+      entity.transform.rotation = nextRotation;
     }
   }
 
-  return oldLength !== targetPoints.length || targetPoints.length > 0;
+  return changed;
 }

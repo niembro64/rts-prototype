@@ -25,7 +25,12 @@ import { buildImpactContext, collectKillsAndDeathContexts, emitBeamHitAudio } fr
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt, WATER_LEVEL } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
-import { BEAM_MIN_ON_TIME_MS, LAND_CELL_SIZE } from '../../../config';
+import {
+  BEAM_MIN_ON_TIME_MS,
+  BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER,
+  LAND_CELL_SIZE,
+  PROJECTILE_MASS_MULTIPLIER,
+} from '../../../config';
 import { getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -34,6 +39,7 @@ import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { normalizeAngle } from '../../math';
+import { rollBeamPulseOffTimeMs } from './beamPulse';
 import {
   getShotWaterSurfaceCrossingFraction,
   getShotLocomotionMaxTurnRate,
@@ -1392,7 +1398,13 @@ export function checkProjectileCollisions(
     }
 
     const terminalReflectorHit = hitShield && !reflectedProjectile;
-    const expiredBeforeDamage = proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj);
+    const hasCommittedPulseSample = proj.beamPulsePlan !== null && proj.beamDamageWindowMs > 0;
+    // A pulse's final coarse sample lands exactly at maxLifespan. Let that
+    // sample integrate its remaining damage window before the normal terminal
+    // classifier removes the beam later in this same pass.
+    const expiredBeforeDamage =
+      proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj) &&
+      !hasCommittedPulseSample;
     const healthZeroBeforeDamage = proj.projectileType === 'projectile' && proj.hp <= 0;
     let directHitThisTick = false;
     let directHitSurfaceNormalX: number | undefined;
@@ -1410,7 +1422,8 @@ export function checkProjectileCollisions(
       !waterSurfaceImpact &&
       !terminalReflectorHit &&
       !expiredBeforeDamage &&
-      !healthZeroBeforeDamage;
+      !healthZeroBeforeDamage &&
+      (proj.beamPulsePlan === null || hasCommittedPulseSample);
     if (canApplyDamageThisTick && isRayType(proj.projectileType)) {
       if (proj.obstructionTick === undefined) {
         // A newly-created beam that has not received its first
@@ -1425,7 +1438,10 @@ export function checkProjectileCollisions(
       const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
       const impactY = lastPoint !== undefined ? lastPoint.y : projEntity.transform.y;
       const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
-      const dtSec = collisionDtMs / 1000;
+      const dtSec = (proj.beamPulsePlan !== null ? proj.beamDamageWindowMs : collisionDtMs) / 1000;
+      const outputMultiplier = proj.beamPulsePlan !== null
+        ? BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER
+        : 1;
 
       const damageSphereRadius = runtimeProfile.radius.hitbox;
       if (!updateProjectileSourceClearance(
@@ -1438,8 +1454,8 @@ export function checkProjectileCollisions(
       }
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
-      const tickDamage = beamShot.dps * dtSec;
-      const tickForce = beamShot.force * dtSec;
+      const tickDamage = beamShot.dps * dtSec * outputMultiplier;
+      const tickForce = beamShot.force * dtSec * outputMultiplier;
 
       // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
@@ -1474,6 +1490,33 @@ export function checkProjectileCollisions(
         : null;
 
       if (result) forceAccumulator?.addKnockbackForces(result.knockbacks);
+
+      // Committed attack beams apply their equal-and-opposite recoil on the
+      // same coarse integration windows as endpoint force. This preserves the
+      // original sustained recoil over the 1-on/2-off duty cycle even if the
+      // live target lock disappears during an already-fired pulse.
+      if (
+        proj.beamPulsePlan !== null &&
+        beamShot.recoil > 0 &&
+        points !== null &&
+        points.length >= 2 &&
+        forceAccumulator
+      ) {
+        const first = points[0];
+        const second = points[1];
+        const dx = second.x - first.x;
+        const dy = second.y - first.y;
+        const length = DMath.hypot(dx, dy);
+        if (length > 1e-9) {
+          const recoil = beamShot.recoil * PROJECTILE_MASS_MULTIPLIER * dtSec * outputMultiplier;
+          forceAccumulator.addForce(
+            proj.sourceEntityId,
+            -(dx / length) * recoil,
+            -(dy / length) * recoil,
+            'recoil',
+          );
+        }
+      }
 
       // Apply beam force (knockback only, no damage) to each reflector entity.
       // Walk segment-by-segment along the polyline; whenever a vertex
@@ -1518,7 +1561,8 @@ export function checkProjectileCollisions(
         );
       }
 
-      // Note: beam recoil is applied in fireTurrets() based on weapon.state
+      // Legacy laser recoil remains in fireTurrets(); committed attack-beam
+      // recoil is integrated above from the sampled pulse path.
     } else if (canApplyDamageThisTick) {
       if (reflectedProjectile) {
         // Reflection already consumed this tick's swept segment. Start
@@ -1878,17 +1922,18 @@ export function checkProjectileCollisions(
       // For cooldown beams, start the cooldown now (after beam expires).
       // Cooldown is slab-owned: the scheduled targeting batch decrements
       // it next tick, so we write the post-expire value directly into
-      // the slab. The source entity may have despawned between the
-      // beam's creation and its expiry; writeTurretCooldownToSlab is a
-      // no-op when the slab slot is missing.
-      const sourcePlayerId = world.getEntity(proj.sourceEntityId)?.ownership?.playerId ?? (0 as PlayerId);
-      const cooldown = rollTurretCooldownDuration(
-        proj.config.cooldown,
-        () => world.nextRandom(sourcePlayerId),
-      );
-      if (cooldown > 0) {
-        const source = world.getEntity(proj.sourceEntityId);
-        if (source) {
+      // the slab. If the source despawned during the pulse there is no
+      // cooldown to install, so that abandoned transition consumes no RNG.
+      const source = world.getEntity(proj.sourceEntityId);
+      if (source) {
+        const sourcePlayerId = source.ownership?.playerId ?? (0 as PlayerId);
+        const cooldown = proj.beamPulsePlan !== null
+          ? rollBeamPulseOffTimeMs(() => world.nextRandom(sourcePlayerId))
+          : rollTurretCooldownDuration(
+              proj.config.cooldown,
+              () => world.nextRandom(sourcePlayerId),
+            );
+        if (cooldown > 0) {
           writeTurretCooldownToSlab(source, weaponIdx, cooldown);
         }
       }

@@ -78,6 +78,7 @@ export type {
   ShotSource,
   BeamReflectorKind,
   BeamPoint,
+  BeamPulsePlan,
   Projectile,
   EconomyState,
   ConstructionPieceKind,

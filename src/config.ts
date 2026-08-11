@@ -146,6 +146,15 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
+/** Attack beams commit to one predicted trajectory for a fixed pulse. */
+export const BEAM_PULSE_ON_TIME_MS = beamConfigJson.pulse.onTimeMs;
+export const BEAM_PULSE_ON_TIME_RANDOMNESS = beamConfigJson.pulse.onTimeRandomness;
+export const BEAM_PULSE_OFF_TIME_MS = beamConfigJson.pulse.offTimeMs;
+export const BEAM_PULSE_OFF_TIME_RANDOMNESS = beamConfigJson.pulse.offTimeRandomness;
+export const BEAM_PULSE_COLLISION_SAMPLE_MS = beamConfigJson.pulse.collisionSampleMs;
+export const BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER = beamConfigJson.pulse.activeOutputMultiplier;
+export const BEAM_PULSE_INITIAL_STAGGER_MAX_MS = beamConfigJson.pulse.initialStaggerMaxMs;
+export const BEAM_PULSE_TRACKING_ERROR_BUDGET_RADIANS = beamConfigJson.pulse.trackingErrorBudgetRadians;
 /** Presentation-only beam origins follow their live rendered turret mounts. */
 export const BEAM_SNAP_ORIGIN_TO_TURRET = beamConfigJson.snapOriginToTurret;
 

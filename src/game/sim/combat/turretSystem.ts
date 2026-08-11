@@ -24,7 +24,7 @@
 // (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
-import type { CombatComponent, Entity, Turret } from '../types';
+import type { CombatComponent, Entity, EntityId, Turret } from '../types';
 import { turretMaskIncludes } from './combatUtils';
 import {
   dropTurretLockMidTick,
@@ -41,6 +41,8 @@ import {
 } from './targetingInputStamping';
 import { getSimWasm } from '../../sim-wasm/init';
 import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
+import { beamIndex } from '../BeamIndex';
+import { evaluateBeamPulsePlan, type BeamPulseEvaluation } from './beamPulse';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -56,6 +58,19 @@ const _turretRotationFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
 };
+const _turretBeamPulseAim: BeamPulseEvaluation = {
+  sourceX: 0,
+  sourceY: 0,
+  sourceZ: 0,
+  targetX: 0,
+  targetY: 0,
+  targetZ: 0,
+  dirX: 1,
+  dirY: 0,
+  dirZ: 0,
+  yaw: 0,
+  pitch: 0,
+};
 const _turretTargetingContext: CombatTargetingEntityReadContext = {
   views: null as never,
   slot: -1,
@@ -64,6 +79,8 @@ const _turretTargetingContext: CombatTargetingEntityReadContext = {
 };
 const _turretRotationWeapons: Turret[] = [];
 const _turretRotationRefreshUnits: Entity[] = [];
+const _turretRotationUnitsWithPulseHosts: Entity[] = [];
+const _turretRotationUnitIds = new Set<EntityId>();
 let _turretCurrentYaw = new Float64Array(0);
 let _turretYawVelocity = new Float64Array(0);
 let _turretTargetYaw = new Float64Array(0);
@@ -181,6 +198,45 @@ function weaponUsesRotationAim(weapon: Turret): boolean {
   return true;
 }
 
+/** Include committed-pulse hosts even if live targeting went idle after the
+ * captured target died or left range. The fired plan, not the current lock,
+ * owns the turret until the pulse expires. */
+export function collectTurretRotationUnits(
+  world: WorldState,
+  activeTargetingUnits: readonly Entity[],
+): readonly Entity[] {
+  const lineProjectiles = world.getLineProjectiles();
+  let hasCommittedPulse = false;
+  for (let i = 0; i < lineProjectiles.length; i++) {
+    const projectile = lineProjectiles[i].projectile;
+    if (projectile === null || projectile.beamPulsePlan === null) continue;
+    hasCommittedPulse = true;
+    break;
+  }
+  if (!hasCommittedPulse) return activeTargetingUnits;
+
+  const result = _turretRotationUnitsWithPulseHosts;
+  const ids = _turretRotationUnitIds;
+  result.length = 0;
+  ids.clear();
+  for (let i = 0; i < activeTargetingUnits.length; i++) {
+    const unit = activeTargetingUnits[i];
+    result.push(unit);
+    ids.add(unit.id);
+  }
+  for (let i = 0; i < lineProjectiles.length; i++) {
+    const projectile = lineProjectiles[i].projectile;
+    if (projectile?.beamPulsePlan === null || projectile?.beamPulsePlan === undefined) continue;
+    if (ids.has(projectile.sourceEntityId)) continue;
+    const source = world.getEntity(projectile.sourceEntityId);
+    if (source === undefined) continue;
+    ids.add(source.id);
+    result.push(source);
+  }
+  result.sort((a, b) => a.id - b.id);
+  return result;
+}
+
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
   const dtSec = dtMs / 1000;
   _turretRotationWeapons.length = 0;
@@ -209,8 +265,12 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
     const turrets = combat.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
-      if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
       const weapon = turrets[weaponIndex];
+      const activeBeamId = beamIndex.getBeam(unit.id, weaponIndex);
+      const activeBeam = activeBeamId === undefined ? undefined : world.getEntity(activeBeamId);
+      const activeBeamProjectile = activeBeam?.projectile ?? null;
+      const activeBeamPulsePlan = activeBeamProjectile?.beamPulsePlan ?? null;
+      if (!turretMaskIncludes(activeMask, weaponIndex) && activeBeamPulsePlan === null) continue;
       if (!isAttackEmitter(weapon)) continue;
       // Vertical launchers skip normal yaw/pitch aim math. The turret
       // barrel itself is pinned straight up; projectile launch reads
@@ -245,7 +305,22 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         ? _turretRotationFsm.targetId
         : (weapon.target ?? -1);
 
-      if (unit.combat.priorityTargetPoint !== null) {
+      if (activeBeamPulsePlan !== null && activeBeamProjectile !== null) {
+        // While the pulse is on, the turret follows the immutable trajectory
+        // captured at emission. Losing or changing the live lock cannot steer
+        // an already-fired beam onto a new path.
+        const pulseAim = evaluateBeamPulsePlan(
+          activeBeamPulsePlan,
+          // updateProjectiles advances the beam later in this same fixed tick;
+          // aim at that end-of-tick sample so the barrel and traced ray do not
+          // carry a permanent one-tick phase offset.
+          activeBeamProjectile.timeAlive + dtMs,
+          _turretBeamPulseAim,
+        );
+        targetAngle = pulseAim.yaw;
+        targetPitch = pulseAim.pitch;
+        hasActiveTarget = true;
+      } else if (unit.combat.priorityTargetPoint !== null) {
         if (!weaponUsesRotationAim(weapon)) {
           targetAngle = weapon.rotation;
           targetPitch = weapon.pitch;

@@ -1,5 +1,15 @@
 {
   "minOnTimeMs": 200,
+  "pulse": {
+    "onTimeMs": 1000,
+    "onTimeRandomness": 0.2,
+    "offTimeMs": 2000,
+    "offTimeRandomness": 0.2,
+    "collisionSampleMs": 100,
+    "activeOutputMultiplier": 3,
+    "initialStaggerMaxMs": 250,
+    "trackingErrorBudgetRadians": 0.16
+  },
   "snapOriginToTurret": true,
   "outer": {
     "waveHighToLowAlphaLengthRatio": 0.5,

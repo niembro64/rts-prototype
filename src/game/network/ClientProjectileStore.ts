@@ -265,11 +265,8 @@ export class ClientProjectileStore {
   private finishBeamUpdate(entity: Entity, id: EntityId, target: BeamPathTarget): void {
     const proj = entity.projectile;
     if (proj === null) return;
-    const projPts = proj.points ?? (proj.points = []);
-    let displayChanged = false;
-    if (target.initialSnapPending || projPts.length === 0) {
-      displayChanged = snapBeamPathDisplayToTarget(entity, target) || displayChanged;
-    }
+    let displayChanged = snapBeamPathDisplayToTarget(entity, target);
+    target.initialSnapPending = false;
     const previousEndpointDamageable = proj.endpointDamageable !== false;
     const nextEndpointDamageable = target.endpointDamageable !== false;
     proj.obstructionT = target.obstructionT;
