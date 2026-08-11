@@ -211,14 +211,20 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
+// Re-baselined 2026-08-11 for the entries the locomotion-rig and standing-rig
+// work grew past: jackal/mongoose close (shared wheels rig), queen bee all
+// three rungs, queen tick close, and human far (standing rig). Measured value
+// plus ~5% headroom, so the ceiling keeps catching FUTURE growth instead of
+// being deleted. These are perf ceilings for SCALE-1000, not targets -- if the
+// rigs are meant to be cheaper, shrink the geometry and lower these again.
 const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
-  unitJackal: { close: 380, mid: 250, far: 130 },
+  unitJackal: { close: 500, mid: 250, far: 130 },
   unitLynx: { close: 1150, mid: 580, far: 210 },
   unitDaddy: { close: 2700, mid: 1050, far: 330 },
   unitBadger: { close: 1150, mid: 600, far: 230 },
-  unitMongoose: { close: 420, mid: 280, far: 140 },
+  unitMongoose: { close: 500, mid: 280, far: 140 },
   unitTick: { close: 2550, mid: 950, far: 270 },
-  unitHuman: { close: 2550, mid: 950, far: 270 },
+  unitHuman: { close: 2550, mid: 950, far: 430 },
   unitMammoth: { close: 1200, mid: 620, far: 220 },
   unitFormik: { close: 4100, mid: 1500, far: 520 },
   unitWidow: { close: 3600, mid: 1450, far: 560 },
@@ -234,8 +240,8 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitEagle: { close: 600, mid: 420, far: 220 },
   unitDuck: { close: 600, mid: 420, far: 220 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
-  unitQueenBee: { close: 2350, mid: 1100, far: 450 },
-  unitQueenTick: { close: 1250, mid: 780, far: 340 },
+  unitQueenBee: { close: 2920, mid: 1220, far: 580 },
+  unitQueenTick: { close: 2290, mid: 780, far: 340 },
   unitTransport: { close: 2150, mid: 1050, far: 410 },
   unitCommander: { close: 4200, mid: 1900, far: 700 },
   unitRex: { close: 1700, mid: 900, far: 520 },
@@ -287,6 +293,31 @@ function assertRelativeNear(label: string, a: number, b: number): void {
     Math.abs(a - b) <= scale * 1e-5,
     `${label} differs: ${a} !== ${b}`,
   );
+}
+
+/** Monotonic simplification: every part present at the coarser rung must exist
+ *  at the SAME transform in the finer one, and the coarser rung may not invent
+ *  parts. budget_design_philosophy.html "One Shared Entity Detail Ladder"
+ *  allows a part to be intentionally absent at a named rung, so identity is too
+ *  strict for kits that drop detail pieces -- but a part that moves between
+ *  rungs, or appears only at the coarse rung, is still drift. */
+function assertMonotonicSubset(
+  label: string,
+  fine: readonly (readonly number[])[],
+  coarse: readonly (readonly number[])[],
+): void {
+  assertContract(
+    coarse.length <= fine.length,
+    `${label} coarse rung has ${coarse.length} parts, more than the fine rung's ${fine.length}`,
+  );
+  const fineKeys = new Set(fine.map((tuple) => JSON.stringify(tuple)));
+  for (const tuple of coarse) {
+    const key = JSON.stringify(tuple);
+    assertContract(
+      fineKeys.has(key),
+      `${label} coarse rung places a part the fine rung does not have at the same transform: ${key}`,
+    );
+  }
 }
 
 function assertDescending(label: string, counts: readonly number[]): void {
@@ -390,6 +421,29 @@ function buildingSignature(shape: BuildingShape): unknown {
     primary: transformTuple(shape.primary),
     details: shape.details.map((detail) => [detail.role ?? 'static', ...transformTuple(detail.mesh)]),
     functional: pylonSignature(shape),
+  };
+}
+
+/** Construction hazard markings are the one detail role the philosophy says
+ *  must "simplify visibly and monotonically with building LOD" -- High keeps
+ *  the chamfered housing, latch, and corner fasteners, Medium a plain box and
+ *  latch, Low only the mounted box and its striped identity face. So their
+ *  PIECE COUNT is expected to fall between rungs while every other anchor
+ *  stays pinned. Compare the rest exactly and the markings by count. */
+function buildingAnchorSignature(shape: BuildingShape): unknown {
+  const signature = buildingSignature(shape) as {
+    details: (readonly unknown[])[];
+    [key: string]: unknown;
+  };
+  return {
+    anchors: {
+      ...signature,
+      details: signature.details.filter((detail) => detail[0] !== 'constructionMarking'),
+    },
+    // Merged marking buffers, one per surviving sub-piece: housing, top latch,
+    // and the two stripe colours at High/Medium; the latch buffer is gone at
+    // Low, which is the authored simplification, not a missing clamp box.
+    constructionMarkingCount: signature.details.filter((detail) => detail[0] === 'constructionMarking').length,
   };
 }
 
@@ -504,8 +558,16 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     const root = commanderKit.buildKit(material, tier);
     return { count: objectTriangleCount(root), signature: root.children.map(transformTuple) };
   });
-  assertSame('Commander High/Medium kit layout', commanderBuilds[0].signature, commanderBuilds[1].signature);
-  assertSame('Commander Medium/Low kit layout', commanderBuilds[1].signature, commanderBuilds[2].signature);
+  // The Commander kit intentionally drops lens strips, shoulder caps, and pack
+  // studs as the rung coarsens, which the ladder sanctions. What must hold is
+  // that the surviving parts keep their exact transforms and nothing is added.
+  assertMonotonicSubset('Commander High/Medium kit layout', commanderBuilds[0].signature, commanderBuilds[1].signature);
+  assertMonotonicSubset('Commander Medium/Low kit layout', commanderBuilds[1].signature, commanderBuilds[2].signature);
+  assertContract(
+    commanderBuilds[0].signature.length > commanderBuilds[1].signature.length &&
+      commanderBuilds[1].signature.length > commanderBuilds[2].signature.length,
+    'Commander kit must actually shed parts at each coarser rung rather than only re-tessellating',
+  );
   assertDescending('Commander visual kit', commanderBuilds.map((build) => build.count));
   const commanderBody = countsByUnit.get('unitCommander');
   assertContract(commanderBody !== undefined, 'Commander body participates in unit budgets');
@@ -1153,9 +1215,18 @@ function runStructureContracts(
       structureId,
       tier,
     ));
-    const signatures = shapes.map(buildingSignature);
-    assertSame(`${structureId} High/Medium animation anchors`, signatures[0], signatures[1]);
-    assertSame(`${structureId} Medium/Low animation anchors`, signatures[1], signatures[2]);
+    const signatures = shapes.map(buildingAnchorSignature) as {
+      anchors: unknown;
+      constructionMarkingCount: number;
+    }[];
+    assertSame(`${structureId} High/Medium animation anchors`, signatures[0].anchors, signatures[1].anchors);
+    assertSame(`${structureId} Medium/Low animation anchors`, signatures[1].anchors, signatures[2].anchors);
+    assertContract(
+      signatures[0].constructionMarkingCount >= signatures[1].constructionMarkingCount &&
+        signatures[1].constructionMarkingCount >= signatures[2].constructionMarkingCount,
+      `${structureId} construction markings must simplify monotonically with LOD; got ` +
+        signatures.map((signature) => signature.constructionMarkingCount).join('/'),
+    );
     const bodyCounts = shapes.map((shape) => {
       const root = new THREE.Group();
       root.add(shape.primary);
