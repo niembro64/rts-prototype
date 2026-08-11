@@ -630,6 +630,25 @@ export class ClientViewState {
       now,
     );
     this.projectileStore.markMotionTargetUpdateActive(entity, id);
+    if (!this.lockstepPresentationEnabled) {
+      // Only ClientLockstepPresentation consumes projectile motion TARGETS and
+      // then refreshes the render spatial slot from the pose it wrote. On the
+      // authoritative-snapshot path nothing ever drains them, so without this
+      // the shot stays frozen at its spawn point and the render index keeps
+      // culling it against a stale position. There, the snapshot row IS the
+      // pose, so materialize it directly.
+      entity.transform.x = x;
+      entity.transform.y = y;
+      entity.transform.z = z;
+      entity.transform.rotation = deqRot(qrotation);
+      const projectile = entity.projectile;
+      if (projectile !== null) {
+        projectile.velocityX = velocityX;
+        projectile.velocityY = velocityY;
+        projectile.velocityZ = velocityZ;
+      }
+      this.projectileStore.updateRenderSpatialIndex(entity);
+    }
   }
 
   private applyProjectileWireSourceDespawns(

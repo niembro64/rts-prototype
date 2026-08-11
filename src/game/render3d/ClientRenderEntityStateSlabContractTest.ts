@@ -11,6 +11,7 @@ import type {
 import { ClientViewState } from '../network/ClientViewState';
 import { quantizeEntityPosition as qEntityPos } from '../network/snapshotQuantization';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
+import { isShieldPanelTurret } from '../sim/shieldPanelRuntime';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
@@ -288,9 +289,21 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   const loris = createTestUnit(12, 2 as PlayerId, 'unitLoris');
   const lorisSlot = slab.refreshUnit(loris);
   assertContract(lorisSlot !== undefined, 'Loris refresh must allocate a slot');
+  // The index is a position in the RUNTIME turret array, which holds only
+  // attack-kind mounts -- the Loris sensor mount is a utility mount and never
+  // appears there. Assert the index actually lands on the shield panel rather
+  // than pinning an ordinal that moves whenever mount kinds are re-sorted.
+  const lorisShieldIndex = slab.getViews().shieldPanelTurretIndex[lorisSlot!];
+  const lorisTurrets = loris.combat?.turrets ?? [];
   assertContract(
-    slab.getViews().shieldPanelTurretIndex[lorisSlot!] === 1,
+    lorisShieldIndex >= 0 &&
+      lorisShieldIndex < lorisTurrets.length &&
+      isShieldPanelTurret(lorisTurrets[lorisShieldIndex]),
     'Loris shield rendering must use the shield-panel mount, not its passive sensor mount',
+  );
+  assertContract(
+    lorisTurrets.filter((turret) => isShieldPanelTurret(turret)).length === 1,
+    'Loris must mount exactly one shield panel for the render slab to point at',
   );
   slab.unsetEntity(loris.id);
 
