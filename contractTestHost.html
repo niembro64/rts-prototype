@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Contract Test Host</title>
+  </head>
+  <body>
+    <!--
+      A page that boots the sim module graph and nothing else. The normal app
+      page starts the lobby's background battle, which legitimately claims the
+      per-window sim slot (sessionSingleton), so any contract test that needs to
+      stand up its own backend cannot run there. scripts/contractTestHarness.mjs
+      loads this page for exactly those tests.
+    -->
+    <script type="module" src="/src/contractTestHostBrowser.ts"></script>
+  </body>
+</html>

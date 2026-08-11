@@ -21,12 +21,11 @@
 // order-dependent. Run the whole suite in registration order before believing
 // a pass or a failure from a filtered subset.
 //
-// Known environmental failure: runDeterministicLockstepBackendContractTest
-// times out here because the harness boots the app normally and the lobby's
-// background battle already holds the session sim singleton it wants. It is
-// deliberately NOT skipped -- a skipped test is how this suite rotted in the
-// first place -- so expect it in the failing list until the singleton is
-// released or the test learns to wait for it.
+// A few tests need an exclusive sim slot: the app page starts the lobby's
+// background battle, which legitimately claims the per-window sessionSingleton,
+// so a test that stands up its own authoritative backend cannot run there.
+// Those run against contractTestHost.html, which boots the sim module graph and
+// nothing else. See EXCLUSIVE_SIM_SLOT_TESTS below. Nothing is skipped.
 
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
@@ -57,6 +56,10 @@ for (const m of initSource.slice(blockStart).matchAll(/const \{ ([^}]+) \} = awa
   }
 }
 
+// Tests that stand up their own authoritative backend, so they cannot share a
+// page with the lobby's background battle.
+const EXCLUSIVE_SIM_SLOT_TESTS = new Set(['runDeterministicLockstepBackendContractTest']);
+
 const selected = registered.filter(({ fn }) => (only === null ? true : fn.toLowerCase().includes(only.toLowerCase())));
 if (selected.length === 0) throw new Error(`no contract tests matched --only=${only}`);
 
@@ -84,8 +87,24 @@ try {
     .catch(() => {});
   await page.waitForTimeout(4000);
 
+  let exclusivePage = null;
+  const pageFor = async (fn) => {
+    if (!EXCLUSIVE_SIM_SLOT_TESTS.has(fn)) return page;
+    if (exclusivePage === null) {
+      exclusivePage = await browser.newPage();
+      await exclusivePage.goto(`${base}contractTestHost.html`, { waitUntil: 'load', timeout: 120000 });
+      await exclusivePage.waitForFunction(
+        () => window.__BA_CONTRACT_HOST_READY__ === true,
+        null,
+        { timeout: 120000 },
+      );
+    }
+    return exclusivePage;
+  };
+
   for (const { fn, url } of selected) {
-    const result = await page.evaluate(async ({ fn, url, perTestTimeoutMs }) => {
+    const host = await pageFor(fn);
+    const result = await host.evaluate(async ({ fn, url, perTestTimeoutMs }) => {
       let timer;
       const run = async () => {
         const mod = await import(/* @vite-ignore */ new URL(url, location.origin).href);
