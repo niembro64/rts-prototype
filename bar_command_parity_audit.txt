@@ -353,27 +353,46 @@ order-dependent -- runEntitySlotRegistryContractTest passes in boot order and
 fails in a filtered subset. Run the whole suite before believing a result.
 
 
-8. Remaining failures, all outside the command surface
-======================================================
+8. Suite status
+===============
 
-Score after this pass: 83/96. Every command-surface gate passes, including
-the new per-blueprint command coverage certification. The rest fail
-at HEAD for unrelated reasons; recorded so the next pass does not rediscover
-them:
+96/96, stable across three consecutive full runs.
 
-  runDeterministicLockstepBackendContractTest  environmental: the lobby's
-      background battle holds the session sim singleton this test wants, so it
-      times out under the harness. Deliberately not skipped.
+Getting there closed six real defects outside the command surface, all found
+by running the tests that had never been run:
 
-  runClientSnapshotApplierContractTest       prediction render-row dirtying
-  runShieldFarLodRenderPacketContractTest    shield packet emission LOD
-  runSnapshotVisibilityContractTest          above-water sight reveal
-  runUnitLocomotionContractTest              shared surface-probe lattice
-  runUnitWaterLiftLocomotionContractTest     Sea Turtle water-to-air actuator
-  runClientRenderEntityStateSlabContractTest Loris shield-panel mount
-  runClientProjectileRenderStateSlabContractTest  projectile spatial slot
-  runEntityLodGeometry3DContractTest         Commander High/Medium kit
-  runSurfaceChart3DContractTest              chart albedo + lifecycle alpha
-  runSupportSurfaceContractTest              flippers spawn support
-  runFabricatorProductionRingContractTest    factory shell spawn support
-  runDemoMetalExtractorSpawnContractTest     Spikey Lake repeat lines
+  - THREE.Material.copy() does not carry onBeforeCompile, so the per-object
+    fade path cloned the base, composed with the prototype no-op, and dropped
+    every earlier shader patch. Any entity on that path rendered untextured
+    for its whole nanoframe build-in and death fade.
+  - cachedShieldUnits was built inside a loop gated on isAttackEmitterConfig,
+    which correctly rejects persistent sphere barriers -- and so dropped every
+    sphere host out of the shield render list. Their fields never drew.
+  - Hot-motion typed rows write only a server target; only the lockstep branch
+    of applyPrediction materialized them, so on the authoritative-snapshot path
+    a moving unit sat at its last full-row pose with a stale render row.
+  - Travelling shots had the same hole: motion updates wrote a target nothing
+    consumed, so a shot stayed frozen at its spawn point while the render index
+    culled it against a stale position.
+  - runCanonicalCheckpointContractTest tore down the shared terrain mesh and
+    never put it back, which poisoned every later terrain-dependent test.
+  - The tightest demo preset fit all 26 production lines for eight of nine
+    seats and came up one short on the ninth; the factory placement search ring
+    went 48 -> 64 cells.
+
+The rest were fixtures that had drifted from deliberate content changes -- the
+Commander LOD kit shedding parts per rung, the Sea Turtle's authored seabed
+standoff lift, the submarine depth trim, coupled build progress, the widened
+surface-probe lattice, unitRex missing from the locomotion policy table, roof
+probes spaced wider than the building they stood on -- plus one environmental
+case: runDeterministicLockstepBackendContractTest needs a free sim slot, so it
+runs against contractTestHost.html rather than sharing a page with the lobby's
+background battle.
+
+Two traps worth remembering, both of which cost real time here:
+
+  - A "solid" support-surface sample is NOT dry ground. Sampled groundZ clamps
+    to the liquid surface where the bed sits under it, so a bed at -400 still
+    reports solid while the sampler answers -120.
+  - An installed authoritative tile map OUTRANKS the terrain generation config.
+    Setting a known config while a battle mesh is installed changes nothing.
