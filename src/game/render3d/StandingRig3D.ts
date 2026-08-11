@@ -17,10 +17,10 @@
 //
 // UPRIGHT. A biped does not lean into a hill. The hull's terrain tilt is
 // cancelled at the pose (see Render3DEntities' upright hosts), so this rig can
-// treat chassis-local Y as true vertical, and the only thing a slope changes is
-// how far down each foot reaches. That is exactly what a real leg does with a
-// hill, and it is why each foot target samples terrain height rather than living
-// at a fixed depth below the hip.
+// treat chassis-local Y as true vertical. A slope changes how far down each
+// foot reaches; on touchdown the shoe also captures that support's normal and
+// retains the resulting world orientation until its next recovery. The spine
+// stays upright while each planted sole stays tangent to the hill it met.
 
 import * as THREE from 'three';
 import type {
@@ -28,7 +28,7 @@ import type {
   StandingLegs,
   UnitTurretHostAttachment,
 } from '@/types/blueprintSchema.generated';
-import type { Entity, PlayerId, Turret } from '../sim/types';
+import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
   getSharedPrimitiveCylinderGeometry,
@@ -42,9 +42,14 @@ import {
   type LocomotionRenderPose,
   type RollingContactState,
 } from './LocomotionRigShared3D';
-import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
+import {
+  getLocomotionSurfaceHeight,
+  sampleLocomotionFootSurfaceNormal,
+  type LocomotionSurfaceNormal,
+} from './LocomotionTerrainSampler';
 import { getLocomotionMatByCache } from './RenderUtils';
 import { COLORS } from '@/colorsConfig';
+import { UNIT_MASS_MULTIPLIER } from '@/config';
 import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 import type { ClientRenderTurretHostRows } from './ClientRenderTurretStateSlab';
@@ -53,6 +58,7 @@ import {
   type HostTurretAimSample3D,
 } from './HostTurretAim3D';
 import { clampUnit } from '../math';
+import { resolveFootSurfaceQuaternion } from './FootContactOrientation3D';
 
 const SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const segmentMaterials = new Map<number, THREE.MeshLambertMaterial>();
@@ -120,6 +126,16 @@ export type StandingLeg = {
    *  pose, so same-side counter-swing cannot acquire a second gait clock. */
   footLocalX: number;
   footLocalZ: number;
+  /** A standing shoe takes the contacted support's complete world
+   * orientation once at touchdown. The local quaternion is recomputed from
+   * this retained pose while planted so chassis yaw cannot drag the sole off
+   * the slope it landed on. */
+  footTouchingSurface: boolean;
+  footOrientationLocked: boolean;
+  footWorldQuaternionX: number;
+  footWorldQuaternionY: number;
+  footWorldQuaternionZ: number;
+  footWorldQuaternionW: number;
 };
 
 export type StandingArm = {
@@ -186,6 +202,13 @@ export type StandingMesh = {
    *  locomotion-forward instead of snapping to it. Null means the first live
    *  pose should initialize from the host heading. */
   upperBodyWorldYaw: number | null;
+  /** World-yaw angular velocity retained by the inertial torso controller.
+   * Keeping this beside the heading makes geometry-tier rebuilds continuous
+   * through both halves of the second-order response. */
+  upperBodyYawVelocity: number;
+  /** Critically damped spring gain derived from the unit's physical mass,
+   * radius, and authored ground propulsive force. */
+  upperBodyYawSpringGain: number;
   /** True whenever any attached turret owns the host presentation. This is a
    *  host-wide animation gate: combat aim suppresses gait on both arms even
    *  when only one arm receives the selected turret's pitch proposal. */
@@ -234,11 +257,17 @@ const ELBOW_BEND_RAD = THREE.MathUtils.degToRad(52);
 const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 /** Arms ease from walk swing into a working pose rather than snapping. */
 const ARM_ACTION_EASE_SECONDS = 0.11;
-/** A standing torso quickly accepts a locked turret heading. */
-const UPPER_BODY_YAW_EASE_SECONDS = 0.12;
-/** With no turret asking for host assistance, the torso's world-facing EMA
- *  follows locomotion-forward. */
-const UPPER_BODY_RETURN_EASE_SECONDS = 0.45;
+/** Match the authoritative chassis attitude servo: a factor of two keeps the
+ * critically damped response inside the maximum acceleration implied by its
+ * available edge force. Unlike chassis steering, a waist motor does not need
+ * to cap its actuator force at one body-weight of ground traction. */
+const UPPER_BODY_RESPONSE_TIME_SCALE = 2;
+/** Dynamic unit bodies use solid-sphere inertia (I = 2/5 m r^2). With no
+ * separately authored torso mass distribution, using that same conservative
+ * envelope gives every standing unit a deterministic turn authority without
+ * adding a per-blueprint animation-speed knob. */
+const UPPER_BODY_INERTIA_FACTOR = 2 / 5;
+const FORCE_TO_ACCELERATION_SCALE = 1_000_000;
 /** Manual emitters such as the Commander's D-gun have no tracking FSM lock.
  *  A changed authoritative pose therefore grants them a short host-assist
  *  window, long enough for the torso/arm echo to visibly follow the shot. */
@@ -246,6 +275,11 @@ const MANUAL_TURRET_ASSIST_HOLD_MS = 420;
 const MANUAL_TURRET_POSE_EPSILON = 1e-4;
 const STANDING_PELVIS_CENTER_LIFT_RATIO = 0.26;
 const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
+/** Gait ease approaches rest asymptotically. Snap the last invisible sliver
+ * of recovery travel onto the support so a stopping shoe has a real finite
+ * touchdown transition and can acquire its next surface orientation. */
+const STANDING_FOOT_TOUCHDOWN_EPSILON_MIN = 0.02;
+const STANDING_FOOT_TOUCHDOWN_EPSILON_UNIT_RADIUS_RATIO = 0.0005;
 
 const _knee = new THREE.Vector3();
 const _resolvedFoot = new THREE.Vector3();
@@ -255,6 +289,11 @@ const _chassisVelocity = { x: 0, y: 0, z: 0 };
 const _poseQuat = new THREE.Quaternion();
 const _inversePoseQuat = new THREE.Quaternion();
 const _footWorld = new THREE.Vector3();
+const _standingFootForward = new THREE.Vector3();
+const _standingFootWorldQuaternion = new THREE.Quaternion();
+const _standingFootLocalQuaternion = new THREE.Quaternion();
+const _standingFootInverseParentQuaternion = new THREE.Quaternion();
+const _standingFootSurfaceNormal: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 const _segDir = new THREE.Vector3();
 const _segQuat = new THREE.Quaternion();
 const _segLateralReference = new THREE.Vector3(0, 0, 1);
@@ -276,6 +315,61 @@ function shortestAngleDelta(from: number, to: number): number {
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
   return delta;
+}
+
+/** Convert the same physical quantities that govern chassis motion into a
+ * presentation spring for the articulated upper body. A force applied at the
+ * body's edge produces torque F*r; dividing by solid-body inertia makes a
+ * broad, massive Rex turn materially slower than a Human without naming
+ * either unit here. */
+export function standingUpperBodyYawSpringGain(
+  authoredMass: number,
+  radius: number,
+  maxPropulsiveForce: number,
+): number {
+  const bodyMass = authoredMass * UNIT_MASS_MULTIPLIER;
+  const safeRadius = Math.max(1, radius);
+  if (
+    !Number.isFinite(bodyMass) || bodyMass <= 0 ||
+    !Number.isFinite(maxPropulsiveForce) || maxPropulsiveForce <= 0
+  ) return 0;
+  const inertia = bodyMass * safeRadius * safeRadius * UPPER_BODY_INERTIA_FACTOR;
+  const torque = maxPropulsiveForce * safeRadius;
+  const maxAngularAcceleration =
+    torque * FORCE_TO_ACCELERATION_SCALE / inertia;
+  return maxAngularAcceleration /
+    (Math.PI * UPPER_BODY_RESPONSE_TIME_SCALE * UPPER_BODY_RESPONSE_TIME_SCALE);
+}
+
+/** Exact critically damped step for a wrapped world-yaw axis. This is the
+ * closed-form counterpart of the authoritative damped attitude solve, so the
+ * result is stable across render frame rates and carries angular momentum
+ * when a turret changes targets. */
+function stepStandingUpperBodyYaw(
+  mesh: StandingMesh,
+  targetWorldYaw: number,
+  dt: number,
+): void {
+  if (mesh.upperBodyWorldYaw === null || dt <= 0) return;
+  const k = mesh.upperBodyYawSpringGain;
+  if (!(k > 0) || !Number.isFinite(k)) {
+    mesh.upperBodyYawVelocity = 0;
+    return;
+  }
+  const rootK = Math.sqrt(k);
+  const relativeYaw = shortestAngleDelta(
+    targetWorldYaw,
+    mesh.upperBodyWorldYaw,
+  );
+  const safeVelocity = Number.isFinite(mesh.upperBodyYawVelocity)
+    ? mesh.upperBodyYawVelocity
+    : 0;
+  const b = safeVelocity + rootK * relativeYaw;
+  const decay = Math.exp(-rootK * dt);
+  const nextRelativeYaw = (relativeYaw + b * dt) * decay;
+  mesh.upperBodyYawVelocity =
+    (b - rootK * (relativeYaw + b * dt)) * decay;
+  mesh.upperBodyWorldYaw = targetWorldYaw + nextRelativeYaw;
 }
 
 function material(ownerId: PlayerId | undefined): THREE.MeshLambertMaterial {
@@ -639,9 +733,77 @@ function positiveUnitPhase(phase: number): number {
   return ((phase % 1) + 1) % 1;
 }
 
-/** Sample terrain under a phase-authored foot without turning it into a
- * contact-locked foothold. Longitudinal gait remains coupled; only the
- * standing leg's vertical reach adapts to the ground under each shoe. */
+/** Resolve one standing shoe's local pose from its touchdown-latched world
+ * orientation. A lifted shoe is level in the lower-body frame and releases
+ * the lock. The first touching frame captures the support slope; every later
+ * touching frame counter-rotates the parent so the complete world pose stays
+ * unchanged until lift-off. */
+export function resolveStandingFootContactOrientation(
+  foot: Pick<
+    StandingLeg,
+    | 'footTouchingSurface'
+    | 'footOrientationLocked'
+    | 'footWorldQuaternionX'
+    | 'footWorldQuaternionY'
+    | 'footWorldQuaternionZ'
+    | 'footWorldQuaternionW'
+  >,
+  touchingSurface: boolean,
+  parentWorldQuaternion: Readonly<{ x: number; y: number; z: number; w: number }>,
+  candidateWorldYaw: number,
+  surfaceNormalX: number,
+  surfaceNormalY: number,
+  surfaceNormalZ: number,
+  outLocalQuaternion: THREE.Quaternion,
+): void {
+  if (!touchingSurface) {
+    foot.footTouchingSurface = false;
+    foot.footOrientationLocked = false;
+    outLocalQuaternion.identity();
+    return;
+  }
+
+  if (!foot.footTouchingSurface) foot.footOrientationLocked = false;
+  foot.footTouchingSurface = true;
+  if (!foot.footOrientationLocked) {
+    resolveFootSurfaceQuaternion(
+      candidateWorldYaw,
+      surfaceNormalX,
+      surfaceNormalY,
+      surfaceNormalZ,
+      _standingFootWorldQuaternion,
+    );
+    foot.footWorldQuaternionX = _standingFootWorldQuaternion.x;
+    foot.footWorldQuaternionY = _standingFootWorldQuaternion.y;
+    foot.footWorldQuaternionZ = _standingFootWorldQuaternion.z;
+    foot.footWorldQuaternionW = _standingFootWorldQuaternion.w;
+    foot.footOrientationLocked = true;
+  } else {
+    _standingFootWorldQuaternion.set(
+      foot.footWorldQuaternionX,
+      foot.footWorldQuaternionY,
+      foot.footWorldQuaternionZ,
+      foot.footWorldQuaternionW,
+    );
+  }
+
+  _standingFootInverseParentQuaternion
+    .set(
+      parentWorldQuaternion.x,
+      parentWorldQuaternion.y,
+      parentWorldQuaternion.z,
+      parentWorldQuaternion.w,
+    )
+    .invert();
+  outLocalQuaternion
+    .copy(_standingFootInverseParentQuaternion)
+    .multiply(_standingFootWorldQuaternion)
+    .normalize();
+}
+
+/** Sample support height under a phase-authored foot. Longitudinal gait stays
+ * coupled; height and the independently latched touchdown orientation are the
+ * only per-shoe surface responses. */
 function standingFootGroundLocalY(
   mesh: StandingMesh,
   footX: number,
@@ -649,6 +811,7 @@ function standingFootGroundLocalY(
   pose: LocomotionRenderPose,
   mapWidth: number,
   mapHeight: number,
+  ignoreEntityId: EntityId | null,
 ): number {
   _poseQuat.set(
     pose.quaternionX,
@@ -666,7 +829,7 @@ function standingFootGroundLocalY(
     _footWorld.z,
     mapWidth,
     mapHeight,
-    0,
+    ignoreEntityId,
   );
   _footWorld.x -= pose.rootX;
   _footWorld.y -= pose.rootY;
@@ -697,6 +860,7 @@ function poseCoupledStandingGait(
   pose?: LocomotionRenderPose,
   mapWidth = 0,
   mapHeight = 0,
+  ignoreEntityId: EntityId | null = null,
 ): void {
   const cycle = positiveUnitPhase(phase);
   const amplitude = THREE.MathUtils.clamp(gait, 0, 1);
@@ -713,8 +877,22 @@ function poseCoupledStandingGait(
     const footZ = leg.hipZ + leg.side * mesh.stanceOutward * stanceBlend;
     const groundY = pose === undefined
       ? mesh.groundLocalY
-      : standingFootGroundLocalY(mesh, footX, footZ, pose, mapWidth, mapHeight);
-    const footY = groundY + recoveryWave * mesh.strideLift * amplitude;
+      : standingFootGroundLocalY(
+        mesh,
+        footX,
+        footZ,
+        pose,
+        mapWidth,
+        mapHeight,
+        ignoreEntityId,
+      );
+    const requestedFootLift = recoveryWave * mesh.strideLift * amplitude;
+    const touchdownEpsilon = Math.max(
+      STANDING_FOOT_TOUCHDOWN_EPSILON_MIN,
+      mesh.unitRadius * STANDING_FOOT_TOUCHDOWN_EPSILON_UNIT_RADIUS_RATIO,
+    );
+    const touchingSurface = pose !== undefined && requestedFootLift <= touchdownEpsilon;
+    const footY = groundY + (touchingSurface ? 0 : requestedFootLift);
     solveStandingKnee(
       leg.hipX,
       leg.hipY,
@@ -748,15 +926,57 @@ function poseCoupledStandingGait(
     );
     leg.knee.position.copy(_knee);
     leg.foot.position.copy(_resolvedFoot);
-    // Standing feet follow lower-body facing but stay ground-parallel through
-    // recovery. Contact-locked foot yaw belongs only to the `legs` rig.
-    leg.foot.rotation.set(0, 0, 0);
+    if (pose === undefined) {
+      // Preview/rest poses have no live support sample. Keep the shoe level
+      // without changing the retained battlefield contact state.
+      leg.foot.quaternion.identity();
+    } else {
+      const acquiringOrientation = touchingSurface && (
+        !leg.footTouchingSurface || !leg.footOrientationLocked
+      );
+      if (acquiringOrientation) {
+        _footWorld
+          .copy(_resolvedFoot)
+          .applyQuaternion(_poseQuat);
+        _footWorld.x += pose.rootX;
+        _footWorld.y += pose.rootY;
+        _footWorld.z += pose.rootZ;
+        sampleLocomotionFootSurfaceNormal(
+          _footWorld.x,
+          _footWorld.z,
+          mapWidth,
+          mapHeight,
+          ignoreEntityId,
+          _standingFootSurfaceNormal,
+        );
+      }
+      _standingFootForward.set(1, 0, 0).applyQuaternion(_poseQuat);
+      const candidateWorldYaw = Math.atan2(
+        -_standingFootForward.z,
+        _standingFootForward.x,
+      );
+      resolveStandingFootContactOrientation(
+        leg,
+        touchingSurface,
+        _poseQuat,
+        candidateWorldYaw,
+        // Terrain/support normals use sim X/Y horizontal and Z up; Three
+        // uses X/Z horizontal and Y up.
+        _standingFootSurfaceNormal.nx,
+        _standingFootSurfaceNormal.nz,
+        _standingFootSurfaceNormal.ny,
+        _standingFootLocalQuaternion,
+      );
+      leg.foot.quaternion.copy(_standingFootLocalQuaternion);
+    }
   }
 }
 
 export function buildStandingRig(
   unitGroup: THREE.Group,
   unitRadius: number,
+  unitMass: number,
+  maxPropulsiveForce: number,
   cfgLegs: StandingLegs,
   cfgArms: StandingArms,
   chassisLiftY: number,
@@ -834,6 +1054,12 @@ export function buildStandingRig(
       foot: makeFoot(hips, footLength, footWidth, ownerId, variant, geometryTier),
       footLocalX: hipX,
       footLocalZ: hipZ,
+      footTouchingSurface: false,
+      footOrientationLocked: false,
+      footWorldQuaternionX: 0,
+      footWorldQuaternionY: 0,
+      footWorldQuaternionZ: 0,
+      footWorldQuaternionW: 1,
     };
     legs.push(leg);
   }
@@ -927,6 +1153,12 @@ export function buildStandingRig(
     pelvis,
     upperBodyYaw: 0,
     upperBodyWorldYaw: null,
+    upperBodyYawVelocity: 0,
+    upperBodyYawSpringGain: standingUpperBodyYawSpringGain(
+      unitMass,
+      unitRadius,
+      maxPropulsiveForce,
+    ),
     turretLockActive: false,
     turretAimMemory: new Map(),
     legs,
@@ -1105,22 +1337,22 @@ export function updateStandingHostTurretAim(
     // upperBodyYaw is Three-local and therefore the inverse of sim-local yaw:
     // localThree = hostSim - torsoWorldSim.
     mesh.upperBodyWorldYaw = hostYaw - mesh.upperBodyYaw;
+    mesh.upperBodyYawVelocity = 0;
   }
   const targetWorldYaw = selectedPriority > 0 ? selectedYaw : hostYaw;
   const dt = elapsedMs / 1000;
-  const yawEaseSeconds = selectedPriority > 0
-    ? UPPER_BODY_YAW_EASE_SECONDS
-    : UPPER_BODY_RETURN_EASE_SECONDS;
-  const yawEase = dt <= 0
-    ? (selectedPriority > 0 ? 1 : 0)
-    : 1 - Math.exp(-dt / yawEaseSeconds);
-  mesh.upperBodyWorldYaw += shortestAngleDelta(
-    mesh.upperBodyWorldYaw,
-    targetWorldYaw,
-  ) * yawEase;
+  if (dt <= 0 && selectedPriority > 0) {
+    // Zero-delta setup/preview passes have no elapsed time to animate. Keep
+    // their established direct-pose behavior without leaking momentum into
+    // the first live frame.
+    mesh.upperBodyWorldYaw = targetWorldYaw;
+    mesh.upperBodyYawVelocity = 0;
+  } else {
+    stepStandingUpperBodyYaw(mesh, targetWorldYaw, dt);
+  }
   // The lifted upper body is parented under the locomotion yaw. Derive only
-  // the local counter/assist twist here; the persistent EMA above never sees
-  // that moving parent frame.
+  // the local counter/assist twist here; the persistent inertial controller
+  // above never sees that moving parent frame.
   mesh.upperBodyYaw = shortestAngleDelta(mesh.upperBodyWorldYaw, hostYaw);
 
   if (selectedArm !== null) {
@@ -1307,7 +1539,15 @@ export function updateStandingRig(
       mesh.gaitPhase + strideDistance / Math.max(1, mesh.gaitCycleDistance),
     );
   }
-  poseCoupledStandingGait(mesh, mesh.gaitPhase, mesh.gait, pose, mapWidth, mapHeight);
+  poseCoupledStandingGait(
+    mesh,
+    mesh.gaitPhase,
+    mesh.gait,
+    pose,
+    mapWidth,
+    mapHeight,
+    entity.id,
+  );
   poseArms(mesh, entity, dt);
 
   return true;

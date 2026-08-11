@@ -959,7 +959,9 @@ function buildPreviewLocomotion(
     case 'standing': {
       // The card shows the real rig, standing still — same parts, same solve.
       const mesh = buildStandingRig(
-        liftGroup, radius, locomotion.config.legs, locomotion.config.arms,
+        liftGroup, radius, blueprint.mass,
+        locomotion.physics.ground.maxPropulsiveForce,
+        locomotion.config.legs, locomotion.config.arms,
         chassisLift, HOST_PLAYER_ID, geometryTier, blueprint.unitBlueprintId,
       );
       poseStandingRigAtRest(mesh);

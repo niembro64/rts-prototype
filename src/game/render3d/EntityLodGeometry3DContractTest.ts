@@ -639,7 +639,9 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
         }
         case 'standing': {
           const rig = buildStandingRig(
-            root, radius, locomotion.config.legs, locomotion.config.arms,
+            root, radius, blueprint.mass,
+            locomotion.physics.ground.maxPropulsiveForce,
+            locomotion.config.legs, locomotion.config.arms,
             0, undefined, tier,
           );
           poseStandingRigAtRest(rig);

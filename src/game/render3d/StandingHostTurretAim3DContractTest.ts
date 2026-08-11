@@ -27,6 +27,7 @@ import {
   poseStandingRigAtRest,
   resolveStandingArmTurretAim,
   resolveStandingArmTurretRoot,
+  resolveStandingFootContactOrientation,
   type StandingMesh,
   updateStandingRig,
   updateStandingHostTurretAim,
@@ -43,7 +44,7 @@ function assertNear(actual: number, expected: number, message: string): void {
   );
 }
 
-function buildStanding(unitBlueprintId: 'unitHuman' | 'unitCommander') {
+function buildStanding(unitBlueprintId: 'unitHuman' | 'unitCommander' | 'unitRex') {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   assertContract(
     blueprint.unitLocomotion.type === 'standing',
@@ -53,6 +54,8 @@ function buildStanding(unitBlueprintId: 'unitHuman' | 'unitCommander') {
   const mesh = buildStandingRig(
     root,
     blueprint.radius.other,
+    blueprint.mass,
+    blueprint.unitLocomotion.physics.ground.maxPropulsiveForce,
     blueprint.unitLocomotion.config.legs,
     blueprint.unitLocomotion.config.arms,
     getChassisLift(blueprint, blueprint.radius.other),
@@ -384,6 +387,98 @@ function assertStandingFeetFollowLegFacing(mesh: StandingMesh, label: string): v
   mesh.upperBodyYaw = 0;
   host.rotation.y = 0;
   poseStandingRigAtRest(mesh);
+}
+
+function assertStandingFootContactSlopeLatch(): void {
+  const state = {
+    footTouchingSurface: false,
+    footOrientationLocked: false,
+    footWorldQuaternionX: 0,
+    footWorldQuaternionY: 0,
+    footWorldQuaternionZ: 0,
+    footWorldQuaternionW: 1,
+  };
+  const parentAtTouchdown = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    0.35,
+  );
+  const touchdownNormal = new THREE.Vector3(0.24, 0.92, -0.31).normalize();
+  const local = new THREE.Quaternion();
+  resolveStandingFootContactOrientation(
+    state,
+    true,
+    parentAtTouchdown,
+    0.35,
+    touchdownNormal.x,
+    touchdownNormal.y,
+    touchdownNormal.z,
+    local,
+  );
+  const touchdownWorld = parentAtTouchdown.clone().multiply(local);
+  assertContract(
+    state.footTouchingSurface &&
+      state.footOrientationLocked &&
+      new THREE.Vector3(0, 1, 0)
+        .applyQuaternion(touchdownWorld)
+        .dot(touchdownNormal) > 1 - 1e-9,
+    'a standing shoe captures the contacted surface normal at touchdown',
+  );
+
+  const retainedWorld = touchdownWorld.clone();
+  const turnedParent = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    -0.8,
+  );
+  resolveStandingFootContactOrientation(
+    state,
+    true,
+    turnedParent,
+    -0.8,
+    0,
+    1,
+    0,
+    local,
+  );
+  const heldWorld = turnedParent.clone().multiply(local);
+  assertContract(
+    retainedWorld.angleTo(heldWorld) < 1e-9,
+    'a touching standing shoe retains its complete touchdown orientation while its parent turns',
+  );
+
+  resolveStandingFootContactOrientation(
+    state,
+    false,
+    turnedParent,
+    -0.8,
+    0,
+    1,
+    0,
+    local,
+  );
+  assertContract(
+    !state.footTouchingSurface &&
+      !state.footOrientationLocked &&
+      local.angleTo(new THREE.Quaternion()) < 1e-9,
+    'lifting a standing shoe releases its surface-orientation latch',
+  );
+
+  const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
+  resolveStandingFootContactOrientation(
+    state,
+    true,
+    turnedParent,
+    -0.8,
+    nextNormal.x,
+    nextNormal.y,
+    nextNormal.z,
+    local,
+  );
+  const nextWorld = turnedParent.clone().multiply(local);
+  assertContract(
+    new THREE.Vector3(0, 1, 0).applyQuaternion(nextWorld).dot(nextNormal) > 1 - 1e-9 &&
+      retainedWorld.angleTo(nextWorld) > 0.1,
+    'the next standing-shoe touchdown captures the new support slope',
+  );
 }
 
 function assertStandingFeetHaveShoeVolume(mesh: StandingMesh, label: string): void {
@@ -736,13 +831,49 @@ function assertUnlockedTorsoTracksLegs(
     100,
   );
   assertContract(
-    easedRelativeYaw > 1.24 && easedRelativeYaw < 1.28,
-    `${label} unlocked torso EMA follows the new locomotion-forward heading`,
+    easedRelativeYaw > 0 && easedRelativeYaw < initialRelativeYaw,
+    `${label} unlocked torso inertially follows the new locomotion-forward heading`,
   );
 
   mesh.upperBodyYaw = 0;
   mesh.upperBodyWorldYaw = null;
+  mesh.upperBodyYawVelocity = 0;
   poseStandingRigAtRest(mesh);
+}
+
+function assertMassiveStandingTorsoTurnsSlower(): void {
+  const human = buildStanding('unitHuman');
+  const rex = buildStanding('unitRex');
+  const targetYaw = Math.PI * 0.5;
+
+  const turnFor = (fixture: ReturnType<typeof buildStanding>): number => {
+    for (const turret of fixture.turrets) turret.state = 'idle';
+    const primary = fixture.turrets.find((turret) =>
+      turret.config.requiredEngagedForFightStop
+    );
+    assertContract(primary !== undefined, 'standing turn fixture has a primary host turret');
+    primary.state = 'engaged';
+    primary.rotation = targetYaw;
+    fixture.mesh.upperBodyYaw = 0;
+    fixture.mesh.upperBodyWorldYaw = 0;
+    fixture.mesh.upperBodyYawVelocity = 0;
+    updateStandingHostTurretAim(
+      fixture.mesh,
+      0,
+      undefined,
+      fixture.turrets,
+      100,
+    );
+    return Math.abs(fixture.mesh.upperBodyWorldYaw ?? 0);
+  };
+
+  const humanTurn = turnFor(human);
+  const rexTurn = turnFor(rex);
+  assertContract(
+    rex.mesh.upperBodyYawSpringGain < human.mesh.upperBodyYawSpringGain &&
+      rexTurn < humanTurn * 0.05,
+    'mass/radius/force-derived inertia makes Rex torso acceleration materially slower than Human',
+  );
 }
 
 function assertTorsoAimSurvivesLodRebuild(
@@ -751,24 +882,80 @@ function assertTorsoAimSurvivesLodRebuild(
 ): void {
   mesh.upperBodyYaw = 0.42;
   mesh.upperBodyWorldYaw = 1.17;
+  mesh.upperBodyYawVelocity = 0.29;
   mesh.gaitPhase = 0.37;
+  const expectedFootWorldQuaternions = mesh.legs.map((leg, index) => {
+    const world = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(0.1 + index * 0.07, 0.2 - index * 0.04, -0.08),
+    );
+    const local = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-0.05, 0.15 + index * 0.03, 0.09),
+    );
+    leg.footTouchingSurface = true;
+    leg.footOrientationLocked = true;
+    leg.footWorldQuaternionX = world.x;
+    leg.footWorldQuaternionY = world.y;
+    leg.footWorldQuaternionZ = world.z;
+    leg.footWorldQuaternionW = world.w;
+    leg.foot.quaternion.copy(local);
+    return { world, local };
+  });
   const snapshot = captureLocomotionState(mesh);
   assertContract(snapshot?.type === 'standing', `${label} captures standing locomotion state`);
 
   mesh.upperBodyYaw = 0;
   mesh.upperBodyWorldYaw = null;
+  mesh.upperBodyYawVelocity = 0;
   mesh.gaitPhase = 0;
+  for (const leg of mesh.legs) {
+    leg.footTouchingSurface = false;
+    leg.footOrientationLocked = false;
+    leg.footWorldQuaternionX = 0;
+    leg.footWorldQuaternionY = 0;
+    leg.footWorldQuaternionZ = 0;
+    leg.footWorldQuaternionW = 1;
+    leg.foot.quaternion.identity();
+  }
   applyLocomotionState(mesh, snapshot);
   assertNear(mesh.upperBodyYaw, 0.42, `${label} preserves torso aim across LOD rebuild`);
   assertNear(
     mesh.upperBodyWorldYaw ?? NaN,
     1.17,
-    `${label} preserves the torso world-heading EMA across LOD rebuild`,
+    `${label} preserves the torso world heading across LOD rebuild`,
+  );
+  assertNear(
+    mesh.upperBodyYawVelocity,
+    0.29,
+    `${label} preserves torso angular velocity across LOD rebuild`,
   );
   assertNear(mesh.gaitPhase, 0.37, `${label} preserves its coupled gait phase across LOD rebuild`);
+  for (let i = 0; i < mesh.legs.length; i++) {
+    const leg = mesh.legs[i];
+    const expected = expectedFootWorldQuaternions[i];
+    const restoredWorld = new THREE.Quaternion(
+      leg.footWorldQuaternionX,
+      leg.footWorldQuaternionY,
+      leg.footWorldQuaternionZ,
+      leg.footWorldQuaternionW,
+    );
+    assertContract(
+      leg.footTouchingSurface &&
+        leg.footOrientationLocked &&
+        restoredWorld.angleTo(expected.world) < 1e-9 &&
+        leg.foot.quaternion.angleTo(expected.local) < 1e-9,
+      `${label} foot ${i} preserves its touchdown orientation across LOD rebuild`,
+    );
+    leg.footTouchingSurface = false;
+    leg.footOrientationLocked = false;
+    leg.footWorldQuaternionX = 0;
+    leg.footWorldQuaternionY = 0;
+    leg.footWorldQuaternionZ = 0;
+    leg.footWorldQuaternionW = 1;
+  }
 
   mesh.upperBodyYaw = 0;
   mesh.upperBodyWorldYaw = null;
+  mesh.upperBodyYawVelocity = 0;
   poseStandingRigAtRest(mesh);
 }
 
@@ -847,6 +1034,8 @@ function assertHeldGunTakesItsArmPose(
 
 export function runStandingHostTurretAim3DContractTest(): void {
   assertRosterTurretsPublishAim();
+  assertStandingFootContactSlopeLatch();
+  assertMassiveStandingTorsoTurnsSlower();
   const human = buildStanding('unitHuman');
   assertStandingHipsCenteredUnderTorso(human.mesh, 'Human');
   assertStandingLegExtension(human.mesh, 'Human');
@@ -974,10 +1163,8 @@ export function runStandingHostTurretAim3DContractTest(): void {
     100,
   );
   assertContract(
-    Math.abs(returningTorsoYaw) < Math.abs(aimedTorsoYaw) &&
-      Math.abs(returningTorsoYaw) > Math.abs(aimedTorsoYaw) * 0.78 &&
-      Math.abs(returningTorsoYaw) < Math.abs(aimedTorsoYaw) * 0.82,
-    'an unlocked standing torso quickly follows locomotion-forward',
+    Math.abs(returningTorsoYaw) < Math.abs(aimedTorsoYaw),
+    'an unlocked standing torso inertially follows locomotion-forward',
   );
 
   const commander = buildStanding('unitCommander');

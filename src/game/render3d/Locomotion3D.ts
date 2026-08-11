@@ -123,6 +123,13 @@ export type LocomotionStateSnapshot =
       gait: number;
       upperBodyYaw: number;
       upperBodyWorldYaw: number | null;
+      upperBodyYawVelocity: number;
+      feet: Array<Readonly<{
+        touchingSurface: boolean;
+        orientationLocked: boolean;
+        worldQuaternion: readonly [number, number, number, number];
+        localQuaternion: readonly [number, number, number, number];
+      }>>;
     }
   | {
       type: 'wheels';
@@ -204,6 +211,18 @@ export function captureLocomotionState(
         gait: locomotion.gait,
         upperBodyYaw: locomotion.upperBodyYaw,
         upperBodyWorldYaw: locomotion.upperBodyWorldYaw,
+        upperBodyYawVelocity: locomotion.upperBodyYawVelocity,
+        feet: locomotion.legs.map((leg) => ({
+          touchingSurface: leg.footTouchingSurface,
+          orientationLocked: leg.footOrientationLocked,
+          worldQuaternion: [
+            leg.footWorldQuaternionX,
+            leg.footWorldQuaternionY,
+            leg.footWorldQuaternionZ,
+            leg.footWorldQuaternionW,
+          ],
+          localQuaternion: quaternionTuple(leg.foot),
+        })),
       };
     case 'wheels':
       return {
@@ -273,7 +292,20 @@ export function applyLocomotionState(
       locomotion.gait = state.gait;
       locomotion.upperBodyYaw = state.upperBodyYaw;
       locomotion.upperBodyWorldYaw = state.upperBodyWorldYaw;
+      locomotion.upperBodyYawVelocity = state.upperBodyYawVelocity;
       locomotion.hips.rotation.y = -locomotion.upperBodyYaw;
+      for (let i = 0; i < locomotion.legs.length; i++) {
+        const saved = state.feet[i];
+        if (!saved) continue;
+        const leg = locomotion.legs[i];
+        leg.footTouchingSurface = saved.touchingSurface;
+        leg.footOrientationLocked = saved.orientationLocked;
+        leg.footWorldQuaternionX = saved.worldQuaternion[0];
+        leg.footWorldQuaternionY = saved.worldQuaternion[1];
+        leg.footWorldQuaternionZ = saved.worldQuaternion[2];
+        leg.footWorldQuaternionW = saved.worldQuaternion[3];
+        leg.foot.quaternion.fromArray(saved.localQuaternion);
+      }
       return;
     }
     case 'wheels': {
@@ -463,7 +495,9 @@ export function buildLocomotion(
         // The standing rig poses against the lifted root, so it must share
         // that root. Parenting it to the unlifted yaw group displaced every
         // limb by the chassis lift (eleven world units on Human).
-        airborneUnitGroup, unitRadius, loc.config.legs, loc.config.arms,
+        airborneUnitGroup, unitRadius, bp.mass,
+        loc.physics.ground.maxPropulsiveForce,
+        loc.config.legs, loc.config.arms,
         getChassisLift(bp, unitRadius), ownerId, geometryTier,
         bp.unitBlueprintId,
       );

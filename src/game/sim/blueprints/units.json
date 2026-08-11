@@ -1347,22 +1347,6 @@
         },
         {
           "kind": "box",
-          "offsetForward": 0.1,
-          "lengthFrac": 0.46,
-          "widthFrac": 0.46,
-          "heightFrac": 0.38,
-          "centerYFrac": 2.86
-        },
-        {
-          "kind": "box",
-          "offsetForward": 0.3,
-          "lengthFrac": 0.16,
-          "widthFrac": 0.3,
-          "heightFrac": 0.22,
-          "centerYFrac": 2.9
-        },
-        {
-          "kind": "box",
           "offsetForward": -0.46,
           "lengthFrac": 0.34,
           "widthFrac": 0.94,
@@ -3147,9 +3131,9 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
-          "x": -4.7,
+          "x": -4.5910824533024215,
           "y": 0,
-          "z": 0
+          "z": 1.45
         },
         "requiredEngagedForFightStop": false,
         "mountId": "gunLight",
@@ -3172,7 +3156,7 @@
           "lengthFrac": 4.7265,
           "radiusFrac": 0.2,
           "startYFrac": 1.2,
-          "endYFrac": 0.7
+          "endYFrac": 2.7
         }
       ]
     },
@@ -3387,7 +3371,7 @@
           },
           {
             "offset": {
-              "xUnitRadiusRatio": -0.82024,
+              "xUnitRadiusRatio": -1.2,
               "yUnitRadiusRatio": 0.0,
               "zUnitRadiusRatio": -0.0315
             },

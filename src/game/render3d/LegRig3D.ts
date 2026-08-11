@@ -62,6 +62,7 @@ import {
   createPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { resolveFootSurfaceQuaternion } from './FootContactOrientation3D';
 import {
   clampPointToLegShell,
   legChoppedSphereNeedsStep,
@@ -1610,10 +1611,6 @@ const _kneeForward = new THREE.Vector3();
 const _kneeBasis = new THREE.Matrix4();
 const _hipJointQuaternion = new THREE.Quaternion();
 const _kneeJointQuaternion = new THREE.Quaternion();
-const _footSurfaceUp = new THREE.Vector3();
-const _footSurfaceRight = new THREE.Vector3();
-const _footSurfaceForward = new THREE.Vector3();
-const _footSurfaceBasis = new THREE.Matrix4();
 const _footTouchdownQuaternion = new THREE.Quaternion();
 
 /** Yaw the hip socket's local +X meridian into the horizontal direction of
@@ -1828,42 +1825,13 @@ export function resolveLegFootSurfaceQuaternion(
   surfaceNormalZ: number,
   out: THREE.Quaternion,
 ): THREE.Quaternion {
-  _footSurfaceUp.set(surfaceNormalX, surfaceNormalY, surfaceNormalZ);
-  if (
-    !Number.isFinite(_footSurfaceUp.lengthSq()) ||
-    _footSurfaceUp.lengthSq() <= 1e-12
-  ) {
-    _footSurfaceUp.set(0, 1, 0);
-  } else {
-    _footSurfaceUp.normalize();
-    if (_footSurfaceUp.y < 0) _footSurfaceUp.multiplyScalar(-1);
-  }
-
-  _footSurfaceRight.set(
-    Math.cos(candidateFootYaw),
-    0,
-    -Math.sin(candidateFootYaw),
+  return resolveFootSurfaceQuaternion(
+    candidateFootYaw,
+    surfaceNormalX,
+    surfaceNormalY,
+    surfaceNormalZ,
+    out,
   );
-  _footSurfaceRight.addScaledVector(
-    _footSurfaceUp,
-    -_footSurfaceRight.dot(_footSurfaceUp),
-  );
-  if (_footSurfaceRight.lengthSq() <= 1e-12) {
-    _footSurfaceForward.set(
-      Math.sin(candidateFootYaw),
-      0,
-      Math.cos(candidateFootYaw),
-    );
-    _footSurfaceRight.crossVectors(_footSurfaceUp, _footSurfaceForward);
-  }
-  _footSurfaceRight.normalize();
-  _footSurfaceForward.crossVectors(_footSurfaceRight, _footSurfaceUp).normalize();
-  _footSurfaceBasis.makeBasis(
-    _footSurfaceRight,
-    _footSurfaceUp,
-    _footSurfaceForward,
-  );
-  return out.setFromRotationMatrix(_footSurfaceBasis).normalize();
 }
 
 /** Apply the foot's contact-orientation rule without allocating per frame.
