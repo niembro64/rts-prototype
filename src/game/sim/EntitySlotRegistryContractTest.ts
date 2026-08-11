@@ -207,11 +207,18 @@ export function runEntitySlotRegistryContractTest(): void {
     }
   }
   assertContract(foundBuildingSlot, 'building line query must expose stable building slots');
+  // The query is a 3D sphere, so centering it on the building's combat centre
+  // only reaches the unit when both happen to sit at the same height. That is
+  // true on flat ground and false on whatever terrain an earlier contract test
+  // left installed. Centre it between the two and size the radius from their
+  // real separation so the fixture asserts the query, not the terrain.
+  const rangeQueryZ = (getBuildingCombatCenterZ(building) + reused.transform.z) / 2;
+  const rangeQueryRadius = 300 + Math.abs(getBuildingCombatCenterZ(building) - reused.transform.z);
   const unitBuildingRangeQuery = spatialGrid.queryUnitBuildingSlotRangesInRadius(
     200,
     150,
-    getBuildingCombatCenterZ(building),
-    300,
+    rangeQueryZ,
+    rangeQueryRadius,
   );
   let foundRangeUnitSlot = false;
   const unitEnd = unitBuildingRangeQuery.unitStart + unitBuildingRangeQuery.unitCount;

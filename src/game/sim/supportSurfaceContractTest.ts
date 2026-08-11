@@ -384,7 +384,9 @@ function assertBuildingSupportContract(): void {
   );
   assertSpawnedOnSupport(terrainSpawn, dry.surface.groundZ, 'unit spawn on terrain support');
 
-  const building = world.createBuilding(dry.x, dry.y, 320, 220, 48, TEST_PLAYER_ID);
+  const buildingWidth = 320;
+  const buildingDepth = 220;
+  const building = world.createBuilding(dry.x, dry.y, buildingWidth, buildingDepth, 48, TEST_PLAYER_ID);
   world.addEntity(building);
   const buildingTopZ = getBuildingSupportTopZ(building);
   const buildingSurface = world.sampleSupportSurface(dry.x, dry.y);
@@ -422,13 +424,24 @@ function assertBuildingSupportContract(): void {
   const requiredTypes: UnitLocomotion['type'][] = [
     'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
   ];
+  // Every probe must land ON the roof, so derive the spacing from the actual
+  // footprint instead of a fixed 60. A hardcoded stride silently walked the
+  // last few locomotion types off the 320-wide building as the required list
+  // grew, and they then measured terrain support instead.
+  const spawnMarginX = buildingWidth * 0.1;
+  const spawnSpanX = buildingWidth - (2 * spawnMarginX);
+  const spawnStrideX = requiredTypes.length > 1 ? spawnSpanX / (requiredTypes.length - 1) : 0;
+  const spawnY = dry.y + Math.min(60, (buildingDepth / 2) - (buildingDepth * 0.1));
   for (let i = 0; i < requiredTypes.length; i++) {
     const type = requiredTypes[i];
     const unitBlueprintId = locomotionIds.get(type);
     assertContract(unitBlueprintId !== undefined, `missing test blueprint for ${type} locomotion`);
-    const x = dry.x - 120 + i * 60;
-    const y = dry.y + 60;
-    const spawned = world.createUnitFromBlueprint(x, y, TEST_PLAYER_ID, unitBlueprintId);
+    const x = dry.x - (spawnSpanX / 2) + (i * spawnStrideX);
+    assertContract(
+      Math.abs(x - dry.x) <= buildingWidth / 2 && Math.abs(spawnY - dry.y) <= buildingDepth / 2,
+      `${type} spawn probe must sit inside the building footprint to measure roof support`,
+    );
+    const spawned = world.createUnitFromBlueprint(x, spawnY, TEST_PLAYER_ID, unitBlueprintId);
     assertSpawnedOnSupport(spawned, buildingTopZ, `${type} spawn must use shared building support`);
   }
 }
