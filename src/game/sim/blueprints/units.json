@@ -4135,16 +4135,16 @@
           {
             "offset": {
               "xUnitRadiusRatio": -0.8135,
-              "yUnitRadiusRatio": 0.62,
+              "yUnitRadiusRatio": 0.34,
               "zUnitRadiusRatio": -0.036
             },
-            "radiusFrac": 0.2,
-            "ringTubeRadiusFrac": 0.045,
-            "outwardAngleDeg": 12
+            "radiusFrac": 0.14,
+            "ringTubeRadiusFrac": 0.03,
+            "outwardAngleDeg": 30
           },
           {
             "offset": {
-              "xUnitRadiusRatio": -0.18,
+              "xUnitRadiusRatio": -0.38,
               "yUnitRadiusRatio": 0.7425,
               "zUnitRadiusRatio": -0.036
             },
@@ -4155,12 +4155,12 @@
           {
             "offset": {
               "xUnitRadiusRatio": 0.4535,
-              "yUnitRadiusRatio": 0.62,
+              "yUnitRadiusRatio": 0.34,
               "zUnitRadiusRatio": -0.036
             },
             "radiusFrac": 0.2,
             "ringTubeRadiusFrac": 0.045,
-            "outwardAngleDeg": 12
+            "outwardAngleDeg": 20
           }
         ],
         "fanSpinRadPerSec": -9
