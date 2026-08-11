@@ -246,19 +246,65 @@ D5. Two stale assertions were masking working behavior.
     locomotion.motionControl and crashed the whole test.
 
 
-5. Deliberate differences from BAR, with reasons
+5. Every exposed command is certified to execute
 ================================================
 
-D-a. No Restore. Terrain is immutable here, so per "Commands require real
+Exposure is not function: a button can be exposed and still do nothing
+because the sanitizer drops the payload, the authorizer refuses it, or the
+executor no-ops on that host kind. commandCoverageContractTest.ts closes that
+gap. For every one of the 39 unit and building blueprints it builds a live
+scenario (physics bodies attached, a living commander per side so the win
+condition does not wipe the enemy on tick one) and drives every command the
+host exposes through the real path --
+
+  sanitizeCommand -> authorizeGameServerGameplayCommand -> executeCommand
+
+-- then requires an observable change in the same authoritative field the
+renderer and the snapshot read. It runs the inverse direction too: a host
+that lacks a capability must NOT have the command take effect, so a gate that
+silently stops gating fails here rather than appearing as a new button.
+
+1030 host/command pairs are exercised. Three things it caught while being
+written, none of which the exposure matrix could have shown:
+
+  - Manual Launch is gated differently per preset, and IS working on every
+    armed host (see D-c). The earlier claim that it was dead was wrong.
+  - Trajectory is likewise a union: BAR presets gate on the armart analogue,
+    prototype presets on any ballistic arc weapon, and the sim accepts the
+    broader set.
+  - Air-only and ground-only weapon categories are enforced at the
+    authorizer, so a fighter ordered onto a ground target is correctly
+    refused -- the probe has to pick a target its host may legally engage.
+
+A dozen more command/host pairs pass only because the scenario is built
+correctly; the helper comments record each trap.
+
+
+6. Deliberate differences from BAR, with reasons
+================================================
+
+D-a. No Restore. Terrain is immutable here -- there is no terrain
+     deformation system anywhere in src -- so per "Commands require real
      systems" the BAR grid's M binding stays unbound rather than promising
-     terrain deformation. Listed in the philosophy as the worked example.
+     it. Verified: `combat.restore` resolves to an empty binding list in all
+     three presets and has no panel button, so the dormant
+     toggleRestoreAreaMode handler is unreachable rather than dead UI. This
+     is the philosophy's own worked example of the rule.
 
-D-b. No Stockpile. No authored weapon in the roster stockpiles, and no
-     mapped BAR analogue sets stockpile=true.
+D-b. No Stockpile. Verified from data, not assumed: no mapped BAR analogue
+     sets stockpile=true, and the only "stockpile" in this repo is the
+     economy resource store (NetworkServerSnapshotEconomy.stockpile), not a
+     per-weapon charge count. There is no weapon-stockpile system to command.
 
-D-c. No Manual Launch host yet. The command, hotkey, colour token, and
-     panel button exist and are capability-gated to the empty set, so
-     nothing renders. armcom's canmanualfire is surfaced as D-Gun instead.
+D-c. Manual Launch is reachable, but only under prototype presets. BAR
+     presets gate the button on canmanualfire, and no mapped analogue sets
+     it (armcom's is surfaced as D-Gun), so BAR presets hide it. Prototype
+     presets gate it on Set Target instead, which is also the executor's own
+     gate (hasManualLaunchWeapon === entityHasBarSetTargetCommand), so every
+     armed host can force a volley at a clicked point and the coverage
+     certification exercises it on all of them. An earlier draft of this
+     document called it dead everywhere; that was wrong, and the certification
+     in section 4 is what caught it.
 
 D-d. No sell, unit sharing, or blueprint place/create. These are BAR gadget
      commands with no local economy or system behind them.
@@ -276,17 +322,20 @@ D-f. ON/OFF is broader than BAR (see D3), and the converter keeps it even
 D-g. Commander Resurrect exists in the sim (entityCanIssueResurrectCommand
      accepts any commander) and is offered under prototype presets, but BAR
      presets hide it because armcom has no canresurrect. The wreck
-     resurrection system behind it is real, so this is an abstraction above
-     BAR rather than dead UI.
+     resurrection system behind it is real -- the coverage certification
+     drives the command on the Commander and observes the queued action -- so
+     this is an abstraction above BAR rather than dead UI.
 
 D-h. Under prototype presets only, a separate Attack Ground button is shown
      for every armed host; air-only weapons (unitEagle, towerAntiAir) then
      have the command filtered at input, authorization, and execution. BAR
      presets hide the button entirely and use BAR's unit-or-map Attack, so
-     the BAR-faithful path has no dead affordance.
+     the BAR-faithful path has no dead affordance. The certification asserts
+     the filtering: entityCanBarAttackGround gates the probe, and an air-only
+     host that received the order would fail the absence direction.
 
 
-6. How to run the gate
+7. How to run the gate
 ======================
 
   npm run contract:tests                       whole suite, boot order
@@ -304,10 +353,11 @@ order-dependent -- runEntitySlotRegistryContractTest passes in boot order and
 fails in a filtered subset. Run the whole suite before believing a result.
 
 
-7. Remaining failures, all outside the command surface
+8. Remaining failures, all outside the command surface
 ======================================================
 
-Score after this pass: 82/95. Every command-surface gate passes. The rest fail
+Score after this pass: 83/96. Every command-surface gate passes, including
+the new per-blueprint command coverage certification. The rest fail
 at HEAD for unrelated reasons; recorded so the next pass does not rediscover
 them:
 

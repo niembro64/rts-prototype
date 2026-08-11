@@ -4873,6 +4873,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runGuardFollowContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
+        const { runCommandCoverageContractTest } = await import('../sim/commandCoverageContractTest');
+        runCommandCoverageContractTest();
         const { runSimulationGameOverContractTest } = await import('../sim/SimulationGameOverContractTest');
         runSimulationGameOverContractTest();
         const { runSimulationUnitActionPlannerContractTest } = await import('../sim/SimulationUnitActionPlannerContractTest');
