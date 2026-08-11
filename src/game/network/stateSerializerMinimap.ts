@@ -49,6 +49,21 @@ export function resetMinimapPoolForKey(key: string | number | undefined): void {
   if (key !== undefined) minimapWireSourcesByKey.delete(String(key));
 }
 
+/** Owner id written for a contact-only entry.
+ *
+ *  A radar/sonar contact earns POSITION, not identity: the client already
+ *  paints these as generic blips and refuses to select them, but the owner was
+ *  still travelling on the wire, so the tier was only being enforced by the
+ *  renderer's good manners. budget_design_philosophy.html is explicit that the
+ *  client "should only receive the contact tier it earned", so strip it at the
+ *  serializer instead. The coarse unit/building type stays -- BAR draws
+ *  building blips differently from unit blips too. */
+const CONTACT_ONLY_OWNER_ID = 0;
+
+function minimapOwnerId(playerId: number, radarOnly: boolean): number {
+  return radarOnly ? CONTACT_ONLY_OWNER_ID : playerId;
+}
+
 function writeMinimapEntityValues(
   out: NetworkServerSnapshotMinimapEntity,
   id: number,
@@ -60,7 +75,7 @@ function writeMinimapEntityValues(
 ): NetworkServerSnapshotMinimapEntity {
   out.id = id;
   out.type = type;
-  out.playerId = playerId;
+  out.playerId = minimapOwnerId(playerId, radarOnly) as PlayerId;
   out.pos.x = x;
   out.pos.y = y;
   // Reset the pool slot's flag — pool entries are reused so a slot
@@ -169,7 +184,7 @@ function appendMinimapWireRowValues(
   values[base + 1] = x;
   values[base + 2] = y;
   values[base + 3] = typeTag;
-  values[base + 4] = playerId;
+  values[base + 4] = minimapOwnerId(playerId, radarOnly);
   let flags = 0;
   if (radarOnly) flags |= 0x01;
   values[base + 5] = flags;

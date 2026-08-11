@@ -125,10 +125,21 @@ export function getMaximumSensorMatrixRadius(
   );
 }
 
+/** True when this suite does ANYTHING sensor-shaped, including denying the
+ *  enemy's sensors. This gates the source walk in sensorCoverage, so a channel
+ *  missing from here is a channel the whole visibility pass never sees.
+ *
+ *  Jamming counts. A mount authored with a jam radius and no sight, contact, or
+ *  detector radius of its own -- BAR's armjamt shape, minus its 195 sightdistance
+ *  -- was dropped here and then silently jammed nothing. Both jammers in the
+ *  current roster happen to carry sight as well, which is the only reason the
+ *  hole is invisible today. */
 export function hasAnySensorRadius(sensors: SensorCapabilityConfig): boolean {
   return (
     getMaximumSensorMatrixRadius(sensors.fullSight) > 0 ||
     getMaximumSensorMatrixRadius(sensors.contactSight) > 0 ||
-    sensors.detectorRadius > 0
+    sensors.detectorRadius > 0 ||
+    sensors.radarJamRadius > 0 ||
+    sensors.sonarJamRadius > 0
   );
 }

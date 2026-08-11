@@ -10,9 +10,24 @@ const TERRAIN_LOS_STEP_FRAC = 0.5;
 const TERRAIN_LOS_STEP_LEN = LAND_CELL_SIZE * TERRAIN_LOS_STEP_FRAC;
 const TERRAIN_LOS_STEP_LEN_SQ = TERRAIN_LOS_STEP_LEN * TERRAIN_LOS_STEP_LEN;
 
-/** True if the straight line from (sx,sy,sz) to (tx,ty,tz) clears the
- *  terrain surface. Higher-level callers compose this with any
- *  non-terrain blockers their policy requires. */
+/** True if the straight line from (sx,sy,sz) to (tx,ty,tz) clears the SOLID
+ *  terrain. Higher-level callers compose this with any non-terrain blockers
+ *  their policy requires.
+ *
+ *  The occluder is the terrain BED, not the gameplay ground. getGroundZ clamps
+ *  to the liquid surface wherever the bed sits under it, so sampling it here
+ *  made the water surface an opaque wall: any sightline whose ray dipped below
+ *  the waterline was blocked by the sea itself, and underwater-to-underwater
+ *  full sight could never succeed no matter what a suite authored. Sonar still
+ *  worked -- the contact tier runs no sightline -- so the symptom was submarines
+ *  that could be heard and never seen.
+ *
+ *  Water is a MEDIUM, not geometry. Which media a sensor bridges is decided by
+ *  the source-row/target-column matrix in sensorConfig; this function only
+ *  answers whether solid ground is in the way. Above-water pairs are unaffected:
+ *  a straight line between two points above the waterline never dips below it,
+ *  so bed and ground give the same answer there. It also puts the JS fallback
+ *  back in step with the WASM path, which samples the terrain mesh directly. */
 export function hasTerrainLineOfSight(
   world: WorldState,
   sx: number, sy: number, sz: number,
@@ -34,7 +49,7 @@ export function hasTerrainLineOfSight(
     const x = sx + dx * t;
     const y = sy + dy * t;
     const rayZ = sz + dz * t;
-    if (world.getGroundZ(x, y) > rayZ) return false;
+    if (world.getTerrainBedZ(x, y) > rayZ) return false;
   }
   return true;
 }

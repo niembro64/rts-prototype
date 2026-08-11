@@ -3576,7 +3576,17 @@ pub fn terrain_has_line_of_sight(
         // we treat as "no blocker" (height = -inf → never blocks).
         let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
         if let Some(sample) = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
-            let h = terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL);
+            // The occluder is the SOLID mesh. Clamping this up to
+            // TERRAIN_WATER_LEVEL made the water surface an opaque wall, so any
+            // sightline dipping below the waterline was blocked by the sea
+            // itself and underwater-to-underwater full sight could never
+            // succeed. Sonar still worked (the contact tier runs no sightline),
+            // so the symptom was submarines you could hear and never see.
+            // Water is a MEDIUM: which media a sensor bridges is decided by the
+            // source-row/target-column matrix, not by geometry. Two points above
+            // the waterline never produce a ray below it, so above-water
+            // sightlines are unaffected.
+            let h = terrain_height_from_triangle_sample(sample);
             if h > ray_z {
                 return 0;
             }
