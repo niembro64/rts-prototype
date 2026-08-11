@@ -108,7 +108,17 @@ are hotkey-or-internal in BAR too.
 2. Which BAR flags the mapped analogues actually carry
 ======================================================
 
-Read from the BAR unitDefs, not from memory:
+Read from the BAR unitDefs, not from memory. This table is now CHECKED IN as
+src/game/sim/blueprints/barAnalogueCapabilities.json and joined against our
+surface by barCommandParityContractTest -- see section 5a. Two things BAR
+encodes outside the unitDef booleans, both of which the first draft of that
+join got wrong:
+
+  - canmove is NOT mobility. armap sets canmove = true while standing still on
+    a yardmap at speed 0. Mobility is canmove AND speed > 0.
+  - Move State is hidden on bombers by unit_bomber_hide_move_state.lua, a
+    gadget keyed on AircraftBomb weapons, not by any unitDef flag.
+
 
   armcom   builddistance=145 workertime=300 cancapture cancloak canmanualfire
   armca    builddistance=136 workertime=60
@@ -280,6 +290,38 @@ A dozen more command/host pairs pass only because the scenario is built
 correctly; the helper comments record each trap.
 
 
+5a. The enumeration is machine-checked, not prose
+=================================================
+
+Sections 1-3 enumerate and tabulate; barCommandParityContractTest turns that
+into a gate, running the two phases in order:
+
+  Phase 1 (ENUMERATE) -- barRequiredCommands() derives, from the BAR flags in
+    barAnalogueCapabilities.json ALONE, the command categories BAR itself would
+    put on that host's order menu. Nothing is hand-listed per blueprint: change
+    a flag in the data and the expectation moves with it.
+
+  Phase 2 (VERIFY) -- for each of our blueprints with a BAR analogue, read the
+    command surface we actually expose, through the same capability predicates
+    the selection panel reads.
+
+The two directions assert different things, matching "at least work as in
+Beyond All Reason if not be abstracted from that":
+
+  - every BAR-required category MUST be present on our host. BAR is the floor,
+    so a missing one fails as a parity gap.
+  - anything we expose BEYOND BAR must appear in DOCUMENTED_DIVERGENCES with a
+    reason. Abstracting above BAR is allowed; unexplained extras are the panel
+    creep the philosophy retires.
+
+A divergence entry that no longer describes reality also fails, so the list
+cannot rot into a permanent exemption. Every blueprint must be either mapped to
+an analogue or listed prototype-only, so the mapping cannot silently lose one.
+The gate was proven to fail before being relied on.
+
+Section 6 is the human-readable form of DOCUMENTED_DIVERGENCES.
+
+
 6. Deliberate differences from BAR, with reasons
 ================================================
 
@@ -356,7 +398,7 @@ fails in a filtered subset. Run the whole suite before believing a result.
 8. Suite status
 ===============
 
-96/96, stable across three consecutive full runs.
+97/97, stable across consecutive full runs.
 
 Getting there closed six real defects outside the command surface, all found
 by running the tests that had never been run:
