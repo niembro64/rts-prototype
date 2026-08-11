@@ -68,7 +68,11 @@ const server = await createServer({
   configFile: path.join(repoRoot, 'vite.config.ts'),
   appType: 'spa',
   logLevel: 'error',
-  server: { host: '127.0.0.1', port: 0 },
+  // HMR off: a file change mid-run (another agent editing, or a rebuild)
+  // reloads the page and every remaining page.evaluate dies with "Execution
+  // context was destroyed". The run should depend on the files as they were
+  // when it started.
+  server: { host: '127.0.0.1', port: 0, hmr: false, watch: { ignored: ['**/*'] } },
 });
 await server.listen();
 

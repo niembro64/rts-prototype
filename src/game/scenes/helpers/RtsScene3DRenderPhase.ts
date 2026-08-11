@@ -15,6 +15,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ClientProjectileRenderLists } from '../../network/ClientProjectileStore';
+import type { ContactBlipRenderer3D } from '../../render3d/ContactBlipRenderer3D';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -113,6 +114,7 @@ type RtsScene3DRenderPhaseResources = {
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
+  contactBlipRenderer: ContactBlipRenderer3D;
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
@@ -360,6 +362,7 @@ export class RtsScene3DRenderPhase {
       overlayLineSystem,
       sightBoundaryRenderer,
       radarBoundaryRenderer,
+      contactBlipRenderer,
       healthBar3D,
       nameLabel3D,
       waypoint3D,
@@ -444,6 +447,14 @@ export class RtsScene3DRenderPhase {
       this.clientViewState,
       this.getLocalPlayerId(),
       getRadarBoundary(),
+      this.renderScope,
+    );
+    // Contact-only enemies are drawn as generic blips here, from the same
+    // contact rows the minimap uses. They are deliberately NOT part of the
+    // entity render path: a contact has no blueprint to draw.
+    contactBlipRenderer.update(
+      this.clientViewState.getMinimapEntitiesOverride(),
+      performance.now() / 1000,
       this.renderScope,
     );
     const inputManager = this.getInputManager();

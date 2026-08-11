@@ -37,6 +37,7 @@ type RtsScene3DRendererResources = {
   windParticleFieldRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
   radarBoundaryRenderer?: Destroyable | null;
+  contactBlipRenderer?: Destroyable | null;
   overlayLineSystem?: Disposable | null;
   cursorGround?: Disposable | null;
   longtaskTracker: Destroyable;
@@ -72,6 +73,7 @@ export function teardownRtsScene3DRenderers(
   resources.windParticleFieldRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();
   resources.radarBoundaryRenderer?.destroy();
+  resources.contactBlipRenderer?.destroy();
   // overlayLineSystem owns the single shared ScreenSpaceLineMaterial (GL
   // program); cursorGround retains a terrain mesh reference. Both are
   // per-scene and must be released on teardown — the rematch path reuses

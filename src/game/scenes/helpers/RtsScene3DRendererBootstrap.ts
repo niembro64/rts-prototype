@@ -18,6 +18,7 @@ import { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
 import { Render3DEntities } from '../../render3d/Render3DEntities';
 import { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import { ShieldRenderer3D } from '../../render3d/ShieldRenderer3D';
+import { ContactBlipRenderer3D } from '../../render3d/ContactBlipRenderer3D';
 import { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
@@ -79,6 +80,7 @@ type RtsScene3DRendererBootstrapResult = {
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
+  contactBlipRenderer: ContactBlipRenderer3D;
 };
 
 export function bootstrapRtsScene3DRenderers(
@@ -248,6 +250,10 @@ export function bootstrapRtsScene3DRenderers(
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
     { mode: 'radar' },
   );
+  const contactBlipRenderer = new ContactBlipRenderer3D(
+    threeApp.world,
+    (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
+  );
 
   return {
     entityRenderer,
@@ -274,5 +280,6 @@ export function bootstrapRtsScene3DRenderers(
     overlayLineSystem,
     sightBoundaryRenderer,
     radarBoundaryRenderer,
+    contactBlipRenderer,
   };
 }

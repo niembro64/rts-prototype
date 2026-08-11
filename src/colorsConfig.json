@@ -407,6 +407,14 @@
     }
   },
   "effects": {
+    "contactBlip": {
+      "colorHex": "#9aa3ad",
+      "opacity": 0.75,
+      "radius": 9,
+      "surfaceLift": 6,
+      "wobbleAmplitude": 7,
+      "wobbleRadiansPerSecond": 3
+    },
     "shield": {
       "shield": {
         "fallbackColorHex": "#ffffff"

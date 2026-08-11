@@ -52,6 +52,8 @@ export class ClientMinimapOverrideStore {
         ? RADAR_BLIP_COLOR
         : getMinimapCssColor(getPlayerPrimaryColor(src.playerId));
       dst.isSelected = radarOnly ? undefined : this.options.isSelected(src.id) || undefined;
+      dst.contactId = radarOnly ? src.id : undefined;
+      dst.contactUnderwater = radarOnly ? src.contactUnderwater === true : undefined;
     }
   }
 }

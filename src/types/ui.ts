@@ -314,6 +314,12 @@ export type MinimapEntity = {
    *  draw a generic positional blip rather than the identifiable
    *  team-colored marker. */
   radarOnly?: boolean;
+  /** Contact rows only: the entity id behind the blip. Used purely as a stable
+   *  wobble phase seed for the world blip, never for identification. */
+  contactId?: number;
+  /** Contact rows only: true when the body is mostly submerged, so the blip
+   *  belongs at the water line rather than on the ground. */
+  contactUnderwater?: boolean;
 };
 
 export type CameraViewBasis = {

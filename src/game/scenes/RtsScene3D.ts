@@ -59,6 +59,7 @@ import { PylonTubeFlowRenderer } from '../render3d/PylonTubeFlowRenderer';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { WindParticleField3D } from '../render3d/WindParticleField3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
+import { ContactBlipRenderer3D } from '../render3d/ContactBlipRenderer3D';
 import type { OverlayLineSystem } from '../render3d/OverlayLineSystem';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
@@ -188,6 +189,7 @@ export class RtsScene3D {
   private overlayLineSystem!: OverlayLineSystem;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
   private radarBoundaryRenderer!: SightBoundaryRenderer3D;
+  private contactBlipRenderer!: ContactBlipRenderer3D;
   private audioSystem = new RtsScene3DAudioSystem();
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -484,6 +486,7 @@ export class RtsScene3D {
     this.overlayLineSystem = renderers.overlayLineSystem;
     this.sightBoundaryRenderer = renderers.sightBoundaryRenderer;
     this.radarBoundaryRenderer = renderers.radarBoundaryRenderer;
+    this.contactBlipRenderer = renderers.contactBlipRenderer;
     this.rendererWarmup = new RtsScene3DRendererWarmup({
       threeApp: this.threeApp,
       explosionRenderer: this.explosionRenderer,
@@ -679,6 +682,7 @@ export class RtsScene3D {
         overlayLineSystem: this.overlayLineSystem,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
         radarBoundaryRenderer: this.radarBoundaryRenderer,
+        contactBlipRenderer: this.contactBlipRenderer,
         healthBar3D: this.healthBar3D,
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
@@ -1676,6 +1680,7 @@ export class RtsScene3D {
       windParticleFieldRenderer: this.windParticleFieldRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
       radarBoundaryRenderer: this.radarBoundaryRenderer,
+      contactBlipRenderer: this.contactBlipRenderer,
       overlayLineSystem: this.overlayLineSystem,
       cursorGround: this.cursorGround,
       longtaskTracker: this.frameTelemetry,
