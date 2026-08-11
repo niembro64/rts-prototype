@@ -10,6 +10,7 @@ import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import {
   getTerrainRuntimeConfig,
   getTerrainTeamCount,
+  setAuthoritativeTerrainTileMap,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
   type TerrainRuntimeConfig,
@@ -56,6 +57,8 @@ import type {
   UnitLocomotion,
 } from './types';
 import { WorldState } from './WorldState';
+import { WATER_LEVEL } from './terrain/terrainConfig';
+import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getHighestBuildFootprintGroundZ } from './buildingPlacementPolicy';
 import { deterministicMath as DMath } from './deterministicMath';
@@ -114,6 +117,21 @@ function assertNear(actual: number, expected: number, message: string): void {
   }
 }
 
+/** A 'solid' material sample is not the same thing as DRY GROUND: the sampled
+ *  groundZ is clamped to the liquid surface where the terrain bed sits under
+ *  it, so a submerged bed can still report a solid material. Fixtures that
+ *  stack a building on the sample need the bed itself above the waterline --
+ *  otherwise the roof lands below the sampled ground and terrain keeps winning
+ *  the support query. */
+function isDryGroundSample(
+  world: WorldState,
+  x: number,
+  y: number,
+  materialKind: SupportSurfaceMaterialKind,
+): boolean {
+  return materialKind !== 'solid' || world.getTerrainBedZ(x, y) > WATER_LEVEL;
+}
+
 function findSurfacePoint(
   world: WorldState,
   materialKind: SupportSurfaceMaterialKind,
@@ -138,7 +156,10 @@ function findSurfacePoint(
       continue;
     }
     const surface = world.sampleSupportSurface(candidate.x, candidate.y, {}, scratch);
-    if (surface.materialKind === materialKind) {
+    if (
+      surface.materialKind === materialKind &&
+      isDryGroundSample(world, candidate.x, candidate.y, materialKind)
+    ) {
       return { x: candidate.x, y: candidate.y, surface: { ...surface } };
     }
   }
@@ -151,7 +172,10 @@ function findSurfacePoint(
     for (let y = margin; y <= world.mapHeight - margin; y += step) {
       for (let x = margin; x <= world.mapWidth - margin; x += step) {
         const surface = world.sampleSupportSurface(x, y, {}, scratch);
-        if (surface.materialKind === materialKind) {
+        if (
+          surface.materialKind === materialKind &&
+          isDryGroundSample(world, x, y, materialKind)
+        ) {
           return { x, y, surface: { ...surface } };
         }
       }
@@ -166,6 +190,13 @@ function findSurfacePoint(
 function withKnownSupportSurfaceTerrain(test: () => void): void {
   const previousRuntimeConfig = getTerrainRuntimeConfig();
   const previousTeamCount = getTerrainTeamCount();
+  // An installed authoritative tile map OUTRANKS the generation config, so
+  // setting a known config while a battle's mesh is installed leaves the
+  // fixture sampling that battle's terrain instead -- which is how this
+  // contract ended up looking for dry ground in a fully submerged world.
+  // Drop the mesh for the duration so "known terrain" means what it says.
+  const previousTerrain = getAuthoritativeTerrainTileMap();
+  setAuthoritativeTerrainTileMap(null);
   setTerrainTeamCount(0);
   setTerrainRuntimeConfig(SUPPORT_SURFACE_CONTRACT_TERRAIN);
   try {
@@ -173,6 +204,7 @@ function withKnownSupportSurfaceTerrain(test: () => void): void {
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);
     setTerrainTeamCount(previousTeamCount);
+    setAuthoritativeTerrainTileMap(previousTerrain);
   }
 }
 

@@ -67,7 +67,12 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // A complete demo roster can be much denser than the shared structure arcs,
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(48);
+// 48 cells left the last seat of the tightest preset (Spikey Lake) one line
+// short: eight of nine seats fit all 26 demo production lines and the ninth
+// found no free cell for its last Fabricator. The ring is deterministic and
+// ordered nearest-first, so a wider radius only lets a crowded seat reach one
+// ring further out; it never moves a placement that already succeeded.
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(64);
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
