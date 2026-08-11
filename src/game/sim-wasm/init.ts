@@ -4834,6 +4834,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandHotkeysContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
+        const { runBarCommandParityContractTest } = await import('../sim/blueprints/barCommandParityContractTest');
+        runBarCommandParityContractTest();
         // Command-surface gates. These enforce that every button, hotkey, and
         // order the player can reach has an authoritative system behind it
         // (budget_design_philosophy.html "Commands require real systems").
