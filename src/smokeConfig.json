@@ -32,6 +32,17 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
+  "beamDamageEndpoint": {
+    "maxPoolSize": 12000,
+    "capPolicy": "evictOldest",
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 0,
+    "fadeInMs": 0,
+    "fadeOutMs": 1000,
+    "startRadius": 1,
+    "endRadiusMultiplier": 1.15,
+    "maxAlpha": 1
+  },
   "locomotionHovercraft": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",

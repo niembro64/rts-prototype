@@ -730,8 +730,8 @@ export type Turret = {
 
 /** Open-loop trajectory captured once when an attack beam fires. Both
  * endpoints are constant-velocity world-space fits; those kinematic
- * coefficients remain immutable while the two sample-time fields advance the
- * coarse collision cadence. Neither turret nor beam reads the live target. */
+ * coefficients remain immutable while the collision-ring schedule advances.
+ * Neither turret nor beam reads the live target. */
 export type BeamPulsePlan = {
   durationMs: number;
   sourceX: number;
@@ -748,7 +748,11 @@ export type BeamPulsePlan = {
   targetVelocityZ: number;
   /** Finite source-turret effect radius used as the hard trace budget. */
   traceDistance: number;
-  nextCollisionSampleMs: number;
+  /** Stable hashed phase in the collision-sampling tick ring. */
+  collisionSamplePhase: number;
+  /** Next absolute authoritative simulation tick assigned to this beam. */
+  nextCollisionSampleTick: number;
+  /** Elapsed pulse time already integrated into endpoint damage. */
   lastCollisionSampleMs: number;
 };
 

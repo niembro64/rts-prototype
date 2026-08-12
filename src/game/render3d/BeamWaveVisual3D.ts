@@ -14,7 +14,6 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import beamConfig from '@/beamConfig.json';
-import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { applyExposureToRawShader } from './RenderLighting3D';
 
@@ -144,15 +143,6 @@ void main() {
   float pulse = step(${glsl(beamWaveHighAlphaStart(config))}, p);
   float alpha = mix(${glsl(config.waveLowAlpha)}, ${glsl(config.waveHighAlpha)}, pulse) * vAlpha;
   gl_FragColor = vec4(${glslVec3(config.color)}, alpha);
-}
-`;
-
-export const BEAM_ENDPOINT_VERTEX_SHADER = INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER;
-
-export const createBeamEndpointFragmentShader = (config: BeamVisualConfig): string => `
-varying float vAlpha;
-void main() {
-  gl_FragColor = vec4(${glslVec3(config.color)}, ${glsl(config.waveHighAlpha)} * vAlpha);
 }
 `;
 

@@ -19,8 +19,8 @@ import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import { detachObject, disposeMesh } from './threeUtils';
 import { uploadPrefixRange } from './instancedBufferUpdate';
 import beamConfig from '@/beamConfig.json';
+import { getSmokeProfile } from '@/smokeConfig';
 import {
-  BEAM_ENDPOINT_VERTEX_SHADER,
   BEAM_INNER_VISUAL_CONFIG,
   BEAM_LAYER_INNER_SCALE,
   BEAM_OUTER_VISUAL_CONFIG,
@@ -28,16 +28,15 @@ import {
   BEAM_WAVE_TIME,
   beamWaveFlowPhase,
   beamWaveFlowRepeats,
-  createBeamEndpointFragmentShader,
   createBeamSegmentFragmentShader,
   tickBeamWaveTime,
   type BeamVisualConfig,
 } from './BeamWaveVisual3D';
 import {
   createPrimitiveCylinderGeometry,
-  createPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import type { SmokePuffEmitter } from './SmokeTrail3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
@@ -52,11 +51,10 @@ import {
 // edit those files to retune how beams look. Beam cylinders originate at
 // the turret mount center, matching the authoritative sim path.
 const BEAM_SEGMENT_CAP = 8192;
-const BEAM_ENDPOINT_CAP = 4096;
+const BEAM_ENDPOINT_SMOKE_EMITTER_CAP = 4096;
 const BEAM_IMPOSTER_SEGMENT_CAP = BEAM_SEGMENT_CAP;
 const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
-const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xd7f4ff;
 const DEFAULT_IMPOSTER_MIN_SCREEN_RADIUS_PX = 0.9;
@@ -294,9 +292,58 @@ type BeamVisualLayer = {
   readonly segmentFlow: Float32Array;
   readonly segmentFlowAttr: THREE.InstancedBufferAttribute;
   activeSegmentCount: number;
-  readonly endpointMesh: THREE.InstancedMesh;
-  activeEndpointCount: number;
 };
+
+const BEAM_ENDPOINT_SMOKE_PROFILE = getSmokeProfile('beamDamageEndpoint');
+
+/** Configure one pooled SmokeTrail3D emitter at a beam's damage endpoint.
+ * The puff begins at the rendered beam cylinder and expands until it is
+ * slightly larger than the authored damage region. */
+export function configureBeamEndpointSmokeEmitter(
+  emitter: SmokePuffEmitter | undefined,
+  beamEntityId: number,
+  x: number,
+  y: number,
+  z: number,
+  beamRadius: number,
+  damageRadius: number,
+): SmokePuffEmitter {
+  const out = emitter ?? {
+    x,
+    y,
+    z,
+    useId: BEAM_ENDPOINT_SMOKE_PROFILE.useId,
+    maxPoolSize: BEAM_ENDPOINT_SMOKE_PROFILE.maxPoolSize,
+    capPolicy: BEAM_ENDPOINT_SMOKE_PROFILE.capPolicy,
+    emitFramesSkip: BEAM_ENDPOINT_SMOKE_PROFILE.emitFramesSkip,
+    fadeInMs: BEAM_ENDPOINT_SMOKE_PROFILE.fadeInMs,
+    fadeOutMs: BEAM_ENDPOINT_SMOKE_PROFILE.fadeOutMs,
+    startRadius: 0,
+    endRadiusMultiplier: BEAM_ENDPOINT_SMOKE_PROFILE.endRadiusMultiplier,
+    maxAlpha: BEAM_ENDPOINT_SMOKE_PROFILE.maxAlpha,
+  };
+  out.x = x;
+  out.y = y;
+  out.z = z;
+  out.startRadius = Number.isFinite(beamRadius) ? Math.max(0, beamRadius) : 0;
+  const safeDamageRadius = Number.isFinite(damageRadius)
+    ? Math.max(0, damageRadius)
+    : 0;
+  const finalRadius = Math.max(
+    out.startRadius,
+    safeDamageRadius * BEAM_ENDPOINT_SMOKE_PROFILE.endRadiusMultiplier,
+  );
+  out.endRadiusMultiplier = out.startRadius > 1e-6
+    ? finalRadius / out.startRadius
+    : 1;
+  out.phase = beamEntityId;
+  // A very small upward drift makes overlapping impact puffs read as smoke
+  // while keeping the growing plume anchored close to the termination point.
+  out.vx = 0;
+  out.vy = 0;
+  out.vz = Math.max(1, out.startRadius * 0.1);
+  return out;
+}
 
 type CachedBeamPoint = Pick<
   BeamPoint,
@@ -352,30 +399,6 @@ function createBeamVisualLayer(
   segmentMesh.count = 0;
   root.add(segmentMesh);
 
-  const endpointGeom = createPrimitiveSphereGeometry('beam', geometryTier);
-  const endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
-  endpointAlpha.fill(1);
-  const endpointAlphaAttr = new THREE.InstancedBufferAttribute(endpointAlpha, 1);
-  endpointAlphaAttr.setUsage(THREE.StaticDrawUsage);
-  endpointGeom.setAttribute('aAlpha', endpointAlphaAttr);
-  const endpointMat = new THREE.ShaderMaterial({
-    vertexShader: BEAM_ENDPOINT_VERTEX_SHADER,
-    fragmentShader: createBeamEndpointFragmentShader(config),
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-  });
-  const endpointMesh = new THREE.InstancedMesh(
-    endpointGeom,
-    endpointMat,
-    BEAM_ENDPOINT_CAP,
-  );
-  endpointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  endpointMesh.frustumCulled = false;
-  endpointMesh.renderOrder = renderOrder + 2;
-  endpointMesh.count = 0;
-  root.add(endpointMesh);
-
   return {
     config,
     radiusMultiplier,
@@ -383,8 +406,6 @@ function createBeamVisualLayer(
     segmentFlow,
     segmentFlowAttr,
     activeSegmentCount: 0,
-    endpointMesh,
-    activeEndpointCount: 0,
   };
 }
 
@@ -402,6 +423,7 @@ export class BeamRenderer3D {
   private lastScopeVersion = -1;
   private beamUpdateFrameIndex = -1;
   private readonly cachedPathByEntityId = new Map<number, CachedBeamPath>();
+  private readonly endpointSmokeEmitters: SmokePuffEmitter[] = [];
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private readonly segmentPoseScratch = createBeamSegmentPoseScratch3D();
@@ -507,21 +529,6 @@ export class BeamRenderer3D {
       cylRadius,
       length,
     );
-  }
-
-  private writeEndpoint(
-    layer: BeamVisualLayer,
-    slot: number,
-    simX: number,
-    simY: number,
-    simZ: number,
-    radius: number,
-  ): boolean {
-    if (slot >= BEAM_ENDPOINT_CAP || radius <= 0.001) return false;
-    this._matrix.makeScale(radius, radius, radius);
-    this._matrix.setPosition(simX, simZ, simY);
-    layer.endpointMesh.setMatrixAt(slot, this._matrix);
-    return true;
   }
 
   private isOpenEndedLinePath(path: CachedBeamPath): boolean {
@@ -637,16 +644,17 @@ export class BeamRenderer3D {
 
   private hasActiveVisuals(): boolean {
     if (this.activeImposterSegmentCount > 0) return true;
-    if (
-      this.mediumLayer.activeSegmentCount > 0 ||
-      this.mediumLayer.activeEndpointCount > 0
-    ) return true;
+    if (this.mediumLayer.activeSegmentCount > 0) return true;
     const layers = this.layers;
     for (let i = 0; i < layers.length; i++) {
       const layer = layers[i];
-      if (layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0) return true;
+      if (layer.activeSegmentCount > 0) return true;
     }
     return false;
+  }
+
+  getEndpointSmokeEmitters(): readonly SmokePuffEmitter[] {
+    return this.endpointSmokeEmitters;
   }
 
   update(
@@ -662,7 +670,10 @@ export class BeamRenderer3D {
       projectiles.length === 0 &&
       !this.hasActiveVisuals() &&
       this.cachedPathByEntityId.size === 0
-    ) return;
+    ) {
+      this.endpointSmokeEmitters.length = 0;
+      return;
+    }
     tickBeamWaveTime();
     this.beamUpdateFrameIndex = (this.beamUpdateFrameIndex + 1) & 0x3fffffff;
     const activeUpdateBucket =
@@ -684,8 +695,7 @@ export class BeamRenderer3D {
     let segIdx = 0;
     let mediumSegIdx = 0;
     let imposterSegIdx = 0;
-    let endpointIdx = 0;
-    let mediumEndpointIdx = 0;
+    let endpointSmokeEmitterIdx = 0;
     const layers = this.layers;
     const layerCount = layers.length;
 
@@ -835,40 +845,26 @@ export class BeamRenderer3D {
         }
       }
 
-      if (!useImposterSegments && path.endpointDamageable !== false) {
-        if (useMediumSegments && mediumEndpointIdx < BEAM_ENDPOINT_CAP) {
-          const damageSphereRadius = Math.max(
-            ENDPOINT_MIN_RADIUS,
-            profile.lineDamageSphereRadius,
-          );
-          if (this.writeEndpoint(
-            this.mediumLayer,
-            mediumEndpointIdx,
+      if (
+        path.endpointDamageable !== false &&
+        profile.lineDamageSphereRadius > 0.001 &&
+        endpointSmokeEmitterIdx < BEAM_ENDPOINT_SMOKE_EMITTER_CAP
+      ) {
+        this.endpointSmokeEmitters[endpointSmokeEmitterIdx] =
+          configureBeamEndpointSmokeEmitter(
+            this.endpointSmokeEmitters[endpointSmokeEmitterIdx],
+            e.id,
             endPoint.x,
             endPoint.y,
             endPoint.z,
-            damageSphereRadius,
-          )) mediumEndpointIdx++;
-        } else if (!useMediumSegments && endpointIdx < BEAM_ENDPOINT_CAP) {
-          const damageSphereRadius = Math.max(
-            ENDPOINT_MIN_RADIUS,
+            cylRadius,
             profile.lineDamageSphereRadius,
           );
-          for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
-            const layer = layers[layerIndex];
-            this.writeEndpoint(
-              layer,
-              endpointIdx,
-              endPoint.x,
-              endPoint.y,
-              endPoint.z,
-              damageSphereRadius * layer.radiusMultiplier,
-            );
-          }
-          endpointIdx++;
-        }
+        endpointSmokeEmitterIdx++;
       }
     }
+
+    this.endpointSmokeEmitters.length = endpointSmokeEmitterIdx;
 
     for (const [entityId, path] of this.cachedPathByEntityId) {
       if (path.lastSeenFrame !== this.beamUpdateFrameIndex) {
@@ -884,12 +880,6 @@ export class BeamRenderer3D {
         uploadPrefixRange(layer.segmentFlowAttr, segIdx * 4);
       }
       layer.activeSegmentCount = segIdx;
-
-      layer.endpointMesh.count = endpointIdx;
-      if (endpointIdx > 0) {
-        uploadPrefixRange(layer.endpointMesh.instanceMatrix, endpointIdx * 16);
-      }
-      layer.activeEndpointCount = endpointIdx;
     }
 
     this.mediumLayer.segmentMesh.count = mediumSegIdx;
@@ -898,14 +888,6 @@ export class BeamRenderer3D {
       uploadPrefixRange(this.mediumLayer.segmentFlowAttr, mediumSegIdx * 4);
     }
     this.mediumLayer.activeSegmentCount = mediumSegIdx;
-    this.mediumLayer.endpointMesh.count = mediumEndpointIdx;
-    if (mediumEndpointIdx > 0) {
-      uploadPrefixRange(
-        this.mediumLayer.endpointMesh.instanceMatrix,
-        mediumEndpointIdx * 16,
-      );
-    }
-    this.mediumLayer.activeEndpointCount = mediumEndpointIdx;
 
     this.activeImposterSegmentCount = imposterSegIdx;
     this.imposterSegmentMesh.visible =
@@ -918,12 +900,11 @@ export class BeamRenderer3D {
 
   destroy(): void {
     this.cachedPathByEntityId.clear();
+    this.endpointSmokeEmitters.length = 0;
     disposeMesh(this.imposterSegmentMesh);
     disposeMesh(this.mediumLayer.segmentMesh);
-    disposeMesh(this.mediumLayer.endpointMesh);
     for (const layer of this.layers) {
       disposeMesh(layer.segmentMesh);
-      disposeMesh(layer.endpointMesh);
     }
     detachObject(this.root);
   }

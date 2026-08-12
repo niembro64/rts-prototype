@@ -94,6 +94,7 @@ import {
   createBeamPulsePlan,
   getMaximumBeamPulseOnTimeMs,
   rollBeamPulseOnTimeMs,
+  scheduleBeamPulseCollisionSamples,
 } from './beamPulse';
 import type { RayConfigRangeCylinder } from './lineShotRange';
 
@@ -1297,6 +1298,9 @@ export function fireTurrets(
             beamProjectileType,
             { shotBlueprintId: emissionBlueprintId, shotSource },
           );
+          if (firedBeamPlan !== null) {
+            scheduleBeamPulseCollisionSamples(firedBeamPlan, beam.id, currentTick);
+          }
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
@@ -2252,16 +2256,20 @@ export function updateProjectiles(
 
           // The turret servo has already consumed the cheap trajectory
           // evaluation for this fixed tick. The expensive world trace and
-          // damage query occur only on the coarse cadence (plus a final
-          // partial sample at expiry).
-          if (!beamPulseNeedsCollisionSample(pulsePlan, proj.timeAlive)) {
+          // damage query occur only in this beam's hashed tick-ring phase
+          // (plus a final partial sample at expiry).
+          if (!beamPulseNeedsCollisionSample(pulsePlan, currentTick, proj.timeAlive)) {
             entity.transform.x = startPoint.x;
             entity.transform.y = startPoint.y;
             entity.transform.z = startPoint.z;
             entity.transform.rotation = turretAngle;
             continue;
           }
-          proj.beamDamageWindowMs = consumeBeamPulseCollisionWindow(pulsePlan, proj.timeAlive);
+          proj.beamDamageWindowMs = consumeBeamPulseCollisionWindow(
+            pulsePlan,
+            currentTick,
+            proj.timeAlive,
+          );
           traceDtMs = proj.beamDamageWindowMs;
         } else {
           const lockedTarget = targetingTargetId !== -1

@@ -65,6 +65,7 @@ import {
   beamImposterWorldRadiusForSegment,
   beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
+  configureBeamEndpointSmokeEmitter,
   constrainDirectBeamEndpointToMuzzleRay,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
@@ -1428,6 +1429,26 @@ function runEmissionPoseContracts(): void {
       constrainedEndpoint.y === 20 &&
       constrainedEndpoint.z === 30,
     'a direct beam endpoint must remain exactly collinear with its rendered muzzle forward',
+  );
+  const beamEndpointSmoke = configureBeamEndpointSmokeEmitter(
+    undefined,
+    17,
+    10, 20, 30,
+    8,
+    32,
+  );
+  assertContract(
+    beamEndpointSmoke.useId === 'beamDamageEndpoint' &&
+      beamEndpointSmoke.x === 10 &&
+      beamEndpointSmoke.y === 20 &&
+      beamEndpointSmoke.z === 30 &&
+      beamEndpointSmoke.startRadius === 8 &&
+      beamEndpointSmoke.endRadiusMultiplier === 4.6 &&
+      beamEndpointSmoke.fadeInMs === 0 &&
+      beamEndpointSmoke.fadeOutMs === 1000 &&
+      beamEndpointSmoke.maxAlpha === 1 &&
+      beamEndpointSmoke.phase === 17,
+    'beam endpoint smoke grows from beam radius through the authored damage region',
   );
   const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
   for (let entityId = 1; entityId <= 256; entityId++) {

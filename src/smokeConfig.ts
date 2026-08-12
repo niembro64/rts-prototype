@@ -6,6 +6,7 @@ export const SMOKE_USE_IDS = [
   'shotRocketLight',
   'shotMissileFast',
   'shotMissileLong',
+  'beamDamageEndpoint',
   'locomotionHovercraft',
   'locomotionAlbatrosHoverFans',
   'locomotionDragonflyHovercraft',

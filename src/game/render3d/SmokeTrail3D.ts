@@ -696,7 +696,10 @@ export class SmokeTrail3D {
     this._scratchMat.makeScale(startRadius, startRadius, startRadius);
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
     pool.mesh.setMatrixAt(i, this._scratchMat);
-    pool.alphaArr[i] = 0;
+    // A zero-duration fade-in means the puff is fully present on its spawn
+    // frame. Initializing every puff to zero inserted an unintended one-frame
+    // transparent flash even when the profile explicitly requested no fade.
+    pool.alphaArr[i] = fadeInSec <= 0 ? maxAlpha : 0;
     this.writePuffColor(pool, i, puff);
     return true;
   }

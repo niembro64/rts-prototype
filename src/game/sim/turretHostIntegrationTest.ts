@@ -40,6 +40,7 @@ import { WATER_LEVEL } from './Terrain';
 import type { WindState } from './wind';
 import { WorldState } from './WorldState';
 import {
+  beamPulseCollisionPhaseForEntityId,
   beamPulseNeedsCollisionSample,
   canTurretTrackBeamPulse,
   consumeBeamPulseCollisionWindow,
@@ -48,10 +49,11 @@ import {
   getMaximumBeamPulseOnTimeMs,
   rollBeamPulseOffTimeMs,
   rollBeamPulseOnTimeMs,
+  scheduleBeamPulseCollisionSamples,
 } from './combat/beamPulse';
 import {
   BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER,
-  BEAM_PULSE_COLLISION_SAMPLE_MS,
+  BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS,
   BEAM_PULSE_OFF_TIME_MS,
   BEAM_PULSE_OFF_TIME_RANDOMNESS,
   BEAM_PULSE_ON_TIME_MS,
@@ -574,24 +576,52 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
 
   const cadencePlan = {
     ...pulsePlan,
-    nextCollisionSampleMs: BEAM_PULSE_COLLISION_SAMPLE_MS,
     lastCollisionSampleMs: 0,
   };
+  const cadenceSpawnTick = 0;
+  scheduleBeamPulseCollisionSamples(cadencePlan, beamEntity!.id, cadenceSpawnTick);
   let integratedWindowMs = 0;
   let sampleCount = 0;
-  const pulseExpiryTickMs = Math.ceil(pulsePlan.durationMs / 50) * 50;
-  for (let elapsedMs = 50; elapsedMs <= pulseExpiryTickMs; elapsedMs += 50) {
-    if (!beamPulseNeedsCollisionSample(cadencePlan, elapsedMs)) continue;
-    integratedWindowMs += consumeBeamPulseCollisionWindow(cadencePlan, elapsedMs);
+  let previousSampleTick = cadenceSpawnTick;
+  const fixedStepMs = 1000 / 30;
+  const pulseExpiryTick = Math.ceil(pulsePlan.durationMs / fixedStepMs);
+  for (let tick = 1; tick <= pulseExpiryTick; tick++) {
+    const elapsedMs = Math.min(pulsePlan.durationMs, tick * fixedStepMs);
+    if (!beamPulseNeedsCollisionSample(cadencePlan, tick, elapsedMs)) continue;
+    const isFinalPartialSample = elapsedMs >= pulsePlan.durationMs;
+    assertContract(
+      isFinalPartialSample || tick % BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS ===
+        cadencePlan.collisionSamplePhase,
+      'non-final beam collision work must stay in its hashed tick phase',
+    );
+    assertContract(
+      tick - previousSampleTick <= BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS,
+      'the phase ring must never leave a beam unsampled beyond its configured interval',
+    );
+    previousSampleTick = tick;
+    integratedWindowMs += consumeBeamPulseCollisionWindow(cadencePlan, tick, elapsedMs);
     sampleCount++;
   }
-  assertContract(
-    integratedWindowMs === pulsePlan.durationMs,
+  assertNear(
+    integratedWindowMs,
+    pulsePlan.durationMs,
     'coarse collision samples must integrate every millisecond of the active pulse exactly once',
   );
   assertContract(
-    sampleCount === Math.ceil(pulsePlan.durationMs / BEAM_PULSE_COLLISION_SAMPLE_MS),
-    'attack beam must perform exactly the configured number of coarse collision samples',
+    sampleCount >= Math.floor(
+      pulsePlan.durationMs /
+        (fixedStepMs * BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS),
+    ),
+    'the faster tick ring must sustain its configured per-beam collision frequency',
+  );
+  const phaseCounts = new Array<number>(BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS).fill(0);
+  for (let entityId = 1; entityId <= 4096; entityId++) {
+    phaseCounts[beamPulseCollisionPhaseForEntityId(entityId)]++;
+  }
+  const idealPhasePopulation = 4096 / BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS;
+  assertContract(
+    phaseCounts.every((count) => Math.abs(count - idealPhasePopulation) <= 4096 * 0.05),
+    'beam entity hashing must distribute collision work evenly across the tick ring',
   );
   assertNear(
     BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER * BEAM_PULSE_ON_TIME_MS /
@@ -653,7 +683,9 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   );
   const pulseDamageSystem = new DamageSystem(world);
   const pulseForces = new ForceAccumulator();
-  for (let elapsedMs = 50; elapsedMs <= pulseExpiryTickMs; elapsedMs += 50) {
+  const pulseExpiryTestMs = Math.ceil(pulsePlan.durationMs / 50) * 50;
+  for (let elapsedMs = 50; elapsedMs <= pulseExpiryTestMs; elapsedMs += 50) {
+    world.incrementTick();
     pulseForces.clear();
     updateTurretRotation(world, 50, collectTurretRotationUnits(world, []));
     updateProjectiles(world, 50, pulseDamageSystem, STILL_AIR);

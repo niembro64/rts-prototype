@@ -5,7 +5,7 @@
     "onTimeRandomness": 0.2,
     "offTimeMs": 2000,
     "offTimeRandomness": 0.2,
-    "collisionSampleMs": 100,
+    "collisionSampleIntervalTicks": 1,
     "activeOutputMultiplier": 3,
     "initialStaggerMaxMs": 250,
     "trackingErrorBudgetRadians": 0.16

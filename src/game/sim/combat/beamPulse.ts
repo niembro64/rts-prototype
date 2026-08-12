@@ -1,6 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
-  BEAM_PULSE_COLLISION_SAMPLE_MS,
+  BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS,
   BEAM_PULSE_OFF_TIME_MS,
   BEAM_PULSE_OFF_TIME_RANDOMNESS,
   BEAM_PULSE_ON_TIME_MS,
@@ -50,10 +50,10 @@ export function createBeamPulsePlan(
     targetVelocityY: targetVelocity.y,
     targetVelocityZ: targetVelocity.z,
     traceDistance,
-    // Trace on the fixed coarse cadence. The spawn event already carries the
-    // initial straight visual, and the last partial window is always flushed
-    // at pulse expiry.
-    nextCollisionSampleMs: BEAM_PULSE_COLLISION_SAMPLE_MS,
+    // The entity ID is assigned after this plan is created. Firing schedules
+    // it into the deterministic collision ring before publishing the beam.
+    collisionSamplePhase: 0,
+    nextCollisionSampleTick: -1,
     lastCollisionSampleMs: 0,
   };
 }
@@ -178,17 +178,72 @@ export function canTurretTrackBeamPulse(
   );
 }
 
-export function beamPulseNeedsCollisionSample(plan: BeamPulsePlan, elapsedMs: number): boolean {
-  const clampedElapsed = Math.min(elapsedMs, plan.durationMs);
-  return clampedElapsed >= plan.nextCollisionSampleMs || clampedElapsed >= plan.durationMs;
+function normalizedCollisionSampleIntervalTicks(): number {
+  return Number.isFinite(BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS)
+    ? Math.max(1, Math.round(BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS))
+    : 1;
 }
 
-export function consumeBeamPulseCollisionWindow(plan: BeamPulsePlan, elapsedMs: number): number {
+/** Stable pseudo-random phase assignment. It is deliberately a pure hash,
+ * not the gameplay RNG stream: adding/removing a beam cannot perturb any
+ * combat randomness, and array insertion order cannot move existing beams to
+ * a different phase. */
+export function beamPulseCollisionPhaseForEntityId(
+  entityId: number,
+  intervalTicks: number = normalizedCollisionSampleIntervalTicks(),
+): number {
+  const interval = Number.isFinite(intervalTicks)
+    ? Math.max(1, Math.round(intervalTicks))
+    : 1;
+  let hash = entityId | 0;
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d);
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 0x846ca68b);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) % interval;
+}
+
+export function scheduleBeamPulseCollisionSamples(
+  plan: BeamPulsePlan,
+  beamEntityId: number,
+  spawnTick: number,
+): void {
+  const interval = normalizedCollisionSampleIntervalTicks();
+  const phase = beamPulseCollisionPhaseForEntityId(beamEntityId, interval);
+  const firstEligibleTick = Math.max(0, Math.floor(spawnTick)) + 1;
+  const firstTickPhase = firstEligibleTick % interval;
+  plan.collisionSamplePhase = phase;
+  plan.nextCollisionSampleTick = firstEligibleTick +
+    ((phase - firstTickPhase + interval) % interval);
+}
+
+export function beamPulseNeedsCollisionSample(
+  plan: BeamPulsePlan,
+  currentTick: number,
+  elapsedMs: number,
+): boolean {
+  const clampedElapsed = Math.min(elapsedMs, plan.durationMs);
+  return clampedElapsed >= plan.durationMs || (
+    plan.nextCollisionSampleTick >= 0 &&
+    currentTick >= plan.nextCollisionSampleTick
+  );
+}
+
+export function consumeBeamPulseCollisionWindow(
+  plan: BeamPulsePlan,
+  currentTick: number,
+  elapsedMs: number,
+): number {
   const clampedElapsed = Math.min(elapsedMs, plan.durationMs);
   const windowMs = Math.max(0, clampedElapsed - plan.lastCollisionSampleMs);
   plan.lastCollisionSampleMs = clampedElapsed;
-  while (plan.nextCollisionSampleMs <= clampedElapsed) {
-    plan.nextCollisionSampleMs += BEAM_PULSE_COLLISION_SAMPLE_MS;
+  const interval = normalizedCollisionSampleIntervalTicks();
+  while (
+    plan.nextCollisionSampleTick >= 0 &&
+    plan.nextCollisionSampleTick <= currentTick
+  ) {
+    plan.nextCollisionSampleTick += interval;
   }
   return windowMs;
 }
