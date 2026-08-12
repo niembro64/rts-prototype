@@ -64,7 +64,6 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import {
   resolveFootSurfaceQuaternion,
-  resolveFootSurfaceTransitionQuaternion,
 } from './FootContactOrientation3D';
 import {
   clampPointToLegShell,
@@ -209,13 +208,21 @@ export type LegInstance = {
   startWorldX: number; startWorldY: number; startWorldZ: number;
   targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   contactState: LegContactState;
-  /** Rendered world orientation of the foot hemisphere. Rebuilt every frame as
-   * the LIVE leg heading laid into the RETAINED contact plane below, so the
-   * foot turns with its leg while its sole stays on the plane it landed on. */
+  /** Rendered world orientation of the foot hemisphere. This is completely
+   * fixed while planted and changes only over an active step. */
   footQuaternionX: number;
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
+  /** Fixed complete world orientations at the two ends of the active step. */
+  footStepStartQuaternionX: number;
+  footStepStartQuaternionY: number;
+  footStepStartQuaternionZ: number;
+  footStepStartQuaternionW: number;
+  footTargetQuaternionX: number;
+  footTargetQuaternionY: number;
+  footTargetQuaternionZ: number;
+  footTargetQuaternionW: number;
   /** The departure foothold's ABSOLUTE world normal (Three coordinates, Y
    * up). A planted foot uses it directly. A stepping foot interpolates from it
    * to the destination normal below, then promotes the destination on landing. */
@@ -227,7 +234,7 @@ export type LegInstance = {
   footTargetNormalY: number;
   footTargetNormalZ: number;
   /** False only before a foot's first-ever touchdown (or after a teleport
-   * reset), when there is no contact plane to hold yet. */
+   * reset), when there is no complete contact orientation to hold yet. */
   footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
@@ -320,6 +327,14 @@ export type LegStateSnapshot = ReadonlyArray<{
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
+  footStepStartQuaternionX: number;
+  footStepStartQuaternionY: number;
+  footStepStartQuaternionZ: number;
+  footStepStartQuaternionW: number;
+  footTargetQuaternionX: number;
+  footTargetQuaternionY: number;
+  footTargetQuaternionZ: number;
+  footTargetQuaternionW: number;
   footContactNormalX: number;
   footContactNormalY: number;
   footContactNormalZ: number;
@@ -351,6 +366,14 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       footQuaternionY: leg.footQuaternionY,
       footQuaternionZ: leg.footQuaternionZ,
       footQuaternionW: leg.footQuaternionW,
+      footStepStartQuaternionX: leg.footStepStartQuaternionX,
+      footStepStartQuaternionY: leg.footStepStartQuaternionY,
+      footStepStartQuaternionZ: leg.footStepStartQuaternionZ,
+      footStepStartQuaternionW: leg.footStepStartQuaternionW,
+      footTargetQuaternionX: leg.footTargetQuaternionX,
+      footTargetQuaternionY: leg.footTargetQuaternionY,
+      footTargetQuaternionZ: leg.footTargetQuaternionZ,
+      footTargetQuaternionW: leg.footTargetQuaternionW,
       footContactNormalX: leg.footContactNormalX,
       footContactNormalY: leg.footContactNormalY,
       footContactNormalZ: leg.footContactNormalZ,
@@ -390,6 +413,14 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.footQuaternionY = src.footQuaternionY;
     dst.footQuaternionZ = src.footQuaternionZ;
     dst.footQuaternionW = src.footQuaternionW;
+    dst.footStepStartQuaternionX = src.footStepStartQuaternionX;
+    dst.footStepStartQuaternionY = src.footStepStartQuaternionY;
+    dst.footStepStartQuaternionZ = src.footStepStartQuaternionZ;
+    dst.footStepStartQuaternionW = src.footStepStartQuaternionW;
+    dst.footTargetQuaternionX = src.footTargetQuaternionX;
+    dst.footTargetQuaternionY = src.footTargetQuaternionY;
+    dst.footTargetQuaternionZ = src.footTargetQuaternionZ;
+    dst.footTargetQuaternionW = src.footTargetQuaternionW;
     dst.footContactNormalX = src.footContactNormalX;
     dst.footContactNormalY = src.footContactNormalY;
     dst.footContactNormalZ = src.footContactNormalZ;
@@ -472,6 +503,14 @@ export function buildLegs(
       footQuaternionY: 0,
       footQuaternionZ: 0,
       footQuaternionW: 1,
+      footStepStartQuaternionX: 0,
+      footStepStartQuaternionY: 0,
+      footStepStartQuaternionZ: 0,
+      footStepStartQuaternionW: 1,
+      footTargetQuaternionX: 0,
+      footTargetQuaternionY: 0,
+      footTargetQuaternionZ: 0,
+      footTargetQuaternionW: 1,
       footContactNormalX: 0,
       footContactNormalY: 1,
       footContactNormalZ: 0,
@@ -943,6 +982,12 @@ export function updateLegs(
         choppingSphereRadius,
         _snapRayVelocity.x,
         _snapRayVelocity.z,
+        hipWorldX,
+        hipWorldY,
+        hipWorldZ,
+        chassisUpX,
+        chassisUpY,
+        chassisUpZ,
         entity.id,
         mapWidth,
         mapHeight,
@@ -994,6 +1039,12 @@ export function updateLegs(
         choppingSphereRadius,
         _snapRayVelocity.x,
         _snapRayVelocity.z,
+        hipWorldX,
+        hipWorldY,
+        hipWorldZ,
+        chassisUpX,
+        chassisUpY,
+        chassisUpZ,
         entity.id,
         mapWidth,
         mapHeight,
@@ -1103,6 +1154,18 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.footTargetNormalX = 0;
       leg.footTargetNormalY = 1;
       leg.footTargetNormalZ = 0;
+      leg.footQuaternionX = 0;
+      leg.footQuaternionY = 0;
+      leg.footQuaternionZ = 0;
+      leg.footQuaternionW = 1;
+      leg.footStepStartQuaternionX = 0;
+      leg.footStepStartQuaternionY = 0;
+      leg.footStepStartQuaternionZ = 0;
+      leg.footStepStartQuaternionW = 1;
+      leg.footTargetQuaternionX = 0;
+      leg.footTargetQuaternionY = 0;
+      leg.footTargetQuaternionZ = 0;
+      leg.footTargetQuaternionW = 1;
       leg.footContactOrientationCaptured = false;
     }
   }
@@ -1134,6 +1197,65 @@ function visualGroundBuffer(maxLegLength: number, currentlyGrounded: boolean): n
 function legSwingDurationMs(leg: LegInstance): number {
   const d = Number.isFinite(leg.lerpDuration) ? leg.lerpDuration : 0;
   return Math.max(MIN_LEG_SWING_DURATION_MS, d);
+}
+
+/** Resolve a complete world-space foot orientation once, for one footprint.
+ * Unlike the live render solve, this result becomes an immutable endpoint of
+ * the step and cannot be turned later by the moving leg segments. */
+function resolveCompleteLegFootOrientation(
+  leg: LegInstance,
+  hipWorldX: number,
+  hipWorldY: number,
+  hipWorldZ: number,
+  footWorldX: number,
+  footWorldY: number,
+  footWorldZ: number,
+  chassisUpX: number,
+  chassisUpY: number,
+  chassisUpZ: number,
+  surfaceNormalX: number,
+  surfaceNormalY: number,
+  surfaceNormalZ: number,
+  out: THREE.Quaternion,
+): void {
+  const knee = kneeFromIK(
+    hipWorldX,
+    hipWorldY,
+    hipWorldZ,
+    footWorldX,
+    footWorldY,
+    footWorldZ,
+    leg.config.upperLegLength,
+    leg.config.lowerLegLength,
+    chassisUpX,
+    chassisUpY,
+    chassisUpZ,
+  );
+  resolveLegSegmentRight(
+    hipWorldX,
+    hipWorldY,
+    hipWorldZ,
+    footWorldX,
+    footWorldY,
+    footWorldZ,
+    chassisUpX,
+    chassisUpY,
+    chassisUpZ,
+    _stepOrientationSegmentRight,
+  );
+  const footYaw = resolveLegFootYaw(
+    _stepOrientationSegmentRight.x,
+    _stepOrientationSegmentRight.z,
+    knee.footX - knee.x,
+    knee.footZ - knee.z,
+  );
+  resolveLegFootSurfaceQuaternion(
+    footYaw,
+    surfaceNormalX,
+    surfaceNormalY,
+    surfaceNormalZ,
+    out,
+  );
 }
 
 function beginGroundedLegSlideTo(
@@ -1174,6 +1296,12 @@ function beginLegStepToChoppedSphereBoundary(
   innerSphereRadius: number,
   velocityX: number,
   velocityZ: number,
+  hipWorldX: number,
+  hipWorldY: number,
+  hipWorldZ: number,
+  chassisUpX: number,
+  chassisUpY: number,
+  chassisUpZ: number,
   entityId: number,
   mapWidth: number,
   mapHeight: number,
@@ -1226,6 +1354,73 @@ function beginLegStepToChoppedSphereBoundary(
   leg.footTargetNormalX = _footSurfaceNormal.nx;
   leg.footTargetNormalY = _footSurfaceNormal.nz;
   leg.footTargetNormalZ = _footSurfaceNormal.ny;
+
+  if (!leg.footContactOrientationCaptured) {
+    sampleLocomotionFootSurfaceNormal(
+      leg.worldX,
+      leg.worldZ,
+      mapWidth,
+      mapHeight,
+      entityId,
+      _stepDepartureSurfaceNormal,
+      terrainMode,
+    );
+    leg.footContactNormalX = _stepDepartureSurfaceNormal.nx;
+    leg.footContactNormalY = _stepDepartureSurfaceNormal.nz;
+    leg.footContactNormalZ = _stepDepartureSurfaceNormal.ny;
+    resolveCompleteLegFootOrientation(
+      leg,
+      hipWorldX,
+      hipWorldY,
+      hipWorldZ,
+      leg.worldX,
+      leg.worldY,
+      leg.worldZ,
+      chassisUpX,
+      chassisUpY,
+      chassisUpZ,
+      leg.footContactNormalX,
+      leg.footContactNormalY,
+      leg.footContactNormalZ,
+      _stepStartQuaternion,
+    );
+    leg.footQuaternionX = _stepStartQuaternion.x;
+    leg.footQuaternionY = _stepStartQuaternion.y;
+    leg.footQuaternionZ = _stepStartQuaternion.z;
+    leg.footQuaternionW = _stepStartQuaternion.w;
+    leg.footContactOrientationCaptured = true;
+  } else {
+    _stepStartQuaternion.set(
+      leg.footQuaternionX,
+      leg.footQuaternionY,
+      leg.footQuaternionZ,
+      leg.footQuaternionW,
+    );
+  }
+  resolveCompleteLegFootOrientation(
+    leg,
+    hipWorldX,
+    hipWorldY,
+    hipWorldZ,
+    targetX,
+    targetY,
+    targetZ,
+    chassisUpX,
+    chassisUpY,
+    chassisUpZ,
+    leg.footTargetNormalX,
+    leg.footTargetNormalY,
+    leg.footTargetNormalZ,
+    _stepTargetQuaternion,
+  );
+  leg.footStepStartQuaternionX = _stepStartQuaternion.x;
+  leg.footStepStartQuaternionY = _stepStartQuaternion.y;
+  leg.footStepStartQuaternionZ = _stepStartQuaternion.z;
+  leg.footStepStartQuaternionW = _stepStartQuaternion.w;
+  leg.footTargetQuaternionX = _stepTargetQuaternion.x;
+  leg.footTargetQuaternionY = _stepTargetQuaternion.y;
+  leg.footTargetQuaternionZ = _stepTargetQuaternion.z;
+  leg.footTargetQuaternionW = _stepTargetQuaternion.w;
   beginGroundedLegSlideTo(leg, targetX, targetY, targetZ);
 }
 
@@ -1246,6 +1441,10 @@ function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
     leg.footContactNormalY = leg.footTargetNormalY;
     leg.footContactNormalZ = leg.footTargetNormalZ;
     leg.footContactOrientationCaptured = true;
+    leg.footQuaternionX = leg.footTargetQuaternionX;
+    leg.footQuaternionY = leg.footTargetQuaternionY;
+    leg.footQuaternionZ = leg.footTargetQuaternionZ;
+    leg.footQuaternionW = leg.footTargetQuaternionW;
     return;
   }
 
@@ -1411,6 +1610,10 @@ const _footSurface: LocomotionFootSurfaceSample = {
   visualFootY: 0,
 };
 const _footSurfaceNormal: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 };
+const _stepDepartureSurfaceNormal: LocomotionSurfaceNormal = { nx: 0, ny: 0, nz: 1 };
+const _stepOrientationSegmentRight = { x: 1, y: 0, z: 0 };
+const _stepStartQuaternion = new THREE.Quaternion();
+const _stepTargetQuaternion = new THREE.Quaternion();
 
 function updateUnsupportedLegPose(
   mesh: LegMesh,
@@ -1906,12 +2109,11 @@ export function resolveLegFootSurfaceQuaternion(
 
 /** Apply the foot's foothold-to-foothold orientation rule without allocating.
  *
- * A planted foot uses the normal captured at its current spot. At lift-off the
- * gait already knows its destination and captures that spot's normal too, so a
- * stepping foot can spherically interpolate the sole's terrain angle over the
- * linear swing progress. Landing merely promotes the destination normal; it
- * cannot introduce a new angle or a visible snap. Both endpoint frames use the
- * live leg heading, preserving free rotation within the interpolated plane. */
+ * A planted foot returns its retained complete world orientation unchanged.
+ * At lift-off the gait has already frozen both complete endpoint quaternions;
+ * a stepping foot shortest-path SLERPs between those fixed values over linear
+ * swing progress. No live hip, knee, segment, or chassis heading can turn a
+ * loaded foot within its plane. */
 export function resolveContactLockedFootOrientation(
   leg: Pick<
     LegInstance,
@@ -1920,6 +2122,14 @@ export function resolveContactLockedFootOrientation(
     | 'footQuaternionY'
     | 'footQuaternionZ'
     | 'footQuaternionW'
+    | 'footStepStartQuaternionX'
+    | 'footStepStartQuaternionY'
+    | 'footStepStartQuaternionZ'
+    | 'footStepStartQuaternionW'
+    | 'footTargetQuaternionX'
+    | 'footTargetQuaternionY'
+    | 'footTargetQuaternionZ'
+    | 'footTargetQuaternionW'
     | 'footContactNormalX'
     | 'footContactNormalY'
     | 'footContactNormalZ'
@@ -1942,20 +2152,6 @@ export function resolveContactLockedFootOrientation(
     leg.footTargetNormalY = surfaceNormalY;
     leg.footTargetNormalZ = surfaceNormalZ;
     leg.footContactOrientationCaptured = true;
-  }
-  if (leg.contactState === 'stepping') {
-    resolveFootSurfaceTransitionQuaternion(
-      candidateFootYaw,
-      leg.footContactNormalX,
-      leg.footContactNormalY,
-      leg.footContactNormalZ,
-      leg.footTargetNormalX,
-      leg.footTargetNormalY,
-      leg.footTargetNormalZ,
-      leg.lerpProgress,
-      _footTouchdownQuaternion,
-    );
-  } else {
     resolveLegFootSurfaceQuaternion(
       candidateFootYaw,
       leg.footContactNormalX,
@@ -1963,7 +2159,38 @@ export function resolveContactLockedFootOrientation(
       leg.footContactNormalZ,
       _footTouchdownQuaternion,
     );
+    leg.footQuaternionX = _footTouchdownQuaternion.x;
+    leg.footQuaternionY = _footTouchdownQuaternion.y;
+    leg.footQuaternionZ = _footTouchdownQuaternion.z;
+    leg.footQuaternionW = _footTouchdownQuaternion.w;
+    leg.footStepStartQuaternionX = _footTouchdownQuaternion.x;
+    leg.footStepStartQuaternionY = _footTouchdownQuaternion.y;
+    leg.footStepStartQuaternionZ = _footTouchdownQuaternion.z;
+    leg.footStepStartQuaternionW = _footTouchdownQuaternion.w;
+    leg.footTargetQuaternionX = _footTouchdownQuaternion.x;
+    leg.footTargetQuaternionY = _footTouchdownQuaternion.y;
+    leg.footTargetQuaternionZ = _footTouchdownQuaternion.z;
+    leg.footTargetQuaternionW = _footTouchdownQuaternion.w;
+    return;
   }
+  if (leg.contactState !== 'stepping') return;
+  _stepStartQuaternion.set(
+    leg.footStepStartQuaternionX,
+    leg.footStepStartQuaternionY,
+    leg.footStepStartQuaternionZ,
+    leg.footStepStartQuaternionW,
+  );
+  _stepTargetQuaternion.set(
+    leg.footTargetQuaternionX,
+    leg.footTargetQuaternionY,
+    leg.footTargetQuaternionZ,
+    leg.footTargetQuaternionW,
+  );
+  _footTouchdownQuaternion.slerpQuaternions(
+    _stepStartQuaternion,
+    _stepTargetQuaternion,
+    clamp01(leg.lerpProgress),
+  );
   leg.footQuaternionX = _footTouchdownQuaternion.x;
   leg.footQuaternionY = _footTouchdownQuaternion.y;
   leg.footQuaternionZ = _footTouchdownQuaternion.z;

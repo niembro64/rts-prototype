@@ -28,6 +28,7 @@ import {
   resolveStandingArmTurretAim,
   resolveStandingArmTurretRoot,
   resolveStandingFootContactOrientation,
+  standingSupportPlaneWorldY,
   type StandingMesh,
   updateStandingRig,
   updateStandingHostTurretAim,
@@ -436,6 +437,25 @@ function assertStandingFootContactSlopeLatch(): void {
       state.footOrientationCaptured &&
       soleNormal(parentAtTouchdown).dot(touchdownNormal) > 1 - 1e-9,
     'a standing shoe captures the contacted plane at touchdown',
+  );
+  const planeAnchor = new THREE.Vector3(4, 10, -3);
+  const slidPoint = new THREE.Vector3(
+    12,
+    standingSupportPlaneWorldY(
+      planeAnchor.x,
+      planeAnchor.y,
+      planeAnchor.z,
+      touchdownNormal.x,
+      touchdownNormal.y,
+      touchdownNormal.z,
+      12,
+      5,
+    ),
+    5,
+  );
+  assertContract(
+    Math.abs(slidPoint.clone().sub(planeAnchor).dot(touchdownNormal)) < 1e-9,
+    'a standing stance coordinate slides on its retained footprint plane instead of resampling terrain',
   );
 
   // The hull spins AND the hips yaw independently underneath it. The sole
@@ -976,8 +996,12 @@ function assertTorsoAimSurvivesLodRebuild(
     leg.footContactNormalX = normal.x;
     leg.footContactNormalY = normal.y;
     leg.footContactNormalZ = normal.z;
+    const anchor = new THREE.Vector3(11 + index, 7 - index, -4 + index * 2);
+    leg.footContactWorldX = anchor.x;
+    leg.footContactWorldY = anchor.y;
+    leg.footContactWorldZ = anchor.z;
     leg.foot.quaternion.copy(local);
-    return { normal, local };
+    return { normal, anchor, local };
   });
   const snapshot = captureLocomotionState(mesh);
   assertContract(snapshot?.type === 'standing', `${label} captures standing locomotion state`);
@@ -992,6 +1016,9 @@ function assertTorsoAimSurvivesLodRebuild(
     leg.footContactNormalX = 0;
     leg.footContactNormalY = 1;
     leg.footContactNormalZ = 0;
+    leg.footContactWorldX = 0;
+    leg.footContactWorldY = 0;
+    leg.footContactWorldZ = 0;
     leg.foot.quaternion.identity();
   }
   applyLocomotionState(mesh, snapshot);
@@ -1019,14 +1046,22 @@ function assertTorsoAimSurvivesLodRebuild(
       leg.footTouchingSurface &&
         leg.footOrientationCaptured &&
         restoredNormal.dot(expected.normal) > 1 - 1e-9 &&
+        new THREE.Vector3(
+          leg.footContactWorldX,
+          leg.footContactWorldY,
+          leg.footContactWorldZ,
+        ).distanceTo(expected.anchor) < 1e-9 &&
         leg.foot.quaternion.angleTo(expected.local) < 1e-9,
-      `${label} foot ${i} preserves its contact plane across LOD rebuild`,
+      `${label} foot ${i} preserves its anchored contact plane across LOD rebuild`,
     );
     leg.footTouchingSurface = false;
     leg.footOrientationCaptured = false;
     leg.footContactNormalX = 0;
     leg.footContactNormalY = 1;
     leg.footContactNormalZ = 0;
+    leg.footContactWorldX = 0;
+    leg.footContactWorldY = 0;
+    leg.footContactWorldZ = 0;
   }
 
   mesh.upperBodyYaw = 0;

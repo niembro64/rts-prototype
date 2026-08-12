@@ -136,10 +136,17 @@ export type StandingLeg = {
   footContactNormalX: number;
   footContactNormalY: number;
   footContactNormalZ: number;
+  /** World-space point anchoring the retained support plane. */
+  footContactWorldX: number;
+  footContactWorldY: number;
+  footContactWorldZ: number;
   /** Destination foothold normal captured when recovery begins. */
   footTargetNormalX: number;
   footTargetNormalY: number;
   footTargetNormalZ: number;
+  footTargetWorldX: number;
+  footTargetWorldY: number;
+  footTargetWorldZ: number;
   /** Linear angular interpolation state for the active recovery swing. */
   footOrientationTransitionActive: boolean;
   footOrientationTransitionProgress: number;
@@ -845,8 +852,26 @@ export function resolveStandingFootContactOrientation(
 /** Sample support height under a phase-authored foot. Longitudinal gait stays
  * coupled; height and the independently latched touchdown orientation are the
  * only per-shoe surface responses. */
+export function standingSupportPlaneWorldY(
+  anchorX: number,
+  anchorY: number,
+  anchorZ: number,
+  normalX: number,
+  normalY: number,
+  normalZ: number,
+  worldX: number,
+  worldZ: number,
+): number {
+  const safeNormalY = Math.abs(normalY) > 1e-6 ? normalY : 1;
+  return anchorY - (
+    normalX * (worldX - anchorX) +
+    normalZ * (worldZ - anchorZ)
+  ) / safeNormalY;
+}
+
 function standingFootGroundLocalY(
   mesh: StandingMesh,
+  leg: StandingLeg,
   footX: number,
   footZ: number,
   pose: LocomotionRenderPose,
@@ -863,13 +888,29 @@ function standingFootGroundLocalY(
     .applyQuaternion(lowerBodyWorldQuaternion);
   _footWorld.x += pose.rootX;
   _footWorld.z += pose.rootZ;
-  _footWorld.y = getLocomotionSurfaceHeight(
-    _footWorld.x,
-    _footWorld.z,
-    mapWidth,
-    mapHeight,
-    ignoreEntityId,
-  );
+  if (leg.footTouchingSurface && leg.footOrientationCaptured) {
+    // Standing stance moves the shoe through the lower-body frame to cancel
+    // chassis travel. Those local coordinates slide on one retained footprint
+    // plane; they are not permission to acquire a sequence of terrain slopes.
+    _footWorld.y = standingSupportPlaneWorldY(
+      leg.footContactWorldX,
+      leg.footContactWorldY,
+      leg.footContactWorldZ,
+      leg.footContactNormalX,
+      leg.footContactNormalY,
+      leg.footContactNormalZ,
+      _footWorld.x,
+      _footWorld.z,
+    );
+  } else {
+    _footWorld.y = getLocomotionSurfaceHeight(
+      _footWorld.x,
+      _footWorld.z,
+      mapWidth,
+      mapHeight,
+      ignoreEntityId,
+    );
+  }
   _footWorld.x -= pose.rootX;
   _footWorld.y -= pose.rootY;
   _footWorld.z -= pose.rootZ;
@@ -934,6 +975,7 @@ function poseCoupledStandingGait(
       ? mesh.groundLocalY
       : standingFootGroundLocalY(
         mesh,
+        leg,
         footX,
         footZ,
         pose,
@@ -992,16 +1034,27 @@ function poseCoupledStandingGait(
         : THREE.MathUtils.clamp((0.5 - legPhase) * 2, 0, 1);
       const startingRecovery = !touchingSurface && leg.footTouchingSurface;
       if (startingRecovery) {
-        // At lift-off the previous contact point is the resolved shoe itself.
-        // One complete gait-cycle distance in the direction of travel is the
-        // same shoe's next plant, so its terrain angle is known before the
-        // recovery swing begins.
-        _footWorld
-          .copy(_resolvedFoot)
-          .applyQuaternion(_lowerBodyWorldQuaternion);
-        _footWorld.x += pose.rootX;
-        _footWorld.y += pose.rootY;
-        _footWorld.z += pose.rootZ;
+        // One complete gait-cycle distance from the RETAINED footprint is the
+        // same shoe's next plant. Do not start from its moving local stance
+        // coordinate: that coordinate slides through the rig while the support
+        // plane and its anchor remain one world-space contact.
+        if (!leg.footOrientationCaptured) {
+          _footWorld
+            .copy(_resolvedFoot)
+            .applyQuaternion(_lowerBodyWorldQuaternion);
+          _footWorld.x += pose.rootX;
+          _footWorld.y += pose.rootY;
+          _footWorld.z += pose.rootZ;
+          leg.footContactWorldX = _footWorld.x;
+          leg.footContactWorldY = getLocomotionSurfaceHeight(
+            _footWorld.x,
+            _footWorld.z,
+            mapWidth,
+            mapHeight,
+            ignoreEntityId,
+          );
+          leg.footContactWorldZ = _footWorld.z;
+        }
         _standingFootForward
           .set(1, 0, 0)
           .applyQuaternion(_lowerBodyWorldQuaternion);
@@ -1010,10 +1063,17 @@ function poseCoupledStandingGait(
           Math.hypot(_standingFootForward.x, _standingFootForward.z),
         );
         const targetDistance = mesh.gaitCycleDistance * mesh.gaitDirection;
-        const targetWorldX = _footWorld.x +
+        const targetWorldX = leg.footContactWorldX +
           _standingFootForward.x / planarForwardLength * targetDistance;
-        const targetWorldZ = _footWorld.z +
+        const targetWorldZ = leg.footContactWorldZ +
           _standingFootForward.z / planarForwardLength * targetDistance;
+        const targetWorldY = getLocomotionSurfaceHeight(
+          targetWorldX,
+          targetWorldZ,
+          mapWidth,
+          mapHeight,
+          ignoreEntityId,
+        );
         sampleLocomotionFootSurfaceNormal(
           targetWorldX,
           targetWorldZ,
@@ -1025,6 +1085,9 @@ function poseCoupledStandingGait(
         leg.footTargetNormalX = _standingFootSurfaceNormal.nx;
         leg.footTargetNormalY = _standingFootSurfaceNormal.nz;
         leg.footTargetNormalZ = _standingFootSurfaceNormal.ny;
+        leg.footTargetWorldX = targetWorldX;
+        leg.footTargetWorldY = targetWorldY;
+        leg.footTargetWorldZ = targetWorldZ;
         leg.footOrientationTransitionActive = true;
         leg.footOrientationTransitionProgress = 0;
         leg.footOrientationTransitionStartPhase = recoveryProgress;
@@ -1062,6 +1125,18 @@ function poseCoupledStandingGait(
         _footWorld.x += pose.rootX;
         _footWorld.y += pose.rootY;
         _footWorld.z += pose.rootZ;
+        leg.footContactWorldX = _footWorld.x;
+        leg.footContactWorldY = getLocomotionSurfaceHeight(
+          _footWorld.x,
+          _footWorld.z,
+          mapWidth,
+          mapHeight,
+          ignoreEntityId,
+        );
+        leg.footContactWorldZ = _footWorld.z;
+        leg.footTargetWorldX = _footWorld.x;
+        leg.footTargetWorldY = leg.footContactWorldY;
+        leg.footTargetWorldZ = _footWorld.z;
         sampleLocomotionFootSurfaceNormal(
           _footWorld.x,
           _footWorld.z,
@@ -1078,6 +1153,15 @@ function poseCoupledStandingGait(
         -_standingFootForward.z,
         _standingFootForward.x,
       );
+      if (
+        touchingSurface &&
+        !leg.footTouchingSurface &&
+        leg.footOrientationTransitionActive
+      ) {
+        leg.footContactWorldX = leg.footTargetWorldX;
+        leg.footContactWorldY = leg.footTargetWorldY;
+        leg.footContactWorldZ = leg.footTargetWorldZ;
+      }
       resolveStandingFootContactOrientation(
         leg,
         touchingSurface,
@@ -1182,9 +1266,15 @@ export function buildStandingRig(
       footContactNormalX: 0,
       footContactNormalY: 1,
       footContactNormalZ: 0,
+      footContactWorldX: 0,
+      footContactWorldY: 0,
+      footContactWorldZ: 0,
       footTargetNormalX: 0,
       footTargetNormalY: 1,
       footTargetNormalZ: 0,
+      footTargetWorldX: 0,
+      footTargetWorldY: 0,
+      footTargetWorldZ: 0,
       footOrientationTransitionActive: false,
       footOrientationTransitionProgress: 0,
       footOrientationTransitionStartPhase: 0,

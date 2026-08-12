@@ -129,7 +129,9 @@ export type LocomotionStateSnapshot =
         touchingSurface: boolean;
         orientationCaptured: boolean;
         contactNormal: readonly [number, number, number];
+        contactPoint: readonly [number, number, number];
         targetNormal: readonly [number, number, number];
+        targetPoint: readonly [number, number, number];
         orientationTransitionActive: boolean;
         orientationTransitionProgress: number;
         orientationTransitionStartPhase: number;
@@ -227,10 +229,20 @@ export function captureLocomotionState(
             leg.footContactNormalY,
             leg.footContactNormalZ,
           ],
+          contactPoint: [
+            leg.footContactWorldX,
+            leg.footContactWorldY,
+            leg.footContactWorldZ,
+          ],
           targetNormal: [
             leg.footTargetNormalX,
             leg.footTargetNormalY,
             leg.footTargetNormalZ,
+          ],
+          targetPoint: [
+            leg.footTargetWorldX,
+            leg.footTargetWorldY,
+            leg.footTargetWorldZ,
           ],
           orientationTransitionActive: leg.footOrientationTransitionActive,
           orientationTransitionProgress: leg.footOrientationTransitionProgress,
@@ -319,9 +331,15 @@ export function applyLocomotionState(
         leg.footContactNormalX = saved.contactNormal[0];
         leg.footContactNormalY = saved.contactNormal[1];
         leg.footContactNormalZ = saved.contactNormal[2];
+        leg.footContactWorldX = saved.contactPoint[0];
+        leg.footContactWorldY = saved.contactPoint[1];
+        leg.footContactWorldZ = saved.contactPoint[2];
         leg.footTargetNormalX = saved.targetNormal[0];
         leg.footTargetNormalY = saved.targetNormal[1];
         leg.footTargetNormalZ = saved.targetNormal[2];
+        leg.footTargetWorldX = saved.targetPoint[0];
+        leg.footTargetWorldY = saved.targetPoint[1];
+        leg.footTargetWorldZ = saved.targetPoint[2];
         leg.footOrientationTransitionActive = saved.orientationTransitionActive;
         leg.footOrientationTransitionProgress = saved.orientationTransitionProgress;
         leg.footOrientationTransitionStartPhase = saved.orientationTransitionStartPhase;

@@ -244,6 +244,14 @@ export function runLegRig3DContractTest(): void {
     footQuaternionY: 0,
     footQuaternionZ: 0,
     footQuaternionW: 1,
+    footStepStartQuaternionX: 0,
+    footStepStartQuaternionY: 0,
+    footStepStartQuaternionZ: 0,
+    footStepStartQuaternionW: 1,
+    footTargetQuaternionX: 0,
+    footTargetQuaternionY: 0,
+    footTargetQuaternionZ: 0,
+    footTargetQuaternionW: 1,
     footContactNormalX: 0,
     footContactNormalY: 1,
     footContactNormalZ: 0,
@@ -261,21 +269,6 @@ export function runLegRig3DContractTest(): void {
       footOrientationState.footQuaternionW,
     ),
   );
-  const footHeading = (): THREE.Vector3 => new THREE.Vector3(1, 0, 0).applyQuaternion(
-    new THREE.Quaternion(
-      footOrientationState.footQuaternionX,
-      footOrientationState.footQuaternionY,
-      footOrientationState.footQuaternionZ,
-      footOrientationState.footQuaternionW,
-    ),
-  );
-  /** The heading a yaw lays into a plane: the yaw's horizontal direction made
-   *  tangent to the normal. This is what the foot is allowed to follow. */
-  const headingInPlane = (yawAngle: number, normal: THREE.Vector3): THREE.Vector3 =>
-    new THREE.Vector3(Math.cos(yawAngle), 0, -Math.sin(yawAngle))
-      .projectOnPlane(normal)
-      .normalize();
-
   resolveContactLockedFootOrientation(
     footOrientationState,
     0.25,
@@ -299,52 +292,32 @@ export function runLegRig3DContractTest(): void {
   assertContract(
     footSole().dot(slopeNormal) > 1 - 1e-9 &&
       footOrientationState.footContactOrientationCaptured,
-    'touchdown captures the contacted plane as the sole plane',
+    'touchdown captures the complete terrain-aligned world orientation',
+  );
+  const plantedQuaternion = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
   );
 
-  // Still planted, but the leg has swung to a new heading over ground whose
-  // normal has changed underfoot. The foot turns; the plane does not.
+  // Neither a new live leg heading nor a different terrain sample may rotate
+  // a loaded foot within the plane it already owns.
   resolveContactLockedFootOrientation(footOrientationState, 1.25, 0, 1, 0);
   assertContract(
-    footSole().dot(slopeNormal) > 1 - 1e-9,
-    'a planted foot keeps its captured plane when the terrain normal changes',
-  );
-  assertContract(
-    footHeading().dot(headingInPlane(1.25, slopeNormal)) > 1 - 1e-9,
-    'a planted foot rotates within that plane to follow its leg heading',
+    new THREE.Quaternion(
+      footOrientationState.footQuaternionX,
+      footOrientationState.footQuaternionY,
+      footOrientationState.footQuaternionZ,
+      footOrientationState.footQuaternionW,
+    ).angleTo(plantedQuaternion) < 1e-9,
+    'a planted foot keeps its complete world orientation while the leg moves around it',
   );
 
   // Lift-off already knows the next foothold. The foot begins at the old
   // terrain angle, reaches the angular midpoint at half progress, and arrives
   // at the new terrain angle before touchdown can introduce a discontinuity.
   const nextSlopeNormal = new THREE.Vector3(-0.35, 0.9, 0.2).normalize();
-  footOrientationState.contactState = 'stepping';
-  footOrientationState.footTargetNormalX = nextSlopeNormal.x;
-  footOrientationState.footTargetNormalY = nextSlopeNormal.y;
-  footOrientationState.footTargetNormalZ = nextSlopeNormal.z;
-  footOrientationState.lerpProgress = 0;
-  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
-  const swingStart = new THREE.Quaternion(
-    footOrientationState.footQuaternionX,
-    footOrientationState.footQuaternionY,
-    footOrientationState.footQuaternionZ,
-    footOrientationState.footQuaternionW,
-  );
-  const swingStartNormal = new THREE.Vector3(0, 1, 0)
-    .applyQuaternion(swingStart);
-  const expectedSwingStart = resolveLegFootSurfaceQuaternion(
-    -2.4,
-    slopeNormal.x,
-    slopeNormal.y,
-    slopeNormal.z,
-    new THREE.Quaternion(),
-  );
-  assertContract(
-    footOrientationState.footContactOrientationCaptured &&
-      swingStart.angleTo(expectedSwingStart) < 1e-9,
-    'a lifted foot begins at the previous foothold angle',
-  );
-
   const expectedSwingEnd = resolveLegFootSurfaceQuaternion(
     -2.4,
     nextSlopeNormal.x,
@@ -352,30 +325,50 @@ export function runLegRig3DContractTest(): void {
     nextSlopeNormal.z,
     new THREE.Quaternion(),
   );
+  footOrientationState.contactState = 'stepping';
+  footOrientationState.footTargetNormalX = nextSlopeNormal.x;
+  footOrientationState.footTargetNormalY = nextSlopeNormal.y;
+  footOrientationState.footTargetNormalZ = nextSlopeNormal.z;
+  footOrientationState.footStepStartQuaternionX = plantedQuaternion.x;
+  footOrientationState.footStepStartQuaternionY = plantedQuaternion.y;
+  footOrientationState.footStepStartQuaternionZ = plantedQuaternion.z;
+  footOrientationState.footStepStartQuaternionW = plantedQuaternion.w;
+  footOrientationState.footTargetQuaternionX = expectedSwingEnd.x;
+  footOrientationState.footTargetQuaternionY = expectedSwingEnd.y;
+  footOrientationState.footTargetQuaternionZ = expectedSwingEnd.z;
+  footOrientationState.footTargetQuaternionW = expectedSwingEnd.w;
+  footOrientationState.lerpProgress = 0;
+  resolveContactLockedFootOrientation(footOrientationState, 2.8, 0, 1, 0);
+  const swingStart = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
+  assertContract(
+    footOrientationState.footContactOrientationCaptured &&
+      swingStart.angleTo(plantedQuaternion) < 1e-9,
+    'a lifted foot begins at the complete previous foothold orientation',
+  );
+
   footOrientationState.lerpProgress = 0.5;
-  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  resolveContactLockedFootOrientation(footOrientationState, 1.1, 0, 1, 0);
   const swingMid = new THREE.Quaternion(
     footOrientationState.footQuaternionX,
     footOrientationState.footQuaternionY,
     footOrientationState.footQuaternionZ,
     footOrientationState.footQuaternionW,
   );
-  const swingMidNormal = new THREE.Vector3(0, 1, 0)
-    .applyQuaternion(swingMid);
   assertContract(
     Math.abs(
-      swingStartNormal.angleTo(swingMidNormal) * 2 -
-      swingStartNormal.angleTo(nextSlopeNormal)
+      swingStart.angleTo(swingMid) * 2 -
+      swingStart.angleTo(expectedSwingEnd)
     ) < 1e-9,
-    'a stepping foot linearly interpolates half of its angular displacement at half progress',
-  );
-  assertContract(
-    footHeading().dot(headingInPlane(-2.4, footSole())) > 1 - 1e-9,
-    'an interpolating foot still follows the live leg heading within its current plane',
+    'a stepping foot linearly interpolates half its complete angular displacement at half progress',
   );
 
   footOrientationState.lerpProgress = 1;
-  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  resolveContactLockedFootOrientation(footOrientationState, 0.2, 0, 1, 0);
   const beforeTouchdown = new THREE.Quaternion(
     footOrientationState.footQuaternionX,
     footOrientationState.footQuaternionY,
@@ -396,7 +389,7 @@ export function runLegRig3DContractTest(): void {
   footOrientationState.footContactNormalZ = nextSlopeNormal.z;
   resolveContactLockedFootOrientation(
     footOrientationState,
-    -2.4,
+    1.8,
     nextSlopeNormal.x,
     nextSlopeNormal.y,
     nextSlopeNormal.z,

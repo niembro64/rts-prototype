@@ -1726,11 +1726,47 @@
       </p>
       <p>
         For legs, the stable unit of truth is the foot, not the chassis. A planted foot keeps its
-        world position until a deliberate step swing begins. Brief chassis bob, snapshot drift,
-        suspension state, or a one-frame miss in strict body contact must not reset the gait or
-        re-seat feet at their rest points. When a legged unit really leaves the ground, feet move
-        smoothly into an airborne pose; when it returns, each foot swings to a terrain plant instead
-        of being initialized in place.
+        world position and its complete world orientation until a deliberate step swing begins.
+        It does not twist within its support plane as the chassis, hip, knee, or lower segment moves
+        around it; a shoe visibly turning while loaded against the ground is a contact violation.
+        Brief chassis bob, snapshot drift, suspension state, or a one-frame miss in strict body
+        contact must not reset the gait or re-seat feet at their rest points. When a legged unit
+        really leaves the ground, feet move smoothly into an airborne pose; when it returns, each
+        foot swings to a terrain plant instead of being initialized in place.
+      </p>
+      <h3>Foot orientation is resolved from consecutive footprints</h3>
+      <p>
+        A grounded step knows both endpoints before the foot moves: the footprint it is leaving and
+        the footprint it is approaching. Each endpoint owns a terrain support plane sampled once at
+        that footprint. The moving foot interpolates from the previous footprint&rsquo;s plane to the next
+        footprint&rsquo;s plane over the step&rsquo;s linear progress, reaching the complete destination angle
+        before touchdown. Landing only promotes the already-rendered destination pose; it never
+        samples a surprise angle or creates a one-frame snap. No terrain-angle sampling during the
+        planted interval may mutate either endpoint.
+      </p>
+      <p>
+        <strong>Legs</strong> and <strong>standing</strong> rigs differ in what remains live after that
+        plane is chosen. An arachnid-style <strong>legs</strong> foot is an independent world-space
+        contact: its position and its complete orientation, including heading within the plane, are
+        fixed for the entire planted interval. At lift-off the rig freezes the next footprint&rsquo;s
+        complete terrain-aligned orientation too, then shortest-path interpolates between the two
+        complete orientations only while the foot is in transit. Neither the moving leg segments nor
+        a turning chassis may rotate a planted foot.
+      </p>
+      <p>
+        A <strong>standing</strong> foot has a different mechanical problem. Its coupled biped gait
+        moves the shoe backward through the lower-body frame during stance to cancel chassis travel;
+        the shoe therefore appears to slide through local rig coordinates even while it represents
+        one footprint. Those changing local coordinates are <em>not</em> new terrain contacts. The
+        calculated footprint anchors one retained support plane, and the shoe slides on that plane
+        without resampling terrain height or normal along the local stance path. The plane supplies
+        pitch and roll, while heading remains live: the shoe must always point forward with the legs,
+        using lower-body forward projected into the retained plane, even when the torso aims in
+        another direction. Freezing the standing shoe&rsquo;s complete world quaternion would be wrong
+        because it would let the legs turn away from their feet; recomputing its plane from the
+        sliding local position would also be wrong because it would make one footprint acquire many
+        slopes. During recovery, only the retained previous and calculated next support planes are
+        interpolated; at touchdown the next plane becomes the stance plane with no angular snap.
       </p>
       <p>
         Each leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
