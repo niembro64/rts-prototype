@@ -1392,6 +1392,13 @@ pub(crate) struct SphereContactBucket {
     pub(crate) gen: u32,
     pub(crate) items: Vec<u32>,
     pub(crate) max_index: u32,
+    /// Largest sphere radius bucketed here this generation. Scan loops
+    /// reject the whole bucket when the querying body cannot reach even
+    /// this radius from the bucket's cell cube — the query window is
+    /// sized by the GLOBAL max radius, so without this a single
+    /// queen-class body makes every small unit walk the items of cells
+    /// only the queen could touch.
+    pub(crate) max_radius: f64,
 }
 
 pub(crate) struct SphereResolveScratch {
@@ -1430,14 +1437,48 @@ fn reset_sphere_contact_bucket(bucket: &mut SphereContactBucket, gen: u32) {
     bucket.gen = gen;
     bucket.items.clear();
     bucket.max_index = 0;
+    bucket.max_radius = 0.0;
 }
 
 #[inline]
-fn push_sphere_contact_bucket_item(bucket: &mut SphereContactBucket, index: u32) {
+fn push_sphere_contact_bucket_item(bucket: &mut SphereContactBucket, index: u32, radius: f64) {
     if index > bucket.max_index {
         bucket.max_index = index;
     }
+    if radius > bucket.max_radius {
+        bucket.max_radius = radius;
+    }
     bucket.items.push(index);
+}
+
+/// Result-identical bucket rejection for the sphere-resolve scans:
+/// exact distance from the querying body's LIVE center to the bucket's
+/// cell cube, compared against the largest possible pair reach
+/// (`ar + bucket.max_radius`). Evaluated per bucket visit with live
+/// coordinates: a body cannot move while scanning a bucket whose every
+/// item provably fails the overlap test, so skipping the bucket leaves
+/// the sequential Gauss-Seidel resolution order and results unchanged.
+/// The z cell lattice is shifted by half a cell (see cz bucketing).
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn sphere_bucket_out_of_reach(
+    ax: f64,
+    ay: f64,
+    az: f64,
+    reach: f64,
+    cx: i32,
+    cy: i32,
+    cz: i32,
+    cell_size: f64,
+    half_cs: f64,
+) -> bool {
+    let min_x = f64::from(cx) * cell_size;
+    let min_y = f64::from(cy) * cell_size;
+    let min_z = f64::from(cz) * cell_size - half_cs;
+    let dx = (min_x - ax).max(ax - (min_x + cell_size)).max(0.0);
+    let dy = (min_y - ay).max(ay - (min_y + cell_size)).max(0.0);
+    let dz = (min_z - az).max(az - (min_z + cell_size)).max(0.0);
+    dx * dx + dy * dy + dz * dz > reach * reach
 }
 
 const SPHERE_DENSE_CELL_LIMIT: usize = 131_072;
@@ -1643,6 +1684,19 @@ fn run_pool_sphere_resolve_hash(
                         if bucket.max_index <= i as u32 {
                             continue;
                         }
+                        if sphere_bucket_out_of_reach(
+                            p.pos_x[slot_a],
+                            p.pos_y[slot_a],
+                            p.pos_z[slot_a],
+                            ar + bucket.max_radius,
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j <= i {
@@ -1713,6 +1767,19 @@ fn run_pool_sphere_resolve_hash_active(
                             Some(b) if b.gen == gen => b,
                             _ => continue,
                         };
+                        if sphere_bucket_out_of_reach(
+                            p.pos_x[slot_a],
+                            p.pos_y[slot_a],
+                            p.pos_z[slot_a],
+                            ar + bucket.max_radius,
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j == i || (active[j] && j <= i) {
@@ -1789,6 +1856,19 @@ fn run_pool_sphere_resolve_dense(
                         if bucket.max_index <= i as u32 {
                             continue;
                         }
+                        if sphere_bucket_out_of_reach(
+                            p.pos_x[slot_a],
+                            p.pos_y[slot_a],
+                            p.pos_z[slot_a],
+                            ar + bucket.max_radius,
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j <= i {
@@ -1861,6 +1941,19 @@ fn run_pool_sphere_resolve_dense_active(
                         );
                         let bucket = &dense_cells[index];
                         if bucket.gen != gen {
+                            continue;
+                        }
+                        if sphere_bucket_out_of_reach(
+                            p.pos_x[slot_a],
+                            p.pos_y[slot_a],
+                            p.pos_z[slot_a],
+                            ar + bucket.max_radius,
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                        ) {
                             continue;
                         }
                         for &j_u32 in bucket.items.iter() {
@@ -1971,6 +2064,7 @@ pub fn pool_resolve_sphere_sphere(
                     gen: 0,
                     items: Vec::new(),
                     max_index: 0,
+                    max_radius: 0.0,
                 });
         }
         for i in 0..count {
@@ -1988,7 +2082,7 @@ pub fn pool_resolve_sphere_sphere(
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32, p.radius[sphere_slots[i] as usize]);
         }
     } else {
         let cells = &mut scratch.cells;
@@ -1999,11 +2093,12 @@ pub fn pool_resolve_sphere_sphere(
                 gen,
                 items: Vec::new(),
                 max_index: 0,
+                max_radius: 0.0,
             });
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32, p.radius[sphere_slots[i] as usize]);
         }
     }
 
@@ -2186,6 +2281,7 @@ pub fn pool_resolve_sphere_sphere_active(
                     gen: 0,
                     items: Vec::new(),
                     max_index: 0,
+                    max_radius: 0.0,
                 });
         }
         for i in 0..count {
@@ -2203,7 +2299,7 @@ pub fn pool_resolve_sphere_sphere_active(
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32, p.radius[sphere_slots[i] as usize]);
         }
     } else {
         let cells = &mut scratch.cells;
@@ -2214,11 +2310,12 @@ pub fn pool_resolve_sphere_sphere_active(
                 gen,
                 items: Vec::new(),
                 max_index: 0,
+                max_radius: 0.0,
             });
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32, p.radius[sphere_slots[i] as usize]);
         }
     }
 
