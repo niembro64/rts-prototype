@@ -1,9 +1,11 @@
+import { AUDIO_ENABLED } from '@/config';
 import { isShotBlueprintId, isTurretBlueprintId, isUnitBlueprintId } from '@/types/blueprintIds';
 import { audioManager } from '../../audio/AudioManager';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 
 /** Play the audio side of a SimEvent ahead of any visual gating. */
 export function playSimEventAudio3D(event: NetworkServerSnapshotSimEvent): void {
+  if (!AUDIO_ENABLED) return;
   switch (event.type) {
     case 'fire':
       // turretBlueprintId on a 'fire' event is the firing turret blueprint id.

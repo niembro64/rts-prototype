@@ -3,6 +3,7 @@
 // owns AudioContext wiring, gain nodes, and scheduler lifecycle.
 
 import { AUDIO } from '../../audioConfig';
+import { AUDIO_ENABLED } from '../../config';
 import {
   type ProceduralState,
   createProceduralState,
@@ -36,6 +37,7 @@ class MusicPlayer {
   private midiEffects: MidiEffectsChain | null = null;
 
   init(ctx: AudioContext, masterGain: GainNode): void {
+    if (!AUDIO_ENABLED) return;
     if (this.musicGain) return;
     this.ctx = ctx;
     this.musicGain = ctx.createGain();
@@ -47,6 +49,7 @@ class MusicPlayer {
   }
 
   start(): void {
+    if (!AUDIO_ENABLED) return;
     if (this.playing || !this.ctx || !this.musicGain) return;
     this.wantsPlayback = true;
     const requestId = ++this.playbackRequestId;

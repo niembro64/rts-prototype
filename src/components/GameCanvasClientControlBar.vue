@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { CLIENT_CONFIG, LOD_MODE_OPTIONS } from '../clientBarConfig';
 import { BATTLE_CONFIG } from '../battleBarConfig';
-import { GOOD_TPS, ZOOM_MAX_MAP_CENTER_DISTANCE } from '../config';
+import { AUDIO_ENABLED, GOOD_TPS, ZOOM_MAX_MAP_CENTER_DISTANCE } from '../config';
 import {
   COMMAND_HOTKEY_DISPLAY_LABELS,
   COMMAND_HOTKEY_IDS,
@@ -177,16 +177,22 @@ const hotkeyConflictTitle = computed(() => {
     .join('\n');
 });
 
+function isAudioHotkey(commandId: CommandHotkeyId): boolean {
+  return commandId === 'ui.muteSound' || commandId.startsWith('ui.volume');
+}
+
 const hotkeyEditorRows = computed(() => {
   void props.model.commandHotkeyRevision;
   void hotkeyEditorRevision.value;
-  return COMMAND_HOTKEY_IDS.map((commandId) => ({
-    commandId,
-    label: COMMAND_HOTKEY_DISPLAY_LABELS[commandId],
-    customKey: commandHotkeyLabel(commandId, 'custom'),
-    activeKey: commandHotkeyLabel(commandId, props.model.commandHotkeyPreset),
-    capturing: captureCommandId.value === commandId,
-  }));
+  return COMMAND_HOTKEY_IDS
+    .filter((commandId) => AUDIO_ENABLED || !isAudioHotkey(commandId))
+    .map((commandId) => ({
+      commandId,
+      label: COMMAND_HOTKEY_DISPLAY_LABELS[commandId],
+      customKey: commandHotkeyLabel(commandId, 'custom'),
+      activeKey: commandHotkeyLabel(commandId, props.model.commandHotkeyPreset),
+      capturing: captureCommandId.value === commandId,
+    }));
 });
 
 function toggleHotkeyEditor(): void {
@@ -902,7 +908,7 @@ function resetEveryCustomHotkey(): void {
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
-      <BarControlGroup>
+      <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>VOL:</BarLabel>
         <BarButtonGroup>
@@ -915,7 +921,7 @@ function resetEveryCustomHotkey(): void {
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
-      <BarControlGroup>
+      <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>SOUNDS:</BarLabel>
         <BarButton
@@ -933,7 +939,7 @@ function resetEveryCustomHotkey(): void {
           >{{ model.soundLabels[cat] }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
-      <BarControlGroup>
+      <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>MUSIC:</BarLabel>
         <BarButton

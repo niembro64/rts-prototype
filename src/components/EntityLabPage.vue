@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AUDIO, type SoundEntry } from '../audioConfig';
+import { AUDIO_ENABLED } from '../config';
 import { audioManager } from '../game/audio/AudioManager';
 import {
   buildEntityLabSelections,
@@ -268,7 +269,7 @@ function degreesToRadians(value: number): number {
         </nav>
       </div>
 
-      <div class="entity-lab-body">
+      <div class="entity-lab-body" :class="{ 'audio-disabled': !AUDIO_ENABLED }">
         <aside class="entity-lab-sidebar">
           <section class="lab-section">
             <h3>Entity</h3>
@@ -366,7 +367,7 @@ function degreesToRadians(value: number): number {
             ></div>
           </section>
 
-          <section class="entity-sounds">
+          <section v-if="AUDIO_ENABLED" class="entity-sounds">
             <div class="section-heading">
               <h3>Entity Audio</h3>
               <button
@@ -398,7 +399,7 @@ function degreesToRadians(value: number): number {
           </section>
         </main>
 
-        <aside class="sound-catalog">
+        <aside v-if="AUDIO_ENABLED" class="sound-catalog">
           <section class="lab-section">
             <h3>Raw Synths</h3>
             <div class="compact-grid">
@@ -520,6 +521,10 @@ function degreesToRadians(value: number): number {
   background: rgba(180, 199, 209, 0.14);
 }
 
+.entity-lab-body.audio-disabled {
+  grid-template-columns: 260px minmax(420px, 1fr);
+}
+
 .entity-lab-sidebar,
 .sound-catalog,
 .entity-lab-main {
@@ -537,6 +542,10 @@ function degreesToRadians(value: number): number {
   display: grid;
   grid-template-rows: minmax(260px, 1fr) auto minmax(220px, 0.78fr);
   min-width: 0;
+}
+
+.entity-lab-body.audio-disabled .entity-lab-main {
+  grid-template-rows: minmax(260px, 1fr) minmax(220px, 0.78fr);
 }
 
 .lab-section {
@@ -891,6 +900,10 @@ function degreesToRadians(value: number): number {
 
   .entity-lab-main {
     grid-template-rows: 280px auto 360px;
+  }
+
+  .entity-lab-body.audio-disabled .entity-lab-main {
+    grid-template-rows: 280px 360px;
   }
 
   .info-panel {

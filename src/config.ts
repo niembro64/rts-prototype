@@ -53,6 +53,16 @@ import type { DemoBattleWaypointType } from './demoConfig';
 import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
+// =============================================================================
+// AUDIO
+// =============================================================================
+
+/**
+ * Master build-time audio gate. When false, the game never creates a Web Audio
+ * context and every audio-only control is removed from the UI.
+ */
+export const AUDIO_ENABLED = false;
+
 // Default square map span in canonical land cells. Demo Battle and Real Battle
 // use the same option set and server/client math, while their selected size is
 // persisted per mode. Keep this odd so the map has exactly one central

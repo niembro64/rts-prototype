@@ -2,6 +2,7 @@
 // Delegates synth work to helper modules; owns AudioContext, master gain, and continuous sound state.
 
 import { AUDIO, beamSoundFrequencyFromHarmonicIndex } from '../../audioConfig';
+import { AUDIO_ENABLED } from '../../config';
 import { getTurretBlueprint, getShotBlueprint, getRayBlueprint, getUnitBlueprint } from '../sim/blueprints';
 import type { AudioToolkit } from './audioHelpers';
 import { FIRE_SYNTHS } from './fireSynths';
@@ -83,6 +84,7 @@ class AudioManager {
 
   // Initialize audio context (must be called after user interaction)
   init(): void {
+    if (!AUDIO_ENABLED) return;
     if (this.initialized) return;
     this.ctx = new AudioContext();
     this.masterGain = this.ctx.createGain();
@@ -92,6 +94,7 @@ class AudioManager {
   }
 
   private ensureContext(): AudioContext | null {
+    if (!AUDIO_ENABLED) return null;
     if (!this.ctx) this.init();
     if (this.ctx?.state === 'suspended') this.ctx.resume();
     return this.ctx;
