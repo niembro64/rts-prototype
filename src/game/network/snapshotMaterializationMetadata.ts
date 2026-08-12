@@ -189,6 +189,21 @@ export function addSnapshotMaterializationStageFromStart(
   addSnapshotMaterializationStage(stages, stage, performance.now() - start);
 }
 
+/** Times snapshot telemetry without leaking wall-clock access into server
+ * materialization code. The measurement is diagnostic only and never enters
+ * snapshot payloads, lockstep state, or canonical hashes. */
+export function measureSnapshotMaterializationStage<T>(
+  stages: SnapshotMaterializationStageDurations | undefined,
+  stage: SnapshotMaterializationStage,
+  materialize: () => T,
+): T {
+  if (stages === undefined) return materialize();
+  const startedAt = performance.now();
+  const value = materialize();
+  addSnapshotMaterializationStageFromStart(stages, stage, startedAt);
+  return value;
+}
+
 export function setSnapshotMaterializationMetadata(
   state: NetworkServerSnapshot,
   metadata: SnapshotMaterializationMetadata,

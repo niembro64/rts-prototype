@@ -38,10 +38,6 @@ const HIGH_RISK_MATH_ALLOWLIST = new Map([
     count: 1,
     reason: 'module-load spring damping constant derived from canonical config before gameplay ticks',
   }],
-  ['src/game/sim/pathfindingTuning.ts', {
-    count: 1,
-    reason: 'module-load pathfinding stability threshold derived from canonical config before terrain/pathfinding startup',
-  }],
   ['src/game/sim/terrain/terrainConfig.ts', {
     count: 1,
     reason: 'module-load terrain collapse threshold derived from canonical config before terrain bake',

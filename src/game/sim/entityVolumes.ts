@@ -25,6 +25,7 @@
  */
 
 import type { Entity } from './types';
+import { deterministicMath as DMath } from './deterministicMath';
 import {
   fabricatorTorusHoverHeight,
   fabricatorTorusOuterRadius,
@@ -381,7 +382,7 @@ function raySphereT(
   if (t < 0) return -1; // behind the ray
   const perpSq = distSq - t * t;
   if (perpSq > radiusSq) return -1;
-  return t - Math.sqrt(radiusSq - perpSq);
+  return t - DMath.sqrt(radiusSq - perpSq);
 }
 
 /** Slab test on all three axes. */
@@ -462,7 +463,7 @@ function axisRange(
   const b = 2 * (mx * dx + my * dy);
   const disc = b * b - 4 * a * c;
   if (disc < 0) return false;
-  const sqrtDisc = Math.sqrt(disc);
+  const sqrtDisc = DMath.sqrt(disc);
   out[0] = (-b - sqrtDisc) / (2 * a);
   out[1] = (-b + sqrtDisc) / (2 * a);
   return true;

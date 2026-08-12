@@ -1,15 +1,5 @@
-// Pathfinding debug grid — a presentation-side mirror of the pathfinder's
-// cell-domain and configuration-space rules. The renderer owns terrain
-// sampling; this module owns the policy that turns those sampled masks into
-// the selected unit's visible route domain.
-
-import {
-  resolvePathfinderTraversalInput,
-  type PathTerrainFilter,
-  type PathfinderTraversalInput,
-} from './pathfindingTraversal';
-import type { UnitNavigationDomain } from '@/types/unitLocomotionTypes';
-import { GRAVITY } from '@/config';
+// Terrain/clearance fields used by the path overlay while authoritative
+// waypoint and move masks come directly from the WASM pathfinder.
 
 const CLEARANCE_UNREACHABLE = 0xffff;
 const PATHFINDER_MAP_EDGE_BUFFER_CELLS = 2;
@@ -20,31 +10,13 @@ export type PathfindingDebugGrid = {
   readonly groundClearance: Uint16Array;
   readonly mediumClearance: Uint16Array;
   readonly waterClearance: Uint16Array;
-  readonly waypointPassable: Uint8Array;
-  readonly movePassable: Uint8Array;
 };
-
-export type PathfindingDebugTraversal = Readonly<{
-  traversal: PathfinderTraversalInput;
-  requiredGroundNormalZ: number;
-  hardClearanceCells: number;
-}>;
 
 export type PathfindingDebugGridInput = Readonly<{
   cellsX: number;
   cellsY: number;
   terrainWater: Uint8Array;
   terrainSubmerged: Uint8Array;
-}>;
-
-export type PathfindingDebugPassabilityInput = Readonly<{
-  grid: PathfindingDebugGrid;
-  terrainWater: Uint8Array;
-  terrainSubmerged: Uint8Array;
-  terrainNormalZ: Float32Array;
-  traversal: PathfindingDebugTraversal;
-  cellsX: number;
-  cellsY: number;
 }>;
 
 function safeCellCount(cellCount: number): number {
@@ -59,8 +31,6 @@ export function createPathfindingDebugGrid(cellCount: number): PathfindingDebugG
     groundClearance: new Uint16Array(count),
     mediumClearance: new Uint16Array(count),
     waterClearance: new Uint16Array(count),
-    waypointPassable: new Uint8Array(count),
-    movePassable: new Uint8Array(count),
   };
 }
 
@@ -68,30 +38,9 @@ export function ensurePathfindingDebugGrid(
   grid: PathfindingDebugGrid,
   cellCount: number,
 ): PathfindingDebugGrid {
-  return grid.movePassable.length >= safeCellCount(cellCount)
+  return grid.waterBlocked.length >= safeCellCount(cellCount)
     ? grid
     : createPathfindingDebugGrid(cellCount);
-}
-
-/** Mirrors `pathfinder_hard_clearance_cells_for_radius` in Rust. */
-export function pathfinderHardClearanceCellsForRadius(radius: number, cellSize: number): number {
-  if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(cellSize) || cellSize <= 0) {
-    return 0;
-  }
-  return Math.ceil(radius / cellSize + 0.5);
-}
-
-export function createPathfindingDebugTraversal(
-  terrainFilter: PathTerrainFilter | null,
-  unitRadius: number,
-  cellSize: number,
-): PathfindingDebugTraversal {
-  const traversal = resolvePathfinderTraversalInput(terrainFilter);
-  return {
-    traversal,
-    requiredGroundNormalZ: traversal.minGroundNormalZ,
-    hardClearanceCells: pathfinderHardClearanceCellsForRadius(unitRadius, cellSize),
-  };
 }
 
 function rebuildClearanceDistance(clearance: Uint16Array, cellsX: number, cellsY: number): void {
@@ -194,131 +143,4 @@ export function rebuildPathfindingDebugGrid(
       );
     }
   }
-}
-
-function allowsExposedCase(domain: UnitNavigationDomain): boolean {
-  return domain.allowOnGround || domain.allowInAir;
-}
-
-/** Mirrors the monotone Coulomb + fluid force solve in Rust. */
-function maxContactSlopeNormalZ(
-  safeGroundAccel: number,
-  safeWaterAccel: number,
-  staticFrictionCoefficient: number,
-): number {
-  const ground = Math.max(0, safeGroundAccel);
-  const water = Math.max(0, safeWaterAccel);
-  const mu = Math.max(0, staticFrictionCoefficient);
-  const halfPi = Math.PI * 0.5;
-  const margin = (theta: number): number =>
-    Math.min(ground, mu * GRAVITY * Math.max(0, Math.cos(theta))) + water -
-    GRAVITY * Math.sin(theta);
-  if (margin(halfPi) >= -1e-12) return 0;
-  let low = 0;
-  let high = halfPi;
-  for (let i = 0; i < 64; i++) {
-    const mid = (low + high) * 0.5;
-    if (margin(mid) >= 0) low = mid;
-    else high = mid;
-  }
-  return Math.cos(low);
-}
-
-function requiredWaterNormalZForCell(
-  debugTraversal: PathfindingDebugTraversal,
-  domain: UnitNavigationDomain,
-  requireWaypointHold: boolean,
-): number {
-  const traversal = debugTraversal.traversal;
-  if (domain.allowInAir || traversal.waterSurfaceSupported || !domain.allowOnGround) return 0;
-  if (
-    traversal.minGroundNormalZ <= 0 &&
-    traversal.safeDriveAccel <= 0 &&
-    traversal.safeWaterDriveAccel <= 0 &&
-    traversal.staticFrictionCoefficient <= 0
-  ) return 0;
-  let required = maxContactSlopeNormalZ(
-    traversal.safeDriveAccel,
-    traversal.safeWaterDriveAccel,
-    traversal.staticFrictionCoefficient,
-  );
-  if (requireWaypointHold) {
-    required = Math.max(
-      required,
-      Math.cos(Math.atan(Math.max(0, traversal.staticFrictionCoefficient))),
-    );
-  }
-  return Math.max(0, Math.min(1, required));
-}
-
-function rebuildDomainPassability(
-  output: Uint8Array,
-  domain: UnitNavigationDomain,
-  requireWaypointHold: boolean,
-  input: PathfindingDebugPassabilityInput,
-): void {
-  const {
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: debugTraversal,
-    cellsX,
-    cellsY,
-  } = input;
-  const { requiredGroundNormalZ, hardClearanceCells } = debugTraversal;
-  const exposedAllowed = allowsExposedCase(domain);
-  const cellCount = cellsX * cellsY;
-
-  for (let index = 0; index < cellCount; index++) {
-    const hasWater = terrainWater[index] !== 0;
-    const hasExposed = terrainSubmerged[index] === 0;
-    const passableByMedium =
-      (domain.allowInAir || grid.edgeBlocked[index] === 0) &&
-      (!hasExposed || exposedAllowed) &&
-      (!hasWater || domain.allowInWater);
-    const clearance = domain.allowInWater && !exposedAllowed
-      ? grid.waterClearance[index]
-      : domain.allowInWater && exposedAllowed
-        ? grid.mediumClearance[index]
-        : grid.groundClearance[index];
-    const requiredClearance = domain.allowInAir ? 0 : hardClearanceCells;
-    let requiredNormalZ = hasExposed && !domain.allowInAir
-      ? requiredGroundNormalZ
-      : 0;
-    if (hasWater && domain.allowInWater && !domain.allowInAir) {
-      requiredNormalZ = Math.max(
-        requiredNormalZ,
-        requiredWaterNormalZForCell(
-          debugTraversal,
-          domain,
-          requireWaypointHold,
-        ),
-      );
-    }
-    const terrainPassable = terrainNormalZ[index] >= requiredNormalZ;
-    const passable =
-      passableByMedium &&
-      clearance >= requiredClearance &&
-      terrainPassable;
-    output[index] = passable ? 1 : 0;
-  }
-}
-
-/** Fill both visible validity masks from their independent domains. */
-export function rebuildPathfindingDebugPassability(
-  input: PathfindingDebugPassabilityInput,
-): void {
-  rebuildDomainPassability(
-    input.grid.waypointPassable,
-    input.traversal.traversal.waypoint,
-    true,
-    input,
-  );
-  rebuildDomainPassability(
-    input.grid.movePassable,
-    input.traversal.traversal.move,
-    false,
-    input,
-  );
 }

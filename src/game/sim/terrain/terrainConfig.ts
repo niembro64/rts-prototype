@@ -1,4 +1,5 @@
 import { BATTLE_CONFIG } from '../../../battleBarConfig';
+import { deterministicMath as DMath } from '../deterministicMath';
 import terrainConfig from './terrainConfig.json';
 
 /** Floor of the world's vertical extent: the bottom face of every 3D tile. */
@@ -32,7 +33,7 @@ export function terrainUnderwaterBrightnessAtHeight(height: number): number {
     1,
     (height - WATER_LEVEL) / (TERRAIN_SUBMERGED_FADE_END_HEIGHT - WATER_LEVEL),
   ));
-  const cosineT = 0.5 - 0.5 * Math.cos(Math.PI * heightT);
+  const cosineT = 0.5 - 0.5 * DMath.cos(Math.PI * heightT);
   return TERRAIN_SUBMERGED_BRIGHTNESS +
     (1 - TERRAIN_SUBMERGED_BRIGHTNESS) * cosineT;
 }

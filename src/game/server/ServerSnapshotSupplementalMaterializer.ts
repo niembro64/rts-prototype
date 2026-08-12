@@ -25,8 +25,7 @@ import {
   type SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
 import {
-  addSnapshotMaterializationStageFromStart,
-  type SnapshotMaterializationStage,
+  measureSnapshotMaterializationStage,
   type SnapshotMaterializationStageDurations,
 } from '../network/snapshotMaterializationMetadata';
 import type {
@@ -73,23 +72,11 @@ type SnapshotAudioMaterializationInput = Pick<
   'audioEvents' | 'visibility' | 'audioOverride' | 'delivery' | 'stages' | 'buffers'
 >;
 
-function materializeStage<T>(
-  stages: SnapshotMaterializationStageDurations | undefined,
-  stage: SnapshotMaterializationStage,
-  materialize: () => T,
-): T {
-  if (stages === undefined) return materialize();
-  const startedAt = performance.now();
-  const value = materialize();
-  addSnapshotMaterializationStageFromStart(stages, stage, startedAt);
-  return value;
-}
-
 export function materializeSnapshotAudioEvents(
   input: SnapshotAudioMaterializationInput,
 ): NetworkServerSnapshot['audioEvents'] {
   if (input.audioOverride !== undefined) return input.audioOverride.value;
-  return materializeStage(input.stages, 'audio', () => (
+  return measureSnapshotMaterializationStage(input.stages, 'audio', () => (
     input.delivery.materializeSupplementalDtos
       ? serializeAudioEvents(
           input.audioEvents,
@@ -118,7 +105,7 @@ export function materializeSnapshotSupplementals(
   const materializeDtos = input.delivery.materializeSupplementalDtos;
   const minimapEntities = input.minimapOverride !== undefined
     ? input.minimapOverride.value
-    : materializeStage(input.stages, 'minimap', () => (
+    : measureSnapshotMaterializationStage(input.stages, 'minimap', () => (
         materializeDtos
           ? serializeMinimapSnapshotEntities(
               input.world,
@@ -131,7 +118,7 @@ export function materializeSnapshotSupplementals(
               input.buffers.minimap,
             )
       ));
-  const economy = materializeStage(input.stages, 'economy', () => (
+  const economy = measureSnapshotMaterializationStage(input.stages, 'economy', () => (
     materializeDtos
       ? serializeEconomySnapshot(input.world.playerCount, input.recipientPlayerId)
       : writeEconomySnapshotWireRowsDirect(
@@ -140,7 +127,7 @@ export function materializeSnapshotSupplementals(
           input.buffers.economy,
         )
   ));
-  const resourceMovements = materializeStage(input.stages, 'resources', () => (
+  const resourceMovements = measureSnapshotMaterializationStage(input.stages, 'resources', () => (
     materializeDtos
       ? serializeResourceMovements(input.world, input.visibility)
       : writeResourceMovementWireRowsDirect(
@@ -151,7 +138,7 @@ export function materializeSnapshotSupplementals(
   ));
   const sprayTargets = input.sprayOverride !== undefined
     ? input.sprayOverride.value
-    : materializeStage(input.stages, 'spray', () => (
+    : measureSnapshotMaterializationStage(input.stages, 'spray', () => (
         materializeDtos
           ? serializeSprayTargets(
               input.sprayTargets,
@@ -165,7 +152,7 @@ export function materializeSnapshotSupplementals(
             )
       ));
   const audioEvents = materializeSnapshotAudioEvents(input);
-  const scanPulses = materializeStage(input.stages, 'scanPulses', () => (
+  const scanPulses = measureSnapshotMaterializationStage(input.stages, 'scanPulses', () => (
     materializeDtos
       ? serializeScanPulses(input.world, input.visibility)
       : writeScanPulseWireRowsDirect(

@@ -376,19 +376,20 @@ function validateBotLegs(unitBlueprintId: string, legs: BotLegs): void {
       `Invalid stand leg layout for ${unitBlueprintId}: hip height must equal the authored standing height so fixed-length bones meet the ground`,
     );
   }
-  const stoppedReachRatio = Math.hypot(
-    standHeightRatio,
-    legs.stanceForwardUnitRadiusRatio,
-    legs.stanceOutwardUnitRadiusRatio,
-  );
-  if (stoppedReachRatio > legLengthRatio + 1e-6) {
+  const stoppedReachRatioSq =
+    standHeightRatio * standHeightRatio +
+    legs.stanceForwardUnitRadiusRatio * legs.stanceForwardUnitRadiusRatio +
+    legs.stanceOutwardUnitRadiusRatio * legs.stanceOutwardUnitRadiusRatio;
+  const toleratedLegLengthRatio = legLengthRatio + 1e-6;
+  if (stoppedReachRatioSq > toleratedLegLengthRatio * toleratedLegLengthRatio) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: stopped stance cannot reach its authored forward/outward foot offsets`,
     );
   }
   const walkingHalfStrideRatio = legLengthRatio * legs.strideLengthRatio * 0.48;
-  const walkingReachRatio = Math.hypot(standHeightRatio, walkingHalfStrideRatio);
-  if (walkingReachRatio > legLengthRatio + 1e-6) {
+  const walkingReachRatioSq =
+    standHeightRatio * standHeightRatio + walkingHalfStrideRatio * walkingHalfStrideRatio;
+  if (walkingReachRatioSq > toleratedLegLengthRatio * toleratedLegLengthRatio) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: walking stride exceeds the fixed-length leg reach`,
     );

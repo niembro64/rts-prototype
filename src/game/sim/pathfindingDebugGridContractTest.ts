@@ -1,11 +1,6 @@
-import { getUnitBlueprint } from './blueprints';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   createPathfindingDebugGrid,
-  pathfinderHardClearanceCellsForRadius,
   rebuildPathfindingDebugGrid,
-  rebuildPathfindingDebugPassability,
-  type PathfindingDebugTraversal,
 } from './pathfindingDebugGrid';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -29,7 +24,6 @@ export function runPathfindingDebugGridContractTest(): void {
   const mixedX = 4;
   const terrainWater = new Uint8Array(cellCount).fill(1);
   const terrainSubmerged = new Uint8Array(cellCount).fill(1);
-  const terrainNormalZ = new Float32Array(cellCount).fill(1);
   // x < mixedX is dry, x === mixedX is mixed, and x > mixedX is fully wet.
   for (let gy = 0; gy < cellsY; gy++) {
     for (let gx = 0; gx < mixedX; gx++) {
@@ -48,178 +42,31 @@ export function runPathfindingDebugGridContractTest(): void {
     terrainSubmerged,
   });
 
-  const orca = getUnitBlueprint('unitOrca');
-  const orcaHardClearance = pathfinderHardClearanceCellsForRadius(
-    orca.radius.collision,
-    BUILD_GRID_CELL_SIZE,
-  );
-  assertContract(orcaHardClearance === 3, 'Orca collision radius occupies three path cells');
-
-  const waterOnly: PathfindingDebugTraversal = {
-    traversal: {
-      minGroundNormalZ: 0,
-      waterSurfaceSupported: true,
-      supportPointOffsetZ: 0,
-      waypoint: { allowOnGround: false, allowInWater: true, allowInAir: false },
-      move: { allowOnGround: false, allowInWater: true, allowInAir: false },
-      flatDriveAccel: 0,
-      safeDriveAccel: 0,
-      flatWaterContactAccel: 0,
-      safeWaterDriveAccel: 0,
-      staticFrictionCoefficient: 0,
-    },
-    requiredGroundNormalZ: 0,
-    hardClearanceCells: orcaHardClearance,
-  };
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: waterOnly,
-    cellsX,
-    cellsY,
-  });
   assertContract(
-    grid.waypointPassable[indexOf(cellsX, mixedX, row)] === 0,
-    'water-only navigation rejects a mixed square because its exposed case is invalid',
+    grid.waterBlocked[indexOf(cellsX, mixedX - 1, row)] === 0 &&
+      grid.waterBlocked[indexOf(cellsX, mixedX, row)] === 1,
+    'the water mask changes exactly at the first water-containing square',
   );
   assertContract(
-    grid.waypointPassable[indexOf(cellsX, mixedX + 2, row)] === 0 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX + 3, row)] === 1,
-    'water-only clearance uses only physical body radius, with no extra shoreline band',
+    grid.groundClearance[indexOf(cellsX, mixedX - 1, row)] === 1 &&
+      grid.groundClearance[indexOf(cellsX, mixedX, row)] === 0,
+    'ground clearance stops at the first water-containing square',
   );
-
-  const dryPoint: PathfindingDebugTraversal = {
-    traversal: {
-      minGroundNormalZ: 0,
-      waterSurfaceSupported: false,
-      supportPointOffsetZ: 0,
-      waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
-      move: { allowOnGround: true, allowInWater: false, allowInAir: false },
-      flatDriveAccel: 0,
-      safeDriveAccel: 0,
-      flatWaterContactAccel: 0,
-      safeWaterDriveAccel: 0,
-      staticFrictionCoefficient: 0,
-    },
-    requiredGroundNormalZ: 0,
-    hardClearanceCells: 0,
-  };
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: dryPoint,
-    cellsX,
-    cellsY,
-  });
   assertContract(
-    grid.waypointPassable[indexOf(cellsX, mixedX - 1, row)] === 1 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX, row)] === 0,
-    'dry validity changes exactly at the first water-containing square',
+    grid.waterClearance[indexOf(cellsX, mixedX, row)] === 0 &&
+      grid.waterClearance[indexOf(cellsX, mixedX + 1, row)] === 1 &&
+      grid.waterClearance[indexOf(cellsX, mixedX + 2, row)] === 2,
+    'water clearance measures outward from the exposed shoreline',
   );
-
-  const airOnly: PathfindingDebugTraversal = {
-    traversal: {
-      ...dryPoint.traversal,
-      waypoint: { allowOnGround: false, allowInWater: false, allowInAir: true },
-      move: { allowOnGround: false, allowInWater: false, allowInAir: true },
-    },
-    requiredGroundNormalZ: 0,
-    hardClearanceCells: 0,
-  };
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: airOnly,
-    cellsX,
-    cellsY,
-  });
   assertContract(
-    grid.waypointPassable[indexOf(cellsX, mixedX - 1, row)] === 1 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX, row)] === 0 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX + 1, row)] === 0,
-    'air permission no longer bypasses an invalid water case',
+    grid.mediumClearance[indexOf(cellsX, 1, row)] === 0 &&
+      grid.mediumClearance[indexOf(cellsX, 2, row)] === 1 &&
+      grid.mediumClearance[indexOf(cellsX, 7, row)] === 6,
+    'medium clearance is bounded only by the canonical two-cell map edge',
   );
-
-  const airAndWater: PathfindingDebugTraversal = {
-    traversal: {
-      ...airOnly.traversal,
-      waypoint: { allowOnGround: false, allowInWater: true, allowInAir: true },
-      move: { allowOnGround: false, allowInWater: true, allowInAir: true },
-    },
-    requiredGroundNormalZ: 0,
-    hardClearanceCells: 0,
-  };
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: airAndWater,
-    cellsX,
-    cellsY,
-  });
   assertContract(
-    grid.waypointPassable[indexOf(cellsX, mixedX - 1, row)] === 1 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX, row)] === 1 &&
-      grid.waypointPassable[indexOf(cellsX, mixedX + 1, row)] === 1,
-    'a dual air/water unit accepts dry, mixed, and fully wet squares',
-  );
-
-  const mixedSlope = indexOf(cellsX, mixedX, row);
-  const submergedSlope = indexOf(cellsX, mixedX + 1, row);
-  terrainNormalZ[mixedSlope] = 0.8;
-  terrainNormalZ[submergedSlope] = 0.8;
-  const poweredAmphibious: PathfindingDebugTraversal = {
-    traversal: {
-      minGroundNormalZ: 0.5,
-      waterSurfaceSupported: false,
-      supportPointOffsetZ: 0,
-      waypoint: { allowOnGround: true, allowInWater: true, allowInAir: false },
-      move: { allowOnGround: true, allowInWater: true, allowInAir: false },
-      flatDriveAccel: 100,
-      safeDriveAccel: 100,
-      flatWaterContactAccel: 300,
-      safeWaterDriveAccel: 300,
-      staticFrictionCoefficient: 0.2,
-    },
-    requiredGroundNormalZ: 0.5,
-    hardClearanceCells: 0,
-  };
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: poweredAmphibious,
-    cellsX,
-    cellsY,
-  });
-  assertContract(
-    grid.movePassable[mixedSlope] === 1 &&
-      grid.movePassable[submergedSlope] === 1 &&
-      grid.waypointPassable[mixedSlope] === 0 &&
-      grid.waypointPassable[submergedSlope] === 0,
-    'partial and full water apply the same powered MOVE and passive WAYPOINT water cases',
-  );
-
-  terrainNormalZ[mixedSlope] = 0.4;
-  rebuildPathfindingDebugPassability({
-    grid,
-    terrainWater,
-    terrainSubmerged,
-    terrainNormalZ,
-    traversal: poweredAmphibious,
-    cellsX,
-    cellsY,
-  });
-  assertContract(
-    Number(grid.movePassable[mixedSlope]) === 0,
-    'a mixed square takes the worse dry result when its water MOVE case passes',
+    grid.edgeBlocked[indexOf(cellsX, 1, row)] === 1 &&
+      grid.edgeBlocked[indexOf(cellsX, 2, row)] === 0,
+    'the debug terrain mask preserves the pathfinder map-edge buffer',
   );
 }
