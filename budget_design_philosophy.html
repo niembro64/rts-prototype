@@ -1095,6 +1095,7 @@
       </p>
       <ul class="rule-list">
         <li><strong>Propulsion</strong> is a separate maximum directed force for ground, air, and water. Air and water forces are weighted by their occupied volume fractions, independently of route permission; when a body contacts a slope, every directed drive resolves along that supporting tangent rather than into the terrain. The simulator applies <code>a = F / m</code>, so mass matters directly and each medium can be tuned independently.</li>
+        <li><strong>Propulsion axis</strong> is explicit actuator behavior. <code>worldPlanar</code> drives directly along the requested horizontal direction; <code>bodyForward</code> projects that request onto the nose and permits signed forward/reverse thrust; <code>bodyForwardOnly</code> uses the same nose-aligned drive but supplies no powered force for requests at or behind the lateral plane. A forward-only unit keeps turning toward its requested heading while bounded contact braking stops existing motion, then advances only after the request enters its forward hemisphere. Standing units use <code>bodyForwardOnly</code>: they turn instead of walking backward.</li>
         <li><strong>Static friction</strong> is contact traction: ground propulsion is limited by <code>normalLoad * staticFrictionCoefficient</code>, and passive friction can hold or brake an uncommanded body within that same contact limit. It is not a velocity-resistance setting or a motor-force substitute.</li>
         <li><strong>Tangential damping</strong> is a supported-contact velocity decay rate. It damps residual sliding along the contact plane and is therefore separate from static friction: one caps commanded force, the other removes existing tangential velocity.</li>
         <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>
@@ -1635,7 +1636,7 @@
         upstream.
       </p>
 
-      <h3>The six locomotion rigs</h3>
+      <h3>The locomotion rigs</h3>
       <ul class="rule-list">
         <li><strong>Wheels</strong> &mdash; a chassis driven through discrete rigid contact patches at
         fixed body-local positions. Visually: cylindrical tires, each spinning around its own axle,
@@ -1650,6 +1651,10 @@
         past it, the foot lifts and swings to a new plant. IK solves hip&rarr;knee&rarr;foot for the
         rendered pose. The contract is per-foot, not per-chassis &mdash; feet must touch terrain on
         plant and swing through air during transit.</li>
+        <li><strong>Standing</strong> &mdash; one authored biped cycle shared by both legs, with the
+        second leg exactly half a cycle behind the first. The shoes are ordinary lower-body animation
+        pieces: they face with the hips, remain flat through stance, and use a small toe/heel pitch
+        through recovery. They do not own terrain footprints or slope-solving state.</li>
         <li><strong>Flippers</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
         separate foot. On land they use a diagonal, leg-like support gait; as the physical
         submerged fraction rises they continuously unfold into wing-like paddles. The visual
@@ -1710,7 +1715,8 @@
         rising over the terrain and two floating in air over the dip; the rig clamps each tire
         independently. Treads sample three points along each side ribbon and lift the side to
         clear the max. Legs sample under each foot. Hover doesn't clamp parts but does sample a
-        per-frame <em>clearance</em> scalar for fan smoke and altitude shading. The rig knows what
+        per-frame <em>clearance</em> scalar for fan smoke and altitude shading. Standing uses its one
+        lower-body ground baseline rather than querying terrain beneath each shoe. The rig knows what
         its primitives are; uniformity is in the shape of the contract, not in the bits.
       </p>
 
@@ -1734,9 +1740,9 @@
         really leaves the ground, feet move smoothly into an airborne pose; when it returns, each
         foot swings to a terrain plant instead of being initialized in place.
       </p>
-      <h3>Foot orientation is resolved from consecutive footprints</h3>
+      <h3>Leg foot orientation is resolved from consecutive footprints</h3>
       <p>
-        A grounded step knows both endpoints before the foot moves: the footprint it is leaving and
+        An arachnid-style <strong>legs</strong> step knows both endpoints before the foot moves: the footprint it is leaving and
         the footprint it is approaching. Each endpoint owns a terrain support plane sampled once at
         that footprint. The moving foot interpolates from the previous footprint&rsquo;s plane to the next
         footprint&rsquo;s plane over the step&rsquo;s linear progress, reaching the complete destination angle
@@ -1745,31 +1751,34 @@
         planted interval may mutate either endpoint.
       </p>
       <p>
-        <strong>Legs</strong> and <strong>standing</strong> rigs differ in what remains live after that
-        plane is chosen. An arachnid-style <strong>legs</strong> foot is an independent world-space
-        contact: its position and its complete orientation, including heading within the plane, are
+        The foot is an independent world-space contact: its position and its complete orientation,
+        including heading within the plane, are
         fixed for the entire planted interval. At lift-off the rig freezes the next footprint&rsquo;s
         complete terrain-aligned orientation too, then shortest-path interpolates between the two
         complete orientations only while the foot is in transit. Neither the moving leg segments nor
         a turning chassis may rotate a planted foot.
       </p>
+      <h3>Standing feet use an authored walk cycle, not terrain matching</h3>
       <p>
-        A <strong>standing</strong> foot has a different mechanical problem. Its coupled biped gait
-        moves the shoe backward through the lower-body frame during stance to cancel chassis travel;
-        the shoe therefore appears to slide through local rig coordinates even while it represents
-        one footprint. Those changing local coordinates are <em>not</em> new terrain contacts. The
-        calculated footprint anchors one retained support plane, and the shoe slides on that plane
-        without resampling terrain height or normal along the local stance path. The plane supplies
-        pitch and roll, while heading remains live: the shoe must always point forward with the legs,
-        using lower-body forward projected into the retained plane, even when the torso aims in
-        another direction. Freezing the standing shoe&rsquo;s complete world quaternion would be wrong
-        because it would let the legs turn away from their feet; recomputing its plane from the
-        sliding local position would also be wrong because it would make one footprint acquire many
-        slopes. During recovery, only the retained previous and calculated next support planes are
-        interpolated; at touchdown the next plane becomes the stance plane with no angular snap.
+        <strong>Standing</strong> deliberately does not participate in the consecutive-footprint
+        terrain solver. Beyond All Reason&rsquo;s Commander establishes the useful RTS reference: its
+        feet are model pieces driven through an authored walk animation, not independently planted
+        world-space contacts. Our standing rig follows that readable, robust approach. Both shoes use
+        the one coupled gait clock, always point forward in the hips frame, stay flat through the
+        planted half, and smoothly pass through a restrained toe-down / neutral / toe-up / flat pitch
+        sequence during recovery.
       </p>
       <p>
-        Each leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
+        A standing shoe never samples terrain height or normal, predicts a next footprint, retains a
+        footprint anchor or plane, interpolates ground slopes, or stores any per-foot contact state
+        across a geometry-tier rebuild. Foot position comes from the authored stride and lift over the
+        rig&rsquo;s single local ground baseline. The authoritative root/support pose still handles the
+        unit&rsquo;s large-scale relationship to terrain; a small amount of shoe clipping or floating on
+        uneven ground is an accepted RTS-scale tradeoff for coherent motion and substantially less
+        fragile presentation code. This simplification does not change <strong>legs</strong> behavior.
+      </p>
+      <p>
+        Each arachnid-style leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
         contact state. Its only grounded step envelope is a sphere derived from authored attachment
         and segment geometry: cast a ray from chassis center through the attachment, keep the
         maximum-extension point along that ray, place the sphere center on terrain at the authored
@@ -1953,6 +1962,21 @@
         projectile travel time and therefore applies along its traced line
         immediately; what is removed is the ability to hit a target independently of
         where the shared turret servo is actually pointing.
+      </p>
+      <h3>The beam cone is an idle pilot light, not the emission origin</h3>
+      <p>
+        The cone centered in a beam turret&rsquo;s barrel assembly is its
+        <strong>pilot light</strong>. It is an idle-state visual: show the pilot-light cone while
+        the beam is not firing, and hide it for the entire time a live beam is being drawn. The
+        two visuals are mutually exclusive, so a firing turret presents the beam itself rather
+        than a beam emerging from a still-visible cone.
+      </p>
+      <p>
+        The pilot light never moves the physical or rendered emission origin. Like every other
+        turret emission, a beam begins at the exact center of the authoritative turret mount
+        point. Barrel length, the tapered barrel mesh, and the pilot-light cone are presentation
+        geometry around that origin; none of them may offset the beam&rsquo;s first point toward a
+        muzzle or cone tip.
       </p>
       <p>
         Beam turrets are therefore ordinary full-barrel turrets rather than

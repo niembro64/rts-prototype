@@ -478,9 +478,9 @@ export class UnitMeshBuilder3D {
         );
         if (barrelSlots) {
           turretMesh.barrelSlots = barrelSlots;
-          // Cone barrels are beam emitters — a glowing rig, not a machined
-          // tube — so they keep their wave material. Every real barrel is a
-          // barrel shaft whatever fires through it.
+          // Cone barrels are idle beam pilot lights — a glowing rig, not a
+          // machined tube — so they keep their wave material. Every real
+          // barrel is a barrel shaft whatever fires through it.
           if (turretMesh.barrelUsesCone !== true) {
             for (const slot of barrelSlots) {
               this.unitDetailInstances.setBarrelChart(slot, 'barrelShaft');
@@ -488,7 +488,7 @@ export class UnitMeshBuilder3D {
           }
           for (const barrel of turretMesh.barrels) barrel.parent?.remove(barrel);
           if (turretMesh.barrelUsesCone === true) {
-            // Far-rung hosts shed the beam rig's inner cone + inner ball
+            // Far-rung hosts shed the pilot-light rig's inner cone + inner ball
             // layers (the glow doubling), halving the rig's triangles.
             this.unitDetailInstances.registerConeBarrelEmitter(
               barrelSlots[0],

@@ -91,6 +91,7 @@ const UF_FLAG_BLOCKED_OR_DEAD = 1 << 3;
 const UF_FLAG_HAS_EXTERNAL_FORCE = 1 << 4;
 const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_PROPULSION_BODY_FORWARD = 1 << 8;
+const UF_FLAG_PROPULSION_FORWARD_ONLY = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
 const UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE = 1 << 14;
 const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE = 1 << 15;
@@ -255,7 +256,8 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 12] = water.resistance.angularDampingRate;
     values[base + 13] = loco.environmentalHazards.waterDamagePerSecond;
     flags[code] =
-      (loco.actuator.propulsionAxis === 'bodyForward' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
+      (loco.actuator.propulsionAxis !== 'worldPlanar' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
+      (loco.actuator.propulsionAxis === 'bodyForwardOnly' ? UF_FLAG_PROPULSION_FORWARD_ONLY : 0) |
       (loco.motionControl.cruiseWhenUncommanded ? UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED : 0);
   }
   _unitForceProfileTableUploaded = true;
@@ -472,7 +474,7 @@ export class UnitForceSystem {
         : unit.locomotion.motionControl.cruiseWhenUncommanded;
       const propulsionBodyForward = hasProfileFlags
         ? (profileFlags & UF_FLAG_PROPULSION_BODY_FORWARD) !== 0
-        : unit.locomotion.actuator.propulsionAxis === 'bodyForward';
+        : unit.locomotion.actuator.propulsionAxis !== 'worldPlanar';
       const airGroundInverseLiftAuthored =
         unit.locomotion.physics.air.lift.surfaceFollowingInverseForceFromGround > 0;
       const airWaterInverseLiftAuthored =

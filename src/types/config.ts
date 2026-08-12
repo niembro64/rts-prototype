@@ -99,10 +99,10 @@ export type SpinConfig = {
 // wider). Used by mortars, salvo-rocket pods, etc.
 // `singleCylinderBarrel` — one uniform-radius cylinder on the firing
 // axis (no orbit). The default single-barrel shape.
-// `singleConeBarrel` — one tapered barrel on the firing axis: full
-// `barrelThickness` at the base near the head, narrowing to a point at
-// the muzzle. Used by beam/laser turrets so the emitter reads as a
-// focusing cone instead of a tube.
+// `singleConeBarrel` — one tapered pilot-light cone on the firing axis:
+// full `barrelThickness` at the base near the head, narrowing to a point.
+// Beam/laser turrets show it only while idle; a live ray replaces it and
+// still originates at the turret mount center.
 // `complexSingleEmitter` — non-cylindrical shield SPHERE emitter
 // (the glowing bubble; head hidden, drawn by ShieldRenderer3D).
 // `shieldPanelEmitter` — shield PANEL emitter: the turret head
@@ -167,11 +167,11 @@ export type BarrelShape =
     }
   | {
       type: 'singleConeBarrel';
-      /** Forward extension of the single cone past the head's leading
-       *  edge, as a fraction of head radius. */
+      /** Forward extension of the single pilot-light cone past the head's
+       *  leading edge, as a fraction of head radius. */
       barrelLength: number;
-      /** Base (head-end) diameter in absolute world units. The cone
-       *  tapers from this radius down to a point at the muzzle. */
+      /** Base (head-end) diameter in absolute world units. The pilot-light
+       *  cone tapers from this radius down to a point. */
       barrelThickness?: number;
     }
   | { type: 'complexSingleEmitter'; grate: ShieldTurretConfig }

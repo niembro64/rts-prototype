@@ -31,7 +31,7 @@ export type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics &
 
 export type UnitLocomotionPresetConfig = {
   actuator: {
-    propulsionAxis: 'bodyForward' | 'worldPlanar';
+    propulsionAxis: 'bodyForward' | 'bodyForwardOnly' | 'worldPlanar';
     ground: {
       staticFrictionCoefficient: number;
       tangentialDampingRate: number;
@@ -156,6 +156,7 @@ function assertPreset(
   ]);
   if (
     preset.actuator.propulsionAxis !== 'bodyForward' &&
+    preset.actuator.propulsionAxis !== 'bodyForwardOnly' &&
     preset.actuator.propulsionAxis !== 'worldPlanar'
   ) {
     throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);

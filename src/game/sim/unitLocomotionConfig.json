@@ -262,7 +262,7 @@
     },
     "standing": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "bodyForwardOnly",
         "ground": {
           "staticFrictionCoefficient": 1,
           "tangentialDampingRate": 1.519068479057

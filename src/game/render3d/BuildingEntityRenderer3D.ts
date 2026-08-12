@@ -378,6 +378,7 @@ type BuildingEntityRenderer3DOptions = {
   scopedMeshRetention: ScopedRenderMeshRetention3D;
   lodProxyRenderer: EntityLodProxyRenderer3D;
   turretMountCache?: TurretMountCache3D | null;
+  isBeamPilotLightVisible: (entityId: EntityId, turretIndex: number) => boolean;
 };
 
 export class BuildingEntityRenderer3D {
@@ -393,6 +394,10 @@ export class BuildingEntityRenderer3D {
   private readonly getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly barrelMat: THREE.Material;
   private readonly turretMountCache: TurretMountCache3D | null;
+  private readonly isBeamPilotLightVisible: (
+    entityId: EntityId,
+    turretIndex: number,
+  ) => boolean;
   /** Shared team-trim pool, owned by Render3DEntities. Null in harnesses
    *  that construct this renderer without one. */
   private teamTrim: TeamTrimRenderer3D | null = null;
@@ -471,6 +476,7 @@ export class BuildingEntityRenderer3D {
     this.getTeamOrnamentMat = options.getTeamOrnamentMat;
     this.barrelMat = options.barrelMat;
     this.turretMountCache = options.turretMountCache ?? null;
+    this.isBeamPilotLightVisible = options.isBeamPilotLightVisible;
     this.teamTrim = options.teamTrim ?? null;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
@@ -1250,6 +1256,12 @@ export class BuildingEntityRenderer3D {
       const visible = bodyVisible;
       this.setTurretRootVisible(turretMesh, visible);
       if (!visible) continue;
+      if (turretMesh.barrelUsesCone === true) {
+        const pilotLightVisible = this.isBeamPilotLightVisible(entity.id, turretIndex);
+        for (let barrelIndex = 0; barrelIndex < turretMesh.barrels.length; barrelIndex++) {
+          setObjectVisibleIfChanged(turretMesh.barrels[barrelIndex], pilotLightVisible);
+        }
+      }
       // Legacy construction-emitter geometry has no head sphere or barrels.
       // No live builder/factory mounts it; this branch only preserves stable
       // rendering for old captured fixtures.
@@ -1529,12 +1541,9 @@ export class BuildingEntityRenderer3D {
           const columnZ = elements[6];
           const length = Math.hypot(columnX, columnY, columnZ);
           if (length > 1e-9) {
-            mountCache.writeMuzzle(
+            mountCache.writeForward(
               this.turretAimEntityIds[i],
               this.turretAimIndexes[i],
-              elements[12] + columnX * 0.5,
-              elements[14] + columnZ * 0.5,
-              elements[13] + columnY * 0.5,
               columnX / length,
               columnZ / length,
               columnY / length,

@@ -39,7 +39,7 @@ import {
 } from './StandingRig3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
-import type { Turret } from '../sim/types';
+import type { Entity, Turret } from '../sim/types';
 import type { TurretPresentation } from '@/types/blueprints';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import { getBodyGeom, type BodyMeshPart } from './BodyShape3D';
@@ -66,9 +66,10 @@ import {
   beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
   configureBeamEndpointSmokeEmitter,
-  constrainDirectBeamEndpointToMuzzleRay,
+  constrainDirectBeamEndpointToMountRay,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
+import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
 import {
   createExtrudedEquilateralTriangleGeometry,
@@ -1068,7 +1069,7 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
       assertContract(!presentation.headOnly, `${mountKey} presents an ordinary full-barrel turret`);
       assertContract(
         barrel?.type === 'singleConeBarrel',
-        `${mountKey} uses one aimed focusing-cone barrel`,
+        `${mountKey} uses one aimed pilot-light cone`,
       );
       assertContract(config.shot?.type === 'beam', `${turretId} emits a beam ray`);
       assertContract(
@@ -1420,7 +1421,7 @@ function runEmissionPoseContracts(): void {
   );
   const constrainedEndpoint = { x: 100, y: 80, z: 50 };
   assertContract(
-    constrainDirectBeamEndpointToMuzzleRay(
+    constrainDirectBeamEndpointToMountRay(
       constrainedEndpoint,
       10, 20, 30,
       2, 0, 0,
@@ -1428,7 +1429,29 @@ function runEmissionPoseContracts(): void {
       constrainedEndpoint.x === 100 &&
       constrainedEndpoint.y === 20 &&
       constrainedEndpoint.z === 30,
-    'a direct beam endpoint must remain exactly collinear with its rendered muzzle forward',
+    'a direct beam endpoint must remain exactly collinear with its turret-mount forward',
+  );
+  const pilotLights = new BeamPilotLightState3D();
+  const beamFixture = [{
+    projectile: {
+      projectileType: 'beam',
+      sourceEntityId: 47,
+      config: { turretIndex: 2 },
+    },
+  }] as unknown as Entity[];
+  assertContract(
+    pilotLights.isVisible(47, 2),
+    'a beam pilot light is visible while its turret has no live ray',
+  );
+  pilotLights.update(beamFixture);
+  assertContract(
+    !pilotLights.isVisible(47, 2) && pilotLights.isVisible(47, 1),
+    'a live ray hides only its own turret pilot light',
+  );
+  pilotLights.update([]);
+  assertContract(
+    pilotLights.isVisible(47, 2),
+    'the pilot light returns when its live ray leaves presentation',
   );
   const beamEndpointSmoke = configureBeamEndpointSmokeEmitter(
     undefined,

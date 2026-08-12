@@ -125,19 +125,6 @@ export type LocomotionStateSnapshot =
       upperBodyYaw: number;
       upperBodyWorldYaw: number | null;
       upperBodyYawVelocity: number;
-      feet: Array<Readonly<{
-        touchingSurface: boolean;
-        orientationCaptured: boolean;
-        contactNormal: readonly [number, number, number];
-        contactPoint: readonly [number, number, number];
-        targetNormal: readonly [number, number, number];
-        targetPoint: readonly [number, number, number];
-        orientationTransitionActive: boolean;
-        orientationTransitionProgress: number;
-        orientationTransitionStartPhase: number;
-        orientationTransitionDirection: -1 | 1;
-        localQuaternion: readonly [number, number, number, number];
-      }>>;
     }
   | {
       type: 'wheels';
@@ -221,35 +208,6 @@ export function captureLocomotionState(
         upperBodyYaw: locomotion.upperBodyYaw,
         upperBodyWorldYaw: locomotion.upperBodyWorldYaw,
         upperBodyYawVelocity: locomotion.upperBodyYawVelocity,
-        feet: locomotion.legs.map((leg) => ({
-          touchingSurface: leg.footTouchingSurface,
-          orientationCaptured: leg.footOrientationCaptured,
-          contactNormal: [
-            leg.footContactNormalX,
-            leg.footContactNormalY,
-            leg.footContactNormalZ,
-          ],
-          contactPoint: [
-            leg.footContactWorldX,
-            leg.footContactWorldY,
-            leg.footContactWorldZ,
-          ],
-          targetNormal: [
-            leg.footTargetNormalX,
-            leg.footTargetNormalY,
-            leg.footTargetNormalZ,
-          ],
-          targetPoint: [
-            leg.footTargetWorldX,
-            leg.footTargetWorldY,
-            leg.footTargetWorldZ,
-          ],
-          orientationTransitionActive: leg.footOrientationTransitionActive,
-          orientationTransitionProgress: leg.footOrientationTransitionProgress,
-          orientationTransitionStartPhase: leg.footOrientationTransitionStartPhase,
-          orientationTransitionDirection: leg.footOrientationTransitionDirection,
-          localQuaternion: quaternionTuple(leg.foot),
-        })),
       };
     case 'wheels':
       return {
@@ -322,30 +280,6 @@ export function applyLocomotionState(
       locomotion.upperBodyWorldYaw = state.upperBodyWorldYaw;
       locomotion.upperBodyYawVelocity = state.upperBodyYawVelocity;
       locomotion.hips.rotation.y = -locomotion.upperBodyYaw;
-      for (let i = 0; i < locomotion.legs.length; i++) {
-        const saved = state.feet[i];
-        if (!saved) continue;
-        const leg = locomotion.legs[i];
-        leg.footTouchingSurface = saved.touchingSurface;
-        leg.footOrientationCaptured = saved.orientationCaptured;
-        leg.footContactNormalX = saved.contactNormal[0];
-        leg.footContactNormalY = saved.contactNormal[1];
-        leg.footContactNormalZ = saved.contactNormal[2];
-        leg.footContactWorldX = saved.contactPoint[0];
-        leg.footContactWorldY = saved.contactPoint[1];
-        leg.footContactWorldZ = saved.contactPoint[2];
-        leg.footTargetNormalX = saved.targetNormal[0];
-        leg.footTargetNormalY = saved.targetNormal[1];
-        leg.footTargetNormalZ = saved.targetNormal[2];
-        leg.footTargetWorldX = saved.targetPoint[0];
-        leg.footTargetWorldY = saved.targetPoint[1];
-        leg.footTargetWorldZ = saved.targetPoint[2];
-        leg.footOrientationTransitionActive = saved.orientationTransitionActive;
-        leg.footOrientationTransitionProgress = saved.orientationTransitionProgress;
-        leg.footOrientationTransitionStartPhase = saved.orientationTransitionStartPhase;
-        leg.footOrientationTransitionDirection = saved.orientationTransitionDirection;
-        leg.foot.quaternion.fromArray(saved.localQuaternion);
-      }
       return;
     }
     case 'wheels': {
@@ -624,7 +558,7 @@ export function updateLocomotion(
     case 'legs':
       return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
     case 'standing':
-      return updateStandingRig(mesh, entity, pose, dtMs, mapWidth, mapHeight);
+      return updateStandingRig(mesh, entity, pose, dtMs);
     case 'flippers':
       return updateFlippers(mesh, pose, dtMs);
     case 'hover':

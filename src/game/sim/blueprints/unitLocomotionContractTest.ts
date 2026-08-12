@@ -385,6 +385,7 @@ export function runUnitLocomotionContractTest(): void {
       clone.physics.ground.maxPropulsiveForce === runtime.physics.ground.maxPropulsiveForce &&
         clone.physics.air.maxPropulsiveForce === runtime.physics.air.maxPropulsiveForce &&
         clone.physics.water.maxPropulsiveForce === runtime.physics.water.maxPropulsiveForce &&
+        clone.actuator.propulsionAxis === runtime.actuator.propulsionAxis &&
         clone.navigation.waypoint.allowOnGround === runtime.navigation.waypoint.allowOnGround &&
         clone.navigation.move.allowInWater === runtime.navigation.move.allowInWater,
       `${blueprint.unitBlueprintId} locomotion cloning preserves per-medium propulsion and navigation`,
@@ -444,13 +445,20 @@ export function runUnitLocomotionContractTest(): void {
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
     commander.physicsPresetId === 'standing' &&
+      commander.actuator.propulsionAxis === 'bodyForwardOnly' &&
       commander.navigation.waypoint.allowOnGround &&
       commander.navigation.waypoint.allowInWater &&
       !commander.navigation.waypoint.allowInAir &&
       commander.environmentalHazards.waterDamagePerSecond === 0 &&
       commander.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0,
-    'Commander uses its standing rig to walk the seabed without a water-surface controller',
+    'Commander turns before advancing and walks the seabed without a water-surface controller',
   );
+  for (const unitBlueprintId of ['unitHuman', 'unitCommander', 'unitRex'] as const) {
+    assertContract(
+      getUnitLocomotion(unitBlueprintId).actuator.propulsionAxis === 'bodyForwardOnly',
+      `${unitBlueprintId} standing locomotion cannot apply powered reverse thrust`,
+    );
+  }
 
   const eagle = getUnitLocomotion('unitEagle');
   assertContract(

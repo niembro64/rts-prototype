@@ -291,11 +291,13 @@ pub(crate) const UF_FLAG_HAS_EXTERNAL_FORCE: u32 = 1 << 4;
 // Bits 5..6 are reserved by the stable JS/WASM flag ABI.
 pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_PROPULSION_BODY_FORWARD: u32 = 1 << 8;
+pub(crate) const UF_FLAG_PROPULSION_FORWARD_ONLY: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
 pub(crate) const UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE: u32 = 1 << 14;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE: u32 = 1 << 15;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE: u32 = 1 << 17;
-pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 = UF_FLAG_PROPULSION_BODY_FORWARD;
+pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
+    UF_FLAG_PROPULSION_BODY_FORWARD | UF_FLAG_PROPULSION_FORWARD_ONLY;
 
 pub(crate) const UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED: u32 = 1 << 16;
 
@@ -593,21 +595,28 @@ pub(crate) fn unit_force_ground_drive_forces(
     (fx, fy, fz)
 }
 
-/// Convert a world-space movement request into a signed throttle for a
-/// body-forward actuator. A positive request drives along the nose, while a
-/// request opposite the nose applies reverse thrust. This lets the arrival
-/// controller brake a swimmer before it overshoots a waypoint instead of
-/// continuing to accelerate through the turn.
+/// Convert a world-space movement request into a body-forward drive decision.
+/// Bidirectional actuators use signed throttle, so a request opposite the nose
+/// supplies reverse thrust. Forward-only actuators instead disable powered
+/// drive at and behind the lateral plane. On ground that hands the tick to the
+/// bounded idle brake while the attitude servo turns toward the requested
+/// heading; it can stop existing motion but cannot accelerate into reverse.
 #[inline]
-fn unit_force_body_forward_throttle(
+fn unit_force_body_forward_drive_request(
     requested_dir_x: f64,
     requested_dir_y: f64,
     forward_x: f64,
     forward_y: f64,
     thrust_scale: f64,
-) -> f64 {
+    forward_only: bool,
+) -> (bool, f64) {
     let projection = requested_dir_x * forward_x + requested_dir_y * forward_y;
-    projection.clamp(-1.0, 1.0) * thrust_scale.clamp(0.0, 1.0)
+    let throttle = projection.clamp(-1.0, 1.0) * thrust_scale.clamp(0.0, 1.0);
+    if forward_only && throttle <= 0.0 {
+        (false, 0.0)
+    } else {
+        (true, throttle)
+    }
 }
 
 #[inline]
@@ -1071,6 +1080,7 @@ pub fn unit_force_step_batch(
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
         let propulsion_body_forward = flag & UF_FLAG_PROPULSION_BODY_FORWARD != 0;
+        let propulsion_forward_only = flag & UF_FLAG_PROPULSION_FORWARD_ONLY != 0;
         let omega_sq = if has_orientation {
             rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
                 + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
@@ -1139,17 +1149,20 @@ pub fn unit_force_step_batch(
         let (drive_dir_x, drive_dir_y, has_drive_dir, drive_thrust_scale) =
             if has_thrust && thrust_input_mag > 0.0 {
                 if propulsion_body_forward {
-                    (
-                        forward_x,
-                        forward_y,
-                        true,
-                        unit_force_body_forward_throttle(
+                    let (body_forward_has_drive, body_forward_throttle) =
+                        unit_force_body_forward_drive_request(
                             requested_dir_x,
                             requested_dir_y,
                             forward_x,
                             forward_y,
                             thrust_scale,
-                        ),
+                            propulsion_forward_only,
+                        );
+                    (
+                        forward_x,
+                        forward_y,
+                        body_forward_has_drive,
+                        body_forward_throttle,
                     )
                 } else {
                     (requested_dir_x, requested_dir_y, true, thrust_scale)
@@ -1823,22 +1836,33 @@ mod tests {
 
     #[test]
     fn body_forward_drive_allows_arrival_control_to_reverse_brake() {
-        assert_near(
-            unit_force_body_forward_throttle(1.0, 0.0, 1.0, 0.0, 1.0),
-            1.0,
-        );
-        assert_near(
-            unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 1.0),
-            -1.0,
-        );
-        assert_near(
-            unit_force_body_forward_throttle(0.0, 1.0, 1.0, 0.0, 1.0),
-            0.0,
-        );
-        assert_near(
-            unit_force_body_forward_throttle(-1.0, 0.0, 1.0, 0.0, 0.4),
-            -0.4,
-        );
+        let forward = unit_force_body_forward_drive_request(1.0, 0.0, 1.0, 0.0, 1.0, false);
+        assert!(forward.0);
+        assert_near(forward.1, 1.0);
+        let reverse = unit_force_body_forward_drive_request(-1.0, 0.0, 1.0, 0.0, 1.0, false);
+        assert!(reverse.0);
+        assert_near(reverse.1, -1.0);
+        let lateral = unit_force_body_forward_drive_request(0.0, 1.0, 1.0, 0.0, 1.0, false);
+        assert!(lateral.0);
+        assert_near(lateral.1, 0.0);
+        let partial = unit_force_body_forward_drive_request(-1.0, 0.0, 1.0, 0.0, 0.4, false);
+        assert!(partial.0);
+        assert_near(partial.1, -0.4);
+    }
+
+    #[test]
+    fn body_forward_only_drive_waits_for_the_forward_hemisphere() {
+        let forward = unit_force_body_forward_drive_request(1.0, 0.0, 1.0, 0.0, 1.0, true);
+        assert!(forward.0);
+        assert_near(forward.1, 1.0);
+
+        let reverse = unit_force_body_forward_drive_request(-1.0, 0.0, 1.0, 0.0, 1.0, true);
+        assert!(!reverse.0);
+        assert_near(reverse.1, 0.0);
+
+        let lateral = unit_force_body_forward_drive_request(0.0, 1.0, 1.0, 0.0, 1.0, true);
+        assert!(!lateral.0);
+        assert_near(lateral.1, 0.0);
     }
 
     #[test]

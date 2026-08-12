@@ -326,14 +326,14 @@ export function buildTurretMesh3D(
   // When `deps.skipBarrels` is true the Mesh is built but NOT attached
   // to spinGroup — kept in `barrels[]` purely as a data carrier; the
   // shared `barrelInstanced` InstancedMesh does the rendering.
-  // Cone barrels narrow to a point at the muzzle. Authored explicitly
+  // Beam pilot-light cones narrow to a point along the barrel axis. Authored explicitly
   // per turret via `barrel.type === 'singleConeBarrel'`; everything
   // else (including the multi-barrel clusters) uses the uniform cylinder
   // geometry.
   const barrelUsesCone = barrel.type === 'singleConeBarrel';
   // Per-Mesh barrels (towers etc.) take the host's geometry tier, same
-  // rule as the head sphere above. Cone barrels keep the passed geometry
-  // (their beam-wave layers derive from it).
+  // rule as the head sphere above. Pilot-light cones keep the passed geometry
+  // (their glow layers derive from it).
   const barrelTier = geometryTierForDetail(detailLevel);
   const segmentGeom = barrelUsesCone
     ? deps.coneBarrelGeom

@@ -65,6 +65,7 @@ export class UnitTurretPose3D {
   private readonly aimColorOverrides: (number | undefined)[] = [];
   private readonly aimLocalYaw: number[] = [];
   private readonly aimLocalPitch: number[] = [];
+  private readonly aimPilotLightVisible: boolean[] = [];
   private readonly deferredParentPosition = new THREE.Vector3();
   private readonly deferredParentQuaternion = new THREE.Quaternion();
   private readonly anchorPosition = new THREE.Vector3();
@@ -82,6 +83,7 @@ export class UnitTurretPose3D {
   private readonly barrelEntityIds: number[] = [];
   private readonly barrelTurretIndexes: number[] = [];
   private readonly barrelLaneIndexes: number[] = [];
+  private readonly barrelPilotLightVisible: boolean[] = [];
   private readonly headBatch = new UnitTurretHeadMatrixBatch3D();
   private headInput = new Float32Array(TURRET_HEAD_INPUT_STRIDE * 2048);
   private headCount = 0;
@@ -101,12 +103,14 @@ export class UnitTurretPose3D {
     this.aimColorOverrides.length = 0;
     this.aimLocalYaw.length = 0;
     this.aimLocalPitch.length = 0;
+    this.aimPilotLightVisible.length = 0;
     this.barrelCount = 0;
     this.barrelSlots.length = 0;
     this.barrelUsesCone.length = 0;
     this.barrelEntityIds.length = 0;
     this.barrelTurretIndexes.length = 0;
     this.barrelLaneIndexes.length = 0;
+    this.barrelPilotLightVisible.length = 0;
     this.headCount = 0;
     this.headSlots.length = 0;
     this.headEntities.length = 0;
@@ -131,6 +135,7 @@ export class UnitTurretPose3D {
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     constructionVisuals: ConstructionVisualController3D,
     teamTrim: TeamTrimRenderer3D | null,
+    isBeamPilotLightVisible: (entityId: number, turretIndex: number) => boolean,
   ): void {
     const stateViews = turretRows?.views;
     const stateStart = turretRows?.start ?? 0;
@@ -157,6 +162,14 @@ export class UnitTurretPose3D {
           teamTrim?.hide(turretMesh.teamCollar.slot);
         }
         continue;
+      }
+      const pilotLightVisible =
+        turretMesh.barrelUsesCone !== true ||
+        isBeamPilotLightVisible(entity.id, turretIdx);
+      if (turretMesh.barrelUsesCone === true) {
+        for (let barrelIdx = 0; barrelIdx < turretMesh.barrels.length; barrelIdx++) {
+          setObjectVisibleIfChanged(turretMesh.barrels[barrelIdx], pilotLightVisible);
+        }
       }
 
       if (turretMesh.constructionEmitter && entity.factory !== null) {
@@ -323,6 +336,7 @@ export class UnitTurretPose3D {
         aimPitchFromState,
         armAim?.yaw ?? Number.NaN,
         armAim?.pitch ?? Number.NaN,
+        pilotLightVisible,
       );
     }
   }
@@ -397,6 +411,7 @@ export class UnitTurretPose3D {
         this.aimEntities[i],
         this.aimTurretIndexes[i],
         teamTrim,
+        this.aimPilotLightVisible[i],
       );
     }
   }
@@ -456,6 +471,7 @@ export class UnitTurretPose3D {
         output,
         offset,
         this.barrelUsesCone[i],
+        this.barrelPilotLightVisible[i],
       );
       if (this.barrelLaneIndexes[i] !== 0) continue;
       const columnX = output[offset + 4];
@@ -463,17 +479,9 @@ export class UnitTurretPose3D {
       const columnZ = output[offset + 6];
       const length = Math.hypot(columnX, columnY, columnZ);
       if (length <= 1e-9) continue;
-      // Cylinder geometry spans local y=-0.5..+0.5. Every barrel data
-      // carrier is authored base-to-tip, making local +Y its muzzle.
-      const muzzleThreeX = output[offset + 12] + columnX * 0.5;
-      const muzzleThreeY = output[offset + 13] + columnY * 0.5;
-      const muzzleThreeZ = output[offset + 14] + columnZ * 0.5;
-      turretMountCache.writeMuzzle(
+      turretMountCache.writeForward(
         this.barrelEntityIds[i],
         this.barrelTurretIndexes[i],
-        muzzleThreeX,
-        muzzleThreeZ,
-        muzzleThreeY,
         columnX / length,
         columnZ / length,
         columnY / length,
@@ -532,6 +540,7 @@ export class UnitTurretPose3D {
      *  and takes the solved turret aim. */
     localYaw = Number.NaN,
     localPitch = Number.NaN,
+    pilotLightVisible = true,
   ): void {
     const index = this.aimCount;
     this.aimCount++;
@@ -564,6 +573,7 @@ export class UnitTurretPose3D {
     this.aimColorOverrides[index] = colorOverride;
     this.aimLocalYaw[index] = localYaw;
     this.aimLocalPitch[index] = localPitch;
+    this.aimPilotLightVisible[index] = pilotLightVisible;
   }
 
   private writeBarrelInstances(
@@ -573,6 +583,7 @@ export class UnitTurretPose3D {
     entity: Entity,
     turretIdx: number,
     teamTrim: TeamTrimRenderer3D | null,
+    pilotLightVisible: boolean,
   ): void {
     this.writeTurretTeamCollar(
       turretMesh,
@@ -603,6 +614,7 @@ export class UnitTurretPose3D {
         entity.id,
         turretIdx,
         barrelIdx,
+        pilotLightVisible,
       );
     }
   }
@@ -664,6 +676,7 @@ export class UnitTurretPose3D {
     entityId: number,
     turretIdx: number,
     laneIdx: number,
+    pilotLightVisible: boolean,
   ): void {
     const index = this.barrelCount;
     this.barrelCount++;
@@ -716,6 +729,7 @@ export class UnitTurretPose3D {
     this.barrelEntityIds[index] = entityId;
     this.barrelTurretIndexes[index] = turretIdx;
     this.barrelLaneIndexes[index] = laneIdx;
+    this.barrelPilotLightVisible[index] = pilotLightVisible;
   }
 
   private ensureBarrelInputCapacity(count: number): void {

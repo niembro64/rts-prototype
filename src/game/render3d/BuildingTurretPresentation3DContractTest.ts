@@ -43,10 +43,21 @@ export function runBuildingTurretPresentation3DContractTest(): void {
   );
   applyBuildingBlueprintRuntime(tower, 'towerCannon');
   assertContract(tower.combat?.turrets.length === 1, 'fixture must mount one cannon turret');
+  const beamBlueprint = getBuildingBlueprint('towerBeamMega');
+  const beamTower = worldState.createBuilding(
+    320,
+    220,
+    beamBlueprint.gridWidth * BUILD_GRID_CELL_SIZE,
+    beamBlueprint.gridHeight * BUILD_GRID_CELL_SIZE,
+    beamBlueprint.gridDepth * BUILD_GRID_CELL_SIZE,
+    1,
+  );
+  applyBuildingBlueprintRuntime(beamTower, 'towerBeamMega');
+  let beamPilotLightVisible = true;
 
   const clientViewState = {
     getEntitySetVersion: () => 1,
-    getBuildings: () => [tower],
+    getBuildings: () => [tower, beamTower],
     getResourcePylonSourceIds: () => [],
   } as unknown as ClientViewState;
   const selectionOverlays = {
@@ -80,12 +91,14 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     metalDeposits: [],
     scopedMeshRetention: new ScopedRenderMeshRetention3D(),
     lodProxyRenderer: { pushBuildingProxy: () => undefined } as unknown as EntityLodProxyRenderer3D,
+    isBeamPilotLightVisible: () => beamPilotLightVisible,
   });
   const rows = new BuildingRenderPacket3D();
   const frameState = createRenderFrameState();
 
   try {
     rows.pushEntity(tower, false, true, true);
+    rows.pushEntity(beamTower, false, true, true);
     renderer.update(
       rows,
       frameState,
@@ -97,13 +110,21 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     );
 
     const mesh = (renderer as unknown as BuildingRendererProbe).meshes.get(tower.id);
+    const beamMesh = (renderer as unknown as BuildingRendererProbe).meshes.get(beamTower.id);
     assertContract(mesh !== undefined, 'first frame must create the tower mesh');
+    assertContract(beamMesh !== undefined, 'first frame must create the beam-tower mesh');
     assertContract(mesh.turrets.length === 1, 'tower mesh must expose its cannon turret');
     const initialVisualYaw = mesh.turrets[0].yawGroup.rotation.y;
+    assertContract(
+      beamMesh.turrets[0].barrels[0].visible,
+      'an idle building beam turret shows its pilot-light cone',
+    );
 
     tower.combat.turrets[0].rotation = Math.PI / 2;
+    beamPilotLightVisible = false;
     rows.reset();
     rows.pushEntity(tower, false, false, false);
+    rows.pushEntity(beamTower, false, false, false);
     renderer.update(
       rows,
       frameState,
@@ -126,6 +147,10 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     assertContract(
       Math.abs(mesh.turrets[0].root.rotation.y) < 1e-8,
       'logical yaw turns the presented turret body without rotating its fixed mount anchor',
+    );
+    assertContract(
+      !beamMesh.turrets[0].barrels[0].visible,
+      'a firing building beam turret hides its pilot-light cone',
     );
   } finally {
     renderer.destroy();

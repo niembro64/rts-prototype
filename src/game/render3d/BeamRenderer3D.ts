@@ -65,9 +65,8 @@ type TurretMountResolver = {
     turretIdx: number,
   ): {
     x: number; y: number; z: number;
-    muzzleX: number; muzzleY: number; muzzleZ: number;
     forwardX: number; forwardY: number; forwardZ: number;
-    hasMuzzle: boolean;
+    hasForward: boolean;
     vx: number; vy: number; vz: number;
     ax: number; ay: number; az: number;
   } | null;
@@ -140,11 +139,11 @@ export function composeBeamSegmentMatrix3D(
   return out.compose(scratch.mid, scratch.quaternion, scratch.scale);
 }
 
-export function constrainDirectBeamEndpointToMuzzleRay(
+export function constrainDirectBeamEndpointToMountRay(
   end: { x: number; y: number; z: number },
-  muzzleX: number,
-  muzzleY: number,
-  muzzleZ: number,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
   forwardX: number,
   forwardY: number,
   forwardZ: number,
@@ -157,13 +156,13 @@ export function constrainDirectBeamEndpointToMuzzleRay(
   const fy = forwardY / forwardLength;
   const fz = forwardZ / forwardLength;
   const along = Math.max(0,
-    (end.x - muzzleX) * fx +
-    (end.y - muzzleY) * fy +
-    (end.z - muzzleZ) * fz,
+    (end.x - mountX) * fx +
+    (end.y - mountY) * fy +
+    (end.z - mountZ) * fz,
   );
-  end.x = muzzleX + fx * along;
-  end.y = muzzleY + fy * along;
-  end.z = muzzleZ + fz * along;
+  end.x = mountX + fx * along;
+  end.y = mountY + fy * along;
+  end.z = mountZ + fz * along;
   return true;
 }
 
@@ -582,16 +581,15 @@ export class BeamRenderer3D {
         turretIdx,
       );
       if (mount) {
-        path.baseStartX = mount.hasMuzzle ? mount.muzzleX : mount.x;
-        path.baseStartY = mount.hasMuzzle ? mount.muzzleY : mount.y;
-        path.baseStartZ = mount.hasMuzzle ? mount.muzzleZ : mount.z;
-        if (mount.hasMuzzle && sourcePoints.length === 2) {
+        path.baseStartX = mount.x;
+        path.baseStartY = mount.y;
+        path.baseStartZ = mount.z;
+        if (mount.hasForward && sourcePoints.length === 2) {
           // A direct beam is one constrained turret ray. Re-project the
-          // authoritative terminal distance onto the same rendered muzzle
-          // forward used by the barrel mesh instead of independently moving
-          // its two endpoints. Reflected paths retain their surface vertices.
+          // authoritative terminal distance onto the rendered barrel forward
+          // from the mount center. Reflected paths retain their surface vertices.
           const end = path.points[1];
-          if (end !== undefined) constrainDirectBeamEndpointToMuzzleRay(
+          if (end !== undefined) constrainDirectBeamEndpointToMountRay(
             end,
             path.baseStartX,
             path.baseStartY,

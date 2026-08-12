@@ -96,7 +96,7 @@ export type UnitLocomotion = {
   };
   actuator: {
     /** Axis through which the locomotion actuator can apply horizontal force. */
-    propulsionAxis: 'bodyForward' | 'worldPlanar';
+    propulsionAxis: 'bodyForward' | 'bodyForwardOnly' | 'worldPlanar';
   };
   motionControl: {
     /** Air propulsion continues along the nose with no waypoint thrust input. */

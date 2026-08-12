@@ -125,6 +125,7 @@ import {
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
 import { unitTurretsAllowVisualBank3D } from './turretRenderHelpers3D';
+import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -138,6 +139,7 @@ type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   projectileRenderProjectiles?: readonly Entity[];
+  lineProjectiles: readonly Entity[];
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
   /** Latched detail rung from the scene's EntityLodState3D — the SAME
    *  state that stamps the packet's LOD-proxy flag, so the rebuild band
@@ -322,8 +324,11 @@ export class Render3DEntities {
   private _smoothLiftedPos = new THREE.Vector3();
   private _locomotionParentQuat = new THREE.Quaternion();
   private turretMountCache = new TurretMountCache3D();
-  // Last beam-firing direction per turret. Persists across frames so
-  // beam-directed heads freeze on their last live firing direction.
+  private readonly beamPilotLights = new BeamPilotLightState3D();
+  private readonly isBeamPilotLightVisible = (
+    entityId: EntityId,
+    turretIndex: number,
+  ): boolean => this.beamPilotLights.isVisible(entityId, turretIndex);
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -393,6 +398,7 @@ export class Render3DEntities {
       scopedMeshRetention: this.scopedMeshRetention,
       lodProxyRenderer: this.lodProxyRenderer,
       turretMountCache: this.turretMountCache,
+      isBeamPilotLightVisible: this.isBeamPilotLightVisible,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,
@@ -507,6 +513,7 @@ export class Render3DEntities {
     this.entityLodProxyFadeAlpha = entityPacket?.entityLodProxyFadeAlpha;
     this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
     this.renderFrameCounter++;
+    this.beamPilotLights.update(entityPacket?.lineProjectiles ?? EMPTY_PROJECTILES);
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
@@ -1176,6 +1183,7 @@ export class Render3DEntities {
         this.unitDetailInstances,
         this.constructionVisuals,
         this.teamTrim,
+        this.isBeamPilotLightVisible,
       );
 
       if (m.mirrors) {
@@ -1461,6 +1469,7 @@ export class Render3DEntities {
     this.unitMeshes.clear();
     this.barrelSpinState.clear();
     this.activeLocomotionUnitIds.clear();
+    this.beamPilotLights.clear();
     this.scopedMeshRetention.clear();
     this.unitRenderScopeToken = 0;
     this.lastUnitEntitySetVersion = -1;

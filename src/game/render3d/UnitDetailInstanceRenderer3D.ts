@@ -789,9 +789,11 @@ export class UnitDetailInstanceRenderer3D {
     matrix: ArrayLike<number>,
     offset: number,
     useCone: boolean = false,
+    pilotLightVisible: boolean = true,
   ): void {
     if (useCone) {
-      this.writeConeEmitterMatrices(slot, matrix, offset);
+      if (pilotLightVisible) this.writeConeEmitterMatrices(slot, matrix, offset);
+      else this.zeroConeEmitterSlot(slot);
     } else {
       const pool = this.barrelPools[tierSlotTier(slot)];
       writeInstanceMatrixArray(
@@ -1020,7 +1022,7 @@ export class UnitDetailInstanceRenderer3D {
       }
     }
 
-    // Beam-emitter pools share the cone slot allocator, so every mirror
+    // Beam pilot-light pools share the cone slot allocator, so every mirror
     // pool draws the same instance count.
     setInstancedCount(this.coneBarrelInstanced, this.coneBarrelNextSlot);
     setInstancedCount(this.coneBarrelInnerInstanced, this.coneBarrelNextSlot);

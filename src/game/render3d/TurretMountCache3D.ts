@@ -4,15 +4,11 @@ export type TurretMountEntry = {
   x: number;
   y: number;
   z: number;
-  /** Current rendered emission point at the end of the primary barrel. */
-  muzzleX: number;
-  muzzleY: number;
-  muzzleZ: number;
   /** Current rendered barrel direction in simulation coordinates. */
   forwardX: number;
   forwardY: number;
   forwardZ: number;
-  hasMuzzle: boolean;
+  hasForward: boolean;
   vx: number;
   vy: number;
   vz: number;
@@ -56,9 +52,8 @@ export class TurretMountCache3D {
     const entry = this.pool[this.poolIndex]
       ?? (this.pool[this.poolIndex] = {
         x: 0, y: 0, z: 0,
-        muzzleX: 0, muzzleY: 0, muzzleZ: 0,
         forwardX: 1, forwardY: 0, forwardZ: 0,
-        hasMuzzle: false,
+        hasForward: false,
         vx: 0, vy: 0, vz: 0,
         ax: 0, ay: 0, az: 0,
       });
@@ -67,13 +62,10 @@ export class TurretMountCache3D {
     entry.x = x;
     entry.y = y;
     entry.z = z;
-    entry.muzzleX = x;
-    entry.muzzleY = y;
-    entry.muzzleZ = z;
     entry.forwardX = 1;
     entry.forwardY = 0;
     entry.forwardZ = 0;
-    entry.hasMuzzle = false;
+    entry.hasForward = false;
     if (prev && prev.frame === this.frame - 1 && this.dtSec > 0) {
       const inv = 1 / this.dtSec;
       entry.vx = (x - prev.x) * inv;
@@ -104,28 +96,22 @@ export class TurretMountCache3D {
     this.previous.set(key, previous);
   }
 
-  /** Add the rendered barrel endpoint after the head/mount row has been
-   * written. The cache intentionally keeps mount kinematics separate: this is
-   * a same-frame presentation attachment, not a second motion sample. */
-  writeMuzzle(
+  /** Add the rendered barrel direction after the head/mount row has been
+   * written. Direction is a same-frame presentation attachment; the mount
+   * center remains the emission origin. */
+  writeForward(
     entityId: EntityId,
     turretIdx: number,
-    muzzleX: number,
-    muzzleY: number,
-    muzzleZ: number,
     forwardX: number,
     forwardY: number,
     forwardZ: number,
   ): void {
     const entry = this.current.get(packTurretMountKey(entityId, turretIdx));
     if (entry === undefined) return;
-    entry.muzzleX = muzzleX;
-    entry.muzzleY = muzzleY;
-    entry.muzzleZ = muzzleZ;
     entry.forwardX = forwardX;
     entry.forwardY = forwardY;
     entry.forwardZ = forwardZ;
-    entry.hasMuzzle = true;
+    entry.hasForward = true;
   }
 
   get(entityId: EntityId, turretIdx: number): TurretMountEntry | null {

@@ -14,7 +14,6 @@ import type {
 } from './ClientRenderTurretStateSlab';
 import { readHostTurretAimSample3D } from './HostTurretAim3D';
 import type { LocomotionRenderPose } from './LocomotionRigShared3D';
-import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import {
   applyLocomotionState,
   captureLocomotionState,
@@ -27,8 +26,7 @@ import {
   poseStandingRigAtRest,
   resolveStandingArmTurretAim,
   resolveStandingArmTurretRoot,
-  resolveStandingFootContactOrientation,
-  standingSupportPlaneWorldY,
+  standingFootPitch,
   type StandingMesh,
   updateStandingRig,
   updateStandingHostTurretAim,
@@ -202,11 +200,19 @@ function assertStandingLegExtension(mesh: StandingMesh, label: string): void {
     `${label} recovery leg folds more than its straight-ish planted partner`,
   );
   assertStandingLegLengths(mesh, `${label} walking`);
-  for (const [index, leg] of mesh.legs.entries()) assertNear(
-    leg.foot.rotation.z,
-    0,
-    `${label} walking foot ${index} stays ground-parallel instead of heel/toe pitching`,
+  assertContract(
+    mesh.legs[0].foot.rotation.z < -1e-3,
+    `${label} recovery shoe uses a restrained authored ankle pitch`,
   );
+  assertNear(
+    mesh.legs[1].foot.rotation.z,
+    0,
+    `${label} planted shoe stays flat through stance`,
+  );
+  for (const [index, leg] of mesh.legs.entries()) {
+    assertNear(leg.foot.rotation.x, 0, `${label} walking foot ${index} has no terrain roll`);
+    assertNear(leg.foot.rotation.y, 0, `${label} walking foot ${index} keeps lower-body heading`);
+  }
 }
 
 function assertLongStandingStride(mesh: StandingMesh, label: string): void {
@@ -390,196 +396,24 @@ function assertStandingFeetFollowLegFacing(mesh: StandingMesh, label: string): v
   poseStandingRigAtRest(mesh);
 }
 
-function assertStandingFootContactSlopeLatch(): void {
-  const state = {
-    footTouchingSurface: false,
-    footOrientationCaptured: false,
-    footContactNormalX: 0,
-    footContactNormalY: 1,
-    footContactNormalZ: 0,
-    footTargetNormalX: 0,
-    footTargetNormalY: 1,
-    footTargetNormalZ: 0,
-    footOrientationTransitionActive: false,
-    footOrientationTransitionProgress: 0,
-  };
-  const local = new THREE.Quaternion();
-  const yawQuaternion = (angle: number): THREE.Quaternion =>
-    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-  /** The shoe's real parent: the hull composed with the hips' own yaw. */
-  const parentFrame = (hullYaw: number, hipsYaw: number): THREE.Quaternion =>
-    yawQuaternion(hullYaw).multiply(yawQuaternion(hipsYaw));
-  const soleNormal = (parent: THREE.Quaternion): THREE.Vector3 =>
-    new THREE.Vector3(0, 1, 0).applyQuaternion(parent.clone().multiply(local));
-  const soleHeading = (parent: THREE.Quaternion): THREE.Vector3 =>
-    new THREE.Vector3(1, 0, 0).applyQuaternion(parent.clone().multiply(local));
-  const worldOrientation = (parent: THREE.Quaternion): THREE.Quaternion =>
-    parent.clone().multiply(local);
-  const headingInPlane = (yaw: number, normal: THREE.Vector3): THREE.Vector3 =>
-    new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
-      .projectOnPlane(normal)
-      .normalize();
-
-  const parentAtTouchdown = parentFrame(0.35, -0.6);
-  const touchdownNormal = new THREE.Vector3(0.24, 0.92, -0.31).normalize();
-  resolveStandingFootContactOrientation(
-    state,
-    true,
-    parentAtTouchdown,
-    0.35,
-    touchdownNormal.x,
-    touchdownNormal.y,
-    touchdownNormal.z,
-    local,
+function assertStandingFootAnimationKeys(): void {
+  assertNear(standingFootPitch(0), 0, 'standing shoe starts recovery flat');
+  assertContract(
+    standingFootPitch(0.1) < THREE.MathUtils.degToRad(-13),
+    'standing shoe rolls toe-down through BAR-style push-off',
+  );
+  assertNear(
+    standingFootPitch(0.275),
+    0,
+    'standing shoe passes through neutral at mid-recovery',
   );
   assertContract(
-    state.footTouchingSurface &&
-      state.footOrientationCaptured &&
-      soleNormal(parentAtTouchdown).dot(touchdownNormal) > 1 - 1e-9,
-    'a standing shoe captures the contacted plane at touchdown',
+    standingFootPitch(0.41) > THREE.MathUtils.degToRad(9),
+    'standing shoe raises its toe before heel strike',
   );
-  const planeAnchor = new THREE.Vector3(4, 10, -3);
-  const slidPoint = new THREE.Vector3(
-    12,
-    standingSupportPlaneWorldY(
-      planeAnchor.x,
-      planeAnchor.y,
-      planeAnchor.z,
-      touchdownNormal.x,
-      touchdownNormal.y,
-      touchdownNormal.z,
-      12,
-      5,
-    ),
-    5,
-  );
-  assertContract(
-    Math.abs(slidPoint.clone().sub(planeAnchor).dot(touchdownNormal)) < 1e-9,
-    'a standing stance coordinate slides on its retained footprint plane instead of resampling terrain',
-  );
-
-  // The hull spins AND the hips yaw independently underneath it. The sole
-  // stays on its world plane; the shoe turns within that plane to keep facing
-  // the way the lower body faces.
-  const turnedParent = parentFrame(-2.0, 1.3);
-  resolveStandingFootContactOrientation(
-    state,
-    true,
-    turnedParent,
-    -0.7,
-    0,
-    1,
-    0,
-    local,
-  );
-  assertContract(
-    soleNormal(turnedParent).dot(touchdownNormal) > 1 - 1e-9,
-    'a touching shoe holds its plane through hull and hips yaw',
-  );
-  assertContract(
-    soleHeading(turnedParent).dot(headingInPlane(-0.7, touchdownNormal)) > 1 - 1e-9,
-    'a touching shoe rotates within that plane to follow the lower body',
-  );
-
-  // At lift-off the gait has sampled the next foothold. Progress zero retains
-  // the departure angle exactly.
-  const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
-  state.footTargetNormalX = nextNormal.x;
-  state.footTargetNormalY = nextNormal.y;
-  state.footTargetNormalZ = nextNormal.z;
-  state.footOrientationTransitionActive = true;
-  state.footOrientationTransitionProgress = 0;
-  resolveStandingFootContactOrientation(
-    state,
-    false,
-    turnedParent,
-    -0.7,
-    0,
-    1,
-    0,
-    local,
-  );
-  assertContract(
-    !state.footTouchingSurface &&
-      state.footOrientationCaptured &&
-      soleNormal(turnedParent).dot(touchdownNormal) > 1 - 1e-9,
-    'a lifted standing shoe starts at the previous foothold angle',
-  );
-
-  // Parent motion is removed before comparing world orientations. With one
-  // fixed live heading, half swing progress must cover half the shortest
-  // angular displacement between the two terrain-aligned endpoint frames.
-  const furtherTurnedParent = parentFrame(2.1, 0.4);
-  resolveStandingFootContactOrientation(
-    state,
-    false,
-    furtherTurnedParent,
-    2.5,
-    0,
-    1,
-    0,
-    local,
-  );
-  const swingStart = worldOrientation(furtherTurnedParent);
-  const swingStartNormal = new THREE.Vector3(0, 1, 0)
-    .applyQuaternion(swingStart);
-  state.footOrientationTransitionProgress = 0.5;
-  resolveStandingFootContactOrientation(
-    state,
-    false,
-    furtherTurnedParent,
-    2.5,
-    0,
-    1,
-    0,
-    local,
-  );
-  const swingMid = worldOrientation(furtherTurnedParent);
-  const swingMidNormal = new THREE.Vector3(0, 1, 0)
-    .applyQuaternion(swingMid);
-  state.footOrientationTransitionProgress = 1;
-  resolveStandingFootContactOrientation(
-    state,
-    false,
-    furtherTurnedParent,
-    2.5,
-    0,
-    1,
-    0,
-    local,
-  );
-  const swingEnd = worldOrientation(furtherTurnedParent);
-  assertContract(
-    Math.abs(
-      swingStartNormal.angleTo(swingMidNormal) * 2 -
-      swingStartNormal.angleTo(nextNormal)
-    ) < 1e-9,
-    'a standing shoe linearly interpolates half its angular displacement at half swing progress',
-  );
-  assertContract(
-    soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9 &&
-      soleHeading(furtherTurnedParent).dot(
-        headingInPlane(2.5, nextNormal),
-      ) > 1 - 1e-9,
-    'the end of the swing reaches the next foothold angle while following the lower body',
-  );
-
-  resolveStandingFootContactOrientation(
-    state,
-    true,
-    furtherTurnedParent,
-    2.5,
-    nextNormal.x,
-    nextNormal.y,
-    nextNormal.z,
-    local,
-  );
-  assertContract(
-    !state.footOrientationTransitionActive &&
-      worldOrientation(furtherTurnedParent).angleTo(swingEnd) < 1e-9 &&
-      soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9,
-    'the next standing-shoe footfall promotes the interpolated angle without snapping',
-  );
+  assertNear(standingFootPitch(0.5), 0, 'standing shoe lands flat');
+  assertNear(standingFootPitch(0.75), 0, 'standing shoe stays flat through stance');
+  assertNear(standingFootPitch(1), 0, 'standing shoe cycle closes without a snap');
 }
 
 function assertStandingFeetHaveShoeVolume(mesh: StandingMesh, label: string): void {
@@ -740,7 +574,7 @@ function assertContralateralStandingGait(mesh: StandingMesh, label: string): voi
   }
 }
 
-function assertPlantedFootMatchesTerrainSpeed(mesh: StandingMesh, label: string): void {
+function assertPlantedFootMatchesTravelSpeed(mesh: StandingMesh, label: string): void {
   const stanceStart = 0.57;
   const phaseDelta = 0.11;
   const plantedLeg = mesh.legs.find((leg) => leg.side < 0);
@@ -756,11 +590,11 @@ function assertPlantedFootMatchesTerrainSpeed(mesh: StandingMesh, label: string)
 
   poseStandingRigAtPreviewCycle(mesh, stanceStart + phaseDelta, 1);
   const localBackwardTravel = firstFootX - plantedLeg.footLocalX;
-  const matchingTerrainTravel = mesh.gaitCycleDistance * phaseDelta;
+  const matchingGroundTravel = mesh.gaitCycleDistance * phaseDelta;
   assertNear(
     localBackwardTravel,
-    matchingTerrainTravel,
-    `${label} planted foot moves backward at terrain traversal speed`,
+    matchingGroundTravel,
+    `${label} planted foot moves backward at chassis travel speed`,
   );
   assertNear(
     plantedLeg.foot.position.y,
@@ -798,9 +632,9 @@ function assertRuntimeTravelClocksPlantedFoot(mesh: StandingMesh, label: string)
   const startPhase = 0.57;
   const phaseDelta = 0.11;
   const dtMs = 100;
-  const terrainTravel = mesh.gaitCycleDistance * phaseDelta;
-  const velocity = terrainTravel / (dtMs / 1000);
-  const rootY = getLocomotionSurfaceHeight(0, 0, 1, 1, 0) - mesh.groundLocalY;
+  const groundTravel = mesh.gaitCycleDistance * phaseDelta;
+  const velocity = groundTravel / (dtMs / 1000);
+  const rootY = 0;
   const entity = { builder: null } as Entity;
   const plantedLeg = mesh.legs.find((leg) => leg.side < 0);
   assertContract(plantedLeg !== undefined, `${label} has a runtime planted-foot sample`);
@@ -808,25 +642,23 @@ function assertRuntimeTravelClocksPlantedFoot(mesh: StandingMesh, label: string)
   mesh.contact.initialized = false;
   mesh.gaitPhase = startPhase;
   mesh.gait = 1;
-  updateStandingRig(mesh, entity, movingStandingPose(0, rootY, velocity), 0, 1, 1);
+  updateStandingRig(mesh, entity, movingStandingPose(0, rootY, velocity), 0);
   const firstFootX = plantedLeg.footLocalX;
   updateStandingRig(
     mesh,
     entity,
-    movingStandingPose(terrainTravel, rootY, velocity),
+    movingStandingPose(groundTravel, rootY, velocity),
     dtMs,
-    1,
-    1,
   );
 
   assertNear(
     mesh.gaitPhase,
     startPhase + phaseDelta,
-    `${label} runtime gait phase advances from measured terrain travel`,
+    `${label} runtime gait phase advances from measured ground travel`,
   );
   assertNear(
     firstFootX - plantedLeg.footLocalX,
-    terrainTravel,
+    groundTravel,
     `${label} runtime planted foot cancels measured chassis travel`,
   );
 }
@@ -985,24 +817,9 @@ function assertTorsoAimSurvivesLodRebuild(
   mesh.upperBodyWorldYaw = 1.17;
   mesh.upperBodyYawVelocity = 0.29;
   mesh.gaitPhase = 0.37;
-  const expectedFootContactPlanes = mesh.legs.map((leg, index) => {
-    const normal = new THREE.Vector3(0.18 - index * 0.09, 0.94, 0.27 + index * 0.05)
-      .normalize();
-    const local = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(-0.05, 0.15 + index * 0.03, 0.09),
-    );
-    leg.footTouchingSurface = true;
-    leg.footOrientationCaptured = true;
-    leg.footContactNormalX = normal.x;
-    leg.footContactNormalY = normal.y;
-    leg.footContactNormalZ = normal.z;
-    const anchor = new THREE.Vector3(11 + index, 7 - index, -4 + index * 2);
-    leg.footContactWorldX = anchor.x;
-    leg.footContactWorldY = anchor.y;
-    leg.footContactWorldZ = anchor.z;
-    leg.foot.quaternion.copy(local);
-    return { normal, anchor, local };
-  });
+  mesh.gaitDirection = -1;
+  mesh.gait = 0.76;
+  mesh.legs[0].foot.rotation.set(0.2, 0.3, 0.4);
   const snapshot = captureLocomotionState(mesh);
   assertContract(snapshot?.type === 'standing', `${label} captures standing locomotion state`);
 
@@ -1010,17 +827,9 @@ function assertTorsoAimSurvivesLodRebuild(
   mesh.upperBodyWorldYaw = null;
   mesh.upperBodyYawVelocity = 0;
   mesh.gaitPhase = 0;
-  for (const leg of mesh.legs) {
-    leg.footTouchingSurface = false;
-    leg.footOrientationCaptured = false;
-    leg.footContactNormalX = 0;
-    leg.footContactNormalY = 1;
-    leg.footContactNormalZ = 0;
-    leg.footContactWorldX = 0;
-    leg.footContactWorldY = 0;
-    leg.footContactWorldZ = 0;
-    leg.foot.quaternion.identity();
-  }
+  mesh.gaitDirection = 1;
+  mesh.gait = 0;
+  mesh.legs[0].foot.quaternion.identity();
   applyLocomotionState(mesh, snapshot);
   assertNear(mesh.upperBodyYaw, 0.42, `${label} preserves torso aim across LOD rebuild`);
   assertNear(
@@ -1034,39 +843,21 @@ function assertTorsoAimSurvivesLodRebuild(
     `${label} preserves torso angular velocity across LOD rebuild`,
   );
   assertNear(mesh.gaitPhase, 0.37, `${label} preserves its coupled gait phase across LOD rebuild`);
-  for (let i = 0; i < mesh.legs.length; i++) {
-    const leg = mesh.legs[i];
-    const expected = expectedFootContactPlanes[i];
-    const restoredNormal = new THREE.Vector3(
-      leg.footContactNormalX,
-      leg.footContactNormalY,
-      leg.footContactNormalZ,
-    );
-    assertContract(
-      leg.footTouchingSurface &&
-        leg.footOrientationCaptured &&
-        restoredNormal.dot(expected.normal) > 1 - 1e-9 &&
-        new THREE.Vector3(
-          leg.footContactWorldX,
-          leg.footContactWorldY,
-          leg.footContactWorldZ,
-        ).distanceTo(expected.anchor) < 1e-9 &&
-        leg.foot.quaternion.angleTo(expected.local) < 1e-9,
-      `${label} foot ${i} preserves its anchored contact plane across LOD rebuild`,
-    );
-    leg.footTouchingSurface = false;
-    leg.footOrientationCaptured = false;
-    leg.footContactNormalX = 0;
-    leg.footContactNormalY = 1;
-    leg.footContactNormalZ = 0;
-    leg.footContactWorldX = 0;
-    leg.footContactWorldY = 0;
-    leg.footContactWorldZ = 0;
-  }
+  assertNear(
+    mesh.gaitDirection,
+    -1,
+    `${label} preserves gait direction across LOD rebuild`,
+  );
+  assertNear(mesh.gait, 0.76, `${label} preserves gait amplitude across LOD rebuild`);
+  assertContract(
+    mesh.legs[0].foot.quaternion.angleTo(new THREE.Quaternion()) < 1e-9,
+    `${label} does not retain obsolete per-foot contact orientation across LOD rebuild`,
+  );
 
   mesh.upperBodyYaw = 0;
   mesh.upperBodyWorldYaw = null;
   mesh.upperBodyYawVelocity = 0;
+  mesh.gaitDirection = 1;
   poseStandingRigAtRest(mesh);
 }
 
@@ -1145,7 +936,7 @@ function assertHeldGunTakesItsArmPose(
 
 export function runStandingHostTurretAim3DContractTest(): void {
   assertRosterTurretsPublishAim();
-  assertStandingFootContactSlopeLatch();
+  assertStandingFootAnimationKeys();
   assertMassiveStandingTorsoTurnsSlower();
   const human = buildStanding('unitHuman');
   assertStandingHipsCenteredUnderTorso(human.mesh, 'Human');
@@ -1157,7 +948,7 @@ export function runStandingHostTurretAim3DContractTest(): void {
   assertStableStandingUpperArmRoll(human.mesh, 'Human');
   assertStandingLimbChains(human.mesh, 'Human');
   assertCoupledStandingLegPhase(human.mesh, 'Human');
-  assertPlantedFootMatchesTerrainSpeed(human.mesh, 'Human');
+  assertPlantedFootMatchesTravelSpeed(human.mesh, 'Human');
   assertRuntimeTravelClocksPlantedFoot(human.mesh, 'Human');
   assertContralateralStandingGait(human.mesh, 'Human');
   assertAnyTurretLockSuppressesArmGait(human.mesh, 'Human');
@@ -1289,7 +1080,7 @@ export function runStandingHostTurretAim3DContractTest(): void {
   assertStableStandingUpperArmRoll(commander.mesh, 'Commander');
   assertStandingLimbChains(commander.mesh, 'Commander');
   assertCoupledStandingLegPhase(commander.mesh, 'Commander');
-  assertPlantedFootMatchesTerrainSpeed(commander.mesh, 'Commander');
+  assertPlantedFootMatchesTravelSpeed(commander.mesh, 'Commander');
   assertRuntimeTravelClocksPlantedFoot(commander.mesh, 'Commander');
   assertContralateralStandingGait(commander.mesh, 'Commander');
   assertAnyTurretLockSuppressesArmGait(commander.mesh, 'Commander');
