@@ -2261,6 +2261,7 @@
       "required": [
         "radius",
         "kneeRadius",
+        "hasFeet",
         "lerpDuration",
         "segments",
         "footSphere",
@@ -2274,6 +2275,9 @@
         },
         "kneeRadius": {
           "type": "number"
+        },
+        "hasFeet": {
+          "type": "boolean"
         },
         "lerpDuration": {
           "type": "number"

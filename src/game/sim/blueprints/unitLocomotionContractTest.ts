@@ -94,10 +94,15 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
  * the unit's origin. Pin all three.
  */
 function checkLegAttachmentPoints(): void {
+  const footlessUnitIds = new Set(['unitDaddy', 'unitTick']);
   for (const blueprint of getAllUnitBlueprints()) {
     const unitBlueprintId = blueprint.unitBlueprintId;
     const locomotion = blueprint.unitLocomotion;
     if (locomotion.type !== 'legs') continue;
+    assertContract(
+      locomotion.config.hasFeet === !footlessUnitIds.has(unitBlueprintId),
+      `${unitBlueprintId} must explicitly match the authored arachnid-foot roster`,
+    );
     const legs = locomotion.config.leftSide;
     assertContract(
       legs.length > 0,

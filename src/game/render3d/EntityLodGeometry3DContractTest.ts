@@ -73,6 +73,7 @@ import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
 import {
   createExtrudedEquilateralTriangleGeometry,
+  createPrimitiveHemisphereGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
@@ -223,10 +224,10 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
 const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitJackal: { close: 500, mid: 250, far: 130 },
   unitLynx: { close: 1150, mid: 580, far: 210 },
-  unitDaddy: { close: 2700, mid: 1050, far: 330 },
+  unitDaddy: { close: 2380, mid: 954, far: 306 },
   unitBadger: { close: 1150, mid: 600, far: 230 },
   unitMongoose: { close: 500, mid: 280, far: 140 },
-  unitTick: { close: 2550, mid: 950, far: 270 },
+  unitTick: { close: 2230, mid: 854, far: 246 },
   unitHuman: { close: 2550, mid: 950, far: 430 },
   unitMammoth: { close: 1200, mid: 620, far: 220 },
   unitFormik: { close: 4100, mid: 1500, far: 520 },
@@ -613,6 +614,12 @@ export function runStandingBodySeamContracts(): void {
 function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
   const countsByUnit = new Map<UnitBlueprintId, TierCounts>();
   runLegLocomotionStateContract();
+  const footTriangles = TIERS.map((tier) => {
+    const geometry = createPrimitiveHemisphereGeometry('locomotion', tier);
+    const count = triangleCount(geometry);
+    geometry.dispose();
+    return count;
+  });
   for (const unitId of UNIT_BLUEPRINT_IDS) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
@@ -623,10 +630,11 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
       // Struts, joints and feet live in the shared instanced pools rather than
       // under this root, so this is the roster's standing per-limb accounting
       // figure, not a triangle count taken off a scene graph.
+      const footScale = locomotion.config.hasFeet ? 0 : 1;
       countsByUnit.set(unitId, {
-        close: legCount * 204,
-        mid: legCount * 68,
-        far: legCount * 20,
+        close: legCount * (204 - footTriangles[0] * footScale),
+        mid: legCount * (68 - footTriangles[1] * footScale),
+        far: legCount * (20 - footTriangles[2] * footScale),
       });
       continue;
     }
@@ -907,8 +915,31 @@ function runLegLocomotionStateContract(): void {
     new THREE.Group(), radius, locomotion.config, 'full',
     getChassisLift(blueprint, radius), lowRenderer, undefined, 'far',
   );
+  const footedBlueprint = getUnitBlueprint('unitFormik');
+  const footedLocomotion = footedBlueprint.unitLocomotion;
+  assertContract(footedLocomotion.type === 'legs', 'footed walking fixture uses the legs rig');
+  const footed = buildLegs(
+    new THREE.Group(),
+    footedBlueprint.radius.other,
+    footedLocomotion.config,
+    'full',
+    getChassisLift(footedBlueprint, footedBlueprint.radius.other),
+    highRenderer,
+    undefined,
+    'close',
+  );
   assertContract(high !== undefined && low !== undefined, 'walking unit resolves High/Low leg rigs');
+  assertContract(footed !== undefined, 'footed walking unit resolves its leg rig');
   try {
+    assertContract(
+      high.legs.every((leg) => leg.footSlot === -1) &&
+        low.legs.every((leg) => leg.footSlot === -1),
+      'Tick allocates no rendered feet at any geometry tier',
+    );
+    assertContract(
+      footed.legs.every((leg) => leg.footSlot >= 0),
+      'a foot-enabled legs rig still allocates one foot instance per leg',
+    );
     seedLocomotionState(high);
     const snapshot = captureLocomotionState(high);
     applyLocomotionState(low, snapshot);
@@ -935,6 +966,7 @@ function runLegLocomotionStateContract(): void {
   } finally {
     freeLegSlots(high, highRenderer);
     freeLegSlots(low, lowRenderer);
+    freeLegSlots(footed, highRenderer);
     highRenderer.destroy();
     lowRenderer.destroy();
   }

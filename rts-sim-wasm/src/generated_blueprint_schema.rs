@@ -789,6 +789,7 @@ pub struct LegSnapRay {
 pub struct LegConfig {
     pub radius: f64,
     pub kneeRadius: f64,
+    pub hasFeet: bool,
     pub lerpDuration: f64,
     pub segments: LegSegments,
     pub footSphere: LegFootSphere,

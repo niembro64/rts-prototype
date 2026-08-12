@@ -542,6 +542,7 @@ export type LegSnapRay = {
 export type LegConfig = {
   radius: number;
   kneeRadius: number;
+  hasFeet: boolean;
   lerpDuration: number;
   segments: LegSegments;
   footSphere: LegFootSphere;

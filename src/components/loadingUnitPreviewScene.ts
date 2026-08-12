@@ -1066,12 +1066,6 @@ function buildPreviewLegs(
       scratchKneeForward,
     );
     scratchKneeQuaternion.setFromRotationMatrix(scratchKneeBasis).normalize();
-    const footYaw = resolveLegFootYaw(
-      scratchLegRight.x,
-      scratchLegRight.z,
-      foot.x - kneeVec.x,
-      foot.z - kneeVec.z,
-    );
     resolveLowerLegFootTaperStart(
       kneeVec.x, kneeVec.y, kneeVec.z,
       foot.x, foot.y, foot.z,
@@ -1098,7 +1092,15 @@ function buildPreviewLegs(
       geometryTier,
       scratchKneeQuaternion,
     );
-    addFoot(legGroup, foot, footRadius, footYaw, legMaterial, geometryTier);
+    if (legConfig.hasFeet) {
+      const footYaw = resolveLegFootYaw(
+        scratchLegRight.x,
+        scratchLegRight.z,
+        foot.x - kneeVec.x,
+        foot.z - kneeVec.z,
+      );
+      addFoot(legGroup, foot, footRadius, footYaw, legMaterial, geometryTier);
+    }
   }
   return group;
 }

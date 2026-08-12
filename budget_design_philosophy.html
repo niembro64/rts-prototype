@@ -1650,7 +1650,10 @@
         <li><strong>Legs</strong> &mdash; discrete step events: a foot plants, the chassis advances
         past it, the foot lifts and swings to a new plant. IK solves hip&rarr;knee&rarr;foot for the
         rendered pose. The contract is per-foot, not per-chassis &mdash; feet must touch terrain on
-        plant and swing through air during transit.</li>
+        plant and swing through air during transit. The authored <code>hasFeet</code> flag controls
+        whether those endpoints also receive separate rendered foot pieces and terrain-aligned foot
+        orientation work. A footless legs rig retains its gait/IK endpoints but performs no foot-
+        orientation calculations and allocates or draws no foot geometry.</li>
         <li><strong>Standing</strong> &mdash; one authored biped cycle shared by both legs, with the
         second leg exactly half a cycle behind the first. The shoes are ordinary lower-body animation
         pieces: they face with the hips, remain flat through stance, and use a small toe/heel pitch

@@ -257,8 +257,8 @@ export type LegInstance = {
   /** Pointed final section of the lower leg, from the 2-foot-radius boundary
    * to radius zero at the foot origin. */
   lowerTaperSlot: number;
-  /** Upright hemisphere at the lower segment endpoint. Two-segment styles
-   * allocate it separately from the freely oriented joint-sphere pool. */
+  /** Upright hemisphere at the lower segment endpoint. Foot-enabled,
+   * two-segment rigs allocate it separately from the joint-sphere pool. */
   footSlot: number;
   /** Slots into LegInstancedRenderer's joint-sphere pool. Only allocated
    *  for the 'full' style. */
@@ -557,10 +557,12 @@ export function buildLegs(
         legColor, (s) => { leg.lowerTaperSlot = s; }, geometryTier, charts?.lower,
         legChartScale,
       );
-      leg.footSlot = legRenderer.allocFoot(
-        legColor, (s) => { leg.footSlot = s; }, geometryTier, charts?.joint,
-        legChartScale,
-      );
+      if (cfg.hasFeet) {
+        leg.footSlot = legRenderer.allocFoot(
+          legColor, (s) => { leg.footSlot = s; }, geometryTier, charts?.joint,
+          legChartScale,
+        );
+      }
     }
     if (legStyle === 'full') {
       leg.hipJointSlot = legRenderer.allocJoint(
@@ -1340,6 +1342,10 @@ function beginLegStepToChoppedSphereBoundary(
     entityId,
     terrainMode,
   );
+  if (leg.footSlot < 0) {
+    beginGroundedLegSlideTo(leg, targetX, targetY, targetZ);
+    return;
+  }
   sampleLocomotionFootSurfaceNormal(
     targetX,
     targetZ,
@@ -1434,17 +1440,19 @@ function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
     leg.worldY = leg.targetWorldY;
     leg.worldZ = leg.targetWorldZ;
     leg.contactState = 'planted';
-    // The complete angular change has already occurred over the swing. Promote
-    // the destination plane without resampling or changing the rendered pose
-    // on the touchdown frame.
-    leg.footContactNormalX = leg.footTargetNormalX;
-    leg.footContactNormalY = leg.footTargetNormalY;
-    leg.footContactNormalZ = leg.footTargetNormalZ;
-    leg.footContactOrientationCaptured = true;
-    leg.footQuaternionX = leg.footTargetQuaternionX;
-    leg.footQuaternionY = leg.footTargetQuaternionY;
-    leg.footQuaternionZ = leg.footTargetQuaternionZ;
-    leg.footQuaternionW = leg.footTargetQuaternionW;
+    if (leg.footSlot >= 0) {
+      // The complete angular change has already occurred over the swing. Promote
+      // the destination plane without resampling or changing the rendered pose
+      // on the touchdown frame.
+      leg.footContactNormalX = leg.footTargetNormalX;
+      leg.footContactNormalY = leg.footTargetNormalY;
+      leg.footContactNormalZ = leg.footTargetNormalZ;
+      leg.footContactOrientationCaptured = true;
+      leg.footQuaternionX = leg.footTargetQuaternionX;
+      leg.footQuaternionY = leg.footTargetQuaternionY;
+      leg.footQuaternionZ = leg.footTargetQuaternionZ;
+      leg.footQuaternionW = leg.footTargetQuaternionW;
+    }
     return;
   }
 
