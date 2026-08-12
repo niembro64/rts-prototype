@@ -193,6 +193,10 @@ function parseArgs(args) {
       case 'mapCells':
         harnessOptions.mapCells = value;
         break;
+      case 'camera-distance':
+      case 'cameraDistance':
+        harnessOptions.cameraDistance = value;
+        break;
       case 'width':
         harnessOptions.width = value;
         break;

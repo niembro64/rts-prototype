@@ -58,6 +58,8 @@ export type PerformanceBottleneckHarnessOptions = {
   readonly mapCells?: number;
   readonly width?: number;
   readonly height?: number;
+  /** Full-stack camera distance in world units; 0 = authored demo camera. */
+  readonly cameraDistance?: number;
 };
 
 export type PerformanceBottleneckHarnessSuiteOptions =
@@ -294,6 +296,11 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
   mapCells: 25,
   width: 1280,
   height: 720,
+  // 0 keeps the authored demo camera. A positive value snaps the orbit
+  // camera to that distance before full-stack measurement so far/glyph
+  // LOD rungs get exercised (ledger [34a]); the value is still subject
+  // to ordinary camera constraint clamps.
+  cameraDistance: 0,
 };
 
 const DEFAULT_SUITE_UNIT_CAPS = [500, 1000, 2500, 5000] as const;
@@ -392,6 +399,11 @@ function normalizeOptions(
     mapCells: positiveInteger(options.mapCells, DEFAULT_OPTIONS.mapCells),
     width: positiveInteger(options.width, DEFAULT_OPTIONS.width),
     height: positiveInteger(options.height, DEFAULT_OPTIONS.height),
+    cameraDistance: options.cameraDistance !== undefined
+      && Number.isFinite(options.cameraDistance)
+      && options.cameraDistance > 0
+      ? options.cameraDistance
+      : DEFAULT_OPTIONS.cameraDistance,
   };
 }
 
@@ -652,7 +664,12 @@ function collectRenderSceneWorkload(scene: GameInstance['app']['scene']): Render
     const groups = geometry.groups ?? [];
     let groupCount = 0;
     let submittedIndices = 0;
-    if (groups.length > 0) {
+    // three.js splits a geometry into per-group draw calls only when the
+    // mesh carries a material ARRAY; a single material renders every group
+    // in one call (WebGLRenderer renderBufferDirect receives group=null).
+    // BoxGeometry always authors 6 face groups, so counting groups under a
+    // single material overstated boxes 6x.
+    if (groups.length > 0 && Array.isArray(renderable.material)) {
       for (const group of groups) {
         const material = materials[group.materialIndex ?? 0];
         if (material?.visible === false) continue;
@@ -743,7 +760,16 @@ async function runFullStack(
     server.start();
     connection.markClientReady();
 
+    // Park the camera before AND after warmup: before, so LOD rungs latch
+    // against the requested distance while meshes build; after, in case
+    // the scene was not yet constructed on the first attempt.
+    const applyCameraDistance = (): void => {
+      if (options.cameraDistance <= 0) return;
+      game?.getScene()?.getOrbitCamera().snapDistance(options.cameraDistance);
+    };
+    applyCameraDistance();
     await waitMs(options.warmupSeconds * 1000);
+    applyCameraDistance();
     const measurementStartScene = game.getScene();
     const snapshotReceivedCounterStart =
       measurementStartScene?.getReceivedSnapshotCounters() ?? EMPTY_SNAPSHOT_TRAFFIC_COUNTERS;

@@ -1177,6 +1177,19 @@ export class OrbitCamera {
     this.apply();
   }
 
+  /** Diagnostic/harness hook: snap both the rendered and destination
+   *  distance so the next tick() has nothing to ease toward. Gameplay
+   *  input never calls this; the performance harness uses it to park
+   *  the camera at an explicit distance (e.g. far enough to exercise
+   *  the glyph LOD rung). Ordinary constraint clamps still apply on
+   *  subsequent ticks. */
+  public snapDistance(distance: number): void {
+    if (!Number.isFinite(distance) || distance <= 0) return;
+    this.distance = distance;
+    this.toDistance = distance;
+    this.apply();
+  }
+
   private applyDestinationIfSnap(): void {
     if (this.usesBarSpringTransition()) {
       if (this.transitionSeconds === 0) this.snapBarRenderToController();
