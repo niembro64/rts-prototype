@@ -9047,6 +9047,161 @@ pub(crate) fn shield_projectile_moving_field_hit(
     })
 }
 
+// Safety margin on the shield-field pair-rejection bound. The solvers'
+// largest effective surface is radius + projectile_radius, and grazes are
+// resolved within SHIELD_GRAZE_EPS; one world unit of extra slack keeps
+// the rejection conservative against every epsilon in the solvers while
+// still discarding the overwhelmingly common far-apart pairs.
+const SHIELD_BROADPHASE_PAD: f64 = 1.0;
+
+#[inline]
+fn segment_point_dist_sq_2d(
+    sx: f64,
+    sy: f64,
+    tx: f64,
+    ty: f64,
+    px: f64,
+    py: f64,
+) -> f64 {
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let len_sq = dx * dx + dy * dy;
+    let mut t = if len_sq > 0.0 {
+        ((px - sx) * dx + (py - sy) * dy) / len_sq
+    } else {
+        0.0
+    };
+    t = t.clamp(0.0, 1.0);
+    let ex = px - (sx + dx * t);
+    let ey = py - (sy + dy * t);
+    ex * ex + ey * ey
+}
+
+#[inline]
+fn segment_point_dist_sq_3d(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    px: f64,
+    py: f64,
+    pz: f64,
+) -> f64 {
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let len_sq = dx * dx + dy * dy + dz * dz;
+    let mut t = if len_sq > 0.0 {
+        ((px - sx) * dx + (py - sy) * dy + (pz - sz) * dz) / len_sq
+    } else {
+        0.0
+    };
+    t = t.clamp(0.0, 1.0);
+    let ex = px - (sx + dx * t);
+    let ey = py - (sy + dy * t);
+    let ez = pz - (sz + dz * t);
+    ex * ex + ey * ey + ez * ez
+}
+
+/// One pose's bounding sphere: the sphere shape is bounded by itself;
+/// the aimed cylinder (center → axis_end, radius, with or without caps)
+/// is bounded by the sphere at the axis midpoint with radius
+/// half-axis-length + field radius.
+#[inline]
+fn shield_field_pose_bound(
+    shape: u8,
+    radius: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+) -> (f64, f64, f64, f64) {
+    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+        let mx = (center_x + axis_end_x) * 0.5;
+        let my = (center_y + axis_end_y) * 0.5;
+        let mz = (center_z + axis_end_z) * 0.5;
+        let hx = axis_end_x - mx;
+        let hy = axis_end_y - my;
+        let hz = axis_end_z - mz;
+        let half_len = (hx * hx + hy * hy + hz * hz).sqrt();
+        return (mx, my, mz, half_len + radius);
+    }
+    (center_x, center_y, center_z, radius)
+}
+
+/// Conservative pair rejection for the per-(segment, shield-field)
+/// solvers. Builds one sphere covering the shield surface at its
+/// previous AND current pose: the moving-field solver evaluates the pose
+/// lerped between the two, and every lerped surface point is a lerp of a
+/// point inside each pose's bound, so the sphere through both bounds'
+/// convex hull covers the whole sweep. Returns false only when the
+/// segment stays strictly outside that sphere padded by the projectile
+/// radius — a pair neither solver can hit. The infinite vertical
+/// cylinder is unbounded in z, so its test runs in the ground plane.
+#[inline]
+fn shield_field_segment_near_pair(
+    pool: &ShieldSurfacePool,
+    i: usize,
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    projectile_radius: f64,
+) -> bool {
+    let shape = pool.field_shape[i];
+    let radius = pool.radius[i];
+    let pad = projectile_radius.max(0.0) + SHIELD_BROADPHASE_PAD;
+
+    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        let b0x = pool.prev_center_x[i];
+        let b0y = pool.prev_center_y[i];
+        let b1x = pool.center_x[i];
+        let b1y = pool.center_y[i];
+        let ux = (b0x + b1x) * 0.5;
+        let uy = (b0y + b1y) * 0.5;
+        let dcx = b1x - b0x;
+        let dcy = b1y - b0y;
+        let ur = 0.5 * (dcx * dcx + dcy * dcy).sqrt() + radius + pad;
+        return segment_point_dist_sq_2d(start_x, start_y, end_x, end_y, ux, uy) <= ur * ur;
+    }
+
+    let (b0x, b0y, b0z, r0) = shield_field_pose_bound(
+        shape,
+        radius,
+        pool.prev_center_x[i],
+        pool.prev_center_y[i],
+        pool.prev_center_z[i],
+        pool.prev_axis_end_x[i],
+        pool.prev_axis_end_y[i],
+        pool.prev_axis_end_z[i],
+    );
+    let (b1x, b1y, b1z, r1) = shield_field_pose_bound(
+        shape,
+        radius,
+        pool.center_x[i],
+        pool.center_y[i],
+        pool.center_z[i],
+        pool.axis_end_x[i],
+        pool.axis_end_y[i],
+        pool.axis_end_z[i],
+    );
+    let ux = (b0x + b1x) * 0.5;
+    let uy = (b0y + b1y) * 0.5;
+    let uz = (b0z + b1z) * 0.5;
+    let dcx = b1x - b0x;
+    let dcy = b1y - b0y;
+    let dcz = b1z - b0z;
+    let ur = 0.5 * (dcx * dcx + dcy * dcy + dcz * dcz).sqrt() + r0.max(r1) + pad;
+    segment_point_dist_sq_3d(start_x, start_y, start_z, end_x, end_y, end_z, ux, uy, uz)
+        <= ur * ur
+}
+
 #[inline]
 pub(crate) fn shield_projectile_intersection(
     start_x: f64,
@@ -9090,6 +9245,29 @@ pub(crate) fn shield_projectile_intersection(
             pool.field_reflection_mode_beam[i],
             pool.field_reflection_mode_laser[i],
         );
+        // Every crossing acceptance in both solvers routes through
+        // shield_reflection_mode_allows_crossing, which is always false
+        // for NONE — skipping here is result-identical.
+        if reflection_mode == SHIELD_REFLECTION_MODE_NONE {
+            continue;
+        }
+        // Conservative pair rejection before the analytic solvers: a
+        // segment that stays outside the union bound of the shield's
+        // previous and current pose (padded by the projectile radius)
+        // can never produce a static contact or a moving-field crossing.
+        if !shield_field_segment_near_pair(
+            pool,
+            i,
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            projectile_radius,
+        ) {
+            continue;
+        }
         let static_contact = shield_projectile_intersection_contact(
             start_x,
             start_y,
