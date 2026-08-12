@@ -106,11 +106,43 @@ const UF_OUT_ENTITY_STATE_SYNCED = 1 << 5;
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
 
+// The batch inputs/outputs live in WASM linear memory (ledger [25]) —
+// these are views over the staging arrays exported by unit_kinetics.rs,
+// so filling rows and reading results costs no boundary copies. WASM
+// memory growth replaces the backing ArrayBuffer (detaching views whose
+// writes then silently no-op) but never moves existing data, so the
+// cached pointers stay valid until the next staging_ensure growth;
+// refreshForceStagingViews re-derives the views on buffer identity
+// change and MUST run after any wasm call that can allocate before the
+// views are touched again.
 let _forceSlots: Uint32Array = new Uint32Array(0);
 let _forceEntitySlots: Uint32Array = new Uint32Array(0);
 let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
+let _forceStagingBuffer: ArrayBufferLike | null = null;
+let _forceStagingCapacity = 0;
+let _forceStagingSlotsPtr = 0;
+let _forceStagingFlagsPtr = 0;
+let _forceStagingRowsPtr = 0;
+let _forceStagingOutFlagsPtr = 0;
+
+function rebuildForceStagingViews(sim: SimWasm): void {
+  const buffer = sim.memory.buffer;
+  _forceStagingBuffer = buffer;
+  _forceSlots = new Uint32Array(buffer, _forceStagingSlotsPtr, _forceStagingCapacity);
+  _forceFlags = new Uint32Array(buffer, _forceStagingFlagsPtr, _forceStagingCapacity);
+  _forceRows = new Float64Array(
+    buffer,
+    _forceStagingRowsPtr,
+    _forceStagingCapacity * UNIT_FORCE_BATCH_STRIDE,
+  );
+  _forceOutFlags = new Uint32Array(buffer, _forceStagingOutFlagsPtr, _forceStagingCapacity);
+}
+
+function refreshForceStagingViews(sim: SimWasm): void {
+  if (sim.memory.buffer !== _forceStagingBuffer) rebuildForceStagingViews(sim);
+}
 let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
 const _surfaceLiftProposedForces = {
   airInverse: 0,
@@ -123,18 +155,23 @@ const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
 
-function ensureForceBatchCapacity(count: number): void {
-  if (_forceSlots.length < count) {
-    const next = Math.max(count, _forceSlots.length * 2, 256);
-    _forceSlots = new Uint32Array(next);
-    _forceEntitySlots = new Uint32Array(next);
-    _forceFlags = new Uint32Array(next);
-    _forceOutFlags = new Uint32Array(next);
+function ensureForceBatchCapacity(sim: SimWasm, count: number): void {
+  if (count > _forceStagingCapacity) {
+    const next = Math.max(count, _forceStagingCapacity * 2, 256);
+    sim.unitForceStagingEnsure(next);
+    _forceStagingCapacity = next;
+    // Growth may have moved the staging arrays — re-fetch every pointer.
+    _forceStagingSlotsPtr = sim.unitForceStagingSlotsPtr();
+    _forceStagingFlagsPtr = sim.unitForceStagingFlagsPtr();
+    _forceStagingRowsPtr = sim.unitForceStagingRowsPtr();
+    _forceStagingOutFlagsPtr = sim.unitForceStagingOutFlagsPtr();
+    rebuildForceStagingViews(sim);
+  } else {
+    refreshForceStagingViews(sim);
   }
-  const rowLen = count * UNIT_FORCE_BATCH_STRIDE;
-  if (_forceRows.length < rowLen) {
-    const nextRows = Math.max(rowLen, _forceRows.length * 2, 256 * UNIT_FORCE_BATCH_STRIDE);
-    _forceRows = new Float64Array(nextRows);
+  if (_forceEntitySlots.length < count) {
+    const next = Math.max(count, _forceEntitySlots.length * 2, 256);
+    _forceEntitySlots = new Uint32Array(next);
   }
   if (_forceTerrainGroundZ.length < count) {
     const next = Math.max(count, _forceTerrainGroundZ.length * 2, 256);
@@ -348,7 +385,7 @@ export class UnitForceSystem {
     if (activeSlots.length === 0) return;
     this.probeSupportIndexReady = false;
 
-    ensureForceBatchCapacity(activeSlots.length);
+    ensureForceBatchCapacity(sim, activeSlots.length);
 
     let candidateCount = 0;
     for (let i = 0; i < activeSlots.length; i++) {
@@ -387,6 +424,10 @@ export class UnitForceSystem {
         _forceTerrainMaterialFlags.subarray(0, candidateCount),
       ),
     ) !== 0;
+    // The terrain-sample call marshals copies inside WASM and can grow
+    // memory, detaching the staging views written above (contents stay
+    // put — growth never moves data). Re-derive before the row fill.
+    refreshForceStagingViews(sim);
     const terrainOnlySupport =
       terrainSampled &&
       !this.physics.hasSupportSurfaceBodies() &&
@@ -676,11 +717,7 @@ export class UnitForceSystem {
     const windY = Number.isFinite(wind.y) ? wind.y : 0;
     const windZ = Number.isFinite(wind.z) ? wind.z : 0;
     measureWasmBoundary('server.unitForceStepBatch', () => {
-      sim.unitForceStepBatch(
-        _forceSlots.subarray(0, count),
-        _forceFlags.subarray(0, count),
-        _forceRows.subarray(0, count * UNIT_FORCE_BATCH_STRIDE),
-        _forceOutFlags.subarray(0, count),
+      sim.unitForceStepBatchStaged(
         count,
         dtSec,
         windX,
@@ -689,6 +726,9 @@ export class UnitForceSystem {
         SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
       );
     });
+    // The staged batch itself does not allocate, but keep the scatter
+    // reads honest against any future allocation inside it.
+    refreshForceStagingViews(sim);
 
     for (let i = 0; i < count; i++) {
       const outFlags = _forceOutFlags[i];

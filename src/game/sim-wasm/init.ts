@@ -132,6 +132,12 @@ import __wbg_init, {
   render_turret_aim_output_scratch_ptr,
   render_turret_aim_scratch_ensure,
   unit_force_step_batch,
+  unit_force_staging_ensure,
+  unit_force_staging_slots_ptr,
+  unit_force_staging_flags_ptr,
+  unit_force_staging_rows_ptr,
+  unit_force_staging_out_flags_ptr,
+  unit_force_step_batch_staged,
   unit_force_profile_ensure,
   unit_force_profile_values_ptr,
   unit_force_profile_flags_ptr,
@@ -1048,6 +1054,23 @@ export interface SimWasm {
     flags: Uint32Array,
     rows: Float64Array,
     outFlags: Uint32Array,
+    count: number,
+    dtSec: number,
+    windX: number,
+    windY: number,
+    windZ: number,
+    surfaceFollowingMinimumDistanceWorld: number,
+  ) => number;
+  /** Grow (never shrink) the WASM-resident force-batch staging arrays.
+   *  Growth may move them — re-fetch the pointers afterwards. */
+  readonly unitForceStagingEnsure: (count: number) => void;
+  readonly unitForceStagingSlotsPtr: () => number;
+  readonly unitForceStagingFlagsPtr: () => number;
+  readonly unitForceStagingRowsPtr: () => number;
+  readonly unitForceStagingOutFlagsPtr: () => number;
+  /** unitForceStepBatch reading inputs from / writing outputs to the
+   *  staging arrays in place — no per-call boundary copies (ledger [25]). */
+  readonly unitForceStepBatchStaged: (
     count: number,
     dtSec: number,
     windX: number,
@@ -4275,6 +4298,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitEffectiveDriveAcceleration: unit_effective_drive_acceleration,
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         unitForceStepBatch: unit_force_step_batch,
+        unitForceStagingEnsure: unit_force_staging_ensure,
+        unitForceStagingSlotsPtr: unit_force_staging_slots_ptr,
+        unitForceStagingFlagsPtr: unit_force_staging_flags_ptr,
+        unitForceStagingRowsPtr: unit_force_staging_rows_ptr,
+        unitForceStagingOutFlagsPtr: unit_force_staging_out_flags_ptr,
+        unitForceStepBatchStaged: unit_force_step_batch_staged,
         unitForceSurfaceLiftInverseDistanceResponse: unit_force_surface_lift_inverse_distance_response,
         unitForceWaterSurfaceDepthWorld: unit_force_water_surface_depth_world,
         unitForceWaterFraction: unit_force_water_fraction,

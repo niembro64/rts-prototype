@@ -953,6 +953,133 @@ pub fn unit_force_step_batch(
     wind_z: f64,
     surface_lift_minimum_distance_world: f64,
 ) -> u32 {
+    unit_force_step_batch_core(
+        slots,
+        flags,
+        rows,
+        out_flags,
+        count,
+        dt_sec,
+        wind_x,
+        wind_y,
+        wind_z,
+        surface_lift_minimum_distance_world,
+    )
+}
+
+// ── JS↔WASM staging for the per-tick force batch (ledger [25]) ──────
+// The slice-taking export above costs wasm-bindgen a malloc + copy-in
+// AND a copy-back-out per call — 59 f64 per unit per tick in both
+// directions. These staging arrays live in WASM linear memory instead:
+// JS fills them through typed-array views over the exported pointers
+// and the batch reads/writes them in place. Growth (staging_ensure) or
+// any wasm memory growth invalidates the pointers, so JS re-derives its
+// views whenever the memory buffer identity changes or capacity grows.
+pub(crate) struct UnitForceStaging {
+    slots: Vec<u32>,
+    flags: Vec<u32>,
+    rows: Vec<f64>,
+    out_flags: Vec<u32>,
+}
+
+pub(crate) static UNIT_FORCE_STAGING: WasmLazy<UnitForceStaging> = WasmLazy::new();
+
+fn unit_force_staging() -> &'static mut UnitForceStaging {
+    UNIT_FORCE_STAGING.get_or_init(|| UnitForceStaging {
+        slots: Vec::new(),
+        flags: Vec::new(),
+        rows: Vec::new(),
+        out_flags: Vec::new(),
+    })
+}
+
+/// Grow (never shrink) the staging arrays to hold `count` batch entries.
+/// Call before writing through the pointer views; growth may move the
+/// arrays, so pointers must be re-fetched afterwards.
+#[wasm_bindgen]
+pub fn unit_force_staging_ensure(count: u32) {
+    let staging = unit_force_staging();
+    let count = count as usize;
+    if staging.slots.len() < count {
+        staging.slots.resize(count, 0);
+        staging.flags.resize(count, 0);
+        staging.out_flags.resize(count, 0);
+    }
+    let rows_len = count * UNIT_FORCE_BATCH_STRIDE;
+    if staging.rows.len() < rows_len {
+        staging.rows.resize(rows_len, 0.0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn unit_force_staging_slots_ptr() -> *const u32 {
+    unit_force_staging().slots.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn unit_force_staging_flags_ptr() -> *const u32 {
+    unit_force_staging().flags.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn unit_force_staging_rows_ptr() -> *mut f64 {
+    unit_force_staging().rows.as_mut_ptr()
+}
+
+#[wasm_bindgen]
+pub fn unit_force_staging_out_flags_ptr() -> *mut u32 {
+    unit_force_staging().out_flags.as_mut_ptr()
+}
+
+/// The force batch reading its inputs from (and writing its outputs to)
+/// the WASM-resident staging arrays — no boundary copies. Identical
+/// math to `unit_force_step_batch`; both delegate to the same core.
+#[wasm_bindgen]
+pub fn unit_force_step_batch_staged(
+    count: u32,
+    dt_sec: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+    surface_lift_minimum_distance_world: f64,
+) -> u32 {
+    let staging = unit_force_staging();
+    let count = count as usize;
+    if staging.slots.len() < count || staging.rows.len() < count * UNIT_FORCE_BATCH_STRIDE {
+        return 0;
+    }
+    let UnitForceStaging {
+        slots,
+        flags,
+        rows,
+        out_flags,
+    } = staging;
+    unit_force_step_batch_core(
+        slots,
+        flags,
+        rows,
+        out_flags,
+        count,
+        dt_sec,
+        wind_x,
+        wind_y,
+        wind_z,
+        surface_lift_minimum_distance_world,
+    )
+}
+
+fn unit_force_step_batch_core(
+    slots: &[u32],
+    flags: &[u32],
+    rows: &mut [f64],
+    out_flags: &mut [u32],
+    count: usize,
+    dt_sec: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+    surface_lift_minimum_distance_world: f64,
+) -> u32 {
     if slots.len() < count
         || flags.len() < count
         || out_flags.len() < count
