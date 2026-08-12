@@ -65,13 +65,13 @@ function handleCameraTutorialDone(): void {
       >
         {{ winnerName }} wins!
       </h1>
-      <p class="loser-text">All other commanders were destroyed</p>
+      <p class="loser-text">{{ winnerName }} is the only team with living commanders.</p>
       <div class="game-over-actions">
         <button class="restart-btn" @click="emit('restartGame')">
           Return to Lobby
         </button>
         <button class="dismiss-btn" @click="emit('dismissGameOver')">
-          Continue Playing
+          Keep Watching
         </button>
       </div>
     </div>

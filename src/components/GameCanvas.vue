@@ -198,6 +198,11 @@ const showLobby = ref(true);
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
+const winningAllyTeamName = computed(() => {
+  if (gameOverWinner.value === null) return '';
+  const winner = lobbyPlayers.value.find((player) => player.playerId === gameOverWinner.value);
+  return `Team ${winner?.allyTeamId ?? gameOverWinner.value}`;
+});
 
 /** Host-only: move a seat to the next side, wrapping at the lobby's side
  *  count. The host is authoritative — NetworkManager re-announces the
@@ -2778,11 +2783,11 @@ watchEffect(() => {
       :current-battle-mode="currentBattleMode"
       :get-orbit="getActiveOrbitCamera"
       :game-over-winner="gameOverWinner"
-      :winner-name="gameOverWinner === null ? '' : resolvePlayerName(gameOverWinner)"
+      :winner-name="winningAllyTeamName"
       :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
       @toggle-spectate-mode="toggleSpectateMode"
       @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
-      @dismiss-game-over="gameOverWinner = null"
+      @dismiss-game-over="gameOverWinner = null; spectateMode = true"
       @restart-game="restartGame"
     />
   </div>

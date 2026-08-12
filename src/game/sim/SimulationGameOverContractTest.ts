@@ -1,9 +1,10 @@
 import {
-  markDefeatedPlayerEntitiesForDestruction,
   resolveCommanderGameOverWinner,
 } from './SimulationGameOver';
 import { WorldState } from './WorldState';
 import { ENTITY_CHANGED_HP } from '@/types/network';
+import { buildTeamRosterFromAssignment } from './teamRoster';
+import type { PlayerId } from './types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[game-over contract] ${message}`);
@@ -11,45 +12,51 @@ function assertContract(condition: unknown, message: string): asserts condition 
 
 export function runSimulationGameOverContractTest(): void {
   const world = new WorldState(1, 512, 512);
-  const winner = world.createUnitFromBlueprint(80, 80, 1, 'unitCommander', {
+  const playerIds = [1, 2, 3] as PlayerId[];
+  world.setTeamRoster(buildTeamRosterFromAssignment(
+    playerIds,
+    new Map<PlayerId, number>([[1, 1], [2, 1], [3, 2]]),
+  ));
+  const alliedCommanderA = world.createUnitFromBlueprint(80, 80, 1, 'unitCommander', {
     allocateSubEntityIds: false,
   });
-  const defeatedCommander = world.createUnitFromBlueprint(420, 420, 2, 'unitCommander', {
+  const alliedCommanderB = world.createUnitFromBlueprint(105, 80, 2, 'unitCommander', {
     allocateSubEntityIds: false,
   });
-  const defeatedUnit = world.createUnitFromBlueprint(400, 420, 2, 'unitJackal', {
+  const defeatedCommander = world.createUnitFromBlueprint(420, 420, 3, 'unitCommander', {
     allocateSubEntityIds: false,
   });
-  const defeatedBuilding = world.createBuilding(400, 390, 32, 32, 24, 2);
-  const neutralBuilding = world.createBuilding(250, 250, 32, 32, 24);
   for (const entity of [
-    winner,
+    alliedCommanderA,
+    alliedCommanderB,
     defeatedCommander,
-    defeatedUnit,
-    defeatedBuilding,
-    neutralBuilding,
   ]) {
     world.addEntity(entity);
   }
 
+  assertContract(
+    resolveCommanderGameOverWinner(world, playerIds) === null,
+    'two living enemy sides must keep the match running',
+  );
+
   defeatedCommander.unit!.hp = 0;
   world.markSnapshotDirty(defeatedCommander.id, ENTITY_CHANGED_HP);
   assertContract(
-    resolveCommanderGameOverWinner(world, [1, 2]) === 1,
-    'the last living commander should win',
+    resolveCommanderGameOverWinner(world, playerIds) === 1,
+    'multiple living allied commanders should win as one side',
   );
 
-  markDefeatedPlayerEntitiesForDestruction(world, 1);
-  assertContract(winner.unit!.hp > 0, 'the winning commander must survive the wipeout');
-  assertContract(defeatedUnit.unit!.hp === 0, 'defeated mobile units must be destroyed');
-  assertContract(defeatedBuilding.building!.hp === 0, 'defeated buildings must be destroyed');
-  assertContract(neutralBuilding.building!.hp > 0, 'neutral world entities must survive');
-
-  const pendingDeathIds: number[] = [];
-  world.drainPendingDeathCheckIds(pendingDeathIds);
+  alliedCommanderA.unit!.hp = 0;
+  world.markSnapshotDirty(alliedCommanderA.id, ENTITY_CHANGED_HP);
   assertContract(
-    pendingDeathIds.includes(defeatedUnit.id) &&
-      pendingDeathIds.includes(defeatedBuilding.id),
-    'defeated entities must use the normal explosive death-cleanup path',
+    resolveCommanderGameOverWinner(world, playerIds) === 2,
+    'the winner field should identify a living member of the surviving side',
+  );
+
+  alliedCommanderB.unit!.hp = 0;
+  world.markSnapshotDirty(alliedCommanderB.id, ENTITY_CHANGED_HP);
+  assertContract(
+    resolveCommanderGameOverWinner(world, playerIds) === null,
+    'zero surviving commanders must not award an arbitrary winner',
   );
 }

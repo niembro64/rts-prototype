@@ -79,10 +79,7 @@ import {
   hasQueuedActionIntents,
 } from './unitActionIntents';
 import { SimulationEventQueues } from './SimulationEventQueues';
-import {
-  markDefeatedPlayerEntitiesForDestruction,
-  resolveCommanderGameOverWinner,
-} from './SimulationGameOver';
+import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 import { SimulationCombatController } from './SimulationCombatController';
@@ -597,14 +594,7 @@ export class Simulation {
     this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
 
     // Check for game over (commander death)
-    const victoryDeclared = this.checkGameOver();
-
-    // Victory marks every defeated entity for ordinary death cleanup. Run the
-    // shared pass again so their explosions happen on the victory tick and
-    // contribute forces before the accumulator is finalized.
-    if (victoryDeclared) {
-      this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
-    }
+    this.checkGameOver();
 
     // Finalize force accumulator (sums all contributions)
     this.forceAccumulator.finalize();
@@ -639,7 +629,6 @@ export class Simulation {
     if (winnerId === null) return false;
 
     this.gameOverWinnerId = winnerId;
-    markDefeatedPlayerEntitiesForDestruction(this.world, winnerId);
     this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
     const onGameOver = this.onGameOver;
     if (onGameOver !== null) onGameOver(winnerId);

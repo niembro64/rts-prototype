@@ -167,11 +167,9 @@ function factoryQuotaCount(factory: Entity, unitBlueprintId: string): number {
   return factory.factory?.productionQuotaCounts[unitBlueprintId] ?? 0;
 }
 
-/** A bare Simulation resolves the commander win condition on its first tick:
- *  with no living commander for a side, markDefeatedPlayerEntitiesForDestruction
- *  zeroes every entity that side owns before any assertion can observe it. Any
- *  multi-player contract world that steps the sim must therefore keep a living
- *  commander per side, or its "enemy" is already dead by tick one. */
+/** A bare Simulation resolves the commander win condition on its first tick.
+ *  Multi-player contract worlds that step the sim keep a living commander per
+ *  side so they remain battle-phase fixtures instead of latching game over. */
 function keepContractMatchLive(world: WorldState, playerIds: readonly number[]): Entity[] {
   const commanders: Entity[] = [];
   for (let i = 0; i < playerIds.length; i++) {
