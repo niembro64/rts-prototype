@@ -78,6 +78,7 @@ function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket
     },
     {
       renderScope: new ViewportFootprint(),
+      renderView: null,
       includeBodyHud: false,
       includeBodyNames: false,
       includeShields: false,
@@ -112,6 +113,7 @@ function collectShieldRenderPacket(
     },
     {
       renderScope: new ViewportFootprint(),
+      renderView: null,
       includeBodyHud: false,
       includeBodyNames: false,
       includeShields: true,

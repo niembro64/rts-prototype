@@ -772,6 +772,7 @@ export class RtsScene3DRenderPhase {
    *  captured here per call. */
   private readonly prepareEntityListOptions = {
     renderScope: null as unknown as ViewportFootprint,
+    renderView: null as RenderViewState3D | null,
     includeBodyHud: false,
     includeBodyNames: false,
     includeShields: false,
@@ -791,10 +792,11 @@ export class RtsScene3DRenderPhase {
   private prepareEntityLists(
     options: RenderPhaseEntityListOptions,
     mode: SelectionHudMode,
-    _renderView: RenderViewState3D,
+    renderView: RenderViewState3D,
   ): RenderPhaseEntityLists {
     const packetOptions = this.prepareEntityListOptions;
     packetOptions.renderScope = this.renderScope;
+    packetOptions.renderView = renderView;
     packetOptions.includeBodyHud = options.includeBodyHud;
     packetOptions.includeBodyNames = options.includeBodyNames;
     packetOptions.includeShields = options.includeShields;

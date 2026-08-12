@@ -27,6 +27,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
+import { viewExcludesSphere } from '../render3d/EntityDetailLevel3D';
+import type { RenderViewState3D } from '../render3d/RenderFrameState3D';
 import { economyManager } from '../sim/economy';
 import {
   createEntityFromNetwork,
@@ -320,6 +322,12 @@ type ClientViewRenderEntityPackets3D = {
 
 type ClientViewRenderPacketOptions3D = {
   renderScope: ViewportFootprint;
+  /** Camera view for the conservative cone cull. The ground-footprint
+   *  scope reaches the horizon at shallow pitch, so most in-scope
+   *  entities can still be far outside the view cone; rows for those
+   *  are skipped entirely (same lifecycle as a scope exit). null — and
+   *  RENDER: ALL — disable the cull. */
+  renderView: RenderViewState3D | null;
   includeBodyHud: boolean;
   includeBodyNames: boolean;
   includeShields: boolean;
@@ -335,6 +343,38 @@ type ClientViewRenderPacketOptions3D = {
   isEntityFarLod?: (entity: Entity) => boolean;
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
 };
+
+/** Conservative bounding sphere for the render-packet cone cull. The
+ *  margins are deliberately generous — barrels, rigs, and HUD sprites
+ *  extend past the authored radius, and a sphere that is too small pops
+ *  entities at the screen edge. viewExcludesSphere itself adds a 1.15x
+ *  cone margin on top. */
+function renderConeCullExcludes(
+  view: RenderViewState3D,
+  entity: Entity,
+): boolean {
+  const unit = entity.unit;
+  if (unit !== null) {
+    return viewExcludesSphere(
+      view,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+      unit.radius.other * 3 + 60,
+    );
+  }
+  const building = entity.building;
+  if (building !== null) {
+    return viewExcludesSphere(
+      view,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+      Math.max(building.width, building.height) + 160,
+    );
+  }
+  return false;
+}
 
 type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
@@ -3785,9 +3825,13 @@ export class ClientViewState {
 
       const unitRowSlots = this.scopedRenderUnitRowSlots;
       const buildingRowSlots = this.scopedRenderBuildingRowSlots;
+      const renderView = options.renderView;
       let hoveredBodyHudPushed = false;
       for (let i = 0; i < units.length; i++) {
         const entity = units[i];
+        if (renderView !== null && renderConeCullExcludes(renderView, entity)) {
+          continue;
+        }
         const farLod = this.entityUsesFarLod3D(entity, options);
         this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
         if (
@@ -3808,6 +3852,9 @@ export class ClientViewState {
       }
       for (let i = 0; i < buildings.length; i++) {
         const entity = buildings[i];
+        if (renderView !== null && renderConeCullExcludes(renderView, entity)) {
+          continue;
+        }
         const farLod = this.entityUsesFarLod3D(entity, options);
         this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
         if (
