@@ -1596,7 +1596,7 @@
     "targeting": {
       "engagement": {
         "range": 900,
-        "rangeVolume": "turret-range-top-water-and-bottom-unbounded",
+        "rangeVolume": "turret-range-bottom-unbounded",
         "rangeMultiplierOverrides": {
           "engageRangeMax": {
             "acquire": 0.95,

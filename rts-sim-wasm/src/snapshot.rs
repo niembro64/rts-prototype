@@ -4758,53 +4758,135 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn air_only_projectiles_require_an_exposed_target_volume() {
-        let submerged = CombatTargetingCylinderTarget {
+    pub(crate) fn emission_medium_routes_exhaustively_gate_source_and_target_media() {
+        let above_source = TERRAIN_WATER_LEVEL + 0.001;
+        let underwater_source = TERRAIN_WATER_LEVEL;
+        let above_body = CombatTargetingCylinderTarget {
             horizontal_dist_sq: 0.0,
             horizontal_radius: 1.0,
+            bottom_z: TERRAIN_WATER_LEVEL,
+            top_z: TERRAIN_WATER_LEVEL + 20.0,
+            is_point: false,
+        };
+        let underwater_body = CombatTargetingCylinderTarget {
             bottom_z: TERRAIN_WATER_LEVEL - 20.0,
             top_z: TERRAIN_WATER_LEVEL,
+            ..above_body
         };
-        let exposed = CombatTargetingCylinderTarget {
-            top_z: TERRAIN_WATER_LEVEL + 0.001,
-            ..submerged
-        };
-        assert!(!combat_targeting_flags_allow_target_medium(
-            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
-            submerged,
-        ));
-        assert!(combat_targeting_flags_allow_target_medium(
-            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
-            exposed,
-        ));
-        assert!(combat_targeting_flags_allow_target_medium(0, submerged));
-
-        // The water-only mirror: a torpedo may engage a hull with any volume
-        // under the surface, and never one that is fully clear of it.
-        let airborne = CombatTargetingCylinderTarget {
-            bottom_z: TERRAIN_WATER_LEVEL + 0.001,
-            top_z: TERRAIN_WATER_LEVEL + 40.0,
-            ..submerged
-        };
-        let straddling = CombatTargetingCylinderTarget {
+        let straddling_body = CombatTargetingCylinderTarget {
             bottom_z: TERRAIN_WATER_LEVEL - 10.0,
             top_z: TERRAIN_WATER_LEVEL + 10.0,
-            ..submerged
+            ..above_body
         };
+        let surface_point = CombatTargetingCylinderTarget {
+            bottom_z: TERRAIN_WATER_LEVEL,
+            top_z: TERRAIN_WATER_LEVEL,
+            is_point: true,
+            ..above_body
+        };
+
+        let cases = [
+            (
+                CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE,
+                above_source,
+                above_body,
+                "A->A",
+            ),
+            (
+                CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER,
+                above_source,
+                underwater_body,
+                "A->W",
+            ),
+            (
+                CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE,
+                underwater_source,
+                above_body,
+                "W->A",
+            ),
+            (
+                CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER,
+                underwater_source,
+                underwater_body,
+                "W->W",
+            ),
+        ];
+        for (route, source_z, target, label) in cases {
+            assert!(
+                combat_targeting_flags_allow_target_medium(route, source_z, target),
+                "{label} must admit its exact authored cell",
+            );
+            assert!(
+                combat_targeting_flags_allow_target_medium(route, source_z, straddling_body),
+                "{label} must admit a unit/building occupying both target media",
+            );
+            for (other_route, _, _, other_label) in cases {
+                if route == other_route {
+                    continue;
+                }
+                assert!(
+                    !combat_targeting_flags_allow_target_medium(
+                        route,
+                        if other_label.starts_with('A') {
+                            above_source
+                        } else {
+                            underwater_source
+                        },
+                        if other_label.ends_with('A') {
+                            above_body
+                        } else {
+                            underwater_body
+                        },
+                    ),
+                    "{label} must not imply {other_label}",
+                );
+            }
+        }
         assert!(!combat_targeting_flags_allow_target_medium(
-            CT_TURRET_CFG_REQUIRES_WATER_TARGET,
-            airborne,
+            0,
+            above_source,
+            straddling_body,
         ));
         assert!(combat_targeting_flags_allow_target_medium(
-            CT_TURRET_CFG_REQUIRES_WATER_TARGET,
-            straddling,
+            CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER,
+            underwater_source,
+            surface_point,
         ));
-        // A straddling hull is present in BOTH media, so an air-only weapon
-        // reaches it as well.
-        assert!(combat_targeting_flags_allow_target_medium(
-            CT_TURRET_CFG_REQUIRES_AIR_TARGET,
-            straddling,
+        assert!(!combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE,
+            underwater_source,
+            surface_point,
         ));
+        assert_eq!(
+            combat_targeting_target_underwater_fraction(
+                CT_ENTITY_FAMILY_SHOT,
+                TERRAIN_WATER_LEVEL + 0.001,
+                100.0,
+                0.0,
+            ),
+            0.0,
+            "a shot is an above-water point even when its collision radius crosses the surface",
+        );
+        assert_eq!(
+            combat_targeting_target_underwater_fraction(
+                CT_ENTITY_FAMILY_SHOT,
+                TERRAIN_WATER_LEVEL,
+                100.0,
+                0.0,
+            ),
+            1.0,
+            "a shot point exactly on the surface is underwater",
+        );
+        let partial_unit_fraction = combat_targeting_target_underwater_fraction(
+            CT_ENTITY_FAMILY_UNIT,
+            TERRAIN_WATER_LEVEL,
+            10.0,
+            0.0,
+        );
+        assert!(
+            partial_unit_fraction > 0.0 && partial_unit_fraction < 1.0,
+            "a unit body crossing the surface must occupy both media",
+        );
     }
 
     #[test]
@@ -9223,11 +9305,15 @@ mod lock_on_inclusion_tests {
 
     fn stamp_turret(entity_slot: u32, turret_idx: u32, spec: TurretSpec) {
         let range = 120.0;
+        // These legacy targeting fixtures isolate inclusion/range/FSM policy.
+        // Give their synthetic emission every explicitly named route so the
+        // new fail-closed production matrix does not become an unrelated gate.
+        let fixture_flags = spec.flags | CT_TURRET_CFG_ROUTE_MASK;
         let (parent_id, parent_z, task_target_id) = {
             let pool = combat_targeting_pool();
             let s = entity_slot as usize;
             if s < pool.entity_id.len() {
-                let task_target_id = if (spec.flags & CT_TURRET_CFG_HOST_CONTROLLED) != 0 {
+                let task_target_id = if (fixture_flags & CT_TURRET_CFG_HOST_CONTROLLED) != 0 {
                     pool.entity_priority_target_id[s]
                 } else {
                     -1
@@ -9268,7 +9354,7 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             -1,
-            spec.flags,
+            fixture_flags,
             spec.dps,
             0.0,
             0.0,
@@ -11305,6 +11391,94 @@ mod lock_on_inclusion_tests {
             state, CT_TURRET_STATE_IDLE,
             "hostOnly must idle when its host task is ineligible, even when an eligible fallback exists"
         );
+    }
+
+    #[test]
+    pub(crate) fn underwater_to_air_emission_uses_team_air_radar_or_sight() {
+        let _guard = lock_tests();
+        for (requires_full_sight, label) in [(false, "radar"), (true, "full sight")] {
+            reset_pools();
+            stamp_entity_at_z(
+                SOURCE_SLOT,
+                SOURCE_ID,
+                PLAYER_1,
+                0.0,
+                TERRAIN_WATER_LEVEL - 10.0,
+                CT_ENTITY_FAMILY_UNIT,
+                SOURCE_UNIT_CODE,
+                1,
+                -1,
+            );
+            stamp_turret(
+                SOURCE_SLOT,
+                0,
+                TurretSpec {
+                    flags: CT_TURRET_CFG_HOST_CONTROLLED
+                        | if requires_full_sight {
+                            CT_TURRET_CFG_REQUIRES_FULL_SIGHT
+                        } else {
+                            0
+                        },
+                    relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                    ..TurretSpec::default()
+                },
+            );
+            stamp_body_target_at_z(
+                1,
+                201,
+                PLAYER_2,
+                100.0,
+                TERRAIN_WATER_LEVEL + 3.0,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+            );
+            // An allied observer above water supplies the relevant team-air
+            // fact. The underwater weapon host has no local sensor coverage.
+            stamp_entity_at_z(
+                2,
+                301,
+                PLAYER_1,
+                90.0,
+                TERRAIN_WATER_LEVEL + 10.0,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_B,
+                0,
+                -1,
+            );
+            {
+                let pool = combat_targeting_pool();
+                for slot in [SOURCE_SLOT as usize, 2] {
+                    pool.entity_full_vision_above_water_radius[slot] = 0.0;
+                    pool.entity_full_vision_underwater_radius[slot] = 0.0;
+                    pool.entity_radar_radius[slot] = 0.0;
+                    pool.entity_sonar_radius[slot] = 0.0;
+                }
+                if requires_full_sight {
+                    pool.entity_full_vision_above_water_radius[2] = 30.0;
+                } else {
+                    pool.entity_radar_radius[2] = 30.0;
+                }
+                let turret_idx = combat_targeting_turret_global_idx(SOURCE_SLOT, 0);
+                pool.turret_config_flags[turret_idx] = (pool.turret_config_flags[turret_idx]
+                    & !CT_TURRET_CFG_ROUTE_MASK)
+                    | CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE;
+            }
+
+            let (target_id, state, _) = run_schedule_tick(1);
+            assert_eq!(target_id, 201, "W->A must accept allied team-air {label}");
+            assert_ne!(state, CT_TURRET_STATE_IDLE);
+            let pool = combat_targeting_pool();
+            let owner_bit = combat_targeting_player_bit(PLAYER_1);
+            if requires_full_sight {
+                assert_ne!(pool.entity_team_air_sight_mask[1] & owner_bit, 0);
+                assert_eq!(pool.entity_team_air_radar_mask[1] & owner_bit, 0);
+            } else {
+                assert_ne!(pool.entity_team_air_radar_mask[1] & owner_bit, 0);
+                assert_eq!(pool.entity_team_air_sight_mask[1] & owner_bit, 0);
+            }
+            assert_eq!(pool.entity_team_water_sight_mask[1] & owner_bit, 0);
+            assert_eq!(pool.entity_team_water_sonar_mask[1] & owner_bit, 0);
+        }
     }
 
     #[test]

@@ -1,6 +1,10 @@
 {
   "rayBeamMini": {
     "type": "beam",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamMini"
     },
@@ -20,6 +24,10 @@
   },
   "rayBeamMedium": {
     "type": "beam",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamMedium"
     },
@@ -39,6 +47,10 @@
   },
   "rayBeamHeavy": {
     "type": "beam",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamHeavy"
     },
@@ -58,6 +70,10 @@
   },
   "rayBeamMega": {
     "type": "beam",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamMega"
     },

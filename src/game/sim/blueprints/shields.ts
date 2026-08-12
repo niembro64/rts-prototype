@@ -18,6 +18,7 @@ import rawShieldBlueprints from './shields.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
 import type { ShieldBlueprint } from './types';
+import { validateEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 
 const SHIELD_SURFACE_RENDER_MODES = [
   'finite-mesh',
@@ -31,6 +32,7 @@ const SHIELD_EXPLICIT_FIELDS = [
   'transitionTime',
   'reflection',
   'barrier',
+  'mediumTrajectory',
   'hitSound',
 ] as const;
 
@@ -89,6 +91,10 @@ for (const [id, blueprint] of Object.entries(SHIELD_BLUEPRINTS)) {
     `shield blueprint ${id}`,
     blueprint,
     SHIELD_EXPLICIT_FIELDS,
+  );
+  validateEmissionMediumTrajectoryMatrix(
+    `shield blueprint ${id}.mediumTrajectory`,
+    blueprint.mediumTrajectory,
   );
   if (!Number.isFinite(blueprint.transitionTime) || blueprint.transitionTime <= 0) {
     throw new Error(

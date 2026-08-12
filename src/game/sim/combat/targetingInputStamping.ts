@@ -53,6 +53,7 @@ import { WATER_LEVEL } from '../Terrain';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
+import { compileEmissionMediumTrajectoryMask } from '../emissionMedium';
 import {
   CT_BLUEPRINT_CODE_NONE,
   CT_ENTITY_FAMILY_BUILDING,
@@ -80,8 +81,6 @@ import {
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
-  CT_TURRET_CFG_REQUIRES_AIR_TARGET,
-  CT_TURRET_CFG_REQUIRES_WATER_TARGET,
   CT_TURRET_CFG_NO_AUTO_ACQUIRE,
   CT_TURRET_CFG_CONSTANT_SPEED_LEAD,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
@@ -165,6 +164,10 @@ export type CombatTargetingStateViews = {
   aimPitch: Float32Array;
   activeTurretMask: Uint32Array;
   firingTurretMask: Uint32Array;
+  teamAirSightMask: Uint32Array;
+  teamWaterSightMask: Uint32Array;
+  teamAirRadarMask: Uint32Array;
+  teamWaterSonarMask: Uint32Array;
   sensorCoverageMask: Uint32Array;
   fullSightCoverageMask: Uint32Array;
   detectorCoverageMask: Uint32Array;
@@ -458,6 +461,26 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
       targeting.entityFiringTurretMaskPtr(),
       entityCapacity,
     ),
+    teamAirSightMask: new Uint32Array(
+      buffer,
+      targeting.entityTeamAirSightMaskPtr(),
+      entityCapacity,
+    ),
+    teamWaterSightMask: new Uint32Array(
+      buffer,
+      targeting.entityTeamWaterSightMaskPtr(),
+      entityCapacity,
+    ),
+    teamAirRadarMask: new Uint32Array(
+      buffer,
+      targeting.entityTeamAirRadarMaskPtr(),
+      entityCapacity,
+    ),
+    teamWaterSonarMask: new Uint32Array(
+      buffer,
+      targeting.entityTeamWaterSonarMaskPtr(),
+      entityCapacity,
+    ),
     sensorCoverageMask: new Uint32Array(
       buffer,
       targeting.entitySensorCoverageMaskPtr(),
@@ -722,26 +745,12 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (shot !== null && shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
-  // Medium legality is a property of the EMISSION, not of the chassis. An
-  // emission that only works in one medium restricts what its turret may
-  // acquire, because a lock it can never reach is a turret standing idle with
-  // its barrel pointed at something.
-  //
-  // Rays carry no medium model, so they take BAR's default: a beam is not a
-  // `waterweapon` and cannot engage a submerged target. Authoring an underwater
-  // beam means giving rays the same media pair shots have, not relaxing this.
-  const emissionAirOnly = shot !== null && (
-    shot.type === 'beam' ||
-    (isProjectileShot(shot) &&
-      shot.shotLocomotion.media.air.operational &&
-      !shot.shotLocomotion.media.water.operational)
-  );
-  const emissionWaterOnly = shot !== null &&
-    isProjectileShot(shot) &&
-    shot.shotLocomotion.media.water.operational &&
-    !shot.shotLocomotion.media.air.operational;
-  if (emissionAirOnly) f |= CT_TURRET_CFG_REQUIRES_AIR_TARGET;
-  if (emissionWaterOnly) f |= CT_TURRET_CFG_REQUIRES_WATER_TARGET;
+  // Every emission exhaustively authors all four source->target medium routes.
+  // Pack the unordered 4-bit matrix into config bits 20..23; Rust selects the
+  // active source row from the current turret mount point every tick.
+  if (shot !== null) {
+    f |= compileEmissionMediumTrajectoryMask(shot.mediumTrajectory) << 20;
+  }
   if (turretIgnoresForceMaterialSightObstruction(turret)) {
     f |= CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION;
   }
@@ -924,8 +933,9 @@ function stampCombatTargetingEntityInto(
   const hostLockOn = getHostLockOnMasks(entity);
 
   // Sight/contact radii are stamped per entity so the Rust observation
-  // helper can walk the slab itself. Detection padding is always zero:
-  // visibility and medium membership use the target center.
+  // helper can walk the slab itself. Detection padding is always zero for
+  // distance; target-medium membership separately uses body volume (or a
+  // single point for shots and mounted turrets).
   const sensorSource = getEntityPrimaryTurretSensorSource(entity, _sensorSourcePos);
   const sensorSourceMedium = sensorSource?.sourceMedium ?? 'aboveWater';
   const sensorConfig = sensorSource?.sensors;

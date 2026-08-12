@@ -21,6 +21,16 @@ export type SensorMediumRadiusMatrix = {
   underwater: SensorMediumTargetRadii;
 };
 
+export type EmissionMediumTargetRoutes = {
+  aboveWater: boolean;
+  underwater: boolean;
+};
+
+export type EmissionMediumTrajectoryMatrix = {
+  aboveWater: EmissionMediumTargetRoutes;
+  underwater: EmissionMediumTargetRoutes;
+};
+
 export type SensorCapabilityConfig = {
   fullSight: SensorMediumRadiusMatrix;
   contactSight: SensorMediumRadiusMatrix;
@@ -215,6 +225,7 @@ export type ProjectileShotBlueprint = {
   health: number;
   radius: EntityRadiusConfig;
   shotLocomotionPresetId: string;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   hitSound: SoundEntry | null;
   submunitions: SubmunitionSpec | null;
   smokeTrail: SmokeTrailSpec | null;
@@ -244,6 +255,7 @@ export type ProjectileShot = {
   radius: EntityRadiusConfig;
   explosion?: ShotExplosion;
   shotLocomotion: ShotLocomotion;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   trailLength?: number;
   submunitions?: SubmunitionSpec;
   smokeTrail?: SmokeTrailSpec;
@@ -911,6 +923,7 @@ export type BeamRayBlueprint = {
   width: number;
   damageSphere: ShotCollision;
   gravityForceMultiplier: number;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   continuousSound: BeamContinuousSoundConfig;
   hitSound: SoundEntry | null;
   rayBlueprintId: RayBlueprintId;
@@ -930,6 +943,7 @@ export type LaserRayBlueprint = {
   damageSphere: ShotCollision;
   duration: number;
   gravityForceMultiplier: number;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   hitSound: SoundEntry | null;
   rayBlueprintId: RayBlueprintId;
 };
@@ -941,6 +955,7 @@ export type ShieldBlueprint = {
   transitionTime: number;
   reflection: ShieldReflectionPolicy;
   barrier: ShieldBarrierRatioConfig | null;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   hitSound: SoundEntry | null;
   shieldBlueprintId: ShieldBlueprintId;
 };
@@ -956,6 +971,7 @@ export type BeamRay = {
   width: number;
   damageSphere: ShotCollision;
   gravityForceMultiplier: number;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   rayBlueprintId: RayBlueprintId;
 };
 
@@ -969,6 +985,7 @@ export type LaserRay = {
   damageSphere: ShotCollision;
   duration: number;
   gravityForceMultiplier: number;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   rayBlueprintId: RayBlueprintId;
 };
 
@@ -980,6 +997,7 @@ export type ShieldConfig = {
   angle: number;
   transitionTime: number;
   reflection: ShieldReflectionPolicy;
+  mediumTrajectory: EmissionMediumTrajectoryMatrix;
   barrier?: ShieldBarrierConfig;
   shieldBlueprintId: ShieldBlueprintId;
 };

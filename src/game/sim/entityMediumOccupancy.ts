@@ -1,4 +1,4 @@
-import { isProjectileShot, type Entity } from './types';
+import type { Entity } from './types';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { WATER_LEVEL } from './Terrain';
 
@@ -56,8 +56,9 @@ export function getCuboidUnderwaterFraction(
 
 /**
  * Returns complementary above-water/underwater volume fractions for every
- * targetable entity family. Buildings use their combat cuboid; units and
- * travelling projectiles use their authored spherical hitbox.
+ * targetable entity family. Buildings use their combat cuboid and units use
+ * their authored spherical hitbox. Travelling shots are points for medium
+ * membership regardless of their collision radius.
  *
  * The returned object is reused. Callers must consume it synchronously.
  */
@@ -74,11 +75,7 @@ export function getEntityMediumOccupancy(entity: Entity): EntityMediumOccupancy 
       entity.unit.radius.hitbox,
     );
   } else if (entity.projectile !== null) {
-    const shot = entity.projectile.config.shot;
-    const radius = isProjectileShot(shot)
-      ? shot.radius.hitbox
-      : 0;
-    underwater = getSphericalUnderwaterFraction(entity.transform.z, radius);
+    underwater = entity.transform.z <= WATER_LEVEL ? 1 : 0;
   } else {
     underwater = entity.transform.z <= WATER_LEVEL ? 1 : 0;
   }

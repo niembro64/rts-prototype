@@ -76,10 +76,6 @@ pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u32 = 1 << 14;
 /// FULL sight (not radar-only). Direct beams and precision line weapons set
 /// it; artillery / missiles that author radar fire leave it clear.
 pub const CT_TURRET_CFG_REQUIRES_FULL_SIGHT: u32 = 1 << 15;
-/// The emitted projectile operates in air but not water, so this turret may
-/// only acquire a target whose physical volume is exposed above the waterline.
-/// This is stamped from shot-medium configuration, not a unit/chassis type.
-pub const CT_TURRET_CFG_REQUIRES_AIR_TARGET: u32 = 1 << 16;
 /// Host-only and slaved mounts may retain/validate an assigned task but never
 /// enter independent auto-acquisition when that task is absent or rejected.
 pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
@@ -87,11 +83,18 @@ pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
 /// Unlike ballistic aim this uses no gravity or drag, but writes through the
 /// same reusable aim-pose fields consumed by turret rotation and firing.
 pub const CT_TURRET_CFG_CONSTANT_SPEED_LEAD: u32 = 1 << 18;
-/// The mirror of REQUIRES_AIR_TARGET: the emission operates in water but not
-/// air, so this turret may only acquire a target with some physical volume
-/// under the waterline. A torpedo turret had no such rule and would happily
-/// lock a fully airborne target it could never reach.
-pub const CT_TURRET_CFG_REQUIRES_WATER_TARGET: u32 = 1 << 19;
+/// Exhaustive emission trajectory routes. The source row is selected from the
+/// turret mount point each tick; unit/building targets may occupy both columns,
+/// while shots and target turrets occupy exactly one. True cells are an
+/// unordered set: there is no same-medium preference.
+pub const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE: u32 = 1 << 20;
+pub const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER: u32 = 1 << 21;
+pub const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE: u32 = 1 << 22;
+pub const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER: u32 = 1 << 23;
+pub const CT_TURRET_CFG_ROUTE_MASK: u32 = CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE
+    | CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER
+    | CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE
+    | CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -189,10 +192,10 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_aabb_half_x: Vec<f64>,
     pub(crate) entity_aabb_half_y: Vec<f64>,
     pub(crate) entity_aabb_half_z: Vec<f64>,
-    // Complementary volume occupancy for every targetable entity. Buildings
-    // use their cuboid height; sphere-shaped units/projectiles use the same
-    // spherical-cap fraction as unit locomotion. Any nonzero occupancy makes
-    // the entity observable by that medium's sensor lane.
+    // Complementary medium occupancy for every targetable entity. Buildings
+    // use their cuboid height and units use their spherical-cap volume. Shots
+    // are points and therefore occupy exactly the medium containing pos_z.
+    // Mounted turrets are also points and use their turret mount row directly.
     pub(crate) entity_above_water_fraction: Vec<f32>,
     pub(crate) entity_underwater_fraction: Vec<f32>,
     pub(crate) entity_hp: Vec<f32>,
@@ -230,10 +233,14 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_sonar_radius: Vec<f32>,
     pub(crate) entity_detector_above_water_radius: Vec<f32>,
     pub(crate) entity_detector_underwater_radius: Vec<f32>,
-    // Per-target player masks rebuilt once after entity stamping.
-    // A bit is set when that player's contact-level aggregate covers
-    // this target. The aggregate is full sight OR air-only radar OR
-    // water-only sonar.
+    // Four exhaustive, orthogonal team-knowledge facts. These retain the
+    // target medium that earned knowledge while remaining independent from
+    // every weapon emission's source->target trajectory matrix.
+    pub(crate) entity_team_air_sight_mask: Vec<u32>,
+    pub(crate) entity_team_water_sight_mask: Vec<u32>,
+    pub(crate) entity_team_air_radar_mask: Vec<u32>,
+    pub(crate) entity_team_water_sonar_mask: Vec<u32>,
+    // Derived unions retained for hot targeting/snapshot consumers.
     pub(crate) entity_sensor_coverage_mask: Vec<u32>,
     // Coverage by FULL-SIGHT sources only (excludes radar/sonar-only sensors). A
     // subset of entity_sensor_coverage_mask. Turrets that require full sight
@@ -466,6 +473,10 @@ impl CombatTargetingPool {
             entity_sonar_radius: Vec::new(),
             entity_detector_above_water_radius: Vec::new(),
             entity_detector_underwater_radius: Vec::new(),
+            entity_team_air_sight_mask: Vec::new(),
+            entity_team_water_sight_mask: Vec::new(),
+            entity_team_air_radar_mask: Vec::new(),
+            entity_team_water_sonar_mask: Vec::new(),
             entity_sensor_coverage_mask: Vec::new(),
             entity_full_sight_coverage_mask: Vec::new(),
             entity_detector_coverage_mask: Vec::new(),
@@ -613,6 +624,10 @@ impl CombatTargetingPool {
                 .resize(entity_needed, 0.0);
             self.entity_detector_underwater_radius
                 .resize(entity_needed, 0.0);
+            self.entity_team_air_sight_mask.resize(entity_needed, 0);
+            self.entity_team_water_sight_mask.resize(entity_needed, 0);
+            self.entity_team_air_radar_mask.resize(entity_needed, 0);
+            self.entity_team_water_sonar_mask.resize(entity_needed, 0);
             self.entity_sensor_coverage_mask.resize(entity_needed, 0);
             self.entity_full_sight_coverage_mask
                 .resize(entity_needed, 0);
@@ -722,6 +737,10 @@ impl CombatTargetingPool {
                 continue;
             }
             self.entity_flags[s] = 0;
+            self.entity_team_air_sight_mask[s] = 0;
+            self.entity_team_water_sight_mask[s] = 0;
+            self.entity_team_air_radar_mask[s] = 0;
+            self.entity_team_water_sonar_mask[s] = 0;
             self.entity_sensor_coverage_mask[s] = 0;
             self.entity_full_sight_coverage_mask[s] = 0;
             self.entity_detector_coverage_mask[s] = 0;
@@ -773,6 +792,10 @@ impl CombatTargetingPool {
             self.entity_slot_by_id.remove(&old_entity_id);
         }
         self.entity_flags[s] = 0;
+        self.entity_team_air_sight_mask[s] = 0;
+        self.entity_team_water_sight_mask[s] = 0;
+        self.entity_team_air_radar_mask[s] = 0;
+        self.entity_team_water_sonar_mask[s] = 0;
         self.entity_sensor_coverage_mask[s] = 0;
         self.entity_full_sight_coverage_mask[s] = 0;
         self.entity_detector_coverage_mask[s] = 0;
@@ -1012,6 +1035,24 @@ fn combat_targeting_underwater_fraction(pos_z: f64, radius_hitbox: f64, aabb_hal
     fraction.clamp(0.0, 1.0) as f32
 }
 
+#[inline]
+pub(crate) fn combat_targeting_target_underwater_fraction(
+    family: u8,
+    pos_z: f64,
+    radius_hitbox: f64,
+    aabb_half_z: f64,
+) -> f32 {
+    if family == CT_ENTITY_FAMILY_SHOT {
+        if pos_z <= TERRAIN_WATER_LEVEL {
+            1.0
+        } else {
+            0.0
+        }
+    } else {
+        combat_targeting_underwater_fraction(pos_z, radius_hitbox, aabb_half_z)
+    }
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_set_entity(
     entity_slot: u32,
@@ -1118,7 +1159,7 @@ pub fn combat_targeting_set_entity(
     pool.entity_aabb_half_y[s] = aabb_half_y;
     pool.entity_aabb_half_z[s] = aabb_half_z;
     let underwater_fraction =
-        combat_targeting_underwater_fraction(pos_z, radius_hitbox, aabb_half_z);
+        combat_targeting_target_underwater_fraction(family, pos_z, radius_hitbox, aabb_half_z);
     pool.entity_underwater_fraction[s] = underwater_fraction;
     pool.entity_above_water_fraction[s] = 1.0 - underwater_fraction;
     pool.entity_hp[s] = hp;
@@ -1787,6 +1828,26 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(combat_targeting_entity_hp_ptr, entity_hp, f32);
 combat_targeting_ptr_export!(combat_targeting_entity_flags_ptr, entity_flags, u8);
 combat_targeting_ptr_export!(
+    combat_targeting_entity_team_air_sight_mask_ptr,
+    entity_team_air_sight_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_team_water_sight_mask_ptr,
+    entity_team_water_sight_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_team_air_radar_mask_ptr,
+    entity_team_air_radar_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_team_water_sonar_mask_ptr,
+    entity_team_water_sonar_mask,
+    u32
+);
+combat_targeting_ptr_export!(
     combat_targeting_entity_active_turret_mask_ptr,
     entity_active_turret_mask,
     u32
@@ -2445,12 +2506,16 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     entity_pos_y: &[f64],
     entity_above_water_fraction: &[f32],
     entity_underwater_fraction: &[f32],
+    team_air_sight_mask: &mut [u32],
+    team_water_sight_mask: &mut [u32],
+    team_air_radar_mask: &mut [u32],
+    team_water_sonar_mask: &mut [u32],
     sensor_coverage_mask: &mut [u32],
     full_sight_coverage_mask: &mut [u32],
     detector_coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
-    sensor_radius: f64,
+    contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     owner_bit: u32,
@@ -2460,13 +2525,21 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     if target_owner_bit == owner_bit {
         return;
     }
-    let sensor_already_marked =
-        sensor_radius <= 0.0 || (sensor_coverage_mask[target_slot] & owner_bit) != 0;
-    let full_sight_already_marked =
-        full_sight_radius <= 0.0 || (full_sight_coverage_mask[target_slot] & owner_bit) != 0;
+    let contact_already_marked = contact_radius <= 0.0
+        || if target_medium == CT_OBSERVATION_TARGET_AIR {
+            (team_air_radar_mask[target_slot] & owner_bit) != 0
+        } else {
+            (team_water_sonar_mask[target_slot] & owner_bit) != 0
+        };
+    let full_sight_already_marked = full_sight_radius <= 0.0
+        || if target_medium == CT_OBSERVATION_TARGET_AIR {
+            (team_air_sight_mask[target_slot] & owner_bit) != 0
+        } else {
+            (team_water_sight_mask[target_slot] & owner_bit) != 0
+        };
     let detector_already_marked =
         detector_radius <= 0.0 || (detector_coverage_mask[target_slot] & owner_bit) != 0;
-    if sensor_already_marked && full_sight_already_marked && detector_already_marked {
+    if contact_already_marked && full_sight_already_marked && detector_already_marked {
         return;
     }
     if (target_medium == CT_OBSERVATION_TARGET_WATER
@@ -2479,10 +2552,21 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     let dx = entity_pos_x[target_slot] - source_x;
     let dy = entity_pos_y[target_slot] - source_y;
     let distance_sq = dx * dx + dy * dy;
-    if !sensor_already_marked && distance_sq <= sensor_radius * sensor_radius {
+    if !contact_already_marked && distance_sq <= contact_radius * contact_radius {
+        if target_medium == CT_OBSERVATION_TARGET_AIR {
+            team_air_radar_mask[target_slot] |= owner_bit;
+        } else {
+            team_water_sonar_mask[target_slot] |= owner_bit;
+        }
         sensor_coverage_mask[target_slot] |= owner_bit;
     }
     if !full_sight_already_marked && distance_sq <= full_sight_radius * full_sight_radius {
+        if target_medium == CT_OBSERVATION_TARGET_AIR {
+            team_air_sight_mask[target_slot] |= owner_bit;
+        } else {
+            team_water_sight_mask[target_slot] |= owner_bit;
+        }
+        sensor_coverage_mask[target_slot] |= owner_bit;
         full_sight_coverage_mask[target_slot] |= owner_bit;
     }
     if !detector_already_marked && distance_sq <= detector_radius * detector_radius {
@@ -2498,12 +2582,16 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     entity_pos_y: &[f64],
     entity_above_water_fraction: &[f32],
     entity_underwater_fraction: &[f32],
+    team_air_sight_mask: &mut [u32],
+    team_water_sight_mask: &mut [u32],
+    team_air_radar_mask: &mut [u32],
+    team_water_sonar_mask: &mut [u32],
     sensor_coverage_mask: &mut [u32],
     full_sight_coverage_mask: &mut [u32],
     detector_coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
-    sensor_radius: f64,
+    contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     owner_bit: u32,
@@ -2520,12 +2608,16 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             entity_pos_y,
             entity_above_water_fraction,
             entity_underwater_fraction,
+            team_air_sight_mask,
+            team_water_sight_mask,
+            team_air_radar_mask,
+            team_water_sonar_mask,
             sensor_coverage_mask,
             full_sight_coverage_mask,
             detector_coverage_mask,
             source_x,
             source_y,
-            sensor_radius,
+            contact_radius,
             full_sight_radius,
             detector_radius,
             owner_bit,
@@ -2534,7 +2626,6 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     }
 }
 
-pub(crate) const CT_OBSERVATION_TARGET_ANY: u8 = 0;
 pub(crate) const CT_OBSERVATION_TARGET_AIR: u8 = 1;
 pub(crate) const CT_OBSERVATION_TARGET_WATER: u8 = 2;
 
@@ -2548,14 +2639,15 @@ fn combat_targeting_valid_observation_radius(radius: f64) -> f64 {
 }
 
 /// Marks independently-sized contact, full-sight, and detector circles for
-/// one source and medium in a single spatial traversal. Full sight is also
-/// contact coverage, so callers include its radius in `sensor_radius`.
+/// one target medium in a single spatial traversal. The four orthogonal team
+/// knowledge masks retain whether air sight, water sight, radar, or sonar
+/// earned the knowledge; the older union masks are derived in the same pass.
 pub(crate) fn combat_targeting_mark_observation_circles(
     pool: &mut CombatTargetingPool,
     source_x: f64,
     source_y: f64,
     owner_bit: u32,
-    sensor_radius: f64,
+    contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     target_medium: u8,
@@ -2563,10 +2655,13 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     if owner_bit == 0 || !source_x.is_finite() || !source_y.is_finite() {
         return;
     }
-    let sensor_radius = combat_targeting_valid_observation_radius(sensor_radius);
+    debug_assert!(
+        target_medium == CT_OBSERVATION_TARGET_AIR || target_medium == CT_OBSERVATION_TARGET_WATER
+    );
+    let contact_radius = combat_targeting_valid_observation_radius(contact_radius);
     let full_sight_radius = combat_targeting_valid_observation_radius(full_sight_radius);
     let detector_radius = combat_targeting_valid_observation_radius(detector_radius);
-    let max_radius = sensor_radius.max(full_sight_radius).max(detector_radius);
+    let max_radius = contact_radius.max(full_sight_radius).max(detector_radius);
     if max_radius <= 0.0 {
         return;
     }
@@ -2586,6 +2681,10 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     let entity_underwater_fraction = &pool.entity_underwater_fraction;
     let observation_cells = &pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
+    let team_air_sight_mask = &mut pool.entity_team_air_sight_mask;
+    let team_water_sight_mask = &mut pool.entity_team_water_sight_mask;
+    let team_air_radar_mask = &mut pool.entity_team_air_radar_mask;
+    let team_water_sonar_mask = &mut pool.entity_team_water_sonar_mask;
     let sensor_coverage_mask = &mut pool.entity_sensor_coverage_mask;
     let full_sight_coverage_mask = &mut pool.entity_full_sight_coverage_mask;
     let detector_coverage_mask = &mut pool.entity_detector_coverage_mask;
@@ -2611,12 +2710,16 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 entity_pos_y,
                 entity_above_water_fraction,
                 entity_underwater_fraction,
+                team_air_sight_mask,
+                team_water_sight_mask,
+                team_air_radar_mask,
+                team_water_sonar_mask,
                 sensor_coverage_mask,
                 full_sight_coverage_mask,
                 detector_coverage_mask,
                 source_x,
                 source_y,
-                sensor_radius,
+                contact_radius,
                 full_sight_radius,
                 detector_radius,
                 owner_bit,
@@ -2639,12 +2742,16 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 entity_pos_y,
                 entity_above_water_fraction,
                 entity_underwater_fraction,
+                team_air_sight_mask,
+                team_water_sight_mask,
+                team_air_radar_mask,
+                team_water_sonar_mask,
                 sensor_coverage_mask,
                 full_sight_coverage_mask,
                 detector_coverage_mask,
                 source_x,
                 source_y,
-                sensor_radius,
+                contact_radius,
                 full_sight_radius,
                 detector_radius,
                 owner_bit,
@@ -2675,17 +2782,15 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
     let sonar_radius = pool.entity_sonar_radius[source_slot] as f64;
     let detector_above_water_radius = pool.entity_detector_above_water_radius[source_slot] as f64;
     let detector_underwater_radius = pool.entity_detector_underwater_radius[source_slot] as f64;
-    // Full sight is the stronger information tier and therefore contributes to
-    // both the contact aggregate and the full-sight-only mask. Radar and sonar
-    // contribute only to contact coverage. Combining the maximum contact
-    // radius with the independently-sized full-sight and detector lanes keeps
-    // their exact semantics while reducing eight possible grid walks to two.
+    // The four team facts stay orthogonal: sight and radar/sonar retain their
+    // own target-medium masks. Their derived unions are written in the same
+    // two spatial walks, one for each target medium.
     combat_targeting_mark_observation_circles(
         pool,
         source_x,
         source_y,
         owner_bit,
-        full_above_water_radius.max(radar_radius),
+        radar_radius,
         full_above_water_radius,
         detector_above_water_radius,
         CT_OBSERVATION_TARGET_AIR,
@@ -2695,7 +2800,7 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
         source_x,
         source_y,
         owner_bit,
-        full_underwater_radius.max(sonar_radius),
+        sonar_radius,
         full_underwater_radius,
         detector_underwater_radius,
         CT_OBSERVATION_TARGET_WATER,
@@ -2710,6 +2815,18 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks() {
     let pool = combat_targeting_pool();
+    for mask in pool.entity_team_air_sight_mask.iter_mut() {
+        *mask = 0;
+    }
+    for mask in pool.entity_team_water_sight_mask.iter_mut() {
+        *mask = 0;
+    }
+    for mask in pool.entity_team_air_radar_mask.iter_mut() {
+        *mask = 0;
+    }
+    for mask in pool.entity_team_water_sonar_mask.iter_mut() {
+        *mask = 0;
+    }
     for mask in pool.entity_sensor_coverage_mask.iter_mut() {
         *mask = 0;
     }
@@ -2752,18 +2869,27 @@ pub fn combat_targeting_add_sensor_observation_circle(
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
-    // A scan pulse is a full-sight source: it reveals identity in its area, so
-    // it seeds the merged sensor mask (contact-level), the full-sight-only mask,
-    // and the detector mask.
+    // A scan pulse has no source medium and contributes both target-medium
+    // sight facts wherever the corresponding target occupancy exists.
     combat_targeting_mark_observation_circles(
         pool,
         x,
         y,
         owner_bit,
+        0.0,
         radius,
         radius,
+        CT_OBSERVATION_TARGET_AIR,
+    );
+    combat_targeting_mark_observation_circles(
+        pool,
+        x,
+        y,
+        owner_bit,
+        0.0,
         radius,
-        CT_OBSERVATION_TARGET_ANY,
+        radius,
+        CT_OBSERVATION_TARGET_WATER,
     );
 }
 
@@ -3374,25 +3500,34 @@ pub(crate) fn combat_targeting_turret_may_lock_entity_slot(
         return false;
     }
 
-    let base_allowed = if combat_targeting_turret_lockon_allows_body_entity(
+    let body_allowed = combat_targeting_turret_lockon_allows_body_entity(
         pool,
         source_turret_idx,
         target_entity_slot,
-    ) {
-        true
-    } else if combat_targeting_turret_lockon_includes_turret_family(pool, source_turret_idx) {
-        let source_entity_id = pool.entity_id[source_entity_slot];
-        combat_targeting_pick_target_aim_turret_idx(
+    ) && combat_targeting_turret_allows_target_medium(
+        pool,
+        source_turret_idx,
+        combat_targeting_cylinder_target_to_entity_slot(
             pool,
+            source_turret_idx,
             target_entity_slot,
-            source_entity_slot,
-            source_entity_id,
-            Some(source_turret_idx),
-        )
-        .is_some()
-    } else {
-        false
-    };
+        ),
+    );
+    let turret_allowed =
+        if combat_targeting_turret_lockon_includes_turret_family(pool, source_turret_idx) {
+            let source_entity_id = pool.entity_id[source_entity_slot];
+            combat_targeting_pick_target_aim_turret_idx(
+                pool,
+                target_entity_slot,
+                source_entity_slot,
+                source_entity_id,
+                Some(source_turret_idx),
+            )
+            .is_some()
+        } else {
+            false
+        };
+    let base_allowed = body_allowed || turret_allowed;
 
     base_allowed
         && combat_targeting_turret_reciprocal_require_allows(
@@ -3539,6 +3674,16 @@ pub(crate) fn combat_targeting_pick_target_aim_turret_idx(
             if !combat_targeting_turret_lockon_allows_target_turret(pool, source_idx, idx) {
                 continue;
             }
+            let target_point = CombatTargetingCylinderTarget {
+                horizontal_dist_sq: 0.0,
+                horizontal_radius: 0.0,
+                bottom_z: pool.turret_mount_z[idx],
+                top_z: pool.turret_mount_z[idx],
+                is_point: true,
+            };
+            if !combat_targeting_turret_allows_target_medium(pool, source_idx, target_point) {
+                continue;
+            }
         }
         let dps = pool.turret_dps[idx];
         if best_any.map_or(true, |(_, best)| dps > best) {
@@ -3628,6 +3773,7 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     mount_z: f64,
 ) -> (f64, f64, f64) {
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+    let flags = pool.turret_config_flags[idx];
     let target_turret_idx = if combat_targeting_turret_lockon_includes_turret_family(pool, idx) {
         combat_targeting_pick_target_aim_turret_idx(
             pool,
@@ -3639,13 +3785,58 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     } else {
         None
     };
-    let body_point = combat_targeting_resolve_body_aim_point_from_slot(
+    let mut body_point = combat_targeting_resolve_body_aim_point_from_slot(
         pool,
         target_entity_slot,
         mount_x,
         mount_y,
         mount_z,
     );
+    let body_point_target = CombatTargetingCylinderTarget {
+        horizontal_dist_sq: 0.0,
+        horizontal_radius: 0.0,
+        bottom_z: body_point.2,
+        top_z: body_point.2,
+        is_point: true,
+    };
+    if !combat_targeting_flags_allow_target_medium(flags, mount_z, body_point_target) {
+        // Preserve ordinary geometric aim whenever its point medium is legal.
+        // Only move Z when that point selects a forbidden column despite the
+        // body occupying another permitted column. This introduces no source-
+        // medium preference: the pre-existing aim geometry wins whenever it is
+        // in any true target column.
+        let vertical_extent = combat_targeting_target_vertical_extent(pool, target_entity_slot);
+        let bottom_z = pool.entity_pos_z[target_entity_slot] - vertical_extent;
+        let top_z = pool.entity_pos_z[target_entity_slot] + vertical_extent;
+        let above_point = CombatTargetingCylinderTarget {
+            horizontal_dist_sq: 0.0,
+            horizontal_radius: 0.0,
+            bottom_z: top_z,
+            top_z,
+            is_point: true,
+        };
+        let underwater_point = CombatTargetingCylinderTarget {
+            horizontal_dist_sq: 0.0,
+            horizontal_radius: 0.0,
+            bottom_z,
+            top_z: bottom_z,
+            is_point: true,
+        };
+        if top_z > TERRAIN_WATER_LEVEL
+            && combat_targeting_flags_allow_target_medium(flags, mount_z, above_point)
+        {
+            let above_interior_z = if body_point.2 > TERRAIN_WATER_LEVEL {
+                body_point.2.min(top_z)
+            } else {
+                TERRAIN_WATER_LEVEL + (top_z - TERRAIN_WATER_LEVEL) * 0.5
+            };
+            body_point.2 = above_interior_z;
+        } else if bottom_z < TERRAIN_WATER_LEVEL
+            && combat_targeting_flags_allow_target_medium(flags, mount_z, underwater_point)
+        {
+            body_point.2 = body_point.2.max(bottom_z).min(TERRAIN_WATER_LEVEL);
+        }
+    }
     let Some(target_turret_idx) = target_turret_idx else {
         return body_point;
     };
@@ -3655,7 +3846,7 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
         target_entity_slot,
         target_turret_idx,
     );
-    if (pool.turret_config_flags[idx] & CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY) == 0 {
+    if (flags & CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY) == 0 {
         return turret_point;
     }
 
@@ -3706,6 +3897,7 @@ pub(crate) struct CombatTargetingCylinderTarget {
     pub(crate) horizontal_radius: f64,
     pub(crate) bottom_z: f64,
     pub(crate) top_z: f64,
+    pub(crate) is_point: bool,
 }
 
 #[inline]
@@ -3729,6 +3921,7 @@ pub(crate) fn combat_targeting_invalid_cylinder_target() -> CombatTargetingCylin
         horizontal_radius: 0.0,
         bottom_z: f64::INFINITY,
         top_z: f64::NEG_INFINITY,
+        is_point: true,
     }
 }
 
@@ -3798,6 +3991,7 @@ pub(crate) fn combat_targeting_cylinder_target_to_entity_slot(
         ),
         bottom_z: pool.entity_pos_z[entity_slot] - vertical_extent,
         top_z: pool.entity_pos_z[entity_slot] + vertical_extent,
+        is_point: pool.entity_family[entity_slot] == CT_ENTITY_FAMILY_SHOT,
     }
 }
 
@@ -3819,6 +4013,7 @@ pub(crate) fn combat_targeting_cylinder_target_to_point(
         horizontal_radius: 0.0,
         bottom_z: point_z,
         top_z: point_z,
+        is_point: true,
     }
 }
 
@@ -3904,23 +4099,29 @@ pub(crate) fn combat_targeting_range_volume_allows_target_domain(
 }
 
 #[inline]
-/// Medium legality, evaluated against the target's VOLUME rather than its
-/// centre. A hull crossing the surface is genuinely present in both media, so
-/// an air-only weapon may engage anything with its top above the waterline and
-/// a water-only weapon anything with its bottom below it. A Sea Turtle is not
-/// safe from aircraft until it is fully submerged, and a Duck is not safe from
-/// torpedoes until it is fully clear of the water.
+/// Exhaustive emission source->target medium legality. Unit/building bodies
+/// may occupy both target columns by positive volume; shot and turret points
+/// occupy exactly one column, with the surface itself classified underwater.
+/// True cells are tested as an unordered set: there is no same-medium bias.
 pub(crate) fn combat_targeting_flags_allow_target_medium(
     flags: u32,
+    source_z: f64,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    if (flags & CT_TURRET_CFG_REQUIRES_AIR_TARGET) != 0 && target.top_z <= TERRAIN_WATER_LEVEL {
-        return false;
+    let routes = flags & CT_TURRET_CFG_ROUTE_MASK;
+    let target_above = target.top_z > TERRAIN_WATER_LEVEL;
+    let target_underwater = if target.is_point {
+        target.bottom_z <= TERRAIN_WATER_LEVEL
+    } else {
+        target.bottom_z < TERRAIN_WATER_LEVEL
+    };
+    if source_z <= TERRAIN_WATER_LEVEL {
+        ((routes & CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE) != 0 && target_above)
+            || ((routes & CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER) != 0 && target_underwater)
+    } else {
+        ((routes & CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE) != 0 && target_above)
+            || ((routes & CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER) != 0 && target_underwater)
     }
-    if (flags & CT_TURRET_CFG_REQUIRES_WATER_TARGET) != 0 && target.bottom_z > TERRAIN_WATER_LEVEL {
-        return false;
-    }
-    true
 }
 
 #[inline]
@@ -3929,7 +4130,11 @@ pub(crate) fn combat_targeting_turret_allows_target_medium(
     idx: usize,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    combat_targeting_flags_allow_target_medium(pool.turret_config_flags[idx], target)
+    combat_targeting_flags_allow_target_medium(
+        pool.turret_config_flags[idx],
+        pool.turret_mount_z[idx],
+        target,
+    )
 }
 
 #[inline]
@@ -4001,13 +4206,12 @@ pub(crate) fn combat_targeting_fire_max_cylinder_contains(
     } else {
         pool.turret_fire_max_acquire_sq[idx]
     };
-    combat_targeting_turret_allows_target_medium(pool, idx, target)
-        && combat_targeting_range_volume_contains(
-            combat_targeting_range_radius_from_sq(range_sq),
-            pool.turret_mount_z[idx],
-            combat_targeting_turret_range_volume(pool, idx),
-            target,
-        )
+    combat_targeting_range_volume_contains(
+        combat_targeting_range_radius_from_sq(range_sq),
+        pool.turret_mount_z[idx],
+        combat_targeting_turret_range_volume(pool, idx),
+        target,
+    )
 }
 
 #[inline]
@@ -4022,13 +4226,12 @@ pub(crate) fn combat_targeting_outermost_release_cylinder_contains(
     } else {
         pool.turret_fire_max_release_sq[idx]
     };
-    combat_targeting_turret_allows_target_medium(pool, idx, target)
-        && combat_targeting_range_volume_contains(
-            combat_targeting_range_radius_from_sq(range_sq),
-            pool.turret_mount_z[idx],
-            combat_targeting_turret_range_volume(pool, idx),
-            target,
-        )
+    combat_targeting_range_volume_contains(
+        combat_targeting_range_radius_from_sq(range_sq),
+        pool.turret_mount_z[idx],
+        combat_targeting_turret_range_volume(pool, idx),
+        target,
+    )
 }
 
 #[inline]
@@ -4090,6 +4293,15 @@ pub(crate) fn combat_targeting_current_fire_target_rank_sq(
     let Some(target_slot) = combat_targeting_entity_slot_for_id(pool, target_id) else {
         return (CT_TARGET_RANK_NONE, f64::INFINITY);
     };
+    let source_entity_slot = turret_idx / (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    if !combat_targeting_turret_may_lock_entity_slot(
+        pool,
+        source_entity_slot,
+        turret_idx,
+        target_slot,
+    ) {
+        return (CT_TARGET_RANK_NONE, f64::INFINITY);
+    }
     let target = combat_targeting_cylinder_target_to_entity_slot(pool, turret_idx, target_slot);
     let rank = combat_targeting_fire_rank_from_pool_cylinder(pool, turret_idx, true, target);
     (rank, target.horizontal_dist_sq)
@@ -6452,7 +6664,6 @@ pub(crate) fn targeting_score_candidate(
     seed_shield_panel_score: f64,
     is_passive: u8,
     range_volume: CombatTargetingRangeVolume,
-    config_flags: u32,
     candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
@@ -6481,10 +6692,8 @@ pub(crate) fn targeting_score_candidate(
             - combat_targeting_nonnegative_finite(candidate_vertical_extent),
         top_z: candidate_pos_z[candidate_idx]
             + combat_targeting_nonnegative_finite(candidate_vertical_extent),
+        is_point: false,
     };
-    if !combat_targeting_flags_allow_target_medium(config_flags, target) {
-        return None;
-    }
     let rank = targeting_rank_cylinder(
         rank_mode,
         fire_max_acquire,
@@ -6592,6 +6801,7 @@ pub fn combat_targeting_rank_target(
         horizontal_radius: combat_targeting_nonnegative_finite(target_radius),
         bottom_z: 0.0,
         top_z: 0.0,
+        is_point: true,
     };
     targeting_rank_cylinder(
         rank_mode,
@@ -7182,7 +7392,6 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             seed_shield_panel_score,
             is_passive,
             range_volume,
-            pool.turret_config_flags[source_turret_idx],
             candidate_observable,
             candidate_pos_x,
             candidate_pos_y,
@@ -7354,7 +7563,6 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
                 seed_shield_panel_score,
                 is_passive,
                 range_volume,
-                pool.turret_config_flags[source_turret_idx],
                 candidate_observable,
                 candidate_pos_x,
                 candidate_pos_y,
@@ -10721,6 +10929,11 @@ mod tests {
 
         pool.entity_radar_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
+        assert_ne!(pool.entity_team_air_radar_mask[1] & 1, 0);
+        assert_ne!(pool.entity_team_air_radar_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sonar_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_air_sight_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sight_mask[2] & 1, 0);
         assert_ne!(pool.entity_sensor_coverage_mask[1] & 1, 0);
         assert_ne!(pool.entity_sensor_coverage_mask[2] & 1, 0);
         assert_eq!(pool.entity_sensor_coverage_mask[3] & 1, 0);
@@ -10728,6 +10941,10 @@ mod tests {
         pool.entity_radar_radius[0] = 0.0;
         pool.entity_sonar_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
+        assert_eq!(pool.entity_team_air_radar_mask[2] & 1, 0);
+        assert_ne!(pool.entity_team_water_sonar_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_air_sight_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sight_mask[2] & 1, 0);
         assert_eq!(pool.entity_sensor_coverage_mask[1] & 1, 0);
         assert_ne!(pool.entity_sensor_coverage_mask[2] & 1, 0);
         assert_eq!(pool.entity_sensor_coverage_mask[3] & 1, 0);
@@ -10735,14 +10952,64 @@ mod tests {
         pool.entity_sonar_radius[0] = 0.0;
         pool.entity_full_vision_above_water_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
+        assert_ne!(pool.entity_team_air_sight_mask[1] & 1, 0);
+        assert_ne!(pool.entity_team_air_sight_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sight_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_air_radar_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sonar_mask[2] & 1, 0);
         assert_ne!(pool.entity_full_sight_coverage_mask[1] & 1, 0);
         assert_ne!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
 
         pool.entity_full_vision_above_water_radius[0] = 0.0;
         pool.entity_full_vision_underwater_radius[0] = 100.0;
         combat_targeting_rebuild_observation_masks();
+        assert_eq!(pool.entity_team_air_sight_mask[2] & 1, 0);
+        assert_ne!(pool.entity_team_water_sight_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_air_radar_mask[2] & 1, 0);
+        assert_eq!(pool.entity_team_water_sonar_mask[2] & 1, 0);
         assert_eq!(pool.entity_full_sight_coverage_mask[1] & 1, 0);
         assert_ne!(pool.entity_full_sight_coverage_mask[2] & 1, 0);
+    }
+
+    #[test]
+    fn team_knowledge_is_orthogonal_to_emission_source_routes() {
+        let owner_bit = combat_targeting_player_bit(1);
+        let above_target = CombatTargetingCylinderTarget {
+            horizontal_dist_sq: 0.0,
+            horizontal_radius: 1.0,
+            bottom_z: TERRAIN_WATER_LEVEL + 1.0,
+            top_z: TERRAIN_WATER_LEVEL + 3.0,
+            is_point: false,
+        };
+        assert!(combat_targeting_flags_allow_target_medium(
+            CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE,
+            TERRAIN_WATER_LEVEL,
+            above_target,
+        ));
+
+        let mut pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(1);
+        pool.entity_owner_bit[1] = combat_targeting_player_bit(2);
+        pool.entity_flags[1] = CT_ENTITY_FLAG_ALIVE;
+
+        // Team-air-radar provides knowledge to the underwater launcher; it
+        // does not need to share the emission's source row.
+        pool.entity_team_air_radar_mask[1] = owner_bit;
+        pool.entity_sensor_coverage_mask[1] = pool.entity_team_air_radar_mask[1];
+        assert!(combat_targeting_view_mask_observes_entity(
+            &pool, 1, owner_bit
+        ));
+
+        // Team-air-sight is an independent stronger knowledge fact and reaches
+        // the same W->A-capable launcher through the full-sight union.
+        pool.entity_team_air_radar_mask[1] = 0;
+        pool.entity_team_air_sight_mask[1] = owner_bit;
+        pool.entity_sensor_coverage_mask[1] = pool.entity_team_air_sight_mask[1];
+        pool.entity_full_sight_coverage_mask[1] = pool.entity_team_air_sight_mask[1];
+        assert!(combat_targeting_view_mask_observes_entity(
+            &pool, 1, owner_bit
+        ));
+        assert_ne!(pool.entity_full_sight_coverage_mask[1] & owner_bit, 0);
     }
 
     #[test]
@@ -10789,6 +11056,10 @@ mod tests {
         pool.entity_sensor_coverage_mask.fill(0);
         pool.entity_full_sight_coverage_mask.fill(0);
         pool.entity_detector_coverage_mask.fill(0);
+        pool.entity_team_air_sight_mask.fill(0);
+        pool.entity_team_water_sight_mask.fill(0);
+        pool.entity_team_air_radar_mask.fill(0);
+        pool.entity_team_water_sonar_mask.fill(0);
         combat_targeting_add_sensor_observation_circle(1, 0.0, 0.0, 45.0);
         for slot in [1, 2] {
             assert_ne!(pool.entity_sensor_coverage_mask[slot] & owner_bit, 0);

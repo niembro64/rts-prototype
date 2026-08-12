@@ -97,6 +97,11 @@ import {
   scheduleBeamPulseCollisionSamples,
 } from './beamPulse';
 import type { RayConfigRangeCylinder } from './lineShotRange';
+import {
+  constrainAimPointToEmissionRoutes,
+  emissionCanTargetEntity,
+} from './emissionTargeting';
+import { emissionMediumAtZ } from '../emissionMedium';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -1142,6 +1147,15 @@ export function fireTurrets(
               currentTick,
             },
           );
+          const beamSourceMedium = emissionMediumAtZ(mountZ, WATER_LEVEL);
+          if (!constrainAimPointToEmissionRoutes(
+            shot.mediumTrajectory,
+            beamSourceMedium,
+            lockedTarget,
+            _beamPulseTargetPosition,
+          )) {
+            continue;
+          }
           pulseTargetVelocity = getEntityVelocity3d(lockedTarget, _beamPulseTargetVelocity);
         } else if (groundTargetPoint !== null) {
           _beamPulseTargetPosition.x = groundTargetPoint.x;
@@ -1263,6 +1277,7 @@ export function fireTurrets(
             beamProjectileType === 'laser'
               ? SHIELD_REFLECTION_ENTITY_LASER
               : SHIELD_REFLECTION_ENTITY_BEAM,
+            shot.mediumTrajectory,
           );
           // A selected-entity pulse is committed only once its real barrel ray
           // terminates on that entity. Attack-ground similarly waits for the
@@ -1778,6 +1793,11 @@ function _updateTravelingProjectilesJS(
       dgunProjectile.isDGun === true;
     const shotConfig = proj.config.shot as ProjectileShot;
     const shotLocomotion = shotConfig.shotLocomotion;
+    const emissionSourceMedium = proj.emissionSourceMedium ??
+      emissionMediumAtZ(position.z, WATER_LEVEL);
+    if (proj.emissionSourceMedium === null) {
+      proj.emissionSourceMedium = emissionSourceMedium;
+    }
     const projectileGravity = GRAVITY * shotLocomotion.gravityForceMultiplier;
     const mediumPhysics = getShotLocomotionMediumAtHeight(
       shotLocomotion,
@@ -1865,6 +1885,16 @@ function _updateTravelingProjectilesJS(
       if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
         homingTarget = undefined;
       }
+      if (
+        homingTarget !== undefined &&
+        !emissionCanTargetEntity(
+          shotConfig.mediumTrajectory,
+          emissionSourceMedium,
+          homingTarget,
+        )
+      ) {
+        homingTarget = undefined;
+      }
       const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
       if (resolvedHomingTargetId !== previousHomingTargetId) {
         proj.homingTargetId = resolvedHomingTargetId;
@@ -1883,6 +1913,12 @@ function _updateTravelingProjectilesJS(
             homingTarget,
             position.x, position.y, position.z,
             _homingAimPoint,
+          );
+          constrainAimPointToEmissionRoutes(
+            shotConfig.mediumTrajectory,
+            emissionSourceMedium,
+            homingTarget,
+            aimPoint,
           );
           let steerX = aimPoint.x;
           let steerY = aimPoint.y;
@@ -2322,6 +2358,7 @@ export function updateProjectiles(
           proj.projectileType === 'laser'
             ? SHIELD_REFLECTION_ENTITY_LASER
             : SHIELD_REFLECTION_ENTITY_BEAM,
+          weapon.config.shot?.mediumTrajectory,
         );
 
         // Resize the polyline to [start, ...reflections, end] and

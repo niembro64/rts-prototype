@@ -195,6 +195,40 @@
       },
       "additionalProperties": false
     },
+    "EmissionMediumTargetRoutes": {
+      "type": "object",
+      "required": [
+        "aboveWater",
+        "underwater"
+      ],
+      "properties": {
+        "aboveWater": {
+          "type": "boolean"
+        },
+        "underwater": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "The two exhaustively authored target-medium routes for one emission source medium."
+    },
+    "EmissionMediumTrajectoryMatrix": {
+      "type": "object",
+      "required": [
+        "aboveWater",
+        "underwater"
+      ],
+      "properties": {
+        "aboveWater": {
+          "$ref": "#/$defs/EmissionMediumTargetRoutes"
+        },
+        "underwater": {
+          "$ref": "#/$defs/EmissionMediumTargetRoutes"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Exhaustive source-medium x target-medium delivery routes. All four booleans are explicit; no route is inferred and true routes have no preference ordering."
+    },
     "SensorCapabilityConfig": {
       "type": "object",
       "required": [
@@ -862,6 +896,7 @@
         "health",
         "radius",
         "shotLocomotionPresetId",
+        "mediumTrajectory",
         "hitSound",
         "submunitions",
         "smokeTrail"
@@ -890,6 +925,9 @@
         },
         "shotLocomotionPresetId": {
           "type": "string"
+        },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
         "hitSound": {
           "oneOf": [
@@ -984,7 +1022,8 @@
         "health",
         "launchForce",
         "radius",
-        "shotLocomotion"
+        "shotLocomotion",
+        "mediumTrajectory"
       ],
       "properties": {
         "type": {
@@ -1013,6 +1052,9 @@
         },
         "shotLocomotion": {
           "$ref": "#/$defs/ShotLocomotion"
+        },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
         "trailLength": {
           "type": "number"
@@ -3777,6 +3819,7 @@
         "width",
         "damageSphere",
         "gravityForceMultiplier",
+        "mediumTrajectory",
         "continuousSound",
         "hitSound"
       ],
@@ -3804,6 +3847,9 @@
         },
         "gravityForceMultiplier": {
           "type": "number"
+        },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
         "continuousSound": {
           "$ref": "#/$defs/BeamContinuousSoundConfig"
@@ -3851,6 +3897,7 @@
         "damageSphere",
         "duration",
         "gravityForceMultiplier",
+        "mediumTrajectory",
         "hitSound"
       ],
       "properties": {
@@ -3881,6 +3928,9 @@
         "gravityForceMultiplier": {
           "type": "number"
         },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
+        },
         "hitSound": {
           "oneOf": [
             {
@@ -3907,6 +3957,7 @@
         "transitionTime",
         "reflection",
         "barrier",
+        "mediumTrajectory",
         "hitSound"
       ],
       "properties": {
@@ -3934,6 +3985,9 @@
               "type": "null"
             }
           ]
+        },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
         "hitSound": {
           "oneOf": [
@@ -3972,7 +4026,8 @@
         "radius",
         "width",
         "damageSphere",
-        "gravityForceMultiplier"
+        "gravityForceMultiplier",
+        "mediumTrajectory"
       ],
       "properties": {
         "type": {
@@ -3999,6 +4054,9 @@
         "gravityForceMultiplier": {
           "type": "number"
         },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
+        },
         "rayBlueprintId": {
           "$ref": "#/$defs/RayBlueprintId"
         }
@@ -4017,7 +4075,8 @@
         "width",
         "damageSphere",
         "duration",
-        "gravityForceMultiplier"
+        "gravityForceMultiplier",
+        "mediumTrajectory"
       ],
       "properties": {
         "type": {
@@ -4047,6 +4106,9 @@
         "gravityForceMultiplier": {
           "type": "number"
         },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
+        },
         "rayBlueprintId": {
           "$ref": "#/$defs/RayBlueprintId"
         }
@@ -4071,7 +4133,8 @@
         "material",
         "angle",
         "transitionTime",
-        "reflection"
+        "reflection",
+        "mediumTrajectory"
       ],
       "properties": {
         "type": {
@@ -4088,6 +4151,9 @@
         },
         "reflection": {
           "$ref": "#/$defs/ShieldReflectionPolicy"
+        },
+        "mediumTrajectory": {
+          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
         "barrier": {
           "$ref": "#/$defs/ShieldBarrierConfig"

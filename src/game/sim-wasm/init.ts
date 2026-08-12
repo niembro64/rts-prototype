@@ -370,6 +370,10 @@ import __wbg_init, {
   combat_targeting_entity_flags_ptr,
   combat_targeting_entity_active_turret_mask_ptr,
   combat_targeting_entity_firing_turret_mask_ptr,
+  combat_targeting_entity_team_air_sight_mask_ptr,
+  combat_targeting_entity_team_water_sight_mask_ptr,
+  combat_targeting_entity_team_air_radar_mask_ptr,
+  combat_targeting_entity_team_water_sonar_mask_ptr,
   combat_targeting_entity_sensor_coverage_mask_ptr,
   combat_targeting_entity_full_sight_coverage_mask_ptr,
   combat_targeting_entity_detector_coverage_mask_ptr,
@@ -2387,16 +2391,20 @@ export const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION = 1 << 13;
 export const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY = 1 << 14;
 /** Turret may only lock enemies seen with full sight (not radar-only). */
 export const CT_TURRET_CFG_REQUIRES_FULL_SIGHT = 1 << 15;
-/** Air-only projectiles may not acquire a target fully submerged in water. */
-export const CT_TURRET_CFG_REQUIRES_AIR_TARGET = 1 << 16;
 /** Host-only and slaved mounts never independently auto-acquire. */
 export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
 /** Constant-speed guided shots aim at their velocity interception point. */
 export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
-/** Mirror of REQUIRES_AIR_TARGET for emissions that operate in water but not
- *  air. Gated on the target's bottom being under the waterline, so a hull
- *  crossing the surface stays engageable from both media. */
-export const CT_TURRET_CFG_REQUIRES_WATER_TARGET = 1 << 19;
+/** Exhaustive, unordered emission source->target medium routes. */
+export const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE = 1 << 20;
+export const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER = 1 << 21;
+export const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE = 1 << 22;
+export const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER = 1 << 23;
+export const CT_TURRET_CFG_ROUTE_MASK =
+  CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE |
+  CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER |
+  CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE |
+  CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
@@ -2680,6 +2688,10 @@ export interface CombatTargetingApi {
   readonly entityFlagsPtr: () => number;
   readonly entityActiveTurretMaskPtr: () => number;
   readonly entityFiringTurretMaskPtr: () => number;
+  readonly entityTeamAirSightMaskPtr: () => number;
+  readonly entityTeamWaterSightMaskPtr: () => number;
+  readonly entityTeamAirRadarMaskPtr: () => number;
+  readonly entityTeamWaterSonarMaskPtr: () => number;
   readonly entitySensorCoverageMaskPtr: () => number;
   readonly entityFullSightCoverageMaskPtr: () => number;
   readonly entityDetectorCoverageMaskPtr: () => number;
@@ -4414,6 +4426,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           entityFlagsPtr: combat_targeting_entity_flags_ptr,
           entityActiveTurretMaskPtr: combat_targeting_entity_active_turret_mask_ptr,
           entityFiringTurretMaskPtr: combat_targeting_entity_firing_turret_mask_ptr,
+          entityTeamAirSightMaskPtr: combat_targeting_entity_team_air_sight_mask_ptr,
+          entityTeamWaterSightMaskPtr: combat_targeting_entity_team_water_sight_mask_ptr,
+          entityTeamAirRadarMaskPtr: combat_targeting_entity_team_air_radar_mask_ptr,
+          entityTeamWaterSonarMaskPtr: combat_targeting_entity_team_water_sonar_mask_ptr,
           entitySensorCoverageMaskPtr: combat_targeting_entity_sensor_coverage_mask_ptr,
           entityFullSightCoverageMaskPtr: combat_targeting_entity_full_sight_coverage_mask_ptr,
           entityDetectorCoverageMaskPtr: combat_targeting_entity_detector_coverage_mask_ptr,
@@ -4871,6 +4887,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runUnitWaterLiftLocomotionContractTest();
         const { runShotLocomotionContractTest } = await import('../sim/shotLocomotionContractTest');
         runShotLocomotionContractTest();
+        const { runEmissionMediumContractTest } = await import('../sim/emissionMediumContractTest');
+        runEmissionMediumContractTest();
         const { runShotArmingContractTest } = await import('../sim/combat/shotArmingContractTest');
         runShotArmingContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');

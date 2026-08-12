@@ -50,6 +50,9 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
 import { recordEffectiveHostileDamage } from '../aggression';
 import { isAttackEmitter } from '../emitterKinds';
+import type { EmissionMediumTrajectoryMatrix } from '@/types/blueprintSchema.generated';
+import { emissionMediumAtZ } from '../emissionMedium';
+import { isWaterAt, WATER_LEVEL } from '../Terrain';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1094,6 +1097,7 @@ export class DamageSystem {
     dtMs: number = 0,
     traceLimitEndpointDamageable: boolean = rangeCylinder === undefined,
     reflectionEntity: number = SHIELD_REFLECTION_ENTITY_BEAM,
+    mediumTrajectory: EmissionMediumTrajectoryMatrix | undefined = undefined,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -1117,6 +1121,9 @@ export class DamageSystem {
     let bodyExcludePanelIndex = -1;
     let reflectorExcludeEntityId = NO_ENTITY_ID;
     let reflectorExcludePanelIndex = -1;
+    const emissionSourceMedium = mediumTrajectory === undefined
+      ? undefined
+      : emissionMediumAtZ(startZ, WATER_LEVEL);
     const panelsActive = this.world.turretShieldPanelsEnabled &&
       this.world.getShieldPanelUnits().length > 0;
     const fieldsActive = this.world.turretShieldSpheresEnabled &&
@@ -1124,6 +1131,7 @@ export class DamageSystem {
     const reflectorSim = panelsActive || fieldsActive ? getSimWasm() : undefined;
 
     for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
+      let mediumBoundaryTerminated = false;
       if (rangeCylinder) {
         const segDx = curEX - curSX;
         const segDy = curEY - curSY;
@@ -1145,6 +1153,26 @@ export class DamageSystem {
         curEX = curSX + segDx * invSegLen * cylinderDistance;
         curEY = curSY + segDy * invSegLen * cylinderDistance;
         curEZ = curSZ + segDz * invSegLen * cylinderDistance;
+      }
+
+      if (mediumTrajectory !== undefined && emissionSourceMedium !== undefined) {
+        const enteringWater = curSZ > WATER_LEVEL && curEZ <= WATER_LEVEL;
+        const exitingWater = curSZ <= WATER_LEVEL && curEZ > WATER_LEVEL;
+        if (enteringWater || exitingWater) {
+          const destinationMedium = enteringWater ? 'underwater' : 'aboveWater';
+          if (!mediumTrajectory[emissionSourceMedium][destinationMedium]) {
+            const dz = curEZ - curSZ;
+            const t = Math.abs(dz) <= 1e-12 ? 0 : (WATER_LEVEL - curSZ) / dz;
+            const crossingX = curSX + (curEX - curSX) * t;
+            const crossingY = curSY + (curEY - curSY) * t;
+            if (isWaterAt(crossingX, crossingY, this.world.mapWidth, this.world.mapHeight)) {
+              curEX = crossingX;
+              curEY = crossingY;
+              curEZ = WATER_LEVEL;
+              mediumBoundaryTerminated = true;
+            }
+          }
+        }
       }
 
       const hit = this.findBeamSegmentHit(
@@ -1169,7 +1197,9 @@ export class DamageSystem {
           obstructionT: undefined,
           reflections,
           terminalReflection: undefined,
-          endpointDamageable: traceLimitEndpointDamageable,
+          endpointDamageable: mediumBoundaryTerminated
+            ? false
+            : traceLimitEndpointDamageable,
           segmentLimitReached: false,
           endEntityId: NO_ENTITY_ID,
         };
@@ -1327,7 +1357,9 @@ export class DamageSystem {
     const dy = endY - startY;
     const dz = endZ - startZ;
     let prevT = 0;
-    let prevClear = startZ - this.world.getGroundZ(startX, startY);
+    // Rays collide with solid terrain, not the liquid support surface. Medium
+    // trajectory rules independently decide whether the ray may cross water.
+    let prevClear = startZ - this.world.getTerrainBedZ(startX, startY);
     if (prevClear < -BEAM_GROUND_EPSILON) return 0;
 
     for (let i = 1; i <= BEAM_GROUND_HIT_STEPS; i++) {
@@ -1335,7 +1367,7 @@ export class DamageSystem {
       const x = startX + dx * t;
       const y = startY + dy * t;
       const z = startZ + dz * t;
-      const clear = z - this.world.getGroundZ(x, y);
+      const clear = z - this.world.getTerrainBedZ(x, y);
       if (clear <= BEAM_GROUND_EPSILON && prevClear > BEAM_GROUND_EPSILON) {
         let lo = prevT;
         let hi = t;
@@ -1344,7 +1376,7 @@ export class DamageSystem {
           const midX = startX + dx * mid;
           const midY = startY + dy * mid;
           const midZ = startZ + dz * mid;
-          if (midZ - this.world.getGroundZ(midX, midY) <= BEAM_GROUND_EPSILON) {
+          if (midZ - this.world.getTerrainBedZ(midX, midY) <= BEAM_GROUND_EPSILON) {
             hi = mid;
           } else {
             lo = mid;
@@ -1519,7 +1551,7 @@ export class DamageSystem {
       _segHit.t = groundT;
       _segHit.x = startX + groundT * dx;
       _segHit.y = startY + groundT * dy;
-      _segHit.z = this.world.getGroundZ(_segHit.x, _segHit.y);
+      _segHit.z = this.world.getTerrainBedZ(_segHit.x, _segHit.y);
       _segHit.entityId = 0 as EntityId;
       _segHit.isMirror = false;
       _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 1;

@@ -86,6 +86,7 @@ import {
 } from '../../sim-wasm/init';
 import { getSecondaryLockOnProfile } from './lockOnConfig';
 import { cloneSensorCapabilityConfig, hasAnySensorRadius } from '../sensorConfig';
+import { cloneEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 
 export type LockOnMasks = {
   relationship: number;
@@ -560,6 +561,7 @@ function buildShotConfig(
     radius: shotBlueprint.radius,
     explosion: deriveShotExplosion(shotBlueprint.base.deathExplosion),
     shotLocomotion: getShotLocomotionPreset(shotBlueprint.shotLocomotionPresetId),
+    mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(shotBlueprint.mediumTrajectory),
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
   };
@@ -577,6 +579,7 @@ function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay | LaserRay {
       width: rayBlueprint.width,
       damageSphere: { radius: rayBlueprint.damageSphere.radius },
       gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
+      mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(rayBlueprint.mediumTrajectory),
     };
   }
   return {
@@ -590,6 +593,7 @@ function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay | LaserRay {
     damageSphere: { radius: rayBlueprint.damageSphere.radius },
     duration: rayBlueprint.duration,
     gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
+    mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(rayBlueprint.mediumTrajectory),
   };
 }
 
@@ -607,6 +611,7 @@ function buildShieldConfig(
     reflection: {
       entities: { ...shieldBlueprint.reflection.entities },
     },
+    mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(shieldBlueprint.mediumTrajectory),
     barrier:
       computeBarrierConfig(
         shieldBlueprint.barrier,

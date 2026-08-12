@@ -14,8 +14,9 @@ import rawRayBlueprints from './rays.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
 import type { RayBlueprint } from './types';
+import { validateEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 
-const RAY_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier'] as const;
+const RAY_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier', 'mediumTrajectory'] as const;
 const BEAM_CONTINUOUS_SOUND_EXPLICIT_FIELDS = ['harmonicSeriesIndex'] as const;
 
 function validateBeamContinuousSound(label: string, value: unknown): void {
@@ -56,6 +57,10 @@ for (const [id, blueprint] of Object.entries(RAY_BLUEPRINTS)) {
     );
   }
   assertExplicitFields(`ray blueprint ${id}`, blueprint, RAY_EXPLICIT_FIELDS);
+  validateEmissionMediumTrajectoryMatrix(
+    `ray blueprint ${id}.mediumTrajectory`,
+    blueprint.mediumTrajectory,
+  );
   if (blueprint.type === 'beam') {
     validateBeamContinuousSound(
       `ray blueprint ${id}.continuousSound`,

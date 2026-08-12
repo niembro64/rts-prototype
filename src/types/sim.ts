@@ -777,6 +777,9 @@ export type Projectile = {
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
   sourceTurretBlueprintId: TurretBlueprintId | null;
+  /** Immutable source row for this fired emission. Initialized from the shot
+   *  spawn point on its first authoritative update. */
+  emissionSourceMedium: 'aboveWater' | 'underwater' | null;
   projectileType: ProjectileType;
   /** Travelling shot health. Beams/lasers are sustained emissions and
    *  keep this at 0 so they are not damageable shot bodies. */
@@ -890,6 +893,7 @@ type ProjectileAbsenceSlots = Pick<Projectile,
   | 'beamPulsePlan'
   | 'beamDamageWindowMs'
   | 'sourceBarrelIndex'
+  | 'emissionSourceMedium'
   | 'prevStartX'
   | 'prevStartY'
   | 'prevStartZ'
@@ -923,6 +927,7 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   beamPulsePlan: null,
   beamDamageWindowMs: 0,
   sourceBarrelIndex: -1,
+  emissionSourceMedium: null,
   prevStartX: null,
   prevStartY: null,
   prevStartZ: null,

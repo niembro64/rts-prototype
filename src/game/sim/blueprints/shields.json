@@ -4,6 +4,10 @@
   },
   "shieldSphere": {
     "type": "shield",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
@@ -27,6 +31,10 @@
   },
   "shieldSphereSmall": {
     "type": "shield",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
@@ -50,6 +58,10 @@
   },
   "shieldCylinderInfinite": {
     "type": "shield",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
@@ -73,6 +85,10 @@
   },
   "shieldCylinderInfiniteAimed": {
     "type": "shield",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
@@ -96,6 +112,10 @@
   },
   "shieldPanel": {
     "type": "shield",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "materialId": "reflectiveShield",
     "angle": 0,
     "transitionTime": 500,

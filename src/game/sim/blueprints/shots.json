@@ -1,6 +1,10 @@
 {
   "shotPlasmaOther": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag003",
     "shotBlueprintId": "shotPlasmaOther",
     "name": "Heavy Plasma",
@@ -37,6 +41,10 @@
   },
   "shotPlasmaLight": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag002",
     "shotBlueprintId": "shotPlasmaLight",
     "name": "Light Plasma",
@@ -73,6 +81,10 @@
   },
   "shotPlasmaMedium": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag0025",
     "shotBlueprintId": "shotPlasmaMedium",
     "name": "Medium Plasma",
@@ -109,6 +121,10 @@
   },
   "shotRocketLight": {
     "type": "rocket",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "constantSpeedRocketLight",
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
@@ -145,6 +161,10 @@
   },
   "shotMissileFast": {
     "type": "missile",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "constantSpeedMissileFast",
     "shotBlueprintId": "shotMissileFast",
     "name": "Fast Missile",
@@ -181,6 +201,10 @@
   },
   "shotMissileLong": {
     "type": "missile",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "constantSpeedMissileLong",
     "shotBlueprintId": "shotMissileLong",
     "name": "Long Missile",
@@ -217,6 +241,10 @@
   },
   "shotPlasmaHeavy": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag003",
     "shotBlueprintId": "shotPlasmaHeavy",
     "name": "Heavy Plasma",
@@ -253,6 +281,10 @@
   },
   "shotMortarMedium": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag004",
     "shotBlueprintId": "shotMortarMedium",
     "name": "Medium Mortar Shell",
@@ -295,6 +327,10 @@
   },
   "shotMortarHeavy": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag004",
     "shotBlueprintId": "shotMortarHeavy",
     "name": "Heavy Mortar Shell",
@@ -337,6 +373,10 @@
   },
   "shotPlasmaDisruptor": {
     "type": "plasma",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
     "shotLocomotionPresetId": "ballisticDrag006",
     "shotBlueprintId": "shotPlasmaDisruptor",
     "name": "Disruptor Plasma",
@@ -373,6 +413,10 @@
   },
   "shotTorpedo": {
     "type": "rocket",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": true }
+    },
     "shotLocomotionPresetId": "guidedTorpedo",
     "shotBlueprintId": "shotTorpedo",
     "name": "Torpedo",

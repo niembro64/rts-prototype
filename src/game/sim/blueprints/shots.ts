@@ -16,6 +16,7 @@ import {
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 import { getShotLocomotionPreset } from '../shotLocomotion';
+import { validateEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 
 const PROJECTILE_EXPLICIT_FIELDS = [
   'name',
@@ -24,6 +25,7 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'hitSound',
   'submunitions',
   'shotLocomotionPresetId',
+  'mediumTrajectory',
   'smokeTrail',
 ] as const;
 
@@ -72,7 +74,46 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     );
   }
   assertValidEntityRadius(`shot blueprint ${id}`, blueprint.radius);
-  getShotLocomotionPreset(blueprint.shotLocomotionPresetId);
+  validateEmissionMediumTrajectoryMatrix(
+    `shot blueprint ${id}.mediumTrajectory`,
+    blueprint.mediumTrajectory,
+  );
+  const locomotion = getShotLocomotionPreset(blueprint.shotLocomotionPresetId);
+  const routes = blueprint.mediumTrajectory;
+  if (
+    (routes.aboveWater.aboveWater || routes.aboveWater.underwater) &&
+    !locomotion.media.air.operational
+  ) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.mediumTrajectory.aboveWater: a true launch route requires operational air locomotion`,
+    );
+  }
+  if (
+    (routes.underwater.aboveWater || routes.underwater.underwater) &&
+    !locomotion.media.water.operational
+  ) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.mediumTrajectory.underwater: a true launch route requires operational water locomotion`,
+    );
+  }
+  if (
+    routes.aboveWater.underwater &&
+    (locomotion.transitions.enterWater === 'detonate' ||
+      locomotion.transitions.enterWater === 'despawn')
+  ) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.mediumTrajectory.aboveWater.underwater: enterWater terminates the shot`,
+    );
+  }
+  if (
+    routes.underwater.aboveWater &&
+    (locomotion.transitions.exitWater === 'detonate' ||
+      locomotion.transitions.exitWater === 'despawn')
+  ) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.mediumTrajectory.underwater.aboveWater: exitWater terminates the shot`,
+    );
+  }
   // The runtime shot explosion is derived from base.deathExplosion in
   // buildShotConfig — base.deathExplosion is the single source of truth for
   // a shot's death blast, so there is no separate authored `explosion` field

@@ -498,14 +498,41 @@
         remains the stronger identity-bearing tier and is not replaced by either contact sensor.
       </p>
       <p>
+        Those mounted sensor lanes aggregate into four exhaustive, orthogonal team-knowledge facts:
+        <code>team-air-sight</code>, <code>team-water-sight</code>,
+        <code>team-air-radar</code>, and <code>team-water-sonar</code>. The first two identify target
+        volume observed above and below the surface; the latter two locate above-water and
+        underwater target volume without identifying it. A unit or building that straddles the
+        surface may earn both target-medium facts of a tier. A shot and a mounted turret are points
+        for medium membership and therefore earn exactly one target-medium fact. Each fact is
+        accumulated team-wide after the observing mount has passed its own authored sensor matrix;
+        none carries or implies a weapon launch medium, trajectory capability, range, or line of
+        fire.
+      </p>
+      <p>
+        Every directed weapon emission separately authors an exhaustive two-by-two boolean
+        trajectory matrix: above-water-to-above-water, above-water-to-underwater,
+        underwater-to-above-water, and underwater-to-underwater. Only the row selected by the
+        emitting turret point is active. A unit or building target is medium-eligible when at least
+        one true cell in that row intersects a medium occupied by any positive volume of its body;
+        a shot or turret target is eligible only through the one medium containing its point. There
+        is no same-medium preference, implicit fallback, inferred default, or ordering among true
+        cells. If more than one route is legal, ordinary deterministic aim geometry and the physical
+        trajectory solver choose a reachable hit point without privileging the source medium.
+      </p>
+      <p>
         Long-range weapons should consume player/team intelligence, not pretend their own barrel can
         see forever. A target can be fired on when the weapon&rsquo;s range, line-of-fire policy, ballistic
-        solver, and required intelligence tier all pass. Full sight gives exact aim and normal target
-        selection. Contact-only radar or sonar information can support weapons explicitly authored for blind or remote
-        fire, such as artillery, missiles, or other indirect systems, but direct beams and precision
-        line weapons should usually require full sight and unobstructed line of sight. The ballistic
-        solver answers &ldquo;can this shot physically reach that point?&rdquo; It does not by itself answer
-        &ldquo;does this player have enough information to choose that point?&rdquo;
+        solver, emission trajectory matrix, and required intelligence tier all pass. Team knowledge
+        is unified and orthogonal to emission physics: a valid underwater-to-above-water missile may
+        use above-water target knowledge contributed by any teammate&rsquo;s sight or, when the weapon
+        permits contact fire, team-air-radar. It does not need the observing sensor to share its
+        launch medium or trajectory lane. Full sight gives exact aim and normal target selection.
+        Contact-only radar or sonar information can support weapons explicitly authored for blind or
+        remote fire, such as artillery, missiles, or other indirect systems, but direct beams and
+        precision line weapons should usually require full sight and unobstructed line of sight. The
+        ballistic solver answers &ldquo;can this emission physically reach that point?&rdquo; It does not by
+        itself answer &ldquo;does this team know enough to choose that point?&rdquo;
       </p>
       <p>
         This intentionally pushes scouting and contact sensors into army composition. A long-range turret with
@@ -515,14 +542,14 @@
         sight envelope must be authored separately.
       </p>
       <ul class="rule-list">
-        <li>Full sight may reveal and identify, and always counts as contact-level location; radar/sonar-only coverage may locate; detector coverage may uncloak but does not locate by itself.</li>
+        <li>The four exhaustive team-knowledge facts are <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. Sight identifies and also counts as contact-level location in its target medium; radar/sonar-only coverage locates in its target medium; detector coverage may uncloak but does not locate by itself. The four facts are team-unified and orthogonal to every emission trajectory cell.</li>
         <li>Every entity visibility and contact-radius test uses source and target centers for DISTANCE, with zero silhouette or hitbox padding &mdash; a hitbox never extends a sensor&rsquo;s reach. Medium membership is separate from distance: a source is classified by <code>mountCenter.z &lt;= waterLevel</code>, a target by the submerged fraction of its authored volume, and a target with any volume in a medium is addressable in that medium.</li>
-        <li>The same source/target asymmetry governs weapons. An emission that operates in only one medium restricts what its turret may acquire: an air-only emission needs a target whose top is above the waterline, a water-only emission needs one whose bottom is below it. A turret must not lock what its emission can never reach.</li>
-        <li>Every full-sight and contact-sight radius is selected from the active source row and target column. Same-medium sight is the default; cross-medium sight is an explicit blueprint capability.</li>
+        <li>The same source/target asymmetry governs weapons. Every directed emission exhaustively asserts all four booleans: above-water-to-above-water, above-water-to-underwater, underwater-to-above-water, and underwater-to-underwater. A turret activates exactly its point-classified source row and may lock a unit or building when any true column intersects positive target-body volume, or a shot/turret when the true column matches that target point. There is no same-medium preference. A turret must not lock what its emission cannot physically reach.</li>
+        <li>Every full-sight and contact-sight radius is selected from the active source row and target column. Ordinary content explicitly authors same-medium sight; cross-medium sight is a separate explicit blueprint capability, and neither is inferred.</li>
         <li>Radar contributes contacts only from above-water sources to above-water targets; sonar contributes contacts only from underwater sources to underwater targets. Their map-space coverage may overlap, but their source-target lanes never do.</li>
-        <li>Radar- and sonar-only contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). They are not full entities in the recipient&rsquo;s main snapshot.</li>
+        <li>Team-air-radar and team-water-sonar contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). Once team-unified, either knowledge channel may support any physically valid emission route to that target; sensor source medium never constrains weapon source medium. Contacts are not full entities in the recipient&rsquo;s main snapshot.</li>
         <li>Weapon range, tracking range, unit sight, radar range, sonar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
-        <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
+        <li>Team-air-sight and team-water-sight are player/team aggregates. A turret firing using another unit&rsquo;s sight is using team knowledge, not gaining that other unit&rsquo;s local sight radius or inheriting its sensor lane.</li>
         <li>Construction-incomplete and destroyed hosts provide no sensor channels. A completed active-state building always provides passive full sight; its contact and detector channels require the powered/open state.</li>
         <li>Terrain shade, environment-prop shade, sensor boundaries, snapshot filtering, and targeting consume the same operational mounted sources. Presentation may soften an edge, but it may not invent another coverage footprint.</li>
       </ul>
@@ -765,6 +792,16 @@
         entry and exit are authored transitions, so a shell may despawn at the
         surface, a torpedo may continue underwater and become ballistic when it
         breaches, and a future munition may detonate on either crossing.
+      </p>
+      <p>
+        Operational medium physics and targetable trajectory routes are related
+        but not interchangeable. Every shot and ray blueprint exhaustively
+        asserts its four source-to-target medium booleans; locomotion and ray
+        boundary behavior must then prove every true route physically executable.
+        A false route forbids planned lock-on through that cell, while an authored
+        transition may still describe incidental post-miss travel such as an
+        underwater torpedo breaching ballistically. Travelling shots and ray
+        samples are points and occupy exactly one medium at a time.
       </p>
       <p>
         Shot locomotion also decides the terminal outcome for entity impact,
@@ -3951,7 +3988,7 @@
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
         <li>Give every positive-<code>constructionRate</code> host exactly one restrained yellow-and-black construction marking authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
-        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team. The turret&rsquo;s mounted world origin selects the source medium; the target body center selects the target medium. Full sight identifies and also supplies contact-level location, radar/sonar-only coverage locates targets only through its authored matrix lane, detectors uncloak within an active full-sight lane, and weapon fire consumes those tiers through explicit targeting requirements. Weapon range and ammunition never create or scale vision.</li>
+        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium, radar/sonar-only coverage locates through its authored sensor lane, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>

@@ -36,7 +36,7 @@ import {
 import { isAttackEmitter, isPassiveShieldFieldConfig } from './emitterKinds';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { getUnitGroundZ } from './unitGeometry';
-import { WATER_LEVEL } from './Terrain';
+import { isWaterAt, WATER_LEVEL } from './Terrain';
 import type { WindState } from './wind';
 import { WorldState } from './WorldState';
 import {
@@ -60,6 +60,7 @@ import {
   BEAM_PULSE_ON_TIME_RANDOMNESS,
 } from '../../config';
 import { rollTurretCooldownDuration } from './turretCooldown';
+import { SHIELD_REFLECTION_ENTITY_BEAM } from './combat/reflectorBatch';
 
 const TEST_UNIT_BLUEPRINT_ID = 'unitFormik';
 const TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID = 'unitBadger';
@@ -536,6 +537,43 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
       ) <= beamTurret.config.targeting.effect.range + 1e-6,
     'a collision-free beam must terminate as a damageable air endpoint at its finite effect boundary',
   );
+  let waterX = -1;
+  let waterY = -1;
+  for (let x = 32; x < world.mapWidth && waterX < 0; x += 32) {
+    for (let y = 32; y < world.mapHeight; y += 32) {
+      if (isWaterAt(x, y, world.mapWidth, world.mapHeight)) {
+        waterX = x;
+        waterY = y;
+        break;
+      }
+    }
+  }
+  assertContract(waterX >= 0, 'beam medium test map must contain water');
+  const beamShot = beamTurret.config.shot;
+  assertContract(beamShot !== null && beamShot.type === 'beam', 'beam turret must own a ray matrix');
+  const waterBoundaryPath = beamDamageSystem.findBeamPath(
+    waterX,
+    waterY,
+    WATER_LEVEL + 50,
+    waterX,
+    waterY,
+    WATER_LEVEL - 50,
+    daddy.id,
+    1,
+    4,
+    undefined,
+    0,
+    true,
+    SHIELD_REFLECTION_ENTITY_BEAM,
+    beamShot.mediumTrajectory,
+  );
+  assertContract(
+    Math.abs(waterBoundaryPath.endZ - WATER_LEVEL) <= 1e-6 &&
+      !waterBoundaryPath.endpointDamageable,
+    `an A->A-only ray must physically terminate at the exact water boundary ` +
+      `(expected z=${WATER_LEVEL}, actual z=${waterBoundaryPath.endZ}, ` +
+      `damageable=${waterBoundaryPath.endpointDamageable}, entity=${waterBoundaryPath.endEntityId})`,
+  );
   assertContract(
     pulsePlan.durationMs >= BEAM_PULSE_ON_TIME_MS * (1 - BEAM_PULSE_ON_TIME_RANDOMNESS) &&
       pulsePlan.durationMs <= BEAM_PULSE_ON_TIME_MS * (1 + BEAM_PULSE_ON_TIME_RANDOMNESS) &&
@@ -828,8 +866,8 @@ function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
 
   const { turret, turretIndex } = getFirstAttackTurret(source);
   assertContract(
-    turret.config.targeting.engagement.rangeVolume === 'turret-range-top-water-and-bottom-unbounded',
-    'Orca torpedo turret must use the authored water-ceiling range volume',
+    turret.config.targeting.engagement.rangeVolume === 'turret-range-bottom-unbounded',
+    'Orca torpedo range volume must remain geometric; its emission matrix owns water legality',
   );
   turret.config.requiresNonObstructedLineOfSight = false;
   if (manualTarget) {

@@ -68,6 +68,18 @@ pub struct SensorMediumRadiusMatrix {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct EmissionMediumTargetRoutes {
+    pub aboveWater: bool,
+    pub underwater: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EmissionMediumTrajectoryMatrix {
+    pub aboveWater: EmissionMediumTargetRoutes,
+    pub underwater: EmissionMediumTargetRoutes,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct SensorCapabilityConfig {
     pub fullSight: SensorMediumRadiusMatrix,
     pub contactSight: SensorMediumRadiusMatrix,
@@ -343,6 +355,7 @@ pub struct ProjectileShotBlueprint {
     pub health: f64,
     pub radius: EntityRadiusConfig,
     pub shotLocomotionPresetId: String,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub hitSound: Option<BlueprintJsonValue>,
     pub submunitions: Option<SubmunitionSpec>,
     pub smokeTrail: Option<SmokeTrailSpec>,
@@ -382,6 +395,7 @@ pub struct ProjectileShot {
     pub radius: EntityRadiusConfig,
     pub explosion: Option<ShotExplosion>,
     pub shotLocomotion: ShotLocomotion,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub trailLength: Option<f64>,
     pub submunitions: Option<SubmunitionSpec>,
     pub smokeTrail: Option<SmokeTrailSpec>,
@@ -1246,6 +1260,7 @@ pub struct BeamRayBlueprint {
     pub width: f64,
     pub damageSphere: ShotCollision,
     pub gravityForceMultiplier: f64,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub continuousSound: BeamContinuousSoundConfig,
     pub hitSound: Option<BlueprintJsonValue>,
     pub rayBlueprintId: String,
@@ -1267,6 +1282,7 @@ pub struct LaserRayBlueprint {
     pub damageSphere: ShotCollision,
     pub duration: f64,
     pub gravityForceMultiplier: f64,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub hitSound: Option<BlueprintJsonValue>,
     pub rayBlueprintId: String,
 }
@@ -1279,6 +1295,7 @@ pub struct ShieldBlueprint {
     pub transitionTime: f64,
     pub reflection: ShieldReflectionPolicy,
     pub barrier: Option<ShieldBarrierRatioConfig>,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub hitSound: Option<BlueprintJsonValue>,
     pub shieldBlueprintId: String,
 }
@@ -1299,6 +1316,7 @@ pub struct BeamRay {
     pub width: f64,
     pub damageSphere: ShotCollision,
     pub gravityForceMultiplier: f64,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub rayBlueprintId: String,
 }
 
@@ -1313,6 +1331,7 @@ pub struct LaserRay {
     pub damageSphere: ShotCollision,
     pub duration: f64,
     pub gravityForceMultiplier: f64,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub rayBlueprintId: String,
 }
 
@@ -1329,6 +1348,7 @@ pub struct ShieldConfig {
     pub angle: f64,
     pub transitionTime: f64,
     pub reflection: ShieldReflectionPolicy,
+    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub barrier: Option<ShieldBarrierConfig>,
     pub shieldBlueprintId: String,
 }
