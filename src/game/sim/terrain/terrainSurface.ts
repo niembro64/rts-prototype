@@ -173,8 +173,11 @@ export function isWaterAt(
 ): boolean {
   const flatZone = findDepositFlatZoneAt(x, z);
   if (flatZone) return flatZone.height < WATER_LEVEL;
+  // Bed height rides the WASM terrain sampler (with the same JS mesh
+  // fallback), so the per-probe barycentric walk stays out of JS on the
+  // hot support-surface path.
   return (
-    getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL
+    getTerrainBedHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL
   );
 }
 
