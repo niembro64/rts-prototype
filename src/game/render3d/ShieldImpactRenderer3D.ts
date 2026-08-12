@@ -11,10 +11,7 @@ import * as THREE from 'three';
 import { SHIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
 import {
   createInstancedColorAlphaPool,
@@ -28,7 +25,6 @@ import {
 import { disposeMesh } from './threeUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
-import { applyExposureToRawShader } from './RenderLighting3D';
 
 type Impact = {
   ageMs: number;
@@ -44,19 +40,11 @@ type Impact = {
 const EMPTY_LINE_PROJECTILES: readonly Entity[] = [];
 
 function makeImpactMaterial(blending: THREE.Blending = THREE.AdditiveBlending): THREE.ShaderMaterial {
-  const material = new THREE.ShaderMaterial({
-    vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-    fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-    transparent: true,
-    depthWrite: false,
+  return createInstancedColorAlphaParticleMaterial({
     depthTest: true,
     side: THREE.DoubleSide,
     blending,
   });
-  // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-  // invisible to exposure without this.
-  applyExposureToRawShader(material);
-  return material;
 }
 
 class ImpactPool {

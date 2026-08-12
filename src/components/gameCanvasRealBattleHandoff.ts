@@ -1,54 +1,30 @@
 import type { Ref } from 'vue';
-import type { GameScene } from '../game/createGame';
 import type {
   LobbyPlayer,
   LobbySettings,
-  NetworkManager,
-  NetworkRole,
 } from '../game/network/NetworkManager';
-import type { GameConnection } from '../game/server/GameConnection';
-import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
-import type { CameraFovDegrees } from '../types/client';
 import type { BattleHandoff, NetworkCommunicationEvent } from '../types/network';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
-import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
-import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
-import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
-import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
+import {
+  startRealBattleWithPlayers,
+  type StartRealBattleWithPlayersOptions,
+} from './gameCanvasRealBattleStart';
 
 type ResolvePlayerName = {
   (playerId: PlayerId): string;
   (playerId: PlayerId, fallback: null): string | null;
 };
 
-type UseGameCanvasRealBattleHandoffOptions = {
-  containerRef: Ref<HTMLDivElement | null>;
-  showLobby: Ref<boolean>;
-  gameStarted: Ref<boolean>;
-  battleLoading: Ref<boolean>;
-  activePlayer: Ref<PlayerId>;
-  localPlayerId: Ref<PlayerId>;
-  networkRole: Ref<NetworkRole | null>;
-  playerClientEnabled: Ref<boolean>;
-  cameraFovDegrees: Ref<CameraFovDegrees>;
-  localIpAddress: Ref<string>;
-  hasServer: Ref<boolean>;
+type UseGameCanvasRealBattleHandoffOptions = Omit<
+  StartRealBattleWithPlayersOptions,
+  'lookupPlayerName' | 'battleHandoff'
+> & {
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
   lobbyPlayers: Ref<LobbyPlayer[]>;
   roomCode: Ref<string>;
   localUsername: Ref<string>;
-  network: NetworkManager;
-  lifecycle: GameCanvasRealBattleLifecycle;
-  foregroundGame: GameCanvasForegroundGame;
-  foregroundSceneBinding: GameCanvasForegroundSceneBinding;
-  stopBackgroundBattle: () => void;
-  waitForBackgroundBattleIdle: () => Promise<void>;
-  getCurrentServer: () => GameServer | null;
-  setCurrentServer: (server: GameServer | null) => void;
-  setActiveConnection: (connection: GameConnection | null) => void;
-  setBattleStartTime: (time: number) => void;
   resolvePlayerName: ResolvePlayerName;
   upsertLobbyPlayer: (player: LobbyPlayer) => void;
   applyLobbySettingsFromHost: (
@@ -57,8 +33,6 @@ type UseGameCanvasRealBattleHandoffOptions = {
   ) => void;
   currentLobbySettings: () => LobbySettings;
   onCommunication: (event: NetworkCommunicationEvent) => void;
-  onLoadingProgress: (progress: number, phase?: string) => void;
-  bindSceneUi: (scene: GameScene) => void;
 };
 
 export function useGameCanvasRealBattleHandoff({

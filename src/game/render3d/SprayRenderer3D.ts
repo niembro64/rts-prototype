@@ -35,10 +35,7 @@
 // Zero-intensity sprays (idle commanders) skip entirely.
 
 import * as THREE from 'three';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
@@ -55,7 +52,6 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
-import { applyExposureToRawShader } from './RenderLighting3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -167,15 +163,7 @@ export class SprayRenderer3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.mat = new THREE.ShaderMaterial({
-      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-    });
-    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-    // invisible to exposure without this.
-    applyExposureToRawShader(this.mat);
+    this.mat = createInstancedColorAlphaParticleMaterial();
 
     this.pools = {
       close: this.createPool('close'),

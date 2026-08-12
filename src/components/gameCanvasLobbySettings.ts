@@ -4,10 +4,16 @@ import type {
   TerrainSurfaceMode,
 } from '../types/worldSurfaceMode';
 import {
+  isLiquidSurfaceMode,
+  isTerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
+import {
   setLiquidSurfaceMode,
   setTerrainSurfaceMode,
 } from '../game/sim/worldSurfaceState';
 import {
+  loadStoredLiquidSurfaceMode,
+  loadStoredTerrainSurfaceMode,
   saveLiquidSurfaceMode,
   saveTerrainSurfaceMode,
 } from '../battleBarConfig';
@@ -45,6 +51,7 @@ import type {
 } from '../game/network/NetworkManager';
 import { setTerrainRuntimeConfig } from '../game/sim/Terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import { applyWorldSurfaceSelection } from './gameCanvasWorldSurfaceSelection';
 
 type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
@@ -85,6 +92,7 @@ type GameCanvasLobbySettingsOptions = {
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
+  worldSurfaceStoreVersion: Ref<number>;
   stopBackgroundBattle: () => void;
   startBackgroundBattle: () => void;
 };
@@ -115,6 +123,7 @@ export function useGameCanvasLobbySettings({
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
+  worldSurfaceStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
 }: GameCanvasLobbySettingsOptions): GameCanvasLobbySettings {
@@ -157,6 +166,8 @@ export function useGameCanvasLobbySettings({
       maxTotalUnits: loadStoredRealCap(),
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
+      terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
+      liquidSurfaceMode: loadStoredLiquidSurfaceMode('real'),
     };
   }
 
@@ -260,18 +271,32 @@ export function useGameCanvasLobbySettings({
   // rebuilt rather than just re-shaded.
   function applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
     const battleMode = currentBattleMode.value;
-    saveTerrainSurfaceMode(mode, battleMode);
-    if (!setTerrainSurfaceMode(mode)) return;
-    restartPreviewIfNeeded();
-    if (broadcast) broadcastLobbySettingsIfHost();
+    applyWorldSurfaceSelection({
+      storedMode: loadStoredTerrainSurfaceMode(battleMode),
+      nextMode: mode,
+      persist: (nextMode) => saveTerrainSurfaceMode(nextMode, battleMode),
+      installRuntime: setTerrainSurfaceMode,
+      onChanged: () => {
+        worldSurfaceStoreVersion.value++;
+        restartPreviewIfNeeded();
+        if (broadcast) broadcastLobbySettingsIfHost();
+      },
+    });
   }
 
   function applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast = true): void {
     const battleMode = currentBattleMode.value;
-    saveLiquidSurfaceMode(mode, battleMode);
-    if (!setLiquidSurfaceMode(mode)) return;
-    restartPreviewIfNeeded();
-    if (broadcast) broadcastLobbySettingsIfHost();
+    applyWorldSurfaceSelection({
+      storedMode: loadStoredLiquidSurfaceMode(battleMode),
+      nextMode: mode,
+      persist: (nextMode) => saveLiquidSurfaceMode(nextMode, battleMode),
+      installRuntime: setLiquidSurfaceMode,
+      onChanged: () => {
+        worldSurfaceStoreVersion.value++;
+        restartPreviewIfNeeded();
+        if (broadcast) broadcastLobbySettingsIfHost();
+      },
+    });
   }
 
   function applyMapLandDimensions(
@@ -323,6 +348,16 @@ export function useGameCanvasLobbySettings({
         : normalizeTerrainDetail(settings.terrainDetail);
     const nextSlowDownAtFinalWaypoint =
       settings.slowDownAtFinalWaypoint === true;
+    const nextTerrainSurfaceMode = isTerrainSurfaceMode(settings.terrainSurfaceMode)
+      ? settings.terrainSurfaceMode
+      : loadStoredTerrainSurfaceMode('real');
+    const nextLiquidSurfaceMode = isLiquidSurfaceMode(settings.liquidSurfaceMode)
+      ? settings.liquidSurfaceMode
+      : loadStoredLiquidSurfaceMode('real');
+    const terrainSurfaceModeChanged =
+      nextTerrainSurfaceMode !== loadStoredTerrainSurfaceMode('real');
+    const liquidSurfaceModeChanged =
+      nextLiquidSurfaceMode !== loadStoredLiquidSurfaceMode('real');
     const slowDownAtFinalWaypointChanged =
       nextSlowDownAtFinalWaypoint !==
       loadStoredSlowDownAtFinalWaypoint('real');
@@ -336,7 +371,9 @@ export function useGameCanvasLobbySettings({
       nextTerrainDetail !== terrainDetail.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
-      slowDownAtFinalWaypointChanged;
+      slowDownAtFinalWaypointChanged ||
+      terrainSurfaceModeChanged ||
+      liquidSurfaceModeChanged;
 
     centerMagnitude.value = nextCenterMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
@@ -361,6 +398,13 @@ export function useGameCanvasLobbySettings({
       },
       'real',
     );
+    saveTerrainSurfaceMode(nextTerrainSurfaceMode, 'real');
+    saveLiquidSurfaceMode(nextLiquidSurfaceMode, 'real');
+    setTerrainSurfaceMode(nextTerrainSurfaceMode);
+    setLiquidSurfaceMode(nextLiquidSurfaceMode);
+    if (terrainSurfaceModeChanged || liquidSurfaceModeChanged) {
+      worldSurfaceStoreVersion.value++;
+    }
     if (settings.converterTax !== undefined) {
       saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
     }

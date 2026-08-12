@@ -162,6 +162,8 @@ export type ClientBarConfig = {
   /** Client-side entity grounding shadows in the shared world coverage
    *  texture. Presentation only; disabling also skips shadow packet work. */
   readonly entityShadows: BooleanSetting;
+  /** Local presentation of shield panels, spheres, and impact flashes. */
+  readonly forceFieldsVisible: BooleanSetting;
   /** World-attached fog-of-war shade over terrain and environment props.
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */

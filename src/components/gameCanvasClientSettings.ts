@@ -19,6 +19,7 @@ import {
   getDragPanEnabled,
   getElevationMap,
   getEntityShadows,
+  getForceFieldsVisible,
   getFogShade,
   getMaterialExplosions,
   getPathingMap,
@@ -68,6 +69,7 @@ import {
   setDragPanEnabled,
   setElevationMap,
   setEntityShadows,
+  setForceFieldsVisible,
   setFogShade,
   setMaterialExplosions,
   setPathingMap,
@@ -171,6 +173,7 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const entityShadows = ref<boolean>(getEntityShadows());
+  const forceFieldsVisible = ref<boolean>(getForceFieldsVisible());
   const fogShade = ref<boolean>(getFogShade());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
   const triangleDebug = ref<boolean>(getTriangleDebug());
@@ -278,6 +281,7 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     entityShadows.value = getEntityShadows();
+    forceFieldsVisible.value = getForceFieldsVisible();
     fogShade.value = getFogShade();
     materialExplosions.value = getMaterialExplosions();
     triangleDebug.value = getTriangleDebug();
@@ -521,6 +525,12 @@ export function useGameCanvasClientSettings({
     entityShadows.value = newValue;
   }
 
+  function toggleForceFieldsVisible(): void {
+    const newValue = !forceFieldsVisible.value;
+    setForceFieldsVisible(newValue);
+    forceFieldsVisible.value = newValue;
+  }
+
   function toggleFogShade(): void {
     const newValue = !fogShade.value;
     setFogShade(newValue);
@@ -709,6 +719,8 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setEntityShadows(cd.entityShadows.default);
     entityShadows.value = cd.entityShadows.default;
+    setForceFieldsVisible(cd.forceFieldsVisible.default);
+    forceFieldsVisible.value = cd.forceFieldsVisible.default;
     setFogShade(cd.fogShade.default);
     fogShade.value = cd.fogShade.default;
     setMaterialExplosions(cd.materialExplosions.default);
@@ -805,6 +817,7 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     entityShadows,
+    forceFieldsVisible,
     fogShade,
     materialExplosions,
     triangleDebug,
@@ -877,6 +890,7 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleEntityShadows,
+    toggleForceFieldsVisible,
     toggleFogShade,
     toggleMaterialExplosions,
     toggleTriangleDebug,

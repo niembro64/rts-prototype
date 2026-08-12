@@ -123,19 +123,11 @@ impl TurretPool {
     }
 }
 
-pub(crate) struct TurretPoolHolder(UnsafeCell<Option<TurretPool>>);
-unsafe impl Sync for TurretPoolHolder {}
-pub(crate) static TURRET_POOL: TurretPoolHolder = TurretPoolHolder(UnsafeCell::new(None));
+pub(crate) static TURRET_POOL: WasmLazy<TurretPool> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn turret_pool() -> &'static mut TurretPool {
-    unsafe {
-        let cell = &mut *TURRET_POOL.0.get();
-        if cell.is_none() {
-            *cell = Some(TurretPool::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    TURRET_POOL.get_or_init(TurretPool::empty)
 }
 
 #[wasm_bindgen]

@@ -163,6 +163,18 @@ export type CommonShapeItem = {
   alpha: number;
 };
 
+/** Samples a log-distributed size while biasing the population toward the
+ * lower end of the range. Used by the hard-edged rock, leaf, and bark tiles. */
+export function sampleLogDistributedSize(
+  rng: () => number,
+  min: number,
+  max: number,
+  exponent = 1.5,
+): number {
+  const t = Math.pow(rng(), exponent);
+  return Math.exp(Math.log(min) + t * (Math.log(max) - Math.log(min)));
+}
+
 function drawCommonShapeItem(ctx: CanvasRenderingContext2D, item: CommonShapeItem): void {
   drawCommonShape(ctx, item.size, item.shapeKind, item.shapeParam);
 }

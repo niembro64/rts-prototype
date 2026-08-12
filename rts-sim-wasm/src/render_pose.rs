@@ -5,6 +5,70 @@ use crate::*;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
 
+struct RenderPoseScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+impl RenderPoseScratch {
+    fn new(input_stride: usize, output_stride: usize, initial_count: usize) -> Self {
+        Self {
+            input: vec![0.0; input_stride * initial_count],
+            output: vec![0.0; output_stride * initial_count],
+        }
+    }
+
+    fn ensure(&mut self, count: usize, input_stride: usize, output_stride: usize) {
+        let input_needed = count * input_stride;
+        if self.input.len() < input_needed {
+            self.input.resize(input_needed, 0.0);
+        }
+        let output_needed = count * output_stride;
+        if self.output.len() < output_needed {
+            self.output.resize(output_needed, 0.0);
+        }
+    }
+}
+
+/// Defines one reusable input/output scratch pair without repeating the
+/// holder, pointer exports, growth policy, or unsafe global-storage contract.
+macro_rules! render_pose_scratch {
+    (
+        $static_name:ident,
+        $getter:ident,
+        $input_ptr:ident,
+        $output_ptr:ident,
+        $ensure:ident,
+        $input_stride:ident,
+        $output_stride:ident,
+        initial $initial_count:expr
+    ) => {
+        static $static_name: WasmLazy<RenderPoseScratch> = WasmLazy::new();
+
+        #[inline]
+        fn $getter() -> &'static mut RenderPoseScratch {
+            $static_name.get_or_init(|| {
+                RenderPoseScratch::new($input_stride, $output_stride, $initial_count)
+            })
+        }
+
+        #[wasm_bindgen]
+        pub fn $input_ptr() -> *const f32 {
+            $getter().input.as_ptr()
+        }
+
+        #[wasm_bindgen]
+        pub fn $output_ptr() -> *const f32 {
+            $getter().output.as_ptr()
+        }
+
+        #[wasm_bindgen]
+        pub fn $ensure(count: u32) {
+            $getter().ensure(count as usize, $input_stride, $output_stride);
+        }
+    };
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Render pose scratch — unit base chain
 //
@@ -25,52 +89,16 @@ const RENDER_AIRBORNE_BANK_VISUAL_GRAVITY: f64 = 1.0 / 0.003;
 const RENDER_AIRBORNE_BANK_MAX: f64 = core::f64::consts::PI * 0.25;
 const RENDER_AIRBORNE_BANK_TAU_SEC: f64 = 0.18;
 
-pub(crate) struct RenderUnitPoseScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderUnitPoseScratchHolder(UnsafeCell<Option<RenderUnitPoseScratch>>);
-unsafe impl Sync for RenderUnitPoseScratchHolder {}
-pub(crate) static RENDER_UNIT_POSE_SCRATCH: RenderUnitPoseScratchHolder =
-    RenderUnitPoseScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_unit_pose_scratch() -> &'static mut RenderUnitPoseScratch {
-    unsafe {
-        let cell = &mut *RENDER_UNIT_POSE_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderUnitPoseScratch {
-                input: vec![0.0; RENDER_UNIT_POSE_INPUT_STRIDE * 512],
-                output: vec![0.0; RENDER_UNIT_POSE_OUTPUT_STRIDE * 512],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_unit_pose_input_scratch_ptr() -> *const f32 {
-    render_unit_pose_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_unit_pose_output_scratch_ptr() -> *const f32 {
-    render_unit_pose_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_unit_pose_scratch_ensure(count: u32) {
-    let s = render_unit_pose_scratch();
-    let input_needed = (count as usize) * RENDER_UNIT_POSE_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_UNIT_POSE_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_UNIT_POSE_SCRATCH,
+    render_unit_pose_scratch,
+    render_unit_pose_input_scratch_ptr,
+    render_unit_pose_output_scratch_ptr,
+    render_unit_pose_scratch_ensure,
+    RENDER_UNIT_POSE_INPUT_STRIDE,
+    RENDER_UNIT_POSE_OUTPUT_STRIDE,
+    initial 512
+);
 
 #[inline]
 pub(crate) fn quat_mul(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
@@ -353,31 +381,16 @@ pub fn render_unit_pose_compute(count: u32) {
 pub const RENDER_PROJECTILE_AXIS_INPUT_STRIDE: usize = 4;
 pub const RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE: usize = 7;
 
-pub(crate) struct RenderProjectileAxisScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderProjectileAxisScratchHolder(
-    UnsafeCell<Option<RenderProjectileAxisScratch>>,
+render_pose_scratch!(
+    RENDER_PROJECTILE_AXIS_SCRATCH,
+    render_projectile_axis_scratch,
+    render_projectile_axis_input_scratch_ptr,
+    render_projectile_axis_output_scratch_ptr,
+    render_projectile_axis_scratch_ensure,
+    RENDER_PROJECTILE_AXIS_INPUT_STRIDE,
+    RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE,
+    initial 1024
 );
-unsafe impl Sync for RenderProjectileAxisScratchHolder {}
-pub(crate) static RENDER_PROJECTILE_AXIS_SCRATCH: RenderProjectileAxisScratchHolder =
-    RenderProjectileAxisScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_projectile_axis_scratch() -> &'static mut RenderProjectileAxisScratch {
-    unsafe {
-        let cell = &mut *RENDER_PROJECTILE_AXIS_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderProjectileAxisScratch {
-                input: vec![0.0; RENDER_PROJECTILE_AXIS_INPUT_STRIDE * 1024],
-                output: vec![0.0; RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE * 1024],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
 
 #[inline]
 pub(crate) fn render_projectile_rearward_pose(
@@ -414,29 +427,6 @@ pub(crate) fn render_projectile_rearward_pose(
     };
     quat_normalize_inplace(&mut q);
     (rearward, q)
-}
-
-#[wasm_bindgen]
-pub fn render_projectile_axis_input_scratch_ptr() -> *const f32 {
-    render_projectile_axis_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_projectile_axis_output_scratch_ptr() -> *const f32 {
-    render_projectile_axis_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_projectile_axis_scratch_ensure(count: u32) {
-    let s = render_projectile_axis_scratch();
-    let input_needed = (count as usize) * RENDER_PROJECTILE_AXIS_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
 }
 
 #[wasm_bindgen]
@@ -479,54 +469,16 @@ pub fn render_projectile_axis_compute(count: u32) {
 pub const RENDER_AIRBORNE_EMITTER_INPUT_STRIDE: usize = 24;
 pub const RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE: usize = 6;
 
-pub(crate) struct RenderAirborneEmitterScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderAirborneEmitterScratchHolder(
-    UnsafeCell<Option<RenderAirborneEmitterScratch>>,
+render_pose_scratch!(
+    RENDER_AIRBORNE_EMITTER_SCRATCH,
+    render_airborne_emitter_scratch,
+    render_airborne_emitter_input_scratch_ptr,
+    render_airborne_emitter_output_scratch_ptr,
+    render_airborne_emitter_scratch_ensure,
+    RENDER_AIRBORNE_EMITTER_INPUT_STRIDE,
+    RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE,
+    initial 512
 );
-unsafe impl Sync for RenderAirborneEmitterScratchHolder {}
-pub(crate) static RENDER_AIRBORNE_EMITTER_SCRATCH: RenderAirborneEmitterScratchHolder =
-    RenderAirborneEmitterScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_airborne_emitter_scratch() -> &'static mut RenderAirborneEmitterScratch {
-    unsafe {
-        let cell = &mut *RENDER_AIRBORNE_EMITTER_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderAirborneEmitterScratch {
-                input: vec![0.0; RENDER_AIRBORNE_EMITTER_INPUT_STRIDE * 512],
-                output: vec![0.0; RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE * 512],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_airborne_emitter_input_scratch_ptr() -> *const f32 {
-    render_airborne_emitter_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_airborne_emitter_output_scratch_ptr() -> *const f32 {
-    render_airborne_emitter_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_airborne_emitter_scratch_ensure(count: u32) {
-    let s = render_airborne_emitter_scratch();
-    let input_needed = (count as usize) * RENDER_AIRBORNE_EMITTER_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
 
 #[wasm_bindgen]
 pub fn render_airborne_emitter_compute(count: u32) {
@@ -608,52 +560,16 @@ pub fn render_airborne_emitter_compute(count: u32) {
 pub const RENDER_BUILDING_POSE_INPUT_STRIDE: usize = 8;
 pub const RENDER_BUILDING_POSE_OUTPUT_STRIDE: usize = 32;
 
-pub(crate) struct RenderBuildingPoseScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderBuildingPoseScratchHolder(UnsafeCell<Option<RenderBuildingPoseScratch>>);
-unsafe impl Sync for RenderBuildingPoseScratchHolder {}
-pub(crate) static RENDER_BUILDING_POSE_SCRATCH: RenderBuildingPoseScratchHolder =
-    RenderBuildingPoseScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_building_pose_scratch() -> &'static mut RenderBuildingPoseScratch {
-    unsafe {
-        let cell = &mut *RENDER_BUILDING_POSE_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderBuildingPoseScratch {
-                input: vec![0.0; RENDER_BUILDING_POSE_INPUT_STRIDE * 512],
-                output: vec![0.0; RENDER_BUILDING_POSE_OUTPUT_STRIDE * 512],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_building_pose_input_scratch_ptr() -> *const f32 {
-    render_building_pose_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_building_pose_output_scratch_ptr() -> *const f32 {
-    render_building_pose_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_building_pose_scratch_ensure(count: u32) {
-    let s = render_building_pose_scratch();
-    let input_needed = (count as usize) * RENDER_BUILDING_POSE_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_BUILDING_POSE_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_BUILDING_POSE_SCRATCH,
+    render_building_pose_scratch,
+    render_building_pose_input_scratch_ptr,
+    render_building_pose_output_scratch_ptr,
+    render_building_pose_scratch_ensure,
+    RENDER_BUILDING_POSE_INPUT_STRIDE,
+    RENDER_BUILDING_POSE_OUTPUT_STRIDE,
+    initial 512
+);
 
 #[inline]
 pub(crate) fn render_write_building_group_matrix(
@@ -758,52 +674,16 @@ pub fn render_building_pose_compute(count: u32) {
 pub const RENDER_CHASSIS_PART_INPUT_STRIDE: usize = 15;
 pub const RENDER_CHASSIS_PART_OUTPUT_STRIDE: usize = 16;
 
-pub(crate) struct RenderChassisPartScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderChassisPartScratchHolder(UnsafeCell<Option<RenderChassisPartScratch>>);
-unsafe impl Sync for RenderChassisPartScratchHolder {}
-pub(crate) static RENDER_CHASSIS_PART_SCRATCH: RenderChassisPartScratchHolder =
-    RenderChassisPartScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_chassis_part_scratch() -> &'static mut RenderChassisPartScratch {
-    unsafe {
-        let cell = &mut *RENDER_CHASSIS_PART_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderChassisPartScratch {
-                input: vec![0.0; RENDER_CHASSIS_PART_INPUT_STRIDE * 1024],
-                output: vec![0.0; RENDER_CHASSIS_PART_OUTPUT_STRIDE * 1024],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_chassis_part_input_scratch_ptr() -> *const f32 {
-    render_chassis_part_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_chassis_part_output_scratch_ptr() -> *const f32 {
-    render_chassis_part_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_chassis_part_scratch_ensure(count: u32) {
-    let s = render_chassis_part_scratch();
-    let input_needed = (count as usize) * RENDER_CHASSIS_PART_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_CHASSIS_PART_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_CHASSIS_PART_SCRATCH,
+    render_chassis_part_scratch,
+    render_chassis_part_input_scratch_ptr,
+    render_chassis_part_output_scratch_ptr,
+    render_chassis_part_scratch_ensure,
+    RENDER_CHASSIS_PART_INPUT_STRIDE,
+    RENDER_CHASSIS_PART_OUTPUT_STRIDE,
+    initial 1024
+);
 
 #[inline]
 pub(crate) fn render_write_chassis_part_matrix(
@@ -933,52 +813,16 @@ pub fn render_chassis_part_compute(count: u32) {
 pub const RENDER_SHIELD_PANEL_INPUT_STRIDE: usize = 24;
 pub const RENDER_SHIELD_PANEL_OUTPUT_STRIDE: usize = 16;
 
-pub(crate) struct RenderShieldPanelScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderShieldPanelScratchHolder(UnsafeCell<Option<RenderShieldPanelScratch>>);
-unsafe impl Sync for RenderShieldPanelScratchHolder {}
-pub(crate) static RENDER_SHIELD_PANEL_SCRATCH: RenderShieldPanelScratchHolder =
-    RenderShieldPanelScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_shield_panel_scratch() -> &'static mut RenderShieldPanelScratch {
-    unsafe {
-        let cell = &mut *RENDER_SHIELD_PANEL_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderShieldPanelScratch {
-                input: vec![0.0; RENDER_SHIELD_PANEL_INPUT_STRIDE * 256],
-                output: vec![0.0; RENDER_SHIELD_PANEL_OUTPUT_STRIDE * 256],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_shield_panel_input_scratch_ptr() -> *const f32 {
-    render_shield_panel_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_shield_panel_output_scratch_ptr() -> *const f32 {
-    render_shield_panel_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_shield_panel_scratch_ensure(count: u32) {
-    let s = render_shield_panel_scratch();
-    let input_needed = (count as usize) * RENDER_SHIELD_PANEL_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_SHIELD_PANEL_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_SHIELD_PANEL_SCRATCH,
+    render_shield_panel_scratch,
+    render_shield_panel_input_scratch_ptr,
+    render_shield_panel_output_scratch_ptr,
+    render_shield_panel_scratch_ensure,
+    RENDER_SHIELD_PANEL_INPUT_STRIDE,
+    RENDER_SHIELD_PANEL_OUTPUT_STRIDE,
+    initial 256
+);
 
 #[inline]
 pub(crate) fn render_write_mat4_compose_scaled(
@@ -1106,52 +950,16 @@ pub fn render_shield_panel_compute(count: u32) {
 pub const RENDER_TURRET_BARREL_INPUT_STRIDE: usize = 38;
 pub const RENDER_TURRET_BARREL_OUTPUT_STRIDE: usize = 16;
 
-pub(crate) struct RenderTurretBarrelScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderTurretBarrelScratchHolder(UnsafeCell<Option<RenderTurretBarrelScratch>>);
-unsafe impl Sync for RenderTurretBarrelScratchHolder {}
-pub(crate) static RENDER_TURRET_BARREL_SCRATCH: RenderTurretBarrelScratchHolder =
-    RenderTurretBarrelScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_turret_barrel_scratch() -> &'static mut RenderTurretBarrelScratch {
-    unsafe {
-        let cell = &mut *RENDER_TURRET_BARREL_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderTurretBarrelScratch {
-                input: vec![0.0; RENDER_TURRET_BARREL_INPUT_STRIDE * 2048],
-                output: vec![0.0; RENDER_TURRET_BARREL_OUTPUT_STRIDE * 2048],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_turret_barrel_input_scratch_ptr() -> *const f32 {
-    render_turret_barrel_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_barrel_output_scratch_ptr() -> *const f32 {
-    render_turret_barrel_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_barrel_scratch_ensure(count: u32) {
-    let s = render_turret_barrel_scratch();
-    let input_needed = (count as usize) * RENDER_TURRET_BARREL_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_TURRET_BARREL_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_TURRET_BARREL_SCRATCH,
+    render_turret_barrel_scratch,
+    render_turret_barrel_input_scratch_ptr,
+    render_turret_barrel_output_scratch_ptr,
+    render_turret_barrel_scratch_ensure,
+    RENDER_TURRET_BARREL_INPUT_STRIDE,
+    RENDER_TURRET_BARREL_OUTPUT_STRIDE,
+    initial 2048
+);
 
 #[inline]
 pub(crate) fn render_compose_child_offset(
@@ -1275,52 +1083,16 @@ pub fn render_turret_barrel_compute(count: u32) {
 pub const RENDER_TURRET_HEAD_INPUT_STRIDE: usize = 15;
 pub const RENDER_TURRET_HEAD_OUTPUT_STRIDE: usize = 16;
 
-pub(crate) struct RenderTurretHeadScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderTurretHeadScratchHolder(UnsafeCell<Option<RenderTurretHeadScratch>>);
-unsafe impl Sync for RenderTurretHeadScratchHolder {}
-pub(crate) static RENDER_TURRET_HEAD_SCRATCH: RenderTurretHeadScratchHolder =
-    RenderTurretHeadScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_turret_head_scratch() -> &'static mut RenderTurretHeadScratch {
-    unsafe {
-        let cell = &mut *RENDER_TURRET_HEAD_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderTurretHeadScratch {
-                input: vec![0.0; RENDER_TURRET_HEAD_INPUT_STRIDE * 2048],
-                output: vec![0.0; RENDER_TURRET_HEAD_OUTPUT_STRIDE * 2048],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_turret_head_input_scratch_ptr() -> *const f32 {
-    render_turret_head_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_head_output_scratch_ptr() -> *const f32 {
-    render_turret_head_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_head_scratch_ensure(count: u32) {
-    let s = render_turret_head_scratch();
-    let input_needed = (count as usize) * RENDER_TURRET_HEAD_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_TURRET_HEAD_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_TURRET_HEAD_SCRATCH,
+    render_turret_head_scratch,
+    render_turret_head_input_scratch_ptr,
+    render_turret_head_output_scratch_ptr,
+    render_turret_head_scratch_ensure,
+    RENDER_TURRET_HEAD_INPUT_STRIDE,
+    RENDER_TURRET_HEAD_OUTPUT_STRIDE,
+    initial 2048
+);
 
 #[wasm_bindgen]
 pub fn render_turret_head_compute(count: u32) {
@@ -1384,52 +1156,16 @@ pub fn render_turret_head_compute(count: u32) {
 pub const RENDER_TURRET_AIM_INPUT_STRIDE: usize = 8;
 pub const RENDER_TURRET_AIM_OUTPUT_STRIDE: usize = 2;
 
-pub(crate) struct RenderTurretAimScratch {
-    input: Vec<f32>,
-    output: Vec<f32>,
-}
-
-pub(crate) struct RenderTurretAimScratchHolder(UnsafeCell<Option<RenderTurretAimScratch>>);
-unsafe impl Sync for RenderTurretAimScratchHolder {}
-pub(crate) static RENDER_TURRET_AIM_SCRATCH: RenderTurretAimScratchHolder =
-    RenderTurretAimScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn render_turret_aim_scratch() -> &'static mut RenderTurretAimScratch {
-    unsafe {
-        let cell = &mut *RENDER_TURRET_AIM_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(RenderTurretAimScratch {
-                input: vec![0.0; RENDER_TURRET_AIM_INPUT_STRIDE * 2048],
-                output: vec![0.0; RENDER_TURRET_AIM_OUTPUT_STRIDE * 2048],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn render_turret_aim_input_scratch_ptr() -> *const f32 {
-    render_turret_aim_scratch().input.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_aim_output_scratch_ptr() -> *const f32 {
-    render_turret_aim_scratch().output.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn render_turret_aim_scratch_ensure(count: u32) {
-    let s = render_turret_aim_scratch();
-    let input_needed = (count as usize) * RENDER_TURRET_AIM_INPUT_STRIDE;
-    if s.input.len() < input_needed {
-        s.input.resize(input_needed, 0.0);
-    }
-    let output_needed = (count as usize) * RENDER_TURRET_AIM_OUTPUT_STRIDE;
-    if s.output.len() < output_needed {
-        s.output.resize(output_needed, 0.0);
-    }
-}
+render_pose_scratch!(
+    RENDER_TURRET_AIM_SCRATCH,
+    render_turret_aim_scratch,
+    render_turret_aim_input_scratch_ptr,
+    render_turret_aim_output_scratch_ptr,
+    render_turret_aim_scratch_ensure,
+    RENDER_TURRET_AIM_INPUT_STRIDE,
+    RENDER_TURRET_AIM_OUTPUT_STRIDE,
+    initial 2048
+);
 
 #[inline]
 fn render_turret_aim_pose(

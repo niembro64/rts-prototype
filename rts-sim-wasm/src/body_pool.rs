@@ -199,35 +199,17 @@ impl BodyPool {
     }
 }
 
-// Single-threaded WASM, so an UnsafeCell-wrapped static is safe.
-// Rust doesn't have a true single-threaded global without unsafe;
-// the OnceCell + UnsafeCell pattern keeps the unsafety contained.
-pub(crate) struct PoolHolder(UnsafeCell<Option<BodyPool>>);
-
-unsafe impl Sync for PoolHolder {}
-
-pub(crate) static POOL: PoolHolder = PoolHolder(UnsafeCell::new(None));
+pub(crate) static POOL: WasmLazy<BodyPool> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn pool() -> &'static mut BodyPool {
-    // SAFETY: WASM is single-threaded; there's no concurrent access.
     // pool_init must have been called before any pool_* function.
-    unsafe {
-        (*POOL.0.get())
-            .as_mut()
-            .expect("pool_init() not called before pool access")
-    }
+    POOL.get_initialized("pool_init() not called before pool access")
 }
 
 #[wasm_bindgen]
 pub fn pool_init() {
-    // SAFETY: see `pool()`.
-    unsafe {
-        let cell = POOL.0.get();
-        if (*cell).is_none() {
-            *cell = Some(BodyPool::new());
-        }
-    }
+    POOL.init_if_empty(BodyPool::new);
 }
 
 #[wasm_bindgen]
@@ -352,14 +334,14 @@ pub(crate) fn compute_arrival_control_thrust(
             let max_accel = arrival_horizontal_drive_accel(max_propulsive_force, physics_mass);
             if max_accel > min_accel && max_accel.is_finite() {
                 let bend_cos = corner_bend_cos.clamp(-1.0, 1.0);
-                let bend_sin =
-                    (1.0 - bend_cos * bend_cos).sqrt().max(CORNER_SHAPING_MIN_BEND_SIN);
+                let bend_sin = (1.0 - bend_cos * bend_cos)
+                    .sqrt()
+                    .max(CORNER_SHAPING_MIN_BEND_SIN);
                 let corner_speed = (2.0 * max_accel * corner_corridor / bend_sin).sqrt();
                 let dir_x = dx * inv_distance;
                 let dir_y = dy * inv_distance;
                 let closing_speed = body_vx * dir_x + body_vy * dir_y;
-                let allowed =
-                    (corner_speed * corner_speed + 2.0 * max_accel * distance).sqrt();
+                let allowed = (corner_speed * corner_speed + 2.0 * max_accel * distance).sqrt();
                 if closing_speed > allowed {
                     // Brake against the velocity, not the leg; lateral drift
                     // is the ground kernel's slope hold's job.
@@ -1411,33 +1393,22 @@ pub(crate) struct SphereResolveScratch {
     pub(crate) active_indices: Vec<usize>,
 }
 
-pub(crate) struct SphereResolveScratchHolder(UnsafeCell<Option<SphereResolveScratch>>);
-unsafe impl Sync for SphereResolveScratchHolder {}
-pub(crate) static SPHERE_RESOLVE_SCRATCH: SphereResolveScratchHolder =
-    SphereResolveScratchHolder(UnsafeCell::new(None));
+pub(crate) static SPHERE_RESOLVE_SCRATCH: WasmLazy<SphereResolveScratch> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
-    // SAFETY: WASM is single-threaded; no concurrent access, and only one
-    // pool_resolve_sphere_sphere call is ever active at a time.
-    unsafe {
-        let cell = SPHERE_RESOLVE_SCRATCH.0.get();
-        if (*cell).is_none() {
-            *cell = Some(SphereResolveScratch {
-                cells: HashMap::default(),
-                dense_cells: Vec::new(),
-                cell_x: Vec::new(),
-                cell_y: Vec::new(),
-                cell_z: Vec::new(),
-                gen: 0,
-                woke: Vec::new(),
-                local_by_slot: vec![-1; POOL_CAPACITY_USIZE],
-                active: Vec::new(),
-                active_indices: Vec::new(),
-            });
-        }
-        (*cell).as_mut().unwrap()
-    }
+    SPHERE_RESOLVE_SCRATCH.get_or_init(|| SphereResolveScratch {
+        cells: HashMap::default(),
+        dense_cells: Vec::new(),
+        cell_x: Vec::new(),
+        cell_y: Vec::new(),
+        cell_z: Vec::new(),
+        gen: 0,
+        woke: Vec::new(),
+        local_by_slot: vec![-1; POOL_CAPACITY_USIZE],
+        active: Vec::new(),
+        active_indices: Vec::new(),
+    })
 }
 
 #[inline]
@@ -2544,18 +2515,15 @@ pub(crate) struct EngineStaticsTable {
     pub(crate) free_list: Vec<u32>,
 }
 
-pub(crate) struct EngineStaticsHolder(UnsafeCell<EngineStaticsTable>);
-unsafe impl Sync for EngineStaticsHolder {}
-pub(crate) static ENGINE_STATICS: EngineStaticsHolder =
-    EngineStaticsHolder(UnsafeCell::new(EngineStaticsTable {
+pub(crate) static ENGINE_STATICS: WasmGlobal<EngineStaticsTable> =
+    WasmGlobal::new(EngineStaticsTable {
         handles: Vec::new(),
         free_list: Vec::new(),
-    }));
+    });
 
 #[inline]
 pub(crate) fn engine_statics(handle: u32) -> &'static mut EngineStatics {
-    // SAFETY: WASM is single-threaded; only one Rust call active at a
-    // time, so no aliasing &mut refs ever co-exist. The `handles` Vec
+    // The `handles` Vec
     // never shrinks (destroy nulls the slot but keeps the index live),
     // so the address backing a `Some(_)` stays stable for the slot's
     // lifetime.
@@ -2567,13 +2535,12 @@ pub(crate) fn engine_statics(handle: u32) -> &'static mut EngineStatics {
     // paths) is the intended behavior; `get_mut` keeps the
     // out-of-range case on the same explicit panic instead of a raw
     // index panic.
-    unsafe {
-        let v = &mut *ENGINE_STATICS.0.get();
-        v.handles
-            .get_mut(handle as usize)
-            .and_then(|slot| slot.as_mut())
-            .expect("engine_statics: stale or destroyed engine handle")
-    }
+    ENGINE_STATICS
+        .get()
+        .handles
+        .get_mut(handle as usize)
+        .and_then(|slot| slot.as_mut())
+        .expect("engine_statics: stale or destroyed engine handle")
 }
 
 #[inline]
@@ -2588,17 +2555,14 @@ pub(crate) fn cell_z_with_bias(v: f64, cs: f64) -> i32 {
 
 #[wasm_bindgen]
 pub fn engine_statics_create() -> u32 {
-    // SAFETY: see `engine_statics`.
-    unsafe {
-        let v = &mut *ENGINE_STATICS.0.get();
-        if let Some(handle) = v.free_list.pop() {
-            v.handles[handle as usize] = Some(EngineStatics::new());
-            handle
-        } else {
-            let handle = v.handles.len() as u32;
-            v.handles.push(Some(EngineStatics::new()));
-            handle
-        }
+    let v = ENGINE_STATICS.get();
+    if let Some(handle) = v.free_list.pop() {
+        v.handles[handle as usize] = Some(EngineStatics::new());
+        handle
+    } else {
+        let handle = v.handles.len() as u32;
+        v.handles.push(Some(EngineStatics::new()));
+        handle
     }
 }
 
@@ -2610,21 +2574,18 @@ pub fn engine_statics_create() -> u32 {
 /// `engine_statics`).
 #[wasm_bindgen]
 pub fn engine_statics_destroy(handle: u32) {
-    // SAFETY: see `engine_statics`.
-    unsafe {
-        let v = &mut *ENGINE_STATICS.0.get();
-        let idx = handle as usize;
-        debug_assert!(
-            idx < v.handles.len(),
-            "engine_statics_destroy: handle out of range"
-        );
-        debug_assert!(
-            v.handles[idx].is_some(),
-            "engine_statics_destroy: handle already destroyed"
-        );
-        v.handles[idx] = None;
-        v.free_list.push(handle);
-    }
+    let v = ENGINE_STATICS.get();
+    let idx = handle as usize;
+    debug_assert!(
+        idx < v.handles.len(),
+        "engine_statics_destroy: handle out of range"
+    );
+    debug_assert!(
+        v.handles[idx].is_some(),
+        "engine_statics_destroy: handle already destroyed"
+    );
+    v.handles[idx] = None;
+    v.free_list.push(handle);
 }
 
 #[wasm_bindgen]

@@ -73,31 +73,16 @@ impl ProjectilePool {
     }
 }
 
-pub(crate) struct ProjectilePoolHolder(UnsafeCell<Option<ProjectilePool>>);
-unsafe impl Sync for ProjectilePoolHolder {}
-pub(crate) static PROJECTILE_POOL: ProjectilePoolHolder =
-    ProjectilePoolHolder(UnsafeCell::new(None));
+pub(crate) static PROJECTILE_POOL: WasmLazy<ProjectilePool> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn projectile_pool() -> &'static mut ProjectilePool {
-    // SAFETY: WASM is single-threaded; pool_init() is the unique
-    // initialiser. Consumers must call projectile_pool_init() before
-    // any pool access.
-    unsafe {
-        (*PROJECTILE_POOL.0.get())
-            .as_mut()
-            .expect("projectile_pool_init() not called before access")
-    }
+    PROJECTILE_POOL.get_initialized("projectile_pool_init() not called before access")
 }
 
 #[wasm_bindgen]
 pub fn projectile_pool_init() {
-    unsafe {
-        let cell = PROJECTILE_POOL.0.get();
-        if (*cell).is_none() {
-            *cell = Some(ProjectilePool::new());
-        }
-    }
+    PROJECTILE_POOL.init_if_empty(ProjectilePool::new);
 }
 
 #[wasm_bindgen]

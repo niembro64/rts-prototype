@@ -5,10 +5,7 @@
 // EntityDeathDisassembly3D owns the separate, synchronized host breakup.
 
 import * as THREE from 'three';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import type { FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
@@ -26,7 +23,6 @@ import {
 import { clamp01 } from './RenderUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
-import { applyExposureToRawShader } from './RenderLighting3D';
 
 const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
@@ -70,15 +66,7 @@ class InstancedSpherePool {
     this.geom = tier === 'far'
       ? getSharedPrimitiveTetrahedronGeometry(1).clone()
       : createPrimitiveSphereGeometry('effect', tier);
-    this.mat = new THREE.ShaderMaterial({
-      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-    });
-    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-    // invisible to exposure without this.
-    applyExposureToRawShader(this.mat);
+    this.mat = createInstancedColorAlphaParticleMaterial();
     const pool = createInstancedColorAlphaPool(parent, this.geom, cap, this.mat, renderOrder);
     this.mesh = pool.mesh;
     this.alphaArr = pool.alphaArr;

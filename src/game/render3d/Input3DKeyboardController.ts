@@ -39,8 +39,9 @@ import {
   queueModeFromEvent,
   queueModeFromEventIgnoringControlModifiers,
 } from '../input/queueModifiers';
+import type { Input3DCommandModeControls } from './Input3DCommandModeControls';
 
-type Input3DKeyboardControllerConfig = {
+type Input3DKeyboardControllerConfig = Input3DCommandModeControls & {
   mode: CommanderModeController;
   commandQueue: ClientCommandSink;
   getTick: () => number;
@@ -158,40 +159,6 @@ type Input3DKeyboardControllerConfig = {
   invertSelection: () => void;
   splitArmySelection: () => void;
   loopSelection: () => void;
-  isRepairAreaMode: () => boolean;
-  isRestoreAreaMode: () => boolean;
-  isAttackMode: () => boolean;
-  isAttackAreaMode: () => boolean;
-  isAttackGroundMode: () => boolean;
-  isManualLaunchMode: () => boolean;
-  isGuardMode: () => boolean;
-  isReclaimMode: () => boolean;
-  isCaptureMode: () => boolean;
-  isResurrectMode: () => boolean;
-  isResurrectAreaMode: () => boolean;
-  isLoadTransportMode: () => boolean;
-  isUnloadTransportMode: () => boolean;
-  isMexUpgradeMode: () => boolean;
-  isPingMode: () => boolean;
-  isTowerTargetMode: () => boolean;
-  isTowerTargetNoGroundMode: () => boolean;
-  exitRepairAreaMode: () => void;
-  exitRestoreAreaMode: () => void;
-  exitAttackMode: () => void;
-  exitAttackAreaMode: () => void;
-  exitAttackGroundMode: () => void;
-  exitManualLaunchMode: () => void;
-  exitGuardMode: () => void;
-  exitReclaimMode: () => void;
-  exitCaptureMode: () => void;
-  exitResurrectMode: () => void;
-  exitResurrectAreaMode: () => void;
-  exitLoadTransportMode: () => void;
-  exitUnloadTransportMode: () => void;
-  exitMexUpgradeMode: () => void;
-  exitPingMode: () => void;
-  exitTowerTargetMode: () => void;
-  exitTowerTargetNoGroundMode: () => void;
 };
 
 const AREA_MEX_BLUEPRINT_ID: StructureBlueprintId = 'buildingExtractor';

@@ -77,6 +77,7 @@ type ClientDefaults = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly entityShadows: boolean;
+  readonly forceFieldsVisible: boolean;
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly triangleDebug: boolean;
@@ -160,6 +161,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     entityShadows: pickDefault(clientBarConfig.entityShadows, mode),
+    forceFieldsVisible: pickDefault(clientBarConfig.forceFieldsVisible, mode),
     fogShade: FOG_PRESENTATION.enabledByDefault,
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
@@ -266,6 +268,7 @@ export const CLIENT_CONFIG = {
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   entityShadows: { default: DEMO_CLIENT_DEFAULTS.entityShadows },
+  forceFieldsVisible: { default: DEMO_CLIENT_DEFAULTS.forceFieldsVisible },
   fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
@@ -359,6 +362,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
     entityShadows: { default: defaults.entityShadows },
+    forceFieldsVisible: { default: defaults.forceFieldsVisible },
     fogShade: { default: defaults.fogShade },
     materialExplosions: { default: defaults.materialExplosions },
     triangleDebug: { default: defaults.triangleDebug },
@@ -428,6 +432,7 @@ type ClientStorageKeyName =
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'entityShadows'
+  | 'forceFieldsVisible'
   | 'fogShade'
   | 'materialExplosions'
   | 'triangleDebug'
@@ -480,6 +485,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'smokeTrails',
   'smokeSoftEdges',
   'entityShadows',
+  'forceFieldsVisible',
   'fogShade',
   'materialExplosions',
   'triangleDebug',
@@ -580,6 +586,7 @@ let currentSurfaceTexture: boolean = _cd.surfaceTexture.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentEntityShadows: boolean = _cd.entityShadows.default;
+let currentForceFieldsVisible: boolean = _cd.forceFieldsVisible.default;
 let currentFogShade: boolean = _cd.fogShade.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
@@ -680,6 +687,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentEntityShadows = cd.entityShadows.default;
+  currentForceFieldsVisible = cd.forceFieldsVisible.default;
   currentFogShade = cd.fogShade.default;
   currentMaterialExplosions = cd.materialExplosions.default;
   currentTriangleDebug = cd.triangleDebug.default;
@@ -797,6 +805,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedEntityShadows = readPersisted(keys.entityShadows);
   if (storedEntityShadows !== null) {
     currentEntityShadows = storedEntityShadows === 'true';
+  }
+  const storedForceFieldsVisible = readPersisted(keys.forceFieldsVisible);
+  if (storedForceFieldsVisible !== null) {
+    currentForceFieldsVisible = storedForceFieldsVisible === 'true';
   }
   const storedFogShade = readPersisted(keys.fogShade);
   if (storedFogShade !== null) {
@@ -1293,6 +1305,17 @@ export function getEntityShadows(): boolean {
 export function setEntityShadows(enabled: boolean): void {
   currentEntityShadows = enabled;
   persist(activeStorageKeys().entityShadows, String(enabled));
+}
+
+/** Shield surfaces and impact flashes are local presentation. Authoritative
+ *  shield interception remains active regardless of this setting. */
+export function getForceFieldsVisible(): boolean {
+  return currentForceFieldsVisible;
+}
+
+export function setForceFieldsVisible(enabled: boolean): void {
+  currentForceFieldsVisible = enabled;
+  persist(activeStorageKeys().forceFieldsVisible, String(enabled));
 }
 
 /** Fog-shade toggle: world-attached live shade for terrain and environment props.

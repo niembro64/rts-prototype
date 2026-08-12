@@ -19,7 +19,6 @@ use wasm_bindgen::prelude::*;
 macro_rules! snapshot_scratch_pool {
     (
         $struct:ident,
-        $holder:ident,
         $static:ident,
         $getter:ident,
         $ptr_fn:ident,
@@ -36,21 +35,13 @@ macro_rules! snapshot_scratch_pool {
             buf: Vec<$elem>,
         }
 
-        pub(crate) struct $holder(::core::cell::UnsafeCell<Option<$struct>>);
-        unsafe impl Sync for $holder {}
-        pub(crate) static $static: $holder = $holder(::core::cell::UnsafeCell::new(None));
+        pub(crate) static $static: WasmLazy<$struct> = WasmLazy::new();
 
         #[inline]
         pub(crate) fn $getter() -> &'static mut $struct {
-            unsafe {
-                let cell = &mut *$static.0.get();
-                if cell.is_none() {
-                    *cell = Some($struct {
-                        buf: vec![$zero; $stride_const * $init_count],
-                    });
-                }
-                cell.as_mut().unwrap()
-            }
+            $static.get_or_init(|| $struct {
+                buf: vec![$zero; $stride_const * $init_count],
+            })
         }
 
         #[wasm_bindgen]
@@ -105,7 +96,6 @@ pub const SNAPSHOT_ENTITY_TYPE_TOWER: u8 = 3;
 // Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
 snapshot_scratch_pool!(
     SnapshotEncodeTurretScratch,
-    SnapshotEncodeTurretScratchHolder,
     SNAPSHOT_ENCODE_TURRET_SCRATCH,
     snapshot_encode_turret_scratch,
     snapshot_encode_turret_scratch_ptr,
@@ -136,7 +126,6 @@ snapshot_scratch_pool!(
 //   [15]  building_id (when has_building_id)
 snapshot_scratch_pool!(
     SnapshotEncodeActionScratch,
-    SnapshotEncodeActionScratchHolder,
     SNAPSHOT_ENCODE_ACTION_SCRATCH,
     snapshot_encode_action_scratch,
     snapshot_encode_action_scratch_ptr,
@@ -160,25 +149,15 @@ pub(crate) struct SnapshotEncodeStringScratch {
     table: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeStringScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeStringScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeStringScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_STRING_SCRATCH: SnapshotEncodeStringScratchHolder =
-    SnapshotEncodeStringScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_STRING_SCRATCH: WasmLazy<SnapshotEncodeStringScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_string_scratch() -> &'static mut SnapshotEncodeStringScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_STRING_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeStringScratch {
-                bytes: vec![0u8; 256],
-                table: vec![0u32; 16],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_STRING_SCRATCH.get_or_init(|| SnapshotEncodeStringScratch {
+        bytes: vec![0u8; 256],
+        table: vec![0u32; 16],
+    })
 }
 
 #[wasm_bindgen]
@@ -216,25 +195,16 @@ pub(crate) struct SnapshotEncodeFactoryQueueScratch {
     buf: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeFactoryQueueScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeFactoryQueueScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeFactoryQueueScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH: SnapshotEncodeFactoryQueueScratchHolder =
-    SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH: WasmLazy<
+    SnapshotEncodeFactoryQueueScratch,
+> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_factory_queue_scratch(
 ) -> &'static mut SnapshotEncodeFactoryQueueScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeFactoryQueueScratch {
-                buf: vec![0u32; 16],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH.get_or_init(|| SnapshotEncodeFactoryQueueScratch {
+        buf: vec![0u32; 16],
+    })
 }
 
 #[wasm_bindgen]
@@ -257,7 +227,6 @@ pub fn snapshot_encode_factory_queue_scratch_ensure(count: u32) {
 //   [4]     type_string_slot (index into string scratch)
 snapshot_scratch_pool!(
     SnapshotEncodeWaypointScratch,
-    SnapshotEncodeWaypointScratchHolder,
     SNAPSHOT_ENCODE_WAYPOINT_SCRATCH,
     snapshot_encode_waypoint_scratch,
     snapshot_encode_waypoint_scratch_ptr,
@@ -1102,7 +1071,6 @@ pub fn snapshot_encode_entity_building(
 //         false (rare), 3 = emit true. Practically only 0 or 3 appear.
 snapshot_scratch_pool!(
     SnapshotEncodeMinimapScratch,
-    SnapshotEncodeMinimapScratchHolder,
     SNAPSHOT_ENCODE_MINIMAP_SCRATCH,
     snapshot_encode_minimap_scratch,
     snapshot_encode_minimap_scratch_ptr,
@@ -1120,25 +1088,15 @@ pub(crate) struct SnapshotEncodeProjDespawnScratch {
     buf: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeProjDespawnScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeProjDespawnScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeProjDespawnScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH: SnapshotEncodeProjDespawnScratchHolder =
-    SnapshotEncodeProjDespawnScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH: WasmLazy<SnapshotEncodeProjDespawnScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_proj_despawn_scratch() -> &'static mut SnapshotEncodeProjDespawnScratch
 {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeProjDespawnScratch {
-                buf: vec![0u32; 32],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH.get_or_init(|| SnapshotEncodeProjDespawnScratch {
+        buf: vec![0u32; 32],
+    })
 }
 
 #[wasm_bindgen]
@@ -1162,7 +1120,6 @@ pub fn snapshot_encode_proj_despawn_scratch_ensure(count: u32) {
 //   [8]   authoritative yaw rate
 snapshot_scratch_pool!(
     SnapshotEncodeProjVelScratch,
-    SnapshotEncodeProjVelScratchHolder,
     SNAPSHOT_ENCODE_PROJ_VEL_SCRATCH,
     snapshot_encode_proj_vel_scratch,
     snapshot_encode_proj_vel_scratch_ptr,
@@ -1207,7 +1164,6 @@ snapshot_scratch_pool!(
 //          11 parentShotEntityId.
 snapshot_scratch_pool!(
     SnapshotEncodeProjSpawnScratch,
-    SnapshotEncodeProjSpawnScratchHolder,
     SNAPSHOT_ENCODE_PROJ_SPAWN_SCRATCH,
     snapshot_encode_proj_spawn_scratch,
     snapshot_encode_proj_spawn_scratch_ptr,
@@ -1228,7 +1184,6 @@ snapshot_scratch_pool!(
 //         in order — first update's points then next update's, etc.)
 snapshot_scratch_pool!(
     SnapshotEncodeBeamUpdateScratch,
-    SnapshotEncodeBeamUpdateScratchHolder,
     SNAPSHOT_ENCODE_BEAM_UPDATE_SCRATCH,
     snapshot_encode_beam_update_scratch,
     snapshot_encode_beam_update_scratch_ptr,
@@ -1252,7 +1207,6 @@ snapshot_scratch_pool!(
 //   [9..12] normalX, normalY, normalZ
 snapshot_scratch_pool!(
     SnapshotEncodeBeamPointScratch,
-    SnapshotEncodeBeamPointScratchHolder,
     SNAPSHOT_ENCODE_BEAM_POINT_SCRATCH,
     snapshot_encode_beam_point_scratch,
     snapshot_encode_beam_point_scratch_ptr,
@@ -1392,23 +1346,14 @@ impl SnapshotEncodePackedMinimapScratch {
     }
 }
 
-pub(crate) struct SnapshotEncodePackedMinimapScratchHolder(
-    UnsafeCell<Option<SnapshotEncodePackedMinimapScratch>>,
-);
-unsafe impl Sync for SnapshotEncodePackedMinimapScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH: SnapshotEncodePackedMinimapScratchHolder =
-    SnapshotEncodePackedMinimapScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH: WasmLazy<
+    SnapshotEncodePackedMinimapScratch,
+> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_packed_minimap_scratch(
 ) -> &'static mut SnapshotEncodePackedMinimapScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodePackedMinimapScratch::default());
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH.get_or_init(SnapshotEncodePackedMinimapScratch::default)
 }
 
 pub(crate) fn pack_minimap_entities_v2(count: usize) {
@@ -1499,24 +1444,15 @@ impl SnapshotEncodePackedProjectileScratch {
     }
 }
 
-pub(crate) struct SnapshotEncodePackedProjectileScratchHolder(
-    UnsafeCell<Option<SnapshotEncodePackedProjectileScratch>>,
-);
-unsafe impl Sync for SnapshotEncodePackedProjectileScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH:
-    SnapshotEncodePackedProjectileScratchHolder =
-    SnapshotEncodePackedProjectileScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH: WasmLazy<
+    SnapshotEncodePackedProjectileScratch,
+> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_packed_projectile_scratch(
 ) -> &'static mut SnapshotEncodePackedProjectileScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodePackedProjectileScratch::default());
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH
+        .get_or_init(SnapshotEncodePackedProjectileScratch::default)
 }
 
 pub(crate) fn find_or_create_packed_group(
@@ -1770,7 +1706,6 @@ pub(crate) fn pack_projectile_beam_updates(count: usize, beam_point_count: usize
 //            bit 5 has_turretPoses
 snapshot_scratch_pool!(
     SnapshotEncodeDeathContextScratch,
-    SnapshotEncodeDeathContextScratchHolder,
     SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH,
     snapshot_encode_death_context_scratch,
     snapshot_encode_death_context_scratch_ptr,
@@ -1786,7 +1721,6 @@ snapshot_scratch_pool!(
 // across all deathContexts in pack order; stride 2 (rotation, pitch).
 snapshot_scratch_pool!(
     SnapshotEncodeTurretPoseScratch,
-    SnapshotEncodeTurretPoseScratchHolder,
     SNAPSHOT_ENCODE_TURRET_POSE_SCRATCH,
     snapshot_encode_turret_pose_scratch,
     snapshot_encode_turret_pose_scratch_ptr,
@@ -1810,7 +1744,6 @@ snapshot_scratch_pool!(
 //   [9..11] penetrationDir.x, penetrationDir.y
 snapshot_scratch_pool!(
     SnapshotEncodeImpactContextScratch,
-    SnapshotEncodeImpactContextScratchHolder,
     SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH,
     snapshot_encode_impact_context_scratch,
     snapshot_encode_impact_context_scratch_ptr,
@@ -1851,7 +1784,6 @@ snapshot_scratch_pool!(
 //   [19]   waterSplash.mass (gated by flags bit 11)
 snapshot_scratch_pool!(
     SnapshotEncodeAudioEventScratch,
-    SnapshotEncodeAudioEventScratchHolder,
     SNAPSHOT_ENCODE_AUDIO_EVENT_SCRATCH,
     snapshot_encode_audio_event_scratch,
     snapshot_encode_audio_event_scratch_ptr,
@@ -1905,7 +1837,6 @@ pub(crate) fn audio_event_source_type_str(code: u8) -> &'static str {
 //   [10]  metal.expenditure
 snapshot_scratch_pool!(
     SnapshotEncodeEconomyScratch,
-    SnapshotEncodeEconomyScratchHolder,
     SNAPSHOT_ENCODE_ECONOMY_SCRATCH,
     snapshot_encode_economy_scratch,
     snapshot_encode_economy_scratch_ptr,
@@ -1931,26 +1862,18 @@ pub(crate) struct SnapshotEncodeResourceMovementScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeResourceMovementScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeResourceMovementScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeResourceMovementScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH:
-    SnapshotEncodeResourceMovementScratchHolder =
-    SnapshotEncodeResourceMovementScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH: WasmLazy<
+    SnapshotEncodeResourceMovementScratch,
+> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_resource_movement_scratch(
 ) -> &'static mut SnapshotEncodeResourceMovementScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeResourceMovementScratch {
-                buf: vec![0.0; SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE * 16],
-            });
+    SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH.get_or_init(|| {
+        SnapshotEncodeResourceMovementScratch {
+            buf: vec![0.0; SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE * 16],
         }
-        cell.as_mut().unwrap()
-    }
+    })
 }
 
 #[wasm_bindgen]
@@ -1987,7 +1910,6 @@ pub fn snapshot_encode_resource_movement_scratch_ensure(count: u32) {
 //          bit 8 inverse (target-volume -> source emitter).
 snapshot_scratch_pool!(
     SnapshotEncodeSprayScratch,
-    SnapshotEncodeSprayScratchHolder,
     SNAPSHOT_ENCODE_SPRAY_SCRATCH,
     snapshot_encode_spray_scratch,
     snapshot_encode_spray_scratch_ptr,
@@ -2007,24 +1929,14 @@ pub(crate) struct SnapshotEncodeNumberScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeNumberScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeNumberScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeNumberScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_NUMBER_SCRATCH: SnapshotEncodeNumberScratchHolder =
-    SnapshotEncodeNumberScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_NUMBER_SCRATCH: WasmLazy<SnapshotEncodeNumberScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_number_scratch() -> &'static mut SnapshotEncodeNumberScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_NUMBER_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeNumberScratch {
-                buf: vec![0.0; 4096],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_NUMBER_SCRATCH.get_or_init(|| SnapshotEncodeNumberScratch {
+        buf: vec![0.0; 4096],
+    })
 }
 
 #[wasm_bindgen]
@@ -2044,25 +1956,16 @@ pub(crate) struct SnapshotEncodePackedStaticScratch {
     bytes: Vec<u8>,
 }
 
-pub(crate) struct SnapshotEncodePackedStaticScratchHolder(
-    UnsafeCell<Option<SnapshotEncodePackedStaticScratch>>,
-);
-unsafe impl Sync for SnapshotEncodePackedStaticScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH: SnapshotEncodePackedStaticScratchHolder =
-    SnapshotEncodePackedStaticScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH: WasmLazy<
+    SnapshotEncodePackedStaticScratch,
+> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_packed_static_scratch(
 ) -> &'static mut SnapshotEncodePackedStaticScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodePackedStaticScratch {
-                bytes: Vec::with_capacity(4096),
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH.get_or_init(|| SnapshotEncodePackedStaticScratch {
+        bytes: Vec::with_capacity(4096),
+    })
 }
 
 #[inline]
@@ -2193,7 +2096,6 @@ pub(crate) fn write_number_array_from_scratch(w: &mut MessagePackWriter, offset:
 // Field count is fixed (no optionals on NetworkServerSnapshotScanPulse).
 snapshot_scratch_pool!(
     SnapshotEncodeScanPulseScratch,
-    SnapshotEncodeScanPulseScratchHolder,
     SNAPSHOT_ENCODE_SCAN_PULSE_SCRATCH,
     snapshot_encode_scan_pulse_scratch,
     snapshot_encode_scan_pulse_scratch_ptr,
@@ -2213,25 +2115,15 @@ pub(crate) struct SnapshotEncodeRemovedIdsScratch {
     buf: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeRemovedIdsScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeRemovedIdsScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeRemovedIdsScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH: SnapshotEncodeRemovedIdsScratchHolder =
-    SnapshotEncodeRemovedIdsScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH: WasmLazy<SnapshotEncodeRemovedIdsScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_removed_ids_scratch() -> &'static mut SnapshotEncodeRemovedIdsScratch
 {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeRemovedIdsScratch {
-                buf: vec![0u32; 16],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH.get_or_init(|| SnapshotEncodeRemovedIdsScratch {
+        buf: vec![0u32; 16],
+    })
 }
 
 #[wasm_bindgen]
@@ -2385,22 +2277,12 @@ pub(crate) struct SnapshotEncodeV6InputScratch {
     raw_spans: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeV6InputScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeV6InputScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeV6InputScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_V6_INPUT_SCRATCH: SnapshotEncodeV6InputScratchHolder =
-    SnapshotEncodeV6InputScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_V6_INPUT_SCRATCH: WasmLazy<SnapshotEncodeV6InputScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_v6_input_scratch() -> &'static mut SnapshotEncodeV6InputScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_V6_INPUT_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeV6InputScratch::default());
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_V6_INPUT_SCRATCH.get_or_init(SnapshotEncodeV6InputScratch::default)
 }
 
 #[wasm_bindgen]
@@ -2605,22 +2487,12 @@ impl SnapshotEncodeV6WorkScratch {
     }
 }
 
-pub(crate) struct SnapshotEncodeV6WorkScratchHolder(
-    UnsafeCell<Option<SnapshotEncodeV6WorkScratch>>,
-);
-unsafe impl Sync for SnapshotEncodeV6WorkScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_V6_WORK_SCRATCH: SnapshotEncodeV6WorkScratchHolder =
-    SnapshotEncodeV6WorkScratchHolder(UnsafeCell::new(None));
+pub(crate) static SNAPSHOT_ENCODE_V6_WORK_SCRATCH: WasmLazy<SnapshotEncodeV6WorkScratch> =
+    WasmLazy::new();
 
 #[inline]
 pub(crate) fn snapshot_encode_v6_work_scratch() -> &'static mut SnapshotEncodeV6WorkScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_V6_WORK_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeV6WorkScratch::default());
-        }
-        cell.as_mut().unwrap()
-    }
+    SNAPSHOT_ENCODE_V6_WORK_SCRATCH.get_or_init(SnapshotEncodeV6WorkScratch::default)
 }
 
 #[inline]
@@ -6655,8 +6527,15 @@ mod sim_kernel_tests {
         p.vel_z[dyn_slot] = -40.0;
         p.restitution[dyn_slot] = 0.0;
         assert!(resolve_sphere_ring_pair_in_pool(p, dyn_slot, ring_slot));
-        assert!((p.pos_z[dyn_slot] - 30.0).abs() < 1e-9, "got {}", p.pos_z[dyn_slot]);
-        assert!(p.vel_z[dyn_slot] >= 0.0, "downward velocity must not survive");
+        assert!(
+            (p.pos_z[dyn_slot] - 30.0).abs() < 1e-9,
+            "got {}",
+            p.pos_z[dyn_slot]
+        );
+        assert!(
+            p.vel_z[dyn_slot] >= 0.0,
+            "downward velocity must not survive"
+        );
 
         // Well clear of the tube: no contact.
         p.pos_x[dyn_slot] = 200.0;

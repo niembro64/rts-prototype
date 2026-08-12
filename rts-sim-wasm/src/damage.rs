@@ -419,24 +419,16 @@ pub fn damage_segment_candidates_batch(
 /// with the exact sphere/AABB tests, avoiding a WASM -> JS -> WASM-shaped loop
 /// for every beam segment. Reflectors, terrain, and travelling projectiles keep
 /// their existing ordering in the TypeScript orchestrator.
-pub(crate) struct DamageClosestBodyHitOutput(UnsafeCell<f64>);
-unsafe impl Sync for DamageClosestBodyHitOutput {}
-pub(crate) static DAMAGE_CLOSEST_BODY_HIT_T: DamageClosestBodyHitOutput =
-    DamageClosestBodyHitOutput(UnsafeCell::new(0.0));
+pub(crate) static DAMAGE_CLOSEST_BODY_HIT_T: WasmGlobal<f64> = WasmGlobal::new(0.0);
 
 #[inline]
 fn damage_set_closest_body_segment_hit_t(t: f64) {
-    // SAFETY: the simulation WASM is single-threaded. The scalar is written by
-    // the query and read immediately by its caller before another query runs.
-    unsafe {
-        *DAMAGE_CLOSEST_BODY_HIT_T.0.get() = t;
-    }
+    *DAMAGE_CLOSEST_BODY_HIT_T.get() = t;
 }
 
 #[wasm_bindgen]
 pub fn damage_closest_body_segment_hit_t() -> f64 {
-    // SAFETY: see damage_set_closest_body_segment_hit_t.
-    unsafe { *DAMAGE_CLOSEST_BODY_HIT_T.0.get() }
+    *DAMAGE_CLOSEST_BODY_HIT_T.get()
 }
 
 #[wasm_bindgen]
@@ -1557,19 +1549,10 @@ impl DeathExplosionPlanner {
     }
 }
 
-pub(crate) struct DeathExplosionPlannerHolder(UnsafeCell<Option<DeathExplosionPlanner>>);
-unsafe impl Sync for DeathExplosionPlannerHolder {}
-pub(crate) static DEATH_EXPLOSION_PLANNER: DeathExplosionPlannerHolder =
-    DeathExplosionPlannerHolder(UnsafeCell::new(None));
+pub(crate) static DEATH_EXPLOSION_PLANNER: WasmLazy<DeathExplosionPlanner> = WasmLazy::new();
 
 pub(crate) fn death_explosion_planner() -> &'static mut DeathExplosionPlanner {
-    unsafe {
-        let cell = &mut *DEATH_EXPLOSION_PLANNER.0.get();
-        if cell.is_none() {
-            *cell = Some(DeathExplosionPlanner::default());
-        }
-        cell.as_mut().unwrap()
-    }
+    DEATH_EXPLOSION_PLANNER.get_or_init(DeathExplosionPlanner::default)
 }
 
 /// C1 death-explosion chaining planner reset. Called once per combat tick;

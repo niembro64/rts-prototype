@@ -53,6 +53,14 @@ import {
 } from '../network/gameGenerationSeed';
 import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
+import {
+  setLiquidSurfaceMode,
+  setTerrainSurfaceMode,
+} from '../sim/worldSurfaceState';
+import {
+  DEFAULT_LIQUID_SURFACE_MODE,
+  DEFAULT_TERRAIN_SURFACE_MODE,
+} from '../../types/worldSurfaceMode';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -88,6 +96,12 @@ export class ServerBootstrap {
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
     const backgroundMode = config.backgroundMode ?? false;
+    const terrainSurfaceMode =
+      config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
+    const liquidSurfaceMode =
+      config.liquidSurfaceMode ?? DEFAULT_LIQUID_SURFACE_MODE;
+    setTerrainSurfaceMode(terrainSurfaceMode);
+    setLiquidSurfaceMode(liquidSurfaceMode);
 
     const mapConfig = getMapSize(
       backgroundMode,
@@ -148,6 +162,8 @@ export class ServerBootstrap {
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
+    world.terrainSurfaceMode = terrainSurfaceMode;
+    world.liquidSurfaceMode = liquidSurfaceMode;
     world.playerCount = playerIds.length;
     // One assignment drives alliances, terrain slices, and spawn angles.
     world.setTeamRoster(teamRoster);
@@ -269,6 +285,12 @@ export class ServerBootstrap {
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
     const backgroundMode = config.backgroundMode ?? false;
+    const terrainSurfaceMode =
+      config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
+    const liquidSurfaceMode =
+      config.liquidSurfaceMode ?? DEFAULT_LIQUID_SURFACE_MODE;
+    setTerrainSurfaceMode(terrainSurfaceMode);
+    setLiquidSurfaceMode(liquidSurfaceMode);
 
     const mapConfig = getMapSize(
       backgroundMode,
@@ -333,6 +355,8 @@ export class ServerBootstrap {
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
+    world.terrainSurfaceMode = terrainSurfaceMode;
+    world.liquidSurfaceMode = liquidSurfaceMode;
     world.playerCount = playerIds.length;
     // One assignment drives alliances, terrain slices, and spawn angles.
     world.setTeamRoster(teamRoster);

@@ -16,7 +16,6 @@
 //  10  snapshot serializer     — per-entity quantize + delta path
 
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use std::cell::UnsafeCell;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
@@ -107,6 +106,9 @@ mod blueprint_tables {
 
 mod air_drag;
 mod generated_blueprint_schema;
+mod wasm_global;
+
+pub(crate) use wasm_global::{WasmGlobal, WasmLazy};
 
 #[wasm_bindgen]
 pub fn blueprint_unit_count() -> u32 {

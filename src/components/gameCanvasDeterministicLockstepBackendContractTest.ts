@@ -47,6 +47,11 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
 
   try {
     assertContract(backend.server !== null, 'lockstep backend must create a local server');
+    assertContract(
+      backend.server.getLockstepSimulationCore().world.terrainSurfaceMode === 'metal'
+        && backend.server.getLockstepSimulationCore().world.liquidSurfaceMode === 'lava',
+      'server bootstrap must install the selected WORLD modes before frame 0',
+    );
 
     const snapshots: NetworkServerSnapshot[] = [];
     const unsubscribe = backend.gameConnection.onSnapshot((snapshot) => {
@@ -159,6 +164,8 @@ function assertInitializationHashMismatch(): void {
       maxTotalUnits: 128,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
+      terrainSurfaceMode: 'normal' as const,
+      liquidSurfaceMode: 'water' as const,
     },
   };
   const first = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization(base));
@@ -181,6 +188,18 @@ function assertInitializationHashMismatch(): void {
     first !== third,
     'canonical initialization hash must include final-waypoint slowdown',
   );
+  const fourth = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
+    ...base,
+    settings: {
+      ...base.settings,
+      terrainSurfaceMode: 'metal',
+      liquidSurfaceMode: 'lava',
+    },
+  }));
+  assertContract(
+    first !== fourth,
+    'canonical initialization hash must include WORLD material modes',
+  );
 }
 
 function createTerrain(): RealBattleStartupTerrain {
@@ -202,6 +221,8 @@ function createTerrain(): RealBattleStartupTerrain {
       width: 9 * 128,
       height: 9 * 128,
     },
+    terrainSurfaceMode: 'metal',
+    liquidSurfaceMode: 'lava',
   };
 }
 
@@ -220,6 +241,8 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
     maxTotalUnits: 128,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,
+    terrainSurfaceMode: terrain.terrainSurfaceMode,
+    liquidSurfaceMode: terrain.liquidSurfaceMode,
   };
 }
 

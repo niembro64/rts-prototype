@@ -15,10 +15,7 @@
 import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
 import {
   createInstancedColorAlphaPool,
@@ -31,7 +28,6 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
-import { applyExposureToRawShader } from './RenderLighting3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -104,15 +100,7 @@ export class PylonTubeFlowRenderer {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.mat = new THREE.ShaderMaterial({
-      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-    });
-    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-    // invisible to exposure without this.
-    applyExposureToRawShader(this.mat);
+    this.mat = createInstancedColorAlphaParticleMaterial();
 
     this.pools = {
       close: this.createPool('close'),

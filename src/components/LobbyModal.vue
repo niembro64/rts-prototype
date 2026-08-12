@@ -46,7 +46,6 @@ const props = defineProps<{
   buildingBlueprintIds: readonly string[];
   allowedBuildings: readonly string[];
   unitCap: number;
-  forceFieldsVisible: boolean;
   shieldsObstructSight: boolean;
   converterTax: number;
   previewLoading: boolean;
@@ -79,7 +78,6 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   /** Host moves a seat to the next side (the lobby's TEAM N). */
   (e: 'cyclePlayerAllyTeam', playerId: PlayerId): void;
-  (e: 'setForceFieldsVisible', enabled: boolean): void;
   (e: 'setShieldsObstructSight', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
@@ -200,11 +198,6 @@ function pickToggleAllBuildings(): void {
 function pickUnitCap(cap: number): void {
   if (!props.isHost) return;
   emit('setUnitCap', cap);
-}
-
-function pickForceFieldsVisible(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setForceFieldsVisible', enabled);
 }
 
 function pickShieldsObstructSight(enabled: boolean): void {
@@ -811,15 +804,6 @@ const terrainSectionVars = computed(() =>
                     @click="pickUnitCap(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
-              </BarControlGroup>
-              <BarControlGroup>
-                <BarDivider />
-                <BarLabel>FORCE FIELDS:</BarLabel>
-                <BarButton
-                  :active="forceFieldsVisible"
-                  :title="isHost ? 'Show or hide rendered force-field surfaces and impact flashes' : 'Only the host can change battle settings'"
-                  @click="pickForceFieldsVisible(!forceFieldsVisible)"
-                >{{ forceFieldsVisible ? 'VISIBLE' : 'INVISIBLE' }}</BarButton>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />

@@ -167,20 +167,11 @@ impl PresentationHistory {
     }
 }
 
-pub(crate) struct PresentationHistoryHolder(UnsafeCell<Option<PresentationHistory>>);
-unsafe impl Sync for PresentationHistoryHolder {}
-pub(crate) static PRESENTATION_HISTORY: PresentationHistoryHolder =
-    PresentationHistoryHolder(UnsafeCell::new(None));
+static PRESENTATION_HISTORY: WasmLazy<PresentationHistory> = WasmLazy::new();
 
 #[inline]
 fn presentation_history() -> &'static mut PresentationHistory {
-    unsafe {
-        let cell = &mut *PRESENTATION_HISTORY.0.get();
-        if cell.is_none() {
-            *cell = Some(PresentationHistory::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    PRESENTATION_HISTORY.get_or_init(PresentationHistory::empty)
 }
 
 #[inline]

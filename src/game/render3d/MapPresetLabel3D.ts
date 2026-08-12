@@ -4,10 +4,9 @@
 // +Z). It is map signage, not HUD: it lives in world space, so it is
 // occluded by terrain and grows/shrinks with zoom like everything else.
 //
-// It appears ONLY while the battle bar matches a stock preset exactly —
-// presetMapLabel broadcasts null the moment a knob drifts off, and null
-// hides the mesh. One pooled canvas is repainted on change; there is no
-// per-frame work at all (the mesh is static, so no update hook exists).
+// Exact presets show their authored name; changed settings show CUSTOM and
+// continue describing the live map. One pooled canvas is repainted on change;
+// there is no per-frame work (the mesh has no update hook).
 
 import * as THREE from 'three';
 import { MAP_PRESET_LABEL_RENDER_CONFIG } from '@/config';
@@ -29,6 +28,12 @@ const STYLE = {
   fillColor: COLORS.ui.mapPresetLabel.fillColor,
   strokeColor: COLORS.ui.mapPresetLabel.strokeColor,
 };
+
+/** Ground-plane orientation for a readable sign at the default -Z camera.
+ *  Canvas right maps toward world -X (screen-right from that camera), canvas
+ *  top maps toward +Z, and the painted front normal points upward. */
+export const MAP_PRESET_LABEL_ROTATION_X = -Math.PI / 2;
+export const MAP_PRESET_LABEL_ROTATION_Z = Math.PI;
 
 function fontString(pixels: number): string {
   return `bold ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
@@ -122,10 +127,10 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = 'MapPresetLabel';
-    // +X stays map +X (screen right at default yaw) and the plane's local
-    // +Y maps to world +Z, so the first line reads across the map's near
-    // edge with later lines stacked toward the camera.
-    this.mesh.rotation.x = Math.PI / 2;
+    // The extra half-turn around Z corrects both mirrored reading order and
+    // vertical stacking after the plane is laid flat on the ground.
+    this.mesh.rotation.x = MAP_PRESET_LABEL_ROTATION_X;
+    this.mesh.rotation.z = MAP_PRESET_LABEL_ROTATION_Z;
     this.mesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects;
     this.mesh.visible = false;
     parent.add(this.mesh);

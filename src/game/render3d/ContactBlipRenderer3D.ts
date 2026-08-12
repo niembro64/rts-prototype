@@ -22,6 +22,7 @@ import { COLORS } from '../../colorsConfig';
 import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
 import type { MinimapEntity } from '@/types/ui';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 const STYLE = COLORS.effects.contactBlip;
 
@@ -51,7 +52,7 @@ export class ContactBlipRenderer3D {
   }
 
   private createMesh(capacity: number): THREE.InstancedMesh {
-    const geometry = new THREE.SphereGeometry(STYLE.radius, 8, 6);
+    const geometry = createPrimitiveSphereGeometry('hud', 'mid', STYLE.radius);
     const material = new THREE.MeshBasicMaterial({
       color: new THREE.Color(STYLE.colorHex),
       transparent: true,

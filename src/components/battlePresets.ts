@@ -8,9 +8,13 @@ import type {
   LiquidSurfaceMode,
   TerrainSurfaceMode,
 } from '../types/worldSurfaceMode';
+import { LAND_CELL_SIZE } from '../mapSizeConfig';
 
 export type BattlePreset = {
   readonly name: string;
+  /** Generated four-layer panorama set for this authored map. Keeping it on
+   *  the preset removes the second name-to-background registry. */
+  readonly backdropSlug: string;
   readonly units: readonly string[];
   /** Enabled building blueprints (BUILDINGS bar group). Every preset
    *  ships with all buildings on; the field exists so DEFAULTS / preset
@@ -52,7 +56,17 @@ export type BattlePreset = {
   readonly barsCollapsed: boolean;
 };
 
-type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
+export type BattlePresetSnapshot = Omit<
+  BattlePreset,
+  | 'name'
+  | 'backdropSlug'
+  | 'turretShieldPanelsEnabled'
+  | 'turretShieldSpheresEnabled'
+  | 'forceFieldsVisible'
+  | 'shieldReflectionMode'
+  | 'fogOfWarEnabled'
+  | 'barsCollapsed'
+>;
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
   demo: 'Angels Flat',
@@ -95,6 +109,7 @@ function buildPresets(): readonly BattlePreset[] {
   return [
     {
       name: 'Large Circle',
+      backdropSlug: 'large-circle',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -115,6 +130,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'Angels Flat',
+      backdropSlug: 'angels-flat',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -135,6 +151,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'Boulder Mountain',
+      backdropSlug: 'boulder-mountain',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -155,6 +172,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'Spikey Lake',
+      backdropSlug: 'spikey-lake',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -175,6 +193,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'Niemo Islands',
+      backdropSlug: 'niemo-islands',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -195,6 +214,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'Angels Playhouse',
+      backdropSlug: 'angels-playhouse',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -215,6 +235,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'METAL HELL',
+      backdropSlug: 'metal-hell',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -237,6 +258,7 @@ function buildPresets(): readonly BattlePreset[] {
     },
     {
       name: 'METAL PLATE',
+      backdropSlug: 'metal-plate',
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
@@ -292,20 +314,19 @@ function presetMatchesCurrent(
   p: BattlePreset,
   c: BattlePresetSnapshot,
 ): boolean {
-  // Fog of war is intentionally excluded from the match: it's hardcoded
-  // in the lobby (off) and in the real battle (on), so comparing the
-  // preset's stored fog value against the current state would always
-  // mismatch in those contexts. The DEMO BATTLE bar still toggles fog
-  // independently of presets.
+  // Fog of war is intentionally excluded: the lobby forces it off and the
+  // real battle forces it on. Client presentation (`barsCollapsed`) and the
+  // shield panel/reflection defaults that have no live preset control are
+  // excluded too. Every user-controllable map/gameplay field is compared.
   return (
     sameUnits(p.units, c.units) &&
     sameUnits(p.buildings, c.buildings) &&
     p.cap === c.cap &&
     p.terrainSurfaceMode === c.terrainSurfaceMode &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
-    p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
+    p.slopePathMode === c.slopePathMode &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&
@@ -319,23 +340,48 @@ function presetMatchesCurrent(
   );
 }
 
-/** Caption for the map-corner preset sign (MapPresetLabel3D): the preset
- *  name followed by the handful of fields that actually distinguish the
- *  stock presets from each other. `null` for anything that is not a stock
- *  preset — off-preset settings show no sign at all. */
-export function mapPresetLabelLines(name: string | null): readonly string[] | null {
-  const preset = name === null
-    ? undefined
-    : BATTLE_PRESETS.find((p) => p.name === name);
-  if (preset === undefined) return null;
-  const terrain = preset.terrainSurfaceMode === 'metal' ? 'METAL GROUND' : 'LAND';
-  const liquid = preset.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
-  return [
-    preset.name.toUpperCase(),
-    `${preset.mapWidthLandCells} x ${preset.mapLengthLandCells} CELLS`
-      + `  ·  ${preset.cap} UNIT CAP`,
-    `${terrain}  ·  ${liquid}  ·  DETAIL ${preset.terrainDetail}`,
+export type BattleMapPresentation = {
+  /** Exact stock match, or null when any map/gameplay setting is custom. */
+  readonly presetName: string | null;
+  /** Only exact stock matches receive the preset's special panorama. */
+  readonly backdropPresetName: string | null;
+  /** The ground sign is always present and always describes current values. */
+  readonly labelLines: readonly string[];
+};
+
+function formatTerrainMagnitude(value: number): string {
+  return value === 0 ? 'NONE' : String(value);
+}
+
+/** Resolve the complete map presentation once from the current settings.
+ *  Custom maps retain the useful sign but use the neutral default backdrop. */
+export function resolveBattleMapPresentation(
+  current: BattlePresetSnapshot,
+): BattleMapPresentation {
+  const presetName = findMatchingPresetName(current);
+  const terrain = current.terrainSurfaceMode === 'metal'
+    ? 'METAL TERRAIN'
+    : 'NORMAL TERRAIN';
+  const liquid = current.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
+  const worldWidth = current.mapWidthLandCells * LAND_CELL_SIZE;
+  const worldLength = current.mapLengthLandCells * LAND_CELL_SIZE;
+  const labelLines = [
+    presetName?.toUpperCase() ?? 'CUSTOM',
+    `${current.mapWidthLandCells} × ${current.mapLengthLandCells} LAND CELLS`
+      + `  ·  ${worldWidth} × ${worldLength} WORLD`,
+    `${current.cap} UNIT CAP  ·  ${terrain}  ·  ${liquid}`,
+    `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`
+      + `  ·  DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`
+      + `  ·  PERIMETER ${formatTerrainMagnitude(current.perimeterMagnitude)}`,
+    `D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`
+      + `  ·  METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`
+      + `  ·  DETAIL ${current.terrainDetail}`,
   ];
+  return {
+    presetName,
+    backdropPresetName: presetName,
+    labelLines,
+  };
 }
 
 export function findMatchingPresetName(c: BattlePresetSnapshot): string | null {

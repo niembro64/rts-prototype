@@ -1921,7 +1921,6 @@ pub(crate) fn terrain_clip_polygon_by_plateau_boundary(
     })
 }
 
-
 pub(crate) fn terrain_polygon_has_area(points: &[TerrainMeshPoint]) -> bool {
     points.len() >= 3 && terrain_polygon_signed_area(points).abs() > TERRAIN_MESH_EPSILON
 }
@@ -1971,7 +1970,6 @@ pub(crate) fn terrain_plateau_key_range_for_polygon(
 
     Some((min_key?, max_key?))
 }
-
 
 #[inline]
 pub(crate) fn terrain_world_vertex_key(x: f64, z: f64, scale: f64) -> (i64, i64) {
@@ -2945,17 +2943,11 @@ impl TerrainGrid {
     }
 }
 
-pub(crate) struct TerrainGridHolder(UnsafeCell<TerrainGrid>);
-unsafe impl Sync for TerrainGridHolder {}
-pub(crate) static TERRAIN_GRID: TerrainGridHolder =
-    TerrainGridHolder(UnsafeCell::new(TerrainGrid::empty()));
+pub(crate) static TERRAIN_GRID: WasmGlobal<TerrainGrid> = WasmGlobal::new(TerrainGrid::empty());
 
 #[inline]
 pub(crate) fn terrain_grid() -> &'static mut TerrainGrid {
-    // SAFETY: WASM is single-threaded; no &mut ever lives across
-    // calls. The static Vecs grow on install (one-time per match
-    // boundary) and shrink on clear.
-    unsafe { &mut *TERRAIN_GRID.0.get() }
+    TERRAIN_GRID.get()
 }
 
 #[wasm_bindgen]

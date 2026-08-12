@@ -327,6 +327,10 @@
     "demoDefault": true,
     "realDefault": true
   },
+  "forceFieldsVisible": {
+    "demoDefault": true,
+    "realDefault": true
+  },
   "materialExplosions": {
     "demoDefault": true,
     "realDefault": true
@@ -687,6 +691,7 @@
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "entityShadows": "entity-shadows",
+    "forceFieldsVisible": "force-fields-visible",
     "fogShade": "fog-shade",
     "materialExplosions": "material-explosions",
     "triangleDebug": "triangle-debug",

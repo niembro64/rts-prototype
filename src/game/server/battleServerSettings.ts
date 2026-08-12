@@ -1,7 +1,6 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredConverterTax,
-  loadStoredForceFieldsVisible,
   loadStoredShieldReflectionMode,
   loadStoredShieldsObstructSight,
   loadStoredTurretShieldSpheresEnabled,
@@ -18,6 +17,10 @@ import {
 import type { GameServer } from './GameServer';
 import type { CommandAuthority } from './commandAuthority';
 import type { Command } from '../sim/commands';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../../types/worldSurfaceMode';
 
 type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
@@ -30,6 +33,10 @@ type StoredBattleServerSettingsOptions = {
   /** Canonical handoff value for real battles. Demo/background callers omit
    *  it and use their mode's persisted BATTLE toggle. */
   slowDownAtFinalWaypoint?: boolean;
+  /** Canonical real-battle WORLD selections. Background/demo callers omit
+   *  them and use the stored namespace. */
+  terrainSurfaceMode?: TerrainSurfaceMode;
+  liquidSurfaceMode?: LiquidSurfaceMode;
 };
 
 const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
@@ -69,11 +76,6 @@ export function buildStoredBattleServerSettingCommands(
       enabled: loadStoredTurretShieldSpheresEnabled(mode),
     },
     {
-      type: 'setForceFieldsVisible',
-      tick: 0,
-      enabled: loadStoredForceFieldsVisible(mode),
-    },
-    {
       type: 'setShieldsObstructSight',
       tick: 0,
       enabled: loadStoredShieldsObstructSight(mode),
@@ -103,12 +105,12 @@ export function buildStoredBattleServerSettingCommands(
     {
       type: 'setTerrainSurfaceMode',
       tick: 0,
-      mode: loadStoredTerrainSurfaceMode(mode),
+      mode: options.terrainSurfaceMode ?? loadStoredTerrainSurfaceMode(mode),
     },
     {
       type: 'setLiquidSurfaceMode',
       tick: 0,
-      mode: loadStoredLiquidSurfaceMode(mode),
+      mode: options.liquidSurfaceMode ?? loadStoredLiquidSurfaceMode(mode),
     },
     {
       type: 'setConverterTax',

@@ -11,24 +11,13 @@
  */
 
 import { createRenderBroadcastChannel } from './renderBroadcastChannel';
+import { BATTLE_PRESETS } from '@/components/battlePresets';
 
 /** Panorama used whenever the battle bar matches no stock preset. Settings
  *  drifted off a preset still deserve a layered horizon, so the fallback is
  *  a real four-layer set (neutral daylight, no preset signature) rather than
  *  the bare gradient sky the renderer shows with no textures bound. */
 const DEFAULT_BACKDROP_SLUG = 'default';
-
-/** Preset display names (battlePresets.ts) -> generated panorama slug. */
-const PRESET_BACKDROP_SLUGS: Readonly<Record<string, string>> = {
-  'Large Circle': 'large-circle',
-  'Angels Flat': 'angels-flat',
-  'Boulder Mountain': 'boulder-mountain',
-  'Spikey Lake': 'spikey-lake',
-  'Niemo Islands': 'niemo-islands',
-  'Angels Playhouse': 'angels-playhouse',
-  'METAL HELL': 'metal-hell',
-  'METAL PLATE': 'metal-plate',
-};
 
 export const PRESET_BACKDROP_LAYER_IDS = [
   'near',
@@ -45,7 +34,9 @@ export type PresetBackdropLayerUrls = readonly [string, string, string, string];
 export function backdropUrlsForPresetName(
   name: string | null,
 ): PresetBackdropLayerUrls {
-  const slug = (name ? PRESET_BACKDROP_SLUGS[name] : undefined)
+  const slug = (name
+    ? BATTLE_PRESETS.find((preset) => preset.name === name)?.backdropSlug
+    : undefined)
     ?? DEFAULT_BACKDROP_SLUG;
   const root = `${import.meta.env.BASE_URL}assets/backdrops/${slug}`;
   return [

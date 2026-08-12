@@ -1,17 +1,15 @@
 /**
  * Map-corner preset caption.
  *
- * Visible only while the battle bar's settings match a stock preset
- * exactly; a single hand-tuned knob drops the match and clears it (null).
- * GameCanvas owns "which preset am I on" and hands over already-formatted
- * lines, so MapPresetLabel3D stays a text painter — the same split
- * NameLabel3D uses against EntityName.
+ * Exact presets show their authored name; any changed gameplay/map setting
+ * shows CUSTOM while retaining the current map details. GameCanvas hands over
+ * already-formatted lines, so MapPresetLabel3D stays a text painter.
  */
 
 import { createRenderBroadcastChannel } from './renderBroadcastChannel';
 
-/** First line is the preset name; the rest are info lines, painted
- *  smaller beneath it. `null` hides the caption entirely. */
+/** First line is the preset name or CUSTOM; the rest are current info lines.
+ *  `null` remains a lifecycle escape hatch for teardown/empty state. */
 export type MapPresetLabelLines = readonly string[] | null;
 
 export type MapPresetLabelTarget = {
@@ -39,8 +37,7 @@ export function registerMapPresetLabelTarget(
   return channel.register((lines) => target.setMapPresetLabelLines(lines));
 }
 
-/** Reactive entry point: GameCanvas passes the matched preset's caption,
- *  or null when the settings match no stock preset. */
+/** Reactive entry point: GameCanvas passes the current map caption. */
 export function setActiveMapPresetLabel(lines: MapPresetLabelLines): void {
   channel.set(lines);
 }

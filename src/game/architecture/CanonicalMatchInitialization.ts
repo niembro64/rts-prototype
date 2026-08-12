@@ -31,6 +31,12 @@ import {
 } from '../network/gameGenerationSeed';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
+import {
+  isLiquidSurfaceMode,
+  isTerrainSurfaceMode,
+  type LiquidSurfaceMode,
+  type TerrainSurfaceMode,
+} from '@/types/worldSurfaceMode';
 
 // Turbine animation and wind particles are presentation-only. Keep them out
 // of the deterministic content hash so visual tuning cannot split lockstep.
@@ -40,7 +46,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v7';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v8';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
@@ -68,6 +74,8 @@ export type CanonicalMatchInitialization = {
     readonly terrainDetail: number | null;
     readonly mapWidthLandCells: number | null;
     readonly mapLengthLandCells: number | null;
+    readonly terrainSurfaceMode: TerrainSurfaceMode | null;
+    readonly liquidSurfaceMode: LiquidSurfaceMode | null;
   };
   readonly gameplay: {
     readonly maxTotalUnits: number | null;
@@ -157,6 +165,12 @@ export function buildCanonicalMatchInitialization({
       terrainDetail: finiteOrNull(settings?.terrainDetail),
       mapWidthLandCells: finiteOrNull(settings?.mapWidthLandCells),
       mapLengthLandCells: finiteOrNull(settings?.mapLengthLandCells),
+      terrainSurfaceMode: isTerrainSurfaceMode(settings?.terrainSurfaceMode)
+        ? settings.terrainSurfaceMode
+        : null,
+      liquidSurfaceMode: isLiquidSurfaceMode(settings?.liquidSurfaceMode)
+        ? settings.liquidSurfaceMode
+        : null,
     },
     gameplay: {
       maxTotalUnits: finiteOrNull(settings?.maxTotalUnits),

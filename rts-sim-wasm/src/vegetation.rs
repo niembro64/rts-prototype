@@ -219,16 +219,12 @@ impl VegetationStore {
     }
 }
 
-pub(crate) struct VegetationStoreHolder(UnsafeCell<VegetationStore>);
-unsafe impl Sync for VegetationStoreHolder {}
-pub(crate) static VEGETATION_STORE: VegetationStoreHolder =
-    VegetationStoreHolder(UnsafeCell::new(VegetationStore::empty()));
+pub(crate) static VEGETATION_STORE: WasmGlobal<VegetationStore> =
+    WasmGlobal::new(VegetationStore::empty());
 
 #[inline]
 pub(crate) fn vegetation_store() -> &'static mut VegetationStore {
-    // SAFETY: WASM is single-threaded; no &mut ever lives across calls.
-    // The store is filled once per match boundary and drained on clear.
-    unsafe { &mut *VEGETATION_STORE.0.get() }
+    VEGETATION_STORE.get()
 }
 
 /// Mulberry32 — the same generator (and therefore the same stream) the

@@ -61,6 +61,7 @@ import {
   type AreaCommandTargetFilter,
 } from '../sim/areaCommandFilters';
 import { entityHasBarAttackCommand } from '../sim/unitCommandCapabilities';
+import type { Input3DCommandModeControls } from './Input3DCommandModeControls';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -128,7 +129,7 @@ type ModeClickEntitySource = {
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
 
-type Input3DModeClickControllerConfig = {
+type Input3DModeClickControllerConfig = Input3DCommandModeControls & {
   getEntitySource: () => ModeClickEntitySource;
   commandQueue: ClientCommandSink;
   picker: Input3DPicker;
@@ -142,44 +143,10 @@ type Input3DModeClickControllerConfig = {
   getSelectedResurrectSource: () => Entity | null;
   onBuildCommandIssued: (queued: boolean) => void;
   applyCursor: (kind: CommandCursorKind) => void;
-  isRepairAreaMode: () => boolean;
-  isRestoreAreaMode: () => boolean;
-  isAttackMode: () => boolean;
-  isAttackAreaMode: () => boolean;
-  isAttackGroundMode: () => boolean;
-  isManualLaunchMode: () => boolean;
-  isGuardMode: () => boolean;
-  isReclaimMode: () => boolean;
-  isCaptureMode: () => boolean;
-  isResurrectMode: () => boolean;
-  isResurrectAreaMode: () => boolean;
   isResurrectModeAreaCapable: () => boolean;
-  isLoadTransportMode: () => boolean;
-  isUnloadTransportMode: () => boolean;
-  isMexUpgradeMode: () => boolean;
-  isPingMode: () => boolean;
-  isTowerTargetMode: () => boolean;
-  isTowerTargetNoGroundMode: () => boolean;
   /** BAR cmd_buildsplit parity: true while the build-split modifier
    *  (held Space, BAR's `bind Any+space buildsplit`) is active. */
   isBuildSplitModifierHeld: () => boolean;
-  exitRepairAreaMode: () => void;
-  exitRestoreAreaMode: () => void;
-  exitAttackMode: () => void;
-  exitAttackAreaMode: () => void;
-  exitAttackGroundMode: () => void;
-  exitManualLaunchMode: () => void;
-  exitGuardMode: () => void;
-  exitReclaimMode: () => void;
-  exitCaptureMode: () => void;
-  exitResurrectMode: () => void;
-  exitResurrectAreaMode: () => void;
-  exitLoadTransportMode: () => void;
-  exitUnloadTransportMode: () => void;
-  exitMexUpgradeMode: () => void;
-  exitPingMode: () => void;
-  exitTowerTargetMode: () => void;
-  exitTowerTargetNoGroundMode: () => void;
   registerBarTargetTypeTracking?: (targetId: EntityId) => boolean;
   registerNearestBarTargetTypeTracking?: (point: { x: number; y: number; z?: number }) => EntityId | null;
   clearBarTargetTypeTrackingForSelected?: () => void;

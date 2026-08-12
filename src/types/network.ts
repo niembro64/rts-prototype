@@ -15,6 +15,10 @@ import type {
 import type { SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitAirIdleState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from './worldSurfaceMode';
 // Single source of truth for the wire codes TS and Rust must agree on.
 // Rust generates its constants from this same file via build.rs.
 import wireEnums from '../wireEnums.json';
@@ -529,6 +533,12 @@ export type LobbySettings = {
   /** Whether units brake on approach to their last waypoint. Undefined only
    *  for legacy lobby messages, which use the off default. */
   slowDownAtFinalWaypoint: boolean | undefined;
+  /** Ground material for the whole authoritative world. Undefined only for
+   *  legacy lobby messages. */
+  terrainSurfaceMode: TerrainSurfaceMode | undefined;
+  /** Liquid material below the water level. Undefined only for legacy lobby
+   *  messages. Lava changes simulation damage as well as rendering. */
+  liquidSurfaceMode: LiquidSurfaceMode | undefined;
 };
 
 export type NetworkServerSnapshotSimEvent = {

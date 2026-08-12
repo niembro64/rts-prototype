@@ -237,19 +237,11 @@ impl EntityStateSlab {
     }
 }
 
-pub(crate) struct EntityStateHolder(UnsafeCell<Option<EntityStateSlab>>);
-unsafe impl Sync for EntityStateHolder {}
-pub(crate) static ENTITY_STATE: EntityStateHolder = EntityStateHolder(UnsafeCell::new(None));
+pub(crate) static ENTITY_STATE: WasmLazy<EntityStateSlab> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn entity_state() -> &'static mut EntityStateSlab {
-    unsafe {
-        let cell = &mut *ENTITY_STATE.0.get();
-        if cell.is_none() {
-            *cell = Some(EntityStateSlab::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    ENTITY_STATE.get_or_init(EntityStateSlab::empty)
 }
 
 #[wasm_bindgen]

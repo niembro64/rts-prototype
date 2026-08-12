@@ -133,23 +133,14 @@ impl SpatialGridState {
     }
 }
 
-pub(crate) struct SpatialGridHolder(UnsafeCell<Option<SpatialGridState>>);
-unsafe impl Sync for SpatialGridHolder {}
-pub(crate) static SPATIAL_GRID: SpatialGridHolder = SpatialGridHolder(UnsafeCell::new(None));
+pub(crate) static SPATIAL_GRID: WasmLazy<SpatialGridState> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn spatial_grid() -> &'static mut SpatialGridState {
-    // SAFETY: WASM single-threaded; one Rust call active at a time.
     // Lazy-initializes on first access so callers don't have to gate
     // on spatial_init having run yet (matches the BodyPool pattern
     // where pool_init is called from initSimWasm's bootstrap chain).
-    unsafe {
-        let cell = &mut *SPATIAL_GRID.0.get();
-        if cell.is_none() {
-            *cell = Some(SpatialGridState::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    SPATIAL_GRID.get_or_init(SpatialGridState::empty)
 }
 
 #[inline]

@@ -1,13 +1,39 @@
 import {
+  MAP_PRESET_LABEL_ROTATION_X,
+  MAP_PRESET_LABEL_ROTATION_Z,
   mapPresetLabelCanvasHeight,
   resolveMapPresetLabelPlacement,
 } from './MapPresetLabel3D';
+import {
+  BATTLE_PRESETS,
+  resolveBattleMapPresentation,
+  type BattlePresetSnapshot,
+} from '@/components/battlePresets';
+import { backdropUrlsForPresetName } from './presetBackdrops';
+import * as THREE from 'three';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[map preset label contract] ${message}`);
 }
 
 export function runMapPresetLabel3DContractTest(): void {
+  assertContract(
+    MAP_PRESET_LABEL_ROTATION_X === -Math.PI / 2
+      && MAP_PRESET_LABEL_ROTATION_Z === Math.PI,
+    'the ground sign must face upward and undo the default-camera mirror/inversion',
+  );
+  const orientation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    MAP_PRESET_LABEL_ROTATION_X,
+    0,
+    MAP_PRESET_LABEL_ROTATION_Z,
+  ));
+  const canvasRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orientation);
+  const canvasTop = new THREE.Vector3(0, 1, 0).applyQuaternion(orientation);
+  const paintedFront = new THREE.Vector3(0, 0, 1).applyQuaternion(orientation);
+  assertContract(
+    canvasRight.x < -0.999 && canvasTop.z > 0.999 && paintedFront.y > 0.999,
+    'canvas right/top/front must map to screen-right/mapward/upward world axes',
+  );
   assertContract(mapPresetLabelCanvasHeight(0) === 0, 'an empty caption has no canvas');
   assertContract(
     mapPresetLabelCanvasHeight(3) > mapPresetLabelCanvasHeight(2)
@@ -46,4 +72,41 @@ export function runMapPresetLabel3DContractTest(): void {
       );
     }
   }
+
+  for (const preset of BATTLE_PRESETS) {
+    const { name, backdropSlug, ...snapshot } = preset;
+    const presentation = resolveBattleMapPresentation(snapshot);
+    assertContract(
+      presentation.presetName === name && presentation.labelLines[0] === name.toUpperCase(),
+      `${name} must resolve as an exact stock preset`,
+    );
+    assertContract(
+      backdropUrlsForPresetName(presentation.backdropPresetName)[0]
+        .includes(`/assets/backdrops/${backdropSlug}-near.ktx2`),
+      `${name} must own its special backdrop slug`,
+    );
+  }
+
+  const source = BATTLE_PRESETS[1];
+  const {
+    name: _name,
+    backdropSlug: _backdropSlug,
+    ...stockSnapshot
+  } = source;
+  const customSnapshot: BattlePresetSnapshot = {
+    ...stockSnapshot,
+    terrainDetail: stockSnapshot.terrainDetail + 1,
+  };
+  const custom = resolveBattleMapPresentation(customSnapshot);
+  assertContract(custom.presetName === null, 'a changed map setting must leave the preset');
+  assertContract(custom.labelLines[0] === 'CUSTOM', 'an off-preset map must be named CUSTOM');
+  assertContract(
+    custom.labelLines.some((line) => line.includes(`DETAIL ${customSnapshot.terrainDetail}`)),
+    'the CUSTOM sign must retain the changed current settings',
+  );
+  assertContract(
+    backdropUrlsForPresetName(custom.backdropPresetName)[0]
+      .includes('/assets/backdrops/default-near.ktx2'),
+    'CUSTOM must use the neutral default backdrop',
+  );
 }

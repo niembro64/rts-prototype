@@ -24,11 +24,13 @@ import {
   TERRAIN_ROCK_TEXTURE_RESOLUTION,
 } from '../../config';
 import {
+  type CommonShapeItem,
   cssRgb,
   drawCommonItemWithWrap,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   randIn,
+  sampleLogDistributedSize,
 } from './detailTextureHelpers';
 
 const BASE_TEXTURE_PIXELS = 4096;
@@ -41,20 +43,6 @@ const TEXTURE_SCALE = ROCK_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // A larger tileWorldSize makes every rock shape cover more world area when
 // sampled, so rocks read chunkier than the finer grass / sticks texture.
 const ITEM_COUNT = 24576;
-
-// Only hard-cornered shapes — rock fractures along straight lines, not curves.
-type ShapeKind = 'box' | 'tri' | 'hex';
-
-type Item = {
-  x: number;
-  y: number;
-  size: number;
-  rotation: number;
-  shapeKind: ShapeKind;
-  shapeParam: number;
-  rgb: readonly [number, number, number];
-  alpha: number;
-};
 
 // Hand-picked rock palette. Mixed grays with brown and sun-bleach extremes to
 // give the texture some warmth without straying into "grass" or "wood" hues
@@ -105,8 +93,8 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   return { canvas, texture };
 }
 
-function generateItems(rng: () => number): Item[] {
-  const items: Item[] = [];
+function generateItems(rng: () => number): CommonShapeItem[] {
+  const items: CommonShapeItem[] = [];
   for (let i = 0; i < ITEM_COUNT; i++) {
     // Log-uniform size with a t^1.5 squash. Range stretched up to 500 px so
     // the texture now spans from tiny debris through chunky boulders and
@@ -114,14 +102,13 @@ function generateItems(rng: () => number): Item[] {
     // enough to land prominently across the tile. The eased exponent
     // (vs t² for the grass texture) deliberately gives large slabs more
     // representation than the grass-side "many small grass blades" curve.
-    const sizeT = rng();
-    const tSquashed = Math.pow(sizeT, 1.5);
-    const size = Math.exp(
-      Math.log(5 * TEXTURE_SCALE) +
-        tSquashed * (Math.log(500 * TEXTURE_SCALE) - Math.log(5 * TEXTURE_SCALE)),
+    const size = sampleLogDistributedSize(
+      rng,
+      5 * TEXTURE_SCALE,
+      500 * TEXTURE_SCALE,
     );
 
-    let shapeKind: ShapeKind;
+    let shapeKind: CommonShapeItem['shapeKind'];
     const shapeRoll = rng();
     if (size > 200) {
       // Giant slabs: hexagonal rock plates dominate, with chunky wedges mixed in.

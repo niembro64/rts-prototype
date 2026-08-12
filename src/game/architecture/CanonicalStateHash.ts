@@ -91,7 +91,6 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       maxTotalUnits: world.maxTotalUnits,
       turretShieldPanelsEnabled: world.turretShieldPanelsEnabled,
       turretShieldSpheresEnabled: world.turretShieldSpheresEnabled,
-      forceFieldsVisible: world.forceFieldsVisible,
       shieldsObstructSight: world.shieldsObstructSight,
       shieldReflectionMode: world.shieldReflectionMode,
       fogOfWarEnabled: world.fogOfWarEnabled,

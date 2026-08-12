@@ -235,55 +235,6 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>WALL EDGE:</BarLabel>
-        <BarButton
-          :active="model.terrainSplitWallBoundaryVertices"
-          title="Split D-PLATEAU wall-edge render vertices so wall and flat triangles bake normals, texture masks, and light from their own side of the edge."
-          @click="model.toggleTerrainSplitWallBoundaryVertices"
-        >SPLIT</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>TEXTURE SMOOTH:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.terrainTextureSmoothing.options"
-            :key="opt"
-            :active="model.terrainTextureSmoothing === opt"
-            :title="opt === 0
-              ? 'Disable extra terrain texture smoothing'
-              : `Terrain texture smoothing passes: ${opt}`"
-            @click="model.applyTerrainTextureSmoothing(opt)"
-          >{{ opt }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.terrainTextureSmoothAcrossWallBoundary"
-          title="Allow terrain texture smoothing to cross D-PLATEAU wall/non-wall triangle boundaries. Off keeps the two triangle classes separate."
-          @click="model.toggleTerrainTextureSmoothAcrossWallBoundary"
-        >CROSS WALL</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>LIGHT SMOOTH:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.terrainLightSmoothing.options"
-            :key="opt"
-            :active="model.terrainLightSmoothing === opt"
-            :title="opt === 0
-              ? 'Disable extra baked terrain light smoothing'
-              : `Baked terrain light smoothing passes: ${opt}`"
-            @click="model.applyTerrainLightSmoothing(opt)"
-          >{{ opt }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.terrainLightSmoothAcrossWallBoundary"
-          title="Allow baked terrain light smoothing to cross D-PLATEAU wall/non-wall triangle boundaries. Off keeps the two triangle classes separate."
-          @click="model.toggleTerrainLightSmoothAcrossWallBoundary"
-        >CROSS WALL</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
@@ -299,15 +250,6 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
             </div>
           </div>
         </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>FORCE FIELDS:</BarLabel>
-        <BarButton
-          :active="model.currentForceFieldsVisible"
-          title="Show or hide rendered force-field surfaces and impact flashes"
-          @click="model.setForceFieldsVisible(!model.currentForceFieldsVisible)"
-        >{{ model.currentForceFieldsVisible ? 'VISIBLE' : 'INVISIBLE' }}</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

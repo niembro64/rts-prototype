@@ -5,6 +5,10 @@ import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from './worldSurfaceMode';
 
 export type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
 
@@ -205,6 +209,10 @@ export type GameServerConfig = {
   mapWidthLandCells?: number;
   /** Map length/height in canonical LAND_CELL_SIZE cells. */
   mapLengthLandCells?: number;
+  /** Initial authoritative ground and liquid materials. They are applied
+   *  before terrain-dependent simulation state and vegetation are built. */
+  terrainSurfaceMode?: TerrainSurfaceMode;
+  liquidSurfaceMode?: LiquidSurfaceMode;
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];
   /** Background/demo battles can still use the rich prebuilt RTS

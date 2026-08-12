@@ -148,8 +148,10 @@ export async function createBackgroundBattle(
   // these at construction (deposit crowns, terrain material, liquid colour),
   // so waiting for the setTerrainSurfaceMode / setLiquidSurfaceMode commands
   // on the first sim tick would build the scene with the wrong world.
-  setTerrainSurfaceMode(loadStoredTerrainSurfaceMode(mode));
-  setLiquidSurfaceMode(loadStoredLiquidSurfaceMode(mode));
+  const terrainSurfaceMode = loadStoredTerrainSurfaceMode(mode);
+  const liquidSurfaceMode = loadStoredLiquidSurfaceMode(mode);
+  setTerrainSurfaceMode(terrainSurfaceMode);
+  setLiquidSurfaceMode(liquidSurfaceMode);
   await report(0.1, 'Loading terrain settings');
 
   // GAME LOBBY preview = a stripped-down background battle showing
@@ -222,6 +224,8 @@ export async function createBackgroundBattle(
       terrainDetail: terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: mapDimensions.widthLandCells,
       mapLengthLandCells: mapDimensions.lengthLandCells,
+      terrainSurfaceMode,
+      liquidSurfaceMode,
       backgroundMode: true,
       initialAllowedUnitBlueprintIds,
       initialAllowedBuildingBlueprintIds,

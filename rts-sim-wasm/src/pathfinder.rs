@@ -442,19 +442,11 @@ impl PathfinderState {
     }
 }
 
-pub(crate) struct PathfinderHolder(UnsafeCell<Option<PathfinderState>>);
-unsafe impl Sync for PathfinderHolder {}
-pub(crate) static PATHFINDER: PathfinderHolder = PathfinderHolder(UnsafeCell::new(None));
+pub(crate) static PATHFINDER: WasmLazy<PathfinderState> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn pathfinder_state() -> &'static mut PathfinderState {
-    unsafe {
-        let cell = &mut *PATHFINDER.0.get();
-        if cell.is_none() {
-            *cell = Some(PathfinderState::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    PATHFINDER.get_or_init(PathfinderState::empty)
 }
 
 pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
@@ -908,11 +900,7 @@ fn pathfinder_rebuild_blocked_clearance_and_components(state: &mut PathfinderSta
 /// layer stateless against terrain rebuilds and desync-proof: the caller
 /// owns the authoritative cell set and the version.
 #[wasm_bindgen]
-pub fn pathfinder_sync_building_occupancy(
-    cell_gx: &[i32],
-    cell_gy: &[i32],
-    version: u32,
-) -> u32 {
+pub fn pathfinder_sync_building_occupancy(cell_gx: &[i32], cell_gy: &[i32], version: u32) -> u32 {
     let state = pathfinder_state();
     if state.n == 0 {
         return 0;
@@ -1657,11 +1645,9 @@ fn pathfinder_step_height_forces(
     // least-bad route. The precomputed per-query threshold keeps this a
     // single comparison on ordinary terrain — the force helper only runs for
     // edges steep enough that a fully lateral hold might not fit the budget.
-    let min_cell_normal_z = (state.terrain_normal_z[from_idx] as f64)
-        .min(state.terrain_normal_z[to_idx] as f64);
-    let forces = if eagerly_compute_forces
-        || min_cell_normal_z < state.cur_lateral_skip_normal_z
-    {
+    let min_cell_normal_z =
+        (state.terrain_normal_z[from_idx] as f64).min(state.terrain_normal_z[to_idx] as f64);
+    let forces = if eagerly_compute_forces || min_cell_normal_z < state.cur_lateral_skip_normal_z {
         pathfinder_bed_edge_forces(
             state,
             from_idx,
@@ -1714,8 +1700,7 @@ fn pathfinder_step_height_forces(
         if center_dz == 0.0 {
             return Some(forces);
         }
-        let center_normal_z =
-            horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
+        let center_normal_z = horizontal / (horizontal * horizontal + center_dz * center_dz).sqrt();
         return if center_normal_z >= hold_normal_z {
             Some(forces)
         } else {
@@ -1786,19 +1771,10 @@ fn pathfinder_step_between_cached_forces(
 ) -> Option<Option<PathfinderBedEdgeForces>> {
     if !state.cur_waypoint_matches_move_domain {
         let waypoint_traversal = state.cur_waypoint_traversal;
-        let from_is_waypoint = pathfinder_cached_cell_passable(
-            state,
-            from_idx,
-            waypoint_traversal,
-            true,
-        );
+        let from_is_waypoint =
+            pathfinder_cached_cell_passable(state, from_idx, waypoint_traversal, true);
         if from_is_waypoint
-            && !pathfinder_cached_cell_passable(
-                state,
-                to_idx,
-                waypoint_traversal,
-                true,
-            )
+            && !pathfinder_cached_cell_passable(state, to_idx, waypoint_traversal, true)
         {
             return None;
         }
@@ -1806,13 +1782,7 @@ fn pathfinder_step_between_cached_forces(
     if !pathfinder_cached_cell_passable(state, to_idx, traversal, false) {
         return None;
     }
-    pathfinder_step_height_forces(
-        state,
-        from_idx,
-        to_idx,
-        traversal,
-        eagerly_compute_forces,
-    )
+    pathfinder_step_height_forces(state, from_idx, to_idx, traversal, eagerly_compute_forces)
 }
 
 #[inline]
@@ -1938,9 +1908,8 @@ pub(crate) fn pathfinder_bed_edge_forces(
         .min(state.terrain_normal_z[to_idx] as f64)
         .clamp(0.0, 1.0);
     let total_tangent_sine = (1.0 - normal_z * normal_z).max(0.0).sqrt();
-    let lateral_sine_sq = (total_tangent_sine * total_tangent_sine
-        - directional_sine * directional_sine)
-        .max(0.0);
+    let lateral_sine_sq =
+        (total_tangent_sine * total_tangent_sine - directional_sine * directional_sine).max(0.0);
     let lateral_hold_accel = GRAVITY * lateral_sine_sq.sqrt();
     let grip_accel = GRAVITY * static_friction_coefficient * normal_z;
     let safe_ground = safe_ground_accel.min(grip_accel);
@@ -2002,8 +1971,7 @@ fn pathfinder_edge_cost_from_forces(
                 - forces.lateral_hold_accel * forces.lateral_hold_accel)
                 .max(0.0)
                 .sqrt();
-            let remaining_accel =
-                (longitudinal_budget - GRAVITY * forces.uphill_sine).max(1.0e-9);
+            let remaining_accel = (longitudinal_budget - GRAVITY * forces.uphill_sine).max(1.0e-9);
             let flat_safe_accel = cost_profile
                 .safe_drive_accel
                 .min(GRAVITY * cost_profile.static_friction_coefficient)
@@ -2110,13 +2078,8 @@ fn pathfinder_neighbor_cost_uncached(
 ) -> Option<f32> {
     let from_idx = (from_gy * state.grid_w + from_gx) as usize;
     let to_idx = (to_gy * state.grid_w + to_gx) as usize;
-    let legality_forces = pathfinder_step_between_cached_forces(
-        state,
-        from_idx,
-        to_idx,
-        traversal,
-        true,
-    )?;
+    let legality_forces =
+        pathfinder_step_between_cached_forces(state, from_idx, to_idx, traversal, true)?;
     let dx = to_gx - from_gx;
     let dy = to_gy - from_gy;
     if dx != 0 && dy != 0 {
@@ -2202,7 +2165,11 @@ fn pathfinder_line_neighbor_cost(
     let key = (from_idx << 3) | direction;
     if let Some(cached) = state.line_transition_cost_cache.get(&key).copied() {
         state.line_transition_cache_hits = state.line_transition_cache_hits.saturating_add(1);
-        return if cached.is_finite() { Some(cached) } else { None };
+        return if cached.is_finite() {
+            Some(cached)
+        } else {
+            None
+        };
     }
     state.line_transition_cache_misses = state.line_transition_cache_misses.saturating_add(1);
     let cost = pathfinder_neighbor_cost_uncached(
@@ -2459,15 +2426,9 @@ pub(crate) fn pathfinder_a_star(
             if state.closed[nidx] != 0 {
                 continue;
             }
-            let Some(step_cost) = pathfinder_neighbor_cost_uncached(
-                state,
-                cgx,
-                cgy,
-                nx,
-                ny,
-                traversal,
-                cost_profile,
-            ) else {
+            let Some(step_cost) =
+                pathfinder_neighbor_cost_uncached(state, cgx, cgy, nx, ny, traversal, cost_profile)
+            else {
                 continue;
             };
             let tentative = state.g_score[cur_us] + step_cost;
@@ -2824,13 +2785,8 @@ fn pathfinder_hierarchy_boundary_transition(
                 if gy < min_gy || gy >= max_gy {
                     continue;
                 }
-                if pathfinder_can_step_neighbor_cached(
-                    state, from_gx, gy, to_gx, gy, traversal,
-                ) {
-                    return Some((
-                        gy * state.grid_w + from_gx,
-                        gy * state.grid_w + to_gx,
-                    ));
+                if pathfinder_can_step_neighbor_cached(state, from_gx, gy, to_gx, gy, traversal) {
+                    return Some((gy * state.grid_w + from_gx, gy * state.grid_w + to_gx));
                 }
             }
             None
@@ -2855,13 +2811,8 @@ fn pathfinder_hierarchy_boundary_transition(
                 if gx < min_gx || gx >= max_gx {
                     continue;
                 }
-                if pathfinder_can_step_neighbor_cached(
-                    state, gx, from_gy, gx, to_gy, traversal,
-                ) {
-                    return Some((
-                        from_gy * state.grid_w + gx,
-                        to_gy * state.grid_w + gx,
-                    ));
+                if pathfinder_can_step_neighbor_cached(state, gx, from_gy, gx, to_gy, traversal) {
+                    return Some((from_gy * state.grid_w + gx, to_gy * state.grid_w + gx));
                 }
             }
             None
@@ -2871,14 +2822,8 @@ fn pathfinder_hierarchy_boundary_transition(
             let to_gx = if dx > 0 { to_min_x } else { to_max_x - 1 };
             let from_gy = if dy > 0 { from_max_y - 1 } else { from_min_y };
             let to_gy = if dy > 0 { to_min_y } else { to_max_y - 1 };
-            if pathfinder_can_step_neighbor_cached(
-                state,
-                from_gx,
-                from_gy,
-                to_gx,
-                to_gy,
-                traversal,
-            ) {
+            if pathfinder_can_step_neighbor_cached(state, from_gx, from_gy, to_gx, to_gy, traversal)
+            {
                 Some((
                     from_gy * state.grid_w + from_gx,
                     to_gy * state.grid_w + to_gx,
@@ -2929,9 +2874,9 @@ fn pathfinder_hierarchy_edge_cost(
         state, to, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
     );
     let cost = match (from_position, to_position) {
-        (Some((from_x, from_y)), Some((to_x, to_y))) => Some(
-            pathfinder_hierarchy_heuristic(from_x, from_y, to_x, to_y),
-        ),
+        (Some((from_x, from_y)), Some((to_x, to_y))) => {
+            Some(pathfinder_hierarchy_heuristic(from_x, from_y, to_x, to_y))
+        }
         _ => None,
     };
     state.hierarchy_edge_cost[slot] = cost.unwrap_or(f32::INFINITY);
@@ -3185,15 +3130,7 @@ fn pathfinder_hierarchical_a_star(
                 state.hierarchy_parent[next_idx] = current as i32;
                 state.hierarchy_g_score[next_idx] = tentative;
                 let Some((next_world_x, next_world_y)) = pathfinder_hierarchy_node_position(
-                    state,
-                    next,
-                    start_node,
-                    goal_node,
-                    start_x,
-                    start_y,
-                    goal_x,
-                    goal_y,
-                    traversal,
+                    state, next, start_node, goal_node, start_x, start_y, goal_x, goal_y, traversal,
                 ) else {
                     continue;
                 };
@@ -4232,9 +4169,17 @@ mod tests {
             state.building_blocked[(gy * 5 + 2) as usize] = 1;
         }
         pathfinder_rebuild_blocked_clearance_and_components(&mut state);
-        assert_eq!(state.clearance[(1 * 5 + 2) as usize], 0, "wall cell has no clearance");
+        assert_eq!(
+            state.clearance[(1 * 5 + 2) as usize],
+            0,
+            "wall cell has no clearance"
+        );
         assert_eq!(state.medium_clearance[(1 * 5 + 2) as usize], 0);
-        assert_eq!(state.cc_labels[(1 * 5 + 2) as usize], 0, "wall cells join no component");
+        assert_eq!(
+            state.cc_labels[(1 * 5 + 2) as usize],
+            0,
+            "wall cells join no component"
+        );
         let left = state.cc_labels[(1 * 5 + 0) as usize];
         let right = state.cc_labels[(1 * 5 + 4) as usize];
         assert!(left != 0 && right != 0);
@@ -4468,16 +4413,9 @@ mod tests {
 
         assert!(pathfinder_can_step_neighbor(&state, 0, 0, 1, 0, traversal));
         let separate = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
-        let combined = pathfinder_neighbor_cost_uncached(
-            &mut state,
-            0,
-            0,
-            1,
-            0,
-            traversal,
-            profile,
-        )
-        .expect("the legal uphill edge must retain a combined cost");
+        let combined =
+            pathfinder_neighbor_cost_uncached(&mut state, 0, 0, 1, 0, traversal, profile)
+                .expect("the legal uphill edge must retain a combined cost");
         assert_eq!(combined.to_bits(), separate.to_bits());
     }
 
@@ -4491,16 +4429,10 @@ mod tests {
             pathfinder_traversal_cell_domain_equivalent(traversal, traversal);
         pathfinder_begin_query_transition_cache(&mut state);
 
-        assert!(pathfinder_neighbor_cost_uncached(
-            &mut state,
-            0,
-            0,
-            1,
-            0,
-            traversal,
-            profile,
-        )
-        .is_some());
+        assert!(
+            pathfinder_neighbor_cost_uncached(&mut state, 0, 0, 1, 0, traversal, profile,)
+                .is_some()
+        );
         assert_eq!(state.move_passability_touched, vec![1]);
         assert!(state.waypoint_passability_touched.is_empty());
     }
@@ -4542,24 +4474,12 @@ mod tests {
         let goal = pathfinder_cell_center(14, 0);
 
         let first = pathfinder_line_cost(
-            &mut state,
-            start.0,
-            start.1,
-            goal.0,
-            goal.1,
-            traversal,
-            profile,
+            &mut state, start.0, start.1, goal.0, goal.1, traversal, profile,
         );
         let first_misses = state.line_transition_cache_misses;
         assert!(first.is_some() && first_misses > 0);
         let second = pathfinder_line_cost(
-            &mut state,
-            start.0,
-            start.1,
-            goal.0,
-            goal.1,
-            traversal,
-            profile,
+            &mut state, start.0, start.1, goal.0, goal.1, traversal, profile,
         );
         assert_eq!(second.map(f32::to_bits), first.map(f32::to_bits));
         assert_eq!(state.line_transition_cache_misses, first_misses);
@@ -4818,16 +4738,9 @@ mod tests {
             .path_scratch
             .iter()
             .any(|&idx| (idx as i32 / state.grid_w) != 1));
-        let direct_cost = pathfinder_line_cost(
-            &mut state,
-            10.0,
-            30.0,
-            90.0,
-            30.0,
-            traversal,
-            profile,
-        )
-            .expect("tight direct row remains physically legal");
+        let direct_cost =
+            pathfinder_line_cost(&mut state, 10.0, 30.0, 90.0, 30.0, traversal, profile)
+                .expect("tight direct row remains physically legal");
         let chosen_cost = state.g_score[(1 * state.grid_w + 4) as usize];
         assert!(
             direct_cost > chosen_cost,

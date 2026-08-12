@@ -2,7 +2,7 @@
 
 #![allow(clippy::module_inception)]
 
-use std::cell::UnsafeCell;
+use crate::WasmLazy;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
@@ -218,19 +218,11 @@ impl MessagePackWriter {
 }
 
 // Module-scope writer reused by the self-test + future encoders.
-pub(crate) struct MessagePackHolder(UnsafeCell<Option<MessagePackWriter>>);
-unsafe impl Sync for MessagePackHolder {}
-pub(crate) static MESSAGEPACK_WRITER: MessagePackHolder = MessagePackHolder(UnsafeCell::new(None));
+pub(crate) static MESSAGEPACK_WRITER: WasmLazy<MessagePackWriter> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn messagepack_writer() -> &'static mut MessagePackWriter {
-    unsafe {
-        let cell = &mut *MESSAGEPACK_WRITER.0.get();
-        if cell.is_none() {
-            *cell = Some(MessagePackWriter::with_capacity(4096));
-        }
-        cell.as_mut().unwrap()
-    }
+    MESSAGEPACK_WRITER.get_or_init(|| MessagePackWriter::with_capacity(4096))
 }
 
 #[wasm_bindgen]

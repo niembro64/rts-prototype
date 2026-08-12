@@ -97,8 +97,7 @@ import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import {
   BATTLE_PRESETS,
-  findMatchingPresetName,
-  mapPresetLabelLines,
+  resolveBattleMapPresentation,
 } from './battlePresets';
 import { setActiveBackdropPresetName } from '../game/render3d/presetBackdrops';
 import { setActiveMapPresetLabel } from '../game/render3d/presetMapLabel';
@@ -1129,6 +1128,7 @@ const {
   smokeTrails,
   smokeSoftEdges,
   entityShadows,
+  forceFieldsVisible,
   fogShade,
   materialExplosions,
   triangleDebug,
@@ -1199,6 +1199,7 @@ const {
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleEntityShadows,
+  toggleForceFieldsVisible,
   toggleFogShade,
   toggleMaterialExplosions,
   toggleTriangleDebug,
@@ -1478,6 +1479,7 @@ const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
 const slowDownAtFinalWaypointStoreVersion = ref(0);
+const worldSurfaceStoreVersion = ref(0);
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
@@ -1508,6 +1510,7 @@ const {
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
+  worldSurfaceStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
 });
@@ -1528,7 +1531,6 @@ const {
   currentAllowedBuildings,
   currentAllowedBuildingsSet,
   allDemoBuildingsActive,
-  currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
   currentSlowDownAtFinalWaypoint,
@@ -1541,7 +1543,6 @@ const {
   toggleDemoBuildingBlueprintId,
   toggleAllDemoBuildings,
   changeMaxTotalUnits,
-  setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
@@ -1555,6 +1556,7 @@ const {
   serverMetaFromSnapshot,
   currentBattleMode,
   slowDownAtFinalWaypointStoreVersion,
+  worldSurfaceStoreVersion,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
   getActiveConnection: () => activeConnection,
@@ -1642,6 +1644,10 @@ function resetTerrainRenderSmoothingDefaults(): void {
 function resetBattleDefaultsWithGroundNormal(): void {
   resetDemoDefaults();
   resetUnitGroundNormalEmaDefault();
+}
+
+function resetClientDefaultsWithTerrainRender(): void {
+  resetClientDefaults();
   resetTerrainRenderSmoothingDefaults();
 }
 
@@ -1776,15 +1782,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
-  terrainTextureSmoothing: terrainTextureSmoothing.value,
-  terrainLightSmoothing: terrainLightSmoothing.value,
-  terrainTextureSmoothAcrossWallBoundary:
-    terrainTextureSmoothAcrossWallBoundary.value,
-  terrainLightSmoothAcrossWallBoundary:
-    terrainLightSmoothAcrossWallBoundary.value,
-  terrainSplitWallBoundaryVertices: terrainSplitWallBoundaryVertices.value,
   displayUnitCount: displayUnitCount.value,
-  currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
@@ -1810,12 +1808,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  applyTerrainTextureSmoothing,
-  applyTerrainLightSmoothing,
-  toggleTerrainTextureSmoothAcrossWallBoundary,
-  toggleTerrainLightSmoothAcrossWallBoundary,
-  toggleTerrainSplitWallBoundaryVertices,
-  setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
@@ -1849,16 +1841,7 @@ watchEffect(() => {
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
-  m.terrainTextureSmoothing = terrainTextureSmoothing.value;
-  m.terrainLightSmoothing = terrainLightSmoothing.value;
-  m.terrainTextureSmoothAcrossWallBoundary =
-    terrainTextureSmoothAcrossWallBoundary.value;
-  m.terrainLightSmoothAcrossWallBoundary =
-    terrainLightSmoothAcrossWallBoundary.value;
-  m.terrainSplitWallBoundaryVertices =
-    terrainSplitWallBoundaryVertices.value;
   m.displayUnitCount = displayUnitCount.value;
-  m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
@@ -1867,20 +1850,15 @@ watchEffect(() => {
   m.currentLiquidSurfaceMode = currentLiquidSurfaceMode.value;
   m.currentConverterTax = currentConverterTax.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
-  m.activePresetName = findMatchingPresetName({
+  const mapPresentation = resolveBattleMapPresentation({
     units: currentAllowedUnits.value,
     buildings: currentAllowedBuildings.value,
     cap: displayUnitCap.value,
-    turretShieldPanelsEnabled: BATTLE_CONFIG.turretShieldPanelsEnabled.default,
-    turretShieldSpheresEnabled: BATTLE_CONFIG.turretShieldSpheresEnabled.default,
-    forceFieldsVisible: currentForceFieldsVisible.value,
     shieldsObstructSight: currentShieldsObstructSight.value,
-    shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
-    fogOfWarEnabled: currentFogOfWarEnabled.value,
     slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
     terrainSurfaceMode: currentTerrainSurfaceMode.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
-    slopePathMode: BATTLE_CONFIG.slopePathMode.default,
+    slopePathMode: currentSlopePathMode.value,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
@@ -1891,15 +1869,13 @@ watchEffect(() => {
     terrainDetail: terrainDetail.value,
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
-    barsCollapsed: bottomBarsCollapsed.value,
   });
   // Sky backdrop panorama follows the matched preset; null (settings
   // drifted off every stock preset) resolves to the default panorama, so
   // a custom map still gets a layered horizon rather than a flat sky.
-  setActiveBackdropPresetName(m.activePresetName);
-  // The map-corner sign is the opposite: it only exists for an exact
-  // preset match, so off-preset settings clear it.
-  setActiveMapPresetLabel(mapPresetLabelLines(m.activePresetName));
+  m.activePresetName = mapPresentation.presetName;
+  setActiveBackdropPresetName(mapPresentation.backdropPresetName);
+  setActiveMapPresetLabel(mapPresentation.labelLines);
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy
@@ -1946,6 +1922,14 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   selectionHudMode: selectionHudMode.value,
   commandHotkeyPreset: commandHotkeyPreset.value,
   commandHotkeyRevision: commandHotkeyRevision.value,
+  terrainTextureSmoothing: terrainTextureSmoothing.value,
+  terrainLightSmoothing: terrainLightSmoothing.value,
+  terrainTextureSmoothAcrossWallBoundary:
+    terrainTextureSmoothAcrossWallBoundary.value,
+  terrainLightSmoothAcrossWallBoundary:
+    terrainLightSmoothAcrossWallBoundary.value,
+  terrainSplitWallBoundaryVertices: terrainSplitWallBoundaryVertices.value,
+  forceFieldsVisible: forceFieldsVisible.value,
   entityHudTypes,
   entityHudElements,
   logicMsAvg: logicMsAvg.value,
@@ -2086,13 +2070,19 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   uiChromeVisible: uiChromeVisible.value,
   mapDetailsVisible: mapDetailsVisible.value,
   optionsMenuOpen: optionsMenuOpen.value,
-  resetClientDefaults,
+  resetClientDefaults: resetClientDefaultsWithTerrainRender,
   togglePlayerClientEnabled,
   changeWaypointDetail,
   toggleEntityHud,
   changeSelectionHudMode,
   changeCommandHotkeyPreset,
   refreshCommandHotkeys,
+  applyTerrainTextureSmoothing,
+  applyTerrainLightSmoothing,
+  toggleTerrainTextureSmoothAcrossWallBoundary,
+  toggleTerrainLightSmoothAcrossWallBoundary,
+  toggleTerrainSplitWallBoundaryVertices,
+  toggleForceFieldsVisible,
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleWindParticles,
@@ -2165,6 +2155,15 @@ watchEffect(() => {
   m.selectionHudMode = selectionHudMode.value;
   m.commandHotkeyPreset = commandHotkeyPreset.value;
   m.commandHotkeyRevision = commandHotkeyRevision.value;
+  m.terrainTextureSmoothing = terrainTextureSmoothing.value;
+  m.terrainLightSmoothing = terrainLightSmoothing.value;
+  m.terrainTextureSmoothAcrossWallBoundary =
+    terrainTextureSmoothAcrossWallBoundary.value;
+  m.terrainLightSmoothAcrossWallBoundary =
+    terrainLightSmoothAcrossWallBoundary.value;
+  m.terrainSplitWallBoundaryVertices =
+    terrainSplitWallBoundaryVertices.value;
+  m.forceFieldsVisible = forceFieldsVisible.value;
   m.logicMsAvg = logicMsAvg.value;
   m.logicMsHi = logicMsHi.value;
   m.renderMsAvg = renderMsAvg.value;
@@ -2736,7 +2735,6 @@ watchEffect(() => {
       :building-blueprint-ids="demoBuildingBlueprintIds"
       :allowed-buildings="currentAllowedBuildings"
       :unit-cap="displayUnitCap"
-      :force-fields-visible="currentForceFieldsVisible"
       :shields-obstruct-sight="currentShieldsObstructSight"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
@@ -2766,7 +2764,6 @@ watchEffect(() => {
       @toggle-all-buildings="toggleAllDemoBuildings"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @cycle-player-ally-team="cyclePlayerAllyTeam"
-      @set-force-fields-visible="(e) => setForceFieldsVisible(e)"
       @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"

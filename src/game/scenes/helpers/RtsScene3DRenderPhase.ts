@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   getFogShade,
   getEntityShadows,
+  getForceFieldsVisible,
   getRadarBoundary,
   getSightBoundary,
   getEntityHudToggle,
@@ -432,7 +433,7 @@ export class RtsScene3DRenderPhase {
     const serverMeta = this.clientViewState.getServerMeta();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
-    const forceFieldsVisible = serverMeta?.forceFieldsVisible ?? true;
+    const forceFieldsVisible = getForceFieldsVisible();
     windParticleFieldRenderer.update(
       getWindParticles() ? serverMeta?.wind : undefined,
       effectDtMs,

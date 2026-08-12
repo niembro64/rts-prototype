@@ -28,10 +28,7 @@
 
 import * as THREE from 'three';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import { uploadPrefixRange } from './instancedBufferUpdate';
 import {
   createInstancedColorAlphaPool,
@@ -216,15 +213,7 @@ export class SmokeTrail3D {
     this.root = new THREE.Group();
     worldGroup.add(this.root);
 
-    this.matSphere = new THREE.ShaderMaterial({
-      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-    });
-    // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-    // invisible to exposure without this.
-    applyExposureToRawShader(this.matSphere);
+    this.matSphere = createInstancedColorAlphaParticleMaterial();
     this.matSoft = new THREE.ShaderMaterial({
       vertexShader: SMOKE_SOFT_VERTEX_SHADER,
       fragmentShader: SMOKE_SOFT_FRAGMENT_SHADER,

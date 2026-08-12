@@ -50,7 +50,7 @@
     "blockHeightMapFraction": 0.07,
     "cornerMarginMapFraction": 0.022,
     "groundLift": 40,
-    "detail": "Preset caption painted flat on the ground just outside the map's (0,0) corner — the near-left corner at the default camera yaw — and only while the battle bar matches a stock preset exactly. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface."
+    "detail": "Map caption painted readably on the ground just outside the map's (0,0) corner — the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface."
   },
   "sun": {
     "azimuthRad": 1.5707963267948966,

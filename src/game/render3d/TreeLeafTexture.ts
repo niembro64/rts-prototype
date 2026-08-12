@@ -19,29 +19,18 @@ import {
   TREE_LEAF_TEXTURE_REPEAT,
 } from '../../config';
 import {
+  type CommonShapeItem,
   cssRgb,
   drawCommonItemWithWrap,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   matchCanvasLinearMeanToColor,
   randIn,
+  sampleLogDistributedSize,
 } from './detailTextureHelpers';
 
 const TREE_LEAF_TEXTURE_PIXELS = 1024;
 const ITEM_COUNT = 5200;
-
-type ShapeKind = 'box' | 'tri' | 'hex';
-
-type Item = {
-  x: number;
-  y: number;
-  size: number;
-  rotation: number;
-  shapeKind: ShapeKind;
-  shapeParam: number;
-  rgb: readonly [number, number, number];
-  alpha: number;
-};
 
 // Leaf-tone palette: cool deep shadow, mid foliage greens, sun-bleached
 // yellow-greens, and a couple of brown-tinted shadows for variety.
@@ -123,19 +112,15 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   return { canvas, texture };
 }
 
-function generateItems(rng: () => number): Item[] {
-  const items: Item[] = [];
+function generateItems(rng: () => number): CommonShapeItem[] {
+  const items: CommonShapeItem[] = [];
   // Sizes are scaled down 4× relative to the rock canvas (this canvas is
   // 1024² vs rock's 4096²) so the proportion of canvas-coverage per item
   // matches the rock generation.
   for (let i = 0; i < ITEM_COUNT; i++) {
-    const sizeT = rng();
-    const tSquashed = Math.pow(sizeT, 1.5);
-    const size = Math.exp(
-      Math.log(2) + tSquashed * (Math.log(125) - Math.log(2)),
-    );
+    const size = sampleLogDistributedSize(rng, 2, 125);
 
-    let shapeKind: ShapeKind;
+    let shapeKind: CommonShapeItem['shapeKind'];
     const shapeRoll = rng();
     if (size > 50) {
       shapeKind = shapeRoll < 0.65 ? 'hex' : 'tri';

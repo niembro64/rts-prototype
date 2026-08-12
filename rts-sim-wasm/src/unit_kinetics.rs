@@ -67,50 +67,28 @@ pub(crate) struct UnitForceRuntimeTable {
     pub(crate) water_damaged_entity_slots: Vec<u32>,
 }
 
-pub(crate) struct UnitForceProfileTableHolder(
-    ::core::cell::UnsafeCell<Option<UnitForceProfileTable>>,
-);
-unsafe impl Sync for UnitForceProfileTableHolder {}
-pub(crate) static UNIT_FORCE_PROFILE_TABLE: UnitForceProfileTableHolder =
-    UnitForceProfileTableHolder(::core::cell::UnsafeCell::new(None));
-pub(crate) struct UnitForceRuntimeTableHolder(
-    ::core::cell::UnsafeCell<Option<UnitForceRuntimeTable>>,
-);
-unsafe impl Sync for UnitForceRuntimeTableHolder {}
-pub(crate) static UNIT_FORCE_RUNTIME_TABLE: UnitForceRuntimeTableHolder =
-    UnitForceRuntimeTableHolder(::core::cell::UnsafeCell::new(None));
+pub(crate) static UNIT_FORCE_PROFILE_TABLE: WasmLazy<UnitForceProfileTable> = WasmLazy::new();
+pub(crate) static UNIT_FORCE_RUNTIME_TABLE: WasmLazy<UnitForceRuntimeTable> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn unit_force_profile_table() -> &'static mut UnitForceProfileTable {
-    unsafe {
-        let cell = &mut *UNIT_FORCE_PROFILE_TABLE.0.get();
-        if cell.is_none() {
-            *cell = Some(UnitForceProfileTable {
-                values: Vec::new(),
-                flags: Vec::new(),
-                count: 0,
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    UNIT_FORCE_PROFILE_TABLE.get_or_init(|| UnitForceProfileTable {
+        values: Vec::new(),
+        flags: Vec::new(),
+        count: 0,
+    })
 }
 
 #[inline]
 pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
-    unsafe {
-        let cell = &mut *UNIT_FORCE_RUNTIME_TABLE.0.get();
-        if cell.is_none() {
-            *cell = Some(UnitForceRuntimeTable {
-                entity_id: Vec::new(),
-                air_fraction: Vec::new(),
-                water_fraction: Vec::new(),
-                ground_contact: Vec::new(),
-                available_ground_force: Vec::new(),
-                water_damaged_entity_slots: Vec::new(),
-            });
-        }
-        cell.as_mut().unwrap()
-    }
+    UNIT_FORCE_RUNTIME_TABLE.get_or_init(|| UnitForceRuntimeTable {
+        entity_id: Vec::new(),
+        air_fraction: Vec::new(),
+        water_fraction: Vec::new(),
+        ground_contact: Vec::new(),
+        available_ground_force: Vec::new(),
+        water_damaged_entity_slots: Vec::new(),
+    })
 }
 
 #[inline]
@@ -1638,8 +1616,14 @@ mod tests {
         // Cross-track share exactly opposes the lateral gravity force:
         // gravity tangent is (0, -g·sinθ·cosθ, -g·sin²θ)·m, so the hold
         // force is its negation.
-        assert_near(fy, GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0);
-        assert_near(fz, GRAVITY * theta.sin() * theta.sin() * body_mass / 1_000_000.0);
+        assert_near(
+            fy,
+            GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0,
+        );
+        assert_near(
+            fz,
+            GRAVITY * theta.sin() * theta.sin() * body_mass / 1_000_000.0,
+        );
     }
 
     #[test]
@@ -1670,7 +1654,10 @@ mod tests {
         let (fx, fy, _fz) =
             unit_force_ground_drive_forces(1.0, 0.0, 0.0, nx, ny, nz, budget, body_mass);
         assert_near(fx, 0.0);
-        assert_near(fy, GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0);
+        assert_near(
+            fy,
+            GRAVITY * theta.sin() * theta.cos() * body_mass / 1_000_000.0,
+        );
     }
 
     #[test]

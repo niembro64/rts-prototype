@@ -25,12 +25,14 @@ import {
   TREE_TRUNK_TEXTURE_REPEAT,
 } from '../../config';
 import {
+  type CommonShapeItem,
   cssRgb,
   drawCommonItemWithWrap,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   matchCanvasLinearMeanToColor,
   randIn,
+  sampleLogDistributedSize,
 } from './detailTextureHelpers';
 
 const TREE_TRUNK_TEXTURE_PIXELS = 1024;
@@ -44,19 +46,6 @@ const VERTICAL_JITTER_RAD = 0.6;
 // All shapes get this Y-scale after rotation, baking in the elongated-plate
 // look across the entire texture.
 const VERTICAL_STRETCH = 1.5;
-
-type ShapeKind = 'box' | 'tri' | 'hex';
-
-type Item = {
-  x: number;
-  y: number;
-  size: number;
-  rotation: number;
-  shapeKind: ShapeKind;
-  shapeParam: number;
-  rgb: readonly [number, number, number];
-  alpha: number;
-};
 
 // Bark-tone palette: very dark crack shadows through medium browns up to
 // sun-bleached / tan highlights, with a couple of reddish-tinted variants
@@ -132,16 +121,12 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   return { canvas, texture };
 }
 
-function generateItems(rng: () => number): Item[] {
-  const items: Item[] = [];
+function generateItems(rng: () => number): CommonShapeItem[] {
+  const items: CommonShapeItem[] = [];
   for (let i = 0; i < ITEM_COUNT; i++) {
-    const sizeT = rng();
-    const tSquashed = Math.pow(sizeT, 1.5);
-    const size = Math.exp(
-      Math.log(2) + tSquashed * (Math.log(125) - Math.log(2)),
-    );
+    const size = sampleLogDistributedSize(rng, 2, 125);
 
-    let shapeKind: ShapeKind;
+    let shapeKind: CommonShapeItem['shapeKind'];
     const shapeRoll = rng();
     if (size > 50) {
       // Large plates: hex-dominated, with the occasional pointed vertical

@@ -2,11 +2,7 @@ import * as THREE from 'three';
 import { SHIELD_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity } from '../sim/types';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../sim/blueprints/shieldMaterials';
-import {
-  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-} from './instancedColorAlphaParticleShader';
-import { applyExposureToRawShader } from './RenderLighting3D';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 
 // Materials Are Independent Of Shape: the shield surface is ONE material.
 // The turretShieldSphere carries it as a sphere; the turretShieldPanel
@@ -40,17 +36,9 @@ export function resolveShieldSurfaceColorForOwner(playerId: number | undefined):
  *  shader, same blending, same depth/side params — so the two shapes are
  *  visually the same material and only differ in geometry. */
 export function createShieldSurfaceMaterial(): THREE.ShaderMaterial {
-  const material = new THREE.ShaderMaterial({
-    vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
-    fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
-    transparent: true,
-    depthWrite: false,
+  return createInstancedColorAlphaParticleMaterial({
     side: THREE.DoubleSide,
   });
-  // Raw shader: writes gl_FragColor itself, so it never tone-maps and is
-  // invisible to exposure without this.
-  applyExposureToRawShader(material);
-  return material;
 }
 
 /** Non-instanced fallback for the rare case where the shared panel instance

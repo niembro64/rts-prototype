@@ -3,8 +3,10 @@ import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
+  loadStoredLiquidSurfaceMode,
   loadStoredRealCap,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredTerrainSurfaceMode,
   loadStoredTerrainRuntimeConfig,
   type BattleTerrainRuntimeConfig,
 } from '../battleBarConfig';
@@ -14,6 +16,10 @@ import {
   setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
+import {
+  setLiquidSurfaceMode,
+  setTerrainSurfaceMode,
+} from '../game/sim/worldSurfaceState';
 import { GameServer } from '../game/server/GameServer';
 import { assertDeterministicLockstepRuntimeReady } from '../game/architecture/DeterministicLockstepRuntimeGuards';
 import {
@@ -68,11 +74,17 @@ import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { presentationSnapshotRateIntervalMs } from '../presentationSnapshotConfig';
 import { createHostGameGenerationSeed } from '../game/network/gameGenerationSeed';
+import type {
+  LiquidSurfaceMode,
+  TerrainSurfaceMode,
+} from '../types/worldSurfaceMode';
 
 export type RealBattleStartupTerrain = {
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
   mapDimensions: MapLandCellDimensions;
   mapSize: { width: number; height: number };
+  terrainSurfaceMode: TerrainSurfaceMode;
+  liquidSurfaceMode: LiquidSurfaceMode;
 };
 
 type CreateRealBattleServerOptions = {
@@ -169,14 +181,20 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
     mapDimensions.widthLandCells,
     mapDimensions.lengthLandCells,
   );
+  const terrainSurfaceMode = loadStoredTerrainSurfaceMode('real');
+  const liquidSurfaceMode = loadStoredLiquidSurfaceMode('real');
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  setTerrainSurfaceMode(terrainSurfaceMode);
+  setLiquidSurfaceMode(liquidSurfaceMode);
   return {
     terrainRuntimeConfig,
     mapDimensions,
     mapSize,
+    terrainSurfaceMode,
+    liquidSurfaceMode,
   };
 }
 
@@ -197,6 +215,8 @@ function buildRealBattleLobbySettingsFromTerrain(
     maxTotalUnits: loadStoredRealCap(),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
+    terrainSurfaceMode: terrain.terrainSurfaceMode,
+    liquidSurfaceMode: terrain.liquidSurfaceMode,
   };
 }
 
@@ -348,6 +368,12 @@ function assertTerrainMatchesSettings(
   pushMismatch(mismatches, 'terrainDetail', terrain.terrainRuntimeConfig.terrainDetail, settings.terrainDetail);
   pushMismatch(mismatches, 'mapWidthLandCells', terrain.mapDimensions.widthLandCells, settings.mapWidthLandCells);
   pushMismatch(mismatches, 'mapLengthLandCells', terrain.mapDimensions.lengthLandCells, settings.mapLengthLandCells);
+  if (settings.terrainSurfaceMode !== undefined) {
+    pushMismatch(mismatches, 'terrainSurfaceMode', terrain.terrainSurfaceMode, settings.terrainSurfaceMode);
+  }
+  if (settings.liquidSurfaceMode !== undefined) {
+    pushMismatch(mismatches, 'liquidSurfaceMode', terrain.liquidSurfaceMode, settings.liquidSurfaceMode);
+  }
   if (mismatches.length === 0) return;
   throw new Error(`${label}: ${mismatches.join('; ')}`);
 }
@@ -502,6 +528,8 @@ async function createRealBattleServer({
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,
       mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+      terrainSurfaceMode: terrain.terrainSurfaceMode,
+      liquidSurfaceMode: terrain.liquidSurfaceMode,
       converterTax: converterTax ?? loadStoredConverterTax('real'),
     },
     {
@@ -1086,6 +1114,10 @@ async function createDeterministicLockstepBackendRuntime({
         fogOfWarEnabled: true,
         slowDownAtFinalWaypoint:
           matchContext.settings.slowDownAtFinalWaypoint ?? false,
+        terrainSurfaceMode:
+          matchContext.settings.terrainSurfaceMode ?? terrain.terrainSurfaceMode,
+        liquidSurfaceMode:
+          matchContext.settings.liquidSurfaceMode ?? terrain.liquidSurfaceMode,
       });
       scheduler.markPeerReady(localPlayerId);
       if (network !== undefined) {

@@ -861,20 +861,11 @@ pub(crate) fn combat_targeting_write_direct_aim_solution(
     pool.turret_ballistic_aim_z[idx] = aim_z;
 }
 
-pub(crate) struct CombatTargetingPoolHolder(UnsafeCell<Option<CombatTargetingPool>>);
-unsafe impl Sync for CombatTargetingPoolHolder {}
-pub(crate) static COMBAT_TARGETING: CombatTargetingPoolHolder =
-    CombatTargetingPoolHolder(UnsafeCell::new(None));
+pub(crate) static COMBAT_TARGETING: WasmLazy<CombatTargetingPool> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn combat_targeting_pool() -> &'static mut CombatTargetingPool {
-    unsafe {
-        let cell = &mut *COMBAT_TARGETING.0.get();
-        if cell.is_none() {
-            *cell = Some(CombatTargetingPool::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    COMBAT_TARGETING.get_or_init(CombatTargetingPool::empty)
 }
 
 // AIM-08.5 — per-candidate observability scratch buffer used by the
@@ -882,24 +873,20 @@ pub(crate) fn combat_targeting_pool() -> &'static mut CombatTargetingPool {
 // borrow the pool mutably for ballistic-solver writes while reading
 // the observability mask as a separate slice. Resized in-place per
 // call; never freed.
-pub(crate) struct CombatTargetingScratchHolder(UnsafeCell<Vec<u8>>);
-unsafe impl Sync for CombatTargetingScratchHolder {}
-pub(crate) static COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH: CombatTargetingScratchHolder =
-    CombatTargetingScratchHolder(UnsafeCell::new(Vec::new()));
+pub(crate) static COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH: WasmGlobal<Vec<u8>> =
+    WasmGlobal::new(Vec::new());
 
 #[inline]
 pub(crate) fn combat_targeting_candidate_observable_scratch() -> &'static mut Vec<u8> {
-    unsafe { &mut *COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH.0.get() }
+    COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH.get()
 }
 
-pub(crate) struct CombatTargetingSlotScratchHolder(UnsafeCell<Vec<u32>>);
-unsafe impl Sync for CombatTargetingSlotScratchHolder {}
-pub(crate) static COMBAT_TARGETING_CANDIDATE_SLOT_SCRATCH: CombatTargetingSlotScratchHolder =
-    CombatTargetingSlotScratchHolder(UnsafeCell::new(Vec::new()));
+pub(crate) static COMBAT_TARGETING_CANDIDATE_SLOT_SCRATCH: WasmGlobal<Vec<u32>> =
+    WasmGlobal::new(Vec::new());
 
 #[inline]
 pub(crate) fn combat_targeting_candidate_slot_scratch() -> &'static mut Vec<u32> {
-    unsafe { &mut *COMBAT_TARGETING_CANDIDATE_SLOT_SCRATCH.0.get() }
+    COMBAT_TARGETING_CANDIDATE_SLOT_SCRATCH.get()
 }
 
 // AIM-08.5 — reusable candidate SoA populated directly from the WASM
@@ -933,29 +920,24 @@ impl CombatTargetingSpatialCandidateScratch {
     }
 }
 
-pub(crate) struct CombatTargetingSpatialCandidateScratchHolder(
-    UnsafeCell<CombatTargetingSpatialCandidateScratch>,
-);
-unsafe impl Sync for CombatTargetingSpatialCandidateScratchHolder {}
-pub(crate) static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH:
-    CombatTargetingSpatialCandidateScratchHolder = CombatTargetingSpatialCandidateScratchHolder(
-    UnsafeCell::new(CombatTargetingSpatialCandidateScratch {
-        ids: Vec::new(),
-        slots: Vec::new(),
-        observable: Vec::new(),
-        eligible_turret_mask: Vec::new(),
-        pos_x: Vec::new(),
-        pos_y: Vec::new(),
-        pos_z: Vec::new(),
-        radius: Vec::new(),
-        shield_panel_score: Vec::new(),
-    }),
-);
+pub(crate) static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH: WasmGlobal<
+    CombatTargetingSpatialCandidateScratch,
+> = WasmGlobal::new(CombatTargetingSpatialCandidateScratch {
+    ids: Vec::new(),
+    slots: Vec::new(),
+    observable: Vec::new(),
+    eligible_turret_mask: Vec::new(),
+    pos_x: Vec::new(),
+    pos_y: Vec::new(),
+    pos_z: Vec::new(),
+    radius: Vec::new(),
+    shield_panel_score: Vec::new(),
+});
 
 #[inline]
 pub(crate) fn combat_targeting_spatial_candidate_scratch(
 ) -> &'static mut CombatTargetingSpatialCandidateScratch {
-    unsafe { &mut *COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH.0.get() }
+    COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH.get()
 }
 
 #[wasm_bindgen]
@@ -7613,20 +7595,11 @@ impl ShieldSurfacePool {
     }
 }
 
-pub(crate) struct ShieldSurfacePoolHolder(UnsafeCell<Option<ShieldSurfacePool>>);
-unsafe impl Sync for ShieldSurfacePoolHolder {}
-pub(crate) static SHIELD_POOL: ShieldSurfacePoolHolder =
-    ShieldSurfacePoolHolder(UnsafeCell::new(None));
+pub(crate) static SHIELD_POOL: WasmLazy<ShieldSurfacePool> = WasmLazy::new();
 
 #[inline]
 pub(crate) fn shield_pool() -> &'static mut ShieldSurfacePool {
-    unsafe {
-        let cell = &mut *SHIELD_POOL.0.get();
-        if cell.is_none() {
-            *cell = Some(ShieldSurfacePool::empty());
-        }
-        cell.as_mut().unwrap()
-    }
+    SHIELD_POOL.get_or_init(ShieldSurfacePool::empty)
 }
 
 #[wasm_bindgen]
