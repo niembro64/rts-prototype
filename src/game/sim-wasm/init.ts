@@ -67,6 +67,7 @@ import __wbg_init, {
   pool_init,
   pool_capacity,
   pool_alloc_slot,
+  pool_live_count,
   pool_free_slot,
   pool_prepare_dynamic_step,
   pool_collect_awake_entity_ids,
@@ -3890,8 +3891,12 @@ export const BODY_FLAG_SHAPE_RING = 1 << 5;
  *  memory growth (rare under our usage pattern). */
 export interface BodyPoolViews {
   readonly capacity: number;
-  /** Allocate the next free slot; throws if pool is exhausted. */
+  /** Allocate the next free slot. Returns `capacity` as an exhaustion
+   *  sentinel — callers must check (Body3D.allocate turns it into a
+   *  descriptive throw instead of an out-of-bounds WASM trap). */
   allocSlot: () => number;
+  /** Occupied slot count; `capacity - liveCount()` is spawn headroom. */
+  liveCount: () => number;
   /** Return a slot to the free list. Caller must clear any
    *  pool-managed fields the slot held to sensible defaults if
    *  it's reused later (alloc_slot zeros all fields, so explicit
@@ -4067,6 +4072,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       const pool: BodyPoolViews = {
         capacity,
         allocSlot: pool_alloc_slot,
+        liveCount: pool_live_count,
         freeSlot: pool_free_slot,
         refreshViews: () => {
           const buffer = memory.buffer;

@@ -142,6 +142,15 @@ function shuffledInitialFlatRoster(
   return roster;
 }
 
+let bodyPoolSaturatedWarned = false;
+function warnBodyPoolSaturatedOnce(): void {
+  if (bodyPoolSaturatedWarned) return;
+  bodyPoolSaturatedWarned = true;
+  console.warn(
+    '[background battle] BodyPool near capacity — further wave spawns are skipped',
+  );
+}
+
 // Spawn a single unit at a specific position with the configured demo waypoints.
 // `waypoints` may contain one entry (legacy single-target move/fight) or
 // multiple entries (e.g. two 'patrol' points for back-and-forth motion);
@@ -158,6 +167,14 @@ function spawnUnit(
   initialZ: number | undefined = undefined,
 ): Entity | null {
   if (waypoints.length === 0) return null;
+  // Stop the wave before the shared BodyPool runs out: a demo battle that
+  // saturates the pool must degrade to fewer units, not trap the module
+  // with an out-of-bounds allocation mid-spawn. The margin reserves slots
+  // for factory production and building bodies.
+  if (!physics.hasBodyPoolHeadroom(128)) {
+    warnBodyPoolSaturatedOnce();
+    return null;
+  }
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitBlueprintId);
   if (initialZ !== undefined) unit.transform.z = initialZ;
 

@@ -1197,7 +1197,10 @@ function createServerConfig(
     backgroundMode: true,
     aiPlayerIds: PLAYER_IDS,
     spawnDemoInitialState: true,
-    initialMaxTotalUnits: options.unitCap,
+    // maxTotalUnits is a per-player cap since the team-roster split
+    // (getUnitCapPerPlayer), so divide by seat count to keep --unit-cap
+    // meaning TOTAL live units; ledger baselines are total-unit numbers.
+    initialMaxTotalUnits: Math.max(1, Math.floor(options.unitCap / PLAYER_IDS.length)),
     converterTax: 0,
   };
 }

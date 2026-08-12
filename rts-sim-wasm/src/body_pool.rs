@@ -140,19 +140,21 @@ impl BodyPool {
         }
     }
 
+    /// Returns the allocated slot, or `POOL_CAPACITY` when the pool is
+    /// exhausted. The sentinel must be checked by the caller: release
+    /// builds compile `debug_assert!` out, so an unchecked write would
+    /// be a raw index-out-of-bounds panic that traps the whole module.
     pub(crate) fn alloc_slot(&mut self) -> u32 {
         let slot = if let Some(s) = self.free_slots.pop() {
             s
         } else {
+            if (self.next_unused_slot as usize) >= POOL_CAPACITY_USIZE {
+                return POOL_CAPACITY;
+            }
             let s = self.next_unused_slot;
             self.next_unused_slot += 1;
             s
         };
-        debug_assert!(
-            (slot as usize) < POOL_CAPACITY_USIZE,
-            "BodyPool exhausted (capacity {})",
-            POOL_CAPACITY_USIZE
-        );
         // Zero the slot in case it's being reused.
         let i = slot as usize;
         self.pos_x[i] = 0.0;
@@ -183,6 +185,11 @@ impl BodyPool {
         self.flags[i] = BODY_FLAG_OCCUPIED;
         self.entity_id[i] = -1;
         slot
+    }
+
+    /// Live (occupied) slot count: allocations minus frees.
+    pub(crate) fn live_count(&self) -> u32 {
+        self.next_unused_slot - self.free_slots.len() as u32
     }
 
     pub(crate) fn free_slot(&mut self, slot: u32) {
@@ -220,6 +227,13 @@ pub fn pool_capacity() -> u32 {
 #[wasm_bindgen]
 pub fn pool_alloc_slot() -> u32 {
     pool().alloc_slot()
+}
+
+/// Occupied slot count. `pool_capacity() - pool_live_count()` is the
+/// headroom spawn paths must check before creating bodies.
+#[wasm_bindgen]
+pub fn pool_live_count() -> u32 {
+    pool().live_count()
 }
 
 #[wasm_bindgen]

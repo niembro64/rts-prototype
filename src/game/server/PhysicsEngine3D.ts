@@ -237,6 +237,12 @@ export class Body3D {
   }): Body3D {
     const views = pv();
     const slot = views.allocSlot();
+    if (slot >= views.capacity) {
+      throw new Error(
+        `BodyPool exhausted (capacity ${views.capacity}) allocating "${args.label}" — ` +
+        'reduce spawn counts or raise POOL_CAPACITY in body_pool.rs',
+      );
+    }
     const body = new Body3D({
       slot,
       shape: args.shape,
@@ -511,6 +517,17 @@ export class PhysicsEngine3D {
   ): void {
     this.getGroundZ = getZ;
     this.getGroundNormal = getNormal;
+  }
+
+  /** True when the shared BodyPool retains more than `margin` free
+   *  slots. Bulk spawn paths (background battle waves) check this and
+   *  stop emitting bodies instead of tripping the allocSlot exhaustion
+   *  throw mid-spawn; the margin leaves headroom for gameplay-driven
+   *  bodies (production, buildings) that must not be starved by a
+   *  saturated demo wave. */
+  hasBodyPoolHeadroom(margin = 0): boolean {
+    const views = pv();
+    return views.capacity - views.liveCount() > margin;
   }
 
   /** Dynamic sphere body (units). By default spawns at (x, y) with the
