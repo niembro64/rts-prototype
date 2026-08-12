@@ -273,7 +273,7 @@ export class UnitRenderPacket3D extends EntityRenderPacketBase3D {
     this.shieldPanelTurretIndex[cursor] = getShieldPanelTurretIndex(turretRows);
     let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
     const locomotionType = unit.locomotion.type;
-    if (locomotionType === 'hover' || locomotionType === 'flying' || locomotionType === 'dive') {
+    if (locomotionType === 'drone' || locomotionType === 'plane' || locomotionType === 'aerosub') {
       flags |= UNIT_RENDER_FLAG_AIRBORNE;
     }
     if (unit.suspension !== null) flags |= UNIT_RENDER_FLAG_HAS_SUSPENSION;

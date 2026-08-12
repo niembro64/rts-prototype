@@ -22,7 +22,7 @@ export function captureUnitRendererOwnedParts3D(
   const rendererParts: EntityDeathRenderablePart3D[] = [
     ...unitDetailInstances.captureEntityDeathParts(mesh),
   ];
-  if (mesh.locomotion?.type === 'legs') {
+  if (mesh.locomotion?.type === 'crawler') {
     rendererParts.push(...legRenderer.captureEntityDeathParts(mesh.locomotion));
   }
   if (mesh.teamTrimSlot !== undefined) {

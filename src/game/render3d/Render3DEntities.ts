@@ -21,7 +21,7 @@ import {
   updateLocomotion,
   destroyLocomotion,
   captureLocomotionState,
-  setHoverFanAnimationTime,
+  setDroneFanAnimationTime,
   type LocomotionStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -83,7 +83,7 @@ import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { LocomotionRenderPose } from './LocomotionRigShared3D';
-import { updateStandingHostTurretAim } from './StandingRig3D';
+import { updateBotHostTurretAim } from './BotRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 import {
@@ -225,7 +225,7 @@ export class Render3DEntities {
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
   private lodProxyRenderer: EntityLodProxyRenderer3D;
-  private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
+  private readonly locomotionSmokeEmitters: SmokePuffEmitter[] = [];
   private readonly airborneEmitterBatch = new AirborneEmitterBatch3D();
   private readonly airborneEmitterUpdate = new AirborneEmitterUpdateScratch3D(this.airborneEmitterBatch);
 
@@ -308,7 +308,7 @@ export class Render3DEntities {
    *  authoritative body orientation plus any presentation-only bank.
    *  Turret pose converts world aim through this same quaternion. */
   private _smoothParentQuat = new THREE.Quaternion();
-  /** Local standing-host torso assistance composed after the authoritative
+  /** Local bot-host torso assistance composed after the authoritative
    *  chassis pose. Turrets consume the result and counter-aim themselves back
    *  to their unchanged authoritative world yaw/pitch. */
   private _hostAimAssistQuat = new THREE.Quaternion();
@@ -519,7 +519,7 @@ export class Render3DEntities {
     this._currentDtMs = frameSpin.currentDtMs;
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
-    setHoverFanAnimationTime(frameSpin.timeMs / 1000);
+    setDroneFanAnimationTime(frameSpin.timeMs / 1000);
     // Shared clock for the nanoframe pulse/scan-line animation (one
     // uniform object across every patched build material).
     setEntityBuildTimeMs(frameSpin.timeMs);
@@ -671,7 +671,7 @@ export class Render3DEntities {
   }
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
-    this.hoverSmokeEmitters.length = 0;
+    this.locomotionSmokeEmitters.length = 0;
     this.airborneEmitterBatch.begin();
     const packetProvided = unitRows !== undefined;
     const rows = unitRows ?? this.populateFallbackUnitRenderRows();
@@ -1004,8 +1004,8 @@ export class Render3DEntities {
       const poseBase = poseIndex * poseOutputStride;
       const visualBankRoll = poseOutput[poseBase + 32];
       m.visualBankRoll = visualBankRoll;
-      const standingUpperBodyYaw = m.locomotion?.type === 'standing'
-        ? updateStandingHostTurretAim(
+      const standingUpperBodyYaw = m.locomotion?.type === 'bot'
+        ? updateBotHostTurretAim(
           m.locomotion,
           tRot,
           turretRows,
@@ -1128,7 +1128,7 @@ export class Render3DEntities {
         ) {
           const locomotionSmokeEmitters = unitRows.buildInProgressAt(row) || !this.smokeTrailsEnabled
             ? undefined
-            : this.hoverSmokeEmitters;
+            : this.locomotionSmokeEmitters;
           const locomotionDtMs = animateLocomotion
             ? this._currentDtMs
             : this._currentDtMs * LOCOMOTION_FAR_FRAME_STRIDE;
@@ -1244,7 +1244,7 @@ export class Render3DEntities {
       this.teamTrim,
     );
     this.shieldPanelPose.flush(this.unitDetailInstances);
-    this.airborneEmitterBatch.flush(this.hoverSmokeEmitters);
+    this.airborneEmitterBatch.flush(this.locomotionSmokeEmitters);
 
     if (pruneUnits) this.pruneUnseenUnitMeshes(pruneToken, scopedRender);
     this.lastUnitEntitySetVersion = entitySetVersion;
@@ -1260,7 +1260,7 @@ export class Render3DEntities {
     if (current === this.legsRadiusToggle) return;
     this.legsRadiusToggle = current;
     for (const [id, mesh] of this.unitMeshes) {
-      if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
+      if (mesh.locomotion?.type === 'crawler') this.activeLocomotionUnitIds.add(id);
     }
   }
 
@@ -1269,7 +1269,7 @@ export class Render3DEntities {
     if (current === this.legsReachToggle) return;
     this.legsReachToggle = current;
     for (const [id, mesh] of this.unitMeshes) {
-      if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
+      if (mesh.locomotion?.type === 'crawler') this.activeLocomotionUnitIds.add(id);
     }
   }
 
@@ -1279,7 +1279,7 @@ export class Render3DEntities {
     this.smokeTrailsEnabled = current;
     for (const [id, mesh] of this.unitMeshes) {
       const type = mesh.locomotion?.type;
-      if (type === 'hover' || type === 'flying') this.activeLocomotionUnitIds.add(id);
+      if (type === 'drone' || type === 'plane') this.activeLocomotionUnitIds.add(id);
     }
   }
 
@@ -1421,8 +1421,8 @@ export class Render3DEntities {
       : NO_PYLON_TUBE_FLOWS;
   }
 
-  getHoverSmokeEmitters(): readonly SmokePuffEmitter[] {
-    return this.hoverSmokeEmitters;
+  getLocomotionSmokeEmitters(): readonly SmokePuffEmitter[] {
+    return this.locomotionSmokeEmitters;
   }
 
   getTurretMountWorldState(entityId: EntityId, turretIdx: number): TurretMountEntry | null {

@@ -48,7 +48,7 @@ export function clamp01(value: number): number {
  * material.
  *
  * MeshLambertMaterial, matching the unit chassis and turret pools, so treads,
- * wheels, legs, flippers, wings and hover fans shade under the same lights as
+ * wheels, legs, flippers, wings and drone fans shade under the same lights as
  * the body they are bolted to. They were MeshBasicMaterial — unlit — which made
  * locomotion the one part of a unit that ignored the scene entirely: flat, full
  * brightness from every angle, and untouched by every lighting control.
@@ -66,7 +66,7 @@ export function getLocomotionMatByCache(
       ? new THREE.MeshLambertMaterial({ color })
       : new THREE.MeshLambertMaterial({ color, side });
     // Every locomotion rig that is not the instanced leg pool — wheels,
-    // treads, hover fans, wings, jets, fins, flippers — allocates through
+    // treads, drone fans, wings, jets, fins, flippers — allocates through
     // here, so this one line is what keeps a unit's movement hardware made of
     // the same metal as the hull above it. Legs patch their own pool
     // materials because they do their own instancing transform.

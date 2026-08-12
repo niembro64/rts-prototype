@@ -24,7 +24,7 @@ export function getActiveBuildTargetId(entity: Entity): EntityId {
 /** Refresh `builder.currentBuildTarget` from the head build order. The field
  *  is a per-tick mirror of {@link getActiveBuildTargetId} — the action queue
  *  is the truth — kept on the component so snapshots, the renderer's
- *  construction emitters, and the standing rig's construction arm can read it
+ *  construction emitters, and the bot rig's construction arm can read it
  *  without walking the queue. This is the ONLY writer. */
 export function syncBuilderActiveBuildTarget(world: WorldState, entity: Entity): EntityId {
   const builder = entity.builder;

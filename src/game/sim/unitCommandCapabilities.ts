@@ -74,7 +74,7 @@ const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitDuck',
   'unitAlbatros',
   'unitTransport',
-  // Local flying factory aircraft outside the T1 BAR production page still
+  // Local drone-factory aircraft outside the T1 BAR production page still
   // count as air targets for BAR command restrictions when present in a scenario.
   'unitQueenBee',
 ]);

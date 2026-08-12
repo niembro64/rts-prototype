@@ -57,20 +57,20 @@ export type UnitLocomotionPhysics = {
 /** The authored locomotion mechanism, used for the visual rig and motion
  * presentation. Route permissions are stored separately in navigation. */
 export type UnitLocomotionType =
-  | 'wheels'
-  | 'treads'
-  | 'amphibious-treads'
-  | 'legs'
+  | 'rover'
+  | 'tank'
+  | 'amphibious-tank'
+  | 'crawler'
   /** Biped: two legs and two arms, on its own rig. A mech leg is a hinge in
    *  one vertical plane and the hips yaw inside the hull, so the torso can
    *  face what it is shooting while the legs walk somewhere else. Shares
-   *  nothing with `legs`, which solves an arachnid. */
-  | 'standing'
-  | 'flippers'
-  | 'hover'
-  | 'flying'
+   *  nothing with `crawler`, which solves an arachnid. */
+  | 'bot'
+  | 'amphibian'
+  | 'drone'
+  | 'plane'
   | 'submarine'
-  | 'dive';
+  | 'aerosub';
 
 export type SurfaceProbeSetId = 'single' | 'few' | 'many';
 

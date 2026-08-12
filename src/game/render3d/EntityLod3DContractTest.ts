@@ -112,7 +112,7 @@ export function runEntityLod3DContractTest(): void {
 
     const groundUnit = entityAt(301, 0, 0, 0);
     groundUnit.unit = {
-      locomotion: { type: 'wheels' },
+      locomotion: { type: 'rover' },
       radius: { other: 20, hitbox: 18, collision: 15 },
     } as NonNullable<Entity['unit']>;
     setLodMode('low');
@@ -211,14 +211,14 @@ export function runEntityLod3DContractTest(): void {
     );
 
     const airUnit = entityAt(302, 0, 0, 0);
-    airUnit.unit = { locomotion: { type: 'flying' } } as NonNullable<Entity['unit']>;
+    airUnit.unit = { locomotion: { type: 'plane' } } as NonNullable<Entity['unit']>;
     assertContract(
       entityLodProxyGlyph3D(airUnit) === ENTITY_LOD_PROXY_GLYPH_TRIANGLE,
-      'flying units use the triangular proxy glyph',
+      'airborne units use the triangular proxy glyph',
     );
 
     const builderUnit = entityAt(303, 0, 0, 0);
-    builderUnit.unit = { locomotion: { type: 'hover' } } as NonNullable<Entity['unit']>;
+    builderUnit.unit = { locomotion: { type: 'drone' } } as NonNullable<Entity['unit']>;
     builderUnit.builder = {} as NonNullable<Entity['builder']>;
     assertContract(
       entityLodProxyGlyph3D(builderUnit) === ENTITY_LOD_PROXY_GLYPH_DIAMOND,
@@ -226,7 +226,7 @@ export function runEntityLod3DContractTest(): void {
     );
 
     const transportUnit = entityAt(304, 0, 0, 0);
-    transportUnit.unit = { locomotion: { type: 'wheels' } } as NonNullable<Entity['unit']>;
+    transportUnit.unit = { locomotion: { type: 'rover' } } as NonNullable<Entity['unit']>;
     transportUnit.transport = { capacity: 1, loadedUnits: [] } as NonNullable<Entity['transport']>;
     assertContract(
       entityLodProxyGlyph3D(transportUnit) === ENTITY_LOD_PROXY_GLYPH_SQUARE,
@@ -234,7 +234,7 @@ export function runEntityLod3DContractTest(): void {
     );
 
     const commanderUnit = entityAt(305, 0, 0, 0);
-    commanderUnit.unit = { locomotion: { type: 'wheels' } } as NonNullable<Entity['unit']>;
+    commanderUnit.unit = { locomotion: { type: 'rover' } } as NonNullable<Entity['unit']>;
     commanderUnit.builder = {} as NonNullable<Entity['builder']>;
     commanderUnit.commander = { isDGunActive: false, dgunEnergyCost: 0 };
     assertContract(

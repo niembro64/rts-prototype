@@ -72,7 +72,7 @@ function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
     baseZ: ctx.baseZ === undefined ? undefined : finiteOr(ctx.baseZ, 0),
     color: Number.isFinite(ctx.color)
       ? ctx.color
-      : COLORS.units.locomotion.hover.smoke.colorHex,
+      : COLORS.units.locomotion.drone.smoke.colorHex,
     rotation: ctx.rotation === undefined ? undefined : finiteOr(ctx.rotation, 0),
     turretPoses: sanitizeTurretPoses(ctx.turretPoses),
   };
@@ -158,7 +158,7 @@ export function resolveDeathContext3D(
       visualRadius: 15,
       collisionRadius: 15,
       baseZ: event.pos.z - 15,
-      color: COLORS.units.locomotion.hover.smoke.colorHex,
+      color: COLORS.units.locomotion.drone.smoke.colorHex,
     };
   }
   return sanitizeDeathContext(ctx);

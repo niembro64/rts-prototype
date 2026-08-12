@@ -634,10 +634,10 @@ pub fn arrival_completion_step_batch(
     arrived_count
 }
 
-pub(crate) const FLYING_LOITER_INVALID_SLOT: u32 = u32::MAX;
+pub(crate) const AIRBORNE_LOITER_INVALID_SLOT: u32 = u32::MAX;
 
 #[inline]
-pub(crate) fn compute_flying_loiter_thrust(
+pub(crate) fn compute_airborne_loiter_thrust(
     dx: f64,
     dy: f64,
     distance: f64,
@@ -700,7 +700,7 @@ pub(crate) fn compute_flying_loiter_thrust(
 }
 
 #[wasm_bindgen]
-pub fn flying_loiter_step_batch(
+pub fn airborne_loiter_step_batch(
     slots: &[u32],
     dx: &[f64],
     dy: &[f64],
@@ -737,7 +737,7 @@ pub fn flying_loiter_step_batch(
     for i in 0..count {
         let slot = slots[i];
         let slot_index = slot as usize;
-        let has_pool_velocity = slot != FLYING_LOITER_INVALID_SLOT && slot_index < p.vel_x.len();
+        let has_pool_velocity = slot != AIRBORNE_LOITER_INVALID_SLOT && slot_index < p.vel_x.len();
         let velocity_x = if has_pool_velocity {
             p.vel_x[slot_index]
         } else {
@@ -748,7 +748,7 @@ pub fn flying_loiter_step_batch(
         } else {
             fallback_velocity_y[i]
         };
-        let (thrust_x, thrust_y, turn_sign, active) = compute_flying_loiter_thrust(
+        let (thrust_x, thrust_y, turn_sign, active) = compute_airborne_loiter_thrust(
             dx[i],
             dy[i],
             distance[i],

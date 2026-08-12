@@ -19,26 +19,26 @@ import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom, type BodyGeomEntry } from '@/game/render3d/BodyShape3D';
 import { buildTurretMesh3D, type TurretMesh } from '@/game/render3d/TurretMesh3D';
-import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
-import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
+import { buildTank, type TankMesh } from '@/game/render3d/TankRig3D';
+import { buildRover, type RoverMesh } from '@/game/render3d/RoverRig3D';
 import {
-  buildHoverFans,
-  getHoverFanVisualRootY,
-  setHoverFanAnimationTime,
-  type HoverMesh,
-} from '@/game/render3d/HoverRig3D';
-import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
-import type { FlyingMesh } from '@/game/render3d/FlyingRig3D';
+  buildDroneFans,
+  getDroneFanVisualRootY,
+  setDroneFanAnimationTime,
+  type DroneMesh,
+} from '@/game/render3d/DroneRig3D';
+import { buildAirframeRig } from '@/game/render3d/AirframeRig3D';
+import type { AirframeMesh } from '@/game/render3d/AirframeRig3D';
 import {
-  buildFlippers,
-  poseFlippersAtCycle,
-  type FlipperMesh,
-} from '@/game/render3d/FlipperRig3D';
+  buildAmphibian,
+  poseAmphibianAtCycle,
+  type AmphibianMesh,
+} from '@/game/render3d/AmphibianRig3D';
 import {
-  buildSwimRig,
-  poseSwimRigAtCycle,
-  type SwimMesh,
-} from '@/game/render3d/SwimRig3D';
+  buildSubmarineRig,
+  poseSubmarineRigAtCycle,
+  type SubmarineMesh,
+} from '@/game/render3d/SubmarineRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import {
@@ -91,15 +91,15 @@ import {
   ornamentProfileKey,
 } from '@/game/render3d/TeamOrnament3D';
 import {
-  buildStandingRig,
-  poseStandingRigAtPreviewCycle,
-  poseStandingRigAtRest,
-  resolveStandingArmTurretAim,
-  resolveStandingArmTurretRoot,
-  type StandingArmId,
-  type StandingArmTurretAim,
-  type StandingMesh,
-} from '@/game/render3d/StandingRig3D';
+  buildBotRig,
+  poseBotRigAtPreviewCycle,
+  poseBotRigAtRest,
+  resolveBotArmTurretAim,
+  resolveBotArmTurretRoot,
+  type BotArmId,
+  type BotArmTurretAim,
+  type BotMesh,
+} from '@/game/render3d/BotRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -182,22 +182,22 @@ const DEFAULT_CONTROLS: LoadingUnitPreviewControls = {
 };
 
 type PreviewLocomotionRig =
-  | { type: 'wheels'; mesh: WheelMesh }
-  | { type: 'treads'; mesh: TreadMesh }
-  | { type: 'hover'; mesh: HoverMesh }
-  | { type: 'flying'; mesh: FlyingMesh }
-  | { type: 'flippers'; mesh: FlipperMesh }
-  | { type: 'swim'; mesh: SwimMesh }
-  | { type: 'legs'; group: THREE.Group }
+  | { type: 'rover'; mesh: RoverMesh }
+  | { type: 'tank'; mesh: TankMesh }
+  | { type: 'drone'; mesh: DroneMesh }
+  | { type: 'plane' | 'aerosub'; mesh: AirframeMesh }
+  | { type: 'amphibian'; mesh: AmphibianMesh }
+  | { type: 'submarine'; mesh: SubmarineMesh }
+  | { type: 'crawler'; group: THREE.Group }
   | {
-    type: 'standing';
-    mesh: StandingMesh;
+    type: 'bot';
+    mesh: BotMesh;
     articulatedTurrets: Array<{
       /** The whole rig, not just its root: a held gun takes its rotation
        *  from the carrying arm too, so the preview has to drive the yaw
        *  and pitch groups every frame alongside the mount position. */
       turretMesh: TurretMesh;
-      armId: StandingArmId;
+      armId: BotArmId;
       mountId: string;
       headRadius: number;
     }>;
@@ -219,7 +219,7 @@ type PreviewProductionRing = {
 
 // In-game units mix lit player-colored body materials and team turret accents
 // (MeshLambertMaterial, see Render3DEntities) with unlit, team-tinted
-// locomotion pieces (MeshBasicMaterial, see TreadRig3D / colorUtils).
+// locomotion pieces (MeshBasicMaterial, see TankRig3D / colorUtils).
 // The preview reproduces that exact split for one player so the unit
 // reads as it would on the battlefield rather than as a pale shell.
 type PreviewUnitMaterials = {
@@ -314,7 +314,7 @@ const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
 const turretCollarGeom = createTurretCollarGeometry();
-const _previewArmAim: StandingArmTurretAim = { yaw: 0, pitch: 0 };
+const _previewArmAim: BotArmTurretAim = { yaw: 0, pitch: 0 };
 /** The preview builds one kit per body shape it is asked to draw, keyed the
  *  same way the live renderer pools them, so the card shows exactly the kit
  *  the unit wears in the battle. */
@@ -649,7 +649,7 @@ function buildPreviewUnitModel(
     materials,
     productionRing,
     geometryTier,
-    locomotion?.type === 'standing' ? locomotion : null,
+    locomotion?.type === 'bot' ? locomotion : null,
   );
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials, geometryTier);
   return { root, locomotion };
@@ -715,9 +715,9 @@ function buildPreviewBody(
   }
   // The shared rail-and-rib hull ornament is designed for horizontal vehicle
   // bodies. On an upright biped its cross-body ridge becomes a broad skirt at
-  // the waist, hiding the legs and feet. Standing units carry their identity
+  // the waist, hiding the legs and feet. Bot units carry their identity
   // in their humanoid armour and held equipment instead.
-  if (blueprint.unitLocomotion.type !== 'standing') {
+  if (blueprint.unitLocomotion.type !== 'bot') {
     chassis.add(new THREE.Mesh(
       previewOrnamentGeometry(bodyEntry, blueprint.teamOrnament),
       materials.teamOrnament,
@@ -769,7 +769,7 @@ function buildPreviewTurrets(
   materials: PreviewUnitMaterials,
   productionRing: PreviewProductionRing | null,
   geometryTier: PrimitiveGeometryTier,
-  standingRig: Extract<PreviewLocomotionRig, { type: 'standing' }> | null,
+  botRig: Extract<PreviewLocomotionRig, { type: 'bot' }> | null,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
   const bodyIsShieldEmitter = blueprint.bodyShape === null && turrets.some(
@@ -822,29 +822,29 @@ function buildPreviewTurrets(
       productionPylonOrdinal++;
     }
     const hostAttachment = turret.config.hostAttachment;
-    const articulatedArmId = hostAttachment?.kind === 'standingArm'
+    const articulatedArmId = hostAttachment?.kind === 'botArm'
       ? hostAttachment.arm
       : null;
-    const articulatedMount = standingRig === null || articulatedArmId === null
+    const articulatedMount = botRig === null || articulatedArmId === null
       ? null
-      : resolveStandingArmTurretRoot(
-        standingRig.mesh,
+      : resolveBotArmTurretRoot(
+        botRig.mesh,
         articulatedArmId,
         turret.mountId,
         headRadius,
       );
     if (articulatedMount !== null && articulatedArmId !== null) {
       turretMesh.root.position.copy(articulatedMount);
-      standingRig?.articulatedTurrets.push({
+      botRig?.articulatedTurrets.push({
         turretMesh,
         armId: articulatedArmId,
         mountId: turret.mountId,
         headRadius,
       });
       // A gun held in a hand is static relative to that hand — the arm poses
-      // it, here exactly as in the battle renderer. See "Standing hosts hold
+      // it, here exactly as in the battle renderer. See "Bot hosts hold
       // their guns" in budget_design_philosophy.html.
-      poseArticulatedPreviewTurret(standingRig, articulatedArmId, turretMesh);
+      poseArticulatedPreviewTurret(botRig, articulatedArmId, turretMesh);
     } else {
       turretMesh.root.position.set(
         mountX,
@@ -869,12 +869,12 @@ function buildPreviewTurrets(
 /** Point a held gun down its carrying arm. Null rig or unknown arm leaves the
  *  turret alone, which is the same fallback the battle renderer takes. */
 function poseArticulatedPreviewTurret(
-  standingRig: { mesh: StandingMesh } | null | undefined,
-  armId: StandingArmId,
+  botRig: { mesh: BotMesh } | null | undefined,
+  armId: BotArmId,
   turretMesh: TurretMesh,
 ): void {
-  if (!standingRig) return;
-  const aim = resolveStandingArmTurretAim(standingRig.mesh, armId, _previewArmAim);
+  if (!botRig) return;
+  const aim = resolveBotArmTurretAim(botRig.mesh, armId, _previewArmAim);
   if (aim === null) return;
   turretMesh.yawGroup.rotation.y = aim.yaw;
   if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = aim.pitch;
@@ -891,11 +891,11 @@ function buildPreviewLocomotion(
   const locomotion = blueprint.unitLocomotion;
   const radius = blueprint.radius.other;
   switch (locomotion.type) {
-    case 'treads':
-    case 'amphibious-treads':
+    case 'tank':
+    case 'amphibious-tank':
       return {
-        type: 'treads',
-        mesh: buildTreads(
+        type: 'tank',
+        mesh: buildTank(
           yawGroup,
           radius,
           locomotion.config,
@@ -904,24 +904,24 @@ function buildPreviewLocomotion(
           geometryTier,
         ),
       };
-    case 'wheels':
-      return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier) };
-    case 'flippers':
+    case 'rover':
+      return { type: 'rover', mesh: buildRover(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier) };
+    case 'amphibian':
       return {
-        type: 'flippers',
-        mesh: buildFlippers(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
+        type: 'amphibian',
+        mesh: buildAmphibian(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
     case 'submarine':
       return {
-        type: 'swim',
-        mesh: buildSwimRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
+        type: 'submarine',
+        mesh: buildSubmarineRig(yawGroup, radius, locomotion.config, HOST_PLAYER_ID, geometryTier),
       };
-    case 'hover': {
-      const mesh = buildHoverFans(
+    case 'drone': {
+      const mesh = buildDroneFans(
         yawGroup,
         radius,
         locomotion.config,
-        'locomotionHovercraft',
+        'locomotionDuctedFan',
         SHELL_ENTITY_ID,
         HOST_PLAYER_ID,
         geometryTier,
@@ -929,43 +929,44 @@ function buildPreviewLocomotion(
       // The preview's locomotion root is the unlifted yaw group, whereas the
       // battlefield fan root is a child of the lifted chassis. Compose the
       // same shared render-only overhead placement in the preview's frame.
-      mesh.visualBaseY = getChassisLiftY(blueprint, radius) + getHoverFanVisualRootY(
+      mesh.visualBaseY = getChassisLiftY(blueprint, radius) + getDroneFanVisualRootY(
         getBodyTopY(blueprint.bodyShape, radius),
         radius,
         locomotion.config,
       );
       mesh.group.position.y = mesh.visualBaseY;
       return {
-        type: 'hover',
+        type: 'drone',
         mesh,
       };
     }
-    case 'flying':
-    case 'dive':
+    case 'plane':
+    case 'aerosub':
       return {
-        type: 'flying',
-        mesh: buildFlyingRig(
+        type: locomotion.type,
+        mesh: buildAirframeRig(
           yawGroup,
           radius,
+          locomotion.type,
           locomotion.config,
-          blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosFlying' : 'locomotionEagleFlying',
+          blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosAerosub' : 'locomotionEaglePlane',
           SHELL_ENTITY_ID,
           HOST_PLAYER_ID,
           geometryTier,
         ),
       };
-    case 'legs':
-      return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier) };
-    case 'standing': {
+    case 'crawler':
+      return { type: 'crawler', group: buildPreviewLegs(yawGroup, blueprint, materials.leg, geometryTier) };
+    case 'bot': {
       // The card shows the real rig, standing still — same parts, same solve.
-      const mesh = buildStandingRig(
+      const mesh = buildBotRig(
         liftGroup, radius, blueprint.mass,
         locomotion.physics.ground.maxPropulsiveForce,
         locomotion.config.legs, locomotion.config.arms,
         chassisLift, HOST_PLAYER_ID, geometryTier, blueprint.unitBlueprintId,
       );
-      poseStandingRigAtRest(mesh);
-      return { type: 'standing', mesh, articulatedTurrets: [] };
+      poseBotRigAtRest(mesh);
+      return { type: 'bot', mesh, articulatedTurrets: [] };
     }
   }
   return null;
@@ -1013,9 +1014,9 @@ function buildPreviewLegs(
   geometryTier: PrimitiveGeometryTier,
 ): THREE.Group {
   const locomotion = blueprint.unitLocomotion;
-  // `standing` walks on the same leg rig; it just nests the leg half of its
-  // config next to the arms.
-  if (locomotion.type !== 'legs') return new THREE.Group();
+  // Crawlers alone use the independent world-space leg rig; bots build their
+  // coupled biped rig through the dedicated preview path below.
+  if (locomotion.type !== 'crawler') return new THREE.Group();
   const legConfig = locomotion.config;
   const radius = blueprint.radius.other;
   const { all } = resolveMirroredLegConfigs(legConfig, radius);
@@ -1030,7 +1031,7 @@ function buildPreviewLegs(
   for (const leg of all) {
     const legGroup = new THREE.Group();
     group.add(legGroup);
-    // Authored, same as the live rig — see LegRig3D.
+    // Authored, same as the live rig — see CrawlerRig3D.
     const hipY = leg.attachOffsetZ;
     const upperLen = leg.upperLegLength;
     const lowerLen = leg.lowerLegLength;
@@ -1115,37 +1116,38 @@ function animatePreviewLocomotion(
   const stride = phase * Math.PI * 2;
   const active = motionScale > 0;
   switch (rig.type) {
-    case 'wheels':
+    case 'rover':
       animatePreviewWheels(rig.mesh, active ? stride : 0);
       return;
-    case 'flippers':
-      poseFlippersAtCycle(rig.mesh, active ? stride : 0, 0);
+    case 'amphibian':
+      poseAmphibianAtCycle(rig.mesh, active ? stride : 0, 0);
       return;
-    case 'swim':
-      poseSwimRigAtCycle(rig.mesh, active ? stride : 0);
-      setHoverFanAnimationTime(active ? timeSec * motionScale : 0);
+    case 'submarine':
+      poseSubmarineRigAtCycle(rig.mesh, active ? stride : 0);
+      setDroneFanAnimationTime(active ? timeSec * motionScale : 0);
       return;
-    case 'treads':
+    case 'tank':
       animatePreviewTreads(rig.mesh, active ? stride : 0);
       return;
-    case 'hover':
-      setHoverFanAnimationTime(active ? timeSec * motionScale : 0);
+    case 'drone':
+      setDroneFanAnimationTime(active ? timeSec * motionScale : 0);
       rig.mesh.group.position.y = rig.mesh.visualBaseY + (
         active ? Math.sin(stride * 2) * 1.4 : 0
       );
       return;
-    case 'flying':
+    case 'aerosub':
+    case 'plane':
       rig.mesh.group.rotation.z = active ? Math.sin(stride) * 0.08 : 0;
       rig.mesh.group.rotation.y = active ? Math.sin(stride * 0.7) * 0.035 : 0;
       return;
-    case 'legs':
+    case 'crawler':
       animatePreviewLegs(rig.group, active ? stride : 0, active);
       return;
-    case 'standing':
-      if (active) poseStandingRigAtPreviewCycle(rig.mesh, phase, Math.min(1, motionScale));
-      else poseStandingRigAtRest(rig.mesh);
+    case 'bot':
+      if (active) poseBotRigAtPreviewCycle(rig.mesh, phase, Math.min(1, motionScale));
+      else poseBotRigAtRest(rig.mesh);
       for (const turret of rig.articulatedTurrets) {
-        const mount = resolveStandingArmTurretRoot(
+        const mount = resolveBotArmTurretRoot(
           rig.mesh,
           turret.armId,
           turret.mountId,
@@ -1158,7 +1160,7 @@ function animatePreviewLocomotion(
   }
 }
 
-function animatePreviewWheels(mesh: WheelMesh, stride: number): void {
+function animatePreviewWheels(mesh: RoverMesh, stride: number): void {
   for (let i = 0; i < mesh.wheels.length; i++) {
     mesh.wheels[i].rotation.y = mesh.rotationAnimated ? -stride * 2.4 : 0;
     const group = mesh.wheelGroups[i];
@@ -1166,7 +1168,7 @@ function animatePreviewWheels(mesh: WheelMesh, stride: number): void {
   }
 }
 
-function animatePreviewTreads(mesh: TreadMesh, stride: number): void {
+function animatePreviewTreads(mesh: TankMesh, stride: number): void {
   for (let i = 0; i < mesh.wheels.length; i++) {
     mesh.wheels[i].rotation.y = -stride * 2;
   }

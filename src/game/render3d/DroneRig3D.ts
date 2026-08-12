@@ -1,20 +1,20 @@
-// HoverRig3D — ducted fan ring + downward smoke columns for hover
-// locomotion. Hover never contacts ground, so the visuals contract
+// DroneRig3D — ducted fan ring + downward smoke columns for drone
+// locomotion. A drone never contacts ground, so the visuals contract
 // (see "Locomotion Visuals Are Frontend" in budget_design_philosophy.html)
 // inverts: the rig tracks per-frame `clearance` (chassis world Y −
 // terrain Y) instead of a contact boolean, and the floor clamp is a
 // soft safety — the rendered rig group is lifted at minimum
-// HOVER_FLOOR_MARGIN above terrain so a stale snapshot can never park
+// DRONE_FLOOR_MARGIN above terrain so a stale snapshot can never park
 // fans inside the dirt.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import {
   getSmokeProfile,
-  type HoverSmokeUseId,
+  type DroneSmokeUseId,
   type ResolvedSmokeProfile,
 } from '@/smokeConfig';
-import type { HoverConfig, HoverFanMount } from '@/types/blueprints';
+import type { DroneConfig, DroneFanMount } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import type {
   AirborneEmitterBatch3D,
@@ -34,22 +34,22 @@ import {
 } from './PrimitiveGeometryQuality3D';
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
- *  terrain. The sim is supposed to keep hovers above ground via the
+ *  terrain. The sim is supposed to keep drones above ground via the
  *  configured surface lift force, but a bad snapshot or a 1-tick
  *  interpolation glitch can briefly drop the rendered chassis below.
  *  The rig group lifts itself by enough to keep fans visible above
  *  the surface in that case. */
-const HOVER_FLOOR_MARGIN = 1;
+const DRONE_FLOOR_MARGIN = 1;
 /** Presentation-only air gap between the top of the chassis and the lowest
- * point of an overhead hover fan. Authored mount offsets remain unchanged:
+ * point of an overhead drone fan. Authored mount offsets remain unchanged:
  * they still describe the locomotion layout used by the unit blueprint. */
-const HOVER_FAN_BODY_GAP_RADIUS_FRAC = 0.04;
-const HOVER_FAN_BODY_GAP_MIN = 0.5;
+const DRONE_FAN_BODY_GAP_RADIUS_FRAC = 0.04;
+const DRONE_FAN_BODY_GAP_MIN = 0.5;
 
-const FAN_RING_COLOR = COLORS.units.locomotion.hover.fanRing.colorHex;
-const FAN_BLADE_COLOR = COLORS.units.locomotion.hover.fanBlade.colorHex;
-const FAN_HUB_COLOR = COLORS.units.locomotion.hover.fanHub.colorHex;
-const HOVER_SMOKE_COLOR = COLORS.units.locomotion.hover.smoke.colorHex;
+const FAN_RING_COLOR = COLORS.units.locomotion.drone.fanRing.colorHex;
+const FAN_BLADE_COLOR = COLORS.units.locomotion.drone.fanBlade.colorHex;
+const FAN_HUB_COLOR = COLORS.units.locomotion.drone.fanHub.colorHex;
+const DRONE_SMOKE_COLOR = COLORS.units.locomotion.drone.smoke.colorHex;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
 /** How wide a duct's plume starts, as a fraction of that duct's own radius.
@@ -57,13 +57,13 @@ const FAN_BLADE_COUNT = 3;
  *  The wash is the column of air the ring just pushed down, so its width is a
  *  property of the ring rather than of the unit wearing it. The smoke profile
  *  alone cannot say that: one profile is worn by ducts of very different size,
- *  and `locomotionHovercraft`'s flat 3 was about as wide as the Bee's 2.9-unit
+ *  and `locomotionDuctedFan`'s flat 3 was about as wide as the Bee's 2.9-unit
  *  ring but a fifth of the Queen's, which trailed a thread out of a ring three
  *  times its width. Deriving from the ring means resizing a fan resizes its
  *  wash, with no second number to keep in step; the fraction is the ratio the
  *  small ducts already had. The profile's own startRadius stays live as a
  *  FLOOR, so a duct small enough to emit nothing visible still puffs. */
-const HOVER_PLUME_DUCT_RADIUS_FRAC = 0.9;
+const DRONE_PLUME_DUCT_RADIUS_FRAC = 0.9;
 
 const ringGeomByTubeRatio = new Map<string, THREE.BufferGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
@@ -129,16 +129,16 @@ export function fanRotorHandedness(lateralLocalZ: number): number {
 /** A lateral offset this close to the middle IS the middle. Mirroring such a
  *  mount would land its twin on top of it: one fan wearing another, at twice
  *  the draw cost and no visual difference. */
-const HOVER_MOUNT_CENTRELINE_EPS = 1e-6;
+const DRONE_MOUNT_CENTRELINE_EPS = 1e-6;
 
 /**
- * A HOVER BLUEPRINT AUTHORS HALF A FAN ARRAY.
+ * A DRONE BLUEPRINT AUTHORS HALF A FAN ARRAY.
  *
  * A duct that lifts one flank always has a twin lifting the other, at the same
  * station, height, size and tilt, so authoring both sides meant writing every
  * number twice and keeping the copies in step by hand — six mounts for the
  * Queen Bee's three distinct ducts. The blueprint now authors the unit's LEFT
- * side (+y, the same handedness the standing rig uses) plus anything standing
+ * side (+y, the same handedness the bot rig uses) plus anything standing
  * on the centreline, and each off-centre mount grows its starboard mirror
  * here. A centreline duct — the Construction Drone's tail fan — stands alone.
  *
@@ -146,12 +146,12 @@ const HOVER_MOUNT_CENTRELINE_EPS = 1e-6;
  * in resolveMirroredLegConfigs. Rotor handedness is already derived from that
  * sign in buildFan, so the generated twin counter-rotates on its own.
  */
-export function resolveHoverFanMounts(cfg: HoverConfig): HoverFanMount[] {
-  const mounts: HoverFanMount[] = [];
+export function resolveDroneFanMounts(cfg: DroneConfig): DroneFanMount[] {
+  const mounts: DroneFanMount[] = [];
   for (const mount of cfg.mounts) {
     mounts.push(mount);
     const lateral = mount.offset.yUnitRadiusRatio;
-    if (Math.abs(lateral) <= HOVER_MOUNT_CENTRELINE_EPS) continue;
+    if (Math.abs(lateral) <= DRONE_MOUNT_CENTRELINE_EPS) continue;
     mounts.push({
       ...mount,
       offset: { ...mount.offset, yUnitRadiusRatio: -lateral },
@@ -361,7 +361,7 @@ function getRotorBladeMat(
     side: THREE.DoubleSide,
   });
   material.onBeforeCompile = (shader) => {
-    // Assigned by reference, so setHoverFanAnimationTime keeps working without
+    // Assigned by reference, so setDroneFanAnimationTime keeps working without
     // reaching into a material that no longer owns its uniforms.
     shader.uniforms.uTimeSec = timeUniform;
     shader.uniforms.uSpinRadPerSec = spinUniform;
@@ -370,28 +370,28 @@ function getRotorBladeMat(
       .replace('#include <beginnormal_vertex>', ROTOR_BEGIN_NORMAL)
       .replace('#include <begin_vertex>', ROTOR_BEGIN_VERTEX);
   };
-  material.customProgramCacheKey = () => 'hoverRotorBladeLambert';
+  material.customProgramCacheKey = () => 'droneRotorBladeLambert';
   bladeRotorMats.set(key, { material, timeUniform });
   return material;
 }
 
-export function setHoverFanAnimationTime(timeSec: number): void {
+export function setDroneFanAnimationTime(timeSec: number): void {
   for (const entry of bladeRotorMats.values()) {
     entry.timeUniform.value = timeSec;
   }
 }
 
-export type HoverFan = {
+export type DroneFan = {
   group: THREE.Group;
   emitter: THREE.Object3D;
   smoke: SmokePuffEmitter;
   exhaustSpeed: number;
 };
 
-/** Shared rear-facing duct geometry for watercraft and hovercraft. The fan
+/** Shared rear-facing duct geometry for submarines and drones. The fan
  *  is visual only: locomotion physics never depends on it.
  *
- *  Mirrors the blueprint's `SwimRearFan` — an authored mount plus the duct's
+ *  Mirrors the blueprint's `SubmarineRearFan` — an authored mount plus the duct's
  *  own dimensions — rather than the flat `rearFan*`-prefixed scalars it used
  *  to take, so the one rig that mounts it speaks the same {x, y, z} every
  *  other locomotion piece does. */
@@ -402,17 +402,17 @@ export type RearPropulsionFanConfig = {
   spinRadPerSec: number;
 };
 
-export type HoverMesh = {
-  type: 'hover';
+export type DroneMesh = {
+  type: 'drone';
   group: THREE.Group;
-  fans: HoverFan[];
+  fans: DroneFan[];
   /** Chassis-local presentation height for the fan-array root. Terrain
    * safety may add to this value, but must never replace it. */
   visualBaseY: number;
   /** Most recent world-Y gap between the chassis and terrain below
-   *  it. Updated every frame in updateHoverFans. Useful to other
+   *  it. Updated every frame in updateDroneFans. Useful to other
    *  client systems (smoke length, dust kick-up, altitude shading)
-   *  that key off the hover gap rather than absolute altitude. */
+   *  that key off the ground-clearance gap rather than absolute altitude. */
   clearance: number;
   fanSpinRadPerSec: number;
 } & LocomotionBase;
@@ -435,12 +435,12 @@ type FanSpec = {
  * are retained, including its logical z offset; one common visual translation
  * moves the array without changing locomotion data or authoritative physics.
  */
-export function getHoverFanVisualRootY(
+export function getDroneFanVisualRootY(
   bodyTopY: number,
   unitRadius: number,
-  cfg: HoverConfig,
+  cfg: DroneConfig,
 ): number {
-  const gapY = Math.max(HOVER_FAN_BODY_GAP_MIN, unitRadius * HOVER_FAN_BODY_GAP_RADIUS_FRAC);
+  const gapY = Math.max(DRONE_FAN_BODY_GAP_MIN, unitRadius * DRONE_FAN_BODY_GAP_RADIUS_FRAC);
   let rootY = bodyTopY + gapY;
 
   // The AUTHORED half is enough: mirroring negates the lateral axis, and no
@@ -475,7 +475,7 @@ function buildFan(
   fanIndex: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): HoverFan {
+): DroneFan {
   const {
     localX, localY, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
     fanSpinRadPerSec,
@@ -575,17 +575,17 @@ function buildFan(
       fadeOutMs: smokeProfile.fadeOutMs,
       startRadius: Math.max(
         smokeProfile.startRadius,
-        fanRadius * HOVER_PLUME_DUCT_RADIUS_FRAC,
+        fanRadius * DRONE_PLUME_DUCT_RADIUS_FRAC,
       ),
       endRadiusMultiplier: smokeProfile.endRadiusMultiplier,
       maxAlpha: smokeProfile.maxAlpha,
-      color: HOVER_SMOKE_COLOR,
+      color: DRONE_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
     },
   };
 }
 
-/** Builds the same ducted-fan assembly used by hover locomotion, but points
+/** Builds the same ducted-fan assembly used by drone locomotion, but points
  * its exhaust along the chassis' rearward axis for a propeller-like drive. */
 export function buildRearPropulsionFan(
   parent: THREE.Group,
@@ -594,7 +594,7 @@ export function buildRearPropulsionFan(
   entityId: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): HoverFan {
+): DroneFan {
   return buildFan(
     parent,
     {
@@ -606,7 +606,7 @@ export function buildRearPropulsionFan(
       outwardAngleRad: 0,
       fanSpinRadPerSec: cfg.spinRadPerSec,
       exhaustDirection: REARWARD_EXHAUST_DIR,
-      smokeProfile: getSmokeProfile('locomotionHovercraft'),
+      smokeProfile: getSmokeProfile('locomotionDuctedFan'),
     },
     entityId,
     0,
@@ -616,8 +616,8 @@ export function buildRearPropulsionFan(
 }
 
 /** Appends one world-space plume emitter for a reusable fan assembly. */
-export function appendHoverFanSmoke(
-  fan: HoverFan,
+export function appendDroneFanSmoke(
+  fan: DroneFan,
   smokeOut: SmokePuffEmitter[],
 ): void {
   fan.emitter.getWorldPosition(_fanWorldPos);
@@ -633,18 +633,18 @@ export function appendHoverFanSmoke(
   smokeOut.push(fan.smoke);
 }
 
-export function buildHoverFans(
+export function buildDroneFans(
   unitGroup: THREE.Group,
   unitRadius: number,
-  cfg: HoverConfig,
-  smokeUseId: HoverSmokeUseId,
+  cfg: DroneConfig,
+  smokeUseId: DroneSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): HoverMesh {
+): DroneMesh {
   const group = new THREE.Group();
   const fanSpinRadPerSec = cfg.fanSpinRadPerSec;
-  const fans: HoverFan[] = [];
+  const fans: DroneFan[] = [];
   const smokeProfile = getSmokeProfile(smokeUseId);
 
   // ONE AUTHORED MOUNT PER FAN PAIR. This used to be four layout branches —
@@ -653,9 +653,9 @@ export function buildHoverFans(
   // only ever name arrangements someone already thought of, and every new one
   // meant another branch here; a list of mounts names all of them, needs no
   // branch, and lets one fan differ from its neighbours in size or tilt. Only
-  // the left half of that list is authored; resolveHoverFanMounts grows the
+  // the left half of that list is authored; resolveDroneFanMounts grows the
   // other half.
-  for (const mount of resolveHoverFanMounts(cfg)) {
+  for (const mount of resolveDroneFanMounts(cfg)) {
     fans.push(buildFan(
       group,
       {
@@ -679,7 +679,7 @@ export function buildHoverFans(
 
   unitGroup.add(group);
   return {
-    type: 'hover',
+    type: 'drone',
     group,
     fans,
     visualBaseY: 0,
@@ -689,8 +689,8 @@ export function buildHoverFans(
   };
 }
 
-export function updateHoverFans(
-  mesh: HoverMesh,
+export function updateDroneFans(
+  mesh: DroneMesh,
   entity: Entity,
   _dtMs: number,
   mapWidth: number,
@@ -704,17 +704,17 @@ export function updateHoverFans(
   // child of the unitGroup, so local-Y adjustments shift it relative
   // to that chassis. Preserve the overhead presentation height, then
   // add whatever emergency correction is needed when the authoritative
-  // chassis itself falls inside HOVER_FLOOR_MARGIN. On the common case
+  // chassis itself falls inside DRONE_FLOOR_MARGIN. On the common case
   // (chassis floating cleanly above ground) the correction is zero.
   const chassisWorldY = entity.transform.z;
   const groundY = getLocomotionSurfaceHeight(
     entity.transform.x, entity.transform.y, mapWidth, mapHeight, entity.id,
   );
   const rawClearance = chassisWorldY - groundY;
-  const floorDeficit = HOVER_FLOOR_MARGIN - rawClearance;
+  const floorDeficit = DRONE_FLOOR_MARGIN - rawClearance;
   const groupY = mesh.visualBaseY + (floorDeficit > 0 ? floorDeficit : 0);
   if (mesh.group.position.y !== groupY) mesh.group.position.y = groupY;
-  mesh.clearance = Math.max(rawClearance, HOVER_FLOOR_MARGIN);
+  mesh.clearance = Math.max(rawClearance, DRONE_FLOOR_MARGIN);
 
   if (!smokeOut) return false;
 
@@ -745,7 +745,7 @@ export function updateHoverFans(
       continue;
     }
 
-    appendHoverFanSmoke(fan, smokeOut);
+    appendDroneFanSmoke(fan, smokeOut);
   }
   return true;
 }

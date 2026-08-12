@@ -94,7 +94,7 @@ export function sampleLocomotionSupportSurface(
 }
 
 /** Floor-clamp one body-local part (a wheel center, a tread sample, a
- *  hover fan ring) against the support under its world XZ. The clamp
+ *  drone fan ring) against the support under its world XZ. The clamp
  *  is one-sided: parts can float above the ground but never tunnel
  *  through it. Use a positive `clearance` to push the rendered Y up
  *  by the part's "ground offset" (e.g. wheel radius), so the part's

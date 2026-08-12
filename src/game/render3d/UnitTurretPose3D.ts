@@ -31,9 +31,9 @@ import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 import {
-  resolveStandingArmTurretAim,
-  resolveStandingArmTurretRoot,
-} from './StandingRig3D';
+  resolveBotArmTurretAim,
+  resolveBotArmTurretRoot,
+} from './BotRig3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
@@ -190,9 +190,9 @@ export class UnitTurretPose3D {
         : supportPointOffsetZ;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
       const hostAttachment = turret?.config.hostAttachment;
-      const articulatedMount = mesh.locomotion?.type === 'standing' &&
-        hostAttachment?.kind === 'standingArm'
-        ? resolveStandingArmTurretRoot(
+      const articulatedMount = mesh.locomotion?.type === 'bot' &&
+        hostAttachment?.kind === 'botArm'
+        ? resolveBotArmTurretRoot(
           mesh.locomotion,
           hostAttachment.arm,
           turret?.mountId ?? '',
@@ -314,9 +314,9 @@ export class UnitTurretPose3D {
       // does for a turret — barrels, spin, team collar, instanced head — and a
       // held gun needs all of it exactly as much as a hull mount does.
       const armAim = articulatedMount !== null &&
-        hostAttachment?.kind === 'standingArm' &&
-        mesh.locomotion?.type === 'standing'
-        ? resolveStandingArmTurretAim(
+        hostAttachment?.kind === 'botArm' &&
+        mesh.locomotion?.type === 'bot'
+        ? resolveBotArmTurretAim(
           mesh.locomotion,
           hostAttachment.arm,
           this.articulatedAim,
@@ -364,7 +364,7 @@ export class UnitTurretPose3D {
       const turretMesh = this.aimTurretMeshes[i];
       const outputBase = i * outputStride;
       // A held gun authored its own local pose from the arm carrying it (see
-      // the standing-host branch in poseTurrets). Everything below this —
+      // the bot-host branch in poseTurrets). Everything below this —
       // barrels, spin, team collar, instanced head — must still run for it,
       // which is exactly why it rides this record rather than short-cutting
       // past the flush.
@@ -536,7 +536,7 @@ export class UnitTurretPose3D {
     aimRotation: number,
     aimPitch: number,
     /** Local yaw/pitch authored by the caller, overriding the batch result.
-     *  Held guns on standing hosts use it; every other mount leaves it NaN
+     *  Held guns on bot hosts use it; every other mount leaves it NaN
      *  and takes the solved turret aim. */
     localYaw = Number.NaN,
     localPitch = Number.NaN,

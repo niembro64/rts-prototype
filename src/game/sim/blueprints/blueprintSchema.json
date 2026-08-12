@@ -1948,7 +1948,7 @@
       },
       "additionalProperties": false
     },
-    "StandingArmTurretHostAttachment": {
+    "BotArmTurretHostAttachment": {
       "type": "object",
       "required": [
         "kind",
@@ -1956,7 +1956,7 @@
       ],
       "properties": {
         "kind": {
-          "const": "standingArm"
+          "const": "botArm"
         },
         "arm": {
           "enum": [
@@ -1967,14 +1967,14 @@
       },
       "additionalProperties": false
     },
-    "StandingHeadTurretHostAttachment": {
+    "BotHeadTurretHostAttachment": {
       "type": "object",
       "required": [
         "kind"
       ],
       "properties": {
         "kind": {
-          "const": "standingHead"
+          "const": "botHead"
         }
       },
       "additionalProperties": false
@@ -1982,10 +1982,10 @@
     "UnitTurretHostAttachment": {
       "oneOf": [
         {
-          "$ref": "#/$defs/StandingArmTurretHostAttachment"
+          "$ref": "#/$defs/BotArmTurretHostAttachment"
         },
         {
-          "$ref": "#/$defs/StandingHeadTurretHostAttachment"
+          "$ref": "#/$defs/BotHeadTurretHostAttachment"
         }
       ]
     },
@@ -2115,7 +2115,7 @@
       },
       "additionalProperties": false
     },
-    "WheelConfig": {
+    "RoverConfig": {
       "type": "object",
       "required": [
         "mounts",
@@ -2143,7 +2143,7 @@
       },
       "additionalProperties": false
     },
-    "TreadConfig": {
+    "TankConfig": {
       "type": "object",
       "required": [
         "mounts",
@@ -2256,7 +2256,7 @@
       },
       "additionalProperties": false
     },
-    "LegConfig": {
+    "CrawlerConfig": {
       "type": "object",
       "required": [
         "radius",
@@ -2303,7 +2303,7 @@
       },
       "additionalProperties": false
     },
-    "StandingArmSegments": {
+    "BotArmSegments": {
       "type": "object",
       "required": [
         "upper",
@@ -2319,7 +2319,7 @@
       },
       "additionalProperties": false
     },
-    "StandingArms": {
+    "BotArms": {
       "type": "object",
       "required": [
         "shoulder",
@@ -2341,7 +2341,7 @@
           "description": "Arm segment thickness in world units."
         },
         "segments": {
-          "$ref": "#/$defs/StandingArmSegments"
+          "$ref": "#/$defs/BotArmSegments"
         },
         "handRadiusRatio": {
           "type": "number",
@@ -2365,7 +2365,7 @@
       },
       "additionalProperties": false
     },
-    "StandingLegs": {
+    "BotLegs": {
       "type": "object",
       "required": [
         "hip",
@@ -2390,7 +2390,7 @@
           "description": "Thigh cross-section in world units; the shin and knee derive from it."
         },
         "segments": {
-          "$ref": "#/$defs/StandingArmSegments",
+          "$ref": "#/$defs/BotArmSegments",
           "description": "Thigh and shin lengths as unit-radius ratios."
         },
         "footLengthRatio": {
@@ -2406,7 +2406,7 @@
         "strideLengthRatio": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Nominal left/right step length as a ratio of total leg length. The standing renderer derives its full no-slip gait-cycle distance from this value."
+          "description": "Nominal left/right step length as a ratio of total leg length. The bot renderer derives its full no-slip gait-cycle distance from this value."
         },
         "strideLiftRatio": {
           "type": "number",
@@ -2431,7 +2431,7 @@
       },
       "additionalProperties": false
     },
-    "StandingConfig": {
+    "BotConfig": {
       "type": "object",
       "required": [
         "legs",
@@ -2439,16 +2439,16 @@
       ],
       "properties": {
         "legs": {
-          "$ref": "#/$defs/StandingLegs",
+          "$ref": "#/$defs/BotLegs",
           "description": "The walking half. Its own rig \u2014 a mech leg is a hinge in one vertical plane, not an arachnid limb."
         },
         "arms": {
-          "$ref": "#/$defs/StandingArms"
+          "$ref": "#/$defs/BotArms"
         }
       },
       "additionalProperties": false
     },
-    "FlipperConfig": {
+    "AmphibianConfig": {
       "type": "object",
       "required": [
         "mounts",
@@ -2496,7 +2496,7 @@
       },
       "additionalProperties": false
     },
-    "SwimConfig": {
+    "SubmarineConfig": {
       "type": "object",
       "required": [
         "pectorals",
@@ -2513,11 +2513,11 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/SwimPectoralMount"
+            "$ref": "#/$defs/SubmarinePectoralMount"
           }
         },
         "rearFan": {
-          "$ref": "#/$defs/SwimRearFan"
+          "$ref": "#/$defs/SubmarineRearFan"
         },
         "pectoralSpanFrac": {
           "type": "number",
@@ -2665,7 +2665,7 @@
       },
       "additionalProperties": false
     },
-    "HoverConfig": {
+    "DroneConfig": {
       "type": "object",
       "required": [
         "mounts",
@@ -2677,7 +2677,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/HoverFanMount"
+            "$ref": "#/$defs/DroneFanMount"
           }
         },
         "fanSpinRadPerSec": {
@@ -2686,7 +2686,7 @@
       },
       "additionalProperties": false
     },
-    "FlyingConfig": {
+    "AirframeConfig": {
       "type": "object",
       "required": [
         "wing",
@@ -2699,7 +2699,7 @@
         "wing": {
           "oneOf": [
             {
-              "$ref": "#/$defs/FlyingSurface"
+              "$ref": "#/$defs/AirframeSurface"
             },
             {
               "type": "null"
@@ -2709,7 +2709,7 @@
         "tailWing": {
           "oneOf": [
             {
-              "$ref": "#/$defs/FlyingSurface"
+              "$ref": "#/$defs/AirframeSurface"
             },
             {
               "type": "null"
@@ -2720,7 +2720,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/FlyingJetMount"
+            "$ref": "#/$defs/AirframeJetMount"
           }
         },
         "jetRadius": {
@@ -2732,7 +2732,7 @@
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintWheels": {
+    "UnitLocomotionBlueprintRover": {
       "type": "object",
       "required": [
         "type",
@@ -2743,7 +2743,7 @@
       ],
       "properties": {
         "type": {
-          "const": "wheels"
+          "const": "rover"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2755,12 +2755,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/WheelConfig"
+          "$ref": "#/$defs/RoverConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintTreads": {
+    "UnitLocomotionBlueprintTank": {
       "type": "object",
       "required": [
         "type",
@@ -2771,7 +2771,7 @@
       ],
       "properties": {
         "type": {
-          "const": "treads"
+          "const": "tank"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2783,12 +2783,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/TreadConfig"
+          "$ref": "#/$defs/TankConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintAmphibiousTreads": {
+    "UnitLocomotionBlueprintAmphibiousTank": {
       "type": "object",
       "required": [
         "type",
@@ -2799,7 +2799,7 @@
       ],
       "properties": {
         "type": {
-          "const": "amphibious-treads"
+          "const": "amphibious-tank"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2811,12 +2811,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/TreadConfig"
+          "$ref": "#/$defs/TankConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintLegs": {
+    "UnitLocomotionBlueprintCrawler": {
       "type": "object",
       "required": [
         "type",
@@ -2827,7 +2827,7 @@
       ],
       "properties": {
         "type": {
-          "const": "legs"
+          "const": "crawler"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2839,12 +2839,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/LegConfig"
+          "$ref": "#/$defs/CrawlerConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintStanding": {
+    "UnitLocomotionBlueprintBot": {
       "type": "object",
       "required": [
         "type",
@@ -2855,7 +2855,7 @@
       ],
       "properties": {
         "type": {
-          "const": "standing"
+          "const": "bot"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2867,12 +2867,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/StandingConfig"
+          "$ref": "#/$defs/BotConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintFlippers": {
+    "UnitLocomotionBlueprintAmphibian": {
       "type": "object",
       "required": [
         "type",
@@ -2883,7 +2883,7 @@
       ],
       "properties": {
         "type": {
-          "const": "flippers"
+          "const": "amphibian"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2895,12 +2895,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/FlipperConfig"
+          "$ref": "#/$defs/AmphibianConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintHover": {
+    "UnitLocomotionBlueprintDrone": {
       "type": "object",
       "required": [
         "type",
@@ -2911,7 +2911,7 @@
       ],
       "properties": {
         "type": {
-          "const": "hover"
+          "const": "drone"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2923,12 +2923,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/HoverConfig"
+          "$ref": "#/$defs/DroneConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintFlying": {
+    "UnitLocomotionBlueprintPlane": {
       "type": "object",
       "required": [
         "type",
@@ -2939,7 +2939,7 @@
       ],
       "properties": {
         "type": {
-          "const": "flying"
+          "const": "plane"
         },
         "physicsPresetId": {
           "type": "string"
@@ -2951,7 +2951,7 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/FlyingConfig"
+          "$ref": "#/$defs/AirframeConfig"
         }
       },
       "additionalProperties": false
@@ -2979,12 +2979,12 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/SwimConfig"
+          "$ref": "#/$defs/SubmarineConfig"
         }
       },
       "additionalProperties": false
     },
-    "UnitLocomotionBlueprintDive": {
+    "UnitLocomotionBlueprintAerosub": {
       "type": "object",
       "required": [
         "type",
@@ -2995,7 +2995,7 @@
       ],
       "properties": {
         "type": {
-          "const": "dive"
+          "const": "aerosub"
         },
         "physicsPresetId": {
           "type": "string"
@@ -3007,7 +3007,7 @@
           "$ref": "#/$defs/UnitLocomotionEnvironmentalHazardPolicy"
         },
         "config": {
-          "$ref": "#/$defs/FlyingConfig"
+          "$ref": "#/$defs/AirframeConfig"
         }
       },
       "additionalProperties": false
@@ -3015,34 +3015,34 @@
     "UnitLocomotionBlueprint": {
       "oneOf": [
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintWheels"
+          "$ref": "#/$defs/UnitLocomotionBlueprintRover"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintTreads"
+          "$ref": "#/$defs/UnitLocomotionBlueprintTank"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintAmphibiousTreads"
+          "$ref": "#/$defs/UnitLocomotionBlueprintAmphibiousTank"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintLegs"
+          "$ref": "#/$defs/UnitLocomotionBlueprintCrawler"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintStanding"
+          "$ref": "#/$defs/UnitLocomotionBlueprintBot"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintFlippers"
+          "$ref": "#/$defs/UnitLocomotionBlueprintAmphibian"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintHover"
+          "$ref": "#/$defs/UnitLocomotionBlueprintDrone"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintFlying"
+          "$ref": "#/$defs/UnitLocomotionBlueprintPlane"
         },
         {
           "$ref": "#/$defs/UnitLocomotionBlueprintSubmarine"
         },
         {
-          "$ref": "#/$defs/UnitLocomotionBlueprintDive"
+          "$ref": "#/$defs/UnitLocomotionBlueprintAerosub"
         }
       ]
     },
@@ -4150,7 +4150,7 @@
       },
       "additionalProperties": false
     },
-    "HoverFanMount": {
+    "DroneFanMount": {
       "type": "object",
       "required": [
         "offset",
@@ -4174,7 +4174,7 @@
       },
       "additionalProperties": false
     },
-    "FlyingSurface": {
+    "AirframeSurface": {
       "type": "object",
       "required": [
         "offset",
@@ -4210,7 +4210,7 @@
       },
       "additionalProperties": false
     },
-    "FlyingJetMount": {
+    "AirframeJetMount": {
       "type": "object",
       "required": [
         "offset"
@@ -4222,7 +4222,7 @@
       },
       "additionalProperties": false
     },
-    "SwimPectoralMount": {
+    "SubmarinePectoralMount": {
       "type": "object",
       "required": [
         "offset"
@@ -4234,7 +4234,7 @@
       },
       "additionalProperties": false
     },
-    "SwimRearFan": {
+    "SubmarineRearFan": {
       "type": "object",
       "required": [
         "offset",

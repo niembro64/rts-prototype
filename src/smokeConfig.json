@@ -43,7 +43,7 @@
     "endRadiusMultiplier": 1.15,
     "maxAlpha": 1
   },
-  "locomotionHovercraft": {
+  "locomotionDuctedFan": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -54,7 +54,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
-  "locomotionAlbatrosHoverFans": {
+  "locomotionAlbatrosDroneFans": {
     "maxPoolSize": 12000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -65,7 +65,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.02
   },
-  "locomotionDragonflyHovercraft": {
+  "locomotionDragonflyDrone": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -76,7 +76,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.03
   },
-  "locomotionEagleFlying": {
+  "locomotionEaglePlane": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -87,7 +87,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.1
   },
-  "locomotionAlbatrosFlying": {
+  "locomotionAlbatrosAerosub": {
     "maxPoolSize": 12000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,

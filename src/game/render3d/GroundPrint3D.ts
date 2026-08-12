@@ -41,7 +41,7 @@ import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
-import type { LegInstance } from './LegRig3D';
+import type { LegInstance } from './CrawlerRig3D';
 import { isLocomotionGrounded } from './LocomotionTerrainSampler';
 import { disposeMesh } from './threeUtils';
 import {
@@ -154,7 +154,7 @@ export class GroundPrintRenderPacket3D {
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
     const loc = getMesh(entity.id);
-    const grounded = loc?.type === 'legs'
+    const grounded = loc?.type === 'crawler'
       ? loc.visualGrounded
       : isLocomotionGrounded(entity, mapWidth, mapHeight);
     this.ids[cursor] = entity.id;
@@ -483,7 +483,7 @@ export class GroundPrint3D {
       if (this.scope && !this.scope.inScope(packet.x[row], packet.y[row], 200)) continue;
 
       switch (loc.type) {
-        case 'wheels': {
+        case 'rover': {
           for (let i = 0; i < loc.wheelContacts.length; i++) {
             const c = loc.wheelContacts[i];
             if (!c.initialized) continue;
@@ -493,7 +493,7 @@ export class GroundPrint3D {
           }
           break;
         }
-        case 'treads': {
+        case 'tank': {
           for (let i = 0; i < loc.treadContacts.length; i++) {
             const c = loc.treadContacts[i];
             if (!c.initialized) continue;
@@ -503,7 +503,7 @@ export class GroundPrint3D {
           }
           break;
         }
-        case 'legs': {
+        case 'crawler': {
           for (let i = 0; i < loc.legs.length; i++) {
             const leg = loc.legs[i];
             if (!leg.initialized) continue;

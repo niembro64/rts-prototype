@@ -152,9 +152,9 @@ export class UnitChassisInstancePose3D {
       return;
     }
     const unitBlueprintId = entity.unit?.unitBlueprintId;
-    const usesStandingRig = unitBlueprintId !== undefined &&
-      getUnitBlueprint(unitBlueprintId).unitLocomotion.type === 'standing';
-    if (teamTrim !== null && !usesStandingRig) {
+    const usesBotRig = unitBlueprintId !== undefined &&
+      getUnitBlueprint(unitBlueprintId).unitLocomotion.type === 'bot';
+    if (teamTrim !== null && !usesBotRig) {
       this.updateTeamKit(
         entity,
         mesh,

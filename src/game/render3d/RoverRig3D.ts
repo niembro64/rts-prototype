@@ -1,4 +1,4 @@
-// WheelRig3D — four real cylindrical tires for wheeled units (jackal,
+// RoverRig3D — four real cylindrical tires for rover units (jackal,
 // mongoose, …). Each tire carries the four canonical visual state
 // channels (movement position, movement velocity, rotation position,
 // rotation velocity). High/Medium animation plays off body motion — the
@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, PlayerId } from '../sim/types';
-import type { WheelConfig } from '@/types/blueprints';
+import type { RoverConfig } from '@/types/blueprints';
 import {
   type LocomotionBase,
   type LocomotionRenderPose,
@@ -118,8 +118,8 @@ export type WheelMount = {
   rotation: number;
 };
 
-export type WheelMesh = {
-  type: 'wheels';
+export type RoverMesh = {
+  type: 'rover';
   group: THREE.Group;
   /** Each tire's outer group — owns chassis-local position. Local Y
    *  is rewritten every frame by the floor clamp so the tire bottom
@@ -137,13 +137,13 @@ export type WheelMesh = {
   printWidth: number;
 } & LocomotionBase;
 
-export function buildWheels(
+export function buildRover(
   unitGroup: THREE.Group,
   r: number,
-  cfg: WheelConfig,
+  cfg: RoverConfig,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): WheelMesh {
+): RoverMesh {
   // Wheeled units get four real cylindrical wheels — not the four
   // small tread-slabs the previous renderer used. The cylinder's
   // default axis is +Y; we wrap each in a group rotated so the axle
@@ -216,7 +216,7 @@ export function buildWheels(
   // contact patch, not the full slick width.
   const printWidth = Math.max(0.5, tireWidth * 0.65);
   return {
-    type: 'wheels',
+    type: 'rover',
     group,
     wheelGroups,
     wheels,
@@ -238,8 +238,8 @@ const _wheelUp = { x: 0, y: 1, z: 0 };
  *  body-motion-derived spin rate. Rotation position integrates from
  *  angular velocity. Low retains suspension/contact work but skips
  *  angular velocity and phase integration entirely. */
-export function updateWheels(
-  mesh: WheelMesh,
+export function updateRover(
+  mesh: RoverMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   dtMs: number,
@@ -250,7 +250,7 @@ export function updateWheels(
   // The chassis tilt rotates local Y through the surface normal; lift
   // applied as a local-Y delta moves the wheel approximately by
   // `localLift * normal.z` in world Y. Invert that ratio (with the
-  // same 0.35 floor LegRig3D uses) when converting a required world
+  // same 0.35 floor CrawlerRig3D uses) when converting a required world
   // lift back to a local-frame adjustment.
   chassisUpFromPose(pose, _wheelUp);
   const normalY = Math.max(0.35, _wheelUp.y);
@@ -318,7 +318,7 @@ export function updateWheels(
   return wheelsNeedFrame(mesh, pose);
 }
 
-function wheelsNeedFrame(mesh: WheelMesh, pose: LocomotionRenderPose): boolean {
+function wheelsNeedFrame(mesh: RoverMesh, pose: LocomotionRenderPose): boolean {
   if (rollingLocomotionBodyActive(pose)) return true;
   const count = Math.min(
     mesh.wheels.length,

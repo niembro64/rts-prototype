@@ -1,14 +1,14 @@
-// StandingRig3D — the biped. Two legs, two arms, and nothing borrowed from the
+// BotRig3D — the biped. Two legs, two arms, and nothing borrowed from the
 // arachnid leg rig.
 //
-// WHY NOT `legs`. The leg rig solves a spider: each limb owns an independent
-// reach shell and chooses a world-space foothold. A standing mech instead owns
+// WHY NOT `crawler`. The crawler rig solves a spider: each limb owns an independent
+// reach shell and chooses a world-space foothold. A bot mech instead owns
 // one coupled biped cycle and visible hip sockets. Its stopped pose may open
 // each straight support column slightly forward and outward, but that authored
 // stance blends back into the shared sagittal walk rather than becoming a
 // second foothold controller.
 //
-// THE WALK IS ONE COUPLED BIPED CYCLE. Unlike `legs`, a standing unit does not
+// THE WALK IS ONE COUPLED BIPED CYCLE. Unlike `crawler`, a bot unit does not
 // own independent world-space foothold state per limb. Both legs sample one
 // distance-driven phase exactly half a cycle apart, so their longitudinal
 // poses are mathematical opposites at every instant. Each arm then reads and
@@ -24,8 +24,8 @@
 
 import * as THREE from 'three';
 import type {
-  StandingArms,
-  StandingLegs,
+  BotArms,
+  BotLegs,
   UnitTurretHostAttachment,
 } from '@/types/blueprintSchema.generated';
 import type { Entity, PlayerId, Turret } from '../sim/types';
@@ -61,18 +61,18 @@ const constructionEmitterMaterial = new THREE.MeshBasicMaterial({
   color: COLORS.units.unitCommander.lens.colorHex,
 });
 
-type StandingVariant = 'commander' | 'human' | 'titan' | 'generic';
-type StandingArmRole = 'weapon' | 'construction' | 'free';
-type StandingArmHostAttachment = Extract<
+type BotVariant = 'commander' | 'human' | 'titan' | 'generic';
+type BotArmRole = 'weapon' | 'construction' | 'free';
+type BotArmHostAttachment = Extract<
   UnitTurretHostAttachment,
-  { kind: 'standingArm' }
+  { kind: 'botArm' }
 >;
-export type StandingArmId = StandingArmHostAttachment['arm'];
+export type BotArmId = BotArmHostAttachment['arm'];
 
 /** Local yaw/pitch a held turret takes from the arm carrying it. */
-export type StandingArmTurretAim = { yaw: number; pitch: number };
+export type BotArmTurretAim = { yaw: number; pitch: number };
 
-type StandingTurretAimMemory = {
+type BotTurretAimMemory = {
   initialized: boolean;
   yaw: number;
   pitch: number;
@@ -100,8 +100,8 @@ type Strut = {
   depth: number;
 };
 
-export type StandingLeg = {
-  /** -1 right, +1 left in the standing frame's lateral axis. */
+export type BotLeg = {
+  /** -1 right, +1 left in the bot frame's lateral axis. */
   side: number;
   /** Hip socket, chassis-local. */
   hipX: number;
@@ -122,10 +122,10 @@ export type StandingLeg = {
   footLocalZ: number;
 };
 
-export type StandingArm = {
-  id: StandingArmId;
+export type BotArm = {
+  id: BotArmId;
   side: number;
-  role: StandingArmRole;
+  role: BotArmRole;
   shoulderX: number;
   shoulderY: number;
   shoulderZ: number;
@@ -155,15 +155,15 @@ export type StandingArm = {
   /** Unit vector elbow -> hand, chassis-local: the direction this arm is
    *  currently pointing. A gun held in the hand is rigid to it, so this is
    *  the whole of that gun's rendered orientation — see
-   *  resolveStandingArmTurretAim. */
+   *  resolveBotArmTurretAim. */
   aimX: number;
   aimY: number;
   aimZ: number;
 };
 
-export type StandingMesh = {
-  type: 'standing';
-  variant: StandingVariant;
+export type BotMesh = {
+  type: 'bot';
+  variant: BotVariant;
   group: THREE.Group;
   /** The legs hang off this, and it yaws INSIDE the hull.
    *
@@ -197,9 +197,9 @@ export type StandingMesh = {
    *  host-wide animation gate: combat aim suppresses gait on both arms even
    *  when only one arm receives the selected turret's pitch proposal. */
   turretLockActive: boolean;
-  turretAimMemory: Map<string, StandingTurretAimMemory>;
-  legs: StandingLeg[];
-  arms: StandingArm[];
+  turretAimMemory: Map<string, BotTurretAimMemory>;
+  legs: BotLeg[];
+  arms: BotArm[];
   /** Ground distance used to advance the shared biped gait. */
   contact: RollingContactState;
   /** Shared normalized right-leg phase; the left leg always adds exactly .5. */
@@ -227,10 +227,10 @@ export type StandingMesh = {
   unitRadius: number;
 } & LocomotionBase;
 
-/** Below these rates a standing unit is visually at rest. */
+/** Below these rates a bot unit is visually at rest. */
 const IDLE_SPEED = 1.5;
 const IDLE_YAW_RATE = 0.12;
-/** Seconds for the standing gait amplitude to ease in and out. */
+/** Seconds for the bot gait amplitude to ease in and out. */
 const GAIT_EASE_SECONDS = 0.16;
 /** How far the elbow follows the shoulder, as a fraction of shoulder swing. */
 const ELBOW_FOLLOW = 0.28;
@@ -238,7 +238,7 @@ const ELBOW_FOLLOW = 0.28;
  *  50 degrees of elbow fold through the walk; the old 17-degree fold made
  *  both arms hang like ropes. */
 const ELBOW_BEND_RAD = THREE.MathUtils.degToRad(52);
-/** No standing arm may become a straight hanging rod, even under turret or
+/** No bot arm may become a straight hanging rod, even under turret or
  * construction assistance. */
 const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 /** Arms ease from walk swing into a working pose rather than snapping. */
@@ -250,7 +250,7 @@ const ARM_ACTION_EASE_SECONDS = 0.11;
 const UPPER_BODY_RESPONSE_TIME_SCALE = 2;
 /** Dynamic unit bodies use solid-sphere inertia (I = 2/5 m r^2). With no
  * separately authored torso mass distribution, using that same conservative
- * envelope gives every standing unit a deterministic turn authority without
+ * envelope gives every bot unit a deterministic turn authority without
  * adding a per-blueprint animation-speed knob. */
 const UPPER_BODY_INERTIA_FACTOR = 2 / 5;
 const FORCE_TO_ACCELERATION_SCALE = 1_000_000;
@@ -299,7 +299,7 @@ function shortestAngleDelta(from: number, to: number): number {
  * body's edge produces torque F*r; dividing by solid-body inertia makes a
  * broad, massive Rex turn materially slower than a Human without naming
  * either unit here. */
-export function standingUpperBodyYawSpringGain(
+export function botUpperBodyYawSpringGain(
   authoredMass: number,
   radius: number,
   maxPropulsiveForce: number,
@@ -322,8 +322,8 @@ export function standingUpperBodyYawSpringGain(
  * closed-form counterpart of the authoritative damped attitude solve, so the
  * result is stable across render frame rates and carries angular momentum
  * when a turret changes targets. */
-function stepStandingUpperBodyYaw(
-  mesh: StandingMesh,
+function stepBotUpperBodyYaw(
+  mesh: BotMesh,
   targetWorldYaw: number,
   dt: number,
 ): void {
@@ -388,10 +388,10 @@ function makeBlock(
   return mesh;
 }
 
-/** A standing limb joint is a hinge housing, not another limb block. The shared
- * cylinder's authored axis is local Y; rotate it onto standing-local Z so the
+/** A bot limb joint is a hinge housing, not another limb block. The shared
+ * cylinder's authored axis is local Y; rotate it onto bot-local Z so the
  * axle runs across the limb while the round profile reads in its bend plane. */
-function makeStandingHingeCylinder(
+function makeBotHingeCylinder(
   parent: THREE.Group,
   diameter: number,
   axleLength: number,
@@ -408,12 +408,12 @@ function makeStandingHingeCylinder(
   return mesh;
 }
 
-/** Upper seam of the lower-body pelvis in the lifted standing-rig frame.
- * Standing chassis art begins on this exact plane so no hidden upper-body
+/** Upper seam of the lower-body pelvis in the lifted bot-rig frame.
+ * Bot chassis art begins on this exact plane so no hidden upper-body
  * blocks extend down inside the independently yawing hips. */
-export function getStandingPelvisTopLocalY(
+export function getBotPelvisTopLocalY(
   unitRadius: number,
-  cfgLegs: StandingLegs,
+  cfgLegs: BotLegs,
   chassisLiftY: number,
 ): number {
   const hipY = unitRadius * cfgLegs.hip.zUnitRadiusRatio - chassisLiftY;
@@ -423,18 +423,18 @@ export function getStandingPelvisTopLocalY(
 }
 
 /** Compact BAR-style mech boot: a real outsole with a raised heel, quarter,
- *  sloped instep and toe box. Standing feet turn with their legs, so this
+ *  sloped instep and toe box. Bot feet turn with their legs, so this
  *  volume can read as a simple shoe instead of a ground-pinned landing pad. */
 function makeFoot(
   parent: THREE.Group,
   length: number,
   width: number,
   ownerId: PlayerId | undefined,
-  variant: StandingVariant,
+  variant: BotVariant,
   geometryTier: PrimitiveGeometryTier,
 ): THREE.Group {
   const group = new THREE.Group();
-  group.userData.standingShoe = true;
+  group.userData.botShoe = true;
   const soleHeight = Math.max(0.36, width * 0.13);
   const sole = makeBlock(group, length * 0.80, soleHeight, width * 0.90, ownerId);
   sole.position.set(length * 0.01, soleHeight * 0.5, 0);
@@ -452,7 +452,7 @@ function makeFoot(
     width * 0.70,
     ownerId,
   );
-  quarter.userData.standingShoeUpper = true;
+  quarter.userData.botShoeUpper = true;
   quarter.position.set(-length * 0.19, soleHeight + quarterHeight * 0.5, 0);
   quarter.rotation.z = THREE.MathUtils.degToRad(-7);
 
@@ -471,7 +471,7 @@ function makeFoot(
 
   const toeHeight = Math.max(soleHeight * 1.45, width * 0.24);
   const toe = makeBlock(group, length * 0.36, toeHeight, width * 0.80, ownerId);
-  toe.userData.standingShoeToe = true;
+  toe.userData.botShoeToe = true;
   toe.position.set(length * 0.34, soleHeight + toeHeight * 0.5, 0);
   toe.rotation.z = THREE.MathUtils.degToRad(-4);
 
@@ -494,14 +494,14 @@ function makeFoot(
   return group;
 }
 
-function standingVariant(unitBlueprintId: string | undefined): StandingVariant {
+function botVariant(unitBlueprintId: string | undefined): BotVariant {
   if (unitBlueprintId === 'unitCommander') return 'commander';
   if (unitBlueprintId === 'unitHuman') return 'human';
   if (unitBlueprintId === 'unitRex') return 'titan';
   return 'generic';
 }
 
-function armRole(variant: StandingVariant, side: number): StandingArmRole {
+function armRole(variant: BotVariant, side: number): BotArmRole {
   // The Human carries its weapon on the right. The Commander deliberately
   // separates equipment: construction on the right, beam weapon on the left.
   // A titan carries a gun in each hand, so neither arm is ever free.
@@ -511,8 +511,8 @@ function armRole(variant: StandingVariant, side: number): StandingArmRole {
   return 'free';
 }
 
-function standingArmId(side: number): StandingArmId {
-  // The standing frame is right-handed: +X forward and +Y/Three +Z left.
+function botArmId(side: number): BotArmId {
+  // The bot frame is right-handed: +X forward and +Y/Three +Z left.
   // The negative-lateral limb is therefore the host's right arm.
   return side < 0 ? 'rightArm' : 'leftArm';
 }
@@ -531,7 +531,7 @@ function addCommanderConstructionTool(
     ownerId,
   );
   housing.position.y = -unitRadius * 0.17;
-  housing.userData.standingConstructionTool = true;
+  housing.userData.botConstructionTool = true;
 
   // A thick distal tool head and twin luminous nano rails make the right arm
   // unmistakably a construction implement rather than an unarmed fist.
@@ -543,7 +543,7 @@ function addCommanderConstructionTool(
     ownerId,
   );
   toolHead.position.y = unitRadius * 0.10;
-  toolHead.userData.standingConstructionTool = true;
+  toolHead.userData.botConstructionTool = true;
 
   const profile = getConstructionHostMarkingProfile('unitCommander');
   if (profile !== null) attachment.add(
@@ -556,7 +556,7 @@ function addCommanderConstructionTool(
     const prong = new THREE.Mesh(unitBox, constructionEmitterMaterial);
     prong.position.set(0, unitRadius * 0.30, side * unitRadius * 0.105);
     prong.scale.set(unitRadius * 0.07, unitRadius * 0.30, unitRadius * 0.055);
-    prong.userData.standingConstructionEmitter = true;
+    prong.userData.botConstructionEmitter = true;
     attachment.add(prong);
   }
 }
@@ -565,7 +565,7 @@ function addCommanderConstructionTool(
  *
  *  Aligning local Y with `setFromUnitVectors` leaves roll unconstrained. That
  *  is harmless for a cylinder but makes an armoured box visibly corkscrew as
- *  an arm crosses vertical. Projecting the standing rig's lateral axis onto
+ *  an arm crosses vertical. Projecting the bot rig's lateral axis onto
  *  the segment-normal plane gives every limb a stable rectangular frame. */
 function poseStrut(
   strut: Strut,
@@ -636,7 +636,7 @@ function poseStrut(
 }
 
 /** Distance from an axis-aligned box center to the first face hit by the
- * center-to-child ray. Standing shoulder housings are unrotated boxes. */
+ * center-to-child ray. Bot shoulder housings are unrotated boxes. */
 function boxJointSurfaceDistance(
   box: THREE.Mesh,
   dx: number,
@@ -662,7 +662,7 @@ function boxJointSurfaceDistance(
  * made the rendered struts stretch as the unit walked. Here hip→knee and
  * knee→foot always remain the authored lengths. An unreachable stride target
  * is clamped to the leg's reach instead of disconnecting or stretching it. */
-function solveStandingKnee(
+function solveBotKnee(
   hipX: number, hipY: number, hipZ: number,
   footX: number, footY: number, footZ: number,
   thigh: number, shin: number,
@@ -713,7 +713,7 @@ function positiveUnitPhase(phase: number): number {
 /** A triangle wave keeps both legs exact longitudinal opposites while making
  * the planted half linear. Unlike a sine, its stance speed does not accelerate
  * through mid-step and stall near toe-off. */
-function standingLongitudinalWave(phase: number): number {
+function botLongitudinalWave(phase: number): number {
   const cycle = positiveUnitPhase(phase);
   return cycle < 0.5 ? -1 + cycle * 4 : 3 - cycle * 4;
 }
@@ -723,7 +723,7 @@ function standingLongitudinalWave(phase: number): number {
  * terrain. We keep that readable idea with four linear keys: toe-down at
  * push-off, neutral through mid-swing, toe-up before heel strike, then flat at
  * touchdown. The planted half remains completely flat. */
-export function standingFootPitch(phase: number): number {
+export function botFootPitch(phase: number): number {
   const legPhase = positiveUnitPhase(phase);
   if (legPhase >= 0.5) return 0;
   const recovery = legPhase * 2;
@@ -755,15 +755,15 @@ export function standingFootPitch(phase: number): number {
   );
 }
 
-/** Pose the whole standing biped from one gait phase.
+/** Pose the whole bot biped from one gait phase.
  *
  * Each leg recovers from back to front for half a cycle, then travels linearly
  * from front to back while planted. The full-cycle travel distance is four
  * half-strides, so the local stance motion exactly cancels forward chassis
  * travel. Arms consume these resolved foot positions later; no other phase or
  * speed clock exists. */
-function poseCoupledStandingGait(
-  mesh: StandingMesh,
+function poseCoupledBotGait(
+  mesh: BotMesh,
   phase: number,
   gait: number,
 ): void {
@@ -773,7 +773,7 @@ function poseCoupledStandingGait(
   const halfStride = mesh.gaitCycleDistance * 0.25;
   for (const leg of mesh.legs) {
     const legPhase = positiveUnitPhase(cycle + (leg.side > 0 ? 0.5 : 0));
-    const longitudinalWave = standingLongitudinalWave(legPhase);
+    const longitudinalWave = botLongitudinalWave(legPhase);
     const recoveryWave = legPhase < 0.5
       ? Math.sin(legPhase * Math.PI * 2)
       : 0;
@@ -782,7 +782,7 @@ function poseCoupledStandingGait(
     const footZ = leg.hipZ + leg.side * mesh.stanceOutward * stanceBlend;
     const requestedFootLift = recoveryWave * mesh.strideLift * amplitude;
     const footY = mesh.groundLocalY + requestedFootLift;
-    solveStandingKnee(
+    solveBotKnee(
       leg.hipX,
       leg.hipY,
       leg.hipZ,
@@ -818,23 +818,23 @@ function poseCoupledStandingGait(
     // The shoe is an authored lower-body animation piece, not a terrain
     // contact solver. It always faces with the hips; only the recovery half
     // receives a modest toe/heel pitch.
-    leg.foot.rotation.set(0, 0, standingFootPitch(legPhase) * amplitude);
+    leg.foot.rotation.set(0, 0, botFootPitch(legPhase) * amplitude);
   }
 }
 
-export function buildStandingRig(
+export function buildBotRig(
   unitGroup: THREE.Group,
   unitRadius: number,
   unitMass: number,
   maxPropulsiveForce: number,
-  cfgLegs: StandingLegs,
-  cfgArms: StandingArms,
+  cfgLegs: BotLegs,
+  cfgArms: BotArms,
   chassisLiftY: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
   unitBlueprintId?: string,
-): StandingMesh {
-  const variant = standingVariant(unitBlueprintId);
+): BotMesh {
+  const variant = botVariant(unitBlueprintId);
   const group = new THREE.Group();
   unitGroup.add(group);
   const hips = new THREE.Group();
@@ -861,12 +861,12 @@ export function buildStandingRig(
     ownerId,
   );
   pelvis.position.set(hipX, hipY + legWidth * STANDING_PELVIS_CENTER_LIFT_RATIO, 0);
-  pelvis.userData.standingPelvis = true;
+  pelvis.userData.botPelvis = true;
 
-  const legs: StandingLeg[] = [];
+  const legs: BotLeg[] = [];
   for (const side of [-1, 1] as const) {
     const hipZ = side * hipHalfTrack;
-    const hipJoint = makeStandingHingeCylinder(
+    const hipJoint = makeBotHingeCylinder(
       hips,
       hipJointRadius * 2,
       legWidth * 0.95,
@@ -874,8 +874,8 @@ export function buildStandingRig(
       geometryTier,
     );
     hipJoint.position.set(hipX, hipY, hipZ);
-    hipJoint.userData.standingHipJoint = true;
-    const leg: StandingLeg = {
+    hipJoint.userData.botHipJoint = true;
+    const leg: BotLeg = {
       side,
       hipX,
       hipY,
@@ -894,7 +894,7 @@ export function buildStandingRig(
         variant === 'commander' && geometryTier === 'close' ? side : 0,
         geometryTier !== 'far',
       ),
-      knee: makeStandingHingeCylinder(
+      knee: makeBotHingeCylinder(
         hips,
         legWidth * 0.95,
         legWidth * 0.9,
@@ -911,7 +911,7 @@ export function buildStandingRig(
   const upperLength = unitRadius * cfgArms.segments.upper.lengthUnitRadiusRatio;
   const forearmLength = unitRadius * cfgArms.segments.lower.lengthUnitRadiusRatio;
   const armWidth = cfgArms.radius;
-  const arms: StandingArm[] = [];
+  const arms: BotArm[] = [];
   for (const side of [-1, 1] as const) {
     const attachment = new THREE.Group();
     group.add(attachment);
@@ -945,9 +945,9 @@ export function buildStandingRig(
       ownerId,
     );
     shoulderJoint.position.set(shoulderX, shoulderY, shoulderZ);
-    shoulderJoint.userData.standingShoulderJoint = true;
+    shoulderJoint.userData.botShoulderJoint = true;
     arms.push({
-      id: standingArmId(side),
+      id: botArmId(side),
       side,
       role,
       shoulderX,
@@ -971,7 +971,7 @@ export function buildStandingRig(
         variant === 'commander' && geometryTier === 'close' ? side : 0,
         geometryTier !== 'far',
       ),
-      elbow: makeStandingHingeCylinder(
+      elbow: makeBotHingeCylinder(
         group,
         armWidth * 0.92,
         armWidth * 0.86,
@@ -990,7 +990,7 @@ export function buildStandingRig(
   }
 
   return {
-    type: 'standing',
+    type: 'bot',
     variant,
     group,
     hips,
@@ -998,7 +998,7 @@ export function buildStandingRig(
     upperBodyYaw: 0,
     upperBodyWorldYaw: null,
     upperBodyYawVelocity: 0,
-    upperBodyYawSpringGain: standingUpperBodyYawSpringGain(
+    upperBodyYawSpringGain: botUpperBodyYawSpringGain(
       unitMass,
       unitRadius,
       maxPropulsiveForce,
@@ -1026,7 +1026,7 @@ export function buildStandingRig(
 }
 
 function poseArm(
-  arm: StandingArm,
+  arm: BotArm,
   shoulderPitch: number,
   forearmPitch: number,
 ): void {
@@ -1082,7 +1082,7 @@ function poseArm(
   }
 }
 
-function standingTurretAssistPriority(
+function botTurretAssistPriority(
   turret: Turret,
   state: HostTurretAimSample3D['state'],
   manualHoldMs: number,
@@ -1096,12 +1096,12 @@ function standingTurretAssistPriority(
   return 0;
 }
 
-/** Let a standing host echo the aim already solved by its arm-mounted
+/** Let a bot host echo the aim already solved by its arm-mounted
  * turrets. Every turret remains independently posed at its authoritative
  * world yaw/pitch; this host-side pass only selects optional secondary torso
  * and arm motion from the same values. */
-export function updateStandingHostTurretAim(
-  mesh: StandingMesh,
+export function updateBotHostTurretAim(
+  mesh: BotMesh,
   hostYaw: number,
   turretRows: ClientRenderTurretHostRows | undefined,
   turrets: readonly Turret[],
@@ -1119,7 +1119,7 @@ export function updateStandingHostTurretAim(
   let selectedPriority = 0;
   let selectedYaw = 0;
   let selectedPitch = 0;
-  let selectedArm: StandingArmId | null = null;
+  let selectedArm: BotArmId | null = null;
 
   for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
     const turret = turrets[turretIndex];
@@ -1164,7 +1164,7 @@ export function updateStandingHostTurretAim(
     memory.yaw = _hostTurretAimSample.yaw;
     memory.pitch = _hostTurretAimSample.pitch;
 
-    const priority = standingTurretAssistPriority(
+    const priority = botTurretAssistPriority(
       turret,
       _hostTurretAimSample.state,
       memory.manualHoldMs,
@@ -1173,7 +1173,7 @@ export function updateStandingHostTurretAim(
     selectedPriority = priority;
     selectedYaw = _hostTurretAimSample.yaw;
     selectedPitch = _hostTurretAimSample.pitch;
-    selectedArm = attachment.kind === 'standingArm' ? attachment.arm : null;
+    selectedArm = attachment.kind === 'botArm' ? attachment.arm : null;
   }
 
   mesh.turretLockActive = selectedPriority > 0;
@@ -1193,7 +1193,7 @@ export function updateStandingHostTurretAim(
     mesh.upperBodyWorldYaw = targetWorldYaw;
     mesh.upperBodyYawVelocity = 0;
   } else {
-    stepStandingUpperBodyYaw(mesh, targetWorldYaw, dt);
+    stepBotUpperBodyYaw(mesh, targetWorldYaw, dt);
   }
   // The lifted upper body is parented under the locomotion yaw. Derive only
   // the local counter/assist twist here; the persistent inertial controller
@@ -1210,7 +1210,7 @@ export function updateStandingHostTurretAim(
   return mesh.upperBodyYaw;
 }
 
-function armActionActive(entity: Entity | undefined, arm: StandingArm): boolean {
+function armActionActive(entity: Entity | undefined, arm: BotArm): boolean {
   if (arm.role === 'construction') {
     return entity !== undefined &&
       entity.builder !== null &&
@@ -1220,7 +1220,7 @@ function armActionActive(entity: Entity | undefined, arm: StandingArm): boolean 
 }
 
 function poseArms(
-  mesh: StandingMesh,
+  mesh: BotMesh,
   entity: Entity | undefined,
   dt: number,
 ): void {
@@ -1283,9 +1283,9 @@ function poseArms(
  *  Gameplay still owns its stable blueprint mount; this is the articulated
  *  presentation mount that prevents the gun from remaining in the torso while
  *  its arm walks away. */
-export function resolveStandingArmTurretRoot(
-  mesh: StandingMesh,
-  armId: StandingArmId,
+export function resolveBotArmTurretRoot(
+  mesh: BotMesh,
+  armId: BotArmId,
   mountId: string,
   headRadius: number,
   out: THREE.Vector3 = _turretMount,
@@ -1313,7 +1313,7 @@ export function resolveStandingArmTurretRoot(
 /** Rendered orientation of a gun held by `armId`, as the local yaw/pitch a
  *  turret rig applies to its own yaw and pitch groups.
  *
- *  A standing host aims with its body: the torso carries the weapon heading
+ *  A bot host aims with its body: the torso carries the weapon heading
  *  and the arm carries the elevation, and the gun is bolted to the hand at
  *  the end of that chain. So the arm direction IS the gun direction, and a
  *  held turret must not also articulate on its own — that would express one
@@ -1321,14 +1321,14 @@ export function resolveStandingArmTurretRoot(
  *  it. Every other host keeps the ordinary turret pose, where the mount is
  *  fixed to the hull and only the turret moves.
  *
- *  Returned in the same chassis-local frame `resolveStandingArmTurretRoot`
+ *  Returned in the same chassis-local frame `resolveBotArmTurretRoot`
  *  reports its position in, and using the same convention as
  *  applyTurretAimPose3D: barrel along local +X, yaw about Y, pitch about Z. */
-export function resolveStandingArmTurretAim(
-  mesh: StandingMesh,
-  armId: StandingArmId,
-  out: StandingArmTurretAim,
-): StandingArmTurretAim | null {
+export function resolveBotArmTurretAim(
+  mesh: BotMesh,
+  armId: BotArmId,
+  out: BotArmTurretAim,
+): BotArmTurretAim | null {
   const arm = mesh.arms.find((candidate) => candidate.id === armId);
   if (arm === undefined) return null;
   out.yaw = Math.atan2(-arm.aimZ, arm.aimX);
@@ -1336,8 +1336,8 @@ export function resolveStandingArmTurretAim(
   return out;
 }
 
-export function updateStandingRig(
-  mesh: StandingMesh,
+export function updateBotRig(
+  mesh: BotMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   dtMs: number,
@@ -1345,7 +1345,7 @@ export function updateStandingRig(
   const dt = Math.max(0, dtMs) / 1000;
   const travelled = sampleRollingContactDistance(pose, mesh.contact);
 
-  // LOWER BODY. Standing legs are ordinary locomotion: they inherit the same
+  // LOWER BODY. Bot legs are ordinary locomotion: they inherit the same
   // authoritative unit orientation as wheels or treads. The renderer applies
   // optional turret assistance to the lifted upper body, so the hips cancel
   // only that relative offset and never invent a second travel-facing yaw.
@@ -1385,31 +1385,31 @@ export function updateStandingRig(
       mesh.gaitPhase + strideDistance / Math.max(1, mesh.gaitCycleDistance),
     );
   }
-  poseCoupledStandingGait(mesh, mesh.gaitPhase, mesh.gait);
+  poseCoupledBotGait(mesh, mesh.gaitPhase, mesh.gait);
   poseArms(mesh, entity, dt);
 
   return true;
 }
 
 /** Standstill pose, for a preview card or a unit built before its first tick. */
-export function poseStandingRigAtRest(mesh: StandingMesh): void {
+export function poseBotRigAtRest(mesh: BotMesh): void {
   mesh.hips.rotation.y = -mesh.upperBodyYaw;
-  poseCoupledStandingGait(mesh, mesh.gaitPhase, 0);
+  poseCoupledBotGait(mesh, mesh.gaitPhase, 0);
   poseArms(mesh, undefined, 0);
 }
 
 /** The Entity Lab uses the exact same coupled gait sampler as the battlefield. */
-export function poseStandingRigAtPreviewCycle(
-  mesh: StandingMesh,
+export function poseBotRigAtPreviewCycle(
+  mesh: BotMesh,
   phase: number,
   gait: number,
 ): void {
   mesh.hips.rotation.y = -mesh.upperBodyYaw;
-  poseCoupledStandingGait(mesh, phase, gait);
+  poseCoupledBotGait(mesh, phase, gait);
   poseArms(mesh, undefined, 0);
 }
 
-export function disposeStandingRigGeometry(): void {
+export function disposeBotRigGeometry(): void {
   unitBox.dispose();
   for (const mat of segmentMaterials.values()) mat.dispose();
   segmentMaterials.clear();

@@ -284,7 +284,7 @@ pub(crate) const UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATER: u
 pub(crate) const UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE: usize = 58;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
-pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
+pub(crate) const UF_FLAG_IS_AIRBORNE_CRUISING: u32 = 1 << 1;
 pub(crate) const UF_FLAG_IS_AIRBORNE: u32 = 1 << 2;
 pub(crate) const UF_FLAG_BLOCKED_OR_DEAD: u32 = 1 << 3;
 pub(crate) const UF_FLAG_HAS_EXTERNAL_FORCE: u32 = 1 << 4;
@@ -1075,7 +1075,7 @@ pub fn unit_force_step_batch(
 
         let has_thrust = flag & UF_FLAG_HAS_THRUST != 0;
         let cruise_when_uncommanded = profile_flags & UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED != 0
-            || flag & UF_FLAG_IS_FLYING != 0;
+            || flag & UF_FLAG_IS_AIRBORNE_CRUISING != 0;
         let medium_lift_enabled = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;

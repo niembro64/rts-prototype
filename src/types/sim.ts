@@ -256,14 +256,14 @@ export type Unit = {
   /** Serve the queued request from the unit's live position and skip the
    *  shared formation corridor (stuck-replan semantics). */
   pathRequestForceLocal: boolean;
-  /** Flying-only loiter center. When a flying unit exhausts its action
+  /** Airborne-cruising loiter center. When a cruising unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */
-  flyingLoiterTargetX: number | null;
-  flyingLoiterTargetY: number | null;
-  flyingLoiterTargetZ: number | null;
-  /** Flying-only orbit direction around the loiter center. */
-  flyingLoiterTurnSign: number | null;
+  airborneLoiterTargetX: number | null;
+  airborneLoiterTargetY: number | null;
+  airborneLoiterTargetZ: number | null;
+  /** Airborne-cruising orbit direction around the loiter center. */
+  airborneLoiterTurnSign: number | null;
   velocityX: number;
   velocityY: number;
   velocityZ: number;
@@ -1003,7 +1003,7 @@ export type Buildable = {
  *
  *  Builder ≠ factory: buildings come from builders, units come from
  *  factories. Currently mounted on commanders; the planned construction
- *  aircraft will use the same component with a hover locomotion. */
+ *  aircraft will use the same component with drone locomotion. */
 export type Builder = {
   buildRange: number;
   /** BAR builder priority command mirror. Low priority is a resource-allocation

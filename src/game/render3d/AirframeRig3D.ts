@@ -1,13 +1,13 @@
-// FlyingRig3D — fixed wings plus rear jet smoke for flying locomotion.
+// AirframeRig3D — fixed wings plus rear jet smoke for plane and aerosub locomotion.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import {
   getSmokeProfile,
-  type FlyingSmokeUseId,
+  type AirframeSmokeUseId,
   type ResolvedSmokeProfile,
 } from '@/smokeConfig';
-import type { FlyingConfig } from '@/types/blueprints';
+import type { AirframeConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import type {
   AirborneEmitterBatch3D,
@@ -22,9 +22,9 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
-const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
-const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
-const JET_SMOKE_COLOR = COLORS.units.locomotion.flying.smoke.colorHex;
+const WING_COLOR = COLORS.units.locomotion.airframe.wing.colorHex;
+const JET_COLOR = COLORS.units.locomotion.airframe.jet.colorHex;
+const JET_SMOKE_COLOR = COLORS.units.locomotion.airframe.smoke.colorHex;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 const DEFAULT_WING_TIP_HALF_CHORD_FRAC = 0.12;
 
@@ -85,29 +85,30 @@ function getWingPanelGeom(
     buildWingPanelGeom(lateralSign, sweepFrac, tier));
 }
 
-type FlyingJet = {
+type AirframeJet = {
   group: THREE.Group;
   emitter: THREE.Object3D;
   smoke: SmokePuffEmitter;
 };
 
-export type FlyingMesh = {
-  type: 'flying';
+export type AirframeMesh = {
+  type: 'plane' | 'aerosub';
   group: THREE.Group;
-  jets: FlyingJet[];
+  jets: AirframeJet[];
   smokeExhaustSpeed: number;
   smokeProfile: ResolvedSmokeProfile;
 } & LocomotionBase;
 
-export function buildFlyingRig(
+export function buildAirframeRig(
   unitGroup: THREE.Group,
   unitRadius: number,
-  cfg: FlyingConfig,
-  smokeUseId: FlyingSmokeUseId,
+  locomotionType: AirframeMesh['type'],
+  cfg: AirframeConfig,
+  smokeUseId: AirframeSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): FlyingMesh {
+): AirframeMesh {
   const group = new THREE.Group();
   const smokeProfile = getSmokeProfile(smokeUseId);
 
@@ -134,7 +135,7 @@ export function buildFlyingRig(
 
   const jetRadius = Math.max(0.4, unitRadius * cfg.jetRadius);
   const jetLength = Math.max(1, unitRadius * cfg.jetLength);
-  const jets: FlyingJet[] = [];
+  const jets: AirframeJet[] = [];
   const smokeFramesSkip = Math.max(0, smokeProfile.emitFramesSkip);
 
   // One authored mount per nozzle. A `jetCount` with a single lateral scalar
@@ -188,7 +189,7 @@ export function buildFlyingRig(
 
   unitGroup.add(group);
   return {
-    type: 'flying',
+    type: locomotionType,
     group,
     jets,
     smokeExhaustSpeed: smokeProfile.exhaustSpeed,
@@ -243,8 +244,8 @@ function addWingPanels(
   }
 }
 
-export function updateFlyingRig(
-  mesh: FlyingMesh,
+export function updateAirframeRig(
+  mesh: AirframeMesh,
   _entity: Entity,
   _dtMs: number,
   smokeOut?: SmokePuffEmitter[],

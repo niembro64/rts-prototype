@@ -300,7 +300,7 @@ export class UnitMeshBuilder3D {
       smoothChassisSlots,
       polyChassisSlot,
       chassisLift: liftGroup.position.y,
-      uprightPose: blueprint?.unitLocomotion.type === 'standing',
+      uprightPose: blueprint?.unitLocomotion.type === 'bot',
     };
     if (smoothChassisSlots) {
       this.unitDetailInstances.registerSmoothChassisSlots(entity.id, smoothChassisSlots);

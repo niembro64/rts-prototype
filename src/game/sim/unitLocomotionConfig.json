@@ -1,6 +1,6 @@
 {
   "presets": {
-    "wheels": {
+    "rover": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
@@ -36,7 +36,7 @@
         "allowedFluidMedia": []
       }
     },
-    "treads": {
+    "tank": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
@@ -72,7 +72,7 @@
         "allowedFluidMedia": []
       }
     },
-    "amphibiousTreads": {
+    "amphibious-tank": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
@@ -110,7 +110,7 @@
         ]
       }
     },
-    "flippers": {
+    "amphibian": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
@@ -186,7 +186,7 @@
         ]
       }
     },
-    "legs": {
+    "crawler": {
       "actuator": {
         "propulsionAxis": "worldPlanar",
         "ground": {
@@ -222,7 +222,7 @@
         "allowedFluidMedia": []
       }
     },
-    "amphibiousLegs": {
+    "amphibious-crawler": {
       "actuator": {
         "propulsionAxis": "worldPlanar",
         "ground": {
@@ -260,7 +260,7 @@
         ]
       }
     },
-    "standing": {
+    "bot": {
       "actuator": {
         "propulsionAxis": "bodyForwardOnly",
         "ground": {
@@ -298,7 +298,7 @@
         ]
       }
     },
-    "hover": {
+    "drone": {
       "actuator": {
         "propulsionAxis": "worldPlanar",
         "ground": {
@@ -337,7 +337,7 @@
         ]
       }
     },
-    "dive": {
+    "aerosub": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {
@@ -376,7 +376,7 @@
         ]
       }
     },
-    "flying": {
+    "plane": {
       "actuator": {
         "propulsionAxis": "bodyForward",
         "ground": {

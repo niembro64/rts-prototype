@@ -103,8 +103,8 @@ import {
   queryVegetationInCircle,
 } from './vegetation';
 import {
-  SimulationFlyingLoiterController,
-} from './SimulationFlyingLoiterController';
+  SimulationAirborneLoiterController,
+} from './SimulationAirborneLoiterController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 import {
   REPLAN_COOLDOWN,
@@ -240,7 +240,7 @@ export class Simulation {
   private deadEntityCleanup: SimulationDeadEntityCleanup;
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
-  private flyingLoiter: SimulationFlyingLoiterController;
+  private airborneLoiter: SimulationAirborneLoiterController;
   private stuckReplanController: SimulationStuckReplanController;
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
@@ -353,10 +353,10 @@ export class Simulation {
     this.arrivalController = new SimulationArrivalController(this.world, {
       advanceAction: (entity) => this.advanceAction(entity),
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
-      queueFlyingLoiter: (entity) => this.flyingLoiter.queue(entity),
+      queueAirborneLoiter: (entity) => this.airborneLoiter.queue(entity),
     });
     this.combatHaltController = new SimulationCombatHaltController(this.world);
-    this.flyingLoiter = new SimulationFlyingLoiterController(this.world);
+    this.airborneLoiter = new SimulationAirborneLoiterController(this.world);
     this.stuckReplanController = new SimulationStuckReplanController(
       (entity) => this.pathPlanScheduler.requestFresh(entity, true),
     );
@@ -1672,7 +1672,7 @@ export class Simulation {
       if (this.handleSatisfiedMovementAnchor(entity, currentAction)) {
         continue;
       }
-      this.flyingLoiter.rememberTarget(unit, currentAction);
+      this.airborneLoiter.rememberTarget(unit, currentAction);
 
       let flags = 0;
       let serviceTarget: Entity | null = null;
@@ -1851,7 +1851,7 @@ export class Simulation {
         case UNIT_ACTION_PLAN_WAIT_LOITER:
           unit.activePath = null;
           unit.stuckTicks = 0;
-          this.flyingLoiter.queue(entity);
+          this.airborneLoiter.queue(entity);
           break;
 
         case UNIT_ACTION_PLAN_LOAD_HOLD:
@@ -2137,7 +2137,7 @@ export class Simulation {
     }
 
     this.arrivalController.flushCompletion();
-    this.flyingLoiter.flush(movingUnits);
+    this.airborneLoiter.flush(movingUnits);
     this.arrivalController.flushThrust(movingUnits, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
@@ -2347,7 +2347,7 @@ export class Simulation {
     this.combatController.reset();
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
-    this.flyingLoiter.reset();
+    this.airborneLoiter.reset();
     this.stuckReplanController.reset();
     this.pathPlanScheduler.reset();
     this.combatHaltController.reset();

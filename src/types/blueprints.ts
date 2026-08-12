@@ -29,11 +29,11 @@ export type {
 
   
   ShieldSurfaceResponse,
-  FlyingConfig,
-  SwimConfig,
-  FlipperConfig,
-  HoverConfig,
-  HoverFanMount,
+  AirframeConfig,
+  SubmarineConfig,
+  AmphibianConfig,
+  DroneConfig,
+  DroneFanMount,
   RayBlueprint,
   EntitySignature,
   LockOnInclusionObject,
@@ -46,7 +46,7 @@ export type {
   ResourcePylonConfig,
   ShotBlueprint,
 
-  TreadConfig,
+  TankConfig,
   TurretAimStyle,
   TurretBlueprint,
   TurretCooldownConfig,
@@ -64,8 +64,8 @@ export type {
   UnitBodyShape,
   UnitBodyShapePart,
   UnitSupportSurface,
-  WheelConfig,
-  LegConfig,
+  RoverConfig,
+  CrawlerConfig,
   BuildingTurretMount,
 } from './blueprintSchema.generated';
 

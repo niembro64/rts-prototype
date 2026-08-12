@@ -689,20 +689,20 @@ pub struct UnitTurretMountZResolver {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingArmTurretHostAttachment {
+pub struct BotArmTurretHostAttachment {
     pub kind: String,
     pub arm: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingHeadTurretHostAttachment {
+pub struct BotHeadTurretHostAttachment {
     pub kind: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnitTurretHostAttachment {
-    StandingArmTurretHostAttachment(StandingArmTurretHostAttachment),
-    StandingHeadTurretHostAttachment(StandingHeadTurretHostAttachment),
+    BotArmTurretHostAttachment(BotArmTurretHostAttachment),
+    BotHeadTurretHostAttachment(BotHeadTurretHostAttachment),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -737,7 +737,7 @@ pub struct BuildingTurretMount {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct WheelConfig {
+pub struct RoverConfig {
     pub mounts: Vec<LocomotionMount>,
     pub treadWidth: f64,
     pub wheelRadius: f64,
@@ -745,7 +745,7 @@ pub struct WheelConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TreadConfig {
+pub struct TankConfig {
     pub mounts: Vec<LocomotionMount>,
     pub treadLength: f64,
     pub treadWidth: f64,
@@ -786,7 +786,7 @@ pub struct LegSnapRay {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LegConfig {
+pub struct CrawlerConfig {
     pub radius: f64,
     pub kneeRadius: f64,
     pub hasFeet: bool,
@@ -799,16 +799,16 @@ pub struct LegConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingArmSegments {
+pub struct BotArmSegments {
     pub upper: LegSegment,
     pub lower: LegSegment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingArms {
+pub struct BotArms {
     pub shoulder: LocomotionMount,
     pub radius: f64,
-    pub segments: StandingArmSegments,
+    pub segments: BotArmSegments,
     pub handRadiusRatio: f64,
     pub restSwingDeg: f64,
     pub walkSwingDeg: f64,
@@ -816,10 +816,10 @@ pub struct StandingArms {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingLegs {
+pub struct BotLegs {
     pub hip: LocomotionMount,
     pub radius: f64,
-    pub segments: StandingArmSegments,
+    pub segments: BotArmSegments,
     pub footLengthRatio: f64,
     pub footWidthRatio: f64,
     pub strideLengthRatio: f64,
@@ -830,13 +830,13 @@ pub struct StandingLegs {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandingConfig {
-    pub legs: StandingLegs,
-    pub arms: StandingArms,
+pub struct BotConfig {
+    pub legs: BotLegs,
+    pub arms: BotArms,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FlipperConfig {
+pub struct AmphibianConfig {
     pub mounts: Vec<FlipperMount>,
     pub rootChordFrac: f64,
     pub tipChordFrac: f64,
@@ -848,9 +848,9 @@ pub struct FlipperConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SwimConfig {
-    pub pectorals: Vec<SwimPectoralMount>,
-    pub rearFan: SwimRearFan,
+pub struct SubmarineConfig {
+    pub pectorals: Vec<SubmarinePectoralMount>,
+    pub rearFan: SubmarineRearFan,
     pub pectoralSpanFrac: f64,
     pub pectoralRootChordFrac: f64,
     pub pectoralTipChordFrac: f64,
@@ -901,90 +901,90 @@ pub struct UnitLocomotionEnvironmentalHazardPolicy {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct HoverConfig {
-    pub mounts: Vec<HoverFanMount>,
+pub struct DroneConfig {
+    pub mounts: Vec<DroneFanMount>,
     pub fanSpinRadPerSec: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FlyingConfig {
-    pub wing: Option<FlyingSurface>,
-    pub tailWing: Option<FlyingSurface>,
-    pub jets: Vec<FlyingJetMount>,
+pub struct AirframeConfig {
+    pub wing: Option<AirframeSurface>,
+    pub tailWing: Option<AirframeSurface>,
+    pub jets: Vec<AirframeJetMount>,
     pub jetRadius: f64,
     pub jetLength: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintWheels {
+pub struct UnitLocomotionBlueprintRover {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: WheelConfig,
+    pub config: RoverConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintTreads {
+pub struct UnitLocomotionBlueprintTank {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: TreadConfig,
+    pub config: TankConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintAmphibiousTreads {
+pub struct UnitLocomotionBlueprintAmphibiousTank {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: TreadConfig,
+    pub config: TankConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintLegs {
+pub struct UnitLocomotionBlueprintCrawler {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: LegConfig,
+    pub config: CrawlerConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintStanding {
+pub struct UnitLocomotionBlueprintBot {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: StandingConfig,
+    pub config: BotConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintFlippers {
+pub struct UnitLocomotionBlueprintAmphibian {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: FlipperConfig,
+    pub config: AmphibianConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintHover {
+pub struct UnitLocomotionBlueprintDrone {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: HoverConfig,
+    pub config: DroneConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintFlying {
+pub struct UnitLocomotionBlueprintPlane {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: FlyingConfig,
+    pub config: AirframeConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -993,30 +993,30 @@ pub struct UnitLocomotionBlueprintSubmarine {
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: SwimConfig,
+    pub config: SubmarineConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnitLocomotionBlueprintDive {
+pub struct UnitLocomotionBlueprintAerosub {
     pub r#type: String,
     pub physicsPresetId: String,
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
-    pub config: FlyingConfig,
+    pub config: AirframeConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnitLocomotionBlueprint {
-    UnitLocomotionBlueprintWheels(UnitLocomotionBlueprintWheels),
-    UnitLocomotionBlueprintTreads(UnitLocomotionBlueprintTreads),
-    UnitLocomotionBlueprintAmphibiousTreads(UnitLocomotionBlueprintAmphibiousTreads),
-    UnitLocomotionBlueprintLegs(UnitLocomotionBlueprintLegs),
-    UnitLocomotionBlueprintStanding(UnitLocomotionBlueprintStanding),
-    UnitLocomotionBlueprintFlippers(UnitLocomotionBlueprintFlippers),
-    UnitLocomotionBlueprintHover(UnitLocomotionBlueprintHover),
-    UnitLocomotionBlueprintFlying(UnitLocomotionBlueprintFlying),
+    UnitLocomotionBlueprintRover(UnitLocomotionBlueprintRover),
+    UnitLocomotionBlueprintTank(UnitLocomotionBlueprintTank),
+    UnitLocomotionBlueprintAmphibiousTank(UnitLocomotionBlueprintAmphibiousTank),
+    UnitLocomotionBlueprintCrawler(UnitLocomotionBlueprintCrawler),
+    UnitLocomotionBlueprintBot(UnitLocomotionBlueprintBot),
+    UnitLocomotionBlueprintAmphibian(UnitLocomotionBlueprintAmphibian),
+    UnitLocomotionBlueprintDrone(UnitLocomotionBlueprintDrone),
+    UnitLocomotionBlueprintPlane(UnitLocomotionBlueprintPlane),
     UnitLocomotionBlueprintSubmarine(UnitLocomotionBlueprintSubmarine),
-    UnitLocomotionBlueprintDive(UnitLocomotionBlueprintDive),
+    UnitLocomotionBlueprintAerosub(UnitLocomotionBlueprintAerosub),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1355,7 +1355,7 @@ pub struct FlipperMount {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct HoverFanMount {
+pub struct DroneFanMount {
     pub offset: LocomotionMount,
     pub radiusFrac: f64,
     pub ringTubeRadiusFrac: f64,
@@ -1363,7 +1363,7 @@ pub struct HoverFanMount {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FlyingSurface {
+pub struct AirframeSurface {
     pub offset: LocomotionMount,
     pub span: f64,
     pub chord: f64,
@@ -1374,17 +1374,17 @@ pub struct FlyingSurface {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FlyingJetMount {
+pub struct AirframeJetMount {
     pub offset: LocomotionMount,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SwimPectoralMount {
+pub struct SubmarinePectoralMount {
     pub offset: LocomotionMount,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SwimRearFan {
+pub struct SubmarineRearFan {
     pub offset: LocomotionMount,
     pub radius: f64,
     pub ringTubeRadius: f64,

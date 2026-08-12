@@ -3013,8 +3013,8 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               :class="{
                 active: selectedBuildUnitBlueprintId === uo.unitBlueprintId,
                 'factory-under-construction': selection.factoryUnderConstruction === true,
-                'vehicle-btn': uo.locomotion !== 'legs',
-                'bot-btn': uo.locomotion === 'legs',
+                'vehicle-btn': uo.locomotion !== 'crawler',
+                'bot-btn': uo.locomotion === 'crawler',
               }"
               :title="factoryProductionCellTitle(uo)"
               @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"

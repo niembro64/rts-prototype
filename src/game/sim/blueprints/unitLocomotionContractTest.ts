@@ -50,33 +50,33 @@ type ExpectedLocomotionDomain = Readonly<{
  * chassis; navigation and survival stay deliberate data decisions.
  */
 const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDomain>> = {
-  unitHuman: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitJackal: { type: 'wheels', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitLynx: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitDaddy: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitBadger: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitMongoose: { type: 'wheels', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitMammoth: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitFormik: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitWidow: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitHippo: { type: 'amphibious-treads', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitSeaTurtle: { type: 'flippers', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitHuman: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitJackal: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitLynx: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitDaddy: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitBadger: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitMongoose: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitMammoth: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitFormik: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitWidow: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitHippo: { type: 'amphibious-tank', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitSeaTurtle: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitOrca: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitTarantula: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitLoris: { type: 'treads', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitDragonfly: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitConstructionDrone: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitTarantula: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitLoris: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitDragonfly: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitEagle: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitDuck: { type: 'dive', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitAlbatros: { type: 'flying', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitQueenBee: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitQueenTick: { type: 'legs', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitTransport: { type: 'hover', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitCommander: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitRex: { type: 'standing', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitEagle: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitDuck: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitAlbatros: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitQueenBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitQueenTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitCommander: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitRex: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
 
 
@@ -98,7 +98,7 @@ function checkLegAttachmentPoints(): void {
   for (const blueprint of getAllUnitBlueprints()) {
     const unitBlueprintId = blueprint.unitBlueprintId;
     const locomotion = blueprint.unitLocomotion;
-    if (locomotion.type !== 'legs') continue;
+    if (locomotion.type !== 'crawler') continue;
     assertContract(
       locomotion.config.hasFeet === !footlessUnitIds.has(unitBlueprintId),
       `${unitBlueprintId} must explicitly match the authored arachnid-foot roster`,
@@ -161,9 +161,9 @@ function sideMountedPieces(
 ): { mounts: readonly LocomotionMount[]; halfWidth: number } | null {
   const locomotion = blueprint.unitLocomotion;
   switch (locomotion.type) {
-    case 'wheels':
-    case 'treads':
-    case 'amphibious-treads':
+    case 'rover':
+    case 'tank':
+    case 'amphibious-tank':
       return { mounts: locomotion.config.mounts, halfWidth: locomotion.config.treadWidth / 2 };
     default:
       return null;
@@ -208,24 +208,24 @@ function allLocomotionMounts(
 ): readonly LocomotionMount[] {
   const locomotion = blueprint.unitLocomotion;
   switch (locomotion.type) {
-    case 'wheels':
-    case 'treads':
-    case 'amphibious-treads':
+    case 'rover':
+    case 'tank':
+    case 'amphibious-tank':
       return locomotion.config.mounts;
-    case 'hover':
-    case 'flippers':
+    case 'drone':
+    case 'amphibian':
       return locomotion.config.mounts.map((mount) => mount.offset);
     case 'submarine':
       return [
         ...locomotion.config.pectorals.map((mount) => mount.offset),
         locomotion.config.rearFan.offset,
       ];
-    case 'flying':
-    case 'dive':
+    case 'plane':
+    case 'aerosub':
       return locomotion.config.jets.map((jet) => jet.offset);
-    case 'legs':
+    case 'crawler':
       return locomotion.config.leftSide.map((leg) => leg.attachmentPoint);
-    case 'standing':
+    case 'bot':
       // A biped authors one hip and one shoulder; both are mirrored.
       return [locomotion.config.legs.hip, locomotion.config.arms.shoulder];
     default:
@@ -264,30 +264,30 @@ function checkLocomotionMountsAuthored(): void {
   }
 }
 
-function checkStandingTurretHostAttachments(): void {
+function checkBotTurretHostAttachments(): void {
   for (const blueprint of getAllUnitBlueprints()) {
-    const standing = blueprint.unitLocomotion.type === 'standing';
+    const bot = blueprint.unitLocomotion.type === 'bot';
     for (const turret of blueprint.turrets) {
-      if (!standing) {
+      if (!bot) {
         assertContract(
           turret.hostAttachment === undefined,
-          `${blueprint.unitBlueprintId}/${turret.mountId} cannot name a standing attachment on a non-standing host`,
+          `${blueprint.unitBlueprintId}/${turret.mountId} cannot name a bot attachment on a non-bot host`,
         );
         continue;
       }
       const attachment = turret.hostAttachment;
       assertContract(
-        attachment?.kind === 'standingHead' ||
-          (attachment?.kind === 'standingArm' &&
+        attachment?.kind === 'botHead' ||
+          (attachment?.kind === 'botArm' &&
             (attachment.arm === 'leftArm' || attachment.arm === 'rightArm')),
-        `${blueprint.unitBlueprintId}/${turret.mountId} must identify its standing host attachment`,
+        `${blueprint.unitBlueprintId}/${turret.mountId} must identify its bot host attachment`,
       );
     }
   }
 
   const human = getUnitBlueprint('unitHuman');
   assertContract(
-    human.turrets[0]?.hostAttachment?.kind === 'standingArm' &&
+    human.turrets[0]?.hostAttachment?.kind === 'botArm' &&
       human.turrets[0].hostAttachment.arm === 'rightArm',
     'Human mounts its gun on the authored right arm',
   );
@@ -296,12 +296,12 @@ function checkStandingTurretHostAttachments(): void {
   const beam = commander.turrets.find((turret) => turret.mountId === 'beam');
   const dgun = commander.turrets.find((turret) => turret.mountId === 'disruptor');
   assertContract(
-    beam?.hostAttachment?.kind === 'standingArm' &&
+    beam?.hostAttachment?.kind === 'botArm' &&
       beam.hostAttachment.arm === 'leftArm',
     'Commander mounts its beam on the left arm',
   );
   assertContract(
-    dgun?.hostAttachment?.kind === 'standingHead',
+    dgun?.hostAttachment?.kind === 'botHead',
     'Commander mounts its D-gun on the head',
   );
 }
@@ -310,7 +310,7 @@ export function runUnitLocomotionContractTest(): void {
   checkLegAttachmentPoints();
   checkLocomotionMountsAuthored();
   checkLocomotionMountClearance();
-  checkStandingTurretHostAttachments();
+  checkBotTurretHostAttachments();
   const probeSpacing = getSurfaceProbeSpacing().world;
   const fewSamples: Array<{ x: number; y: number }> = [];
   const manySamples: Array<{ x: number; y: number }> = [];
@@ -449,7 +449,7 @@ export function runUnitLocomotionContractTest(): void {
 
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
-    commander.physicsPresetId === 'standing' &&
+    commander.physicsPresetId === 'bot' &&
       commander.actuator.propulsionAxis === 'bodyForwardOnly' &&
       commander.navigation.waypoint.allowOnGround &&
       commander.navigation.waypoint.allowInWater &&
@@ -461,7 +461,7 @@ export function runUnitLocomotionContractTest(): void {
   for (const unitBlueprintId of ['unitHuman', 'unitCommander', 'unitRex'] as const) {
     assertContract(
       getUnitLocomotion(unitBlueprintId).actuator.propulsionAxis === 'bodyForwardOnly',
-      `${unitBlueprintId} standing locomotion cannot apply powered reverse thrust`,
+      `${unitBlueprintId} bot locomotion cannot apply powered reverse thrust`,
     );
   }
 
@@ -484,7 +484,7 @@ export function runUnitLocomotionContractTest(): void {
   }
   const queenTick = getUnitLocomotion('unitQueenTick');
   assertContract(
-    queenTick.physicsPresetId === 'legs' &&
+    queenTick.physicsPresetId === 'crawler' &&
       queenTick.physics.ground.maxPropulsiveForce > 0 &&
       queenTick.physics.air.maxPropulsiveForce === 0 &&
       queenTick.navigation.waypoint.allowOnGround &&

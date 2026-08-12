@@ -310,7 +310,7 @@ export class BurnMark3D {
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.
       if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
-      // Ground-hit gate — beams that terminate on a flying/standing
+      // Ground-hit gate — beams that terminate on an airborne/bot
       // unit, on the side of a building, on an aerial mirror, or at the
       // range circle while still climbing should not scorch the ground.
       // dgun trails ride the terrain, so always sample those. When a

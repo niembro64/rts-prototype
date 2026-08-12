@@ -85,7 +85,7 @@ const UF_ROW_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE = 56;
 const UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE = 58;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
-const UF_FLAG_IS_FLYING = 1 << 1;
+const UF_FLAG_IS_AIRBORNE_CRUISING = 1 << 1;
 const UF_FLAG_IS_AIRBORNE = 1 << 2;
 const UF_FLAG_BLOCKED_OR_DEAD = 1 << 3;
 const UF_FLAG_HAS_EXTERNAL_FORCE = 1 << 4;
@@ -512,7 +512,7 @@ export class UnitForceSystem {
       if (locomotionGroundContact) flags |= UF_FLAG_ON_GROUND;
 
       const mediumLiftActive = !buildInProgress;
-      if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
+      if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE_CRUISING;
       if (mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE;
 
       const hasExternalForce =
@@ -779,9 +779,9 @@ export class UnitForceSystem {
       this.pushPhysicsForceUnitSlot(movingUnitSlots[i]);
     }
 
-    const flyingUnitSlots = this.world.getFlyingUnitSlots();
-    for (let i = 0; i < flyingUnitSlots.length; i++) {
-      this.pushPhysicsForceUnitSlot(flyingUnitSlots[i]);
+    const cruisingUnitSlots = this.world.getCruisingUnitSlots();
+    for (let i = 0; i < cruisingUnitSlots.length; i++) {
+      this.pushPhysicsForceUnitSlot(cruisingUnitSlots[i]);
     }
 
     const forceAccumulator = this.simulation.getForceAccumulator();

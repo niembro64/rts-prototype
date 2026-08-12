@@ -458,16 +458,16 @@ export type UnitTurretMountZResolver = {
   bodyTopZFrac: number;
 };
 
-export type StandingArmTurretHostAttachment = {
-  kind: 'standingArm';
+export type BotArmTurretHostAttachment = {
+  kind: 'botArm';
   arm: 'leftArm' | 'rightArm';
 };
 
-export type StandingHeadTurretHostAttachment = {
-  kind: 'standingHead';
+export type BotHeadTurretHostAttachment = {
+  kind: 'botHead';
 };
 
-export type UnitTurretHostAttachment = StandingArmTurretHostAttachment | StandingHeadTurretHostAttachment;
+export type UnitTurretHostAttachment = BotArmTurretHostAttachment | BotHeadTurretHostAttachment;
 
 export type TurretMount = {
   mountId: string;
@@ -498,14 +498,14 @@ export type BuildingTurretMount = {
   slavedToMountId?: string;
 };
 
-export type WheelConfig = {
+export type RoverConfig = {
   mounts: LocomotionMount[];
   treadWidth: number;
   wheelRadius: number;
   rotationSpeed: number;
 };
 
-export type TreadConfig = {
+export type TankConfig = {
   mounts: LocomotionMount[];
   treadLength: number;
   treadWidth: number;
@@ -539,7 +539,7 @@ export type LegSnapRay = {
   originBoundarySpanRatio: number;
 };
 
-export type LegConfig = {
+export type CrawlerConfig = {
   radius: number;
   kneeRadius: number;
   hasFeet: boolean;
@@ -551,25 +551,25 @@ export type LegConfig = {
   leftSide: LegLayoutEntry[];
 };
 
-export type StandingArmSegments = {
+export type BotArmSegments = {
   upper: LegSegment;
   lower: LegSegment;
 };
 
-export type StandingArms = {
+export type BotArms = {
   shoulder: LocomotionMount;
   radius: number;
-  segments: StandingArmSegments;
+  segments: BotArmSegments;
   handRadiusRatio: number;
   restSwingDeg: number;
   walkSwingDeg: number;
   outwardDeg: number;
 };
 
-export type StandingLegs = {
+export type BotLegs = {
   hip: LocomotionMount;
   radius: number;
-  segments: StandingArmSegments;
+  segments: BotArmSegments;
   footLengthRatio: number;
   footWidthRatio: number;
   strideLengthRatio: number;
@@ -579,12 +579,12 @@ export type StandingLegs = {
   stanceOutwardUnitRadiusRatio: number;
 };
 
-export type StandingConfig = {
-  legs: StandingLegs;
-  arms: StandingArms;
+export type BotConfig = {
+  legs: BotLegs;
+  arms: BotArms;
 };
 
-export type FlipperConfig = {
+export type AmphibianConfig = {
   mounts: FlipperMount[];
   rootChordFrac: number;
   tipChordFrac: number;
@@ -595,9 +595,9 @@ export type FlipperConfig = {
   cycleDistanceFrac: number;
 };
 
-export type SwimConfig = {
-  pectorals: SwimPectoralMount[];
-  rearFan: SwimRearFan;
+export type SubmarineConfig = {
+  pectorals: SubmarinePectoralMount[];
+  rearFan: SubmarineRearFan;
   pectoralSpanFrac: number;
   pectoralRootChordFrac: number;
   pectoralTipChordFrac: number;
@@ -640,81 +640,81 @@ export type UnitLocomotionEnvironmentalHazardPolicy = {
   waterDamagePerSecond: number;
 };
 
-export type HoverConfig = {
-  mounts: HoverFanMount[];
+export type DroneConfig = {
+  mounts: DroneFanMount[];
   fanSpinRadPerSec: number;
 };
 
-export type FlyingConfig = {
-  wing: FlyingSurface | null;
-  tailWing: FlyingSurface | null;
-  jets: FlyingJetMount[];
+export type AirframeConfig = {
+  wing: AirframeSurface | null;
+  tailWing: AirframeSurface | null;
+  jets: AirframeJetMount[];
   jetRadius: number;
   jetLength: number;
 };
 
-export type UnitLocomotionBlueprintWheels = {
-  type: 'wheels';
+export type UnitLocomotionBlueprintRover = {
+  type: 'rover';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: WheelConfig;
+  config: RoverConfig;
 };
 
-export type UnitLocomotionBlueprintTreads = {
-  type: 'treads';
+export type UnitLocomotionBlueprintTank = {
+  type: 'tank';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: TreadConfig;
+  config: TankConfig;
 };
 
-export type UnitLocomotionBlueprintAmphibiousTreads = {
-  type: 'amphibious-treads';
+export type UnitLocomotionBlueprintAmphibiousTank = {
+  type: 'amphibious-tank';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: TreadConfig;
+  config: TankConfig;
 };
 
-export type UnitLocomotionBlueprintLegs = {
-  type: 'legs';
+export type UnitLocomotionBlueprintCrawler = {
+  type: 'crawler';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: LegConfig;
+  config: CrawlerConfig;
 };
 
-export type UnitLocomotionBlueprintStanding = {
-  type: 'standing';
+export type UnitLocomotionBlueprintBot = {
+  type: 'bot';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: StandingConfig;
+  config: BotConfig;
 };
 
-export type UnitLocomotionBlueprintFlippers = {
-  type: 'flippers';
+export type UnitLocomotionBlueprintAmphibian = {
+  type: 'amphibian';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: FlipperConfig;
+  config: AmphibianConfig;
 };
 
-export type UnitLocomotionBlueprintHover = {
-  type: 'hover';
+export type UnitLocomotionBlueprintDrone = {
+  type: 'drone';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: HoverConfig;
+  config: DroneConfig;
 };
 
-export type UnitLocomotionBlueprintFlying = {
-  type: 'flying';
+export type UnitLocomotionBlueprintPlane = {
+  type: 'plane';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: FlyingConfig;
+  config: AirframeConfig;
 };
 
 export type UnitLocomotionBlueprintSubmarine = {
@@ -722,18 +722,18 @@ export type UnitLocomotionBlueprintSubmarine = {
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: SwimConfig;
+  config: SubmarineConfig;
 };
 
-export type UnitLocomotionBlueprintDive = {
-  type: 'dive';
+export type UnitLocomotionBlueprintAerosub = {
+  type: 'aerosub';
   physicsPresetId: string;
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
-  config: FlyingConfig;
+  config: AirframeConfig;
 };
 
-export type UnitLocomotionBlueprint = UnitLocomotionBlueprintWheels | UnitLocomotionBlueprintTreads | UnitLocomotionBlueprintAmphibiousTreads | UnitLocomotionBlueprintLegs | UnitLocomotionBlueprintStanding | UnitLocomotionBlueprintFlippers | UnitLocomotionBlueprintHover | UnitLocomotionBlueprintFlying | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintDive;
+export type UnitLocomotionBlueprint = UnitLocomotionBlueprintRover | UnitLocomotionBlueprintTank | UnitLocomotionBlueprintAmphibiousTank | UnitLocomotionBlueprintCrawler | UnitLocomotionBlueprintBot | UnitLocomotionBlueprintAmphibian | UnitLocomotionBlueprintDrone | UnitLocomotionBlueprintPlane | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintAerosub;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';
@@ -997,14 +997,14 @@ export type FlipperMount = {
   lengthFrac: number;
 };
 
-export type HoverFanMount = {
+export type DroneFanMount = {
   offset: LocomotionMount;
   radiusFrac: number;
   ringTubeRadiusFrac: number;
   outwardAngleDeg: number;
 };
 
-export type FlyingSurface = {
+export type AirframeSurface = {
   offset: LocomotionMount;
   span: number;
   chord: number;
@@ -1014,15 +1014,15 @@ export type FlyingSurface = {
   mirrorX: boolean;
 };
 
-export type FlyingJetMount = {
+export type AirframeJetMount = {
   offset: LocomotionMount;
 };
 
-export type SwimPectoralMount = {
+export type SubmarinePectoralMount = {
   offset: LocomotionMount;
 };
 
-export type SwimRearFan = {
+export type SubmarineRearFan = {
   offset: LocomotionMount;
   radius: number;
   ringTubeRadius: number;

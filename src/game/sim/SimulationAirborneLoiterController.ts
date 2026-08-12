@@ -7,11 +7,11 @@ import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowt
 
 export const SIMULATION_INVALID_BODY_SLOT = 0xffffffff;
 
-const FLYING_LOITER_RADIUS_MULT = 8;
-const FLYING_LOITER_MIN_RADIUS = 80;
-const FLYING_LOITER_RADIAL_GAIN = 0.65;
+const AIRBORNE_LOITER_RADIUS_MULT = 8;
+const AIRBORNE_LOITER_MIN_RADIUS = 80;
+const AIRBORNE_LOITER_RADIAL_GAIN = 0.65;
 
-export class SimulationFlyingLoiterController {
+export class SimulationAirborneLoiterController {
   private readonly world: WorldState;
   private readonly entities: Entity[] = [];
   private entitySlots = new Int32Array(0);
@@ -38,9 +38,9 @@ export class SimulationFlyingLoiterController {
     if (!unit.locomotion.motionControl.cruiseWhenUncommanded) return;
     const x = this.clampMapX(action.x);
     const y = this.clampMapY(action.y);
-    unit.flyingLoiterTargetX = x;
-    unit.flyingLoiterTargetY = y;
-    unit.flyingLoiterTargetZ = action.z ?? this.world.getGroundZ(x, y);
+    unit.airborneLoiterTargetX = x;
+    unit.airborneLoiterTargetY = y;
+    unit.airborneLoiterTargetZ = action.z ?? this.world.getGroundZ(x, y);
   }
 
   queue(entity: Entity): void {
@@ -48,8 +48,8 @@ export class SimulationFlyingLoiterController {
     if (!unit || !unit.locomotion.motionControl.cruiseWhenUncommanded) return;
 
     const { transform } = entity;
-    const storedCenterX = unit.flyingLoiterTargetX;
-    const storedCenterY = unit.flyingLoiterTargetY;
+    const storedCenterX = unit.airborneLoiterTargetX;
+    const storedCenterY = unit.airborneLoiterTargetY;
     let centerX: number;
     let centerY: number;
     if (
@@ -60,16 +60,16 @@ export class SimulationFlyingLoiterController {
     ) {
       centerX = this.clampMapX(transform.x);
       centerY = this.clampMapY(transform.y);
-      unit.flyingLoiterTargetX = centerX;
-      unit.flyingLoiterTargetY = centerY;
-      unit.flyingLoiterTargetZ = Number.isFinite(transform.z)
+      unit.airborneLoiterTargetX = centerX;
+      unit.airborneLoiterTargetY = centerY;
+      unit.airborneLoiterTargetZ = Number.isFinite(transform.z)
         ? transform.z
         : this.world.getGroundZ(centerX, centerY);
     } else {
       centerX = this.clampMapX(storedCenterX);
       centerY = this.clampMapY(storedCenterY);
-      unit.flyingLoiterTargetX = centerX;
-      unit.flyingLoiterTargetY = centerY;
+      unit.airborneLoiterTargetX = centerX;
+      unit.airborneLoiterTargetY = centerY;
     }
 
     const dx = centerX - transform.x;
@@ -88,8 +88,8 @@ export class SimulationFlyingLoiterController {
     this.rotation[index] = transform.rotation;
     this.radius[index] = unit.radius.collision;
     this.turnSign[index] =
-      unit.flyingLoiterTurnSign === 1 || unit.flyingLoiterTurnSign === -1
-        ? unit.flyingLoiterTurnSign
+      unit.airborneLoiterTurnSign === 1 || unit.airborneLoiterTurnSign === -1
+        ? unit.airborneLoiterTurnSign
         : 0;
     this.fallbackVx[index] = unit.velocityX;
     this.fallbackVy[index] = unit.velocityY;
@@ -101,9 +101,9 @@ export class SimulationFlyingLoiterController {
 
     const sim = getSimWasm();
     if (sim === undefined) {
-      throw new Error('SimulationFlyingLoiterController.flush: sim-wasm is not initialized');
+      throw new Error('SimulationAirborneLoiterController.flush: sim-wasm is not initialized');
     }
-    sim.flyingLoiterStepBatch(
+    sim.airborneLoiterStepBatch(
       this.slots.subarray(0, count),
       this.dx.subarray(0, count),
       this.dy.subarray(0, count),
@@ -117,9 +117,9 @@ export class SimulationFlyingLoiterController {
       this.outY.subarray(0, count),
       this.outTurnSign.subarray(0, count),
       this.active.subarray(0, count),
-      FLYING_LOITER_MIN_RADIUS,
-      FLYING_LOITER_RADIUS_MULT,
-      FLYING_LOITER_RADIAL_GAIN,
+      AIRBORNE_LOITER_MIN_RADIUS,
+      AIRBORNE_LOITER_RADIUS_MULT,
+      AIRBORNE_LOITER_RADIAL_GAIN,
     );
 
     for (let i = 0; i < count; i++) {
@@ -135,7 +135,7 @@ export class SimulationFlyingLoiterController {
           this.entitySlots[i],
         );
         const turnSign = this.outTurnSign[i];
-        unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
+        unit.airborneLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
         if (this.active[i] !== 0) movingUnits.push(entity);
       }
       this.entities[i] = undefined as unknown as Entity;

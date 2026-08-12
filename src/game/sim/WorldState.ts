@@ -868,14 +868,14 @@ export class WorldState {
     return this.cache.getBuilderUnits();
   }
 
-  getFlyingUnits(): Entity[] {
+  getCruisingUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getFlyingUnits();
+    return this.cache.getCruisingUnits();
   }
 
-  getFlyingUnitSlots(): readonly number[] {
+  getCruisingUnitSlots(): readonly number[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getFlyingUnitSlots();
+    return this.cache.getCruisingUnitSlots();
   }
 
   /** Every entity that carries a CombatComponent with at least one

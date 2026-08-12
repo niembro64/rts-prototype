@@ -1,4 +1,4 @@
-// FlipperRig3D — four single-hinge hydrofoils. The same rigid panel is
+// AmphibianRig3D — four single-hinge hydrofoils. The same rigid panel is
 // a short, leg-like support on land and unfolds into a wing/paddle in
 // water. There are deliberately no knees, feet, or per-panel physics:
 // locomotion physics stays in the flippers preset while this rig reads
@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import type { FlipperConfig } from '@/types/blueprints';
+import type { AmphibianConfig } from '@/types/blueprints';
 import { lerp, smoothstep01 } from '../math';
 import type { PlayerId } from '../sim/types';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
@@ -38,8 +38,8 @@ type FlipperPanel = {
   groundDownAngle: number;
 };
 
-export type FlipperMesh = {
-  type: 'flippers';
+export type AmphibianMesh = {
+  type: 'amphibian';
   group: THREE.Group;
   panels: FlipperPanel[];
   contact: RollingContactState;
@@ -77,13 +77,13 @@ function flipperGeometry(
   return geometry;
 }
 
-export function buildFlippers(
+export function buildAmphibian(
   unitGroup: THREE.Group,
   radius: number,
-  cfg: FlipperConfig,
+  cfg: AmphibianConfig,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): FlipperMesh {
+): AmphibianMesh {
   const group = new THREE.Group();
   const panels: FlipperPanel[] = [];
   const rootChord = Math.max(0.5, radius * cfg.rootChordFrac);
@@ -133,7 +133,7 @@ export function buildFlippers(
 
   unitGroup.add(group);
   return {
-    type: 'flippers',
+    type: 'amphibian',
     group,
     panels,
     contact: rollingContact(0, 0),
@@ -145,8 +145,8 @@ export function buildFlippers(
   };
 }
 
-export function updateFlippers(
-  mesh: FlipperMesh,
+export function updateAmphibian(
+  mesh: AmphibianMesh,
   pose: LocomotionRenderPose,
   dtMs: number,
 ): boolean {
@@ -156,7 +156,7 @@ export function updateFlippers(
   mesh.waterBlend += (waterTarget - mesh.waterBlend) * blendAlpha;
 
   const cycle = mesh.contact.phase / mesh.cycleDistance * Math.PI * 2;
-  poseFlippersAtCycle(mesh, cycle, mesh.waterBlend);
+  poseAmphibianAtCycle(mesh, cycle, mesh.waterBlend);
 
   return (
     rollingLocomotionBodyActive(pose) ||
@@ -165,8 +165,8 @@ export function updateFlippers(
 }
 
 /** Deterministic pose helper shared with the loading preview. */
-export function poseFlippersAtCycle(
-  mesh: FlipperMesh,
+export function poseAmphibianAtCycle(
+  mesh: AmphibianMesh,
   cycle: number,
   waterBlend: number,
 ): void {

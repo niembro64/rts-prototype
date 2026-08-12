@@ -1,4 +1,4 @@
-// TreadRig3D — a static tread belt shell + an animated cleat strip,
+// TankRig3D — a static tread belt shell + an animated cleat strip,
 // for tracked locomotion units. The interior is a single non-spinning
 // shell (a rounded slab of boxes + cylindrical end caps at High/Medium,
 // one envelope box at Low); the only per-frame motion is the cleat
@@ -23,7 +23,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, PlayerId } from '../sim/types';
-import type { TreadConfig } from '@/types/blueprints';
+import type { TankConfig } from '@/types/blueprints';
 import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
 import {
   type LocomotionBase,
@@ -251,8 +251,8 @@ export type TreadSide = {
   wheelRotation: number;
 };
 
-export type TreadMesh = {
-  type: 'treads';
+export type TankMesh = {
+  type: 'tank';
   group: THREE.Group;
   sides: TreadSide[];
   wheels: THREE.Mesh[];
@@ -284,14 +284,14 @@ export type TreadMesh = {
   rotationAnimated: boolean;
 } & LocomotionBase;
 
-export function buildTreads(
+export function buildTank(
   unitGroup: THREE.Group,
   r: number,
-  cfg: TreadConfig,
+  cfg: TankConfig,
   cleatsVisible: boolean,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
-): TreadMesh {
+): TankMesh {
   const group = new THREE.Group();
   const length = r * cfg.treadLength;
   const width = r * cfg.treadWidth;
@@ -435,7 +435,7 @@ export function buildTreads(
   // left+right ruts read as two parallel lines instead of merging.
   const printWidth = Math.max(0.5, width);
   return {
-    type: 'treads',
+    type: 'tank',
     group,
     sides,
     wheels,
@@ -464,8 +464,8 @@ const _treadUp = { x: 0, y: 1, z: 0 };
  *  `treadCleats` feature skip belt scroll while retaining the floor clamp.
  *  The interior is a single static belt shell (no spinning road wheels),
  *  so only the cleats move. */
-export function updateTreads(
-  mesh: TreadMesh,
+export function updateTank(
+  mesh: TankMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   dtMs: number,
@@ -476,7 +476,7 @@ export function updateTreads(
   // Convert a world-Y lift back into a chassis-local Y delta. Tilt
   // rotates local Y through the surface normal; the local lift needed
   // to raise the side by `worldLift` world units is approximately
-  // `worldLift / normal.z` (with the same 0.35 floor LegRig3D uses).
+  // `worldLift / normal.z` (with the same 0.35 floor CrawlerRig3D uses).
   chassisUpFromPose(pose, _treadUp);
   const normalY = Math.max(0.35, _treadUp.y);
   const liftAlpha = emaAlpha(dtSec, TREAD_LIFT_TAU_SEC);
@@ -566,7 +566,7 @@ export function updateTreads(
   return treadsNeedFrame(mesh, pose);
 }
 
-function treadsNeedFrame(mesh: TreadMesh, pose: LocomotionRenderPose): boolean {
+function treadsNeedFrame(mesh: TankMesh, pose: LocomotionRenderPose): boolean {
   if (rollingLocomotionBodyActive(pose)) return true;
   for (let s = 0; s < mesh.sides.length; s++) {
     const contact = mesh.treadContacts[s];

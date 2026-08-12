@@ -1,17 +1,17 @@
-// SwimRig3D — two pectoral control fins and a rear ducted propulsor. This is
+// SubmarineRig3D — two pectoral control fins and a rear ducted propulsor. This is
 // a presentation rig only; the authoritative water propulsion/lift profile
 // lives in the `submarine` locomotion preset.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import type { SwimConfig } from '@/types/blueprints';
+import type { SubmarineConfig } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import {
-  appendHoverFanSmoke,
+  appendDroneFanSmoke,
   buildRearPropulsionFan,
-  type HoverFan,
-} from './HoverRig3D';
+  type DroneFan,
+} from './DroneRig3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   type LocomotionBase,
@@ -24,14 +24,14 @@ import {
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 const DEG_TO_RAD = Math.PI / 180;
-const swimMaterials = new Map<number, THREE.MeshLambertMaterial>();
+const submarineMaterials = new Map<number, THREE.MeshLambertMaterial>();
 const panelGeometries = new Map<string, THREE.BufferGeometry>();
 
-export type SwimMesh = {
-  type: 'swim';
+export type SubmarineMesh = {
+  type: 'submarine';
   group: THREE.Group;
   pectoralHinges: [THREE.Group, THREE.Group];
-  rearFan: HoverFan;
+  rearFan: DroneFan;
   contact: RollingContactState;
   cycleDistance: number;
   strokeAngle: number;
@@ -63,18 +63,18 @@ function taperedPanelGeometry(
   return geometry;
 }
 
-export function buildSwimRig(
+export function buildSubmarineRig(
   unitGroup: THREE.Group,
   radius: number,
-  cfg: SwimConfig,
+  cfg: SubmarineConfig,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
   entityId = 0,
-): SwimMesh {
+): SubmarineMesh {
   const group = new THREE.Group();
   const material = getLocomotionMatByCache(
-    swimMaterials,
-    COLORS.units.locomotion.swim.fin.colorHex,
+    submarineMaterials,
+    COLORS.units.locomotion.submarine.fin.colorHex,
     ownerId,
   );
   const thickness = Math.max(0.25, radius * cfg.thicknessFrac);
@@ -109,8 +109,8 @@ export function buildSwimRig(
   );
 
   unitGroup.add(group);
-  const mesh: SwimMesh = {
-    type: 'swim',
+  const mesh: SubmarineMesh = {
+    type: 'submarine',
     group,
     pectoralHinges,
     rearFan,
@@ -119,25 +119,25 @@ export function buildSwimRig(
     strokeAngle: cfg.strokeAngleDeg * DEG_TO_RAD,
     geometryKey: '',
   };
-  poseSwimRigAtCycle(mesh, 0);
+  poseSubmarineRigAtCycle(mesh, 0);
   return mesh;
 }
 
-export function updateSwimRig(
-  mesh: SwimMesh,
+export function updateSubmarineRig(
+  mesh: SubmarineMesh,
   pose: LocomotionRenderPose,
   _dtMs: number,
   smokeOut?: SmokePuffEmitter[],
 ): boolean {
   sampleRollingContactDistance(pose, mesh.contact);
-  poseSwimRigAtCycle(mesh, mesh.contact.phase / mesh.cycleDistance * Math.PI * 2);
+  poseSubmarineRigAtCycle(mesh, mesh.contact.phase / mesh.cycleDistance * Math.PI * 2);
   const active = rollingLocomotionBodyActive(pose);
-  if (active && smokeOut) appendHoverFanSmoke(mesh.rearFan, smokeOut);
+  if (active && smokeOut) appendDroneFanSmoke(mesh.rearFan, smokeOut);
   return active;
 }
 
 /** Deterministic pose helper shared by the loading preview. */
-export function poseSwimRigAtCycle(mesh: SwimMesh, cycle: number): void {
+export function poseSubmarineRigAtCycle(mesh: SubmarineMesh, cycle: number): void {
   const stroke = Math.sin(cycle) * mesh.strokeAngle;
   // The two forward control fins counter-phase subtly while the fixed rear
   // fan supplies the propulsive visual.

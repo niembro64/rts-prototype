@@ -454,7 +454,7 @@ function assertBuildingSupportContract(): void {
 
   const locomotionIds = firstBlueprintIdByLocomotionType();
   const requiredTypes: UnitLocomotion['type'][] = [
-    'wheels', 'treads', 'amphibious-treads', 'legs', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+    'rover', 'tank', 'amphibious-tank', 'crawler', 'amphibian', 'drone', 'plane', 'submarine', 'aerosub',
   ];
   // Every probe must land ON the roof, so derive the spacing from the actual
   // footprint instead of a fixed 60. A hardcoded stride silently walked the
@@ -566,8 +566,8 @@ function assertFactoryShellContract(): void {
   const world = new WorldState(1238, 1024, 1024);
   world.playerCount = 2;
   const dry = findSurfacePoint(world, 'solid', 220);
-  const hoverUnitBlueprintId = firstBlueprintIdByLocomotionType().get('hover');
-  assertContract(hoverUnitBlueprintId !== undefined, 'missing hover unit blueprint for factory shell contract');
+  const droneUnitBlueprintId = firstBlueprintIdByLocomotionType().get('drone');
+  assertContract(droneUnitBlueprintId !== undefined, 'missing drone unit blueprint for factory shell contract');
   const factoryConfig = getBuildingConfig('towerFabricator');
   assertContract(factoryConfig.hoveringType === 'fabricator', 'fabricator config must author hoveringType');
   assertContract(factoryConfig.hovering === true, 'fabricator hover boolean must derive from hoveringType');
@@ -597,7 +597,7 @@ function assertFactoryShellContract(): void {
     'fabricator combat/hitbox center must float above its reserved footprint',
   );
   factory.factory = {
-    selectedUnitBlueprintId: hoverUnitBlueprintId,
+    selectedUnitBlueprintId: droneUnitBlueprintId,
     lowPriority: true,
     carrierSpawnEnabled: true,
     moveState: 'holdPosition',
@@ -764,7 +764,7 @@ function assertFactoryShellContract(): void {
       Math.abs(shell.unit.velocityZ) <= CONTRACT_EPSILON,
     'fabricator must release the completed shell with zero launch velocity',
   );
-  assertContract(factory.factory.selectedUnitBlueprintId === hoverUnitBlueprintId, 'repeat factory must keep its selected unit');
+  assertContract(factory.factory.selectedUnitBlueprintId === droneUnitBlueprintId, 'repeat factory must keep its selected unit');
   assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');
   assertContract(completedUnit.activePath === null, 'completed shell must not receive a baked exit path');
@@ -842,7 +842,7 @@ function assertFactoryShellContract(): void {
     'factory output Guard must preserve its allied host target instead of degrading to a rally Move',
   );
 
-  factory.factory.selectedUnitBlueprintId = hoverUnitBlueprintId;
+  factory.factory.selectedUnitBlueprintId = droneUnitBlueprintId;
   factory.factory.repeatProduction = false;
   factory.factory.guardTargetId = null;
   factory.factory.defaultWaypoints = null;
@@ -965,7 +965,7 @@ function assertFactoryShellContract(): void {
     'BAR factory clear queue must clear quota targets and quota counts',
   );
 
-  factory.factory.selectedUnitBlueprintId = hoverUnitBlueprintId;
+  factory.factory.selectedUnitBlueprintId = droneUnitBlueprintId;
   factory.factory.currentShellId = null;
   factory.factory.isProducing = false;
   factory.factory.repeatProduction = false;

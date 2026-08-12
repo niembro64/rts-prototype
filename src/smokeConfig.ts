@@ -7,19 +7,19 @@ export const SMOKE_USE_IDS = [
   'shotMissileFast',
   'shotMissileLong',
   'beamDamageEndpoint',
-  'locomotionHovercraft',
-  'locomotionAlbatrosHoverFans',
-  'locomotionDragonflyHovercraft',
-  'locomotionEagleFlying',
-  'locomotionAlbatrosFlying',
+  'locomotionDuctedFan',
+  'locomotionAlbatrosDroneFans',
+  'locomotionDragonflyDrone',
+  'locomotionEaglePlane',
+  'locomotionAlbatrosAerosub',
 ] as const;
 
 export type SmokeUseId = typeof SMOKE_USE_IDS[number];
-export type HoverSmokeUseId = Extract<
+export type DroneSmokeUseId = Extract<
   SmokeUseId,
-  'locomotionHovercraft' | 'locomotionAlbatrosHoverFans' | 'locomotionDragonflyHovercraft'
+  'locomotionDuctedFan' | 'locomotionAlbatrosDroneFans' | 'locomotionDragonflyDrone'
 >;
-export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying' | 'locomotionAlbatrosFlying'>;
+export type AirframeSmokeUseId = Extract<SmokeUseId, 'locomotionEaglePlane' | 'locomotionAlbatrosAerosub'>;
 
 export type SmokeCapPolicy = 'evictOldest' | 'skipWhenFull';
 

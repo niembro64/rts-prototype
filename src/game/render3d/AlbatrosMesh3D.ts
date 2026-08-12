@@ -26,7 +26,7 @@ const rawIcosahedronVertices = [
 for (let i = 0; i < rawIcosahedronVertices.length; i++) rawIcosahedronVertices[i].normalize();
 
 // Kept for the old hover-fan builder, even though the albatros unit now uses
-// flying locomotion.
+// aerosub locomotion.
 export const ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS: readonly THREE.Vector3[] =
   rawIcosahedronVertices;
 
@@ -99,7 +99,7 @@ function addCylinderBetween(
 
 // Simple bomber body: a cylindrical fuselage with a rounded nose, tail
 // cone, dark canopy, team-color belly panel, and a swept vertical fin. The
-// wings, tail wings, and jets stay on the FlyingRig (built from the
+// wings, tail wings, and jets stay on the AirframeRig (built from the
 // blueprint locomotion config) and are untouched here. Same span as the
 // old bird torso so the blueprint bodyShape oval (turret roots, hitbox)
 // still matches the visual.

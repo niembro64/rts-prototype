@@ -574,12 +574,18 @@ function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
 function summarizeUnitRole(blueprint: UnitBlueprint, weaponCount: number): string {
   if (blueprint.builder) return 'builder / support';
   if (weaponCount === 0) return 'utility';
-  if (blueprint.unitLocomotion.type === 'flying' || blueprint.unitLocomotion.type === 'dive') return 'air strike';
-  if (blueprint.unitLocomotion.type === 'submarine') return 'underwater assault';
-  if (blueprint.unitLocomotion.type === 'hover') return 'hover skirmisher';
-  if (blueprint.unitLocomotion.type === 'legs') return 'walker assault';
-  if (blueprint.unitLocomotion.type === 'treads') return 'armored assault';
-  return 'wheeled combat';
+  switch (blueprint.unitLocomotion.type) {
+    case 'rover': return 'rover combat';
+    case 'tank': return 'tank assault';
+    case 'amphibious-tank': return 'amphibious tank assault';
+    case 'crawler': return 'crawler assault';
+    case 'bot': return 'bot assault';
+    case 'amphibian': return 'amphibious assault';
+    case 'drone': return 'drone skirmisher';
+    case 'plane': return 'air strike';
+    case 'submarine': return 'underwater assault';
+    case 'aerosub': return 'air / water strike';
+  }
 }
 
 function node(

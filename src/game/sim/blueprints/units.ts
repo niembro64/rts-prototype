@@ -18,9 +18,9 @@ import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
 import type {
-  LegConfig,
-  StandingArms,
-  StandingLegs,
+  CrawlerConfig,
+  BotArms,
+  BotLegs,
   UnitBodyShape,
 } from '@/types/blueprintSchema.generated';
 import {
@@ -234,11 +234,9 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
   }
 }
 
-/** Leg layout is authored the same way whichever mechanism wears it: `legs` is
- *  the config itself, `standing` carries it under `config.legs`. Both walk on the
- *  same rig, so both answer to the same envelope rather than one of them
- *  getting a second copy of these bounds to drift from. */
-function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
+/** A crawler authors its mirrored world-space leg layout directly on the
+ *  locomotion config, with one shared envelope for every limb. */
+function validateCrawlerLayout(unitBlueprintId: string, config: CrawlerConfig): void {
   const choppingRatio = config.choppingSphere.radiusLegLengthRatio;
   if (!Number.isFinite(choppingRatio) || choppingRatio <= 0) {
     throw new Error(
@@ -320,10 +318,10 @@ function validateLegLayout(unitBlueprintId: string, config: LegConfig): void {
   }
 }
 
-/** A standing mech owns a coupled biped pose, not independent reach shells.
+/** A bot mech owns a coupled biped pose, not independent reach shells.
  *  Its authored idle stance may open forward and laterally at the hip, so the
  *  reach check includes those two offsets as well as standing height. */
-function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void {
+function validateBotLegs(unitBlueprintId: string, legs: BotLegs): void {
   const values = [
     ['hip.xUnitRadiusRatio', legs.hip.xUnitRadiusRatio],
     ['hip.yUnitRadiusRatio', legs.hip.yUnitRadiusRatio],
@@ -372,14 +370,14 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
   const legLengthRatio =
     legs.segments.upper.lengthUnitRadiusRatio +
     legs.segments.lower.lengthUnitRadiusRatio;
-  const standingHeightRatio = legLengthRatio * legs.standHeightRatio;
-  if (Math.abs(standingHeightRatio - legs.hip.zUnitRadiusRatio) > 1e-5) {
+  const standHeightRatio = legLengthRatio * legs.standHeightRatio;
+  if (Math.abs(standHeightRatio - legs.hip.zUnitRadiusRatio) > 1e-5) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: hip height must equal the authored standing height so fixed-length bones meet the ground`,
     );
   }
   const stoppedReachRatio = Math.hypot(
-    standingHeightRatio,
+    standHeightRatio,
     legs.stanceForwardUnitRadiusRatio,
     legs.stanceOutwardUnitRadiusRatio,
   );
@@ -389,7 +387,7 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
     );
   }
   const walkingHalfStrideRatio = legLengthRatio * legs.strideLengthRatio * 0.48;
-  const walkingReachRatio = Math.hypot(standingHeightRatio, walkingHalfStrideRatio);
+  const walkingReachRatio = Math.hypot(standHeightRatio, walkingHalfStrideRatio);
   if (walkingReachRatio > legLengthRatio + 1e-6) {
     throw new Error(
       `Invalid stand leg layout for ${unitBlueprintId}: walking stride exceeds the fixed-length leg reach`,
@@ -401,7 +399,7 @@ function validateStandingLegs(unitBlueprintId: string, legs: StandingLegs): void
  *  reaches the sim — arms are presentation — but a non-finite ratio poses the
  *  whole limb at NaN, which reads as a missing arm rather than as a bad
  *  blueprint. */
-function validateStandingArms(unitBlueprintId: string, arms: StandingArms): void {
+function validateBotArms(unitBlueprintId: string, arms: BotArms): void {
   const values = [
     ['shoulder.xUnitRadiusRatio', arms.shoulder.xUnitRadiusRatio],
     ['shoulder.yUnitRadiusRatio', arms.shoulder.yUnitRadiusRatio],
@@ -501,11 +499,11 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
-  if (bp.unitLocomotion.type === 'legs') {
-    validateLegLayout(bp.unitBlueprintId, bp.unitLocomotion.config);
-  } else if (bp.unitLocomotion.type === 'standing') {
-    validateStandingLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
-    validateStandingArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
+  if (bp.unitLocomotion.type === 'crawler') {
+    validateCrawlerLayout(bp.unitBlueprintId, bp.unitLocomotion.config);
+  } else if (bp.unitLocomotion.type === 'bot') {
+    validateBotLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
+    validateBotArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
   }
 
   // Mount-finiteness only — cross-blueprint turret-ID validation runs
@@ -523,17 +521,17 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
         `Invalid turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: mount x/y/z must be finite`,
       );
     }
-    const standingHost = bp.unitLocomotion.type === 'standing';
-    if (standingHost && turret.hostAttachment === undefined) {
+    const botHost = bp.unitLocomotion.type === 'bot';
+    if (botHost && turret.hostAttachment === undefined) {
       throw new Error(
-        `Invalid standing turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-        'every standing-host turret must identify its host attachment',
+        `Invalid bot turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+        'every bot-host turret must identify its host attachment',
       );
     }
-    if (!standingHost && turret.hostAttachment !== undefined) {
+    if (!botHost && turret.hostAttachment !== undefined) {
       throw new Error(
         `Invalid turret host attachment for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-        'standing attachments require standing locomotion',
+        'bot attachments require bot locomotion',
       );
     }
     // Airborne mounts may use all three axes. Presentation banking is

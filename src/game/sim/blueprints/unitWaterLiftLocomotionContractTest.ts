@@ -9,7 +9,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runUnitWaterLiftLocomotionContractTest(): void {
-  for (const presetId of ['flippers', 'submarine']) {
+  for (const presetId of ['amphibian', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
       preset.actuator.ground.staticFrictionCoefficient >= 0,

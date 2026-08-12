@@ -1053,7 +1053,8 @@
         applicable groups are present on every runtime unit, while the authored unit contributes
         per-medium maximum propulsive force, mass, and body-specific
         surface-lift/gravity-counter terms. The chassis archetypes
-        &mdash; wheels, treads, legs, hover, flying &mdash; survive as <strong>visual rig
+        &mdash; rover, tank, amphibious-tank, crawler, bot, amphibian, drone, plane,
+        submarine, and aerosub &mdash; survive as <strong>visual rig
         choices and authored default presets</strong> (see <strong>Locomotion Visuals Are
         Frontend</strong>), not as separate physics code paths. Two units with the same
         force-profile numbers move identically regardless of which rig draws them, exactly
@@ -1077,7 +1078,7 @@
         of its air response. Ground is independent and joins the blend whenever a contact
         point rests on a surface, <em>even underwater</em>. So a unit standing on a lake bed
         is in ground + fractionally water/air; a unit fully submerged mid-column is water
-        only; a hovercraft skimming the surface can continuously transition between air and
+        only; a surface-skimming craft can continuously transition between air and
         water while its skirt optionally contacts; a submarine resting on the bottom is
         ground + water.
       </p>
@@ -1637,42 +1638,59 @@
       </p>
 
       <h3>The locomotion rigs</h3>
+      <p>
+        Locomotion discriminators use singular RTS chassis-role names, not the names of their
+        animation primitives. The canonical schema is <code>rover</code>, <code>tank</code>,
+        <code>amphibious-tank</code>, <code>crawler</code>, <code>bot</code>,
+        <code>amphibian</code>, <code>drone</code>, <code>plane</code>,
+        <code>submarine</code>, and <code>aerosub</code>. Wheels, treads, legs, flippers,
+        fans, and wings remain ordinary component names inside those rigs; they are not
+        locomotion-family identifiers or preset names.
+      </p>
       <ul class="rule-list">
-        <li><strong>Wheels</strong> &mdash; a chassis driven through discrete rigid contact patches at
+        <li><strong>Rover</strong> &mdash; a wheeled chassis driven through discrete rigid contact patches at
         fixed body-local positions. Visually: cylindrical tires, each spinning around its own axle,
         rolling phase derived from how far that local contact point traveled in the world this
         frame. Each tire owes the ground a contact patch &mdash; the bottom of the cylinder is the
         contract.</li>
-        <li><strong>Treads</strong> &mdash; two infinite belts that share chassis velocity but read it
+        <li><strong>Tank</strong> &mdash; two infinite tread belts that share chassis velocity but read it
         as continuous tangential motion. Visually: scrolling cleat rails along the belt path; the
         belt itself never moves relative to the chassis. The contract is the entire underside of
         each ribbon sitting on terrain.</li>
-        <li><strong>Legs</strong> &mdash; discrete step events: a foot plants, the chassis advances
+        <li><strong>Amphibious tank</strong> &mdash; the tank rig paired with deliberate water
+        propulsion and water-safe navigation. Its tread presentation remains terrain-contact
+        machinery; medium physics, not a renderer-side mode switch, decides when water carries it.</li>
+        <li><strong>Crawler</strong> &mdash; discrete step events: a foot plants, the chassis advances
         past it, the foot lifts and swings to a new plant. IK solves hip&rarr;knee&rarr;foot for the
         rendered pose. The contract is per-foot, not per-chassis &mdash; feet must touch terrain on
         plant and swing through air during transit. The authored <code>hasFeet</code> flag controls
         whether those endpoints also receive separate rendered foot pieces and terrain-aligned foot
-        orientation work. A footless legs rig retains its gait/IK endpoints but performs no foot-
+        orientation work. A footless crawler rig retains its gait/IK endpoints but performs no foot-
         orientation calculations and allocates or draws no foot geometry.</li>
-        <li><strong>Standing</strong> &mdash; one authored biped cycle shared by both legs, with the
+        <li><strong>Bot</strong> &mdash; one authored biped cycle shared by both legs, with the
         second leg exactly half a cycle behind the first. The shoes are ordinary lower-body animation
         pieces: they face with the hips, remain flat through stance, and use a small toe/heel pitch
         through recovery. They do not own terrain footprints or slope-solving state.</li>
-        <li><strong>Flippers</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
+        <li><strong>Amphibian</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
         separate foot. On land they use a diagonal, leg-like support gait; as the physical
         submerged fraction rises they continuously unfold into wing-like paddles. The visual
         transition reads the same body-in-water fraction as locomotion physics, while maximum
         propulsive force remains wholly owned by the unit blueprint.</li>
-        <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
+        <li><strong>Drone</strong> &mdash; a chassis that never touches anything; a duct array
         balances gravity with downward thrust against the air column underneath. Visually: spinning
         fans mounted above the chassis, downward smoke columns, chassis riding a target altitude.
         The overhead fan translation is frontend presentation only: authored locomotion mounts and
         authoritative lift forces stay in their original body-local locations. The contract is
         <em>anti-contact</em>: the gap is the feature, and that gap must be measurable per frame so
         smoke length and altitude shading look right.</li>
-        <li><strong>Flying</strong> &mdash; a body supported and propelled in air. Wings, jets, and
+        <li><strong>Plane</strong> &mdash; a fixed-wing body supported and propelled in air. Wings, jets, and
         exhaust communicate the force profile but do not own it; their pose is downstream of the
         canonical full-body orientation and velocity.</li>
+        <li><strong>Submarine</strong> &mdash; an underwater body propelled through water, with fins,
+        jets, and body pose downstream of the same canonical root and medium-force profile.</li>
+        <li><strong>Aerosub</strong> &mdash; one winged body intentionally capable of powered travel in
+        both air and water. It is not a plane that swaps to a second simulation when submerged; the
+        shared occupancy-weighted force profile continuously blends its two authored media.</li>
       </ul>
 
       <h3>One rendered root pose owns every attachment</h3>
@@ -1717,8 +1735,8 @@
         Floor clamping is per primitive. A four-wheeled vehicle straddling a crest has two wheels
         rising over the terrain and two floating in air over the dip; the rig clamps each tire
         independently. Treads sample three points along each side ribbon and lift the side to
-        clear the max. Legs sample under each foot. Hover doesn't clamp parts but does sample a
-        per-frame <em>clearance</em> scalar for fan smoke and altitude shading. Standing uses its one
+        clear the max. Crawlers sample under each foot. A drone doesn't clamp parts but does sample a
+        per-frame <em>clearance</em> scalar for fan smoke and altitude shading. A bot uses its one
         lower-body ground baseline rather than querying terrain beneath each shoe. The rig knows what
         its primitives are; uniformity is in the shape of the contract, not in the bits.
       </p>
@@ -1734,7 +1752,7 @@
         unmistakable.
       </p>
       <p>
-        For legs, the stable unit of truth is the foot, not the chassis. A planted foot keeps its
+        For crawlers, the stable unit of truth is the foot, not the chassis. A planted foot keeps its
         world position and its complete world orientation until a deliberate step swing begins.
         It does not twist within its support plane as the chassis, hip, knee, or lower segment moves
         around it; a shoe visibly turning while loaded against the ground is a contact violation.
@@ -1743,9 +1761,9 @@
         really leaves the ground, feet move smoothly into an airborne pose; when it returns, each
         foot swings to a terrain plant instead of being initialized in place.
       </p>
-      <h3>Leg foot orientation is resolved from consecutive footprints</h3>
+      <h3>Crawler foot orientation is resolved from consecutive footprints</h3>
       <p>
-        An arachnid-style <strong>legs</strong> step knows both endpoints before the foot moves: the footprint it is leaving and
+        An arachnid-style <strong>crawler</strong> step knows both endpoints before the foot moves: the footprint it is leaving and
         the footprint it is approaching. Each endpoint owns a terrain support plane sampled once at
         that footprint. The moving foot interpolates from the previous footprint&rsquo;s plane to the next
         footprint&rsquo;s plane over the step&rsquo;s linear progress, reaching the complete destination angle
@@ -1761,24 +1779,24 @@
         complete orientations only while the foot is in transit. Neither the moving leg segments nor
         a turning chassis may rotate a planted foot.
       </p>
-      <h3>Standing feet use an authored walk cycle, not terrain matching</h3>
+      <h3>Bot feet use an authored walk cycle, not terrain matching</h3>
       <p>
-        <strong>Standing</strong> deliberately does not participate in the consecutive-footprint
+        A <strong>bot</strong> deliberately does not participate in the consecutive-footprint
         terrain solver. Beyond All Reason&rsquo;s Commander establishes the useful RTS reference: its
         feet are model pieces driven through an authored walk animation, not independently planted
-        world-space contacts. Our standing rig follows that readable, robust approach. Both shoes use
+        world-space contacts. Our bot rig follows that readable, robust approach. Both shoes use
         the one coupled gait clock, always point forward in the hips frame, stay flat through the
         planted half, and smoothly pass through a restrained toe-down / neutral / toe-up / flat pitch
         sequence during recovery.
       </p>
       <p>
-        A standing shoe never samples terrain height or normal, predicts a next footprint, retains a
+        A bot shoe never samples terrain height or normal, predicts a next footprint, retains a
         footprint anchor or plane, interpolates ground slopes, or stores any per-foot contact state
         across a geometry-tier rebuild. Foot position comes from the authored stride and lift over the
         rig&rsquo;s single local ground baseline. The authoritative root/support pose still handles the
         unit&rsquo;s large-scale relationship to terrain; a small amount of shoe clipping or floating on
         uneven ground is an accepted RTS-scale tradeoff for coherent motion and substantially less
-        fragile presentation code. This simplification does not change <strong>legs</strong> behavior.
+        fragile presentation code. This simplification does not change <strong>crawler</strong> behavior.
       </p>
       <p>
         Each arachnid-style leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
@@ -1847,11 +1865,11 @@
     <section>
       <h2>Airborne Banking Is Visual; Combat Mounts Stay Authoritative</h2>
       <p>
-        Hover and flying units should <em>look</em> like they bank into their turns &mdash; the
+        Drone and plane units should <em>look</em> like they bank into their turns &mdash; the
         chassis rolls about its forward axis as lateral velocity builds, then unwinds when the
         unit straightens out. Banking is the strongest visual cue that an airborne unit is
         physically committed to a turn, and the renderer is the only place that needs to know
-        about it. The authoritative sim continues to track yaw (and yaw alone) for hover/flying
+        about it. The authoritative sim continues to track yaw (and yaw alone) for drone/plane
         chassis; any extra presentation bank is derived from local body velocity at render time
         and never touches sim state, the wire, or combat math.
       </p>
@@ -1882,7 +1900,7 @@
 
       <h3>What the sim writes, what the renderer composes</h3>
       <ul class="rule-list">
-        <li>The sim keeps a torque- and angular-speed-limited yaw servo on hover/flying orientation. Its state transition is the exact fixed-tick solution of the critically damped rotational equation, not Euler integration, so a light chassis cannot enter a left/right limit cycle when nearly aligned. <code>entity.unit.orientation</code> still ends each airborne tick as a quaternion equivalent to <code>setQuatFromYaw(yaw)</code>; target pitch and target roll remain pinned to zero.</li>
+        <li>The sim keeps a torque- and angular-speed-limited yaw servo on drone/plane orientation. Its state transition is the exact fixed-tick solution of the critically damped rotational equation, not Euler integration, so a light chassis cannot enter a left/right limit cycle when nearly aligned. <code>entity.unit.orientation</code> still ends each airborne tick as a quaternion equivalent to <code>setQuatFromYaw(yaw)</code>; target pitch and target roll remain pinned to zero.</li>
         <li>The renderer derives a body-lateral <em>acceleration</em> &mdash; the centripetal term <code>v_forward · ω_z</code> &mdash; from <code>unit.velocityX/Y</code> projected through the current yaw and <code>unit.angularVelocity3.z</code> (the yaw rate, on the wire and predicted at render rate). It scales that into a target bank angle, EMA-smooths it per frame, and composes the roll about the body-forward axis on top of the chassis yaw quat. A velocity-derived bank would decay to flat mid-turn because the yaw spring continuously aligns body forward with the thrust direction, collapsing body-lateral velocity; the centripetal signal stays high for as long as the unit is actually turning.</li>
         <li>The visual bank is bounded (a hard clamp keeps the chassis from doing barrel rolls under collision spikes) and decays toward zero whenever centripetal acceleration is small. It intentionally uses local render-side smoothing rather than the rotation-position channel. No sim state ever sees the value.</li>
         <li>If a future visual wants pitch (nose-down when accelerating, nose-up when braking), it lives in the same place: derived from velocity at render time, never written back to the sim.</li>
@@ -1901,16 +1919,16 @@
         yaw/pitch servo, aim-error firing gate, snapshot, interpolation, and renderer
         pose path. An emission family does not get a private targeting path.
       </p>
-      <h3>Standing hosts hold their guns: the arm aims, the turret is static</h3>
+      <h3>Bot hosts hold their guns: the arm aims, the turret is static</h3>
       <p>
         Every host on that shared aim expresses it the same way &mdash; the hull holds still
-        and the turret swivels on top of it &mdash; with one exception. A standing host is a
+        and the turret swivels on top of it &mdash; with one exception. A bot host is a
         biped with articulated legs and arms, and it aims with its <em>body</em>: the torso
         carries the weapon heading, the arm carries the elevation, and the weapon is bolted
         to the hand at the end of that chain. The arm direction <em>is</em> the gun direction.
       </p>
       <p>
-        So a turret with a <code>standingArm</code> host attachment renders as a
+        So a turret with a <code>botArm</code> host attachment renders as a
         <strong>static gun held in a hand</strong>. Its rendered orientation comes from the
         carrying arm&rsquo;s solved forearm direction, and the turret contributes no yaw or
         pitch of its own. The alternative is not neutral: a held turret that also articulated
@@ -1921,13 +1939,13 @@
         <strong>None of this touches turret authority.</strong> Mount resolution, target
         acquisition, the aim solver, the damped yaw/pitch servo, the aim-error firing gate,
         and the presentation rows on the wire are byte-for-byte what they are on a tank; a
-        standing host&rsquo;s gun hits exactly what it would hit anywhere else. This is a
+        bot host&rsquo;s gun hits exactly what it would hit anywhere else. This is a
         presentation swap of the same family as <strong>Locomotion Visuals Are Frontend</strong>:
         the renderer chooses which body expresses an authoritative pose, never what that pose is.
       </p>
       <ul class="rule-list">
         <li>The renderer reads the arm&rsquo;s own solved elbow&rarr;hand direction, chassis-local, and applies it as the held turret&rsquo;s local yaw/pitch. One source, so the drawn gun can never drift off the hand it is drawn in.</li>
-        <li>Only <code>standingArm</code> attachments are held. A <code>standingHead</code> mount &mdash; the Commander&rsquo;s D-gun &mdash; is hull-fixed and keeps the ordinary self-articulating turret pose, as does every mount on every other locomotion type.</li>
+        <li>Only <code>botArm</code> attachments are held. A <code>botHead</code> mount &mdash; the Commander&rsquo;s D-gun &mdash; is hull-fixed and keeps the ordinary self-articulating turret pose, as does every mount on every other locomotion type.</li>
         <li>Gameplay keeps the authored blueprint mount as the shot origin. The hand is an articulated <em>presentation</em> mount, which is what stops a held gun from sitting in the torso while its arm walks away; it does not redefine where the emission comes from.</li>
         <li>Torso heading and arm elevation are host presentation, smoothed on the client, so a held gun trails its authoritative aim by the same easing its body does. That lag is the feature: the weapon carries the weight of the thing carrying it.</li>
         <li>Head instancing, barrel geometry, detail tiers, and team trim are untouched. It is still an ordinary turret mesh &mdash; only the rotation feeding it comes from somewhere else.</li>
@@ -2113,7 +2131,7 @@
         in its own blueprint family, because only a shot is a body.
       </p>
       <ul class="rule-list">
-        <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, its own <strong>locomotion</strong> &mdash; the movement profile and rig (wheels, treads, legs, or hover) that produces and applies its movement forces, authored <em>inline as part of the unit</em> rather than as a separate piece &mdash; mounted turrets with stable mount IDs and control modes, host-owned intent/workflows, and composition slots. A unit that has a turret contract is built and exists with its authored turrets present; there is no finished weapon host with empty turret mounts.</li>
+        <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, its own <strong>locomotion</strong> &mdash; the movement profile and RTS-named rig that produces and applies its movement forces, authored <em>inline as part of the unit</em> rather than as a separate piece &mdash; mounted turrets with stable mount IDs and control modes, host-owned intent/workflows, and composition slots. A unit that has a turret contract is built and exists with its authored turrets present; there is no finished weapon host with empty turret mounts.</li>
         <li><code>building</code> owns an <em>immobile</em> host body: footprint, mass, health, static infrastructure, host-owned intent/workflows, and its mounted turret set. Fabricators, radar and sonar stations, resource producers, and defensive emplacements are all buildings. A legacy blueprint ID may still contain the word <code>tower</code>, but that is content identity, not a separate runtime family.</li>
         <li><code>turret</code> is a standardized mounted combat or sensor emitter. Every unit and building mounts at least one. Every turret owns its own nested <code>turretRange</code>, containing the lock-on <code>range</code>, <code>rangeVolume</code>, hysteresis multipliers, and full-sight/contact-sight/detector radii. It falls into one of three emitter families by its <code>kind</code>:
           <ul>
@@ -2181,7 +2199,8 @@
       <p>
         Locomotion is <em>not</em> a standalone atomic piece. A unit&rsquo;s movement &mdash; its
         profile (mass, thrust, friction, damping, turn authority, contact model, vertical
-        constraints) and its rig (wheels, treads, legs, or hover) &mdash; is authored <em>inline on
+        constraints) and its rig (<code>rover</code>, <code>tank</code>, <code>crawler</code>,
+        <code>drone</code>, or another canonical chassis role) &mdash; is authored <em>inline on
         the unit blueprint</em>, in the same definition as the body it carries. There is no separate
         <code>locomotion</code> blueprint family and no separate locomotion entity. The decision is
         deliberate: a drivetrain bolted to a chassis is not a thing the game ever needs to point at,
@@ -2211,7 +2230,7 @@
       <p>
         What survives unchanged is locomotion as a <em>behavior</em> and as a <em>visual</em>: the
         unit still answers the arrival-control question (see <strong>Unit locomotion is arrival control,
-        not waypoint seeking</strong>) and still drives a wheel/tread/leg/hover rig (see
+        not waypoint seeking</strong>) and still drives its rover/tank/crawler/drone rig (see
         <strong>Locomotion Visuals Are Frontend</strong>). Those are properties of the unit, computed
         from the unit&rsquo;s own state &mdash; not the contract of a separate entity that has to be
         spawned, costed, healed, and torn off beside it.
@@ -3913,7 +3932,7 @@
         <li>Use one presentation alpha for every continuous root and turret field. Do not reintroduce independent EMA correction channels that make parts of one body represent different effective times.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
-        <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
+        <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, drone, and plane profiles should share this controller while differing through physical limits.</li>
         <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, two-domain <code>navigation</code>, and separate environmental hazards. Every unit has positive emergency water propulsion. Waypoint-valid cells own intentional, supportable destinations; move-valid cells are derived from active physical propulsion, and directed recovery edges allow a displaced body to return without authorizing water shortcuts. Terrain angle has no global ceiling: dry, bed-supported wet MOVE, and bed-supported wet WAYPOINT envelopes use exact mass, gravity, the local normal, <code>&mu;N</code>, medium propulsion, and one 85% actuator reserve, while air and fluid-supported water ignore lakebed slope. Ground has static friction and tangential damping; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. Water damage is a universal numeric rate sampled only at the body origin; water-safe units author zero. The loader validates this hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
         <li>Apply gravity to every force-integrated mass body every tick; thrust-guided projectiles cancel it inside their bounded homing acceleration, while explicitly constant-speed-guided munitions preserve their complete velocity magnitude under a validated zero-thrust, zero-drag, zero-gravity kinematic policy. Never add a generic <code>ignoresGravity</code> flag.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>

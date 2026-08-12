@@ -358,12 +358,12 @@
           "colorHex": "#111111"
         }
       },
-      "swim": {
+      "submarine": {
         "fin": {
           "colorHex": "#222222"
         }
       },
-      "hover": {
+      "drone": {
         "fanRing": {
           "colorHex": "#444444"
         },
@@ -378,7 +378,7 @@
           "startAlpha": 0.9
         }
       },
-      "flying": {
+      "airframe": {
         "wing": {
           "colorHex": "#444444"
         },

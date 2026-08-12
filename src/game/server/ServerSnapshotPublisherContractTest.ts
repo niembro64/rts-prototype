@@ -217,7 +217,7 @@ export function runServerSnapshotPublisherContractTest(): void {
   const unit = world.createUnitFromBlueprint(120, 140, 1 as PlayerId, 'unitEagle');
   world.addEntity(unit);
   assertContract(unit.unit !== null, 'fixture unit must have a unit component');
-  assertContract(unit.unit.locomotion.type === 'flying', 'fixture unit must be flying');
+  assertContract(unit.unit.locomotion.type === 'plane', 'fixture unit must be flying');
 
   resetEntitySnapshotPool();
   const fullEntity = serializeEntitySnapshot(unit, undefined, world);
@@ -320,7 +320,7 @@ export function runServerSnapshotPublisherContractTest(): void {
   const groundUnit = groundWorld.createUnitFromBlueprint(80, 90, 1 as PlayerId, 'unitJackal');
   groundWorld.addEntity(groundUnit);
   assertContract(groundUnit.unit !== null, 'ground fixture unit must have a unit component');
-  assertContract(groundUnit.unit.locomotion.type !== 'flying', 'ground fixture unit must not be flying');
+  assertContract(groundUnit.unit.locomotion.type !== 'plane', 'ground fixture unit must not be flying');
 
   const groundDrainIds: number[] = [];
   const groundDrainFields: number[] = [];

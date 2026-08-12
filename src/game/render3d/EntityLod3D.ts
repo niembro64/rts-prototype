@@ -178,7 +178,7 @@ export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
     if (entity.transport !== null || entity.factory !== null) {
       return ENTITY_LOD_PROXY_GLYPH_SQUARE;
     }
-    if (unit.locomotion.type === 'flying' || unit.locomotion.type === 'dive') {
+    if (unit.locomotion.type === 'plane' || unit.locomotion.type === 'aerosub') {
       return ENTITY_LOD_PROXY_GLYPH_TRIANGLE;
     }
     return ENTITY_LOD_PROXY_GLYPH_CIRCLE;

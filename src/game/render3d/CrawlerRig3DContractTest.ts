@@ -19,7 +19,7 @@ import {
   resolveKneeJointQuaternion,
   resolveLegFootSurfaceQuaternion,
   resolveLegSegmentRight,
-} from './LegRig3D';
+} from './CrawlerRig3D';
 import {
   kneeFromIK,
   LEG_ATTACHMENT_RADIUS_MULTIPLIER,
@@ -35,7 +35,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(`[leg rig contract] ${message}`);
 }
 
-export function runLegRig3DContractTest(): void {
+export function runCrawlerRig3DContractTest(): void {
   assertContract(
     LEG_ATTACHMENT_RADIUS_MULTIPLIER === 2,
     'the body attachment is exactly twice the shared knee/foot radius',

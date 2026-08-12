@@ -34,7 +34,7 @@ function unitEntity(
   options: {
     hp?: number;
     maxHp?: number;
-    flying?: boolean;
+    cruising?: boolean;
     builder?: boolean;
     commander?: boolean;
     factory?: boolean;
@@ -49,12 +49,12 @@ function unitEntity(
     hp: options.hp ?? 100,
     maxHp: options.maxHp ?? 100,
     shieldPanels: options.shieldPanel === true ? [{}] : [],
-    // cachedFlyingUnits keys off motionControl.cruiseWhenUncommanded (the
+    // cachedCruisingUnits keys off motionControl.cruiseWhenUncommanded (the
     // continuous idle-air drive), not the rig name, so the stub has to carry
     // it or EntityCacheManager throws while indexing.
     locomotion: {
-      type: options.flying === true ? 'flying' : 'ground',
-      motionControl: { cruiseWhenUncommanded: options.flying === true },
+      type: options.cruising === true ? 'plane' : 'ground',
+      motionControl: { cruiseWhenUncommanded: options.cruising === true },
     },
   } as Entity['unit'];
   if (options.builder === true) entity.builder = {} as Entity['builder'];
@@ -169,8 +169,8 @@ function snapshot(manager: EntityCacheManager): Record<string, string> {
     shieldUnits: ids(manager.getShieldUnits()),
     commanderUnits: ids(manager.getCommanderUnits()),
     builderUnits: ids(manager.getBuilderUnits()),
-    flyingUnits: ids(manager.getFlyingUnits()),
-    flyingUnitSlots: values(manager.getFlyingUnitSlots()),
+    cruisingUnits: ids(manager.getCruisingUnits()),
+    cruisingUnitSlots: values(manager.getCruisingUnitSlots()),
     armedEntities: ids(manager.getArmedEntities()),
     beamUnits: ids(manager.getBeamUnits()),
     shieldPanelUnits: ids(manager.getShieldPanelUnits()),
@@ -203,7 +203,7 @@ export function runEntityCacheManagerContractTest(): void {
   const outOfOrderUnit = unitEntity(5 as EntityId, 2 as PlayerId, {
     hp: 25,
     maxHp: 100,
-    flying: true,
+    cruising: true,
     builder: true,
     commander: true,
     factory: true,

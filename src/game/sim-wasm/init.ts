@@ -59,7 +59,7 @@ import __wbg_init, {
   economy_apply_converter_transfers,
   arrival_completion_step_batch,
   unit_effective_drive_acceleration,
-  flying_loiter_step_batch,
+  airborne_loiter_step_batch,
   stuck_replan_step_batch,
   unit_action_plan_batch,
   unit_action_movement_batch,
@@ -799,7 +799,7 @@ export interface SimWasm {
     finalRadius: number,
     finalStopSpeed: number,
   ) => number;
-  readonly flyingLoiterStepBatch: (
+  readonly airborneLoiterStepBatch: (
     slots: Uint32Array,
     dx: Float64Array,
     dy: Float64Array,
@@ -4236,7 +4236,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         arrivalCompletionStepBatch: arrival_completion_step_batch,
-        flyingLoiterStepBatch: flying_loiter_step_batch,
+        airborneLoiterStepBatch: airborne_loiter_step_batch,
         stuckReplanStepBatch: stuck_replan_step_batch,
         unitActionPlanBatch: unit_action_plan_batch,
         unitActionMovementBatch: unit_action_movement_batch,
@@ -4921,16 +4921,16 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDirectionalTravelSlotSurfaceChart3DContractTest();
         const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');
         runTurretAimPose3DContractTest();
-        const { runStandingHostTurretAim3DContractTest } = await import('../render3d/StandingHostTurretAim3DContractTest');
-        runStandingHostTurretAim3DContractTest();
+        const { runBotHostTurretAim3DContractTest } = await import('../render3d/BotHostTurretAim3DContractTest');
+        runBotHostTurretAim3DContractTest();
         const { runCommanderGeometry3DContractTest } = await import('../render3d/CommanderGeometry3DContractTest');
         runCommanderGeometry3DContractTest();
         const { runBuildingTurretPresentation3DContractTest } = await import('../render3d/BuildingTurretPresentation3DContractTest');
         runBuildingTurretPresentation3DContractTest();
         const { runQueenArmamentContractTest } = await import('../sim/blueprints/queenArmamentContractTest');
         runQueenArmamentContractTest();
-        const { runHoverFanPlacement3DContractTest } = await import('../render3d/HoverFanPlacement3DContractTest');
-        runHoverFanPlacement3DContractTest();
+        const { runDroneFanPlacement3DContractTest } = await import('../render3d/DroneFanPlacement3DContractTest');
+        runDroneFanPlacement3DContractTest();
         const { runEntityDeathDisassembly3DContractTest } = await import('../render3d/EntityDeathDisassembly3DContractTest');
         runEntityDeathDisassembly3DContractTest();
         const { runVanishingUnitMotion3DContractTest } = await import('../render3d/VanishingUnitMotion3DContractTest');
@@ -4945,8 +4945,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntityDetailLevel3DContractTest();
         const { runRollingLocomotionContractTest } = await import('../render3d/RollingLocomotionContractTest');
         runRollingLocomotionContractTest();
-        const { runLegRig3DContractTest } = await import('../render3d/LegRig3DContractTest');
-        runLegRig3DContractTest();
+        const { runCrawlerRig3DContractTest } = await import('../render3d/CrawlerRig3DContractTest');
+        runCrawlerRig3DContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');

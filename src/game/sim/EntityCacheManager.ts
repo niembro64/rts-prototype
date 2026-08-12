@@ -52,12 +52,12 @@ export class EntityCacheManager {
   private cachedShieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
-  /** Flying units specifically. Force and snapshot-delta passes poll these
+  /** Airborne-cruising units specifically. Force and snapshot-delta passes poll these
    *  every tick; locomotion type is blueprint-static, so cache it with the
    *  other stable unit buckets instead of filtering all units repeatedly. */
-  private cachedFlyingUnits: Entity[] = [];
-  private cachedFlyingUnitSlots: number[] = [];
-  private cachedFlyingUnitSlotsDirty = true;
+  private cachedCruisingUnits: Entity[] = [];
+  private cachedCruisingUnitSlots: number[] = [];
+  private cachedCruisingUnitSlotsDirty = true;
   /** Every entity (unit OR building) with a CombatComponent that owns
    *  at least one attack emitter. The combat pipeline iterates
    *  this list and never branches on entity type — armed buildings are
@@ -150,9 +150,9 @@ export class EntityCacheManager {
     this.cachedShieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
-    this.cachedFlyingUnits.length = 0;
-    this.cachedFlyingUnitSlots.length = 0;
-    this.cachedFlyingUnitSlotsDirty = true;
+    this.cachedCruisingUnits.length = 0;
+    this.cachedCruisingUnitSlots.length = 0;
+    this.cachedCruisingUnitSlotsDirty = true;
     this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
     this.cachedShieldPanelUnits.length = 0;
@@ -241,8 +241,8 @@ export class EntityCacheManager {
           addEntityToList(this.cachedShieldPanelUnits, entity, sortedInsert);
         }
         if (entity.unit !== null && entity.unit.locomotion.motionControl.cruiseWhenUncommanded) {
-          addEntityToList(this.cachedFlyingUnits, entity, sortedInsert);
-          this.cachedFlyingUnitSlotsDirty = true;
+          addEntityToList(this.cachedCruisingUnits, entity, sortedInsert);
+          this.cachedCruisingUnitSlotsDirty = true;
         }
         if (entity.commander) addEntityToList(this.cachedCommanderUnits, entity, sortedInsert);
         if (entity.builder) addEntityToList(this.cachedBuilderUnits, entity, sortedInsert);
@@ -336,8 +336,8 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedShieldUnits, entity);
     removeEntityFromList(this.cachedCommanderUnits, entity);
     removeEntityFromList(this.cachedBuilderUnits, entity);
-    removeEntityFromList(this.cachedFlyingUnits, entity);
-    this.cachedFlyingUnitSlotsDirty = true;
+    removeEntityFromList(this.cachedCruisingUnits, entity);
+    this.cachedCruisingUnitSlotsDirty = true;
     removeEntityFromList(this.cachedArmedEntities, entity);
     removeEntityFromList(this.cachedBeamUnits, entity);
     removeEntityFromList(this.cachedShieldPanelUnits, entity);
@@ -490,20 +490,20 @@ export class EntityCacheManager {
     return this.cachedBuilderUnits;
   }
 
-  getFlyingUnits(): Entity[] {
-    return this.cachedFlyingUnits;
+  getCruisingUnits(): Entity[] {
+    return this.cachedCruisingUnits;
   }
 
-  getFlyingUnitSlots(): readonly number[] {
-    if (this.cachedFlyingUnitSlotsDirty) {
-      const slots = this.cachedFlyingUnitSlots;
-      slots.length = this.cachedFlyingUnits.length;
-      for (let i = 0; i < this.cachedFlyingUnits.length; i++) {
-        slots[i] = entitySlotRegistry.getEntitySlot(this.cachedFlyingUnits[i]);
+  getCruisingUnitSlots(): readonly number[] {
+    if (this.cachedCruisingUnitSlotsDirty) {
+      const slots = this.cachedCruisingUnitSlots;
+      slots.length = this.cachedCruisingUnits.length;
+      for (let i = 0; i < this.cachedCruisingUnits.length; i++) {
+        slots[i] = entitySlotRegistry.getEntitySlot(this.cachedCruisingUnits[i]);
       }
-      this.cachedFlyingUnitSlotsDirty = false;
+      this.cachedCruisingUnitSlotsDirty = false;
     }
-    return this.cachedFlyingUnitSlots;
+    return this.cachedCruisingUnitSlots;
   }
 
   getArmedEntities(): Entity[] {

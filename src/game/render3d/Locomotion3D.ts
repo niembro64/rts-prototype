@@ -1,6 +1,6 @@
 // Locomotion3D — thin dispatcher over the per-locomotion-type rig
-// modules (LegRig3D, FlipperRig3D, TreadRig3D, WheelRig3D, HoverRig3D,
-// FlyingRig3D, SwimRig3D). Each rig owns its build,
+// modules (CrawlerRig3D, AmphibianRig3D, TankRig3D, RoverRig3D, DroneRig3D,
+// AirframeRig3D, SubmarineRig3D). Each rig owns its build,
 // update, and (for legs) state-snapshot logic. This file only:
 //   - exposes the discriminated `Locomotion3DMesh` union,
 //   - dispatches to the correct rig at build / update / destroy time,
@@ -22,55 +22,55 @@ import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { LEG_CHARTS } from './SurfaceChart3D';
 import {
-  type LegMesh,
+  type CrawlerMesh,
   type LegStateSnapshot,
   applyLegState as applyLegStateImpl,
-  buildLegs,
+  buildCrawler,
   captureLegState as captureLegStateImpl,
   fadeLegSlots,
   freeLegSlots,
-  updateLegs,
-} from './LegRig3D';
+  updateCrawler,
+} from './CrawlerRig3D';
 import {
-  type TreadMesh,
-  buildTreads,
-  updateTreads,
-} from './TreadRig3D';
+  type TankMesh,
+  buildTank,
+  updateTank,
+} from './TankRig3D';
 import {
-  type WheelMesh,
-  buildWheels,
-  updateWheels,
-} from './WheelRig3D';
+  type RoverMesh,
+  buildRover,
+  updateRover,
+} from './RoverRig3D';
 import {
-  type HoverMesh,
-  buildHoverFans,
-  getHoverFanVisualRootY,
-  setHoverFanAnimationTime,
-  updateHoverFans,
-} from './HoverRig3D';
+  type DroneMesh,
+  buildDroneFans,
+  getDroneFanVisualRootY,
+  setDroneFanAnimationTime,
+  updateDroneFans,
+} from './DroneRig3D';
 import {
-  type FlyingMesh,
-  buildFlyingRig,
-  updateFlyingRig,
-} from './FlyingRig3D';
+  type AirframeMesh,
+  buildAirframeRig,
+  updateAirframeRig,
+} from './AirframeRig3D';
 import {
-  type FlipperMesh,
-  buildFlippers,
-  updateFlippers,
-} from './FlipperRig3D';
+  type AmphibianMesh,
+  buildAmphibian,
+  updateAmphibian,
+} from './AmphibianRig3D';
 import {
-  buildStandingRig,
-  poseStandingRigAtRest,
-  updateStandingRig,
-  type StandingMesh,
-} from './StandingRig3D';
+  buildBotRig,
+  poseBotRigAtRest,
+  updateBotRig,
+  type BotMesh,
+} from './BotRig3D';
 import {
-  type SwimMesh,
-  buildSwimRig,
-  updateSwimRig,
-} from './SwimRig3D';
+  type SubmarineMesh,
+  buildSubmarineRig,
+  updateSubmarineRig,
+} from './SubmarineRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
-import type { FlyingSmokeUseId, HoverSmokeUseId } from '@/smokeConfig';
+import type { AirframeSmokeUseId, DroneSmokeUseId } from '@/smokeConfig';
 import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
@@ -80,18 +80,18 @@ import type { LocomotionRenderPose } from './LocomotionRigShared3D';
 import type { RollingContactState } from './LocomotionRigShared3D';
 
 export type Locomotion3DMesh =
-  | TreadMesh
-  | WheelMesh
-  | LegMesh
-  | StandingMesh
-  | FlipperMesh
-  | HoverMesh
-  | FlyingMesh
-  | SwimMesh
+  | TankMesh
+  | RoverMesh
+  | CrawlerMesh
+  | BotMesh
+  | AmphibianMesh
+  | DroneMesh
+  | AirframeMesh
+  | SubmarineMesh
   | undefined;
 
 export type { LegStateSnapshot };
-export { setHoverFanAnimationTime };
+export { setDroneFanAnimationTime };
 
 type RollingContactSnapshot = Readonly<{
   worldX: number;
@@ -107,7 +107,7 @@ type RollingContactSnapshot = Readonly<{
  */
 export type LocomotionStateSnapshot =
   | {
-      type: 'legs';
+      type: 'crawler';
       legs: LegStateSnapshot;
       visualGrounded: boolean;
       poseInitialized: boolean;
@@ -116,7 +116,7 @@ export type LocomotionStateSnapshot =
       lastBaseZ: number;
     }
   | {
-      type: 'standing';
+      type: 'bot';
       /** A tier rebuild must not restart the coupled biped cycle mid-stride. */
       contact: RollingContactSnapshot;
       gaitPhase: number;
@@ -127,13 +127,13 @@ export type LocomotionStateSnapshot =
       upperBodyYawVelocity: number;
     }
   | {
-      type: 'wheels';
+      type: 'rover';
       contacts: RollingContactSnapshot[];
       mounts: Array<Readonly<{ lift: number; targetLift: number; angularVelocity: number }>>;
       rotations: number[];
     }
   | {
-      type: 'treads';
+      type: 'tank';
       contacts: RollingContactSnapshot[];
       sides: Array<Readonly<{
         lift: number;
@@ -145,15 +145,15 @@ export type LocomotionStateSnapshot =
       }>>;
     }
   | {
-      type: 'flippers';
+      type: 'amphibian';
       contact: RollingContactSnapshot;
       waterBlend: number;
       hingeQuaternions: Array<readonly [number, number, number, number]>;
     }
-  | { type: 'hover'; clearance: number }
-  | { type: 'flying' }
+  | { type: 'drone'; clearance: number }
+  | { type: 'plane' | 'aerosub' }
   | {
-      type: 'swim';
+      type: 'submarine';
       contact: RollingContactSnapshot;
       hingeQuaternions: Array<readonly [number, number, number, number]>;
     };
@@ -188,9 +188,9 @@ export function captureLocomotionState(
 ): LocomotionStateSnapshot | undefined {
   if (!locomotion) return undefined;
   switch (locomotion.type) {
-    case 'legs':
+    case 'crawler':
       return {
-        type: 'legs',
+        type: 'crawler',
         legs: captureLegStateImpl(locomotion),
         visualGrounded: locomotion.visualGrounded,
         poseInitialized: locomotion.poseInitialized,
@@ -198,9 +198,9 @@ export function captureLocomotionState(
         lastBaseY: locomotion.lastBaseY,
         lastBaseZ: locomotion.lastBaseZ,
       };
-    case 'standing':
+    case 'bot':
       return {
-        type: 'standing',
+        type: 'bot',
         contact: captureRollingContact(locomotion.contact),
         gaitPhase: locomotion.gaitPhase,
         gaitDirection: locomotion.gaitDirection,
@@ -209,9 +209,9 @@ export function captureLocomotionState(
         upperBodyWorldYaw: locomotion.upperBodyWorldYaw,
         upperBodyYawVelocity: locomotion.upperBodyYawVelocity,
       };
-    case 'wheels':
+    case 'rover':
       return {
-        type: 'wheels',
+        type: 'rover',
         contacts: locomotion.wheelContacts.map(captureRollingContact),
         mounts: locomotion.wheelMounts.map((mount) => ({
           lift: mount.lift,
@@ -220,9 +220,9 @@ export function captureLocomotionState(
         })),
         rotations: locomotion.wheelMounts.map((mount) => mount.rotation),
       };
-    case 'treads':
+    case 'tank':
       return {
-        type: 'treads',
+        type: 'tank',
         contacts: locomotion.treadContacts.map(captureRollingContact),
         sides: locomotion.sides.map((side) => ({
           lift: side.lift,
@@ -233,20 +233,21 @@ export function captureLocomotionState(
           wheelRotation: side.wheelRotation,
         })),
       };
-    case 'flippers':
+    case 'amphibian':
       return {
-        type: 'flippers',
+        type: 'amphibian',
         contact: captureRollingContact(locomotion.contact),
         waterBlend: locomotion.waterBlend,
         hingeQuaternions: locomotion.panels.map((panel) => quaternionTuple(panel.hinge)),
       };
-    case 'hover':
-      return { type: 'hover', clearance: locomotion.clearance };
-    case 'flying':
-      return { type: 'flying' };
-    case 'swim':
+    case 'drone':
+      return { type: 'drone', clearance: locomotion.clearance };
+    case 'plane':
+    case 'aerosub':
+      return { type: locomotion.type };
+    case 'submarine':
       return {
-        type: 'swim',
+        type: 'submarine',
         contact: captureRollingContact(locomotion.contact),
         hingeQuaternions: locomotion.pectoralHinges.map(quaternionTuple),
       };
@@ -260,8 +261,8 @@ export function applyLocomotionState(
 ): void {
   if (!locomotion || snapshot === undefined || locomotion.type !== snapshot.type) return;
   switch (locomotion.type) {
-    case 'legs': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'legs' }>;
+    case 'crawler': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'crawler' }>;
       applyLegStateImpl(locomotion, state.legs);
       locomotion.visualGrounded = state.visualGrounded;
       locomotion.poseInitialized = state.poseInitialized;
@@ -270,8 +271,8 @@ export function applyLocomotionState(
       locomotion.lastBaseZ = state.lastBaseZ;
       return;
     }
-    case 'standing': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'standing' }>;
+    case 'bot': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'bot' }>;
       applyRollingContact(locomotion.contact, state.contact);
       locomotion.gaitPhase = state.gaitPhase;
       locomotion.gaitDirection = state.gaitDirection;
@@ -282,8 +283,8 @@ export function applyLocomotionState(
       locomotion.hips.rotation.y = -locomotion.upperBodyYaw;
       return;
     }
-    case 'wheels': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'wheels' }>;
+    case 'rover': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'rover' }>;
       for (let i = 0; i < locomotion.wheelContacts.length; i++) {
         applyRollingContact(locomotion.wheelContacts[i], state.contacts[i]);
       }
@@ -302,8 +303,8 @@ export function applyLocomotionState(
       }
       return;
     }
-    case 'treads': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'treads' }>;
+    case 'tank': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'tank' }>;
       for (let i = 0; i < locomotion.treadContacts.length; i++) {
         applyRollingContact(locomotion.treadContacts[i], state.contacts[i]);
       }
@@ -323,8 +324,8 @@ export function applyLocomotionState(
       }
       return;
     }
-    case 'flippers': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'flippers' }>;
+    case 'amphibian': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'amphibian' }>;
       applyRollingContact(locomotion.contact, state.contact);
       locomotion.waterBlend = state.waterBlend;
       for (let i = 0; i < locomotion.panels.length; i++) {
@@ -333,13 +334,14 @@ export function applyLocomotionState(
       }
       return;
     }
-    case 'hover':
-      locomotion.clearance = (snapshot as Extract<LocomotionStateSnapshot, { type: 'hover' }>).clearance;
+    case 'drone':
+      locomotion.clearance = (snapshot as Extract<LocomotionStateSnapshot, { type: 'drone' }>).clearance;
       return;
-    case 'flying':
+    case 'plane':
+    case 'aerosub':
       return;
-    case 'swim': {
-      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'swim' }>;
+    case 'submarine': {
+      const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'submarine' }>;
       applyRollingContact(locomotion.contact, state.contact);
       const hinges: THREE.Object3D[] = [...locomotion.pectoralHinges];
       for (let i = 0; i < hinges.length; i++) {
@@ -374,15 +376,15 @@ function geometryKeyFor(gfx: GraphicsConfig): string {
   return gfx.legs;
 }
 
-function hoverSmokeUseId(unitBlueprintId: string): HoverSmokeUseId {
-  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosHoverFans';
-  if (unitBlueprintId === 'unitDragonfly') return 'locomotionDragonflyHovercraft';
-  return 'locomotionHovercraft';
+function droneSmokeUseId(unitBlueprintId: string): DroneSmokeUseId {
+  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosDroneFans';
+  if (unitBlueprintId === 'unitDragonfly') return 'locomotionDragonflyDrone';
+  return 'locomotionDuctedFan';
 }
 
-function flyingSmokeUseId(unitBlueprintId: string): FlyingSmokeUseId {
-  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosFlying';
-  return 'locomotionEagleFlying';
+function airframeSmokeUseId(unitBlueprintId: string): AirframeSmokeUseId {
+  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosAerosub';
+  return 'locomotionEaglePlane';
 }
 
 /** Capture per-leg state from a legged locomotion mesh into a plain
@@ -390,14 +392,14 @@ function flyingSmokeUseId(unitBlueprintId: string): FlyingSmokeUseId {
  *  Returns `undefined` for non-legged units (treads/wheels/none) so
  *  the caller can `if (snap)` cheaply. */
 export function captureLegState(loc: Locomotion3DMesh): LegStateSnapshot | undefined {
-  if (!loc || loc.type !== 'legs') return undefined;
+  if (!loc || loc.type !== 'crawler') return undefined;
   return captureLegStateImpl(loc);
 }
 
 /** Pour a captured snapshot back into a freshly-built legged mesh.
  *  No-op for non-legged units. */
 export function applyLegState(loc: Locomotion3DMesh, snapshot: LegStateSnapshot): void {
-  if (!loc || loc.type !== 'legs') return;
+  if (!loc || loc.type !== 'crawler') return;
   applyLegStateImpl(loc, snapshot);
 }
 
@@ -428,9 +430,9 @@ export function buildLocomotion(
   const geometryTier = geometryTierForDetail(detailLevel);
 
   switch (loc.type) {
-    case 'treads':
-    case 'amphibious-treads': {
-      const mesh = buildTreads(
+    case 'tank':
+    case 'amphibious-tank': {
+      const mesh = buildTank(
         unitGroup,
         unitRadius,
         loc.config,
@@ -441,16 +443,16 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'wheels': {
-      const mesh = buildWheels(
+    case 'rover': {
+      const mesh = buildRover(
         unitGroup, unitRadius, loc.config, ownerId, geometryTier,
       );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'legs': {
+    case 'crawler': {
       const chassisLiftY = getChassisLift(bp, unitRadius);
-      const mesh = buildLegs(
+      const mesh = buildCrawler(
         worldGroup, unitRadius, loc.config,
         gfx.legs, chassisLiftY,
         legRenderer, ownerId,
@@ -464,9 +466,9 @@ export function buildLocomotion(
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'standing': {
-      const mesh = buildStandingRig(
-        // The standing rig poses against the lifted root, so it must share
+    case 'bot': {
+      const mesh = buildBotRig(
+        // The bot rig poses against the lifted root, so it must share
         // that root. Parenting it to the unlifted yaw group displaced every
         // limb by the chassis lift (eleven world units on Human).
         airborneUnitGroup, unitRadius, bp.mass,
@@ -475,32 +477,32 @@ export function buildLocomotion(
         getChassisLift(bp, unitRadius), ownerId, geometryTier,
         bp.unitBlueprintId,
       );
-      poseStandingRigAtRest(mesh);
+      poseBotRigAtRest(mesh);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'flippers': {
-      const mesh = buildFlippers(
+    case 'amphibian': {
+      const mesh = buildAmphibian(
         unitGroup, unitRadius, loc.config, ownerId, geometryTier,
       );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'hover': {
-      const mesh = buildHoverFans(
+    case 'drone': {
+      const mesh = buildDroneFans(
         airborneUnitGroup,
         unitRadius,
         loc.config,
-        hoverSmokeUseId(bp.unitBlueprintId),
+        droneSmokeUseId(bp.unitBlueprintId),
         entity.id,
         ownerId,
         geometryTier,
       );
-      // Hover mounts remain authoritative blueprint data. Only their rendered
+      // Drone mounts remain authoritative blueprint data. Only their rendered
       // array is translated to an overhead plane, high enough that even a
       // tilted duct clears the visible body. The array remains a lift-group
       // child so it banks with the chassis it is visibly attached to.
-      mesh.visualBaseY = getHoverFanVisualRootY(
+      mesh.visualBaseY = getDroneFanVisualRootY(
         getBodyTopY(bp.bodyShape, unitRadius),
         unitRadius,
         loc.config,
@@ -509,13 +511,14 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
-    case 'flying':
-    case 'dive': {
-      const mesh = buildFlyingRig(
+    case 'plane':
+    case 'aerosub': {
+      const mesh = buildAirframeRig(
         airborneUnitGroup,
         unitRadius,
+        loc.type,
         loc.config,
-        flyingSmokeUseId(bp.unitBlueprintId),
+        airframeSmokeUseId(bp.unitBlueprintId),
         entity.id,
         ownerId,
         geometryTier,
@@ -525,7 +528,7 @@ export function buildLocomotion(
       return mesh;
     }
     case 'submarine': {
-      const mesh = buildSwimRig(
+      const mesh = buildSubmarineRig(
         unitGroup, unitRadius, loc.config, ownerId, geometryTier, entity.id,
       );
       mesh.geometryKey = geometryKey;
@@ -546,43 +549,44 @@ export function updateLocomotion(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
-  hoverSmokeEmitters?: SmokePuffEmitter[],
+  locomotionSmokeEmitters?: SmokePuffEmitter[],
   airborneEmitters?: AirborneEmitterUpdate3D,
 ): boolean {
   if (!mesh) return false;
   switch (mesh.type) {
-    case 'wheels':
-      return updateWheels(mesh, entity, pose, dtMs, mapWidth, mapHeight);
-    case 'treads':
-      return updateTreads(mesh, entity, pose, dtMs, mapWidth, mapHeight);
-    case 'legs':
-      return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
-    case 'standing':
-      return updateStandingRig(mesh, entity, pose, dtMs);
-    case 'flippers':
-      return updateFlippers(mesh, pose, dtMs);
-    case 'hover':
-      return updateHoverFans(
+    case 'rover':
+      return updateRover(mesh, entity, pose, dtMs, mapWidth, mapHeight);
+    case 'tank':
+      return updateTank(mesh, entity, pose, dtMs, mapWidth, mapHeight);
+    case 'crawler':
+      return updateCrawler(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
+    case 'bot':
+      return updateBotRig(mesh, entity, pose, dtMs);
+    case 'amphibian':
+      return updateAmphibian(mesh, pose, dtMs);
+    case 'drone':
+      return updateDroneFans(
         mesh,
         entity,
         dtMs,
         mapWidth,
         mapHeight,
-        hoverSmokeEmitters,
+        locomotionSmokeEmitters,
         airborneEmitters?.batch,
         airborneEmitters?.pose,
       );
-    case 'flying':
-      return updateFlyingRig(
+    case 'plane':
+    case 'aerosub':
+      return updateAirframeRig(
         mesh,
         entity,
         dtMs,
-        hoverSmokeEmitters,
+        locomotionSmokeEmitters,
         airborneEmitters?.batch,
         airborneEmitters?.pose,
       );
-    case 'swim':
-      return updateSwimRig(mesh, pose, dtMs, hoverSmokeEmitters);
+    case 'submarine':
+      return updateSubmarineRig(mesh, pose, dtMs, locomotionSmokeEmitters);
   }
 }
 
@@ -591,7 +595,7 @@ export function fadeLocomotion(
   fade: number,
   legRenderer: LegInstancedRenderer,
 ): void {
-  if (!mesh || mesh.type !== 'legs') return;
+  if (!mesh || mesh.type !== 'crawler') return;
   fadeLegSlots(mesh, legRenderer, fade);
 }
 
@@ -603,7 +607,7 @@ export function destroyLocomotion(
   // Free every leg slot (cylinder + joint + foot pad) back into the
   // shared pools so other units can reuse them. Treads / wheels just
   // drop their group from the scene graph.
-  if (mesh.type === 'legs') {
+  if (mesh.type === 'crawler') {
     freeLegSlots(mesh, legRenderer);
   }
   mesh.group.parent?.remove(mesh.group);

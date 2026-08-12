@@ -18,7 +18,7 @@ import {
 } from './unitLocomotionValidation';
 
 const UNIT_LOCOMOTION_TYPES = [
-  'wheels', 'treads', 'amphibious-treads', 'legs', 'standing', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+  'rover', 'tank', 'amphibious-tank', 'crawler', 'bot', 'amphibian', 'drone', 'plane', 'submarine', 'aerosub',
 ] as const satisfies readonly UnitLocomotionType[];
 
 export type UnitLocomotionTraversalCapabilities = Readonly<{

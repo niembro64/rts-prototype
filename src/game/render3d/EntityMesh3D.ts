@@ -257,7 +257,7 @@ export type EntityMesh = {
   unitPresentationVelocityY?: number;
   unitPresentationVelocityZ?: number;
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
-   *  the body-+Y wing down) for hover/flying chassis. EMA-tracked at
+   *  the body-+Y wing down) for drone/airframe chassis. EMA-tracked at
    *  render cadence from body-lateral centripetal acceleration
    *  (v_forward · ω_z); never crosses the wire, never read by sim
    *  code. Undefined for ground units.

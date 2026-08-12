@@ -638,16 +638,16 @@ export class RtsScene3DRenderPhase {
 
     this.smokeTrailAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      const hoverSmokeEmitters = entityRenderer.getHoverSmokeEmitters();
+      const locomotionSmokeEmitters = entityRenderer.getLocomotionSmokeEmitters();
       const beamEndpointSmokeEmitters = beamRenderer.getEndpointSmokeEmitters();
       const smokeEmitterCount =
-        hoverSmokeEmitters.length + beamEndpointSmokeEmitters.length;
+        locomotionSmokeEmitters.length + beamEndpointSmokeEmitters.length;
       this.combinedSmokeEmitters.length = smokeEmitterCount;
-      for (let i = 0; i < hoverSmokeEmitters.length; i++) {
-        this.combinedSmokeEmitters[i] = hoverSmokeEmitters[i];
+      for (let i = 0; i < locomotionSmokeEmitters.length; i++) {
+        this.combinedSmokeEmitters[i] = locomotionSmokeEmitters[i];
       }
       for (let i = 0; i < beamEndpointSmokeEmitters.length; i++) {
-        this.combinedSmokeEmitters[hoverSmokeEmitters.length + i] =
+        this.combinedSmokeEmitters[locomotionSmokeEmitters.length + i] =
           beamEndpointSmokeEmitters[i];
       }
       smokeTrailRenderer.update(

@@ -1152,7 +1152,7 @@ export function runCommandExecutionContractTest(): void {
   });
   assertContract(
     (bomber.unit?.actions.length ?? 0) === 0,
-    'BAR bomber no-air-target rule must treat local flying factory aircraft as air targets',
+    'BAR bomber no-air-target rule must treat local drone-factory aircraft as air targets',
   );
   executeCommand(bomberTargetCtx, {
     type: 'attack',

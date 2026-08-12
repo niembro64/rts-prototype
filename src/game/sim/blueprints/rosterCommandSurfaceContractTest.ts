@@ -618,7 +618,7 @@ export function runRosterCommandSurfaceContractTest(): void {
         'towerFabricator BAR-grid factory cells must preserve three BAR pages and append pages for every additional unit',
       );
       assertContract(
-        UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.type === 'hover' &&
+        UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.type === 'drone' &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT * 2] === 'unitConstructionDrone',
         'towerFabricator BAR-grid factory cells must place the airborne construction drone in the armap/armca air-constructor slot',
       );
@@ -807,7 +807,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     !entityHasBarAreaAttackCommand(eagleEntity) &&
       !entityHasBarAreaAttackCommand(dragonflyEntity) &&
       !entityHasBarAreaAttackCommand(beeEntity),
-    'BAR Area Attack must not be inferred from flying/hover locomotion; BAR only adds it for canareaattack unitDefs',
+    'BAR Area Attack must not be inferred from plane/drone locomotion; BAR only adds it for canareaattack unitDefs',
   );
 
   const barMoveStateHiddenUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>

@@ -1,4 +1,4 @@
-// LegRig3D — world-space leg rig for legged units (arachnid family).
+// CrawlerRig3D — world-space leg rig for crawler units (arachnid family).
 // Each foot is planted at a real WORLD XYZ point on terrain and stays
 // there until the body's derived ground-centered snap sphere passes it.
 // It then travels to the sphere surface in its snap-ray point's measured
@@ -17,13 +17,13 @@
 // captured/restored via captureLegState / applyLegState — only the
 // foot-pose / lerp / phase fields, not the renderer slot indices
 // or per-leg config refs (those are bound to the freshly-built
-// LegInstance and re-issued by buildLegs).
+// LegInstance and re-issued by buildCrawler).
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import { getLegsRadiusToggle, getLegsReachToggle } from '@/clientBarConfig';
 import type {
-  LegConfig as BlueprintLegConfig,
+  CrawlerConfig as BlueprintCrawlerConfig,
 } from '@/types/blueprints';
 import { REFERENCE_HOST_RADIUS, type LegSurfaceCharts } from './SurfaceChart3D';
 import type { LegStyle } from '@/types/graphics';
@@ -188,7 +188,7 @@ export type LegInstance = {
   hipY: number;
   /** Initial phase selects the outward boundary or the inward exclusion
    *  boundary. Computed
-   *  per-leg in buildLegs so adjacent legs on the same side are
+   *  per-leg in buildCrawler so adjacent legs on the same side are
    *  inverted and the two sides are inverted from each other —
    *  diagonal-pair alternating gait from frame 1. */
   phaseShift01: 0 | 1;
@@ -281,8 +281,8 @@ export type LegInstance = {
   restDirection?: THREE.Line;
 };
 
-export type LegMesh = {
-  type: 'legs';
+export type CrawlerMesh = {
+  type: 'crawler';
   /** Container for non-instanced leg parts — the LEGS-RAD viz
    *  sphere. Parented to the WORLD group so per-leg state stays in
    *  world coords. The CYLINDERS themselves are NOT children of
@@ -292,7 +292,7 @@ export type LegMesh = {
    *  leg keeps a slot index into those buffers. */
   group: THREE.Group;
   legs: LegInstance[];
-  config: BlueprintLegConfig;
+  config: BlueprintCrawlerConfig;
   legStyle: LegStyle;
   /** Authored chassis lift above the terrain footprint. Leg layout values are
    * authored in footprint-local coordinates; subtract this when transforming
@@ -316,7 +316,7 @@ export type LegMesh = {
  *  scalar that says "where is this foot RIGHT NOW and what is it
  *  doing?". The cylinder/joint pool slot indices and config refs
  *  intentionally aren't here; those are bound to the freshly-built
- *  LegInstance and will be re-issued by buildLegs when the rebuilt
+ *  LegInstance and will be re-issued by buildCrawler when the rebuilt
  *  mesh allocates new pool slots. */
 export type LegStateSnapshot = ReadonlyArray<{
   worldX: number; worldY: number; worldZ: number;
@@ -354,7 +354,7 @@ export type LegStateSnapshot = ReadonlyArray<{
 /** Capture per-leg state from a legged locomotion mesh into a plain
  *  array of POJOs the caller can stash across a tear-down/rebuild.
  *  Cost: O(legs.length); called only at rebuild time, not per-frame. */
-export function captureLegState(loc: LegMesh): LegStateSnapshot {
+export function captureLegState(loc: CrawlerMesh): LegStateSnapshot {
   const out: LegStateSnapshot[number][] = [];
   for (const leg of loc.legs) {
     out.push({
@@ -398,9 +398,9 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
  *  blueprint (leg layout + bodyShape), which doesn't change with
  *  graphics style — so the indices line up 1:1 between the old and
  *  new LegInstance arrays. Slot indices, configs, and per-leg
- *  geometry refs (newly minted by buildLegs) are left untouched;
+ *  geometry refs (newly minted by buildCrawler) are left untouched;
  *  only the foot-pose / lerp / phase fields are overwritten. */
-export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
+export function applyLegState(loc: CrawlerMesh, snapshot: LegStateSnapshot): void {
   const n = Math.min(loc.legs.length, snapshot.length);
   for (let i = 0; i < n; i++) {
     const dst = loc.legs[i];
@@ -438,17 +438,17 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
   }
 }
 
-export function buildLegs(
+export function buildCrawler(
   worldGroup: THREE.Group,
   r: number,
-  cfg: BlueprintLegConfig,
+  cfg: BlueprintCrawlerConfig,
   legStyle: LegStyle,
   chassisLiftY: number,
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
   charts: LegSurfaceCharts | undefined = undefined,
-): LegMesh | undefined {
+): CrawlerMesh | undefined {
   if (legStyle === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
@@ -586,7 +586,7 @@ export function buildLegs(
     if (tl > maxLegLength) maxLegLength = tl;
   }
   return {
-    type: 'legs',
+    type: 'crawler',
     group,
     legs,
     config: cfg,
@@ -604,7 +604,7 @@ export function buildLegs(
 
 /** Free every allocated slot (upper / lower / joint spheres) for
  *  this rig back to the shared LegInstancedRenderer pools. */
-export function freeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer): void {
+export function freeLegSlots(mesh: CrawlerMesh, legRenderer: LegInstancedRenderer): void {
   for (const leg of mesh.legs) {
     legRenderer.freeUpper(leg.upperSlot, leg.geometryTier);
     legRenderer.freeLower(leg.lowerSlot, leg.geometryTier);
@@ -615,7 +615,7 @@ export function freeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer): 
   }
 }
 
-export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, fade: number): void {
+export function fadeLegSlots(mesh: CrawlerMesh, legRenderer: LegInstancedRenderer, fade: number): void {
   const clamped = Math.max(0, Math.min(1, fade));
   for (const leg of mesh.legs) {
     legRenderer.fadeUpper(leg.upperSlot, clamped, leg.geometryTier);
@@ -631,8 +631,8 @@ export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, f
  *  cylinder + joint-sphere transforms into the shared instanced
  *  renderer pools. Returns true while the rig needs another visual
  *  frame without an external render dirty waking it. */
-export function updateLegs(
-  mesh: LegMesh,
+export function updateCrawler(
+  mesh: CrawlerMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   dtMs: number,
@@ -1113,7 +1113,7 @@ export function updateLegs(
   return legsNeedFrame(mesh, pose, showViz || showReachViz);
 }
 
-function legsNeedFrame(mesh: LegMesh, pose: LocomotionRenderPose, showViz: boolean): boolean {
+function legsNeedFrame(mesh: CrawlerMesh, pose: LocomotionRenderPose, showViz: boolean): boolean {
   if (showViz) return true;
   if (!mesh.visualGrounded) return true;
   if (rollingLocomotionBodyActive(pose)) return true;
@@ -1131,7 +1131,7 @@ function airborneLegBodyActive(pose: LocomotionRenderPose): boolean {
 }
 
 function resetLegsAcrossPoseDiscontinuity(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   pose: LocomotionRenderPose,
 ): void {
   const dx = pose.rootX - mesh.lastBaseX;
@@ -1463,7 +1463,7 @@ function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
 }
 
 function resolveVisualLegGrounded(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   mapWidth: number,
@@ -1494,7 +1494,7 @@ function resolveVisualLegGrounded(
 }
 
 function hasReachablePlantedFoot(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   pose: LocomotionRenderPose,
 ): boolean {
   for (const leg of mesh.legs) {
@@ -1515,7 +1515,7 @@ function hasReachablePlantedFoot(
 }
 
 function hasReachableGroundAtRest(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   mapWidth: number,
@@ -1576,7 +1576,7 @@ function hasReachableGroundAtRest(
  * authored chassis lift). Convert those values to chassis-root-local space,
  * then apply the exact batched root pose used by the visible body. */
 function transformLegPointToWorld(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   x: number,
   footprintLocalY: number,
   z: number,
@@ -1624,7 +1624,7 @@ const _stepStartQuaternion = new THREE.Quaternion();
 const _stepTargetQuaternion = new THREE.Quaternion();
 
 function updateUnsupportedLegPose(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   entity: Entity,
   pose: LocomotionRenderPose,
   dtMs: number,
@@ -1950,7 +1950,7 @@ export function resolveKneeJointQuaternion(
 }
 
 function writeLegRenderPose(
-  mesh: LegMesh,
+  mesh: CrawlerMesh,
   leg: LegInstance,
   legRenderer: LegInstancedRenderer,
   hipWorldX: number,

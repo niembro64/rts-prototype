@@ -33,10 +33,10 @@ import {
   getTurretHeadRadius,
 } from '../math/BarrelGeometry';
 import {
-  buildStandingRig,
-  getStandingPelvisTopLocalY,
-  poseStandingRigAtRest,
-} from './StandingRig3D';
+  buildBotRig,
+  getBotPelvisTopLocalY,
+  poseBotRigAtRest,
+} from './BotRig3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getTurretConfig } from '../sim/turretConfigs';
 import type { Entity, Turret } from '../sim/types';
@@ -80,22 +80,22 @@ import {
   geometryEnclosedVolume,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
-import { buildFlippers } from './FlipperRig3D';
-import { buildFlyingRig } from './FlyingRig3D';
-import { buildHoverFans } from './HoverRig3D';
+import { buildAmphibian } from './AmphibianRig3D';
+import { buildAirframeRig } from './AirframeRig3D';
+import { buildDroneFans } from './DroneRig3D';
 import {
   applyLocomotionState,
   captureLocomotionState,
   getChassisLift,
   type Locomotion3DMesh,
 } from './Locomotion3D';
-import { buildLegs, freeLegSlots } from './LegRig3D';
+import { buildCrawler, freeLegSlots } from './CrawlerRig3D';
 import { LegInstancedRenderer } from './LegInstancedRenderer';
 import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
-import { buildSwimRig } from './SwimRig3D';
-import { buildTreads } from './TreadRig3D';
+import { buildSubmarineRig } from './SubmarineRig3D';
+import { buildTank } from './TankRig3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
-import { buildWheels } from './WheelRig3D';
+import { buildRover } from './RoverRig3D';
 import type { EntityMesh } from './EntityMesh3D';
 import {
   applyEntityLodVisualState3D,
@@ -217,7 +217,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
 // Re-baselined 2026-08-11 for the entries the locomotion-rig and standing-rig
 // work grew past: jackal/mongoose close (shared wheels rig), queen bee all
-// three rungs, queen tick close, and human far (standing rig). Measured value
+// three rungs, queen tick close, and human far (bot rig). Measured value
 // plus ~5% headroom, so the ceiling keeps catching FUTURE growth instead of
 // being deleted. These are perf ceilings for SCALE-1000, not targets -- if the
 // rigs are meant to be cheaper, shrink the geometry and lower these again.
@@ -535,7 +535,7 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
     countsByUnit.set(unitId, { close: counts[0], mid: counts[1], far: counts[2] });
   }
   for (const type of [
-    'wheels', 'treads', 'amphibious-treads', 'legs', 'standing', 'flippers', 'hover', 'flying', 'submarine', 'dive',
+    'rover', 'tank', 'amphibious-tank', 'crawler', 'bot', 'amphibian', 'drone', 'plane', 'submarine', 'aerosub',
   ]) {
     assertContract(locomotionTypes.has(type), `authored roster exercises ${type} locomotion LOD`);
   }
@@ -584,12 +584,12 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
   return countsByUnit;
 }
 
-export function runStandingBodySeamContracts(): void {
+export function runBotBodySeamContracts(): void {
   for (const unitId of ['unitHuman', 'unitCommander'] as const) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
     const body = blueprint.bodyShape;
-    assertContract(locomotion.type === 'standing', `${unitId} uses standing locomotion`);
+    assertContract(locomotion.type === 'bot', `${unitId} uses bot locomotion`);
     assertContract(body?.kind === 'composite', `${unitId} owns a composite upper body`);
     const boxBottoms = body.parts
       .filter((part): part is Extract<typeof part, { kind: 'box' }> => part.kind === 'box')
@@ -598,7 +598,7 @@ export function runStandingBodySeamContracts(): void {
       ) * blueprint.radius.other);
     assertContract(boxBottoms.length > 0, `${unitId} upper body has box volumes`);
     const lowestUpperBodyY = Math.min(...boxBottoms);
-    const pelvisTopY = getStandingPelvisTopLocalY(
+    const pelvisTopY = getBotPelvisTopLocalY(
       blueprint.radius.other,
       locomotion.config.legs,
       getChassisLift(blueprint, blueprint.radius.other),
@@ -623,7 +623,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
   for (const unitId of UNIT_BLUEPRINT_IDS) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
-    if (locomotion.type === 'legs') {
+    if (locomotion.type === 'crawler') {
       const legCount = resolveMirroredLegConfigs(
         locomotion.config, blueprint.radius.other,
       ).all.length;
@@ -642,8 +642,8 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
       const root = new THREE.Group();
       const radius = blueprint.radius.other;
       switch (locomotion.type) {
-        case 'wheels': {
-          const rig = buildWheels(root, radius, locomotion.config, undefined, tier);
+        case 'rover': {
+          const rig = buildRover(root, radius, locomotion.config, undefined, tier);
           assertContract(
             rig.rotationAnimated === (tier !== 'far'),
             `${unitId}/${tier} wheel rotation matches its geometry rung`,
@@ -667,13 +667,13 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'treads':
-        case 'amphibious-treads': {
+        case 'tank':
+        case 'amphibious-tank': {
           const cleatsVisible = featureVisibleAtDetail(
             'treadCleats',
             DETAIL_LEVELS[tierIndex],
           );
-          const rig = buildTreads(
+          const rig = buildTank(
             root,
             radius,
             locomotion.config,
@@ -710,14 +710,14 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'standing': {
-          const rig = buildStandingRig(
+        case 'bot': {
+          const rig = buildBotRig(
             root, radius, blueprint.mass,
             locomotion.physics.ground.maxPropulsiveForce,
             locomotion.config.legs, locomotion.config.arms,
             0, undefined, tier,
           );
-          poseStandingRigAtRest(rig);
+          poseBotRigAtRest(rig);
           assertContract(
             rig.legs.length === 2 && rig.arms.length === 2,
             `${unitId}/${tier} stand is a biped: two legs and two arms`,
@@ -733,7 +733,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               const hipToFoot = leg.foot.position.clone().sub(hip);
               const hipToKnee = leg.knee.position.clone().sub(hip);
               const kneeToFoot = leg.foot.position.clone().sub(leg.knee.position);
-              return leg.hipJoint.userData.standingHipJoint === true &&
+              return leg.hipJoint.userData.botHipJoint === true &&
                 leg.hipJoint.geometry.type === 'CylinderGeometry' &&
                 Math.abs(leg.hipJoint.rotation.x - Math.PI * 0.5) < 1e-9 &&
                 leg.hipJoint.parent === rig.hips &&
@@ -748,13 +748,13 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             `${unitId}/${tier} stopped legs open through visible hip joints with fixed-length articulated bones`,
           );
           assertContract(
-            rig.pelvis.userData.standingPelvis === true &&
+            rig.pelvis.userData.botPelvis === true &&
               rig.pelvis.parent === rig.hips,
             `${unitId}/${tier} central pelvis belongs to the lower-body leg frame`,
           );
           assertContract(
             rig.arms.every((arm) =>
-              arm.shoulderJoint.userData.standingShoulderJoint === true &&
+              arm.shoulderJoint.userData.botShoulderJoint === true &&
               arm.upper.armor === undefined &&
               arm.elbow.geometry.type === 'CylinderGeometry' &&
               Math.abs(arm.elbow.rotation.x - Math.PI * 0.5) < 1e-9 &&
@@ -786,8 +786,8 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'flippers': {
-          const rig = buildFlippers(root, radius, locomotion.config, undefined, tier);
+        case 'amphibian': {
+          const rig = buildAmphibian(root, radius, locomotion.config, undefined, tier);
           return {
             rig,
             count: objectTriangleCount(root),
@@ -800,11 +800,11 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'hover': {
+        case 'drone': {
           const smokeUseId = unitId === 'unitDragonfly'
-            ? 'locomotionDragonflyHovercraft'
-            : 'locomotionHovercraft';
-          const rig = buildHoverFans(
+            ? 'locomotionDragonflyDrone'
+            : 'locomotionDuctedFan';
+          const rig = buildDroneFans(
             root, radius, locomotion.config, smokeUseId, 1, undefined, tier,
           );
           assertContract(
@@ -815,7 +815,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
                 ring.geometry.type === 'TorusGeometry' &&
                 material.side === THREE.DoubleSide;
             }),
-            `${unitId}/${tier} hover fans retain a visible tiered duct ring`,
+            `${unitId}/${tier} drone fans retain a visible tiered duct ring`,
           );
           return {
             rig,
@@ -831,13 +831,13 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             },
           };
         }
-        case 'flying':
-        case 'dive': {
+        case 'plane':
+        case 'aerosub': {
           const smokeUseId = unitId === 'unitAlbatros'
-            ? 'locomotionAlbatrosFlying'
-            : 'locomotionEagleFlying';
-          const rig = buildFlyingRig(
-            root, radius, locomotion.config, smokeUseId, 1, undefined, tier,
+            ? 'locomotionAlbatrosAerosub'
+            : 'locomotionEaglePlane';
+          const rig = buildAirframeRig(
+            root, radius, locomotion.type, locomotion.config, smokeUseId, 1, undefined, tier,
           );
           return {
             rig,
@@ -853,7 +853,7 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           };
         }
         case 'submarine': {
-          const rig = buildSwimRig(root, radius, locomotion.config, undefined, tier);
+          const rig = buildSubmarineRig(root, radius, locomotion.config, undefined, tier);
           const fanRing = rig.rearFan.group.children[0] as THREE.Mesh;
           assertContract(
             rig.pectoralHinges.length === 2 && fanRing.isMesh &&
@@ -901,24 +901,24 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
 function runLegLocomotionStateContract(): void {
   const blueprint = getUnitBlueprint('unitTick');
   const locomotion = blueprint.unitLocomotion;
-  assertContract(locomotion.type === 'legs', 'walking pose contract uses a legged unit');
+  assertContract(locomotion.type === 'crawler', 'walking pose contract uses a legged unit');
   const highPoolRoot = new THREE.Group();
   const lowPoolRoot = new THREE.Group();
   const highRenderer = new LegInstancedRenderer(highPoolRoot);
   const lowRenderer = new LegInstancedRenderer(lowPoolRoot);
   const radius = blueprint.radius.other;
-  const high = buildLegs(
+  const high = buildCrawler(
     new THREE.Group(), radius, locomotion.config, 'full',
     getChassisLift(blueprint, radius), highRenderer, undefined, 'close',
   );
-  const low = buildLegs(
+  const low = buildCrawler(
     new THREE.Group(), radius, locomotion.config, 'full',
     getChassisLift(blueprint, radius), lowRenderer, undefined, 'far',
   );
   const footedBlueprint = getUnitBlueprint('unitFormik');
   const footedLocomotion = footedBlueprint.unitLocomotion;
-  assertContract(footedLocomotion.type === 'legs', 'footed walking fixture uses the legs rig');
-  const footed = buildLegs(
+  assertContract(footedLocomotion.type === 'crawler', 'footed walking fixture uses the legs rig');
+  const footed = buildCrawler(
     new THREE.Group(),
     footedBlueprint.radius.other,
     footedLocomotion.config,
@@ -975,7 +975,7 @@ function runLegLocomotionStateContract(): void {
 function seedLocomotionState(locomotion: Locomotion3DMesh): void {
   if (!locomotion) return;
   switch (locomotion.type) {
-    case 'legs':
+    case 'crawler':
       locomotion.visualGrounded = false;
       locomotion.poseInitialized = true;
       locomotion.lastBaseX = 91;
@@ -998,7 +998,7 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
         leg.initialized = true;
       }
       return;
-    case 'wheels':
+    case 'rover':
       for (let i = 0; i < locomotion.wheelMounts.length; i++) {
         locomotion.wheelMounts[i].lift = 1 + i;
         locomotion.wheelMounts[i].targetLift = 2 + i;
@@ -1009,7 +1009,7 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
         locomotion.wheelContacts[i].initialized = true;
       }
       return;
-    case 'treads':
+    case 'tank':
       for (let i = 0; i < locomotion.sides.length; i++) {
         const side = locomotion.sides[i];
         side.lift = 1 + i;
@@ -1025,7 +1025,7 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
         locomotion.wheels[i].rotation.y = locomotion.sides[locomotion.wheelSide[i]].wheelRotation;
       }
       return;
-    case 'flippers':
+    case 'amphibian':
       locomotion.contact.phase = 12;
       locomotion.contact.initialized = true;
       locomotion.waterBlend = 0.65;
@@ -1033,12 +1033,12 @@ function seedLocomotionState(locomotion: Locomotion3DMesh): void {
         locomotion.panels[i].hinge.rotation.set(0.1 * i, 0.2 * i, 0.3 * i);
       }
       return;
-    case 'hover':
+    case 'drone':
       locomotion.clearance = 17;
       return;
-    case 'flying':
+    case 'plane':
       return;
-    case 'swim':
+    case 'submarine':
       locomotion.contact.phase = 14;
       locomotion.contact.initialized = true;
       locomotion.pectoralHinges[0].rotation.z = 0.3;
@@ -1997,7 +1997,7 @@ export function runEntityLodGeometry3DContractTest(): void {
     runEnvironmentLodMaterialContracts();
     runReferenceGeometryCountContracts();
     const bodyCounts = runBodyContracts(material);
-    runStandingBodySeamContracts();
+    runBotBodySeamContracts();
     const locomotionCounts = runLocomotionContracts();
     const turretCounts = runTurretContracts(material);
     const shieldPanelCounts = runShieldPanelContract(material);

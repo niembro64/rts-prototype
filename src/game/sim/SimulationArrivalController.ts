@@ -1,7 +1,7 @@
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
-import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
+import { SIMULATION_INVALID_BODY_SLOT } from './SimulationAirborneLoiterController';
 import {
   PATHFINDING_ARRIVAL_RADIUS,
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
@@ -45,7 +45,7 @@ export function shouldBypassFinalWaypointSlowdown(
 export class SimulationArrivalController {
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
-  private readonly queueFlyingLoiter: (entity: Entity) => void;
+  private readonly queueAirborneLoiter: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
   private entitySlots = new Int32Array(0);
   private slots = new Uint32Array(0);
@@ -78,12 +78,12 @@ export class SimulationArrivalController {
     callbacks: {
       advanceAction: (entity: Entity) => void;
       advanceActivePathPoint: (entity: Entity) => void;
-      queueFlyingLoiter: (entity: Entity) => void;
+      queueAirborneLoiter: (entity: Entity) => void;
     },
   ) {
     this.advanceAction = callbacks.advanceAction;
     this.advanceActivePathPoint = callbacks.advanceActivePathPoint;
-    this.queueFlyingLoiter = callbacks.queueFlyingLoiter;
+    this.queueAirborneLoiter = callbacks.queueAirborneLoiter;
   }
 
   beginFrame(): void {
@@ -160,7 +160,7 @@ export class SimulationArrivalController {
             this.advanceActivePathPoint(entity);
           }
           unit.stuckTicks = 0;
-          if (unit.actions.length === 0) this.queueFlyingLoiter(entity);
+          if (unit.actions.length === 0) this.queueAirborneLoiter(entity);
         } else {
           this.queueThrust(
             entity,

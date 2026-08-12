@@ -1,4 +1,4 @@
-import type { LegConfig } from '@/types/blueprints';
+import type { CrawlerConfig } from '@/types/blueprints';
 import type { ArachnidLegConfig } from '@/types/render';
 
 type ResolvedLegLayout = {
@@ -9,7 +9,7 @@ type ResolvedLegLayout = {
 };
 
 function resolveLeftSideLegConfigs(
-  config: LegConfig,
+  config: CrawlerConfig,
   radius: number,
 ): ArachnidLegConfig[] {
   const legs = new Array<ArachnidLegConfig>(config.leftSide.length);
@@ -30,7 +30,7 @@ function resolveLeftSideLegConfigs(
 }
 
 export function resolveMirroredLegConfigs(
-  config: LegConfig,
+  config: CrawlerConfig,
   radius: number,
 ): ResolvedLegLayout {
   const left = resolveLeftSideLegConfigs(config, radius);

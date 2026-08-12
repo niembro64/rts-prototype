@@ -64,8 +64,8 @@
       "$audio": "event.death.unitJackal"
     },
     "unitLocomotion": {
-      "type": "wheels",
-      "physicsPresetId": "wheels",
+      "type": "rover",
+      "physicsPresetId": "rover",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 26.666666666667
@@ -214,8 +214,8 @@
       "$audio": "event.death.unitLynx"
     },
     "unitLocomotion": {
-      "type": "treads",
-      "physicsPresetId": "treads",
+      "type": "tank",
+      "physicsPresetId": "tank",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 45.333333333333
@@ -372,8 +372,8 @@
       "$audio": "event.death.unitDaddy"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -535,8 +535,8 @@
       "$audio": "event.death.unitBadger"
     },
     "unitLocomotion": {
-      "type": "treads",
-      "physicsPresetId": "treads",
+      "type": "tank",
+      "physicsPresetId": "tank",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 45.333333333333
@@ -668,8 +668,8 @@
       "$audio": "event.death.unitMongoose"
     },
     "unitLocomotion": {
-      "type": "wheels",
-      "physicsPresetId": "wheels",
+      "type": "rover",
+      "physicsPresetId": "rover",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 26.666666666667
@@ -808,8 +808,8 @@
       "$audio": "event.death.unitTick"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -942,7 +942,7 @@
         "mountId": "plasmaLight",
         "controlMode": "hostPreferred",
         "hostAttachment": {
-          "kind": "standingArm",
+          "kind": "botArm",
           "arm": "rightArm"
         }
       }
@@ -1042,8 +1042,8 @@
       "$audio": "event.death.unitHuman"
     },
     "unitLocomotion": {
-      "type": "standing",
-      "physicsPresetId": "standing",
+      "type": "bot",
+      "physicsPresetId": "bot",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 14.5
@@ -1180,7 +1180,7 @@
         "mountId": "beamMega",
         "controlMode": "hostPreferred",
         "hostAttachment": {
-          "kind": "standingHead"
+          "kind": "botHead"
         }
       },
       {
@@ -1205,7 +1205,7 @@
         "mountId": "gatlingRight",
         "controlMode": "hostPreferred",
         "hostAttachment": {
-          "kind": "standingArm",
+          "kind": "botArm",
           "arm": "rightArm"
         }
       },
@@ -1231,7 +1231,7 @@
         "mountId": "gatlingLeft",
         "controlMode": "hostPreferred",
         "hostAttachment": {
-          "kind": "standingArm",
+          "kind": "botArm",
           "arm": "leftArm"
         }
       },
@@ -1257,7 +1257,7 @@
         "mountId": "missileFast",
         "controlMode": "autonomous",
         "hostAttachment": {
-          "kind": "standingHead"
+          "kind": "botHead"
         }
       },
       {
@@ -1282,7 +1282,7 @@
         "mountId": "siloRight",
         "controlMode": "autonomous",
         "hostAttachment": {
-          "kind": "standingHead"
+          "kind": "botHead"
         }
       },
       {
@@ -1307,7 +1307,7 @@
         "mountId": "siloLeft",
         "controlMode": "autonomous",
         "hostAttachment": {
-          "kind": "standingHead"
+          "kind": "botHead"
         }
       }
     ],
@@ -1399,8 +1399,8 @@
       "$audio": "event.death.unitRex"
     },
     "unitLocomotion": {
-      "type": "standing",
-      "physicsPresetId": "standing",
+      "type": "bot",
+      "physicsPresetId": "bot",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 260
@@ -1558,8 +1558,8 @@
       "$audio": "event.death.unitMammoth"
     },
     "unitLocomotion": {
-      "type": "treads",
-      "physicsPresetId": "treads",
+      "type": "tank",
+      "physicsPresetId": "tank",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 45.333333333333
@@ -1717,8 +1717,8 @@
       "$audio": "event.death.unitFormik"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -2032,8 +2032,8 @@
       "$audio": "event.death.unitWidow"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -2198,8 +2198,8 @@
       "$audio": "event.death.unitHippo"
     },
     "unitLocomotion": {
-      "type": "amphibious-treads",
-      "physicsPresetId": "amphibiousTreads",
+      "type": "amphibious-tank",
+      "physicsPresetId": "amphibious-tank",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 8.613333333333
@@ -2372,8 +2372,8 @@
       "$audio": "event.death.unitHippo"
     },
     "unitLocomotion": {
-      "type": "flippers",
-      "physicsPresetId": "flippers",
+      "type": "amphibian",
+      "physicsPresetId": "amphibian",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 8
@@ -2716,8 +2716,8 @@
       "$audio": "event.death.unitTarantula"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -2886,8 +2886,8 @@
       "$audio": "event.death.unitLoris"
     },
     "unitLocomotion": {
-      "type": "treads",
-      "physicsPresetId": "treads",
+      "type": "tank",
+      "physicsPresetId": "tank",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 45.333333333333
@@ -3016,8 +3016,8 @@
       "$audio": "event.death.unitBee"
     },
     "unitLocomotion": {
-      "type": "hover",
-      "physicsPresetId": "hover",
+      "type": "drone",
+      "physicsPresetId": "drone",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -3181,8 +3181,8 @@
       "$audio": "event.death.unitDragonfly"
     },
     "unitLocomotion": {
-      "type": "hover",
-      "physicsPresetId": "hover",
+      "type": "drone",
+      "physicsPresetId": "drone",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -3341,8 +3341,8 @@
       "$audio": "event.death.unitConstructionDrone"
     },
     "unitLocomotion": {
-      "type": "hover",
-      "physicsPresetId": "hover",
+      "type": "drone",
+      "physicsPresetId": "drone",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -3493,8 +3493,8 @@
       "$audio": "event.death.unitEagle"
     },
     "unitLocomotion": {
-      "type": "flying",
-      "physicsPresetId": "flying",
+      "type": "plane",
+      "physicsPresetId": "plane",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -3647,8 +3647,8 @@
       "$audio": "event.death.unitEagle"
     },
     "unitLocomotion": {
-      "type": "dive",
-      "physicsPresetId": "dive",
+      "type": "aerosub",
+      "physicsPresetId": "aerosub",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -3850,8 +3850,8 @@
       "$audio": "event.death.unitEagle"
     },
     "unitLocomotion": {
-      "type": "flying",
-      "physicsPresetId": "flying",
+      "type": "plane",
+      "physicsPresetId": "plane",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -4098,8 +4098,8 @@
       "$audio": "event.death.unitEagle"
     },
     "unitLocomotion": {
-      "type": "hover",
-      "physicsPresetId": "hover",
+      "type": "drone",
+      "physicsPresetId": "drone",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -4353,8 +4353,8 @@
       "$audio": "event.death.unitTick"
     },
     "unitLocomotion": {
-      "type": "legs",
-      "physicsPresetId": "legs",
+      "type": "crawler",
+      "physicsPresetId": "crawler",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 160
@@ -4524,8 +4524,8 @@
       "$audio": "event.death.unitDragonfly"
     },
     "unitLocomotion": {
-      "type": "hover",
-      "physicsPresetId": "hover",
+      "type": "drone",
+      "physicsPresetId": "drone",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -4662,7 +4662,7 @@
         "mountId": "beam",
         "controlMode": "hostPreferred",
         "hostAttachment": {
-          "kind": "standingArm",
+          "kind": "botArm",
           "arm": "leftArm"
         }
       },
@@ -4688,7 +4688,7 @@
         "mountId": "disruptor",
         "controlMode": "manual",
         "hostAttachment": {
-          "kind": "standingHead"
+          "kind": "botHead"
         }
       }
     ],
@@ -4794,8 +4794,8 @@
       "$audio": "event.death.unitCommander"
     },
     "unitLocomotion": {
-      "type": "standing",
-      "physicsPresetId": "standing",
+      "type": "bot",
+      "physicsPresetId": "bot",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8

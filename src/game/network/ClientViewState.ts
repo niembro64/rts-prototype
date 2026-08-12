@@ -4626,7 +4626,7 @@ export class ClientViewState {
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
         const entityId = views.entityIds[slot] as EntityId;
         const loc = options.getGroundPrintLocomotionMesh(entityId);
-        const grounded = loc?.type === 'legs'
+        const grounded = loc?.type === 'crawler'
           ? loc.visualGrounded
           : this.groundPrintGroundedFromState(slot, mapWidth, mapHeight);
         out.groundPrints.pushRow(

@@ -62,7 +62,7 @@ import {
   writeInstancedMatrix as writeMatrixAt,
 } from './instancedBufferUpdate';
 import { LEG_ATTACHMENT_RADIUS_MULTIPLIER } from './LocomotionRigShared3D';
-import type { LegMesh } from './LegRig3D';
+import type { CrawlerMesh } from './CrawlerRig3D';
 import type {
   EntityDeathPartDelta3D,
   EntityDeathRenderablePart3D,
@@ -997,7 +997,7 @@ export class LegInstancedRenderer {
   }
 
   /** Return one handle for every rendered strut, taper, joint and foot. */
-  captureEntityDeathParts(mesh: LegMesh): EntityDeathRenderablePart3D[] {
+  captureEntityDeathParts(mesh: CrawlerMesh): EntityDeathRenderablePart3D[] {
     const parts: EntityDeathRenderablePart3D[] = [];
     const push = (part: EntityDeathRenderablePart3D | null): void => {
       if (part !== null) parts.push(part);

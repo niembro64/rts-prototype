@@ -176,8 +176,8 @@ export function runRightClickCommandsContractTest(): void {
   );
   const enemyAir = combatant(33, 2, 100, 40, 40);
   enemyAir.unit!.unitBlueprintId = 'unitTransport';
-  const enemyFlyingFactory = combatant(38, 2, 100, 40, 80);
-  enemyFlyingFactory.unit!.unitBlueprintId = 'unitQueenBee';
+  const enemyDroneFactory = combatant(38, 2, 100, 40, 80);
+  enemyDroneFactory.unit!.unitBlueprintId = 'unitQueenBee';
   const dragonflyAttacker = combatant(34, 1, 100, 0, 40);
   dragonflyAttacker.unit!.unitBlueprintId = 'unitDragonfly';
   const albatrosAttacker = combatant(36, 1, 100, 0, 50);
@@ -205,8 +205,8 @@ export function runRightClickCommandsContractTest(): void {
     'BAR armjanus/unitBadger right-click filtering must suppress attacks against air targets',
   );
   assertContract(
-    buildAttackCommandForTarget(enemyFlyingFactory, [dragonflyAttacker], 1, 3, false) === null,
-    'BAR bomber no-air-target rule must treat local flying factory aircraft as air targets',
+    buildAttackCommandForTarget(enemyDroneFactory, [dragonflyAttacker], 1, 3, false) === null,
+    'BAR bomber no-air-target rule must treat local drone-factory aircraft as air targets',
   );
   const mixedAirAttack = buildAttackCommandForTarget(
     enemyAir,
@@ -287,12 +287,12 @@ export function runRightClickCommandsContractTest(): void {
       fighterAirAttack.entityIds[0] === fighterAttacker.id,
     'BAR armfig/unitEagle fighter analogue must still attack air targets',
   );
-  const fighterFlyingFactoryAttack = buildAttackCommandForTarget(enemyFlyingFactory, [fighterAttacker], 1, 3, false);
+  const fighterDroneFactoryAttack = buildAttackCommandForTarget(enemyDroneFactory, [fighterAttacker], 1, 3, false);
   assertContract(
-    fighterFlyingFactoryAttack !== null &&
-      fighterFlyingFactoryAttack.entityIds.length === 1 &&
-      fighterFlyingFactoryAttack.entityIds[0] === fighterAttacker.id,
-    'BAR armfig/unitEagle fighter analogue must treat local flying factory aircraft as air targets',
+    fighterDroneFactoryAttack !== null &&
+      fighterDroneFactoryAttack.entityIds.length === 1 &&
+      fighterDroneFactoryAttack.entityIds[0] === fighterAttacker.id,
+    'BAR armfig/unitEagle fighter analogue must treat local drone-factory aircraft as air targets',
   );
   const mixedAttackPoint = buildAttackGroundCommand(
     [fighterAttacker, scoutAttacker, dragonflyAttacker],
