@@ -25,6 +25,7 @@ import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysic
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, type BodyPoolViews } from '../sim-wasm/init';
+import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import { applyEntityHoldPose } from '../sim/entityHolds';
 import type { PresentationFrameEvent, SurfaceLiftProbeDebugFrame } from '@/types/game';
 
@@ -103,18 +104,24 @@ export class ServerSimulationCore {
   }
 
   stepFixedTick(dtMs: number, orderedCommandsForThisTick: readonly Command[] = []): void {
+    const phases = SIM_TICK_INSTRUMENTATION;
+    phases.tickBegin();
     for (const command of orderedCommandsForThisTick) {
       this.commandQueue.enqueue(command);
     }
 
     const dtSec = dtMs / 1000;
     this.repairInvalidEntityPoses();
-    this.simulation.update(dtMs);
+    phases.phase('core.prepare');
+    this.simulation.update(dtMs); // emits sim.* / combat.* phases itself
     this.unitForceSystem.applyForces(dtSec);
+    phases.phase('core.unitForces');
     this.physics.step(dtSec, this.simulation.getWindState());
+    phases.phase('core.physics');
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
     finalizePendingProjectileLaunchVelocities(this.world, dtMs);
+    phases.phase('core.syncFromPhysics');
     const sim = getSimWasm();
     if (sim !== undefined) {
       const tick = this.world.getTick();
@@ -127,6 +134,7 @@ export class ServerSimulationCore {
         for (const listener of this.presentationFrameListeners) listener(event);
       }
     }
+    phases.phase('core.presentation');
   }
 
   addPresentationFrameListener(

@@ -91,6 +91,7 @@ import {
 } from './SimulationArrivalController';
 import { createSelfDestructEvent } from './selfDestructEvent';
 import { isBuildRadiusTargetInRange, isBuildTargetInRange } from './builderRange';
+import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import {
   isReclaimableTarget,
   makeEntityReclaimTarget,
@@ -484,6 +485,7 @@ export class Simulation {
     // semantics, so every "the world killed me" rule resolves before anything
     // downstream reads hp this tick. A no-op unless LIQUID = LAVA.
     applyLavaSurfaceDamage(this.world, dtMs);
+    SIM_TICK_INSTRUMENTATION.phase('sim.commands');
 
     // Solar collectors, wind turbines, and metal extractors share a
     // fortifiable-producer lifecycle: a 2 s grace timer arms on the
@@ -495,6 +497,7 @@ export class Simulation {
 
     // Update economy income and production.
     economyManager.update(this.world, dtMs, this.windState.speed);
+    SIM_TICK_INSTRUMENTATION.phase('sim.economy');
 
     // Update each unit's smoothed surface normal BEFORE the systems
     // that read it (commanderAbilitiesSystem, turret kinematics inside
@@ -502,11 +505,13 @@ export class Simulation {
     // single canonical normal source so the renderer, sim turret
     // mounts, and locomotion can never read disagreeing per-unit normals.
     updateUnitGroundNormal(this.world, dtMs);
+    SIM_TICK_INSTRUMENTATION.phase('sim.groundNormal');
 
     // BAR unit_auto_repair_idle_builders.lua parity: idle mobile builders
     // periodically take a nearby damaged allied unit, then return to the
     // recorded idle point when the repair finishes or becomes invalid.
     this.idleBuilderAutoRepair.update(tick);
+    SIM_TICK_INSTRUMENTATION.phase('sim.idleBuilderRepair');
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
@@ -515,6 +520,7 @@ export class Simulation {
     // construction/factory energy distribution so converters consume the
     // leftover post-construction stockpile instead of deepening stalls.
     economyManager.processConverters(this.world, dtMs);
+    SIM_TICK_INSTRUMENTATION.phase('sim.energy');
 
     // Shared construction lifecycle for both building shells and
     // factory unit shells: HP growth, paid-full completion, building
@@ -523,6 +529,7 @@ export class Simulation {
     this.actionQueueMaintenance.advanceCompletedConstructionActions(
       constructionResult.completedBuildings,
     );
+    SIM_TICK_INSTRUMENTATION.phase('sim.construction');
 
     // AI auto-queues units at idle factories
     updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitBlueprintIds);
@@ -545,6 +552,7 @@ export class Simulation {
       const onUnitSpawn = this.onUnitSpawn;
       if (onUnitSpawn !== null) onUnitSpawn(productionResult.completedUnits);
     }
+    SIM_TICK_INSTRUMENTATION.phase('sim.production');
 
     // Update commander auto-build and auto-heal
     const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
@@ -553,6 +561,7 @@ export class Simulation {
       const onUnitSpawn = this.onUnitSpawn;
       if (onUnitSpawn !== null) onUnitSpawn(commanderResult.resurrectedUnits);
     }
+    SIM_TICK_INSTRUMENTATION.phase('sim.commanderAbilities');
 
     const transportResult = updateTransportActions(this.world);
     if (transportResult.unloadedUnits.length > 0) {
@@ -572,13 +581,17 @@ export class Simulation {
     // - addBeam() called on beam creation in fireTurrets()
     // - removeBeam() called on beam expiry/orphan in updateProjectiles/checkProjectileCollisions
 
+    SIM_TICK_INSTRUMENTATION.phase('sim.transport');
+
     // Update all units movement (calculates target velocities) and
     // refresh their spatial-grid cells in the same pass.
     this.updateUnits(dtMs / 1000);
+    SIM_TICK_INSTRUMENTATION.phase('sim.updateUnits');
 
     // Update non-unit spatial indices. Unit cells are refreshed inside
     // updateUnits() to avoid another full unit walk.
     this.updateSpatialGrid();
+    SIM_TICK_INSTRUMENTATION.phase('sim.spatialGrid');
 
     // Update combat systems (targeting, firing, projectile collisions)
     this.combatController.update(
@@ -592,6 +605,7 @@ export class Simulation {
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.
     this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
+    SIM_TICK_INSTRUMENTATION.phase('sim.deadCleanup');
 
     // Check for game over (commander death)
     this.checkGameOver();
@@ -600,6 +614,7 @@ export class Simulation {
     this.forceAccumulator.finalize();
 
     this.world.incrementTick();
+    SIM_TICK_INSTRUMENTATION.phase('sim.finalize');
   }
 
   // Update spatial grid incrementally

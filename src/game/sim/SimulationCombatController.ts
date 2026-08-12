@@ -31,6 +31,7 @@ import {
   stampCombatTargetingPool,
   stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
+import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import type { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
@@ -98,19 +99,23 @@ export class SimulationCombatController {
     // in the kernels (shield_obstruction_active + shape toggles), not
     // in slab emptiness.
     stampCombatTargetingPool(this.world, wind);
+    SIM_TICK_INSTRUMENTATION.phase('combat.targetingStamp');
     // Update targeting and firing state. Cooldown timers now step inside
     // the scheduled Rust targeting batch and write back through the
     // transitional slab -> JS turret copy.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
+    SIM_TICK_INSTRUMENTATION.phase('combat.targetingFsm');
 
     // Update laser sounds based on targeting state (every frame)
     if (this.world.getBeamUnits().length > 0) {
       this.emitSimEvents(updateLaserSounds(this.world), onSimEvent);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.laserSounds');
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
     const turretRotationUnits = collectTurretRotationUnits(this.world, activeCombatUnits);
     updateTurretRotation(this.world, dtMs, turretRotationUnits);
+    SIM_TICK_INSTRUMENTATION.phase('combat.turretRotation');
 
     // Update shield state before projectile emission. Aimed tube shields
     // are one turret with two emissions: the physical tube and the
@@ -137,6 +142,7 @@ export class SimulationCombatController {
     if (shieldUnits && shieldUnits.length > 0) {
       this.emitSimEvents(updateShieldSounds(shieldUnits), onSimEvent);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.shields');
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
     const fireResult = fireTurrets(
@@ -166,11 +172,13 @@ export class SimulationCombatController {
         this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
       }
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.fireTurrets');
 
     // Update projectile positions and remove orphaned beams (from dead units)
     if (this.world.getProjectiles().length > 0) {
       this.updateProjectileCombat(dtMs, wind, onSimEvent, onUnitDeath, onBuildingDeath);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.projectiles');
   }
 
   reset(): void {

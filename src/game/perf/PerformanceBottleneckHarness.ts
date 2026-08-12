@@ -24,6 +24,10 @@ import {
   WASM_BOUNDARY_INSTRUMENTATION,
   type WasmBoundaryInstrumentationReport,
 } from './WasmBoundaryInstrumentation';
+import {
+  SIM_TICK_INSTRUMENTATION,
+  type SimTickInstrumentationReport,
+} from './SimTickInstrumentation';
 
 type NumericSummary = {
   readonly avg: number;
@@ -105,6 +109,7 @@ export type SimOnlyReport = {
   readonly fixedStepUtilPctP95: number;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly simTickPhases: SimTickInstrumentationReport;
 };
 
 type SimSnapshotReport = {
@@ -121,6 +126,7 @@ type SimSnapshotReport = {
   readonly snapshotMainThreadMsPerSecond: number;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly simTickPhases: SimTickInstrumentationReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
@@ -178,6 +184,7 @@ type FullStackReport = {
   readonly snapshotBytes: NumericSummary;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly simTickPhases: SimTickInstrumentationReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
   readonly renderSceneWorkload: readonly RenderSceneWorkloadRow[];
@@ -480,6 +487,7 @@ async function runSimOnly(
     }
     const wallMs = performance.now() - wallStart;
     const stepMs = summarize(samples);
+    const simTickPhases = finishSimTickPhaseTracking();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
@@ -490,6 +498,7 @@ async function runSimOnly(
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
       memory: memory.finish(),
       wasmBoundary,
+      simTickPhases,
     };
   } finally {
     finishWasmBoundaryTracking();
@@ -561,6 +570,7 @@ async function runSimSnapshot(
     const snapshotMaterializationStats = summarizeSnapshotMaterialization(
       materializationSamples,
     );
+    const simTickPhases = finishSimTickPhaseTracking();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
@@ -575,6 +585,7 @@ async function runSimSnapshot(
         snapshotTotalMs.avg * (1000 / (fixedStepMs * options.snapshotEveryTicks)),
       memory: memory.finish(),
       wasmBoundary,
+      simTickPhases,
       snapshotMaterializationStats,
       snapshotWireStats,
     };
@@ -890,6 +901,7 @@ async function runFullStack(
     const snapshotMaterializationStats = summarizeSnapshotMaterialization(
       snapshotMaterializationSamples,
     );
+    const simTickPhases = finishSimTickPhaseTracking();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       units: clientViewState.getUnits().length,
@@ -944,6 +956,7 @@ async function runFullStack(
       snapshotBytes: summarize(snapshotBytes),
       memory: memory.finish(),
       wasmBoundary,
+      simTickPhases,
       snapshotMaterializationStats,
       snapshotWireStats,
       renderSceneWorkload: collectRenderSceneWorkload(game.app.scene),
@@ -1349,12 +1362,19 @@ function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCor
 function beginWasmBoundaryTracking(): void {
   WASM_BOUNDARY_INSTRUMENTATION.reset();
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(true);
+  SIM_TICK_INSTRUMENTATION.reset();
+  SIM_TICK_INSTRUMENTATION.setEnabled(true);
 }
 
 function finishWasmBoundaryTracking(): WasmBoundaryInstrumentationReport {
   const report = WASM_BOUNDARY_INSTRUMENTATION.report();
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(false);
+  SIM_TICK_INSTRUMENTATION.setEnabled(false);
   return report;
+}
+
+function finishSimTickPhaseTracking(): SimTickInstrumentationReport {
+  return SIM_TICK_INSTRUMENTATION.report();
 }
 
 function createMemoryTracker(): {

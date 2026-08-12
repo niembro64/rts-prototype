@@ -221,6 +221,7 @@ function printSimulationReport(report) {
   console.log(`  step ms avg/p95/max: ${triplet(report.stepMs)}`);
   console.log(`  p95 ceiling: ${fmt(report.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.memory);
+  printSimTickPhases('  sim tick phases', report.simTickPhases, report.measuredTicks);
   printWasmBoundaryLine('  JS/WASM boundary', report.wasmBoundary);
 }
 
@@ -236,6 +237,7 @@ function printReport(report) {
   console.log(`  step ms avg/p95/max: ${triplet(report.simOnly.stepMs)} (${fmt(report.simOnly.fixedStepUtilPctP95)}% of ${fmt(fixed)}ms fixed step)`);
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.simOnly.memory);
+  printSimTickPhases('  sim tick phases', report.simOnly.simTickPhases, report.simOnly.measuredTicks);
   printWasmBoundaryLine('  JS/WASM boundary', report.simOnly.wasmBoundary);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
@@ -444,6 +446,18 @@ function printMemoryLine(prefix, memory) {
       `wasm max=${fmtBytesSummary(memory.wasmMemorySupported, memory.wasmMemoryBytes)} ` +
       `delta=${fmtBytesOrNull(memory.wasmMemoryDeltaBytes)}`,
   );
+}
+
+function printSimTickPhases(prefix, phases, measuredTicks) {
+  if (!phases || !phases.rows?.length) return;
+  console.log(`${prefix}: ${fmt(phases.totalMs)}ms attributed across ${phases.rows.length} phases`);
+  for (const row of phases.rows) {
+    const perTick = measuredTicks > 0 ? row.totalMs / measuredTicks : row.avgMs;
+    console.log(
+      `    ${row.label}: avg=${fmt(perTick)}ms/tick max=${fmt(row.maxMs)}ms ` +
+        `total=${fmt(row.totalMs)}ms`,
+    );
+  }
 }
 
 function printWasmBoundaryLine(prefix, boundary) {
