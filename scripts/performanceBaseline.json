@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "p95 timing baselines per unit cap for the performance bottleneck harness. Machine-specific — refresh with --write-baseline on the gate machine after intentional perf changes, as its own commit.",
+  "recordedAt": "2026-08-12T20:35:20.551Z",
+  "scenarios": [
+    {
+      "unitCap": 500,
+      "simOnlyUnits": 396,
+      "simOnlyStepMsP95": 18.84,
+      "simSnapshotStepMsP95": 18.72,
+      "snapshotMainThreadMsPerSecond": 19.6,
+      "fullStackFrameMsP95": 17.46
+    },
+    {
+      "unitCap": 1000,
+      "simOnlyUnits": 621,
+      "simOnlyStepMsP95": 36.6,
+      "simSnapshotStepMsP95": 44.29,
+      "snapshotMainThreadMsPerSecond": 30.81,
+      "fullStackFrameMsP95": 25.85
+    },
+    {
+      "unitCap": 2500,
+      "simOnlyUnits": 1405,
+      "simOnlyStepMsP95": 118.72,
+      "simSnapshotStepMsP95": 156.48,
+      "snapshotMainThreadMsPerSecond": 60.31,
+      "fullStackFrameMsP95": 34.59
+    },
+    {
+      "unitCap": 5000,
+      "simOnlyUnits": 2629,
+      "simOnlyStepMsP95": 276.5,
+      "simSnapshotStepMsP95": 407.94,
+      "snapshotMainThreadMsPerSecond": 108.12,
+      "fullStackFrameMsP95": 44.04
+    }
+  ]
+}

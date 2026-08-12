@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -98,6 +98,16 @@ try {
     else printReport(report);
     if (snapshotWireStats !== null) printSnapshotWireStats(snapshotWireStats);
     if (cpuProfileSummary !== null) printCpuProfileSummary(cpuProfileSummary);
+    if (options.writeBaseline) {
+      await writeBaselineFile(options.baselinePath, report);
+    } else if (options.checkBaseline) {
+      const ok = await checkAgainstBaseline(
+        options.baselinePath,
+        report,
+        options.baselineTolerance,
+      );
+      if (!ok) process.exitCode = 1;
+    }
     if (options.jsonPath !== null) {
       const outputPath = path.resolve(repoRoot, options.jsonPath);
       await writeFile(
@@ -123,6 +133,10 @@ function parseArgs(args) {
   let jsonPath = null;
   let suite = false;
   let simOnly = false;
+  let writeBaseline = false;
+  let checkBaseline = false;
+  let baselinePath = path.join(scriptDir, 'performanceBaseline.json');
+  let baselineTolerance = 1.35;
   for (const arg of args) {
     if (arg === '--headed') {
       headless = false;
@@ -130,6 +144,14 @@ function parseArgs(args) {
     }
     if (arg === '--suite') {
       suite = true;
+      continue;
+    }
+    if (arg === '--write-baseline') {
+      writeBaseline = true;
+      continue;
+    }
+    if (arg === '--check-baseline') {
+      checkBaseline = true;
       continue;
     }
     if (arg === '--profile-cpu') {
@@ -150,6 +172,15 @@ function parseArgs(args) {
     const rawValue = match[2];
     if (key === 'json') {
       jsonPath = rawValue;
+      continue;
+    }
+    if (key === 'baseline-path' || key === 'baselinePath') {
+      baselinePath = path.resolve(repoRoot, rawValue);
+      continue;
+    }
+    if (key === 'baseline-tolerance' || key === 'baselineTolerance') {
+      const tolerance = Number(rawValue);
+      if (Number.isFinite(tolerance) && tolerance > 1) baselineTolerance = tolerance;
       continue;
     }
     if (key === 'unit-caps' || key === 'unitCaps') {
@@ -213,10 +244,121 @@ function parseArgs(args) {
     jsonPath,
     suite,
     simOnly,
+    writeBaseline,
+    checkBaseline,
+    baselinePath,
+    baselineTolerance,
     width: harnessOptions.width,
     height: harnessOptions.height,
     harnessOptions,
   };
+}
+
+// ── Perf regression baseline ────────────────────────────────────────────
+// Same pattern as scripts/terrainStabilityBaseline.json, but for timing:
+// p95 metrics per unit cap, compared with a generous noise tolerance.
+// Baselines are machine-specific — record and check on the same machine.
+
+function collectBaselineScenarios(report) {
+  const scenarios = isSuiteReport(report)
+    ? report.reports
+    : [report];
+  return scenarios.map((scenario) => ({
+    unitCap: scenario.options.unitCap,
+    simOnlyUnits: scenario.simOnly.units,
+    simOnlyStepMsP95: round2(scenario.simOnly.stepMs.p95),
+    simSnapshotStepMsP95: round2(scenario.simSnapshot.stepMs.p95),
+    snapshotMainThreadMsPerSecond: round2(scenario.simSnapshot.snapshotMainThreadMsPerSecond),
+    fullStackFrameMsP95: round2(scenario.fullStack.frameMs.p95),
+  }));
+}
+
+function round2(value) {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : value;
+}
+
+async function writeBaselineFile(baselinePath, report) {
+  if (!isSuiteReport(report) && report.simOnly === undefined) {
+    console.error('baseline: full or suite reports only (not --sim-only)');
+    process.exitCode = 1;
+    return;
+  }
+  const payload = {
+    version: 1,
+    description:
+      'p95 timing baselines per unit cap for the performance bottleneck harness. ' +
+      'Machine-specific — refresh with --write-baseline on the gate machine after ' +
+      'intentional perf changes, as its own commit.',
+    recordedAt: new Date().toISOString(),
+    scenarios: collectBaselineScenarios(report),
+  };
+  await writeFile(baselinePath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log('');
+  console.log(`wrote perf baseline: ${path.relative(repoRoot, baselinePath)}`);
+}
+
+function baselineCheckedMetrics() {
+  return [
+    ['simOnlyStepMsP95', 'sim-only step p95'],
+    ['simSnapshotStepMsP95', 'sim+snapshot step p95'],
+    ['snapshotMainThreadMsPerSecond', 'snapshot main-thread ms/s'],
+    ['fullStackFrameMsP95', 'full-stack frame p95'],
+  ];
+}
+
+async function checkAgainstBaseline(baselinePath, report, tolerance) {
+  if (!isSuiteReport(report) && report.simOnly === undefined) {
+    console.error('baseline: full or suite reports only (not --sim-only)');
+    return false;
+  }
+  let baseline;
+  try {
+    baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
+  } catch (error) {
+    console.error(`baseline: cannot read ${path.relative(repoRoot, baselinePath)}: ${error.message}`);
+    console.error('baseline: record one with --write-baseline first');
+    return false;
+  }
+  const baselineByCap = new Map(
+    (baseline.scenarios ?? []).map((scenario) => [scenario.unitCap, scenario]),
+  );
+  const current = collectBaselineScenarios(report);
+  let pass = true;
+  console.log('');
+  console.log(`PERF BASELINE CHECK (tolerance ${fmt(tolerance)}x, ${path.relative(repoRoot, baselinePath)})`);
+  for (const scenario of current) {
+    const recorded = baselineByCap.get(scenario.unitCap);
+    if (recorded === undefined) {
+      console.log(`  cap ${scenario.unitCap}: no baseline recorded — skipped`);
+      continue;
+    }
+    const unitDrift = recorded.simOnlyUnits > 0
+      ? scenario.simOnlyUnits / recorded.simOnlyUnits
+      : 1;
+    if (unitDrift < 0.85 || unitDrift > 1.15) {
+      console.log(
+        `  cap ${scenario.unitCap}: WARNING live units drifted ` +
+          `${recorded.simOnlyUnits} -> ${scenario.simOnlyUnits}; ` +
+          'battle composition changed — refresh the baseline',
+      );
+    }
+    for (const [key, label] of baselineCheckedMetrics()) {
+      const was = recorded[key];
+      const now = scenario[key];
+      if (!Number.isFinite(was) || !Number.isFinite(now) || was <= 0) continue;
+      const ratio = now / was;
+      const status = ratio <= tolerance ? 'ok' : 'FAIL';
+      if (status === 'FAIL') pass = false;
+      console.log(
+        `  cap ${scenario.unitCap} ${label}: ${fmt(was)} -> ${fmt(now)}ms ` +
+          `(${fmt(ratio)}x) ${status}`,
+      );
+    }
+  }
+  console.log(pass
+    ? 'PERF BASELINE CHECK PASSED'
+    : `PERF BASELINE CHECK FAILED — a metric regressed past ${fmt(tolerance)}x baseline`);
+  return pass;
 }
 
 function printSimulationReport(report) {
