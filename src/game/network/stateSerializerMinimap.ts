@@ -334,12 +334,34 @@ export function serializeMinimapSnapshotEntities(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
   trackingKey: string | number | undefined,
+  includeWireRows = true,
 ): NetworkServerSnapshotMinimapEntity[] | undefined {
   const poolKey = resolveSnapshotPoolKey(trackingKey);
   const state = getOrCreateSnapshotPool(minimapPools, poolKey);
+  // Registered (and reset to count 0) even when rows are skipped, so a
+  // listener that never encodes leaves an EMPTY wire source rather than
+  // a stale one from an earlier configuration.
   const wireSource = getOrCreateKeyedWireSource(minimapWireSourcesByKey, poolKey, state.buf, minimapWireSources);
   state.index = 0;
   state.buf.length = 0;
+
+  if (!includeWireRows) {
+    forEachMinimapCandidate(
+      world,
+      visibility,
+      (views, slot, radarOnly) => {
+        const out = getPooledItem(state, createMinimapEntityDto);
+        writeMinimapEntityFromSlot(out, views, slot, radarOnly);
+        state.buf.push(out);
+      },
+      (entity, radarOnly) => {
+        const out = getPooledItem(state, createMinimapEntityDto);
+        writeMinimapEntity(out, entity, radarOnly);
+        state.buf.push(out);
+      },
+    );
+    return state.buf;
+  }
 
   forEachMinimapCandidate(
     world,

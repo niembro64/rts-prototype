@@ -102,6 +102,8 @@ export type SnapshotListenerEntry = {
   cacheKey: string;
   preencodeWire: boolean;
   directMaterialization: boolean;
+  /** See SnapshotListenerOptions.needsWireRows. */
+  needsWireRows: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   /** This listener asked for recovery. Dynamic state is already full
@@ -419,6 +421,7 @@ export class ServerSnapshotPublisher {
           delivery: {
             preencodeWire: listener.preencodeWire,
             materializeSupplementalDtos: listener.directMaterialization,
+            needsWireRows: listener.needsWireRows,
             trackingKey: listener.cacheKey,
           },
         });
@@ -691,6 +694,7 @@ export class ServerSnapshotPublisher {
           delivery: {
             preencodeWire: listener.preencodeWire,
             materializeSupplementalDtos: listener.directMaterialization,
+            needsWireRows: listener.needsWireRows,
             trackingKey: listener.cacheKey,
           },
         });
@@ -1134,6 +1138,7 @@ export class ServerSnapshotPublisher {
           delivery: {
             preencodeWire: listener.preencodeWire,
             materializeSupplementalDtos: listener.directMaterialization,
+            needsWireRows: listener.needsWireRows,
             trackingKey: listener.cacheKey,
           },
         });

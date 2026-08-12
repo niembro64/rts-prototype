@@ -41,6 +41,11 @@ import type { WorldState } from '../sim/WorldState';
 export type DirectSnapshotDelivery = {
   preencodeWire: boolean;
   materializeSupplementalDtos: boolean;
+  /** Whether DTO-branch serializers must also append typed wire rows —
+   *  required by anything that later wire-encodes this snapshot (remote
+   *  delivery, loopback, DP-02 diagnostics). Plain local listeners set
+   *  false and skip the O(visible-entities) minimap append. */
+  needsWireRows: boolean;
   trackingKey: string;
 };
 
@@ -111,6 +116,7 @@ export function materializeSnapshotSupplementals(
               input.world,
               input.visibility,
               input.delivery.trackingKey,
+              input.delivery.needsWireRows,
             )
           : writeMinimapSnapshotWireRowsDirect(
               input.world,

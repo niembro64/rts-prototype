@@ -154,6 +154,11 @@ export class LocalGameConnection implements GameConnection {
     }, playerId, {
       preencodeWire: this.loopbackSnapshotsThroughWire,
       directMaterialization: this.directLocalSnapshotMaterialization,
+      // Wire rows are only consumed by an encoder: loopback encodes
+      // every packet, and the wire-cost diagnostics encode on demand.
+      // A plain local listener never encodes, so serializers skip the
+      // per-visible-entity wire-row appends for it.
+      needsWireRows: this.loopbackSnapshotsThroughWire || this.recordSnapshotWireCost,
     });
   }
 

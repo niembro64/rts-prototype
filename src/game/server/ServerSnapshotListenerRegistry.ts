@@ -9,6 +9,13 @@ import type { SnapshotListenerEntry } from './ServerSnapshotPublisher';
 export type SnapshotListenerOptions = {
   preencodeWire?: boolean;
   directMaterialization?: boolean;
+  /** Whether supplemental serializers must append typed wire rows next
+   *  to their pooled DTOs. Anything that ever wire-encodes this
+   *  listener's snapshots (remote delivery, loopback, or the DP-02 wire
+   *  diagnostics) needs them; a plain local listener does not, and its
+   *  O(visible-entities) minimap append is skipped. Defaults to true —
+   *  only opt out when the snapshot provably never reaches an encoder. */
+  needsWireRows?: boolean;
 };
 
 export class ServerSnapshotListenerRegistry {
@@ -39,6 +46,7 @@ export class ServerSnapshotListenerRegistry {
       cacheKey,
       preencodeWire: options.preencodeWire === true,
       directMaterialization: options.directMaterialization === true,
+      needsWireRows: options.needsWireRows !== false,
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
       needsFullState: false,

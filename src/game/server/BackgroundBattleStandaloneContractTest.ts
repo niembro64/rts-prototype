@@ -16,6 +16,9 @@ function assertContract(condition: boolean, message: string): void {
  * runnable without booting the renderer or WASM physics worker. */
 function createPhysicsHarness(): PhysicsEngine3D {
   return {
+    // The spawn path checks pool headroom before creating bodies; the
+    // harness pool is unbounded, so it always has room.
+    hasBodyPoolHeadroom: () => true,
     createUnitBody(
       x: number,
       y: number,
