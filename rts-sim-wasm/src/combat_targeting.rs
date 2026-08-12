@@ -2629,6 +2629,27 @@ pub(crate) fn combat_targeting_mark_observation_cell(
 pub(crate) const CT_OBSERVATION_TARGET_AIR: u8 = 1;
 pub(crate) const CT_OBSERVATION_TARGET_WATER: u8 = 2;
 
+/// Result-identical cell rejection for the observation sweep: the
+/// square bound walks every cell in [source ± query_radius]², but a
+/// slot can only be marked when its distance to the source is within
+/// one of the acceptance radii, all of which query_radius bounds. A
+/// cell whose rect lies wholly outside the query circle (~21% of the
+/// square's cells) therefore cannot mark anything and is skipped
+/// before its slot walk (and, on the dense path, before its hash
+/// lookup).
+#[inline]
+fn observation_cell_outside_radius(cx: i32, cy: i32, source_x: f64, source_y: f64, radius: f64) -> bool {
+    let min_x = f64::from(cx) * COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+    let min_y = f64::from(cy) * COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+    let dx = (min_x - source_x)
+        .max(source_x - (min_x + COMBAT_TARGETING_OBSERVATION_CELL_SIZE))
+        .max(0.0);
+    let dy = (min_y - source_y)
+        .max(source_y - (min_y + COMBAT_TARGETING_OBSERVATION_CELL_SIZE))
+        .max(0.0);
+    dx * dx + dy * dy > radius * radius
+}
+
 #[inline]
 fn combat_targeting_valid_observation_radius(radius: f64) -> f64 {
     if radius.is_finite() && radius > 0.0 {
@@ -2700,6 +2721,9 @@ pub(crate) fn combat_targeting_mark_observation_circles(
             if cx < min_cx || cx > max_cx || cy < min_cy || cy > max_cy {
                 continue;
             }
+            if observation_cell_outside_radius(cx, cy, source_x, source_y, query_radius) {
+                continue;
+            }
             let Some(cell) = observation_cells.get(&key) else {
                 continue;
             };
@@ -2730,6 +2754,9 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     }
     for cx in min_cx..=max_cx {
         for cy in min_cy..=max_cy {
+            if observation_cell_outside_radius(cx, cy, source_x, source_y, query_radius) {
+                continue;
+            }
             let key = combat_targeting_observation_cell_key(cx, cy);
             let cell = match observation_cells.get(&key) {
                 Some(cell) => cell,
