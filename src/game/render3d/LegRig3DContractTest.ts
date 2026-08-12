@@ -247,7 +247,11 @@ export function runLegRig3DContractTest(): void {
     footContactNormalX: 0,
     footContactNormalY: 1,
     footContactNormalZ: 0,
+    footTargetNormalX: 0,
+    footTargetNormalY: 1,
+    footTargetNormalZ: 0,
     footContactOrientationCaptured: false,
+    lerpProgress: 0,
   };
   const footSole = (): THREE.Vector3 => new THREE.Vector3(0, 1, 0).applyQuaternion(
     new THREE.Quaternion(
@@ -310,42 +314,101 @@ export function runLegRig3DContractTest(): void {
     'a planted foot rotates within that plane to follow its leg heading',
   );
 
-  // Lift-off releases neither: a foot in the air keeps the plane it last
-  // touched, and still turns with its leg while it swings.
+  // Lift-off already knows the next foothold. The foot begins at the old
+  // terrain angle, reaches the angular midpoint at half progress, and arrives
+  // at the new terrain angle before touchdown can introduce a discontinuity.
+  const nextSlopeNormal = new THREE.Vector3(-0.35, 0.9, 0.2).normalize();
   footOrientationState.contactState = 'stepping';
+  footOrientationState.footTargetNormalX = nextSlopeNormal.x;
+  footOrientationState.footTargetNormalY = nextSlopeNormal.y;
+  footOrientationState.footTargetNormalZ = nextSlopeNormal.z;
+  footOrientationState.lerpProgress = 0;
   resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  const swingStart = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
+  const swingStartNormal = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(swingStart);
+  const expectedSwingStart = resolveLegFootSurfaceQuaternion(
+    -2.4,
+    slopeNormal.x,
+    slopeNormal.y,
+    slopeNormal.z,
+    new THREE.Quaternion(),
+  );
   assertContract(
     footOrientationState.footContactOrientationCaptured &&
-      footSole().dot(slopeNormal) > 1 - 1e-9,
-    'a lifted foot keeps the plane of the ground it last touched',
-  );
-  assertContract(
-    footHeading().dot(headingInPlane(-2.4, slopeNormal)) > 1 - 1e-9,
-    'a lifted foot still rotates within that plane to follow its leg',
-  );
-  footOrientationState.contactState = 'free';
-  resolveContactLockedFootOrientation(footOrientationState, 0.9, 0, 1, 0);
-  assertContract(
-    footSole().dot(slopeNormal) > 1 - 1e-9,
-    'a fully airborne foot holds that plane instead of levelling out',
+      swingStart.angleTo(expectedSwingStart) < 1e-9,
+    'a lifted foot begins at the previous foothold angle',
   );
 
-  // Only touchdown may replace the plane, and the rig marks that by dropping
-  // the capture the frame the slide lands (advanceGroundedLegSlide).
+  const expectedSwingEnd = resolveLegFootSurfaceQuaternion(
+    -2.4,
+    nextSlopeNormal.x,
+    nextSlopeNormal.y,
+    nextSlopeNormal.z,
+    new THREE.Quaternion(),
+  );
+  footOrientationState.lerpProgress = 0.5;
+  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  const swingMid = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
+  const swingMidNormal = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(swingMid);
+  assertContract(
+    Math.abs(
+      swingStartNormal.angleTo(swingMidNormal) * 2 -
+      swingStartNormal.angleTo(nextSlopeNormal)
+    ) < 1e-9,
+    'a stepping foot linearly interpolates half of its angular displacement at half progress',
+  );
+  assertContract(
+    footHeading().dot(headingInPlane(-2.4, footSole())) > 1 - 1e-9,
+    'an interpolating foot still follows the live leg heading within its current plane',
+  );
+
+  footOrientationState.lerpProgress = 1;
+  resolveContactLockedFootOrientation(footOrientationState, -2.4, 0, 1, 0);
+  const beforeTouchdown = new THREE.Quaternion(
+    footOrientationState.footQuaternionX,
+    footOrientationState.footQuaternionY,
+    footOrientationState.footQuaternionZ,
+    footOrientationState.footQuaternionW,
+  );
+  assertContract(
+    beforeTouchdown.angleTo(expectedSwingEnd) < 1e-9 &&
+      footSole().dot(nextSlopeNormal) > 1 - 1e-9,
+    'the foot reaches the next foothold angle at the end of its swing',
+  );
+
+  // advanceGroundedLegSlide promotes the already-rendered target normal.
+  // Rebuilding the planted pose from it must therefore be identical.
   footOrientationState.contactState = 'planted';
-  footOrientationState.footContactOrientationCaptured = false;
-  const nextSlopeNormal = new THREE.Vector3(-0.35, 0.9, 0.2).normalize();
+  footOrientationState.footContactNormalX = nextSlopeNormal.x;
+  footOrientationState.footContactNormalY = nextSlopeNormal.y;
+  footOrientationState.footContactNormalZ = nextSlopeNormal.z;
   resolveContactLockedFootOrientation(
     footOrientationState,
-    1.5,
+    -2.4,
     nextSlopeNormal.x,
     nextSlopeNormal.y,
     nextSlopeNormal.z,
   );
   assertContract(
-    footSole().dot(nextSlopeNormal) > 1 - 1e-9 &&
-      footOrientationState.footContactOrientationCaptured,
-    'the next touchdown captures the new plane',
+    beforeTouchdown.angleTo(new THREE.Quaternion(
+      footOrientationState.footQuaternionX,
+      footOrientationState.footQuaternionY,
+      footOrientationState.footQuaternionZ,
+      footOrientationState.footQuaternionW,
+    )) < 1e-9,
+    'touchdown promotes the target angle without snapping to a new one',
   );
   const kneeQuaternion = resolveKneeJointQuaternion(
     hip.x, hip.y, hip.z,

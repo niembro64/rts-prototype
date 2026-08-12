@@ -396,6 +396,11 @@ function assertStandingFootContactSlopeLatch(): void {
     footContactNormalX: 0,
     footContactNormalY: 1,
     footContactNormalZ: 0,
+    footTargetNormalX: 0,
+    footTargetNormalY: 1,
+    footTargetNormalZ: 0,
+    footOrientationTransitionActive: false,
+    footOrientationTransitionProgress: 0,
   };
   const local = new THREE.Quaternion();
   const yawQuaternion = (angle: number): THREE.Quaternion =>
@@ -407,6 +412,8 @@ function assertStandingFootContactSlopeLatch(): void {
     new THREE.Vector3(0, 1, 0).applyQuaternion(parent.clone().multiply(local));
   const soleHeading = (parent: THREE.Quaternion): THREE.Vector3 =>
     new THREE.Vector3(1, 0, 0).applyQuaternion(parent.clone().multiply(local));
+  const worldOrientation = (parent: THREE.Quaternion): THREE.Quaternion =>
+    parent.clone().multiply(local);
   const headingInPlane = (yaw: number, normal: THREE.Vector3): THREE.Vector3 =>
     new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
       .projectOnPlane(normal)
@@ -454,7 +461,14 @@ function assertStandingFootContactSlopeLatch(): void {
     'a touching shoe rotates within that plane to follow the lower body',
   );
 
-  // Lift-off releases neither. The gait may raise the shoe; the plane stays.
+  // At lift-off the gait has sampled the next foothold. Progress zero retains
+  // the departure angle exactly.
+  const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
+  state.footTargetNormalX = nextNormal.x;
+  state.footTargetNormalY = nextNormal.y;
+  state.footTargetNormalZ = nextNormal.z;
+  state.footOrientationTransitionActive = true;
+  state.footOrientationTransitionProgress = 0;
   resolveStandingFootContactOrientation(
     state,
     false,
@@ -469,9 +483,12 @@ function assertStandingFootContactSlopeLatch(): void {
     !state.footTouchingSurface &&
       state.footOrientationCaptured &&
       soleNormal(turnedParent).dot(touchdownNormal) > 1 - 1e-9,
-    'a lifted standing shoe keeps the plane of the ground it last touched',
+    'a lifted standing shoe starts at the previous foothold angle',
   );
 
+  // Parent motion is removed before comparing world orientations. With one
+  // fixed live heading, half swing progress must cover half the shortest
+  // angular displacement between the two terrain-aligned endpoint frames.
   const furtherTurnedParent = parentFrame(2.1, 0.4);
   resolveStandingFootContactOrientation(
     state,
@@ -483,16 +500,50 @@ function assertStandingFootContactSlopeLatch(): void {
     0,
     local,
   );
+  const swingStart = worldOrientation(furtherTurnedParent);
+  const swingStartNormal = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(swingStart);
+  state.footOrientationTransitionProgress = 0.5;
+  resolveStandingFootContactOrientation(
+    state,
+    false,
+    furtherTurnedParent,
+    2.5,
+    0,
+    1,
+    0,
+    local,
+  );
+  const swingMid = worldOrientation(furtherTurnedParent);
+  const swingMidNormal = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(swingMid);
+  state.footOrientationTransitionProgress = 1;
+  resolveStandingFootContactOrientation(
+    state,
+    false,
+    furtherTurnedParent,
+    2.5,
+    0,
+    1,
+    0,
+    local,
+  );
+  const swingEnd = worldOrientation(furtherTurnedParent);
   assertContract(
-    soleNormal(furtherTurnedParent).dot(touchdownNormal) > 1 - 1e-9,
-    'an airborne shoe does not tip off its plane as its parent turns underneath',
+    Math.abs(
+      swingStartNormal.angleTo(swingMidNormal) * 2 -
+      swingStartNormal.angleTo(nextNormal)
+    ) < 1e-9,
+    'a standing shoe linearly interpolates half its angular displacement at half swing progress',
   );
   assertContract(
-    soleHeading(furtherTurnedParent).dot(headingInPlane(2.5, touchdownNormal)) > 1 - 1e-9,
-    'an airborne shoe still turns within that plane to follow the lower body',
+    soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9 &&
+      soleHeading(furtherTurnedParent).dot(
+        headingInPlane(2.5, nextNormal),
+      ) > 1 - 1e-9,
+    'the end of the swing reaches the next foothold angle while following the lower body',
   );
 
-  const nextNormal = new THREE.Vector3(-0.33, 0.88, 0.2).normalize();
   resolveStandingFootContactOrientation(
     state,
     true,
@@ -504,9 +555,10 @@ function assertStandingFootContactSlopeLatch(): void {
     local,
   );
   assertContract(
-    soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9 &&
-      nextNormal.dot(touchdownNormal) < 1 - 1e-3,
-    'the next standing-shoe footfall captures the new plane',
+    !state.footOrientationTransitionActive &&
+      worldOrientation(furtherTurnedParent).angleTo(swingEnd) < 1e-9 &&
+      soleNormal(furtherTurnedParent).dot(nextNormal) > 1 - 1e-9,
+    'the next standing-shoe footfall promotes the interpolated angle without snapping',
   );
 }
 

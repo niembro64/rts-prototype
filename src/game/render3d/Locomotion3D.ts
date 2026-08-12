@@ -120,6 +120,7 @@ export type LocomotionStateSnapshot =
       /** A tier rebuild must not restart the coupled biped cycle mid-stride. */
       contact: RollingContactSnapshot;
       gaitPhase: number;
+      gaitDirection: -1 | 1;
       gait: number;
       upperBodyYaw: number;
       upperBodyWorldYaw: number | null;
@@ -128,6 +129,11 @@ export type LocomotionStateSnapshot =
         touchingSurface: boolean;
         orientationCaptured: boolean;
         contactNormal: readonly [number, number, number];
+        targetNormal: readonly [number, number, number];
+        orientationTransitionActive: boolean;
+        orientationTransitionProgress: number;
+        orientationTransitionStartPhase: number;
+        orientationTransitionDirection: -1 | 1;
         localQuaternion: readonly [number, number, number, number];
       }>>;
     }
@@ -208,6 +214,7 @@ export function captureLocomotionState(
         type: 'standing',
         contact: captureRollingContact(locomotion.contact),
         gaitPhase: locomotion.gaitPhase,
+        gaitDirection: locomotion.gaitDirection,
         gait: locomotion.gait,
         upperBodyYaw: locomotion.upperBodyYaw,
         upperBodyWorldYaw: locomotion.upperBodyWorldYaw,
@@ -220,6 +227,15 @@ export function captureLocomotionState(
             leg.footContactNormalY,
             leg.footContactNormalZ,
           ],
+          targetNormal: [
+            leg.footTargetNormalX,
+            leg.footTargetNormalY,
+            leg.footTargetNormalZ,
+          ],
+          orientationTransitionActive: leg.footOrientationTransitionActive,
+          orientationTransitionProgress: leg.footOrientationTransitionProgress,
+          orientationTransitionStartPhase: leg.footOrientationTransitionStartPhase,
+          orientationTransitionDirection: leg.footOrientationTransitionDirection,
           localQuaternion: quaternionTuple(leg.foot),
         })),
       };
@@ -288,6 +304,7 @@ export function applyLocomotionState(
       const state = snapshot as Extract<LocomotionStateSnapshot, { type: 'standing' }>;
       applyRollingContact(locomotion.contact, state.contact);
       locomotion.gaitPhase = state.gaitPhase;
+      locomotion.gaitDirection = state.gaitDirection;
       locomotion.gait = state.gait;
       locomotion.upperBodyYaw = state.upperBodyYaw;
       locomotion.upperBodyWorldYaw = state.upperBodyWorldYaw;
@@ -302,6 +319,13 @@ export function applyLocomotionState(
         leg.footContactNormalX = saved.contactNormal[0];
         leg.footContactNormalY = saved.contactNormal[1];
         leg.footContactNormalZ = saved.contactNormal[2];
+        leg.footTargetNormalX = saved.targetNormal[0];
+        leg.footTargetNormalY = saved.targetNormal[1];
+        leg.footTargetNormalZ = saved.targetNormal[2];
+        leg.footOrientationTransitionActive = saved.orientationTransitionActive;
+        leg.footOrientationTransitionProgress = saved.orientationTransitionProgress;
+        leg.footOrientationTransitionStartPhase = saved.orientationTransitionStartPhase;
+        leg.footOrientationTransitionDirection = saved.orientationTransitionDirection;
         leg.foot.quaternion.fromArray(saved.localQuaternion);
       }
       return;

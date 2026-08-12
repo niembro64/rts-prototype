@@ -62,7 +62,10 @@ import {
   createPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
-import { resolveFootSurfaceQuaternion } from './FootContactOrientation3D';
+import {
+  resolveFootSurfaceQuaternion,
+  resolveFootSurfaceTransitionQuaternion,
+} from './FootContactOrientation3D';
 import {
   clampPointToLegShell,
   legChoppedSphereNeedsStep,
@@ -213,15 +216,16 @@ export type LegInstance = {
   footQuaternionY: number;
   footQuaternionZ: number;
   footQuaternionW: number;
-  /** The plane the sole lies in, as its ABSOLUTE world normal, captured from
-   * the ground at touchdown and held until the foot lands somewhere else —
-   * through the swing and through any amount of chassis rotation. This is the
-   * only latched part of the foot pose: the foot may rotate freely WITHIN the
-   * plane, it may not leave it. Three coordinates (Y up). Defaults to world
-   * up, which is what a foot that has never touched ground stands on. */
+  /** The departure foothold's ABSOLUTE world normal (Three coordinates, Y
+   * up). A planted foot uses it directly. A stepping foot interpolates from it
+   * to the destination normal below, then promotes the destination on landing. */
   footContactNormalX: number;
   footContactNormalY: number;
   footContactNormalZ: number;
+  /** Terrain normal sampled at the known next foothold when the step begins. */
+  footTargetNormalX: number;
+  footTargetNormalY: number;
+  footTargetNormalZ: number;
   /** False only before a foot's first-ever touchdown (or after a teleport
    * reset), when there is no contact plane to hold yet. */
   footContactOrientationCaptured: boolean;
@@ -319,6 +323,9 @@ export type LegStateSnapshot = ReadonlyArray<{
   footContactNormalX: number;
   footContactNormalY: number;
   footContactNormalZ: number;
+  footTargetNormalX: number;
+  footTargetNormalY: number;
+  footTargetNormalZ: number;
   footContactOrientationCaptured: boolean;
   lerpProgress: number;
   lerpDuration: number;
@@ -347,6 +354,9 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
       footContactNormalX: leg.footContactNormalX,
       footContactNormalY: leg.footContactNormalY,
       footContactNormalZ: leg.footContactNormalZ,
+      footTargetNormalX: leg.footTargetNormalX,
+      footTargetNormalY: leg.footTargetNormalY,
+      footTargetNormalZ: leg.footTargetNormalZ,
       footContactOrientationCaptured: leg.footContactOrientationCaptured,
       lerpProgress: leg.lerpProgress,
       lerpDuration: leg.lerpDuration,
@@ -383,6 +393,9 @@ export function applyLegState(loc: LegMesh, snapshot: LegStateSnapshot): void {
     dst.footContactNormalX = src.footContactNormalX;
     dst.footContactNormalY = src.footContactNormalY;
     dst.footContactNormalZ = src.footContactNormalZ;
+    dst.footTargetNormalX = src.footTargetNormalX;
+    dst.footTargetNormalY = src.footTargetNormalY;
+    dst.footTargetNormalZ = src.footTargetNormalZ;
     dst.footContactOrientationCaptured = src.footContactOrientationCaptured;
     dst.lerpProgress = src.lerpProgress;
     dst.lerpDuration = src.lerpDuration;
@@ -462,6 +475,9 @@ export function buildLegs(
       footContactNormalX: 0,
       footContactNormalY: 1,
       footContactNormalZ: 0,
+      footTargetNormalX: 0,
+      footTargetNormalY: 1,
+      footTargetNormalZ: 0,
       footContactOrientationCaptured: false,
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
@@ -1084,6 +1100,9 @@ function resetLegsAcrossPoseDiscontinuity(
       leg.footContactNormalX = 0;
       leg.footContactNormalY = 1;
       leg.footContactNormalZ = 0;
+      leg.footTargetNormalX = 0;
+      leg.footTargetNormalY = 1;
+      leg.footTargetNormalZ = 0;
       leg.footContactOrientationCaptured = false;
     }
   }
@@ -1130,8 +1149,8 @@ function beginGroundedLegSlideTo(
   leg.targetWorldY = targetY;
   leg.targetWorldZ = targetZ;
   leg.contactState = 'stepping';
-  // The capture deliberately survives the swing: a lifted foot carries the
-  // angle of the ground it last touched until it lands somewhere new.
+  // The caller has already sampled the target normal. Linear swing progress
+  // now drives the terrain-angle interpolation from this departure point.
   leg.lerpProgress = 0;
   leg.lerpDuration = legSwingDurationMs(leg);
   leg.initialized = true;
@@ -1193,6 +1212,20 @@ function beginLegStepToChoppedSphereBoundary(
     entityId,
     terrainMode,
   );
+  sampleLocomotionFootSurfaceNormal(
+    targetX,
+    targetZ,
+    mapWidth,
+    mapHeight,
+    entityId,
+    _footSurfaceNormal,
+    terrainMode,
+  );
+  // Terrain normals arrive in sim coordinates (X/Y horizontal, Z up). Foot
+  // orientation is rendered in Three coordinates (X/Z horizontal, Y up).
+  leg.footTargetNormalX = _footSurfaceNormal.nx;
+  leg.footTargetNormalY = _footSurfaceNormal.nz;
+  leg.footTargetNormalZ = _footSurfaceNormal.ny;
   beginGroundedLegSlideTo(leg, targetX, targetY, targetZ);
 }
 
@@ -1206,10 +1239,13 @@ function advanceGroundedLegSlide(leg: LegInstance, dtMs: number): void {
     leg.worldY = leg.targetWorldY;
     leg.worldZ = leg.targetWorldZ;
     leg.contactState = 'planted';
-    // Touchdown is the one moment a foot may take a new angle. Dropping the
-    // capture here — not at lift-off — makes this same frame resample the
-    // support normal and latch the ground it just landed on.
-    leg.footContactOrientationCaptured = false;
+    // The complete angular change has already occurred over the swing. Promote
+    // the destination plane without resampling or changing the rendered pose
+    // on the touchdown frame.
+    leg.footContactNormalX = leg.footTargetNormalX;
+    leg.footContactNormalY = leg.footTargetNormalY;
+    leg.footContactNormalZ = leg.footTargetNormalZ;
+    leg.footContactOrientationCaptured = true;
     return;
   }
 
@@ -1868,19 +1904,14 @@ export function resolveLegFootSurfaceQuaternion(
   );
 }
 
-/** Apply the foot's contact-plane rule without allocating per frame.
+/** Apply the foot's foothold-to-foothold orientation rule without allocating.
  *
- * The retained fact is the PLANE the sole lies in — the absolute world normal
- * of the ground the foot last touched — and nothing else. The foot keeps that
- * plane through the swing and through any amount of chassis rotation; it may
- * rise and fall freely, and it may rotate freely WITHIN the plane, but it may
- * never leave it. So the pose is rebuilt every frame as the LIVE leg heading
- * laid into the retained plane: `resolveLegFootSurfaceQuaternion` projects the
- * heading tangent to the normal, which turns the foot without tilting it.
- *
- * Only a real touchdown may replace the plane. The default normal is world up,
- * so a foot that has never touched ground reduces to the ordinary flat,
- * leg-following pose through the same one code path. */
+ * A planted foot uses the normal captured at its current spot. At lift-off the
+ * gait already knows its destination and captures that spot's normal too, so a
+ * stepping foot can spherically interpolate the sole's terrain angle over the
+ * linear swing progress. Landing merely promotes the destination normal; it
+ * cannot introduce a new angle or a visible snap. Both endpoint frames use the
+ * live leg heading, preserving free rotation within the interpolated plane. */
 export function resolveContactLockedFootOrientation(
   leg: Pick<
     LegInstance,
@@ -1892,7 +1923,11 @@ export function resolveContactLockedFootOrientation(
     | 'footContactNormalX'
     | 'footContactNormalY'
     | 'footContactNormalZ'
+    | 'footTargetNormalX'
+    | 'footTargetNormalY'
+    | 'footTargetNormalZ'
     | 'footContactOrientationCaptured'
+    | 'lerpProgress'
   >,
   candidateFootYaw: number,
   surfaceNormalX: number,
@@ -1903,15 +1938,32 @@ export function resolveContactLockedFootOrientation(
     leg.footContactNormalX = surfaceNormalX;
     leg.footContactNormalY = surfaceNormalY;
     leg.footContactNormalZ = surfaceNormalZ;
+    leg.footTargetNormalX = surfaceNormalX;
+    leg.footTargetNormalY = surfaceNormalY;
+    leg.footTargetNormalZ = surfaceNormalZ;
     leg.footContactOrientationCaptured = true;
   }
-  resolveLegFootSurfaceQuaternion(
-    candidateFootYaw,
-    leg.footContactNormalX,
-    leg.footContactNormalY,
-    leg.footContactNormalZ,
-    _footTouchdownQuaternion,
-  );
+  if (leg.contactState === 'stepping') {
+    resolveFootSurfaceTransitionQuaternion(
+      candidateFootYaw,
+      leg.footContactNormalX,
+      leg.footContactNormalY,
+      leg.footContactNormalZ,
+      leg.footTargetNormalX,
+      leg.footTargetNormalY,
+      leg.footTargetNormalZ,
+      leg.lerpProgress,
+      _footTouchdownQuaternion,
+    );
+  } else {
+    resolveLegFootSurfaceQuaternion(
+      candidateFootYaw,
+      leg.footContactNormalX,
+      leg.footContactNormalY,
+      leg.footContactNormalZ,
+      _footTouchdownQuaternion,
+    );
+  }
   leg.footQuaternionX = _footTouchdownQuaternion.x;
   leg.footQuaternionY = _footTouchdownQuaternion.y;
   leg.footQuaternionZ = _footTouchdownQuaternion.z;

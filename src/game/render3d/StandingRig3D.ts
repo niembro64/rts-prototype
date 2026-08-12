@@ -18,9 +18,10 @@
 // UPRIGHT. A biped does not lean into a hill. The hull's terrain tilt is
 // cancelled at the pose (see Render3DEntities' upright hosts), so this rig can
 // treat chassis-local Y as true vertical. A slope changes how far down each
-// foot reaches; on touchdown the shoe also captures that support's normal and
-// retains the resulting world orientation until its next recovery. The spine
-// stays upright while each planted sole stays tangent to the hill it met.
+// foot reaches; at lift-off the shoe captures the next support normal and
+// interpolates toward it throughout recovery, so touchdown never changes the
+// angle in one frame. The spine stays upright while each planted sole stays
+// tangent to the hill it met.
 
 import * as THREE from 'three';
 import type {
@@ -58,7 +59,10 @@ import {
   type HostTurretAimSample3D,
 } from './HostTurretAim3D';
 import { clampUnit } from '../math';
-import { resolveFootSurfaceQuaternion } from './FootContactOrientation3D';
+import {
+  resolveFootSurfaceQuaternion,
+  resolveFootSurfaceTransitionQuaternion,
+} from './FootContactOrientation3D';
 
 const SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const segmentMaterials = new Map<number, THREE.MeshLambertMaterial>();
@@ -126,18 +130,21 @@ export type StandingLeg = {
    *  pose, so same-side counter-swing cannot acquire a second gait clock. */
   footLocalX: number;
   footLocalZ: number;
-  /** The plane the sole lies in, as its ABSOLUTE world normal, captured from
-   * the support at touchdown and held until the shoe lands somewhere new —
-   * through the swing, through hull aim, and through the hips' independent
-   * lower-body yaw. It is the ONLY latched part of the pose: the shoe still
-   * faces wherever the lower body faces and still rises and falls with the
-   * gait, but it always lies in this plane. World up until the first
-   * footfall. */
+  /** Departure foothold normal, in absolute Three world coordinates. */
   footTouchingSurface: boolean;
   footOrientationCaptured: boolean;
   footContactNormalX: number;
   footContactNormalY: number;
   footContactNormalZ: number;
+  /** Destination foothold normal captured when recovery begins. */
+  footTargetNormalX: number;
+  footTargetNormalY: number;
+  footTargetNormalZ: number;
+  /** Linear angular interpolation state for the active recovery swing. */
+  footOrientationTransitionActive: boolean;
+  footOrientationTransitionProgress: number;
+  footOrientationTransitionStartPhase: number;
+  footOrientationTransitionDirection: -1 | 1;
 };
 
 export type StandingArm = {
@@ -222,6 +229,8 @@ export type StandingMesh = {
   contact: RollingContactState;
   /** Shared normalized right-leg phase; the left leg always adds exactly .5. */
   gaitPhase: number;
+  /** Last non-zero direction of phase travel, for forward/reverse recovery. */
+  gaitDirection: -1 | 1;
   /** Smoothed 0..1 walk amplitude for all four limbs. */
   gait: number;
   /** Longitudinal travel covered by one left/right step. */
@@ -740,17 +749,15 @@ function positiveUnitPhase(phase: number): number {
   return ((phase % 1) + 1) % 1;
 }
 
-/** Resolve one standing shoe's local pose against its touchdown-latched
- * contact plane.
+/** Resolve one standing shoe's local pose between its two known footholds.
  *
- * The retained fact is the PLANE the sole lies in — the absolute world normal
- * of the support the shoe last touched — and nothing else. Only the touching
- * rising edge, an actual new footfall, may replace it. Everything else about
- * the shoe stays live: it faces wherever the lower body faces, and the gait
- * still raises and lowers it. It simply never leaves that plane.
+ * A recovery swing captures the next foothold's terrain normal at lift-off and
+ * spherically interpolates the sole's terrain angle over the linear
+ * gait progress. The touchdown frame therefore has no new angle to acquire:
+ * it only promotes the already-rendered target normal. The live lower-body
+ * heading is used at both endpoints, then the result is counter-rotated into
+ * the shoe's parent frame.
  *
- * So the world pose is rebuilt every frame as the live heading laid into the
- * retained plane, then counter-rotated into the shoe's parent frame.
  * `parentWorldQuaternion` must be the shoe's TRUE parent world orientation
  * (hull ⊗ hips), not the hull alone — the hips yaw inside the hull, and
  * compensating for only part of that chain leaves the remainder visible as the
@@ -763,6 +770,11 @@ export function resolveStandingFootContactOrientation(
     | 'footContactNormalX'
     | 'footContactNormalY'
     | 'footContactNormalZ'
+    | 'footTargetNormalX'
+    | 'footTargetNormalY'
+    | 'footTargetNormalZ'
+    | 'footOrientationTransitionActive'
+    | 'footOrientationTransitionProgress'
   >,
   touchingSurface: boolean,
   parentWorldQuaternion: Readonly<{ x: number; y: number; z: number; w: number }>,
@@ -777,19 +789,44 @@ export function resolveStandingFootContactOrientation(
   foot.footTouchingSurface = touchingSurface;
 
   if (newFootfall) {
-    foot.footContactNormalX = surfaceNormalX;
-    foot.footContactNormalY = surfaceNormalY;
-    foot.footContactNormalZ = surfaceNormalZ;
+    if (foot.footOrientationTransitionActive) {
+      foot.footContactNormalX = foot.footTargetNormalX;
+      foot.footContactNormalY = foot.footTargetNormalY;
+      foot.footContactNormalZ = foot.footTargetNormalZ;
+      foot.footOrientationTransitionProgress = 1;
+      foot.footOrientationTransitionActive = false;
+    } else {
+      foot.footContactNormalX = surfaceNormalX;
+      foot.footContactNormalY = surfaceNormalY;
+      foot.footContactNormalZ = surfaceNormalZ;
+      foot.footTargetNormalX = surfaceNormalX;
+      foot.footTargetNormalY = surfaceNormalY;
+      foot.footTargetNormalZ = surfaceNormalZ;
+    }
     foot.footOrientationCaptured = true;
   }
 
-  resolveFootSurfaceQuaternion(
-    candidateWorldYaw,
-    foot.footContactNormalX,
-    foot.footContactNormalY,
-    foot.footContactNormalZ,
-    _standingFootWorldQuaternion,
-  );
+  if (foot.footOrientationTransitionActive) {
+    resolveFootSurfaceTransitionQuaternion(
+      candidateWorldYaw,
+      foot.footContactNormalX,
+      foot.footContactNormalY,
+      foot.footContactNormalZ,
+      foot.footTargetNormalX,
+      foot.footTargetNormalY,
+      foot.footTargetNormalZ,
+      foot.footOrientationTransitionProgress,
+      _standingFootWorldQuaternion,
+    );
+  } else {
+    resolveFootSurfaceQuaternion(
+      candidateWorldYaw,
+      foot.footContactNormalX,
+      foot.footContactNormalY,
+      foot.footContactNormalZ,
+      _standingFootWorldQuaternion,
+    );
+  }
 
   _standingFootInverseParentQuaternion
     .set(
@@ -950,9 +987,72 @@ function poseCoupledStandingGait(
       // without changing the retained battlefield contact state.
       leg.foot.quaternion.identity();
     } else {
-      // A footfall — the touching rising edge — is the only moment a shoe may
-      // read the ground. Every other frame reuses the captured world angle.
-      const acquiringOrientation = touchingSurface && (
+      const recoveryProgress = mesh.gaitDirection > 0
+        ? THREE.MathUtils.clamp(legPhase * 2, 0, 1)
+        : THREE.MathUtils.clamp((0.5 - legPhase) * 2, 0, 1);
+      const startingRecovery = !touchingSurface && leg.footTouchingSurface;
+      if (startingRecovery) {
+        // At lift-off the previous contact point is the resolved shoe itself.
+        // One complete gait-cycle distance in the direction of travel is the
+        // same shoe's next plant, so its terrain angle is known before the
+        // recovery swing begins.
+        _footWorld
+          .copy(_resolvedFoot)
+          .applyQuaternion(_lowerBodyWorldQuaternion);
+        _footWorld.x += pose.rootX;
+        _footWorld.y += pose.rootY;
+        _footWorld.z += pose.rootZ;
+        _standingFootForward
+          .set(1, 0, 0)
+          .applyQuaternion(_lowerBodyWorldQuaternion);
+        const planarForwardLength = Math.max(
+          1e-6,
+          Math.hypot(_standingFootForward.x, _standingFootForward.z),
+        );
+        const targetDistance = mesh.gaitCycleDistance * mesh.gaitDirection;
+        const targetWorldX = _footWorld.x +
+          _standingFootForward.x / planarForwardLength * targetDistance;
+        const targetWorldZ = _footWorld.z +
+          _standingFootForward.z / planarForwardLength * targetDistance;
+        sampleLocomotionFootSurfaceNormal(
+          targetWorldX,
+          targetWorldZ,
+          mapWidth,
+          mapHeight,
+          ignoreEntityId,
+          _standingFootSurfaceNormal,
+        );
+        leg.footTargetNormalX = _standingFootSurfaceNormal.nx;
+        leg.footTargetNormalY = _standingFootSurfaceNormal.nz;
+        leg.footTargetNormalZ = _standingFootSurfaceNormal.ny;
+        leg.footOrientationTransitionActive = true;
+        leg.footOrientationTransitionProgress = 0;
+        leg.footOrientationTransitionStartPhase = recoveryProgress;
+        leg.footOrientationTransitionDirection = mesh.gaitDirection;
+      }
+      if (leg.footOrientationTransitionActive) {
+        const transitionPhase = leg.footOrientationTransitionDirection > 0
+          ? THREE.MathUtils.clamp(legPhase * 2, 0, 1)
+          : THREE.MathUtils.clamp((0.5 - legPhase) * 2, 0, 1);
+        const remainingPhase = Math.max(
+          1e-6,
+          1 - leg.footOrientationTransitionStartPhase,
+        );
+        leg.footOrientationTransitionProgress = touchingSurface
+          ? 1
+          : THREE.MathUtils.clamp(
+            (transitionPhase - leg.footOrientationTransitionStartPhase) /
+              remainingPhase,
+            0,
+            1,
+          );
+      }
+
+      // First-ever contact still samples the point under the shoe. Normal
+      // walking samples the destination at lift-off above, then landing only
+      // promotes that fully interpolated angle.
+      const acquiringOrientation = touchingSurface &&
+        !leg.footOrientationTransitionActive && (
         !leg.footTouchingSurface || !leg.footOrientationCaptured
       );
       if (acquiringOrientation) {
@@ -971,8 +1071,8 @@ function poseCoupledStandingGait(
           _standingFootSurfaceNormal,
         );
       }
-      // The heading a shoe freezes is the LEG's heading at touchdown, so it
-      // comes from the lower body rather than the independently aiming hull.
+      // The heading is the LEG's live heading, so it comes from the lower body
+      // rather than the independently aiming hull.
       _standingFootForward.set(1, 0, 0).applyQuaternion(_lowerBodyWorldQuaternion);
       const candidateWorldYaw = Math.atan2(
         -_standingFootForward.z,
@@ -1082,6 +1182,13 @@ export function buildStandingRig(
       footContactNormalX: 0,
       footContactNormalY: 1,
       footContactNormalZ: 0,
+      footTargetNormalX: 0,
+      footTargetNormalY: 1,
+      footTargetNormalZ: 0,
+      footOrientationTransitionActive: false,
+      footOrientationTransitionProgress: 0,
+      footOrientationTransitionStartPhase: 0,
+      footOrientationTransitionDirection: 1,
     };
     legs.push(leg);
   }
@@ -1187,6 +1294,7 @@ export function buildStandingRig(
     arms,
     contact: rollingContact(0, 0),
     gaitPhase: 0,
+    gaitDirection: 1,
     gait: 0,
     stepLength,
     gaitCycleDistance,
@@ -1557,6 +1665,9 @@ export function updateStandingRig(
     const strideDistance = Math.abs(travelled) > 1e-5
       ? travelled
       : fallbackSign * locomotionSpeed * dt;
+    if (Math.abs(strideDistance) > 1e-6) {
+      mesh.gaitDirection = strideDistance < 0 ? -1 : 1;
+    }
     mesh.gaitPhase = positiveUnitPhase(
       mesh.gaitPhase + strideDistance / Math.max(1, mesh.gaitCycleDistance),
     );
