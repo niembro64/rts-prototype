@@ -31,6 +31,14 @@ export function runShotLocomotionContractTest(): void {
       locomotion.presetId === blueprint.shotLocomotionPresetId,
       `${blueprint.shotBlueprintId} expands its authored shot locomotion preset`,
     );
+    assertContract(
+      locomotion.maxLifespanMs === null &&
+        locomotion.guidanceDelayMs === 0 &&
+        locomotion.guidanceRampMs === 0 &&
+        locomotion.media.air.turnRate === 0 &&
+        locomotion.media.water.turnRate === 0,
+      `${blueprint.shotBlueprintId} locomotion preset must not own blueprint lifetime/turning controls`,
+    );
   }
 
   const rocketEmission = buildProjectileShotConfig('shotRocketLight');
@@ -38,7 +46,12 @@ export function runShotLocomotionContractTest(): void {
     throw new Error('[shot locomotion contract] shotRocketLight must build a projectile shot');
   }
   const rocketShot = rocketEmission;
-  const rocketLocomotion = getShotLocomotionPreset(rocketShot.shotLocomotion.presetId);
+  const rocketBlueprint = SHOT_BLUEPRINTS.shotRocketLight;
+  const rocketTurning = rocketBlueprint.turning;
+  if (rocketTurning === null) {
+    throw new Error('[shot locomotion contract] shotRocketLight must author turning controls');
+  }
+  const rocketLocomotion = rocketShot.shotLocomotion;
   const rocketAir = rocketLocomotion.media.air;
   assertContract(rocketShot.type === 'rocket', 'shotRocketLight must stay on the rocket visual policy');
   assertContract(
@@ -53,8 +66,8 @@ export function runShotLocomotionContractTest(): void {
     'constant-speed light rocket cannot hide acceleration, gravity, or drag in its air profile',
   );
   assertContract(
-    rocketAir.turnRate > 0,
-    'constant-speed light rocket must retain finite turn authority',
+    rocketAir.turnRate === rocketTurning.turnRate,
+    'constant-speed light rocket must expand blueprint-authored turn authority',
   );
 
   const delayMs = rocketLocomotion.guidanceDelayMs;
@@ -70,13 +83,21 @@ export function runShotLocomotionContractTest(): void {
     `first 30Hz post-delay guidance step must be a very small soft-start; got ${firstPostDelayScale}`,
   );
   assertNear(
-    getProjectileHomingEngagementScale(rocketShot, delayMs + 350 - fixedStepMs * 0.5, fixedStepMs),
+    getProjectileHomingEngagementScale(
+      rocketShot,
+      delayMs + rocketTurning.guidanceRampMs * 0.5 - fixedStepMs * 0.5,
+      fixedStepMs,
+    ),
     0.5,
     'rocket homing engagement should reach half strength halfway through the smootherstep ramp',
     1e-6,
   );
   assertContract(
-    getProjectileHomingEngagementScale(rocketShot, delayMs + 700, fixedStepMs) === 1,
+    getProjectileHomingEngagementScale(
+      rocketShot,
+      delayMs + rocketTurning.guidanceRampMs,
+      fixedStepMs,
+    ) === 1,
     'rocket homing engagement must reach full strength after the ramp',
   );
 
@@ -102,17 +123,26 @@ export function runShotLocomotionContractTest(): void {
       throw new Error(`[shot locomotion contract] ${shotBlueprintId} must build a projectile shot`);
     }
     const locomotion = emission.shotLocomotion;
+    const turning = SHOT_BLUEPRINTS[shotBlueprintId].turning;
+    if (turning === null) {
+      throw new Error(`[shot locomotion contract] ${shotBlueprintId} must author turning controls`);
+    }
     assertContract(
       locomotion.motionModel === 'constantSpeedGuided',
       `${shotBlueprintId} must use constant-speed guidance`,
     );
     assertContract(
-      locomotion.guidanceDelayMs === (shotBlueprintId === 'shotRocketLight' ? 3000 : 0),
-      `${shotBlueprintId} must preserve its authored launch guidance phase`,
+      locomotion.maxLifespanMs === SHOT_BLUEPRINTS[shotBlueprintId].maxLifespanMs,
+      `${shotBlueprintId} must expand its blueprint-authored lifetime`,
     );
     assertContract(
-      locomotion.media.air.turnRate > 0,
-      `${shotBlueprintId} must retain finite in-flight turn authority`,
+      locomotion.guidanceDelayMs === turning.guidanceDelayMs &&
+        locomotion.guidanceRampMs === turning.guidanceRampMs,
+      `${shotBlueprintId} must expand its blueprint-authored guidance phase`,
+    );
+    assertContract(
+      locomotion.media.air.turnRate === turning.turnRate,
+      `${shotBlueprintId} must expand its blueprint-authored in-flight turn authority`,
     );
   }
 
@@ -121,8 +151,16 @@ export function runShotLocomotionContractTest(): void {
     throw new Error('[shot locomotion contract] shotTorpedo must build a projectile shot');
   }
   const torpedoShot = torpedoEmission;
-  const torpedoLocomotion = getShotLocomotionPreset(torpedoShot.shotLocomotion.presetId);
+  const torpedoTurning = SHOT_BLUEPRINTS.shotTorpedo.turning;
+  if (torpedoTurning === null) {
+    throw new Error('[shot locomotion contract] shotTorpedo must author turning controls');
+  }
+  const torpedoLocomotion = torpedoShot.shotLocomotion;
   const torpedoWater = torpedoLocomotion.media.water;
+  assertContract(
+    torpedoWater.turnRate === torpedoTurning.turnRate,
+    'torpedo must expand blueprint-authored underwater turn authority',
+  );
   assertContract(!torpedoLocomotion.media.air.operational, 'torpedo engine policy must exclude air');
   assertContract(torpedoLocomotion.gravityForceMultiplier === 1, 'torpedo must retain universal gravity');
   assertContract(

@@ -112,6 +112,7 @@ export type ShotLocomotion = {
   maxLifespanMs: number | null;
   gravityForceMultiplier: number;
   guidanceDelayMs: number;
+  guidanceRampMs: number;
   media: ShotLocomotionMedia;
   transitions: ShotLocomotionTransitions;
   terminal: ShotLocomotionTerminalPolicy;
@@ -216,6 +217,12 @@ export type SmokeTrailSpec = {
   color?: number;
 };
 
+export type ShotTurningBlueprint = {
+  turnRate: number;
+  guidanceDelayMs: number;
+  guidanceRampMs: number;
+};
+
 export type ProjectileShotBlueprint = {
   type: ProjectileShotKind;
   shotBlueprintId: ShotBlueprintId;
@@ -225,6 +232,8 @@ export type ProjectileShotBlueprint = {
   health: number;
   radius: EntityRadiusConfig;
   shotLocomotionPresetId: string;
+  maxLifespanMs: number | null;
+  turning: ShotTurningBlueprint | null;
   mediumTrajectory: EmissionMediumTrajectoryMatrix;
   hitSound: SoundEntry | null;
   submunitions: SubmunitionSpec | null;

@@ -9,7 +9,7 @@
 import { isShotBlueprintId, type ShotBlueprintId } from '../../../types/blueprintIds';
 import rawShotBlueprints from './shots.json';
 import { resolveBlueprintRefs } from './jsonRefs';
-import { assertExplicitFields } from './jsonValidation';
+import { assertExplicitFields, isObject } from './jsonValidation';
 import type { ShotBlueprint } from './types';
 import {
   assertValidEntityRadius,
@@ -25,6 +25,8 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'hitSound',
   'submunitions',
   'shotLocomotionPresetId',
+  'maxLifespanMs',
+  'turning',
   'mediumTrajectory',
   'smokeTrail',
 ] as const;
@@ -79,6 +81,62 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     blueprint.mediumTrajectory,
   );
   const locomotion = getShotLocomotionPreset(blueprint.shotLocomotionPresetId);
+  if (
+    blueprint.maxLifespanMs !== null &&
+    (!Number.isFinite(blueprint.maxLifespanMs) || blueprint.maxLifespanMs <= 0)
+  ) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.maxLifespanMs: expected positive finite milliseconds or null`,
+    );
+  }
+  const turning = blueprint.turning;
+  const isRocketOrMissile = blueprint.type === 'rocket' || blueprint.type === 'missile';
+  const usesGuidance =
+    locomotion.motionModel === 'constantSpeedGuided' ||
+    locomotion.motionModel === 'thrustGuided';
+  if (isRocketOrMissile && turning === null) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.turning: rocket/missile shots must author turning controls`,
+    );
+  }
+  if (!isRocketOrMissile && turning !== null) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.turning: plasma shots must explicitly author null`,
+    );
+  }
+  if (usesGuidance !== (turning !== null)) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.turning: turning controls must match a guided locomotion preset`,
+    );
+  }
+  if (turning !== null) {
+    if (!isObject(turning)) {
+      throw new Error(`Invalid shot blueprint ${id}.turning: expected object`);
+    }
+    assertExplicitFields(`shot blueprint ${id}.turning`, turning, [
+      'turnRate',
+      'guidanceDelayMs',
+      'guidanceRampMs',
+    ]);
+    const expectedTurningFields = new Set(['turnRate', 'guidanceDelayMs', 'guidanceRampMs']);
+    for (const key of Object.keys(turning)) {
+      if (!expectedTurningFields.has(key)) {
+        throw new Error(`Invalid shot blueprint ${id}.turning.${key}: unexpected field`);
+      }
+    }
+    if (!Number.isFinite(turning.turnRate) || !(turning.turnRate > 0)) {
+      throw new Error(
+        `Invalid shot blueprint ${id}.turning.turnRate: expected finite radians/second > 0`,
+      );
+    }
+    for (const field of ['guidanceDelayMs', 'guidanceRampMs'] as const) {
+      if (!Number.isFinite(turning[field]) || turning[field] < 0) {
+        throw new Error(
+          `Invalid shot blueprint ${id}.turning.${field}: expected finite milliseconds >= 0`,
+        );
+      }
+    }
+  }
   const routes = blueprint.mediumTrajectory;
   if (
     (routes.aboveWater.aboveWater || routes.aboveWater.underwater) &&

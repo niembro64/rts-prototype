@@ -6,6 +6,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag003",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotPlasmaOther",
     "name": "Heavy Plasma",
     "mass": 5,
@@ -46,6 +48,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag002",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotPlasmaLight",
     "name": "Light Plasma",
     "mass": 4,
@@ -86,6 +90,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag0025",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotPlasmaMedium",
     "name": "Medium Plasma",
     "mass": 10,
@@ -126,6 +132,12 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "constantSpeedRocketLight",
+    "maxLifespanMs": 30000,
+    "turning": {
+      "turnRate": 0.5,
+      "guidanceDelayMs": 5000,
+      "guidanceRampMs": 700
+    },
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
     "mass": 6,
@@ -166,6 +178,12 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "constantSpeedMissileFast",
+    "maxLifespanMs": 500,
+    "turning": {
+      "turnRate": 1.2,
+      "guidanceDelayMs": 0,
+      "guidanceRampMs": 0
+    },
     "shotBlueprintId": "shotMissileFast",
     "name": "Fast Missile",
     "mass": 3,
@@ -206,6 +224,12 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "constantSpeedMissileLong",
+    "maxLifespanMs": 6000,
+    "turning": {
+      "turnRate": 0.3,
+      "guidanceDelayMs": 0,
+      "guidanceRampMs": 0
+    },
     "shotBlueprintId": "shotMissileLong",
     "name": "Long Missile",
     "mass": 6,
@@ -246,6 +270,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag003",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotPlasmaHeavy",
     "name": "Heavy Plasma",
     "mass": 30,
@@ -286,6 +312,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag004",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotMortarMedium",
     "name": "Medium Mortar Shell",
     "mass": 90,
@@ -332,6 +360,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag004",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotMortarHeavy",
     "name": "Heavy Mortar Shell",
     "mass": 140,
@@ -378,6 +408,8 @@
       "underwater": { "aboveWater": false, "underwater": false }
     },
     "shotLocomotionPresetId": "ballisticDrag006",
+    "maxLifespanMs": null,
+    "turning": null,
     "shotBlueprintId": "shotPlasmaDisruptor",
     "name": "Disruptor Plasma",
     "mass": 30,
@@ -418,6 +450,12 @@
       "underwater": { "aboveWater": false, "underwater": true }
     },
     "shotLocomotionPresetId": "guidedTorpedo",
+    "maxLifespanMs": 10000,
+    "turning": {
+      "turnRate": 4,
+      "guidanceDelayMs": 0,
+      "guidanceRampMs": 0
+    },
     "shotBlueprintId": "shotTorpedo",
     "name": "Torpedo",
     "mass": 12,

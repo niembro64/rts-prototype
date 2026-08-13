@@ -4,10 +4,6 @@ import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFrictio
 import { deterministicMath } from './deterministicMath';
 
 const MIN_PROPULSION_SPEED = 1e-6;
-// Soft-start delayed guidance so vertical-launch rockets do not jump from
-// pure boost to full lateral steering in the first few fixed steps. The
-// smootherstep curve keeps acceleration curvature continuous at handoff.
-const HOMING_ENGAGEMENT_RAMP_MS = 700;
 let cachedAirFrictionPer60HzFrame = Number.NaN;
 let cachedMass = Number.NaN;
 let cachedAirDragCoefficient = 0;
@@ -117,8 +113,11 @@ export function getProjectileHomingEngagementScale(
   const stepMs = Number.isFinite(dtMs) && dtMs > 0 ? dtMs : 0;
   const elapsedMs = timeAliveBeforeStepMs + stepMs * 0.5 - delayMs;
   if (elapsedMs <= 0) return 0;
-  if (elapsedMs >= HOMING_ENGAGEMENT_RAMP_MS) return 1;
-  const t = elapsedMs / HOMING_ENGAGEMENT_RAMP_MS;
+  const rampMs = shot.shotLocomotion.guidanceRampMs;
+  if (!Number.isFinite(rampMs) || rampMs <= 0 || elapsedMs >= rampMs) return 1;
+  // Smootherstep keeps acceleration curvature continuous as blueprint-authored
+  // delayed guidance hands off to full turning authority.
+  const t = elapsedMs / rampMs;
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 

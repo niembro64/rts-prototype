@@ -494,6 +494,7 @@
         "maxLifespanMs",
         "gravityForceMultiplier",
         "guidanceDelayMs",
+        "guidanceRampMs",
         "media",
         "transitions",
         "terminal"
@@ -519,6 +520,9 @@
           "type": "number"
         },
         "guidanceDelayMs": {
+          "type": "number"
+        },
+        "guidanceRampMs": {
           "type": "number"
         },
         "media": {
@@ -885,6 +889,27 @@
       },
       "additionalProperties": false
     },
+    "ShotTurningBlueprint": {
+      "type": "object",
+      "description": "Blueprint-owned guided turning controls. turnRate is radians per second.",
+      "required": [
+        "turnRate",
+        "guidanceDelayMs",
+        "guidanceRampMs"
+      ],
+      "properties": {
+        "turnRate": {
+          "type": "number"
+        },
+        "guidanceDelayMs": {
+          "type": "number"
+        },
+        "guidanceRampMs": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
     "ProjectileShotBlueprint": {
       "type": "object",
       "required": [
@@ -896,6 +921,8 @@
         "health",
         "radius",
         "shotLocomotionPresetId",
+        "maxLifespanMs",
+        "turning",
         "mediumTrajectory",
         "hitSound",
         "submunitions",
@@ -925,6 +952,26 @@
         },
         "shotLocomotionPresetId": {
           "type": "string"
+        },
+        "maxLifespanMs": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turning": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ShotTurningBlueprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "mediumTrajectory": {
           "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"

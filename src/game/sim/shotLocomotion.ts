@@ -1,4 +1,5 @@
 import type {
+  ShotTurningBlueprint,
   ShotLocomotion,
   ShotLocomotionMediumPhysics,
   ShotLocomotionMotionModel,
@@ -22,8 +23,10 @@ const TRANSITION_OUTCOMES: readonly ShotLocomotionTransitionOutcome[] = [
 ];
 
 type ShotLocomotionConfig = {
-  presets: Record<string, Omit<ShotLocomotion, 'presetId'>>;
+  presets: Record<string, unknown>;
 };
+
+type ShotLocomotionPresetMediumPhysics = Omit<ShotLocomotionMediumPhysics, 'turnRate'>;
 
 function assertObject(label: string, value: unknown): asserts value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -65,20 +68,18 @@ function assertMedium(
   presetId: string,
   mediumName: 'air' | 'water',
   value: unknown,
-): asserts value is ShotLocomotionMediumPhysics {
+): asserts value is ShotLocomotionPresetMediumPhysics {
   const label = `presets.${presetId}.media.${mediumName}`;
   assertObject(label, value);
   assertExactKeys(label, value, [
     'operational',
     'propulsionForce',
     'guidanceThrust',
-    'turnRate',
     'velocityFrictionPer60HzFrame',
   ]);
   assertBoolean(`${label}.operational`, value.operational);
   assertNonNegativeFinite(`${label}.propulsionForce`, value.propulsionForce);
   assertNonNegativeFinite(`${label}.guidanceThrust`, value.guidanceThrust);
-  assertNonNegativeFinite(`${label}.turnRate`, value.turnRate);
   assertNonNegativeFinite(
     `${label}.velocityFrictionPer60HzFrame`,
     value.velocityFrictionPer60HzFrame,
@@ -90,7 +91,7 @@ function assertMedium(
   }
   if (
     value.operational === false &&
-    (value.propulsionForce !== 0 || value.guidanceThrust !== 0 || value.turnRate !== 0 ||
+    (value.propulsionForce !== 0 || value.guidanceThrust !== 0 ||
       value.velocityFrictionPer60HzFrame !== 0)
   ) {
     throw new Error(
@@ -104,9 +105,7 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
   assertObject(label, value);
   assertExactKeys(label, value, [
     'motionModel',
-    'maxLifespanMs',
     'gravityForceMultiplier',
-    'guidanceDelayMs',
     'media',
     'transitions',
     'terminal',
@@ -114,14 +113,7 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
   if (!MOTION_MODELS.includes(value.motionModel as ShotLocomotionMotionModel)) {
     throw new Error(`Invalid shot locomotion ${label}.motionModel: ${String(value.motionModel)}`);
   }
-  if (value.maxLifespanMs !== null) {
-    assertNonNegativeFinite(`${label}.maxLifespanMs`, value.maxLifespanMs);
-    if (value.maxLifespanMs === 0) {
-      throw new Error(`Invalid shot locomotion ${label}.maxLifespanMs: expected positive or null`);
-    }
-  }
   assertNonNegativeFinite(`${label}.gravityForceMultiplier`, value.gravityForceMultiplier);
-  assertNonNegativeFinite(`${label}.guidanceDelayMs`, value.guidanceDelayMs);
 
   assertObject(`${label}.media`, value.media);
   assertExactKeys(`${label}.media`, value.media, ['air', 'water', 'ground']);
@@ -162,23 +154,27 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
   }
 
   const motionModel = value.motionModel as ShotLocomotionMotionModel;
-  const media = value.media as unknown as ShotLocomotion['media'];
+  const media = value.media as unknown as {
+    air: ShotLocomotionPresetMediumPhysics;
+    water: ShotLocomotionPresetMediumPhysics;
+    ground: ShotLocomotion['media']['ground'];
+  };
   const operationalMedia = [media.air, media.water].filter((medium) => medium.operational);
   if (operationalMedia.length === 0 && value.media.ground.mode !== 'terrainFollowing') {
     throw new Error(`Invalid shot locomotion ${label}: no operational movement domain`);
   }
   if (motionModel === 'ballistic') {
     for (const medium of operationalMedia) {
-      if (medium.propulsionForce !== 0 || medium.guidanceThrust !== 0 || medium.turnRate !== 0) {
+      if (medium.propulsionForce !== 0 || medium.guidanceThrust !== 0) {
         throw new Error(`Invalid shot locomotion ${label}: ballistic presets cannot author engines`);
       }
     }
   }
   if (motionModel === 'thrustGuided') {
     for (const medium of operationalMedia) {
-      if (medium.guidanceThrust <= 0 || medium.turnRate <= 0) {
+      if (medium.guidanceThrust <= 0) {
         throw new Error(
-          `Invalid shot locomotion ${label}: thrustGuided operational media need guidance thrust and turn rate`,
+          `Invalid shot locomotion ${label}: thrustGuided operational media need guidance thrust`,
         );
       }
     }
@@ -189,18 +185,33 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
     }
     for (const medium of operationalMedia) {
       if (
-        medium.turnRate <= 0 || medium.propulsionForce !== 0 ||
-        medium.guidanceThrust !== 0 || medium.velocityFrictionPer60HzFrame !== 0
+        medium.propulsionForce !== 0 || medium.guidanceThrust !== 0 ||
+        medium.velocityFrictionPer60HzFrame !== 0
       ) {
         throw new Error(
-          `Invalid shot locomotion ${label}: constant-speed guidance needs turn rate without thrust or drag`,
+          `Invalid shot locomotion ${label}: constant-speed guidance cannot author thrust or drag`,
         );
       }
     }
   }
 
-  const authored = value as unknown as Omit<ShotLocomotion, 'presetId'>;
-  return cloneShotLocomotion({ ...authored, presetId });
+  const transitions = value.transitions as unknown as ShotLocomotion['transitions'];
+  const terminal = value.terminal as unknown as ShotLocomotion['terminal'];
+  return cloneShotLocomotion({
+    presetId,
+    motionModel,
+    maxLifespanMs: null,
+    gravityForceMultiplier: value.gravityForceMultiplier as number,
+    guidanceDelayMs: 0,
+    guidanceRampMs: 0,
+    media: {
+      air: { ...media.air, turnRate: 0 },
+      water: { ...media.water, turnRate: 0 },
+      ground: { ...media.ground },
+    },
+    transitions: { ...transitions },
+    terminal: { ...terminal },
+  });
 }
 
 function readShotLocomotionConfig(): Record<string, ShotLocomotion> {
@@ -236,6 +247,24 @@ export function getShotLocomotionPreset(presetId: string): ShotLocomotion {
     throw new Error(`Invalid shotLocomotionPresetId "${presetId}"`);
   }
   return cloneShotLocomotion(preset);
+}
+
+/** Expand blueprint-owned lifetime and turning controls onto a locomotion
+ *  preset. Presets own movement domains and physics; shot blueprints own how
+ *  long the emission lives and how quickly/when guidance turns it. */
+export function applyShotBlueprintFlightControls(
+  locomotion: ShotLocomotion,
+  maxLifespanMs: number | null,
+  turning: ShotTurningBlueprint | null,
+): ShotLocomotion {
+  const expanded = cloneShotLocomotion(locomotion);
+  const turnRate = turning?.turnRate ?? 0;
+  expanded.maxLifespanMs = maxLifespanMs;
+  expanded.guidanceDelayMs = turning?.guidanceDelayMs ?? 0;
+  expanded.guidanceRampMs = turning?.guidanceRampMs ?? 0;
+  expanded.media.air.turnRate = expanded.media.air.operational ? turnRate : 0;
+  expanded.media.water.turnRate = expanded.media.water.operational ? turnRate : 0;
+  return expanded;
 }
 
 export function getShotLocomotionMediumAtHeight(

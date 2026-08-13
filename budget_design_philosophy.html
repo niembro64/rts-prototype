@@ -756,14 +756,16 @@
       <h3>Airborne rockets and missiles share constant-speed interception</h3>
       <p>
         <code>rocket</code> and <code>missile</code> remain presentation and
-        interaction families; authoritative movement comes from the shot's
-        expanded <code>shotLocomotion</code> preset. Every airborne rocket and
+        interaction families; authoritative movement combines the shot's
+        expanded <code>shotLocomotion</code> preset with its blueprint-owned
+        <code>turning</code> controls. Every airborne rocket and
         missile uses <code>constantSpeedGuided</code>: it authors no propulsion,
         guidance thrust, drag, or gravity acceleration. Guidance rotates the
         existing world-velocity vector toward a predicted interception point,
         bounded by turn rate, while preserving its magnitude exactly. Tuning
-        therefore lives in launch/cruise speed, turn rate, lifetime, guidance
-        delay, and target inheritance rather than forward acceleration.
+        therefore lives in launch/cruise speed and target inheritance, plus each
+        shot blueprint's lifetime, turn rate, guidance delay, and guidance ramp,
+        rather than forward acceleration.
       </p>
       <p>
         Lead is solved from the munition&rsquo;s current position and complete
@@ -786,8 +788,12 @@
       <p>
         Every travelling shot expands one <code>shotLocomotionPresetId</code>
         into a complete runtime profile. Air and water each state whether the
-        shot is operational there and own their propulsion, guidance, turn-rate,
-        and resistance values. Ground is a contact domain: ordinary shots impact
+        shot is operational there and own their propulsion, guidance-thrust,
+        and resistance values. A guided rocket/missile blueprint owns one
+        explicit <code>turning</code> block; runtime expansion installs its turn
+        rate only on the preset's operational media. Every shot blueprint also
+        explicitly owns <code>maxLifespanMs</code>, using <code>null</code> when
+        collision/ground contact rather than elapsed time limits its life. Ground is a contact domain: ordinary shots impact
         it, while an explicit terrain-following mode may travel along it. Water
         entry and exit are authored transitions, so a shell may despawn at the
         surface, a torpedo may continue underwater and become ballistic when it

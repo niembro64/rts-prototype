@@ -200,6 +200,7 @@ pub struct ShotLocomotion {
     pub maxLifespanMs: Option<f64>,
     pub gravityForceMultiplier: f64,
     pub guidanceDelayMs: f64,
+    pub guidanceRampMs: f64,
     pub media: ShotLocomotionMedia,
     pub transitions: ShotLocomotionTransitions,
     pub terminal: ShotLocomotionTerminalPolicy,
@@ -346,6 +347,13 @@ pub struct SmokeTrailSpec {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ShotTurningBlueprint {
+    pub turnRate: f64,
+    pub guidanceDelayMs: f64,
+    pub guidanceRampMs: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProjectileShotBlueprint {
     pub r#type: ProjectileShotKind,
     pub shotBlueprintId: String,
@@ -355,6 +363,8 @@ pub struct ProjectileShotBlueprint {
     pub health: f64,
     pub radius: EntityRadiusConfig,
     pub shotLocomotionPresetId: String,
+    pub maxLifespanMs: Option<f64>,
+    pub turning: Option<ShotTurningBlueprint>,
     pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
     pub hitSound: Option<BlueprintJsonValue>,
     pub submunitions: Option<SubmunitionSpec>,

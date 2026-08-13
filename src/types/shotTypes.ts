@@ -32,6 +32,7 @@ export type {
   
   ShotConfig,
   ShotLocomotion,
+  ShotTurningBlueprint,
   ShotLocomotionMedia,
   ShotLocomotionMediumPhysics,
   ShotLocomotionMotionModel,

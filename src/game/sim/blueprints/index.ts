@@ -39,7 +39,7 @@ import {
 } from './turrets';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
-import { getShotLocomotionPreset } from '../shotLocomotion';
+import { applyShotBlueprintFlightControls, getShotLocomotionPreset } from '../shotLocomotion';
 import type {
   ShotBlueprint,
   RayBlueprint,
@@ -545,8 +545,9 @@ function deriveShotExplosion(
   return { radius: blast.radius, damage: blast.damage, force: blast.force };
 }
 
-/** Build a runtime shot from immutable body/payload facts plus the expanded
- *  shot-locomotion preset. Launch force remains turret-owned initial impulse. */
+/** Build a runtime shot from immutable body/payload facts, its locomotion
+ *  preset, and blueprint-owned turning controls. Launch force remains
+ *  turret-owned initial impulse. */
 function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce: number,
@@ -560,7 +561,11 @@ function buildShotConfig(
     launchForce,
     radius: shotBlueprint.radius,
     explosion: deriveShotExplosion(shotBlueprint.base.deathExplosion),
-    shotLocomotion: getShotLocomotionPreset(shotBlueprint.shotLocomotionPresetId),
+    shotLocomotion: applyShotBlueprintFlightControls(
+      getShotLocomotionPreset(shotBlueprint.shotLocomotionPresetId),
+      shotBlueprint.maxLifespanMs,
+      shotBlueprint.turning,
+    ),
     mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(shotBlueprint.mediumTrajectory),
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
