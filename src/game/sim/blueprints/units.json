@@ -1249,9 +1249,9 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
-          "x": 0.34,
-          "y": 0,
-          "z": 2.3
+          "x": 0.02,
+          "y": -1.02,
+          "z": 2.88
         },
         "requiredEngagedForFightStop": false,
         "mountId": "missileFast",
@@ -1274,9 +1274,9 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
-          "x": -0.1,
-          "y": -0.6,
-          "z": 2.74
+          "x": -0.69,
+          "y": -0.28,
+          "z": 2.78
         },
         "requiredEngagedForFightStop": false,
         "mountId": "siloRight",
@@ -1299,9 +1299,9 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
-          "x": -0.1,
-          "y": 0.6,
-          "z": 2.74
+          "x": -0.69,
+          "y": 0.28,
+          "z": 2.78
         },
         "requiredEngagedForFightStop": false,
         "mountId": "siloLeft",

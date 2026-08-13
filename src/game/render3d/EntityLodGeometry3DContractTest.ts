@@ -45,6 +45,7 @@ import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import { getBodyGeom, type BodyMeshPart } from './BodyShape3D';
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
+import { RexVisualKit3D } from './RexVisualKit3D';
 import {
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
@@ -1052,6 +1053,7 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
   const closeBarrel = createPrimitiveCylinderGeometry('turret', 'close');
   const closeCone = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
   const countsByMount = new Map<string, TierCounts>();
+  const rexKit = new RexVisualKit3D();
   const hosts = [
     ...UNIT_BLUEPRINT_IDS.map((hostId) => ({ hostId, mounts: getUnitBlueprint(hostId).turrets })),
     ...STRUCTURE_BLUEPRINT_IDS.map((hostId) => ({ hostId, mounts: getBuildingBlueprint(hostId).turrets })),
@@ -1135,6 +1137,22 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
         assertRelativeNear(`${turretId} mesh barrel length`, meshBarrel.scale.y, centerToTipLength);
       }
     }
+    if (host.hostId === 'unitRex') {
+      for (let i = 0; i < builds.length; i++) {
+        rexKit.decorateTurret(
+          builds[i].mesh,
+          mount.mountId,
+          material,
+          material,
+          TIERS[i],
+        );
+        builds[i].count = objectTriangleCount(builds[i].mesh.root);
+      }
+      assertContract(
+        builds.every((build) => build.mesh.barrels.length === 0),
+        `${mountKey} replaces the generic vehicle barrel meshes with integrated Rex hardware`,
+      );
+    }
     const counts = builds.map((build) => build.count);
     assertDescending(turretId, counts);
     if (INTENTIONAL_ZERO_TURRETS.has(turretId)) {
@@ -1147,6 +1165,7 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
   closeHead.dispose();
   closeBarrel.dispose();
   closeCone.dispose();
+  rexKit.dispose();
   return countsByMount;
 }
 

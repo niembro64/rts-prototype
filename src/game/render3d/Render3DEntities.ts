@@ -41,6 +41,7 @@ import type { OverlayLineSystem } from './OverlayLineSystem';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
+import { RexVisualKit3D } from './RexVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
@@ -280,6 +281,7 @@ export class Render3DEntities {
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
   private commanderVisualKit = new CommanderVisualKit3D();
+  private rexVisualKit = new RexVisualKit3D();
   private barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
   // Taperable barrel geometry for any authored single-cone barrels.
   private coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
@@ -430,6 +432,7 @@ export class Render3DEntities {
       world: this.world,
       unitDetailInstances: this.unitDetailInstances,
       commanderVisualKit: this.commanderVisualKit,
+      rexVisualKit: this.rexVisualKit,
       legRenderer: this.legRenderer,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
@@ -1481,6 +1484,7 @@ export class Render3DEntities {
     disposeBuildingGeoms();
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
+    this.rexVisualKit.dispose();
     this.barrelGeom.dispose();
     this.coneBarrelGeom.dispose();
     this.radiusSphereGeom.dispose();

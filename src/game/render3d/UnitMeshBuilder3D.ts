@@ -19,6 +19,7 @@ import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
 import type { CommanderVisualKit3D } from './CommanderVisualKit3D';
+import type { RexVisualKit3D } from './RexVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -43,6 +44,7 @@ type UnitMeshBuilder3DOptions = {
   world: THREE.Group;
   unitDetailInstances: UnitDetailInstanceRenderer3D;
   commanderVisualKit: CommanderVisualKit3D;
+  rexVisualKit: RexVisualKit3D;
   legRenderer: LegInstancedRenderer;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
@@ -86,6 +88,7 @@ export class UnitMeshBuilder3D {
   private readonly world: THREE.Group;
   private readonly unitDetailInstances: UnitDetailInstanceRenderer3D;
   private readonly commanderVisualKit: CommanderVisualKit3D;
+  private readonly rexVisualKit: RexVisualKit3D;
   private readonly legRenderer: LegInstancedRenderer;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
@@ -101,6 +104,7 @@ export class UnitMeshBuilder3D {
     this.world = options.world;
     this.unitDetailInstances = options.unitDetailInstances;
     this.commanderVisualKit = options.commanderVisualKit;
+    this.rexVisualKit = options.rexVisualKit;
     this.legRenderer = options.legRenderer;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
@@ -396,6 +400,7 @@ export class UnitMeshBuilder3D {
     const turretMeshes: TurretMesh[] = [];
     const turretOff = unitGfx.turretStyle === 'none';
     const isCommanderUnit = isCommander(entity);
+    const isRexUnit = entity.unit?.unitBlueprintId === 'unitRex';
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
       const isShield = turret.presentation.barrel?.type === 'complexSingleEmitter';
@@ -415,7 +420,7 @@ export class UnitMeshBuilder3D {
         isConstructionEmitter ||
         hideBeamHead;
       let headSlot: number | undefined;
-      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
+      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit && !isRexUnit) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot(
           geometryTierForDetail(detailLevel),
         );
@@ -461,12 +466,23 @@ export class UnitMeshBuilder3D {
           this.getPrimaryMat(ownerId),
           geometryTierForDetail(detailLevel),
         );
+      } else if (isRexUnit && !hideHead) {
+        this.rexVisualKit.decorateTurret(
+          turretMesh,
+          turret.mountId,
+          this.getPrimaryMat(ownerId),
+          this.barrelMat,
+          geometryTierForDetail(detailLevel),
+        );
       } else if (entity.unit?.unitBlueprintId === 'unitHuman' && !hideHead) {
         this.commanderVisualKit.decorateHumanWeapon(
           turretMesh,
           this.getPrimaryMat(ownerId),
         );
       }
+      turretMesh.root.traverse((object) => {
+        object.userData.entityId = entity.id;
+      });
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
       turretMesh.headSlot = headSlot;
 

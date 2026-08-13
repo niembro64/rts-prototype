@@ -315,6 +315,15 @@
         "opacity": 0.9
       }
     },
+    "unitRex": {
+      "armor": {
+        "colorHex": "#20262d"
+      },
+      "aperture": {
+        "colorHex": "#ffb24a",
+        "opacity": 0.95
+      }
+    },
     "locomotion": {
       "tread": {
         "slab": {

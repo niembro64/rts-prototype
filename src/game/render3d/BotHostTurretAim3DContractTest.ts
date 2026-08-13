@@ -809,6 +809,35 @@ function assertMassiveBotTorsoTurnsSlower(): void {
   );
 }
 
+function assertRexRocketMountLayout(): void {
+  const blueprint = getUnitBlueprint('unitRex');
+  const byMountId = new Map(blueprint.turrets.map((turret) => [turret.mountId, turret]));
+  const fast = byMountId.get('missileFast');
+  const rightSilo = byMountId.get('siloRight');
+  const leftSilo = byMountId.get('siloLeft');
+  assertContract(fast !== undefined, 'Rex has its fast shoulder rocket mount');
+  assertContract(rightSilo !== undefined && leftSilo !== undefined, 'Rex has two backpack silos');
+
+  assertContract(
+    fast.mount.y < -0.95 && fast.mount.z > 2.8,
+    'Rex fast rockets sit outside and above the right shoulder armor',
+  );
+  assertContract(
+    rightSilo.mount.x < -0.63 && leftSilo.mount.x < -0.63,
+    'Rex vertical rockets sit behind the backpack shell',
+  );
+  assertNear(rightSilo.mount.x, leftSilo.mount.x, 'Rex backpack silos share a rear plane');
+  assertNear(rightSilo.mount.y, -leftSilo.mount.y, 'Rex backpack silos mirror laterally');
+  assertNear(rightSilo.mount.z, leftSilo.mount.z, 'Rex backpack silos share a launch deck');
+
+  for (const turret of [fast, rightSilo, leftSilo]) {
+    assertContract(
+      turret.hostAttachment?.kind === 'botHead',
+      `${turret.mountId} rides the Rex upper-body host rather than an animated hand`,
+    );
+  }
+}
+
 function assertTorsoAimSurvivesLodRebuild(
   mesh: BotMesh,
   label: string,
@@ -938,6 +967,7 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertRosterTurretsPublishAim();
   assertBotFootAnimationKeys();
   assertMassiveBotTorsoTurnsSlower();
+  assertRexRocketMountLayout();
   const human = buildBot('unitHuman');
   assertBotHipsCenteredUnderTorso(human.mesh, 'Human');
   assertBotLegExtension(human.mesh, 'Human');

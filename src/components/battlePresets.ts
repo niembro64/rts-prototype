@@ -192,7 +192,7 @@ function buildPresets(): readonly BattlePreset[] {
       barsCollapsed: false,
     },
     {
-      name: 'Niemo Islands',
+      name: 'Nemo Island',
       backdropSlug: 'niemo-islands',
       units: allUnits(),
       cap: 81,
