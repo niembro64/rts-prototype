@@ -82,6 +82,7 @@ import {
 import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 import { CommanderVisualKit3D } from '@/game/render3d/CommanderVisualKit3D';
+import { RexVisualKit3D } from '@/game/render3d/RexVisualKit3D';
 import { buildConstructionHostMarking } from '@/game/render3d/ConstructionHostMarking3D';
 import {
   createHostOrnamentGeometry,
@@ -169,6 +170,7 @@ const SHELL_ENTITY_ID = 1;
 // it will in-game for the host.
 const HOST_PLAYER_ID: PlayerId = 1;
 const previewCommanderVisualKit = new CommanderVisualKit3D();
+const previewRexVisualKit = new RexVisualKit3D();
 const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const DEFAULT_CONTROLS: LoadingUnitPreviewControls = {
   rotate: true,
@@ -646,6 +648,14 @@ function buildPreviewUnitModel(
     geometryTier,
     locomotion?.type === 'bot' ? locomotion : null,
   );
+  if (unitBlueprintId === 'unitRex' && locomotion?.type === 'bot') {
+    previewRexVisualKit.decorateTail(
+      locomotion.mesh.hips,
+      materials.primary,
+      geometryTier,
+      radius,
+    );
+  }
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials, geometryTier);
   return { root, locomotion };
 }
@@ -795,6 +805,14 @@ function buildPreviewTurrets(
         turretMesh,
         turret.config.turretBlueprintId === blueprint.dgun?.turretBlueprintId,
         materials.primary,
+        geometryTier,
+      );
+    } else if (unitBlueprintId === 'unitRex') {
+      previewRexVisualKit.decorateTurret(
+        turretMesh,
+        turret.mountId,
+        materials.primary,
+        materials.barrel,
         geometryTier,
       );
     } else if (unitBlueprintId === 'unitHuman') {

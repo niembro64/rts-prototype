@@ -227,7 +227,10 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitQueenTick: { close: 2290, mid: 780, far: 340 },
   unitTransport: { close: 2150, mid: 1050, far: 410 },
   unitCommander: { close: 4200, mid: 1900, far: 700 },
-  unitRex: { close: 1700, mid: 900, far: 520 },
+  // Re-baselined for the authored Tyrannosaur skull/neck and the lower-body
+  // counterbalance tail. Current measured composite is 2168/1128/598; these
+  // ceilings retain roughly 5-9% regression headroom at each rung.
+  unitRex: { close: 2300, mid: 1200, far: 650 },
 };
 
 const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
@@ -1122,10 +1125,39 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
         );
         builds[i].count = objectTriangleCount(builds[i].mesh.root);
       }
-      assertContract(
-        builds.every((build) => build.mesh.barrels.length === 0),
-        `${mountKey} replaces the generic vehicle barrel meshes with integrated Rex hardware`,
-      );
+      if (mount.mountId === 'beamMega') {
+        assertContract(
+          builds.every((build) => (
+            build.mesh.barrelUsesCone === true && build.mesh.barrels.length === 1
+          )),
+          `${mountKey} retains the ordinary beam cone as its authoritative mouth muzzle`,
+        );
+        for (const build of builds) {
+          const pitch = build.mesh.pitchGroup;
+          assertContract(pitch !== undefined, `${mountKey} retains its pitch piece`);
+          const head = pitch.children.find((child) => child.userData.rexTyrannosaurHead === true);
+          assertContract(head !== undefined, `${mountKey} presents a Tyrannosaur head`);
+          assertContract(head.parent === pitch, `${mountKey} whole head belongs to the pitch piece`);
+          const neck = build.mesh.yawGroup.children.find(
+            (child) => child.userData.rexThickNeck === true,
+          );
+          assertContract(neck !== undefined, `${mountKey} presents a yaw-owned thick neck`);
+          const mouth = head.children.find((child) => child.userData.rexBeamMouth === true);
+          assertContract(mouth !== undefined, `${mountKey} publishes a visible mouth marker`);
+          const barrel = build.mesh.barrels[0];
+          const expectedMouth = new THREE.Vector3(0, barrel.scale.y * 0.5, 0)
+            .applyQuaternion(barrel.quaternion)
+            .add(barrel.position);
+          assertRelativeNear(`${mountKey} mouth/muzzle x`, mouth.position.x, expectedMouth.x);
+          assertRelativeNear(`${mountKey} mouth/muzzle y`, mouth.position.y, expectedMouth.y);
+          assertRelativeNear(`${mountKey} mouth/muzzle z`, mouth.position.z, expectedMouth.z);
+        }
+      } else {
+        assertContract(
+          builds.every((build) => build.mesh.barrels.length === 0),
+          `${mountKey} replaces generic vehicle barrels with integrated Rex hardware`,
+        );
+      }
     }
     const counts = builds.map((build) => build.count);
     assertDescending(turretId, counts);
@@ -1136,11 +1168,33 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
     }
     countsByMount.set(mountKey, { close: counts[0], mid: counts[1], far: counts[2] });
   }
+
   closeHead.dispose();
   closeBarrel.dispose();
   closeCone.dispose();
   rexKit.dispose();
   return countsByMount;
+}
+
+function runRexTailContracts(material: THREE.Material): TierCounts {
+  const rexKit = new RexVisualKit3D();
+  const counts = TIERS.map((tier) => {
+    const hips = new THREE.Group();
+    const tail = rexKit.decorateTail(hips, material, tier, 110);
+    assertContract(tail.parent === hips, `Rex ${tier} tail belongs to its lower-body hip piece`);
+    const segments = tail.children.filter(
+      (child) => typeof child.userData.rexTailSegment === 'number',
+    );
+    assertContract(segments.length === 3, `Rex ${tier} tail retains its three-part silhouette`);
+    assertContract(
+      segments[2].position.x < segments[0].position.x,
+      `Rex ${tier} tail tapers rearward from the pelvis`,
+    );
+    return objectTriangleCount(tail);
+  });
+  assertDescending('Rex lower-body tail', counts);
+  rexKit.dispose();
+  return { close: counts[0], mid: counts[1], far: counts[2] };
 }
 
 /** Focused host-presentation gate that can run independently of unrelated
@@ -1149,6 +1203,7 @@ export function runHostTurretPresentationGeometry3DContractTest(): void {
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runTurretContracts(material);
+    runRexTailContracts(material);
   } finally {
     material.dispose();
   }
@@ -1194,6 +1249,7 @@ function runUnitCompositeContracts(
   locomotionCounts: ReadonlyMap<UnitBlueprintId, TierCounts>,
   turretCounts: ReadonlyMap<string, TierCounts>,
   shieldPanelCounts: TierCounts,
+  rexTailCounts: TierCounts,
 ): void {
   const violations: string[] = [];
   for (const unitId of UNIT_BLUEPRINT_IDS) {
@@ -1210,6 +1266,7 @@ function runUnitCompositeContracts(
         count += turret[tier];
       }
       if (unitId === 'unitLoris') count += shieldPanelCounts[tier];
+      if (unitId === 'unitRex') count += rexTailCounts[tier];
       return count;
     });
     assertDescending(`${unitId} full composite`, composite);
@@ -1965,7 +2022,14 @@ export function runEntityLodGeometry3DContractTest(): void {
     const locomotionCounts = runLocomotionContracts();
     const turretCounts = runTurretContracts(material);
     const shieldPanelCounts = runShieldPanelContract(material);
-    runUnitCompositeContracts(bodyCounts, locomotionCounts, turretCounts, shieldPanelCounts);
+    const rexTailCounts = runRexTailContracts(material);
+    runUnitCompositeContracts(
+      bodyCounts,
+      locomotionCounts,
+      turretCounts,
+      shieldPanelCounts,
+      rexTailCounts,
+    );
     runStructureContracts(material, turretCounts);
     runVisualStateTransferContracts(material);
     runEmissionRegistryContracts();
