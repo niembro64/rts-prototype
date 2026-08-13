@@ -164,3 +164,32 @@ crowding), unitForces ~2.4.
     saving is skipping the JS-side prep (hostLockOn resolution, blueprint
     and sensor lookups) on restamps, not the scalar pushes. Verify with
     bit-identical replay hashes.
+    RESOLVED BY EVIDENCE 2026-08-13: the design's premise fails on
+    inspection — the expensive half of the prep (the sensor-radii block)
+    is DYNAMIC per tick: radii select by live source medium (a submerging
+    hull flips rows) and operational/powered state, and entityFlags/
+    visibility padding follow hp/cloak/canFire. The truly static residue
+    (family, blueprint code, lockOn masks, aabb halves, hitbox radius,
+    ~12 args) is worth ~0.3-0.6 ms/tick at cap 2500 — below run noise.
+    Not built; revisit only if stampCombatTargetingEntityInto grows.
+
+[37] NEW 2026-08-13 — remaining per-tick call/marshalling notes from the
+    night-2 pass (all measured on the symbolicated cap-2500 profile):
+    (a) projectile_reflector_intersections_batch is a TRUE once-per-tick
+        batch (~30 arrays × projectile count copied per call, one call).
+        The [25]/[22] staging pattern applies if its share grows; today
+        the copies are bandwidth-bound and small (~0.3-0.5 ms).
+    (b) spatial_fill_occupied_cells_in_bounds iterates cells.keys() in
+        MAP ORDER when query bounds exceed the key count — candidate
+        order therefore depends on hashmap state. It is deterministic
+        today (same seed → same map history), but it BLOCKS making grid
+        cells persistent (the bigger fix for the 5% HashMap::insert cost
+        from cross-cell churn: keep empty buckets, stop remove/insert
+        cycles). To unlock it, sort nearby_cells after that fill (or
+        make consumers order-insensitive), accept the one-time hash
+        drift with the replay gate, THEN land cell persistence.
+    (c) hitbox-sweep internals (post-staging 6.87 ms/tick at cap 1000
+        for ~700 projectiles) are the honest remaining projectile cost:
+        per-sweep cell collection + per-candidate capsule tests. Next
+        lever is a projectile-vs-cell reuse across the tick (projectiles
+        in the same cell share candidate lists), order-preserving.
