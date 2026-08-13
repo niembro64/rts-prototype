@@ -315,8 +315,40 @@ export class WorldState {
     return this.supportSurfaceSampler.writeTerrainSupportSurfaceAt(x, y, terrainGroundZ, normal, out);
   }
 
+  // Support-index rebuild gate. Within one frozen-positions window a
+  // rebuild is pure recomputation of identical contents, so repeat
+  // callers (per-spawn one-shot samples, the per-tick force pass) reuse
+  // the index. The key invalidates on: membership change (cache
+  // version), tick change, and the positions epoch that
+  // ServerSimulationCore bumps after physics writes entity transforms —
+  // without the epoch, an index built after movement would be reused by
+  // the NEXT tick's spawn samples with stale positions.
+  private supportIndexRebuiltTick = -1;
+  private supportIndexMembershipVersion = -1;
+  private supportIndexPositionsEpoch = -1;
+  private supportPositionsEpoch = 0;
+
+  /** Called by the simulation core after any phase that rewrites entity
+   *  transforms wholesale (physics sync). Invalidates the support-index
+   *  rebuild gate. */
+  bumpSupportPositionsEpoch(): void {
+    this.supportPositionsEpoch++;
+  }
+
   refreshSupportSurfaceIndex(): void {
+    const tick = this.getTick();
+    const membershipVersion = this.cache.getSupportSurfaceEntityVersion();
+    if (
+      this.supportIndexRebuiltTick === tick &&
+      this.supportIndexMembershipVersion === membershipVersion &&
+      this.supportIndexPositionsEpoch === this.supportPositionsEpoch
+    ) {
+      return;
+    }
     this.supportSurfaceSampler.refreshSupportSurfaceIndex(this.getSupportSurfaceEntities());
+    this.supportIndexRebuiltTick = tick;
+    this.supportIndexMembershipVersion = membershipVersion;
+    this.supportIndexPositionsEpoch = this.supportPositionsEpoch;
   }
 
   sampleSupportSurface(
@@ -325,7 +357,8 @@ export class WorldState {
     options: SupportSurfaceQueryOptions = {},
     out?: WorldSupportSurface,
   ): WorldSupportSurface {
-    return this.supportSurfaceSampler.sampleSupportSurface(x, y, this.getSupportSurfaceEntities(), options, out);
+    this.refreshSupportSurfaceIndex();
+    return this.supportSurfaceSampler.sampleSupportSurfaceFromIndex(x, y, options, out);
   }
 
   sampleSupportSurfaceFromIndex(

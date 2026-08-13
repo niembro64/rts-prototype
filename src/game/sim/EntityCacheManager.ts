@@ -82,6 +82,9 @@ export class EntityCacheManager {
    *  supportSurface.none and should not be walked by the support index
    *  rebuild every force tick. */
   private cachedSupportSurfaceEntities: Entity[] = [];
+  /** Bumped on every membership change of cachedSupportSurfaceEntities.
+   *  WorldState gates same-tick support-index rebuilds on it. */
+  private supportSurfaceEntityVersion = 0;
   /** Every entity addressable by the combat targeting slab. Units,
    *  buildings, towers, and traveling shots all occupy target rows, so
    *  the per-tick stamp walks this maintained set instead of stitching
@@ -159,6 +162,7 @@ export class EntityCacheManager {
     this.cachedAll.length = 0;
     this.cachedUnitsAndBuildings.length = 0;
     this.cachedSupportSurfaceEntities.length = 0;
+    this.supportSurfaceEntityVersion++;
     this.cachedCombatTargetEntities.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
@@ -219,6 +223,7 @@ export class EntityCacheManager {
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
         if (entity.unit !== null && entity.unit.supportSurface?.kind === 'discTop') {
           addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
+          this.supportSurfaceEntityVersion++;
         }
         if (ownership !== null) {
           addEntityToList(this.getOrCreateUnitsByPlayer(ownership.playerId), entity, sortedInsert);
@@ -270,6 +275,7 @@ export class EntityCacheManager {
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
         if (entity.building !== null && entity.building.supportSurface?.kind === 'boxTop') {
           addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
+          this.supportSurfaceEntityVersion++;
         }
         if (ownership !== null) {
           addEntityToList(this.getOrCreateBuildingsByPlayer(ownership.playerId), entity, sortedInsert);
@@ -343,6 +349,7 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedShieldPanelUnits, entity);
     removeEntityFromList(this.cachedUnitsAndBuildings, entity);
     removeEntityFromList(this.cachedSupportSurfaceEntities, entity);
+    this.supportSurfaceEntityVersion++;
     removeEntityFromList(this.cachedCombatTargetEntities, entity);
     for (const list of this.cachedUnitsByPlayer.values()) removeEntityFromList(list, entity);
     for (const list of this.cachedBuildingsByPlayer.values()) removeEntityFromList(list, entity);
@@ -404,6 +411,10 @@ export class EntityCacheManager {
 
   getSupportSurfaceEntities(): Entity[] {
     return this.cachedSupportSurfaceEntities;
+  }
+
+  getSupportSurfaceEntityVersion(): number {
+    return this.supportSurfaceEntityVersion;
   }
 
   getCombatTargetEntities(): Entity[] {

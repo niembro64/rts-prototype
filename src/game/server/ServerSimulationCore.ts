@@ -120,6 +120,10 @@ export class ServerSimulationCore {
     phases.phase('core.physics');
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
+    // Physics just rewrote entity transforms — invalidate the
+    // support-index rebuild gate so next tick's samples see fresh
+    // positions instead of reusing this tick's pre-physics index.
+    this.world.bumpSupportPositionsEpoch();
     finalizePendingProjectileLaunchVelocities(this.world, dtMs);
     phases.phase('core.syncFromPhysics');
     const sim = getSimWasm();
