@@ -146,6 +146,17 @@ pub const CT_BLUEPRINT_CODE_NONE: u8 = 0xff;
 pub(crate) struct CombatTargetingObservationCell {
     pub(crate) slots: Vec<u32>,
     pub(crate) owner_bits: u32,
+    /// Per-(owner, fact-lane) saturation bits for THIS tick's marking
+    /// pass. Bit `owner_index * 6 + lane` set means a completed walk
+    /// proved every slot in the cell is already marked-or-impossible
+    /// for that owner's lane, so later same-owner sources skip the
+    /// whole cell with one mask test. Masks only GAIN bits within a
+    /// tick, so saturation is monotone-safe and the final masks are
+    /// bit-identical with or without the skip. Lanes: 0 contact@air,
+    /// 1 sight@air, 2 detector@air, 3 contact@water, 4 sight@water,
+    /// 5 detector@water. Owners past index 7 don't fit and simply
+    /// never use the fast path. Reset with the cell each rebuild.
+    pub(crate) saturated_fact_bits: u64,
 }
 
 pub(crate) struct CombatTargetingPool {
@@ -2449,6 +2460,7 @@ pub(crate) fn combat_targeting_clear_observation_index(pool: &mut CombatTargetin
         if let Some(cell) = pool.observation_cells.get_mut(&key) {
             cell.slots.clear();
             cell.owner_bits = 0;
+            cell.saturated_fact_bits = 0;
         }
     }
     pool.observation_max_detection_padding = 0.0;
@@ -2498,6 +2510,20 @@ pub(crate) fn combat_targeting_rebuild_observation_index(pool: &mut CombatTarget
     }
 }
 
+// Lane bits combat_targeting_mark_observed_slot reports back to the cell
+// walk. A lane is "covered" for saturation purposes when the slot cannot
+// take that mark from ANY same-owner source this tick: already marked,
+// medium-impossible, or the source's own unit. Uncovered lanes keep the
+// cell unsaturated so later (possibly larger-radius) sources still walk it.
+pub(crate) const CT_OBSERVED_LANE_CONTACT: u8 = 1 << 0;
+pub(crate) const CT_OBSERVED_LANE_SIGHT: u8 = 1 << 1;
+pub(crate) const CT_OBSERVED_LANE_DETECTOR: u8 = 1 << 2;
+pub(crate) const CT_OBSERVED_LANES_ALL: u8 =
+    CT_OBSERVED_LANE_CONTACT | CT_OBSERVED_LANE_SIGHT | CT_OBSERVED_LANE_DETECTOR;
+
+/// Returns the lanes still UNCOVERED for this slot after any marks were
+/// applied. Mask writes are unchanged from the pre-saturation version —
+/// the return value is bookkeeping only.
 #[inline]
 pub(crate) fn combat_targeting_mark_observed_slot(
     target_slot: usize,
@@ -2520,34 +2546,47 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     detector_radius: f64,
     owner_bit: u32,
     target_medium: u8,
-) {
+) -> u8 {
     let target_owner_bit = entity_owner_bit[target_slot];
     if target_owner_bit == owner_bit {
-        return;
-    }
-    let contact_already_marked = contact_radius <= 0.0
-        || if target_medium == CT_OBSERVATION_TARGET_AIR {
-            (team_air_radar_mask[target_slot] & owner_bit) != 0
-        } else {
-            (team_water_sonar_mask[target_slot] & owner_bit) != 0
-        };
-    let full_sight_already_marked = full_sight_radius <= 0.0
-        || if target_medium == CT_OBSERVATION_TARGET_AIR {
-            (team_air_sight_mask[target_slot] & owner_bit) != 0
-        } else {
-            (team_water_sight_mask[target_slot] & owner_bit) != 0
-        };
-    let detector_already_marked =
-        detector_radius <= 0.0 || (detector_coverage_mask[target_slot] & owner_bit) != 0;
-    if contact_already_marked && full_sight_already_marked && detector_already_marked {
-        return;
+        return 0;
     }
     if (target_medium == CT_OBSERVATION_TARGET_WATER
         && entity_underwater_fraction[target_slot] <= 0.0)
         || (target_medium == CT_OBSERVATION_TARGET_AIR
             && entity_above_water_fraction[target_slot] <= 0.0)
     {
-        return;
+        // Medium-impossible: no source can mark this slot this tick
+        // (occupancy fractions are stamped before marking and only
+        // change on the next stamp).
+        return 0;
+    }
+    let contact_marked = if target_medium == CT_OBSERVATION_TARGET_AIR {
+        (team_air_radar_mask[target_slot] & owner_bit) != 0
+    } else {
+        (team_water_sonar_mask[target_slot] & owner_bit) != 0
+    };
+    let full_sight_marked = if target_medium == CT_OBSERVATION_TARGET_AIR {
+        (team_air_sight_mask[target_slot] & owner_bit) != 0
+    } else {
+        (team_water_sight_mask[target_slot] & owner_bit) != 0
+    };
+    let detector_marked = (detector_coverage_mask[target_slot] & owner_bit) != 0;
+    let contact_already_marked = contact_radius <= 0.0 || contact_marked;
+    let full_sight_already_marked = full_sight_radius <= 0.0 || full_sight_marked;
+    let detector_already_marked = detector_radius <= 0.0 || detector_marked;
+    let mut uncovered = 0u8;
+    if !contact_marked {
+        uncovered |= CT_OBSERVED_LANE_CONTACT;
+    }
+    if !full_sight_marked {
+        uncovered |= CT_OBSERVED_LANE_SIGHT;
+    }
+    if !detector_marked {
+        uncovered |= CT_OBSERVED_LANE_DETECTOR;
+    }
+    if contact_already_marked && full_sight_already_marked && detector_already_marked {
+        return uncovered;
     }
     let dx = entity_pos_x[target_slot] - source_x;
     let dy = entity_pos_y[target_slot] - source_y;
@@ -2559,6 +2598,7 @@ pub(crate) fn combat_targeting_mark_observed_slot(
             team_water_sonar_mask[target_slot] |= owner_bit;
         }
         sensor_coverage_mask[target_slot] |= owner_bit;
+        uncovered &= !CT_OBSERVED_LANE_CONTACT;
     }
     if !full_sight_already_marked && distance_sq <= full_sight_radius * full_sight_radius {
         if target_medium == CT_OBSERVATION_TARGET_AIR {
@@ -2568,15 +2608,18 @@ pub(crate) fn combat_targeting_mark_observed_slot(
         }
         sensor_coverage_mask[target_slot] |= owner_bit;
         full_sight_coverage_mask[target_slot] |= owner_bit;
+        uncovered &= !CT_OBSERVED_LANE_SIGHT;
     }
     if !detector_already_marked && distance_sq <= detector_radius * detector_radius {
         detector_coverage_mask[target_slot] |= owner_bit;
+        uncovered &= !CT_OBSERVED_LANE_DETECTOR;
     }
+    uncovered
 }
 
 #[inline]
 pub(crate) fn combat_targeting_mark_observation_cell(
-    cell: &CombatTargetingObservationCell,
+    cell: &mut CombatTargetingObservationCell,
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
@@ -2600,8 +2643,33 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     if cell.owner_bits != 0 && (cell.owner_bits & !owner_bit) == 0 {
         return;
     }
+    // Saturation fast path: in an army blob, the first same-owner source
+    // marks everything reachable in this cell and the second certifies
+    // saturation; every later same-owner source skips the slot walk with
+    // one mask test. Owners past index 7 don't fit the u64 and take the
+    // ordinary walk.
+    let owner_index = owner_bit.trailing_zeros();
+    let lane_base = if target_medium == CT_OBSERVATION_TARGET_AIR { 0 } else { 3 };
+    let saturation_base = (owner_index as u64) * 6 + lane_base;
+    let saturation_supported = owner_index < 8;
+    if saturation_supported {
+        let mut needed: u64 = 0;
+        if contact_radius > 0.0 {
+            needed |= 1u64 << saturation_base;
+        }
+        if full_sight_radius > 0.0 {
+            needed |= 1u64 << (saturation_base + 1);
+        }
+        if detector_radius > 0.0 {
+            needed |= 1u64 << (saturation_base + 2);
+        }
+        if needed != 0 && (needed & !cell.saturated_fact_bits) == 0 {
+            return;
+        }
+    }
+    let mut all_covered = CT_OBSERVED_LANES_ALL;
     for &slot in &cell.slots {
-        combat_targeting_mark_observed_slot(
+        let uncovered = combat_targeting_mark_observed_slot(
             slot as usize,
             entity_owner_bit,
             entity_pos_x,
@@ -2623,6 +2691,18 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             owner_bit,
             target_medium,
         );
+        all_covered &= !uncovered;
+    }
+    if saturation_supported {
+        if all_covered & CT_OBSERVED_LANE_CONTACT != 0 {
+            cell.saturated_fact_bits |= 1u64 << saturation_base;
+        }
+        if all_covered & CT_OBSERVED_LANE_SIGHT != 0 {
+            cell.saturated_fact_bits |= 1u64 << (saturation_base + 1);
+        }
+        if all_covered & CT_OBSERVED_LANE_DETECTOR != 0 {
+            cell.saturated_fact_bits |= 1u64 << (saturation_base + 2);
+        }
     }
 }
 
@@ -2700,7 +2780,7 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     let entity_pos_y = &pool.entity_pos_y;
     let entity_above_water_fraction = &pool.entity_above_water_fraction;
     let entity_underwater_fraction = &pool.entity_underwater_fraction;
-    let observation_cells = &pool.observation_cells;
+    let observation_cells = &mut pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
     let team_air_sight_mask = &mut pool.entity_team_air_sight_mask;
     let team_water_sight_mask = &mut pool.entity_team_water_sight_mask;
@@ -2724,7 +2804,7 @@ pub(crate) fn combat_targeting_mark_observation_circles(
             if observation_cell_outside_radius(cx, cy, source_x, source_y, query_radius) {
                 continue;
             }
-            let Some(cell) = observation_cells.get(&key) else {
+            let Some(cell) = observation_cells.get_mut(&key) else {
                 continue;
             };
             combat_targeting_mark_observation_cell(
@@ -2758,7 +2838,7 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 continue;
             }
             let key = combat_targeting_observation_cell_key(cx, cy);
-            let cell = match observation_cells.get(&key) {
+            let cell = match observation_cells.get_mut(&key) {
                 Some(cell) => cell,
                 None => continue,
             };
