@@ -737,8 +737,9 @@ function readBackgroundUnitSpawnDistribution(): BackgroundUnitSpawnDistribution 
   );
 }
 
-/** Distribution shared by opening/reinforcement selection and AI factory
- * selection. `flat-distribution` gives every enabled blueprint equal odds. */
+/** Distribution shared by reinforcement selection and AI factory selection.
+ * The demo opening wave is always inverse-cost weighted.
+ * `flat-distribution` gives every enabled blueprint equal odds. */
 export const BACKGROUND_UNIT_SPAWN_DISTRIBUTION = readBackgroundUnitSpawnDistribution();
 
 // Re-export audio config

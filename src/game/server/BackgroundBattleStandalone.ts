@@ -22,8 +22,9 @@ import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
 const BACKGROUND_UNIT_BLUEPRINT_ID_SET = new Set<string>(BACKGROUND_UNIT_BLUEPRINT_IDS);
 
-// Pre-computed inverse-cost weights for the optional weighted background
-// selection mode. The flat mode samples the same enabled roster uniformly.
+// Pre-computed inverse-cost weights for the opening wave and the optional
+// weighted reinforcement selection mode. The opening wave always uses this
+// table; later background unit generation still follows its configured mode.
 // Cached across spawn calls but RE-BUILT whenever the allowedUnitBlueprintIds
 // signature changes — without this the original lazy cache would
 // keep picking from a stale type list after a toggle, then those
@@ -82,7 +83,7 @@ function ensureWeightTable(allowedUnitBlueprintIds: ReadonlySet<string> | undefi
     if (allowedUnitBlueprintIds !== undefined && !allowedUnitBlueprintIds.has(t)) continue;
     const bp = getUnitBlueprint(t);
     const cost = getNormalizedUnitCost(bp);
-    const weight = 1 / Math.max(cost, 0.01);
+    const weight = cost > 0 ? 1 / cost : 0;
     totalWeight += weight;
     backgroundUnitWeights.push({ type: t, cumWeight: totalWeight });
   }
@@ -121,25 +122,6 @@ function selectUnitBlueprintId(
     return allowed[Math.floor(rngNext() * allowed.length)];
   }
   return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(rngNext() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
-}
-
-/** A shuffled cycle makes the opening wave genuinely flat: every enabled
- * blueprint appears once before any one of them appears twice. */
-function shuffledInitialFlatRoster(
-  allowedUnitBlueprintIds: ReadonlySet<string> | undefined,
-  rngNext: () => number,
-): string[] {
-  const roster = allowedUnitBlueprintIds === undefined
-    ? [...BACKGROUND_UNIT_BLUEPRINT_IDS]
-    : Array.from(allowedUnitBlueprintIds).filter((id) => BACKGROUND_UNIT_BLUEPRINT_ID_SET.has(id));
-  roster.sort();
-  for (let i = roster.length - 1; i > 0; i--) {
-    const j = Math.floor(rngNext() * (i + 1));
-    const swap = roster[i];
-    roster[i] = roster[j];
-    roster[j] = swap;
-  }
-  return roster;
 }
 
 let bodyPoolSaturatedWarned = false;
@@ -291,29 +273,24 @@ export function spawnBackgroundUnitsStandalone(
   }
 
   if (initialSpawn) {
-    // Every opening unit draws from the enabled roster under the configured
-    // distribution, then drops into the same center disk. The flat mode uses
-    // a shuffled repeating roster; this intentionally performs no terrain,
-    // water, path, or factory-roster suitability checks.
+    // Every opening unit draws from the enabled roster with probability
+    // proportional to 1 / (metal + energy cost), then drops into the same
+    // center disk. This intentionally performs no terrain, water, path, or
+    // factory-roster suitability checks.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
-      const flatRoster = BACKGROUND_UNIT_SPAWN_DISTRIBUTION === 'flat-distribution'
-        ? shuffledInitialFlatRoster(allowedUnitBlueprintIds, () => world.nextRandom(playerId))
-        : null;
       // CAP specifies the randomized opening wave itself. The Commander and
       // seeded Fabricator lines are demo infrastructure and do not reduce it.
       const totalPerPlayer = unitCapPerPlayer;
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        const unitBlueprintId = flatRoster !== null
-          ? flatRoster[i % flatRoster.length] ?? null
-          : selectUnitBlueprintId(
-              () => world.nextRandom(playerId),
-              allowedUnitBlueprintIds,
-            );
+        const unitBlueprintId = selectWeightedUnitBlueprintId(
+          () => world.nextRandom(playerId),
+          allowedUnitBlueprintIds,
+        );
         if (unitBlueprintId === null) continue;
 
         const spawn = sampleInitialCenterSpawnPoint(

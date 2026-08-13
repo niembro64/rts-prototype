@@ -1,6 +1,7 @@
 import type { PlayerId } from '../sim/types';
 import { WorldState } from '../sim/WorldState';
 import { initSimWasm } from '../sim-wasm/init';
+import { getNormalizedUnitCost, getUnitBlueprint } from '../sim/blueprints';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
   BACKGROUND_UNIT_BLUEPRINT_IDS,
@@ -46,6 +47,57 @@ function createPhysicsHarness(): PhysicsEngine3D {
 
 export async function runBackgroundBattleStandaloneContractTest(): Promise<void> {
   await initSimWasm();
+
+  // These two authored prices are exactly 2:1, so inverse-cost weighting gives
+  // the cheaper unit exactly two thirds of their combined selection interval.
+  const cheaperUnitBlueprintId = 'unitConstructionDrone';
+  const expensiveUnitBlueprintId = 'unitDaddy';
+  const cheaperCost = getNormalizedUnitCost(getUnitBlueprint(cheaperUnitBlueprintId));
+  const expensiveCost = getNormalizedUnitCost(getUnitBlueprint(expensiveUnitBlueprintId));
+  assertContract(
+    Math.abs(expensiveCost - cheaperCost * 2) < Number.EPSILON,
+    'inverse-cost opening-wave fixture no longer has a 2:1 price ratio',
+  );
+
+  const weightedWorld = new WorldState(0x2468ace0, 6400, 6400);
+  const weightedPlayerIds = [1] as PlayerId[];
+  weightedWorld.playerCount = weightedPlayerIds.length;
+  weightedWorld.maxTotalUnits = 3;
+  const cheaperComesFirst = BACKGROUND_UNIT_BLUEPRINT_IDS.indexOf(cheaperUnitBlueprintId) <
+    BACKGROUND_UNIT_BLUEPRINT_IDS.indexOf(expensiveUnitBlueprintId);
+  const boundary = cheaperComesFirst ? 2 / 3 : 1 / 3;
+  const cheaperIntervalMidpoint = cheaperComesFirst ? boundary / 2 : (boundary + 1) / 2;
+  const weightedRandomValues = [
+    boundary - 0.001, 0.1, 0.1,
+    boundary + 0.001, 0.2, 0.2,
+    cheaperIntervalMidpoint, 0.3, 0.3,
+  ];
+  weightedWorld.nextRandom = () => {
+    const value = weightedRandomValues.shift();
+    if (value === undefined) {
+      throw new Error('background battle standalone contract: weighted spawn consumed extra RNG');
+    }
+    return value;
+  };
+  const weightedSpawn = spawnBackgroundUnitsStandalone(
+    weightedWorld,
+    createPhysicsHarness(),
+    true,
+    new Set([cheaperUnitBlueprintId, expensiveUnitBlueprintId]),
+    weightedPlayerIds,
+  );
+  const weightedBlueprintIds = weightedSpawn.map((entity) => entity.unit?.unitBlueprintId);
+  const cheaperSpawnCount = weightedBlueprintIds.filter(
+    (unitBlueprintId) => unitBlueprintId === cheaperUnitBlueprintId,
+  ).length;
+  const expensiveSpawnCount = weightedBlueprintIds.filter(
+    (unitBlueprintId) => unitBlueprintId === expensiveUnitBlueprintId,
+  ).length;
+  assertContract(
+    cheaperSpawnCount === 2 && expensiveSpawnCount === 1,
+    `2:1 inverse-cost opening interval selected ${weightedBlueprintIds.join(',')}`,
+  );
+
   const playerIds = [1, 2, 3, 4, 5, 6] as PlayerId[];
   const world = new WorldState(0x12345678, 6400, 6400);
   world.playerCount = playerIds.length;
