@@ -257,6 +257,28 @@ pub(crate) fn compute_turret_gates_for_aim_point(
         }
     }
 
+    // A trajectory solution is not physically admissible unless the station
+    // can realize its direction. Host-assisted yaw may become reachable as
+    // the parent turns; pitch has no corresponding host assist. Folding this
+    // into physical feasibility keeps priority orders, lock retention, auto
+    // acquisition, and firing on one answer.
+    if ballistic_clear != 0 {
+        let aim_yaw = pool.turret_ballistic_yaw[idx] as f64;
+        let aim_pitch = pool.turret_ballistic_pitch[idx] as f64;
+        if !combat_targeting_station_pose_reachable(
+            aim_yaw,
+            aim_pitch,
+            pool.turret_parent_yaw[idx],
+            pool.turret_yaw_min[idx],
+            pool.turret_yaw_max[idx],
+            pool.turret_pitch_min[idx],
+            pool.turret_pitch_max[idx],
+            flags,
+        ) {
+            ballistic_clear = 0;
+        }
+    }
+
     let mut shield_clear: u8 = 1;
     if ballistic_clear != 0
         && shield_obstruction_active != 0
@@ -297,6 +319,69 @@ pub(crate) fn compute_turret_gates_for_aim_point(
     }
 
     (los_clear, ballistic_clear, shield_clear)
+}
+
+const CT_STATION_TRAVERSE_EPSILON: f64 = 1e-6;
+
+#[inline]
+fn combat_targeting_station_pose_reachable(
+    world_yaw: f64,
+    pitch: f64,
+    parent_yaw: f64,
+    yaw_min: f64,
+    yaw_max: f64,
+    pitch_min: f64,
+    pitch_max: f64,
+    flags: u32,
+) -> bool {
+    // Manual emitters own their direction through the ability command, and a
+    // VLS intentionally launches upward before guidance turns the projectile.
+    if (flags & (CT_TURRET_CFG_IS_MANUAL_FIRE | CT_TURRET_CFG_VERTICAL_LAUNCHER)) != 0 {
+        return true;
+    }
+    if !world_yaw.is_finite()
+        || !pitch.is_finite()
+        || !parent_yaw.is_finite()
+        || pitch < pitch_min - CT_STATION_TRAVERSE_EPSILON
+        || pitch > pitch_max + CT_STATION_TRAVERSE_EPSILON
+    {
+        return false;
+    }
+    if (flags & (CT_TURRET_CFG_YAW_CONTINUOUS | CT_TURRET_CFG_HOST_YAW_ASSIST)) != 0 {
+        return true;
+    }
+    let local_yaw = normalize_angle_ts(world_yaw - parent_yaw);
+    local_yaw >= yaw_min - CT_STATION_TRAVERSE_EPSILON
+        && local_yaw <= yaw_max + CT_STATION_TRAVERSE_EPSILON
+}
+
+#[cfg(test)]
+mod station_traverse_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_station_rejects_unreachable_yaw_and_pitch() {
+        assert!(combat_targeting_station_pose_reachable(
+            0.4, 0.2, 0.0, -0.5, 0.5, -0.3, 0.7, 0,
+        ));
+        assert!(!combat_targeting_station_pose_reachable(
+            0.8, 0.2, 0.0, -0.5, 0.5, -0.3, 0.7, 0,
+        ));
+        assert!(!combat_targeting_station_pose_reachable(
+            0.4, 0.9, 0.0, -0.5, 0.5, -0.3, 0.7, 0,
+        ));
+    }
+
+    #[test]
+    fn host_assist_only_expands_yaw_reach() {
+        let flags = CT_TURRET_CFG_HOST_YAW_ASSIST;
+        assert!(combat_targeting_station_pose_reachable(
+            2.7, 0.2, 0.0, -0.5, 0.5, -0.3, 0.7, flags,
+        ));
+        assert!(!combat_targeting_station_pose_reachable(
+            2.7, 0.9, 0.0, -0.5, 0.5, -0.3, 0.7, flags,
+        ));
+    }
 }
 
 /// AIM-08.5 — unified priority-point gate compute + FSM apply for one

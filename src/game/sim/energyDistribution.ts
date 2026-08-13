@@ -12,6 +12,7 @@ import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
 import { syncBuilderActiveBuildTarget } from './builderBuildTarget';
+import { requestBuilderWorkStation } from './workStationSystem';
 import { getBuilderConstructionRate } from './hostCapabilities';
 import { resolveGuardServiceTarget } from './guard';
 import {
@@ -619,7 +620,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           factory !== null &&
           !factory.paused &&
           factory.currentShellId !== null &&
-          isBuildTargetInRange(entity, svc.target)
+          isBuildTargetInRange(entity, svc.target) &&
+          requestBuilderWorkStation(entity, factory.currentShellId)
         ) {
           factoryAssistRateById.set(
             svc.target.id,
@@ -653,6 +655,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
+    if (!requestBuilderWorkStation(entity, targetId)) continue;
     if (sweepAssist) sweepServicingBuilderIds.add(entity.id);
     buildTargets.add(targetId);
     const rate = builderRate;
@@ -763,6 +766,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       !world.arePlayersAllied(entity.ownership.playerId, target.ownership.playerId) ||
       !isBuildTargetInRange(entity, target)
     ) continue;
+    if (!requestBuilderWorkStation(entity, target.id)) continue;
     const builderRateCap = getBuilderConstructionRate(entity) * dtSec;
     if (isBuildInProgress(target.buildable)) {
       if (!buildingConsumerIds.has(target.id)) {
@@ -816,6 +820,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (hpState === null) continue;
     if (guardHealedTargetIds.has(target.id)) continue;
     if (!isBuildTargetInRange(entity, target)) continue;
+    if (!requestBuilderWorkStation(entity, target.id)) continue;
     const remaining = hpState.maxHp - hpState.hp;
     if (remaining <= 0) continue;
     guardHealedTargetIds.add(target.id);
@@ -851,6 +856,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (autoAssistedBuilderIds.has(entity.id)) continue; // already assisting a build
       const target = findNearestDamagedUnit(entity, damagedUnits, guardHealedTargetIds);
       if (target === null || target.unit === null) continue;
+      if (!requestBuilderWorkStation(entity, target.id)) continue;
       const remaining = target.unit.maxHp - target.unit.hp;
       if (remaining <= 0) continue;
       guardHealedTargetIds.add(target.id);

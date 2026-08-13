@@ -8,8 +8,16 @@
     },
     "launchForce": 1000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 3.5,
+        "maxAcceleration": 12
+      },
+      "pitch": {
+        "maxSpeed": 2.8,
+        "maxAcceleration": 10
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -91,8 +99,16 @@
     },
     "launchForce": 4000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 3,
+        "maxAcceleration": 10
+      },
+      "pitch": {
+        "maxSpeed": 2.4,
+        "maxAcceleration": 8
+      }
+    },
     "emissionLaneCount": 2,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -177,8 +193,16 @@
     },
     "launchForce": 12000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 10,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.7,
+        "maxAcceleration": 4
+      },
+      "pitch": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 3
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -263,8 +287,16 @@
     },
     "launchForce": 60000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 20,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 3
+      },
+      "pitch": {
+        "maxSpeed": 0.9,
+        "maxAcceleration": 2.5
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -349,8 +381,16 @@
     },
     "launchForce": 4500,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 140,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 3
+      },
+      "pitch": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 3
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -432,8 +472,16 @@
     },
     "launchForce": 110000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 20,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 2,
+        "maxAcceleration": 6
+      },
+      "pitch": {
+        "maxSpeed": 1.6,
+        "maxAcceleration": 5
+      }
+    },
     "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -518,8 +566,16 @@
     },
     "launchForce": 4000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 500,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 5.2,
+        "maxAcceleration": 18
+      },
+      "pitch": {
+        "maxSpeed": 4,
+        "maxAcceleration": 14
+      }
+    },
     "emissionLaneCount": 5,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -604,8 +660,16 @@
     },
     "launchForce": 12000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 500,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 4.5,
+        "maxAcceleration": 14
+      },
+      "pitch": {
+        "maxSpeed": 3.5,
+        "maxAcceleration": 11
+      }
+    },
     "emissionLaneCount": 5,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -687,8 +751,16 @@
     "cooldown": null,
     "launchForce": 18000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 4,
+        "maxAcceleration": 12
+      },
+      "pitch": {
+        "maxSpeed": 3.2,
+        "maxAcceleration": 10
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -764,8 +836,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 2,
+        "maxAcceleration": 6
+      },
+      "pitch": {
+        "maxSpeed": 2,
+        "maxAcceleration": 6
+      }
+    },
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -843,8 +923,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 900000,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 5.2,
+        "maxAcceleration": 20
+      },
+      "pitch": {
+        "maxSpeed": 5.2,
+        "maxAcceleration": 20
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -920,8 +1008,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 900000,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 6,
+        "maxAcceleration": 24
+      },
+      "pitch": {
+        "maxSpeed": 6,
+        "maxAcceleration": 24
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -997,8 +1093,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 900000,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.6,
+        "maxAcceleration": 3.5
+      },
+      "pitch": {
+        "maxSpeed": 1.3,
+        "maxAcceleration": 3
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1074,8 +1178,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 2.5,
+        "maxAcceleration": 7
+      },
+      "pitch": {
+        "maxSpeed": 2.5,
+        "maxAcceleration": 7
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1151,8 +1263,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 2.5,
+        "maxAcceleration": 7
+      },
+      "pitch": {
+        "maxSpeed": 2.5,
+        "maxAcceleration": 7
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1228,8 +1348,16 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 900000,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 2.5
+      },
+      "pitch": {
+        "maxSpeed": 1,
+        "maxAcceleration": 2.2
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1308,8 +1436,16 @@
     },
     "launchForce": 36000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 180,
-    "turretDrag": 20,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 1.2,
+        "maxAcceleration": 2.8
+      },
+      "pitch": {
+        "maxSpeed": 0.9,
+        "maxAcceleration": 2.2
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1394,8 +1530,16 @@
     },
     "launchForce": 42000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 90,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 0.8,
+        "maxAcceleration": 1.8
+      },
+      "pitch": {
+        "maxSpeed": 0.65,
+        "maxAcceleration": 1.4
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1480,8 +1624,16 @@
     },
     "launchForce": 900,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 0.5,
+        "maxAcceleration": 1.5
+      },
+      "pitch": {
+        "maxSpeed": 0.5,
+        "maxAcceleration": 1.5
+      }
+    },
     "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1566,8 +1718,16 @@
     },
     "launchForce": 1200,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 600,
-    "turretDrag": 3,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 2.5,
+        "maxAcceleration": 8
+      },
+      "pitch": {
+        "maxSpeed": 2,
+        "maxAcceleration": 6
+      }
+    },
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1649,8 +1809,16 @@
     },
     "launchForce": 9000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 9000,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 5.2,
+        "maxAcceleration": 20
+      },
+      "pitch": {
+        "maxSpeed": 4.5,
+        "maxAcceleration": 16
+      }
+    },
     "emissionLaneCount": 3,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1732,8 +1900,16 @@
     },
     "launchForce": 20000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 9000,
-    "turretDrag": 1,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 6,
+        "maxAcceleration": 24
+      },
+      "pitch": {
+        "maxSpeed": 5.2,
+        "maxAcceleration": 20
+      }
+    },
     "emissionLaneCount": 6,
     "passive": false,
     "requiresNonObstructedLineOfSight": true,
@@ -1812,8 +1988,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1895,8 +2069,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1978,8 +2150,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -2059,8 +2229,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -2140,8 +2308,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -2221,8 +2387,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 200,
-    "turretDrag": 0,
     "emissionLaneCount": 1,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -2348,8 +2512,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2421,8 +2583,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2494,8 +2654,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2567,8 +2725,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2640,8 +2796,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2713,8 +2867,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2786,8 +2938,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2859,8 +3009,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -2932,8 +3080,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3005,8 +3151,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3078,8 +3222,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3151,8 +3293,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3224,8 +3364,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3297,8 +3435,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3370,8 +3506,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3443,8 +3577,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3516,8 +3648,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3589,8 +3719,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3662,8 +3790,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3735,8 +3861,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3808,8 +3932,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3881,8 +4003,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -3954,8 +4074,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4027,8 +4145,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4100,8 +4216,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4173,8 +4287,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4246,8 +4358,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4319,8 +4429,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4392,8 +4500,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4465,8 +4571,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4538,8 +4642,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4611,8 +4713,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4684,8 +4784,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4757,8 +4855,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4830,8 +4926,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4903,8 +4997,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,
@@ -4976,8 +5068,6 @@
     "cooldown": null,
     "launchForce": 0,
     "addTurretVelocityToEmissionLaunch": false,
-    "turretTurnAccel": 1,
-    "turretDrag": 1,
     "emissionLaneCount": 1,
     "passive": true,
     "requiresNonObstructedLineOfSight": false,

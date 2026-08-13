@@ -41,10 +41,6 @@ pub enum TurretRangeVolume {
     TurretRangeSphere,
 }
 
-pub type ConstructionEmitterSize = String;
-
-pub type ConstructionEmitterVisualSpec = BlueprintJsonValue;
-
 pub type WorkEmitterSpec = BlueprintJsonValue;
 
 pub type ResourceCost = BlueprintJsonValue;
@@ -653,6 +649,18 @@ pub struct TurretAudioConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TurretAngularActuatorAxis {
+    pub maxSpeed: f64,
+    pub maxAcceleration: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretAngularActuator {
+    pub yaw: TurretAngularActuatorAxis,
+    pub pitch: TurretAngularActuatorAxis,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub name: String,
@@ -660,8 +668,7 @@ pub struct TurretBlueprint {
     pub targeting: TurretTargetingConfig,
     pub cooldown: Option<TurretCooldownConfig>,
     pub color: f64,
-    pub turretTurnAccel: f64,
-    pub turretDrag: f64,
+    pub angularActuator: Option<TurretAngularActuator>,
     pub emissionLaneCount: i32,
     pub eventsSmooth: bool,
     pub launchForce: f64,
@@ -695,8 +702,6 @@ pub struct TurretPresentation {
     pub headRadius: Option<f64>,
     pub headOnly: bool,
     pub barrel: Option<BlueprintJsonValue>,
-    pub constructionEmitter: Option<BlueprintJsonValue>,
-    pub constructionEmitterSize: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -716,17 +721,56 @@ pub struct UnitTurretMountZResolver {
 pub struct BotArmTurretHostAttachment {
     pub kind: String,
     pub arm: String,
+    pub socketOffset: MountOffset,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BotHeadTurretHostAttachment {
+pub struct BotPieceTurretHostAttachment {
     pub kind: String,
+    pub piece: String,
+    pub socketOffset: MountOffset,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnitTurretHostAttachment {
     BotArmTurretHostAttachment(BotArmTurretHostAttachment),
-    BotHeadTurretHostAttachment(BotHeadTurretHostAttachment),
+    BotPieceTurretHostAttachment(BotPieceTurretHostAttachment),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretEmissionSocket {
+    pub offset: MountOffset,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretYawTraverse {
+    pub continuous: bool,
+    pub minAngle: f64,
+    pub maxAngle: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretPitchTraverse {
+    pub minAngle: f64,
+    pub maxAngle: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretHostAssistPolicy {
+    None,
+    RequestYaw,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurretStationArticulation {
+    pub yaw: TurretYawTraverse,
+    pub pitch: TurretPitchTraverse,
+    pub restYaw: f64,
+    pub restPitch: f64,
+    pub restoreDelayMs: f64,
+    pub hostAssist: TurretHostAssistPolicy,
+    pub claimGroup: Option<String>,
+    pub claimPriority: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -742,6 +786,8 @@ pub struct TurretMount {
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub hostAttachment: Option<UnitTurretHostAttachment>,
+    pub emissionSockets: Option<Vec<TurretEmissionSocket>>,
+    pub articulation: Option<TurretStationArticulation>,
     pub producedBlueprintId: Option<String>,
     pub allowedBuildBlueprintIds: Option<Vec<String>>,
     pub productionHoldAnchor: Option<String>,
@@ -758,6 +804,7 @@ pub struct BuildingTurretMount {
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
     pub slavedToMountId: Option<String>,
+    pub articulation: Option<TurretStationArticulation>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -857,6 +904,8 @@ pub struct BotLegs {
 pub struct BotConfig {
     pub legs: BotLegs,
     pub arms: BotArms,
+    pub upperBodyActuator: TurretAngularActuatorAxis,
+    pub upperBodyRestoreDelayMs: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

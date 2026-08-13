@@ -49,7 +49,7 @@ import {
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
 // edit those files to retune how beams look. Beam cylinders originate at
-// the turret mount center, matching the authoritative sim path.
+// the selected rendered QueryWeapon muzzle, matching the authoritative path.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_SMOKE_EMITTER_CAP = 4096;
 const BEAM_IMPOSTER_SEGMENT_CAP = BEAM_SEGMENT_CAP;
@@ -63,6 +63,7 @@ type TurretMountResolver = {
   getTurretMountWorldState(
     entityId: number,
     turretIdx: number,
+    emissionLaneIdx?: number,
   ): {
     x: number; y: number; z: number;
     forwardX: number; forwardY: number; forwardZ: number;
@@ -579,6 +580,7 @@ export class BeamRenderer3D {
       const mount = turretMountResolver.getTurretMountWorldState(
         proj.sourceEntityId,
         turretIdx,
+        proj.sourceBarrelIndex >= 0 ? proj.sourceBarrelIndex : 0,
       );
       if (mount) {
         path.baseStartX = mount.x;
@@ -587,7 +589,7 @@ export class BeamRenderer3D {
         if (mount.hasForward && sourcePoints.length === 2) {
           // A direct beam is one constrained turret ray. Re-project the
           // authoritative terminal distance onto the rendered barrel forward
-          // from the mount center. Reflected paths retain their surface vertices.
+          // from the selected muzzle. Reflected paths retain their surface vertices.
           const end = path.points[1];
           if (end !== undefined) constrainDirectBeamEndpointToMountRay(
             end,
@@ -751,7 +753,7 @@ export class BeamRenderer3D {
       const openEndedLine =
         OPEN_ENDED_LINE_CONFIG.extendToInfinity && this.isOpenEndedLinePath(path);
 
-      // Sim's points[0] sits at the turret mount center; snap-to-turret
+      // Sim's points[0] sits at the authoritative muzzle; snap-to-turret
       // re-anchors to the live mount so the start tracks the turret
       // smoothly between snapshots. This is both the logical and visual
       // start of the beam.

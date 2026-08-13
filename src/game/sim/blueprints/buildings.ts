@@ -46,6 +46,7 @@ import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import { getMaximumSensorMatrixRadius } from '../sensorConfig';
+import { validateStationArticulation, validateWorkEmitter } from './stationArticulation';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -152,7 +153,6 @@ const BUILDING_EXPLICIT_FIELDS = [
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
 export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSolar.visualHeight;
 export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingWind.visualHeight;
-const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.towerFabricator.visualHeight;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingExtractor.visualHeight;
 export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.visualHeight;
@@ -164,80 +164,17 @@ export const CANNON_TOWER_VISUAL_HEIGHT =
 export const ANTI_AIR_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerAntiAir.visualHeight;
 
-function firstTurretMountZ(
-  blueprint: BuildingBlueprint,
-  fallback: number,
-): number {
-  const turret = blueprint.turrets[0];
-  return turret !== undefined ? turret.mount.z : fallback;
-}
-
-const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
-
-// Fabricator construction-tower dimensions. Historically read from the
-// (now-removed) turretConstruction blueprint's large constructionEmitter;
-// retained here as explicit constants (the exact former blueprint values) so
-// the legacy turret blueprint is no longer a load-bearing dependency. These
-// feed both the 3D renderer and sim-side anchors, so they are fixed: changing
-// a value is a visual + anchor change, not a refactor.
-const FABRICATOR_TOWER_PYLON_RADIUS = 3.6;
-const FABRICATOR_TOWER_PYLON_OFFSET = 96;
-const FABRICATOR_TOWER_PYLON_HEIGHT = 90;
-const FABRICATOR_TOWER_MOUNT_RADIUS = 8;
-
 type FactoryBuildingVisualMetrics = {
-  minDim: number;
-  baseHeight: number;
-  towerRadius: number;
-  collarRadius: number;
-  towerHeight: number;
-  towerBaseY: number;
-  pylonRadius: number;
-  pylonOffset: number;
-  pylonHeight: number;
-  capY: number;
-  nozzleRadius: number;
-  nozzleY: number;
   visualTop: number;
 };
 
-/** Factory construction tower dimensions. This is shared by the 3D
- *  renderer and simulation-side anchors so changing the tower visual
- *  cannot desync hover bars, target points, and construction spray. */
+/** Authoritative top of the hovering factory ring for HUD/target anchors. */
 export function getFactoryBuildingVisualMetrics(
   width: number,
   depth: number,
 ): FactoryBuildingVisualMetrics {
-  const minDim = Math.min(width, depth);
-  const pylonRadius = FABRICATOR_TOWER_PYLON_RADIUS;
-  const pylonOffset = FABRICATOR_TOWER_PYLON_OFFSET;
-  const pylonHeight = FABRICATOR_TOWER_PYLON_HEIGHT;
-  const towerRadius = Math.max(7, minDim * 0.09);
-  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.16);
-  const towerHeight = pylonHeight;
-  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - FABRICATOR_TOWER_MOUNT_RADIUS);
-  const capRadius = Math.max(1.35, pylonRadius * 1.65);
-  const capY = towerBaseY + pylonHeight + capRadius * 0.36;
-  const nozzleRadius = capRadius;
-  const nozzleY = capY + capRadius * 0.35;
   return {
-    minDim,
-    baseHeight: FACTORY_BASE_VISUAL_HEIGHT,
-    towerRadius,
-    collarRadius,
-    towerHeight,
-    towerBaseY,
-    pylonRadius,
-    pylonOffset,
-    pylonHeight,
-    capY,
-    nozzleRadius,
-    nozzleY,
-    // The fabricator body is now the hovering torus, so its top (where the
-    // health/build bars float) is the ring height plus the ring's tube radius —
-    // not the old central construction tower.
-    visualTop: fabricatorTorusHoverHeight() + fabricatorTorusRingRadius(width, depth) * 0.22 + capRadius,
+    visualTop: fabricatorTorusHoverHeight() + fabricatorTorusRingRadius(width, depth) * 0.22,
   };
 }
 
@@ -433,11 +370,21 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     throw new Error(`Invalid building blueprint ${id}: every building must mount at least one turret`);
   }
   for (const mount of blueprint.turrets) {
+    validateStationArticulation(
+      `turret station ${id} ${mount.mountId}`,
+      mount.articulation,
+    );
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (!turretBlueprint) {
       throw new Error(
         `Invalid building blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
       );
+    }
+  }
+  if (blueprint.workEmitter !== null && blueprint.workEmitter !== undefined) {
+    validateWorkEmitter(`work emitter ${id}`, blueprint.workEmitter);
+    if (blueprint.workEmitter.attachment.kind !== 'host') {
+      throw new Error(`Invalid work emitter ${id}: buildings currently support host sockets only`);
     }
   }
   validateFactoryUnitRoster(id, blueprint);

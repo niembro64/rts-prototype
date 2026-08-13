@@ -726,6 +726,96 @@ fn unit_force_attitude_spring_gain(max_alpha: f64) -> f64 {
             * UNIT_ATTITUDE_RESPONSE_TIME_SCALE)
 }
 
+/// Exact integration of one component of the body's damped attitude error.
+///
+/// This is deliberately local to the body-attitude controller. Weapon and work
+/// joints use the bounded articulation motor in `articulation.rs`; preserving
+/// this oscillator here does not reintroduce the retired turret-spring path.
+#[inline]
+fn unit_force_damped_attitude_component(
+    angle: f64,
+    angular_velocity: f64,
+    spring_gain: f64,
+    damping: f64,
+    dt_sec: f64,
+) -> (f64, f64) {
+    let safe_dt = if dt_sec.is_finite() { dt_sec.max(0.0) } else { 0.0 };
+    let safe_gain = if spring_gain.is_finite() {
+        spring_gain.max(0.0)
+    } else {
+        0.0
+    };
+    let safe_damping = if damping.is_finite() {
+        damping.max(0.0)
+    } else {
+        0.0
+    };
+    let angle = if angle.is_finite() { angle } else { 0.0 };
+    let velocity = if angular_velocity.is_finite() {
+        angular_velocity
+    } else {
+        0.0
+    };
+
+    if safe_dt <= 0.0 {
+        return (angle, velocity);
+    }
+    if safe_gain <= 0.0 {
+        if safe_damping <= 0.0 {
+            return (angle + velocity * safe_dt, velocity);
+        }
+        let decay = (-safe_damping * safe_dt).exp();
+        return (
+            angle + velocity * (1.0 - decay) / safe_damping,
+            velocity * decay,
+        );
+    }
+
+    let discriminant = safe_damping * safe_damping - 4.0 * safe_gain;
+    if discriminant.abs() <= 1e-9 {
+        let root = -safe_damping / 2.0;
+        let b = velocity - root * angle;
+        let decay = (root * safe_dt).exp();
+        let next_angle = (angle + b * safe_dt) * decay;
+        let next_velocity = (b + root * (angle + b * safe_dt)) * decay;
+        return (next_angle, next_velocity);
+    }
+    if discriminant > 0.0 {
+        let root = discriminant.sqrt();
+        let r1 = (-safe_damping + root) / 2.0;
+        let r2 = (-safe_damping - root) / 2.0;
+        let denominator = r1 - r2;
+        let a = if denominator != 0.0 {
+            (velocity - r2 * angle) / denominator
+        } else {
+            angle
+        };
+        let b = angle - a;
+        let e1 = (r1 * safe_dt).exp();
+        let e2 = (r2 * safe_dt).exp();
+        return (a * e1 + b * e2, a * r1 * e1 + b * r2 * e2);
+    }
+
+    let decay_rate = -safe_damping / 2.0;
+    let frequency = (-discriminant).sqrt() / 2.0;
+    let a = angle;
+    let b = if frequency > 0.0 {
+        (velocity - decay_rate * angle) / frequency
+    } else {
+        0.0
+    };
+    let decay = (decay_rate * safe_dt).exp();
+    let cosine = (frequency * safe_dt).cos();
+    let sine = (frequency * safe_dt).sin();
+    let basis = a * cosine + b * sine;
+    (
+        decay * basis,
+        decay
+            * (decay_rate * basis
+                + (-a * frequency * sine + b * frequency * cosine)),
+    )
+}
+
 #[inline]
 fn unit_force_quat_from_forward_up(mut forward: [f64; 3], up_raw: [f64; 3]) -> [f64; 4] {
     let up = unit_force_normalize3(up_raw[0], up_raw[1], up_raw[2]).unwrap_or([0.0, 0.0, 1.0]);
@@ -853,38 +943,26 @@ fn unit_force_attitude_step(
     // cannot turn a conservative force budget into a minute-long yaw.
     let k = unit_force_attitude_spring_gain(max_alpha);
     let damping = 2.0 * k.sqrt();
-    let (relative_x, next_omega_x, _) = compute_damped_rotation(
+    let (relative_x, next_omega_x) = unit_force_damped_attitude_component(
         -axis_angle[0],
         omega[0],
-        0.0,
         k,
         damping,
         dt_sec,
-        0,
-        0.0,
-        0.0,
     );
-    let (relative_y, next_omega_y, _) = compute_damped_rotation(
+    let (relative_y, next_omega_y) = unit_force_damped_attitude_component(
         -axis_angle[1],
         omega[1],
-        0.0,
         k,
         damping,
         dt_sec,
-        0,
-        0.0,
-        0.0,
     );
-    let (relative_z, next_omega_z, _) = compute_damped_rotation(
+    let (relative_z, next_omega_z) = unit_force_damped_attitude_component(
         -axis_angle[2],
         omega[2],
-        0.0,
         k,
         damping,
         dt_sec,
-        0,
-        0.0,
-        0.0,
     );
     let next_axis_angle = [-relative_x, -relative_y, -relative_z];
     let previous_omega = omega;

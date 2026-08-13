@@ -13,7 +13,7 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 pub const PRESENTATION_POSE_OUTPUT_STRIDE: usize = 20;
-pub const PRESENTATION_TURRET_OUTPUT_STRIDE: usize = 6;
+pub const PRESENTATION_TURRET_OUTPUT_STRIDE: usize = 8;
 
 #[derive(Clone, Default)]
 struct PoseFrame {
@@ -42,6 +42,8 @@ struct PoseFrame {
     turret_angular_velocity: Vec<f32>,
     turret_pitch: Vec<f32>,
     turret_pitch_velocity: Vec<f32>,
+    turret_host_piece_yaw: Vec<f32>,
+    turret_host_piece_yaw_velocity: Vec<f32>,
 }
 
 impl PoseFrame {
@@ -80,6 +82,10 @@ impl PoseFrame {
         self.turret_pitch.clone_from(&turrets.turret_pitch);
         self.turret_pitch_velocity
             .clone_from(&turrets.turret_pitch_velocity);
+        self.turret_host_piece_yaw
+            .clone_from(&turrets.turret_host_piece_yaw);
+        self.turret_host_piece_yaw_velocity
+            .clone_from(&turrets.turret_host_piece_yaw_velocity);
     }
 
     fn copy_slot_from(&mut self, source: &PoseFrame, slot: usize) {
@@ -118,6 +124,9 @@ impl PoseFrame {
                 self.turret_angular_velocity[index] = source.turret_angular_velocity[index];
                 self.turret_pitch[index] = source.turret_pitch[index];
                 self.turret_pitch_velocity[index] = source.turret_pitch_velocity[index];
+                self.turret_host_piece_yaw[index] = source.turret_host_piece_yaw[index];
+                self.turret_host_piece_yaw_velocity[index] =
+                    source.turret_host_piece_yaw_velocity[index];
             }
         }
     }
@@ -407,9 +416,20 @@ pub fn presentation_interpolate(count: u32, alpha: f64) -> u32 {
                 t,
             ) as f32;
             // Shield radius remains snapshot-authored lifecycle state. The
-            // continuous turret stream owns aim axes and their rates only.
+            // continuous turret stream owns aim axes, the authoritative host
+            // piece, and their rates.
             history.turret_output[target_index + 4] = 0.0;
             history.turret_output[target_index + 5] = 1.0;
+            history.turret_output[target_index + 6] = lerp_angle(
+                p.turret_host_piece_yaw[source_index] as f64,
+                current.turret_host_piece_yaw[source_index] as f64,
+                t,
+            ) as f32;
+            history.turret_output[target_index + 7] = lerp(
+                p.turret_host_piece_yaw_velocity[source_index] as f64,
+                current.turret_host_piece_yaw_velocity[source_index] as f64,
+                t,
+            ) as f32;
         }
     }
     valid_count
@@ -468,6 +488,8 @@ mod tests {
             turrets.turret_pitch[0] = 0.1;
             turrets.turret_angular_velocity[0] = 0.4;
             turrets.turret_pitch_velocity[0] = 0.2;
+            turrets.turret_host_piece_yaw[0] = 0.1;
+            turrets.turret_host_piece_yaw_velocity[0] = 0.3;
         }
         presentation_capture_tick(1);
         {
@@ -476,6 +498,8 @@ mod tests {
             turrets.turret_pitch[0] = 0.5;
             turrets.turret_angular_velocity[0] = 0.8;
             turrets.turret_pitch_velocity[0] = 0.6;
+            turrets.turret_host_piece_yaw[0] = 0.5;
+            turrets.turret_host_piece_yaw_velocity[0] = 0.7;
         }
         presentation_capture_tick(2);
         presentation_history().slot_input[0] = 0;
@@ -486,5 +510,7 @@ mod tests {
         assert!((out[2] - 0.6).abs() < 1e-5);
         assert!((out[3] - 0.4).abs() < 1e-5);
         assert_eq!(out[5], 1.0);
+        assert!((out[6] - 0.3).abs() < 1e-5);
+        assert!((out[7] - 0.5).abs() < 1e-5);
     }
 }

@@ -57,7 +57,7 @@ function makeCommanderBuilder(id = 101, unitBlueprintId = 'unitCommander'): Enti
     type: 'unit',
     transform: createTransform(0, 0, 0, 0),
     ownership: { playerId: 1 },
-    builder: { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID },
+    builder: { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID, workStation: null },
     unit: { unitBlueprintId, hp: 100, maxHp: 100 } as Entity['unit'],
   };
 }

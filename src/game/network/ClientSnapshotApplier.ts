@@ -175,6 +175,20 @@ export function snapClientNonVisualState(
     )) {
       entity.builder.lowPriority = su.builderPriorityLow === true;
     }
+    if (entity.builder?.workStation !== null && entity.builder?.workStation !== undefined) {
+      const pose = su.workStation;
+      if (pose !== null && pose !== undefined) {
+        const station = entity.builder.workStation;
+        station.localYaw = deqRot(pose.localYaw);
+        station.localPitch = deqRot(pose.localPitch);
+        station.localYawVelocity = deqRot(pose.localYawVelocity);
+        station.localPitchVelocity = deqRot(pose.localPitchVelocity);
+        station.targetEntityId = pose.targetActive ? 0 : NO_ENTITY_ID;
+        station.aligned = pose.aligned;
+        station.targetWorldYaw = deqRot(pose.targetWorldYaw);
+        station.targetWorldPitch = deqRot(pose.targetWorldPitch);
+      }
+    }
     if (entity.factory && (
       su.carrierSpawnEnabled !== null && su.carrierSpawnEnabled !== undefined ||
       isFull

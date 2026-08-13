@@ -23,6 +23,7 @@ import __wbg_init, {
   deterministic_math_cos,
   deterministic_math_atan2,
   deterministic_math_sqrt,
+  deterministic_math_exp,
   deterministic_math_hypot2,
   deterministic_math_hypot3,
   deterministic_math_pow,
@@ -63,7 +64,8 @@ import __wbg_init, {
   stuck_replan_step_batch,
   unit_action_plan_batch,
   unit_action_movement_batch,
-  turret_rotation_step_batch,
+  articulation_joint_step_batch,
+  articulation_yaw_step_batch,
   pool_init,
   pool_capacity,
   pool_alloc_slot,
@@ -169,7 +171,6 @@ import __wbg_init, {
   solve_kinematic_intercept,
   compute_homing_thrust,
   compute_constant_speed_homing_velocity,
-  integrate_damped_rotation,
   metal_deposit_count_placements,
   metal_deposit_generate_placements,
   metal_deposit_resolve_terrain_heights,
@@ -400,6 +401,8 @@ import __wbg_init, {
   combat_targeting_turret_pitch_ptr,
   combat_targeting_turret_angular_velocity_ptr,
   combat_targeting_turret_pitch_velocity_ptr,
+  combat_targeting_turret_host_piece_yaw_ptr,
+  combat_targeting_turret_host_piece_yaw_velocity_ptr,
   combat_targeting_turret_state_ptr,
   combat_targeting_refresh_activity_masks_for_entity,
   combat_targeting_refresh_activity_masks_batch,
@@ -610,6 +613,7 @@ export interface SimWasm {
     readonly cos: (value: number) => number;
     readonly atan2: (y: number, x: number) => number;
     readonly sqrt: (value: number) => number;
+    readonly exp: (value: number) => number;
     readonly hypot2: (x: number, y: number) => number;
     readonly hypot3: (x: number, y: number, z: number) => number;
     readonly pow: (base: number, exponent: number) => number;
@@ -869,15 +873,22 @@ export interface SimWasm {
     outDistance: Float64Array,
     outDecision: Uint8Array,
   ) => number;
-  readonly turretRotationStepBatch: (
+  readonly articulationJointStepBatch: (
     currentYaw: Float64Array,
     yawVelocity: Float64Array,
     targetYaw: Float64Array,
+    yawContinuous: Uint8Array,
+    yawMin: Float64Array,
+    yawMax: Float64Array,
+    yawMaxSpeed: Float64Array,
+    yawMaxAcceleration: Float64Array,
     currentPitch: Float64Array,
     pitchVelocity: Float64Array,
     targetPitch: Float64Array,
-    turnAccel: Float64Array,
-    drag: Float64Array,
+    pitchMin: Float64Array,
+    pitchMax: Float64Array,
+    pitchMaxSpeed: Float64Array,
+    pitchMaxAcceleration: Float64Array,
     outYaw: Float64Array,
     outYawVelocity: Float64Array,
     outYawAcceleration: Float64Array,
@@ -888,8 +899,19 @@ export interface SimWasm {
     outAimErrorPitch: Float64Array,
     count: number,
     dtSec: number,
-    pitchMin: number,
-    pitchMax: number,
+  ) => number;
+  readonly articulationYawStepBatch: (
+    currentYaw: Float64Array,
+    yawVelocity: Float64Array,
+    targetYaw: Float64Array,
+    maxSpeed: Float64Array,
+    maxAcceleration: Float64Array,
+    outYaw: Float64Array,
+    outYawVelocity: Float64Array,
+    outYawAcceleration: Float64Array,
+    outAimError: Float64Array,
+    count: number,
+    dtSec: number,
   ) => number;
   /** Body3D SoA pool — Phase 3d. Linear-memory-backed storage
    *  for every numeric body field. Slots are stable for a body's
@@ -1649,22 +1671,6 @@ export interface SimWasm {
     currentX: number, currentY: number, currentZ: number,
     homingTurnRate: number,
     dtSec: number,
-  ) => void;
-  /** Phase 6a — damped-spring single-axis rotation integrator. Per-
-   *  call (call sites already loop per-turret-axis). `flags` packs
-   *  the options object: bit 0 = wrap, bit 1 = has_min, bit 2 = has_max.
-   *  Writes (newAngle, newAngularVel, angularAcc) into out[0..3]. */
-  readonly integrateDampedRotation: (
-    out: Float64Array,
-    angle: number,
-    angularVel: number,
-    targetAngle: number,
-    k: number,
-    c: number,
-    dtSec: number,
-    flags: number,
-    minAngle: number,
-    maxAngle: number,
   ) => void;
   /** C16 — deterministic metal-deposit placement and connected
    *  resource footprint. TS owns config validation and object
@@ -2456,10 +2462,14 @@ export const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION = 1 << 13;
 export const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY = 1 << 14;
 /** Turret may only lock enemies seen with full sight (not radar-only). */
 export const CT_TURRET_CFG_REQUIRES_FULL_SIGHT = 1 << 15;
+/** Local yaw has no hard stops. */
+export const CT_TURRET_CFG_YAW_CONTINUOUS = 1 << 16;
 /** Host-only and slaved mounts never independently auto-acquire. */
 export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
 /** Constant-speed guided shots aim at their velocity interception point. */
 export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
+/** A moving parent joint may absorb residual station yaw. */
+export const CT_TURRET_CFG_HOST_YAW_ASSIST = 1 << 19;
 /** Exhaustive, unordered emission source->target medium routes. */
 export const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE = 1 << 20;
 export const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER = 1 << 21;
@@ -2651,6 +2661,11 @@ export interface CombatTargetingApi {
     pitch: number,
     angularVelocity: number,
     pitchVelocity: number,
+    parentYaw: number,
+    yawMin: number,
+    yawMax: number,
+    pitchMin: number,
+    pitchMax: number,
     fireMaxAcquireSq: number,
     fireMaxReleaseSq: number,
     fireMinAcquireSq: number,
@@ -2776,6 +2791,8 @@ export interface CombatTargetingApi {
   readonly turretPitchPtr: () => number;
   readonly turretAngularVelocityPtr: () => number;
   readonly turretPitchVelocityPtr: () => number;
+  readonly turretHostPieceYawPtr: () => number;
+  readonly turretHostPieceYawVelocityPtr: () => number;
   readonly turretStatePtr: () => number;
   readonly turretTargetIdPtr: () => number;
   readonly turretCooldownPtr: () => number;
@@ -3340,11 +3357,11 @@ export interface SnapshotEncodeApi {
    *  by the DP-02 parity flag as a temporary fallback for DTO shapes
    *  that are not fully ported to Rust yet. */
   appendRawValue: (bytes: Uint8Array) => number;
-  /** Raw pointer to the turret scratch buffer. JS fills 11 f64 per
+  /** Raw pointer to the turret scratch buffer. JS fills 13 f64 per
    *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
    *  before calling encodeEntityUnit with hasTurrets=1. */
   turretScratchPtr: () => number;
-  /** Pre-grow the turret scratch to fit `count` turrets (11 f64 each). */
+  /** Pre-grow the turret scratch to fit `count` turrets (13 f64 each). */
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
@@ -4296,6 +4313,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           cos: deterministic_math_cos,
           atan2: deterministic_math_atan2,
           sqrt: deterministic_math_sqrt,
+          exp: deterministic_math_exp,
           hypot2: deterministic_math_hypot2,
           hypot3: deterministic_math_hypot3,
           pow: deterministic_math_pow,
@@ -4322,7 +4340,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         stuckReplanStepBatch: stuck_replan_step_batch,
         unitActionPlanBatch: unit_action_plan_batch,
         unitActionMovementBatch: unit_action_movement_batch,
-        turretRotationStepBatch: turret_rotation_step_batch,
+        articulationJointStepBatch: articulation_joint_step_batch,
+        articulationYawStepBatch: articulation_yaw_step_batch,
         pool,
         poolPrepareDynamicStep: pool_prepare_dynamic_step,
         poolCollectAwakeEntityIds: pool_collect_awake_entity_ids,
@@ -4394,7 +4413,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
         computeConstantSpeedHomingVelocity: compute_constant_speed_homing_velocity,
-        integrateDampedRotation: integrate_damped_rotation,
         metalDepositCountPlacements: metal_deposit_count_placements,
         metalDepositGeneratePlacements: metal_deposit_generate_placements,
         metalDepositResolveTerrainHeights: metal_deposit_resolve_terrain_heights,
@@ -4534,6 +4552,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           turretPitchPtr: combat_targeting_turret_pitch_ptr,
           turretAngularVelocityPtr: combat_targeting_turret_angular_velocity_ptr,
           turretPitchVelocityPtr: combat_targeting_turret_pitch_velocity_ptr,
+          turretHostPieceYawPtr: combat_targeting_turret_host_piece_yaw_ptr,
+          turretHostPieceYawVelocityPtr: combat_targeting_turret_host_piece_yaw_velocity_ptr,
           turretStatePtr: combat_targeting_turret_state_ptr,
           refreshActivityMasksForEntity: combat_targeting_refresh_activity_masks_for_entity,
           refreshActivityMasksBatch: combat_targeting_refresh_activity_masks_batch,
@@ -4737,7 +4757,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BasicScratchStride: 9,
           v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
           v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
-          v6UnitScratchStride: 68,
+          v6UnitScratchStride: 77,
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
           v6BuildingScratchStride: 50,
@@ -4750,7 +4770,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           writerClear: messagepack_writer_clear,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
-          turretScratchStride: 11,
+          turretScratchStride: 13,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
           actionScratchStride: 19,
@@ -4775,7 +4795,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           scratchEnsure: presentation_scratch_ensure,
           interpolate: presentation_interpolate,
       poseOutputStride: 20,
-          turretOutputStride: 6,
+          turretOutputStride: 8,
           maxTurretsPerEntity: 8,
         },
         spatial: {
@@ -5028,6 +5048,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretAimPose3DContractTest();
         const { runBotHostTurretAim3DContractTest } = await import('../render3d/BotHostTurretAim3DContractTest');
         runBotHostTurretAim3DContractTest();
+        const { runAuthoritativeTurretSocketContractTest } = await import('../sim/authoritativeTurretSocketContractTest');
+        runAuthoritativeTurretSocketContractTest();
         const { runCommanderGeometry3DContractTest } = await import('../render3d/CommanderGeometry3DContractTest');
         runCommanderGeometry3DContractTest();
         const { runBuildingTurretPresentation3DContractTest } = await import('../render3d/BuildingTurretPresentation3DContractTest');

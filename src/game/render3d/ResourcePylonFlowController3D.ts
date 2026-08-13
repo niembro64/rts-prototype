@@ -9,10 +9,10 @@ import { SHELL_BAR_COLORS } from '@/shellConfig';
 import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import type { EntityId, PlayerId } from '../sim/types';
 import type {
-  ConstructionTowerResource,
+  ResourcePylonResource,
   ResourcePylonDirection,
   ResourcePylonRig,
-} from './ConstructionEmitterMesh3D';
+} from './ResourcePylonMesh3D';
 import { hexStringToRgb } from './colorUtils';
 
 const RESOURCE_SPRAY_COLORS = [
@@ -20,7 +20,7 @@ const RESOURCE_SPRAY_COLORS = [
   hexStringToRgb(SHELL_BAR_COLORS.metal),
 ] as const;
 
-const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ConstructionTowerResource, { r: number; g: number; b: number }> = {
+const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ResourcePylonResource, { r: number; g: number; b: number }> = {
   energy: RESOURCE_SPRAY_COLORS[0],
   metal: RESOURCE_SPRAY_COLORS[1],
 };

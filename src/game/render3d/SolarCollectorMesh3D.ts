@@ -4,7 +4,7 @@ import { SOLAR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import {
   buildResourcePylonRig,
   type ResourcePylonRig,
-} from './ConstructionEmitterMesh3D';
+} from './ResourcePylonMesh3D';
 import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 import {

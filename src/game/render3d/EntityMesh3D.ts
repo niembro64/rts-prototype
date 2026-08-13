@@ -150,7 +150,6 @@ export type EntityMesh = {
   buildingTeamOrnaments?: THREE.Mesh[];
   /** Last ally-team colour applied to the authored building ornaments. */
   buildingTeamOrnamentColorHex?: number;
-  isFactoryConstructionHost?: boolean;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

@@ -9,7 +9,7 @@
 //   3  PhysicsEngine3D core    — Body3D SoA + resolvers + sleep
 //   4  quaternion math kernel  — used by hover orientation spring
 //   5  projectile motion       — ballistic + homing + beam paths
-//   6  turret + targeting      — damped-spring + top-K LOS scan
+//   6  turret + targeting      — bounded articulation + top-K LOS scan
 //   7  spatial grid            — 3D voxel hash
 //   8  terrain sampling        — heightmap in linear memory
 //   9  pathfinder              — A* over the walk grid
@@ -17,6 +17,18 @@
 
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use wasm_bindgen::prelude::*;
+
+#[inline]
+pub(crate) fn normalize_angle_ts(mut angle: f64) -> f64 {
+    const TAU: f64 = core::f64::consts::PI * 2.0;
+    while angle > core::f64::consts::PI {
+        angle -= TAU;
+    }
+    while angle < -core::f64::consts::PI {
+        angle += TAU;
+    }
+    angle
+}
 
 // ─────────────────────────────────────────────────────────────────
 //  Module init + build stamp
@@ -52,6 +64,11 @@ pub fn deterministic_math_atan2(y: f64, x: f64) -> f64 {
 #[wasm_bindgen]
 pub fn deterministic_math_sqrt(value: f64) -> f64 {
     value.sqrt()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_exp(value: f64) -> f64 {
+    value.exp()
 }
 
 #[wasm_bindgen]
@@ -105,6 +122,7 @@ mod blueprint_tables {
 }
 
 mod air_drag;
+mod articulation;
 mod generated_blueprint_schema;
 mod wasm_global;
 
@@ -317,9 +335,6 @@ pub(crate) use unit_action::*;
 mod projectile;
 #[allow(unused_imports)]
 pub(crate) use projectile::*;
-mod turret_spring;
-#[allow(unused_imports)]
-pub(crate) use turret_spring::*;
 mod deposits;
 #[allow(unused_imports)]
 pub(crate) use deposits::*;

@@ -35,7 +35,10 @@ import {
 } from './lineOfSight';
 import {
   getProjectileLaunchSpeed,
+  resolveWeaponEmissionSocket,
   resolveWeaponWorldMount,
+  writeTurretArticulationParentYaw,
+  type TurretArticulationParentYaw,
 } from './combatUtils';
 import {
   getEmitterAttackTaskTargetId,
@@ -81,8 +84,10 @@ import {
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
+  CT_TURRET_CFG_YAW_CONTINUOUS,
   CT_TURRET_CFG_NO_AUTO_ACQUIRE,
   CT_TURRET_CFG_CONSTANT_SPEED_LEAD,
+  CT_TURRET_CFG_HOST_YAW_ASSIST,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
@@ -126,6 +131,7 @@ import {
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _sensorSourcePos = { x: 0, y: 0, z: 0 };
+const _stampParentYaw: TurretArticulationParentYaw = { yaw: 0, velocity: 0 };
 
 function getHostLockOnMasks(entity: Entity): LockOnMasks {
   if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
@@ -159,6 +165,8 @@ export type CombatTargetingStateViews = {
   pitch: Float32Array;
   angularVelocity: Float32Array;
   pitchVelocity: Float32Array;
+  hostPieceYaw: Float32Array;
+  hostPieceYawVelocity: Float32Array;
   aimHasSolution: Uint8Array;
   aimYaw: Float32Array;
   aimPitch: Float32Array;
@@ -234,6 +242,15 @@ const _mountReadContext: CombatTargetingEntityReadContext = {
 let _mountReadEntity: Entity | null = null;
 let _mountReadTick = -1;
 let _mountReadSim: SimWasm | null = null;
+
+function invalidateCombatTargetingMountReadContext(): void {
+  _mountReadEntity = null;
+  _mountReadTick = -1;
+  _mountReadSim = null;
+  _mountReadContext.slot = -1;
+  _mountReadContext.turretBase = -1;
+  _mountReadContext.turretCount = 0;
+}
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -448,6 +465,12 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     pitch: new Float32Array(buffer, targeting.turretPitchPtr(), length),
     angularVelocity: new Float32Array(buffer, targeting.turretAngularVelocityPtr(), length),
     pitchVelocity: new Float32Array(buffer, targeting.turretPitchVelocityPtr(), length),
+    hostPieceYaw: new Float32Array(buffer, targeting.turretHostPieceYawPtr(), length),
+    hostPieceYawVelocity: new Float32Array(
+      buffer,
+      targeting.turretHostPieceYawVelocityPtr(),
+      length,
+    ),
     aimHasSolution: new Uint8Array(buffer, targeting.turretBallisticHasSolutionPtr(), length),
     aimYaw: new Float32Array(buffer, targeting.turretBallisticYawPtr(), length),
     aimPitch: new Float32Array(buffer, targeting.turretBallisticPitchPtr(), length),
@@ -711,6 +734,51 @@ export function readCombatTargetingTurretMountKinematicsFromContextInto(
   return true;
 }
 
+/** Replace one already-stamped mount row with the host's post-aim piece pose.
+ * Rust owns the targeting FSM, but a host piece tree is an authoritative input
+ * just like chassis position. Keeping this write at the slab boundary avoids
+ * teaching the targeting kernel about every host skeleton implementation. */
+export function writeCombatTargetingTurretMountKinematicsInto(
+  entity: Entity,
+  turretIndex: number,
+  currentTick: number,
+  position: { x: number; y: number; z: number },
+  velocity: { x: number; y: number; z: number },
+): boolean {
+  const context = getCombatTargetingMountReadContext(entity, currentTick);
+  if (context === null) return false;
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const idx = context.turretBase + turretIndex;
+  const views = context.views;
+  views.mountX[idx] = position.x;
+  views.mountY[idx] = position.y;
+  views.mountZ[idx] = position.z;
+  views.mountVx[idx] = velocity.x;
+  views.mountVy[idx] = velocity.y;
+  views.mountVz[idx] = velocity.z;
+  views.worldPosTick[idx] = currentTick;
+  return true;
+}
+
+/** Publish the host-piece servo beside its owning turret before the fixed-tick
+ * presentation capture. This state affects simulation sockets first; the Rust
+ * history only resamples those adjacent authoritative endpoints for display. */
+export function writeCombatTargetingTurretHostPiecePoseInto(
+  entity: Entity,
+  turretIndex: number,
+  currentTick: number,
+  yaw: number,
+  yawVelocity: number,
+): boolean {
+  const context = getCombatTargetingMountReadContext(entity, currentTick);
+  if (context === null) return false;
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const idx = context.turretBase + turretIndex;
+  context.views.hostPieceYaw[idx] = yaw;
+  context.views.hostPieceYawVelocity[idx] = yawVelocity;
+  return true;
+}
+
 function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
   const cached = edge === 'acquire' ? range.acquireSq : range.releaseSq;
   if (cached !== undefined) return cached;
@@ -783,6 +851,12 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.targeting.requiredIntel === 'fullSight') {
     f |= CT_TURRET_CFG_REQUIRES_FULL_SIGHT;
   }
+  if (turret.config.articulation.yaw.continuous) {
+    f |= CT_TURRET_CFG_YAW_CONTINUOUS;
+  }
+  if (turret.config.articulation.hostAssist === 'requestYaw') {
+    f |= CT_TURRET_CFG_HOST_YAW_ASSIST;
+  }
   switch (turret.config.targeting.engagement.rangeVolume) {
     case 'turret-range-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED;
@@ -804,16 +878,22 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
-const _shotLaunchMediumMount = { x: 0, y: 0, z: 0 };
+const _shotLaunchMediumSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
 // Reused for every projectile turret stamped in a tick. The values are
 // overwritten before each entity's turret loop, so this removes one short-
 // lived options DTO per turret without sharing state across computations.
 const _shotLaunchMediumContext: {
   currentTick: number | undefined;
+  dtMs: number | undefined;
   unitGroundZ: number | undefined;
   surfaceN: { nx: number; ny: number; nz: number } | undefined;
 } = {
   currentTick: undefined,
+  dtMs: undefined,
   unitGroundZ: undefined,
   surfaceN: undefined,
 };
@@ -1022,8 +1102,10 @@ function stampCombatTargetingEntityInto(
   );
 
   if (turrets === null) return slot;
-  const currentTick = world.getTick();
-  _shotLaunchMediumContext.currentTick = currentTick;
+  // This turret's row has not been written by setTurret yet. Deliberately
+  // bypass the slab lookup so a recycled slot cannot supply a same-numbered
+  // tick's stale mount while we classify the new QueryWeapon launch medium.
+  _shotLaunchMediumContext.currentTick = undefined;
   _shotLaunchMediumContext.unitGroundZ = groundZ;
   _shotLaunchMediumContext.surfaceN = surfaceN;
   const trajectoryMode = combat?.trajectoryMode ?? 'auto';
@@ -1042,24 +1124,25 @@ function stampCombatTargetingEntityInto(
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
     const projectileMass = projectileShot ? projectileShot.mass : 0;
     // worldPos is a downstream cache and is still unset on a freshly spawned
-    // host. Resolve the current authoritative mount before choosing the shot's
+    // host. Resolve the current QueryWeapon socket before choosing the shot's
     // launch medium, otherwise an underwater first tick looks like air and a
     // torpedo's powered-reach cap collapses to zero.
-    const launchMount = projectileShot
-      ? resolveWeaponWorldMount(
+    const launchSocket = projectileShot
+      ? resolveWeaponEmissionSocket(
           entity,
           t,
           i,
+          t.emissionLaneIndex,
           rotCos,
           rotSin,
           _shotLaunchMediumContext,
-          _shotLaunchMediumMount,
+          _shotLaunchMediumSocket,
         )
       : undefined;
     const launchMedium = projectileShot
       ? getShotLocomotionMediumAtHeight(
           projectileShot.shotLocomotion,
-          launchMount!.z,
+          launchSocket!.position.z,
           WATER_LEVEL,
         )
       : undefined;
@@ -1107,6 +1190,11 @@ function stampCombatTargetingEntityInto(
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
       t.angularVelocity, t.pitchVelocity,
+      writeTurretArticulationParentYaw(entity, t, _stampParentYaw).yaw,
+      t.config.articulation.yaw.minAngle,
+      t.config.articulation.yaw.maxAngle,
+      t.config.articulation.pitch.minAngle,
+      t.config.articulation.pitch.maxAngle,
       fireMaxAcq, fireMaxRel,
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
@@ -1160,6 +1248,7 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   // shrunk turret arrays naturally disappear; kernels gate on those
   // two and treat unmarked slots as empty.
   targeting.beginStamp();
+  invalidateCombatTargetingMountReadContext();
   if (wind !== null) {
     targeting.setWind(wind.x, wind.y, wind.z);
   } else {
@@ -1182,6 +1271,10 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
     const pulse = scanPulses[i];
     targeting.addSensorObservationCircle(pulse.playerId, pulse.x, pulse.y, pulse.radius);
   }
+  // Mount queries made while stamping can only see the previous row shape.
+  // Drop that tiny read cache now that setTurret has established this tick's
+  // counts, otherwise a post-aim host-piece overwrite can reuse turretCount=0.
+  invalidateCombatTargetingMountReadContext();
 }
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };

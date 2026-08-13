@@ -20,11 +20,7 @@ import type { Entity, EntityId } from '../sim/types';
 import {
   applySolarCollectorPetalPose,
 } from './SolarCollectorMesh3D';
-import type {
-  ConstructionEmitterRig,
-} from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
-import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 import {
@@ -58,12 +54,10 @@ const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
 
-const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
 const BUILDING_RIG_IDLE_EPSILON = 0.001;
 
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
-  private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly resourcePylonAnimator: BuildingResourcePylonAnimator3D;
   private solarBuildings: AnimatedBuildingEntry[] = [];
   private solarBuildingIndexById = new IndexedEntityIdMap<number>();
@@ -77,10 +71,6 @@ export class BuildingAnimationController3D {
   private extractorBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeExtractorBuildings: AnimatedBuildingEntry[] = [];
   private activeExtractorBuildingIndexById = new IndexedEntityIdMap<number>();
-  private factoryBuildings: AnimatedBuildingEntry[] = [];
-  private factoryBuildingIndexById = new IndexedEntityIdMap<number>();
-  private activeFactoryBuildings: AnimatedBuildingEntry[] = [];
-  private activeFactoryBuildingIndexById = new IndexedEntityIdMap<number>();
   private radarBuildings: AnimatedBuildingEntry[] = [];
   private radarBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeRadarBuildings: AnimatedBuildingEntry[] = [];
@@ -121,12 +111,10 @@ export class BuildingAnimationController3D {
 
   constructor(
     clientViewState: ClientViewState,
-    constructionVisuals: ConstructionVisualController3D,
     resourcePylonFlows: ResourcePylonFlowController3D,
     metalDeposits: readonly MetalDeposit[],
   ) {
     this.clientViewState = clientViewState;
-    this.constructionVisuals = constructionVisuals;
     this.resourcePylonAnimator = new BuildingResourcePylonAnimator3D(
       clientViewState,
       resourcePylonFlows,
@@ -150,15 +138,6 @@ export class BuildingAnimationController3D {
       this.updateExtractorAnimationQueue(entry);
     }
     this.resourcePylonAnimator.register(entity, mesh);
-    if (mesh.isFactoryConstructionHost) {
-      const entry = addAnimatedBuildingEntry(
-        this.factoryBuildings,
-        this.factoryBuildingIndexById,
-        entity,
-        mesh,
-      );
-      this.updateFactoryAnimationQueue(entry);
-    }
     if (mesh.radarRig) {
       const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
@@ -182,15 +161,6 @@ export class BuildingAnimationController3D {
       const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
-    if (mesh.isFactoryConstructionHost) {
-      const entry = addAnimatedBuildingEntry(
-        this.factoryBuildings,
-        this.factoryBuildingIndexById,
-        entity,
-        mesh,
-      );
-      this.updateFactoryAnimationQueue(entry);
-    }
   }
 
   /** Detach the current mesh while retaining per-entity animation phase. */
@@ -202,8 +172,6 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
     this.resourcePylonAnimator.unregister(id);
-    removeAnimatedBuildingEntry(this.factoryBuildings, this.factoryBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
   }
@@ -211,7 +179,6 @@ export class BuildingAnimationController3D {
   /** Full teardown: detach the mesh and forget all entity animation state. */
   unregister(id: EntityId): void {
     this.detach(id);
-    this.constructionVisuals.unregister(id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
@@ -241,32 +208,6 @@ export class BuildingAnimationController3D {
     this.updateActiveExtractorAnimations(spinDt);
     this.resourcePylonAnimator.updateActive(spinDt);
 
-    for (let i = 0; i < this.activeFactoryBuildings.length;) {
-      const entry = this.activeFactoryBuildings[i];
-      const { entity, mesh } = entry;
-      const detailsReady = mesh.buildingCachedDetailsReady === true;
-      let emitterVisualActive = false;
-      forEachConstructionEmitterRig(mesh, entity, (rig) => {
-        if (this.constructionVisuals.updateFactoryConstructionEmitter(
-          rig,
-          entity,
-          detailsReady,
-          currentDtMs,
-        )) {
-          emitterVisualActive = true;
-        }
-      });
-      if (this.factoryBuildSpotActive(entry) || emitterVisualActive) {
-        i++;
-      } else {
-        removeAnimatedBuildingEntry(
-          this.activeFactoryBuildings,
-          this.activeFactoryBuildingIndexById,
-          entry.id,
-        );
-      }
-    }
-
     this.updateActiveRadarAnimations(spinDt);
   }
 
@@ -278,8 +219,6 @@ export class BuildingAnimationController3D {
     clearAnimatedBuildingEntries(this.extractorBuildings, this.extractorBuildingIndexById);
     clearAnimatedBuildingEntries(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById);
     this.resourcePylonAnimator.destroy();
-    clearAnimatedBuildingEntries(this.factoryBuildings, this.factoryBuildingIndexById);
-    clearAnimatedBuildingEntries(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById);
     clearAnimatedBuildingEntries(this.radarBuildings, this.radarBuildingIndexById);
     clearAnimatedBuildingEntries(this.activeRadarBuildings, this.activeRadarBuildingIndexById);
     this.extractorRotorPhases.clear();
@@ -580,44 +519,6 @@ export class BuildingAnimationController3D {
     return this.radarAnimationNeedsFrame(entry);
   }
 
-  private updateFactoryAnimationQueue(entry: AnimatedBuildingEntry): void {
-    updateAnimatedBuildingQueue(
-      this.activeFactoryBuildings,
-      this.activeFactoryBuildingIndexById,
-      entry,
-      this.factoryAnimationNeedsFrame(entry),
-    );
-  }
-
-  private factoryAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
-    return this.factoryBuildSpotActive(entry) ||
-      this.factoryConstructionEmitterDraining(entry);
-  }
-
-  private factoryBuildSpotActive(entry: AnimatedBuildingEntry): boolean {
-    const { entity, mesh } = entry;
-    const factory = entity.factory;
-    return mesh.buildingCachedDetailsReady === true &&
-      factory !== null &&
-      !!factory.selectedUnitBlueprintId &&
-      factory.isProducing;
-  }
-
-  private factoryConstructionEmitterDraining(entry: AnimatedBuildingEntry): boolean {
-    let draining = false;
-    forEachConstructionEmitterRig(entry.mesh, entry.entity, (rig) => {
-      if (
-        rig.smoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
-        rig.smoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON ||
-        rig.displaySmoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
-        rig.displaySmoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON
-      ) {
-        draining = true;
-      }
-    });
-    return draining;
-  }
-
   private updateSolarCollectorAnimation(
     m: EntityMesh,
     e: Entity,
@@ -745,23 +646,4 @@ function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
   if (!Number.isFinite(phase) || phase <= 0) return 0;
   const alignedTurn = Math.ceil((phase - 1e-6) / twoPi);
   return alignedTurn * twoPi;
-}
-
-/** Run `fn` over every construction-emitter rig mounted on this building. The
- *  fabricator carries TWO (its metal + energy construction pylons, each a
- *  single-resource rig); legacy single-emitter hosts carry one. Driving all of
- *  them keeps both pylons spinning + spraying their own resource. */
-function forEachConstructionEmitterRig(
-  mesh: EntityMesh,
-  entity: Entity,
-  fn: (rig: ConstructionEmitterRig) => void,
-): void {
-  const combatTurrets = entity.combat?.turrets;
-  if (!combatTurrets) return;
-  for (let i = 0; i < combatTurrets.length && i < mesh.turrets.length; i++) {
-    if (combatTurrets[i].presentation.constructionEmitter) {
-      const rig = mesh.turrets[i].constructionEmitter;
-      if (rig) fn(rig);
-    }
-  }
 }

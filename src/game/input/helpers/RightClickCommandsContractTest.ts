@@ -314,7 +314,7 @@ export function runRightClickCommandsContractTest(): void {
     { type: 'repair', x: 60, y: 0, targetId: damagedAlly.id },
   ]);
   repairer.unit!.unitBlueprintId = 'unitCommander';
-  repairer.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  repairer.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID, workStation: null };
   assertContract(
     buildRepairCommandForTarget(damagedAlly, repairer, 4, true) === null,
     'shift-appending an already-queued repair must be dropped',
@@ -359,7 +359,7 @@ export function runRightClickCommandsContractTest(): void {
     { type: 'build', x: 100, y: 100, buildingId: buildingShell.id },
   ]);
   assistingBuilder.unit!.unitBlueprintId = 'unitCommander';
-  assistingBuilder.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  assistingBuilder.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID, workStation: null };
   assertContract(
     buildRepairCommandForTarget(buildingShell, assistingBuilder, 4, true) === null,
     'shift-appending a repair that duplicates a queued build assist must be dropped',
@@ -371,10 +371,10 @@ export function runRightClickCommandsContractTest(): void {
   // keep plain repair.
   const commander = combatant(50, 1, 100, 0, 0);
   commander.unit!.unitBlueprintId = 'unitCommander';
-  commander.builder = { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  commander.builder = { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID, workStation: null };
   const damagedConstructor = combatant(51, 1, 40, 10, 10);
   damagedConstructor.unit!.unitBlueprintId = 'unitCommander';
-  damagedConstructor.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  damagedConstructor.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID, workStation: null };
   const damagedTank = combatant(52, 1, 40, 80, 10);
   const assistSource = {
     getUnits: () => [commander, damagedConstructor, damagedTank],

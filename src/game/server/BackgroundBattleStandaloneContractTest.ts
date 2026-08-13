@@ -16,6 +16,7 @@ function assertContract(condition: boolean, message: string): void {
  * surface-normal view. Keeping this harness pool-free makes the CAP contract
  * runnable without booting the renderer or WASM physics worker. */
 function createPhysicsHarness(): PhysicsEngine3D {
+  let nextBodySlot = 0;
   return {
     // The spawn path checks pool headroom before creating bodies; the
     // harness pool is unbounded, so it always has room.
@@ -33,6 +34,7 @@ function createPhysicsHarness(): PhysicsEngine3D {
     ) {
       const surfaceNormal = { nx: 0, ny: 0, nz: 1 };
       return {
+        slot: nextBodySlot++,
         x,
         y,
         z: z ?? 0,

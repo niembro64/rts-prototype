@@ -12,6 +12,7 @@ import {
 import { resourceMovementSystem } from './resourceMovement';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from './types';
 import { setUnitActions } from './unitActions';
+import { updateArticulatedWorkStations } from './workStationSystem';
 import { WorldState } from './WorldState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -26,6 +27,17 @@ function assertNear(actual: number, expected: number, message: string): void {
       `[resource movement conformance] ${message}: expected ${expected}, got ${actual}`,
     );
   }
+}
+
+function alignArticulatedWorkStation(world: WorldState, entity: Entity): void {
+  const station = entity.builder?.workStation ?? null;
+  for (let step = 0; station !== null && !station.aligned && step < 40; step++) {
+    updateArticulatedWorkStations(world, 100);
+  }
+  assertContract(
+    station === null || station.aligned,
+    `articulated QueryWork station must reach its target before work; station=${JSON.stringify(station)}`,
+  );
 }
 
 function makeCompletedOpenBuilding(entity: Entity, hp: number): void {
@@ -176,7 +188,10 @@ export function runResourceMovementConformanceContractTest(): void {
   const builder = buildWorld.createUnitFromBlueprint(220, 220, playerId, 'unitCommander', {
     allocateSubEntityIds: false,
   });
-  const buildTarget = buildWorld.createBuilding(235, 220, 40, 40, 40, playerId);
+  // Keep the fixture outside the Commander's body/arm envelope. A target
+  // embedded inside the host can require a physically impossible backwards
+  // forearm pose and is not a valid QueryWork alignment fixture.
+  const buildTarget = buildWorld.createBuilding(335, 220, 40, 40, 40, playerId);
   buildTarget.buildable = createBuildable({ energy: 12, metal: 8 });
   // The head build order is what makes a site the builder's current work;
   // builder.currentBuildTarget is its per-tick mirror, not an input.
@@ -192,9 +207,13 @@ export function runResourceMovementConformanceContractTest(): void {
   buildWorld.addEntity(buildTarget);
 
   resourceMovementSystem.beginTick(buildWorld);
+  alignArticulatedWorkStation(buildWorld, builder);
   distributeEnergy(buildWorld, 1000, createEnergyBuffers());
   const constructionMovements = buildWorld.resourceMovements.filter((movement) => movement.reason === 'construction');
-  assertContract(constructionMovements.length >= 2, 'construction funding must publish resource movements');
+  assertContract(
+    constructionMovements.length >= 2,
+    `construction funding must publish resource movements; station=${JSON.stringify(builder.builder?.workStation)}`,
+  );
   assertContract(
     constructionMovements.every((movement) => movement.direction === 'outbound'),
     'construction funding must publish outbound accounting movements',
@@ -229,7 +248,7 @@ export function runResourceMovementConformanceContractTest(): void {
   const commander = repairWorld.createUnitFromBlueprint(260, 260, playerId, 'unitCommander', {
     allocateSubEntityIds: false,
   });
-  const damaged = repairWorld.createUnitFromBlueprint(275, 260, playerId, 'unitJackal', {
+  const damaged = repairWorld.createUnitFromBlueprint(360, 260, playerId, 'unitJackal', {
     allocateSubEntityIds: false,
   });
   assertContract(commander.unit !== null && damaged.unit !== null, 'repair test units must have unit components');
@@ -245,6 +264,7 @@ export function runResourceMovementConformanceContractTest(): void {
   repairWorld.addEntity(damaged);
 
   resourceMovementSystem.beginTick(repairWorld);
+  alignArticulatedWorkStation(repairWorld, commander);
   const repairEnergyBefore = economyManager.getEconomy(playerId)?.stockpile.curr;
   const repairMetalBefore = economyManager.getEconomy(playerId)?.metal.stockpile.curr;
   distributeEnergy(repairWorld, 1000, createEnergyBuffers());
@@ -268,7 +288,7 @@ export function runResourceMovementConformanceContractTest(): void {
     repairWorld,
     playerId,
     'buildingSolar',
-    278,
+    380,
     260,
   );
   damagedStructure.building!.maxHp = 10_000;
@@ -295,6 +315,7 @@ export function runResourceMovementConformanceContractTest(): void {
     targetId: damagedStructure.id,
   }]);
   resourceMovementSystem.beginTick(repairWorld);
+  alignArticulatedWorkStation(repairWorld, commander);
   distributeEnergy(repairWorld, 1000, createEnergyBuffers());
   const structureRepairMovements = repairWorld.resourceMovements.filter(
     (movement) => movement.reason === 'repair' && movement.targetEntityId === damagedStructure.id,

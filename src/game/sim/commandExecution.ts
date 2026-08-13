@@ -73,7 +73,7 @@ import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   isBallisticArcWeapon,
-  updateWeaponWorldKinematics,
+  resolveWeaponEmissionSocket,
 } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
@@ -156,7 +156,11 @@ import {
   unitBlueprintHasBarBomberAttackBuildingGroundRule,
 } from './unitCommandCapabilities';
 
-const _dgunMount = { x: 0, y: 0, z: 0 };
+const _dgunEmissionSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
 const MIN_GROUP_FORMATION_SPACING = 40;
 const COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER = 2.25;
 
@@ -1583,12 +1587,13 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   const { cos, sin } = getTransformCosSin(commander.transform);
 
-  // Resolve the d-gun's turret mount center. Surface normal comes from
+  // Resolve the D-gun's selected QueryWeapon socket. Surface normal comes from
   // the unit ground normal EMA (updateUnitGroundNormal) so the slope-tilted
   // mount doesn't snap when the commander crosses a terrain triangle
   // edge.
-  const mount = updateWeaponWorldKinematics(
+  const emission = resolveWeaponEmissionSocket(
     commander, turretDisruptor, dgunIdx,
+    turretDisruptor.emissionLaneIndex,
     cos, sin,
     {
       currentTick: ctx.world.getTick(),
@@ -1596,11 +1601,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
       unitGroundZ: undefined,
       surfaceN: commander.unit !== null ? commander.unit.surfaceNormal : undefined,
     },
-    _dgunMount,
+    _dgunEmissionSocket,
   );
-  const spawnX = mount.x;
-  const spawnY = mount.y;
-  const spawnZ = mount.z;
+  const spawnX = emission.position.x;
+  const spawnY = emission.position.y;
+  const spawnZ = emission.position.z;
 
   // D-gun is a terrain-following wave: it travels horizontally in the
   // commanded direction while vertical thrust rides the local terrain.
@@ -1619,9 +1624,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   if (commander.unit && turretDisruptor.config.addTurretVelocityToEmissionLaunch) {
     // Manual D-gun shots update the same turret kinematics cache used
     // by automated weapons above, so inherited horizontal velocity is
-    // the turret mount center's own motion.
-    velocityX += turretDisruptor.worldVelocity.x;
-    velocityY += turretDisruptor.worldVelocity.y;
+    // the muzzle socket's own motion.
+    velocityX += emission.velocity.x;
+    velocityY += emission.velocity.y;
   }
 
   // Create D-gun projectile

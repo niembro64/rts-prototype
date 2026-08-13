@@ -16,7 +16,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import {
   addActiveAnimatedBuildingEntry,

@@ -102,7 +102,7 @@ export type SpinConfig = {
 // `singleConeBarrel` — one tapered pilot-light cone on the firing axis:
 // full `barrelThickness` at the base near the head, narrowing to a point.
 // Beam/laser turrets show it only while idle; a live ray replaces it and
-// still originates at the turret mount center.
+// originates at the matching QueryWeapon muzzle.
 // `complexSingleEmitter` — non-cylindrical shield SPHERE emitter
 // (the glowing bubble; head hidden, drawn by ShieldRenderer3D).
 // `shieldPanelEmitter` — shield PANEL emitter: the turret head

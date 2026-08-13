@@ -76,6 +76,9 @@ pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u32 = 1 << 14;
 /// FULL sight (not radar-only). Direct beams and precision line weapons set
 /// it; artillery / missiles that author radar fire leave it clear.
 pub const CT_TURRET_CFG_REQUIRES_FULL_SIGHT: u32 = 1 << 15;
+/// The station's local yaw joint has no hard stops. When clear, targeting
+/// must prove the solved world yaw lies inside the authored local envelope.
+pub const CT_TURRET_CFG_YAW_CONTINUOUS: u32 = 1 << 16;
 /// Host-only and slaved mounts may retain/validate an assigned task but never
 /// enter independent auto-acquisition when that task is absent or rejected.
 pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
@@ -83,6 +86,9 @@ pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
 /// Unlike ballistic aim this uses no gravity or drag, but writes through the
 /// same reusable aim-pose fields consumed by turret rotation and firing.
 pub const CT_TURRET_CFG_CONSTANT_SPEED_LEAD: u32 = 1 << 18;
+/// A bounded local-yaw station may ask a mobile parent joint to absorb its
+/// residual yaw, making targets outside the child's initial traverse reachable.
+pub const CT_TURRET_CFG_HOST_YAW_ASSIST: u32 = 1 << 19;
 /// Exhaustive emission trajectory routes. The source row is selected from the
 /// turret mount point each tick; unit/building targets may occupy both columns,
 /// while shots and target turrets occupy exactly one. True cells are an
@@ -332,6 +338,18 @@ pub(crate) struct CombatTargetingPool {
     // to compute hasTurretRotationWork without crossing back into JS.
     pub(crate) turret_angular_velocity: Vec<f32>,
     pub(crate) turret_pitch_velocity: Vec<f32>,
+    // Mechanical target-admission envelope. Parent yaw is stamped from the
+    // same host-piece resolver the child motor consumes.
+    pub(crate) turret_parent_yaw: Vec<f64>,
+    pub(crate) turret_yaw_min: Vec<f64>,
+    pub(crate) turret_yaw_max: Vec<f64>,
+    pub(crate) turret_pitch_min: Vec<f64>,
+    pub(crate) turret_pitch_max: Vec<f64>,
+    // Authoritative host-piece pose carried beside the owning turret. Bot
+    // waists use this independently from the faster logical turret axes so
+    // presentation can interpolate the exact combat socket between ticks.
+    pub(crate) turret_host_piece_yaw: Vec<f32>,
+    pub(crate) turret_host_piece_yaw_velocity: Vec<f32>,
     pub(crate) turret_state: Vec<u8>,
     pub(crate) turret_target_id: Vec<i32>,
     // Host-authored attack task for this mount. A failed task lock falls back
@@ -530,6 +548,13 @@ impl CombatTargetingPool {
             turret_pitch: Vec::new(),
             turret_angular_velocity: Vec::new(),
             turret_pitch_velocity: Vec::new(),
+            turret_parent_yaw: Vec::new(),
+            turret_yaw_min: Vec::new(),
+            turret_yaw_max: Vec::new(),
+            turret_pitch_min: Vec::new(),
+            turret_pitch_max: Vec::new(),
+            turret_host_piece_yaw: Vec::new(),
+            turret_host_piece_yaw_velocity: Vec::new(),
             turret_state: Vec::new(),
             turret_target_id: Vec::new(),
             turret_task_target_id: Vec::new(),
@@ -685,6 +710,18 @@ impl CombatTargetingPool {
             self.turret_pitch.resize(turret_needed, 0.0);
             self.turret_angular_velocity.resize(turret_needed, 0.0);
             self.turret_pitch_velocity.resize(turret_needed, 0.0);
+            self.turret_parent_yaw.resize(turret_needed, 0.0);
+            self.turret_yaw_min
+                .resize(turret_needed, -core::f64::consts::PI);
+            self.turret_yaw_max
+                .resize(turret_needed, core::f64::consts::PI);
+            self.turret_pitch_min
+                .resize(turret_needed, -core::f64::consts::FRAC_PI_2);
+            self.turret_pitch_max
+                .resize(turret_needed, core::f64::consts::FRAC_PI_2);
+            self.turret_host_piece_yaw.resize(turret_needed, 0.0);
+            self.turret_host_piece_yaw_velocity
+                .resize(turret_needed, 0.0);
             self.turret_state
                 .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
@@ -1250,6 +1287,11 @@ pub fn combat_targeting_set_turret(
     pitch: f32,
     angular_velocity: f32,
     pitch_velocity: f32,
+    parent_yaw: f64,
+    yaw_min: f64,
+    yaw_max: f64,
+    pitch_min: f64,
+    pitch_max: f64,
     fire_max_acquire_sq: f64,
     fire_max_release_sq: f64,
     fire_min_acquire_sq: f64,
@@ -1303,6 +1345,11 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch[global_idx] = pitch;
     pool.turret_angular_velocity[global_idx] = angular_velocity;
     pool.turret_pitch_velocity[global_idx] = pitch_velocity;
+    pool.turret_parent_yaw[global_idx] = parent_yaw;
+    pool.turret_yaw_min[global_idx] = yaw_min;
+    pool.turret_yaw_max[global_idx] = yaw_max;
+    pool.turret_pitch_min[global_idx] = pitch_min;
+    pool.turret_pitch_max[global_idx] = pitch_max;
     pool.turret_task_target_id[global_idx] = task_target_id;
     pool.turret_task_point_active[global_idx] = task_point_active;
     pool.turret_slaved_to_mount_index[global_idx] = slaved_to_mount_index;
@@ -1921,6 +1968,16 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(
     combat_targeting_turret_pitch_velocity_ptr,
     turret_pitch_velocity,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_host_piece_yaw_ptr,
+    turret_host_piece_yaw,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_host_piece_yaw_velocity_ptr,
+    turret_host_piece_yaw_velocity,
     f32
 );
 combat_targeting_ptr_export!(combat_targeting_turret_state_ptr, turret_state, u8);

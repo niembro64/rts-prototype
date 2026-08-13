@@ -48,6 +48,24 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 type WaypointSub = FactorySub['rally'];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 
+function writeDecodedWorkStationWireFields(
+  unit: UnitSub,
+  values: Float64Array,
+  base: number,
+): void {
+  const pose = unit.workStation ?? null;
+  if (pose === null) return;
+  values[base + 68] = 1;
+  values[base + 69] = pose.localYaw;
+  values[base + 70] = pose.localPitch;
+  values[base + 71] = pose.localYawVelocity;
+  values[base + 72] = pose.localPitchVelocity;
+  values[base + 73] = pose.targetActive ? 1 : 0;
+  values[base + 74] = pose.aligned ? 1 : 0;
+  values[base + 75] = pose.targetWorldYaw;
+  values[base + 76] = pose.targetWorldPitch;
+}
+
 function createEmptyUnitSub(): UnitSub {
   return {
     unitBlueprintCode: null,
@@ -73,6 +91,7 @@ function createEmptyUnitSub(): UnitSub {
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
+    workStation: null,
     actions: null,
     turrets: null,
     build: null,
@@ -277,6 +296,8 @@ function appendDecodedTurretWireRows(
     values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentShieldRange ?? 0;
     values[base + 10] = src.active === false ? 1 : 0;
+    values[base + 11] = angular.hostYaw ?? angular.rot;
+    values[base + 12] = angular.hostYawVel ?? 0;
   }
   return { offset, count };
 }
@@ -415,6 +436,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.isCommander = null;
     u.buildTargetId = null;
     u.buildTargetIdPresent = false;
+    u.workStation = null;
     u.actions = null;
     u.turrets = null;
     u.build = null;
@@ -585,6 +607,7 @@ const ACTION_FLAG_WAIT_GROUP_ID = 1 << 8;
 const TURRET_FLAG_TARGET_ID = 1 << 0;
 const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
 const TURRET_FLAG_INACTIVE = 1 << 2;
+const TURRET_FLAG_HOST_PIECE_YAW = 1 << 3;
 
 const WAYPOINT_FLAG_POS_Z = 1 << 0;
 
@@ -916,6 +939,7 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
     values[base + 66] = 1;
     values[base + 67] = unit.builderPriorityLow ? 1 : 0;
   }
+  writeDecodedWorkStationWireFields(unit, values, base);
   return true;
 }
 
@@ -1147,6 +1171,7 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
     values[base + 66] = 1;
     values[base + 67] = unit.builderPriorityLow ? 1 : 0;
   }
+  writeDecodedWorkStationWireFields(unit, values, base);
   return true;
 }
 
@@ -1659,6 +1684,12 @@ function readUnitTurretDeltaByteEntity(
     const vel = reader.readVarInt();
     const pitch = reader.readVarInt();
     const pitchVel = reader.readVarInt();
+    const hostYaw = (flags & TURRET_FLAG_HOST_PIECE_YAW) !== 0
+      ? reader.readVarInt()
+      : rot;
+    const hostYawVel = (flags & TURRET_FLAG_HOST_PIECE_YAW) !== 0
+      ? reader.readVarInt()
+      : 0;
     const turret: NetworkServerSnapshotTurret | null = turrets !== null
       ? {
           turret: {
@@ -1668,6 +1699,8 @@ function readUnitTurretDeltaByteEntity(
               vel,
               pitch,
               pitchVel,
+              hostYaw,
+              hostYawVel,
             },
           },
           state,
@@ -1681,6 +1714,8 @@ function readUnitTurretDeltaByteEntity(
     turretWireValues[turretWireBase + 1] = vel;
     turretWireValues[turretWireBase + 2] = pitch;
     turretWireValues[turretWireBase + 3] = pitchVel;
+    turretWireValues[turretWireBase + 11] = hostYaw;
+    turretWireValues[turretWireBase + 12] = hostYawVel;
     turretWireValues[turretWireBase + 4] = turretBlueprintCode;
     turretWireValues[turretWireBase + 5] = state;
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) {
@@ -1825,6 +1860,21 @@ function unpackUnit(row: unknown[]): UnitSub {
   if (i < row.length) {
     unit.carrierSpawnEnabled = (row[i++] as number) !== 0;
   }
+  if (i < row.length) {
+    const extensions = row[i++] as number;
+    if ((extensions & 1) !== 0) {
+      unit.workStation = {
+        localYaw: row[i++] as number,
+        localPitch: row[i++] as number,
+        localYawVelocity: row[i++] as number,
+        localPitchVelocity: row[i++] as number,
+        targetActive: (row[i++] as number) !== 0,
+        aligned: (row[i++] as number) !== 0,
+        targetWorldYaw: row[i++] as number,
+        targetWorldPitch: row[i++] as number,
+      };
+    }
+  }
   return unit;
 }
 
@@ -1935,6 +1985,13 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
     pitchVel: row[6] as number,
   };
   let i = 7;
+  if ((flags & TURRET_FLAG_HOST_PIECE_YAW) !== 0) {
+    angular.hostYaw = row[i++] as number;
+    angular.hostYawVel = row[i++] as number;
+  } else {
+    angular.hostYaw = angular.rot;
+    angular.hostYawVel = 0;
+  }
   const turret: NetworkServerSnapshotTurret = {
     turret: { turretBlueprintCode, angular },
     state,

@@ -84,14 +84,17 @@ pub const SNAPSHOT_ENTITY_TYPE_TOWER: u8 = 3;
 
 // Encoder turret scratch — JS pre-fills with already-quantized
 // turret values, then the encoder reads from it when emitting the
-// turrets array. Layout per turret (10 f64 = 80 bytes):
-//   [0..4]  qRot(rotation, vel, pitch, pitchVel)
+// turrets array. Layout per turret (13 f64 = 104 bytes):
+//   [0..3]  qRot(rotation, vel, pitch, pitchVel)
 //   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
 //   [5]     state code (TurretStateCode as f64)
 //   [6]     has_target_id (0 or 1)
 //   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
 //   [8]     has_shield_range (0 or 1)
 //   [9]     shield_range (raw value; ignored when has_ff_range==0)
+//   [10]    inactive flag
+//   [11]    authoritative host-piece yaw (quantized rotation)
+//   [12]    host-piece yaw velocity (quantized rotation rate)
 //
 // Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
 snapshot_scratch_pool!(
@@ -102,7 +105,7 @@ snapshot_scratch_pool!(
     snapshot_encode_turret_scratch_ensure,
     f64,
     0.0,
-    SNAPSHOT_ENCODE_TURRET_STRIDE = 11,
+    SNAPSHOT_ENCODE_TURRET_STRIDE = 13,
     init 8,
     ensure(turret_count)
 );
@@ -722,6 +725,8 @@ pub fn snapshot_encode_entity_unit(
             let qvel = scratch.buf[base + 1];
             let qpitch = scratch.buf[base + 2];
             let qpitch_vel = scratch.buf[base + 3];
+            let qhost_yaw = scratch.buf[base + 11];
+            let qhost_yaw_vel = scratch.buf[base + 12];
             let turret_blueprint_code = scratch.buf[base + 4];
             let state_code = scratch.buf[base + 5];
             let has_target = scratch.buf[base + 6] != 0.0;
@@ -745,7 +750,7 @@ pub fn snapshot_encode_entity_unit(
             w.write_str("turretBlueprintCode");
             w.write_number(turret_blueprint_code);
             w.write_str("angular");
-            w.write_map_header(4);
+            w.write_map_header(6);
             w.write_str("rot");
             w.write_number(qrot);
             w.write_str("vel");
@@ -754,6 +759,10 @@ pub fn snapshot_encode_entity_unit(
             w.write_number(qpitch);
             w.write_str("pitchVel");
             w.write_number(qpitch_vel);
+            w.write_str("hostYaw");
+            w.write_number(qhost_yaw);
+            w.write_str("hostYawVel");
+            w.write_number(qhost_yaw_vel);
 
             if has_target {
                 w.write_str("targetId");
@@ -931,6 +940,8 @@ pub fn snapshot_encode_entity_building(
             let qvel = scratch.buf[base + 1];
             let qpitch = scratch.buf[base + 2];
             let qpitch_vel = scratch.buf[base + 3];
+            let qhost_yaw = scratch.buf[base + 11];
+            let qhost_yaw_vel = scratch.buf[base + 12];
             let turret_blueprint_code = scratch.buf[base + 4];
             let state_code = scratch.buf[base + 5];
             let has_target = scratch.buf[base + 6] != 0.0;
@@ -952,7 +963,7 @@ pub fn snapshot_encode_entity_building(
             w.write_str("turretBlueprintCode");
             w.write_number(turret_blueprint_code);
             w.write_str("angular");
-            w.write_map_header(4);
+            w.write_map_header(6);
             w.write_str("rot");
             w.write_number(qrot_t);
             w.write_str("vel");
@@ -961,6 +972,10 @@ pub fn snapshot_encode_entity_building(
             w.write_number(qpitch);
             w.write_str("pitchVel");
             w.write_number(qpitch_vel);
+            w.write_str("hostYaw");
+            w.write_number(qhost_yaw);
+            w.write_str("hostYawVel");
+            w.write_number(qhost_yaw_vel);
 
             if has_target {
                 w.write_str("targetId");
@@ -2148,7 +2163,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
-//   basic[9], unit[68], building[50], action[19], turret[11], waypoint[5].
+//   basic[9], unit[77], building[50], action[19], turret[13], waypoint[5].
 // hp/velocity (unit) and hp/build (building) presence is NOT stored in the SoA
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
@@ -2235,11 +2250,12 @@ pub(crate) const V6_ACTION_FLAG_WAIT_GROUP_ID: u32 = 1 << 8;
 pub(crate) const V6_TURRET_FLAG_TARGET_ID: u32 = 1 << 0;
 pub(crate) const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
 pub(crate) const V6_TURRET_FLAG_INACTIVE: u32 = 1 << 2;
+pub(crate) const V6_TURRET_FLAG_HOST_PIECE_YAW: u32 = 1 << 3;
 
 pub(crate) const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 pub(crate) const V6_BASIC_STRIDE: usize = 9;
-pub(crate) const V6_UNIT_STRIDE: usize = 68;
+pub(crate) const V6_UNIT_STRIDE: usize = 77;
 pub(crate) const V6_BUILDING_STRIDE: usize = 50;
 
 pub(crate) const V6_KIND_RAW: u32 = 0;
@@ -2553,6 +2569,7 @@ pub(crate) fn v6_is_movement_only(
             || input.unit[base + 59] != 0.0
             || input.unit[base + 61] != 0.0
             || input.unit[base + 63] != 0.0
+            || input.unit[base + 68] != 0.0
         {
             return false;
         }
@@ -2609,6 +2626,7 @@ pub(crate) fn v6_is_split_turret(
         || input.unit[base + 59] != 0.0
         || input.unit[base + 61] != 0.0
         || input.unit[base + 63] != 0.0
+        || input.unit[base + 68] != 0.0
     {
         return false;
     }
@@ -2912,6 +2930,7 @@ pub(crate) fn v6_write_turret_payload(
         if inactive {
             flags |= V6_TURRET_FLAG_INACTIVE;
         }
+        flags |= V6_TURRET_FLAG_HOST_PIECE_YAW;
         writer.write_var_uint(flags as u64);
         writer.write_var_uint(turret_buf[tb + 4] as u64); // id
         writer.write_var_uint(turret_buf[tb + 5] as u64); // state
@@ -2919,6 +2938,8 @@ pub(crate) fn v6_write_turret_payload(
         writer.write_var_int_from_f64(turret_buf[tb + 1]); // vel
         writer.write_var_int_from_f64(turret_buf[tb + 2]); // pitch
         writer.write_var_int_from_f64(turret_buf[tb + 3]); // pitchVel
+        writer.write_var_int_from_f64(turret_buf[tb + 11]); // hostYaw (flagged)
+        writer.write_var_int_from_f64(turret_buf[tb + 12]); // hostYawVel (flagged)
         if has_target {
             writer.write_var_uint(turret_buf[tb + 7] as u64);
         }
@@ -3032,7 +3053,8 @@ pub(crate) fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f6
     if inactive {
         flags |= V6_TURRET_FLAG_INACTIVE;
     }
-    let mut len = 7usize; // flags, id, state, rot, vel, pitch, pitchVel
+    flags |= V6_TURRET_FLAG_HOST_PIECE_YAW;
+    let mut len = 9usize; // base 7 + flagged hostYaw/hostYawVel
     if has_target {
         len += 1;
     }
@@ -3047,6 +3069,8 @@ pub(crate) fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f6
     w.write_number(turret_buf[base + 1]); // vel
     w.write_number(turret_buf[base + 2]); // pitch
     w.write_number(turret_buf[base + 3]); // pitchVel
+    w.write_number(turret_buf[base + 11]); // hostYaw
+    w.write_number(turret_buf[base + 12]); // hostYawVel
     if has_target {
         w.write_number(turret_buf[base + 7]);
     }
@@ -3245,6 +3269,7 @@ pub(crate) fn v6_write_detail_unit(
     let carrier_spawn_present = unit_buf[base + 64] != 0.0;
     let builder_priority_present = unit_buf[base + 66] != 0.0;
     let builder_priority_low = unit_buf[base + 67] != 0.0;
+    let has_work_station = unit_buf[base + 68] != 0.0;
 
     let mut flags = 0u32;
     if hp_present {
@@ -3391,6 +3416,15 @@ pub(crate) fn v6_write_detail_unit(
     if carrier_spawn_present {
         len += 1;
     }
+    if has_work_station {
+        // The legacy carrier bit is an unflagged trailing value. Emit its
+        // default first when the work-station extension is the only trailer,
+        // then an extension mask and the eight QueryWork pose fields.
+        if !carrier_spawn_present {
+            len += 1;
+        }
+        len += 9;
+    }
 
     w.write_array_header(len);
     w.write_number(flags as f64);
@@ -3473,6 +3507,20 @@ pub(crate) fn v6_write_detail_unit(
     }
     if carrier_spawn_present {
         w.write_number(unit_buf[base + 65]);
+    }
+    if has_work_station {
+        if !carrier_spawn_present {
+            w.write_number(1.0);
+        }
+        w.write_number(1.0); // extension mask: bit 0 = QueryWork pose
+        w.write_number(unit_buf[base + 69]);
+        w.write_number(unit_buf[base + 70]);
+        w.write_number(unit_buf[base + 71]);
+        w.write_number(unit_buf[base + 72]);
+        w.write_number(unit_buf[base + 73]);
+        w.write_number(unit_buf[base + 74]);
+        w.write_number(unit_buf[base + 75]);
+        w.write_number(unit_buf[base + 76]);
     }
 }
 
@@ -6801,145 +6849,6 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn turret_rotation_batch_wraps_yaw_and_clamps_pitch() {
-        let current_yaw = [3.10];
-        let yaw_velocity = [0.0];
-        let target_yaw = [-3.10];
-        let current_pitch = [2.0];
-        let pitch_velocity = [8.0];
-        let target_pitch = [2.0];
-        let turn_accel = [64.0];
-        let drag = [0.0];
-        let mut out_yaw = [0.0];
-        let mut out_yaw_velocity = [0.0];
-        let mut out_yaw_acceleration = [0.0];
-        let mut out_pitch = [0.0];
-        let mut out_pitch_velocity = [0.0];
-        let mut out_pitch_acceleration = [0.0];
-        let mut out_aim_error_yaw = [0.0];
-        let mut out_aim_error_pitch = [0.0];
-        let pitch_min = -core::f64::consts::PI / 2.0;
-        let pitch_max = core::f64::consts::PI / 2.0;
-
-        assert_eq!(
-            turret_rotation_step_batch(
-                &current_yaw,
-                &yaw_velocity,
-                &target_yaw,
-                &current_pitch,
-                &pitch_velocity,
-                &target_pitch,
-                &turn_accel,
-                &drag,
-                &mut out_yaw,
-                &mut out_yaw_velocity,
-                &mut out_yaw_acceleration,
-                &mut out_pitch,
-                &mut out_pitch_velocity,
-                &mut out_pitch_acceleration,
-                &mut out_aim_error_yaw,
-                &mut out_aim_error_pitch,
-                1,
-                1.0 / 30.0,
-                pitch_min,
-                pitch_max,
-            ),
-            1,
-        );
-
-        assert!(out_yaw[0].is_finite());
-        assert!(out_aim_error_yaw[0].abs() < 0.09);
-        assert_eq!(out_pitch[0], pitch_max);
-        assert_eq!(out_pitch_velocity[0], 0.0);
-        assert_eq!(out_pitch_acceleration[0], 0.0);
-        assert!((out_aim_error_pitch[0] - (target_pitch[0] - pitch_max)).abs() < 1e-12);
-    }
-
-    #[test]
-    pub(crate) fn turret_rotation_batch_preserves_sub_one_turn_accel() {
-        let current_yaw = [0.0];
-        let yaw_velocity = [0.0];
-        let target_yaw = [1.0];
-        let current_pitch = [0.0];
-        let pitch_velocity = [0.0];
-        let target_pitch = [0.0];
-        let drag = [0.0];
-        let mut low_out_yaw = [0.0];
-        let mut low_out_yaw_velocity = [0.0];
-        let mut low_out_yaw_acceleration = [0.0];
-        let mut low_out_pitch = [0.0];
-        let mut low_out_pitch_velocity = [0.0];
-        let mut low_out_pitch_acceleration = [0.0];
-        let mut low_out_aim_error_yaw = [0.0];
-        let mut low_out_aim_error_pitch = [0.0];
-        let mut one_out_yaw = [0.0];
-        let mut one_out_yaw_velocity = [0.0];
-        let mut one_out_yaw_acceleration = [0.0];
-        let mut one_out_pitch = [0.0];
-        let mut one_out_pitch_velocity = [0.0];
-        let mut one_out_pitch_acceleration = [0.0];
-        let mut one_out_aim_error_yaw = [0.0];
-        let mut one_out_aim_error_pitch = [0.0];
-        let pitch_min = -core::f64::consts::PI / 2.0;
-        let pitch_max = core::f64::consts::PI / 2.0;
-
-        assert_eq!(
-            turret_rotation_step_batch(
-                &current_yaw,
-                &yaw_velocity,
-                &target_yaw,
-                &current_pitch,
-                &pitch_velocity,
-                &target_pitch,
-                &[0.1],
-                &drag,
-                &mut low_out_yaw,
-                &mut low_out_yaw_velocity,
-                &mut low_out_yaw_acceleration,
-                &mut low_out_pitch,
-                &mut low_out_pitch_velocity,
-                &mut low_out_pitch_acceleration,
-                &mut low_out_aim_error_yaw,
-                &mut low_out_aim_error_pitch,
-                1,
-                1.0 / 30.0,
-                pitch_min,
-                pitch_max,
-            ),
-            1,
-        );
-        assert_eq!(
-            turret_rotation_step_batch(
-                &current_yaw,
-                &yaw_velocity,
-                &target_yaw,
-                &current_pitch,
-                &pitch_velocity,
-                &target_pitch,
-                &[1.0],
-                &drag,
-                &mut one_out_yaw,
-                &mut one_out_yaw_velocity,
-                &mut one_out_yaw_acceleration,
-                &mut one_out_pitch,
-                &mut one_out_pitch_velocity,
-                &mut one_out_pitch_acceleration,
-                &mut one_out_aim_error_yaw,
-                &mut one_out_aim_error_pitch,
-                1,
-                1.0 / 30.0,
-                pitch_min,
-                pitch_max,
-            ),
-            1,
-        );
-
-        assert!(low_out_yaw[0] > 0.0);
-        assert!(one_out_yaw[0] > low_out_yaw[0] * 5.0);
-        assert!(one_out_yaw_velocity[0] > low_out_yaw_velocity[0] * 5.0);
-    }
-
-    #[test]
     pub(crate) fn build_target_horizontal_distance_handles_buildings_units_and_points() {
         assert_eq!(
             build_target_horizontal_distance(
@@ -9308,7 +9217,7 @@ mod lock_on_inclusion_tests {
         // These legacy targeting fixtures isolate inclusion/range/FSM policy.
         // Give their synthetic emission every explicitly named route so the
         // new fail-closed production matrix does not become an unrelated gate.
-        let fixture_flags = spec.flags | CT_TURRET_CFG_ROUTE_MASK;
+        let fixture_flags = spec.flags | CT_TURRET_CFG_ROUTE_MASK | CT_TURRET_CFG_YAW_CONTINUOUS;
         let (parent_id, parent_z, task_target_id) = {
             let pool = combat_targeting_pool();
             let s = entity_slot as usize;
@@ -9342,6 +9251,11 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            -core::f64::consts::PI,
+            core::f64::consts::PI,
+            -core::f64::consts::FRAC_PI_2,
+            core::f64::consts::FRAC_PI_2,
             range * range,
             range * range,
             0.0,

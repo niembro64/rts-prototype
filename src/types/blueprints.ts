@@ -14,8 +14,6 @@ export type {
   
 } from './config';
 export type {
-  ConstructionEmitterSize,
-  ConstructionEmitterVisualSpec,
   WorkEmitterSpec,
 } from './constructionTypes';
 
@@ -30,6 +28,7 @@ export type {
   
   ShieldSurfaceResponse,
   AirframeConfig,
+  BotArms,
   SubmarineConfig,
   AmphibianConfig,
   DroneConfig,
@@ -48,6 +47,8 @@ export type {
 
   TankConfig,
   TurretAimStyle,
+  TurretAngularActuator,
+  TurretAngularActuatorAxis,
   TurretBlueprint,
   TurretCooldownConfig,
   TurretEmitterKind,
@@ -56,7 +57,12 @@ export type {
   
   TurretLockOnRelationshipInclusion,
   TurretMount,
+  TurretEmissionSocket,
   TurretPresentation,
+  TurretStationArticulation,
+  TurretHostAssistPolicy,
+  TurretYawTraverse,
+  TurretPitchTraverse,
   UnitTurretHostAttachment,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,

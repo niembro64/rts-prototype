@@ -9,6 +9,8 @@ export type ServerTargetTurret = {
   angularVelocity: number;
   pitch: number;
   pitchVelocity: number;
+  hostPieceYaw: number;
+  hostPieceYawVelocity: number;
   shieldRange: number | null;
 };
 
@@ -148,6 +150,8 @@ function clearServerTargetTurret(turret: ServerTargetTurret): void {
   turret.angularVelocity = 0;
   turret.pitch = 0;
   turret.pitchVelocity = 0;
+  turret.hostPieceYaw = 0;
+  turret.hostPieceYawVelocity = 0;
   turret.shieldRange = null;
 }
 
@@ -159,6 +163,8 @@ function acquireServerTargetTurret(): ServerTargetTurret {
     angularVelocity: 0,
     pitch: 0,
     pitchVelocity: 0,
+    hostPieceYaw: 0,
+    hostPieceYawVelocity: 0,
     shieldRange: null,
   };
 }

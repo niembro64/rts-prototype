@@ -83,6 +83,7 @@ import {
   unitFireStateFromWireCode,
   unitMoveStateFromWireCode,
 } from '../unitCombatStateWireCodes';
+import { createRuntimeBuilder } from '../../sim/runtimeWorkStations';
 
 type NetworkFactorySnapshot = NonNullable<
   NonNullable<NetworkServerSnapshotEntity['unit']>['factory']
@@ -152,6 +153,8 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   const wire = nw.turret;
   const wireTurretBlueprintId = codeToTurretBlueprintId(wire.turretBlueprintCode);
   if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return;
+  turret.hostPieceYaw = deqRot(wire.angular.hostYaw ?? wire.angular.rot);
+  turret.hostPieceYawVelocity = deqRot(wire.angular.hostYawVel ?? 0);
   if (nw.active === false) {
     turret.target = null;
     turret.state = 'idle';
@@ -192,6 +195,8 @@ function applyWireTurretState(
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
   const wireTurretBlueprintId = codeToTurretBlueprintId(rows[base + 4]);
   if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return false;
+  turret.hostPieceYaw = deqRot(rows[base + 11]);
+  turret.hostPieceYawVelocity = deqRot(rows[base + 12]);
   if (rows[base + 10] !== 0) {
     turret.target = null;
     turret.state = 'idle';
@@ -225,6 +230,8 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
   next.angularAcceleration = prev.angularAcceleration;
   next.pitchVelocity = prev.pitchVelocity;
   next.pitchAcceleration = prev.pitchAcceleration;
+  // Host-piece yaw is authoritative physical socket state, not a private
+  // visual correction channel. Keep the newly decoded snapshot value.
   next.emissionLaneIndex = prev.emissionLaneIndex;
   next.worldPos.x = prev.worldPos.x;
   next.worldPos.y = prev.worldPos.y;
@@ -255,6 +262,9 @@ export function applyNetworkTurretNonVisualState(
   if (!Array.isArray(netTurrets) || netTurrets.length === 0 || !entity.combat) return;
   const turrets = entity.combat.turrets;
   for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
+    const wireAngular = netTurrets[i].turret.angular;
+    turrets[i].hostPieceYaw = deqRot(wireAngular.hostYaw ?? wireAngular.rot);
+    turrets[i].hostPieceYawVelocity = deqRot(wireAngular.hostYawVel ?? 0);
     if (netTurrets[i].active === false) {
       turrets[i].target = null;
       turrets[i].state = 'idle';
@@ -601,14 +611,25 @@ function createUnitFromNetwork(
     }
   }
   if (unitBlueprint !== undefined && unitBlueprint.builder !== undefined && unitBlueprint.builder !== null) {
-    const builder = unitBlueprint.builder;
-    entity.builder = {
-      buildRange: builder.buildRange,
-      lowPriority: u !== null && u.builderPriorityLow === true,
-      currentBuildTarget: u !== null && u.buildTargetId !== null && u.buildTargetId !== undefined
+    entity.builder = createRuntimeBuilder(
+      unitBlueprintId,
+      u !== null && u.builderPriorityLow === true,
+      u !== null && u.buildTargetId !== null && u.buildTargetId !== undefined
         ? u.buildTargetId
         : NO_ENTITY_ID,
-    };
+    );
+    const workPose = u?.workStation ?? null;
+    if (entity.builder.workStation !== null && workPose !== null) {
+      const station = entity.builder.workStation;
+      station.localYaw = deqRot(workPose.localYaw);
+      station.localPitch = deqRot(workPose.localPitch);
+      station.localYawVelocity = deqRot(workPose.localYawVelocity);
+      station.localPitchVelocity = deqRot(workPose.localPitchVelocity);
+      station.targetEntityId = workPose.targetActive ? 0 : NO_ENTITY_ID;
+      station.aligned = workPose.aligned;
+      station.targetWorldYaw = deqRot(workPose.targetWorldYaw);
+      station.targetWorldPitch = deqRot(workPose.targetWorldPitch);
+    }
   }
   if (unitBlueprint !== undefined) {
     const producedUnitBlueprintId =
@@ -829,14 +850,24 @@ function createUnitFromTypedFullWireRow(
     }
   }
   if (unitBlueprint !== undefined && unitBlueprint.builder !== undefined && unitBlueprint.builder !== null) {
-    const builder = unitBlueprint.builder;
-    entity.builder = {
-      buildRange: builder.buildRange,
-      lowPriority: values[base + 66] !== 0 && values[base + 67] !== 0,
-      currentBuildTarget: values[base + 38] !== 0 && values[base + 39] === 0
+    entity.builder = createRuntimeBuilder(
+      unitBlueprintId,
+      values[base + 66] !== 0 && values[base + 67] !== 0,
+      values[base + 38] !== 0 && values[base + 39] === 0
         ? values[base + 40]
         : NO_ENTITY_ID,
-    };
+    );
+    if (entity.builder.workStation !== null && values[base + 68] !== 0) {
+      const station = entity.builder.workStation;
+      station.localYaw = deqRot(values[base + 69]);
+      station.localPitch = deqRot(values[base + 70]);
+      station.localYawVelocity = deqRot(values[base + 71]);
+      station.localPitchVelocity = deqRot(values[base + 72]);
+      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
+      station.aligned = values[base + 74] !== 0;
+      station.targetWorldYaw = deqRot(values[base + 75]);
+      station.targetWorldPitch = deqRot(values[base + 76]);
+    }
   }
   if (unitBlueprint !== undefined) {
     const producedUnitBlueprintId =

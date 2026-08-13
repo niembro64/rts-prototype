@@ -711,6 +711,14 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
 
   const lockOn = compileTurretLockOnMasks(turretBlueprint);
 
+  // Attack stations must author physical motor limits. Non-aiming utility
+  // rows receive inert finite values because they share the compiled shape
+  // but never enter the attack articulation batch.
+  const angularActuator = turretBlueprint.angularActuator ?? {
+    yaw: { maxSpeed: 1, maxAcceleration: 1 },
+    pitch: { maxSpeed: 1, maxAcceleration: 1 },
+  };
+
   const config: TurretConfig = {
     turretBlueprintId: turretBlueprint.turretBlueprintId,
     kind: turretBlueprint.kind,
@@ -736,8 +744,8 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     color: turretBlueprint.color,
     emissionLaneCount: turretBlueprint.emissionLaneCount,
     angular: {
-      turnAccel: turretBlueprint.turretTurnAccel,
-      drag: turretBlueprint.turretDrag,
+      yaw: { ...angularActuator.yaw },
+      pitch: { ...angularActuator.pitch },
     },
     eventsSmooth: turretBlueprint.eventsSmooth,
     spread: null,
@@ -760,9 +768,19 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // Unit mounts opt into fight/patrol halt gating individually. Building
     // mounts never participate in unit movement halt checks.
     requiredEngagedForFightStop: false,
-    // Host presentation attachments are also per unit mount. Most hosts do
+    // Authoritative host piece attachments are per unit mount. Rigid hosts do
     // nothing with turret aim, so the shared blueprint has no attachment.
     hostAttachment: null,
+    articulation: {
+      yaw: { continuous: true, minAngle: -Math.PI, maxAngle: Math.PI },
+      pitch: { minAngle: -Math.PI / 2, maxAngle: Math.PI / 2 },
+      restYaw: 0,
+      restPitch: turretBlueprint.idlePitch,
+      restoreDelayMs: 2200,
+      hostAssist: 'none',
+      claimGroup: null,
+      claimPriority: 0,
+    },
     spawn,
     resourcePylon,
     lockOnRelationshipIncludeMask: lockOn.relationship,
@@ -821,7 +839,6 @@ function validateHostTurretPresentation(
   const p = presentation as {
     headRadius?: unknown;
     headOnly?: unknown;
-    constructionEmitterSize?: unknown;
   };
   if (
     p.headRadius !== null &&
@@ -831,13 +848,6 @@ function validateHostTurretPresentation(
   }
   if (typeof p.headOnly !== 'boolean') {
     throw new Error(`Invalid ${label}.presentation.headOnly: expected boolean`);
-  }
-  if (
-    p.constructionEmitterSize !== null &&
-    p.constructionEmitterSize !== 'small' &&
-    p.constructionEmitterSize !== 'large'
-  ) {
-    throw new Error(`Invalid ${label}.presentation.constructionEmitterSize`);
   }
 }
 

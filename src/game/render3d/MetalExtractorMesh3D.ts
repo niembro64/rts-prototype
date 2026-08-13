@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { EXTRACTOR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
-import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
-import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ResourcePylonMesh3D';
+import { buildResourcePylonRig } from './ResourcePylonMesh3D';
 import { PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import {
   createHexFrustumGeometry,

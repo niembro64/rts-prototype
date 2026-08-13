@@ -104,6 +104,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
+    workStation: null,
     actions: null,
     turrets: null,
     build: null,
@@ -652,6 +653,18 @@ export function copyNetworkUnitSnapshotInto(
   dst.isCommander = src.isCommander ?? null;
   dst.buildTargetId = src.buildTargetId ?? null;
   dst.buildTargetIdPresent = src.buildTargetIdPresent === true;
+  dst.workStation = src.workStation === null || src.workStation === undefined
+    ? null
+    : {
+        localYaw: src.workStation.localYaw,
+        localPitch: src.workStation.localPitch,
+        localYawVelocity: src.workStation.localYawVelocity,
+        localPitchVelocity: src.workStation.localPitchVelocity,
+        targetActive: src.workStation.targetActive,
+        aligned: src.workStation.aligned,
+        targetWorldYaw: src.workStation.targetWorldYaw,
+        targetWorldPitch: src.workStation.targetWorldPitch,
+      };
   dst.build = src.build
     ? copyNetworkUnitBuildState(src.build, dst.build ?? createNetworkUnitBuildState())
     : null;

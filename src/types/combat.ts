@@ -156,9 +156,9 @@ export type ProjectileSpawnEvent = {
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;
-  /** Which physical barrel in the turret's cluster was selected for
-   *  visual/audio cadence (0..barrelCount-1). Authoritative shots
-   *  spawn from the turret mount center. */
+  /** Which authoritative QueryWeapon lane in the turret's cluster was
+   * selected (0..emissionLaneCount-1). The same lane places the shot and
+   * routes visual/audio presentation. */
   barrelIndex: number;
   isDGun?: boolean;
   /** True for cluster-flak submunitions and any other projectile whose

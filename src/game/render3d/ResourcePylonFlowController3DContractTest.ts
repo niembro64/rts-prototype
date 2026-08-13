@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { EntityId, PlayerId } from '../sim/types';
 

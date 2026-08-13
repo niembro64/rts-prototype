@@ -419,7 +419,7 @@ export class ClientViewState {
   private resourcePylonFlowsBySource = new IndexedEntityIdMap<ClientResourcePylonFlow[]>();
   private readonly resourcePylonSourceIds: EntityId[] = [];
   // Free lists for the per-snapshot rate/flow-entry objects. Consumers
-  // (ConstructionVisualController3D, BuildingResourcePylonAnimator3D) read
+  // (BuildingResourcePylonAnimator3D and work-spray rendering) read
   // these synchronously within a frame and never retain entries across
   // snapshot applies, so recycling on clear is safe.
   private readonly resourcePylonRatePool: ClientResourcePylonSignedRates[] = [];
@@ -801,6 +801,8 @@ export class ClientViewState {
         target.turrets[i].angularVelocity = deqRot(wireAng.vel);
         target.turrets[i].pitch = deqRot(wireAng.pitch);
         target.turrets[i].pitchVelocity = deqRot(wireAng.pitchVel);
+        target.turrets[i].hostPieceYaw = deqRot(wireAng.hostYaw ?? wireAng.rot);
+        target.turrets[i].hostPieceYawVelocity = deqRot(wireAng.hostYawVel ?? 0);
         target.turrets[i].shieldRange = turrets[i].currentShieldRange ?? null;
       }
       return true;
@@ -832,10 +834,14 @@ export class ClientViewState {
       targetTurret.angularVelocity = deqRot(rows[rowBase + 1]);
       targetTurret.pitch = deqRot(rows[rowBase + 2]);
       targetTurret.pitchVelocity = deqRot(rows[rowBase + 3]);
+      targetTurret.hostPieceYaw = deqRot(rows[rowBase + 11]);
+      targetTurret.hostPieceYawVelocity = deqRot(rows[rowBase + 12]);
       const shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
       targetTurret.shieldRange = shieldRange;
       if (i >= entityTurretLimit || entityTurrets === undefined) continue;
       const entityTurret = entityTurrets[i];
+      entityTurret.hostPieceYaw = targetTurret.hostPieceYaw;
+      entityTurret.hostPieceYawVelocity = targetTurret.hostPieceYawVelocity;
       if (rows[rowBase + 10] !== 0) {
         entityTurret.target = null;
         entityTurret.state = 'idle';
@@ -1413,6 +1419,24 @@ export class ClientViewState {
       );
       if (!copiedTurretRows) return false;
     }
+    let copiedWorkStation = false;
+    if (
+      hasTurretFields &&
+      values[base + 68] !== 0 &&
+      existing.builder?.workStation !== null &&
+      existing.builder?.workStation !== undefined
+    ) {
+      const station = existing.builder.workStation;
+      station.localYaw = deqRot(values[base + 69]);
+      station.localPitch = deqRot(values[base + 70]);
+      station.localYawVelocity = deqRot(values[base + 71]);
+      station.localPitchVelocity = deqRot(values[base + 72]);
+      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
+      station.aligned = values[base + 74] !== 0;
+      station.targetWorldYaw = deqRot(values[base + 75]);
+      station.targetWorldPitch = deqRot(values[base + 76]);
+      copiedWorkStation = true;
+    }
 
     if (target !== undefined) target.updatedAtMs = now;
     if (collectCorrectionStats && (changedFields & ENTITY_CHANGED_POS) !== 0) {
@@ -1485,16 +1509,16 @@ export class ClientViewState {
     const refreshTurretsNow = copiedTurretRows && (
       !deferPredictedTurretRenderRefresh || entityHasShieldEmission(existing)
     );
-    if (refreshHealth || refreshTurretsNow) {
+    if (refreshHealth || refreshTurretsNow || copiedWorkStation) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
         refreshHealth,
-        refreshTurretsNow,
+        refreshTurretsNow || copiedWorkStation,
         hasBuildFields,
       );
     }
 
-    if (hasMotionFields || copiedTurretRows) {
+    if (hasMotionFields || copiedTurretRows || copiedWorkStation) {
       this.activeEntityPredictionIds.add(id);
       this.dirtyUnitRenderIds.add(id);
     }
@@ -1585,6 +1609,21 @@ export class ClientViewState {
         existing,
       );
       if (!copiedTurretRows) return false;
+    }
+    if (
+      values[base + 68] !== 0 &&
+      existing.builder?.workStation !== null &&
+      existing.builder?.workStation !== undefined
+    ) {
+      const station = existing.builder.workStation;
+      station.localYaw = deqRot(values[base + 69]);
+      station.localPitch = deqRot(values[base + 70]);
+      station.localYawVelocity = deqRot(values[base + 71]);
+      station.localPitchVelocity = deqRot(values[base + 72]);
+      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
+      station.aligned = values[base + 74] !== 0;
+      station.targetWorldYaw = deqRot(values[base + 75]);
+      station.targetWorldPitch = deqRot(values[base + 76]);
     }
     target.updatedAtMs = now;
 

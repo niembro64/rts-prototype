@@ -167,7 +167,6 @@ export const BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS =
   beamConfigJson.pulse.collisionSampleIntervalTicks;
 export const BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER = beamConfigJson.pulse.activeOutputMultiplier;
 export const BEAM_PULSE_INITIAL_STAGGER_MAX_MS = beamConfigJson.pulse.initialStaggerMaxMs;
-export const BEAM_PULSE_TRACKING_ERROR_BUDGET_RADIANS = beamConfigJson.pulse.trackingErrorBudgetRadians;
 /** Presentation-only beam origins follow their live rendered turret mounts. */
 export const BEAM_SNAP_ORIGIN_TO_TURRET = beamConfigJson.snapOriginToTurret;
 

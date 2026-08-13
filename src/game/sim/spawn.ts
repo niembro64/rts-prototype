@@ -61,6 +61,35 @@ function buildPlacementSearchOffsets(radius: number): readonly GridOffset[] {
   return offsets;
 }
 
+function buildStridedPlacementSearchOffsets(
+  radius: number,
+  stride: number,
+): readonly GridOffset[] {
+  const safeRadius = Math.max(0, Math.floor(radius));
+  const safeStride = Math.max(1, Math.floor(stride));
+  const axis = [0];
+  for (let distance = safeStride; distance <= safeRadius; distance += safeStride) {
+    axis.push(-distance, distance);
+  }
+  if (safeRadius > 0 && safeRadius % safeStride !== 0) {
+    axis.push(-safeRadius, safeRadius);
+  }
+  const offsets: GridOffset[] = [];
+  for (let y = 0; y < axis.length; y++) {
+    for (let x = 0; x < axis.length; x++) {
+      offsets.push({ dx: axis[x], dy: axis[y] });
+    }
+  }
+  offsets.sort((a, b) => {
+    const aDist = a.dx * a.dx + a.dy * a.dy;
+    const bDist = b.dx * b.dx + b.dy * b.dy;
+    if (aDist !== bDist) return aDist - bDist;
+    if (a.dy !== b.dy) return a.dy - b.dy;
+    return a.dx - b.dx;
+  });
+  return offsets;
+}
+
 const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
   INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS,
 );
@@ -72,8 +101,11 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // found no free cell for its last Fabricator. The ring is deterministic and
 // ordered nearest-first, so a wider radius only lets a crowded seat reach one
 // ring further out; it never moves a placement that already succeeded.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(64);
-const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(36);
+// A Fabricator reserves a 14x14-cell placement square. Half-footprint search
+// steps cover dense packing while avoiding tens of thousands of near-identical
+// probes whose rectangles overlap the same occupied cells.
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
+const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(36, 7);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
 // partial coverage is not the authored deposit/extractor pair.
@@ -264,10 +296,24 @@ function placeCompleteBuilding(
 
   for (let i = 0; i < searchOffsets.length; i++) {
     const offset = searchOffsets[i];
+    const candidateGridX = baseGrid.gx + offset.dx;
+    const candidateGridY = baseGrid.gy + offset.dy;
+    // Demo factory rows can probe thousands of offsets. Occupancy and map
+    // bounds are already authoritative in BuildingGrid, so reject those
+    // candidates before startBuilding allocates a full per-cell terrain/
+    // metal diagnostic packet. This is an exact preflight, not a second
+    // placement rule: every candidate that passes is still validated by the
+    // normal ConstructionSystem path below.
+    if (!grid.canPlace(
+      candidateGridX,
+      candidateGridY,
+      config.placementGridWidth,
+      config.placementGridHeight,
+    )) continue;
     if (acceptCandidate !== null) {
       const candidate = grid.getBuildingCenter(
-        baseGrid.gx + offset.dx,
-        baseGrid.gy + offset.dy,
+        candidateGridX,
+        candidateGridY,
         config.placementGridWidth,
         config.placementGridHeight,
       );
@@ -276,8 +322,8 @@ function placeCompleteBuilding(
     const entity = construction.startBuilding(
       world,
       buildingBlueprintId,
-      baseGrid.gx + offset.dx,
-      baseGrid.gy + offset.dy,
+      candidateGridX,
+      candidateGridY,
       playerId,
       0,
       0,
@@ -876,6 +922,7 @@ export function spawnInitialBases(
       ));
     }
   }
+
 
   return entities;
 }

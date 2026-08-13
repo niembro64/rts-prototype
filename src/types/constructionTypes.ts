@@ -1,4 +1,15 @@
-export type ConstructionEmitterSize = 'small' | 'large';
+import type {
+  TurretAngularActuator,
+  TurretStationArticulation,
+} from './blueprintSchema.generated';
+
+export type WorkStationAttachment =
+  | { kind: 'host' }
+  | {
+      kind: 'botArm';
+      arm: 'leftArm' | 'rightArm';
+      socketOffset: { x: number; y: number; z: number };
+    };
 
 /**
  * A host-owned build-power origin. Unit offsets are authored in body-radius
@@ -10,6 +21,15 @@ export type WorkEmitterSpec = {
   points: ReadonlyArray<{ x: number; y: number; z: number }>;
   particleTravelSpeed: number;
   particleRadius: number;
+  /** Named parent piece for QueryWork. Host is a rigid local socket; botArm
+   * follows the same authoritative biped arm geometry as held weapons. */
+  attachment: WorkStationAttachment;
+  /** Null for fixed emitters with no moving mechanism. */
+  angularActuator: TurretAngularActuator | null;
+  articulation: TurretStationArticulation | null;
+  /** BAR-like in-build-stance gate. Fixed/legacy area emitters may opt out. */
+  requiresAlignmentForWork: boolean;
+  alignmentToleranceRadians: number;
 };
 
 export type ConstructionChannelKind =
@@ -25,19 +45,4 @@ export type ConstructionCapability = {
   rate: number;
   channels: ReadonlyArray<ConstructionChannelKind>;
   workEmitter: WorkEmitterSpec | null;
-};
-
-export type ConstructionEmitterVisualSpec = {
-  defaultSize: ConstructionEmitterSize;
-  /** World units per second for construction spray particles travelling
-   *  linearly from emitter pylon to build target. */
-  particleTravelSpeed: number;
-  /** Cosmetic sphere radius for each construction spray particle. */
-  particleRadius: number;
-  sizes: Record<ConstructionEmitterSize, {
-    towerSize: ConstructionEmitterSize;
-    pylonHeight: number;
-    pylonOffset: number;
-    innerPylonRadius: number;
-  }>;
 };

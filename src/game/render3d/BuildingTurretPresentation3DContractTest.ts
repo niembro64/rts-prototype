@@ -6,7 +6,6 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import type { EntityId } from '../sim/types';
 import { WorldState } from '../sim/WorldState';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { DETAIL_RUNG_CLOSE } from './EntityDetailLevel3D';
 import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import type { EntityMesh } from './EntityMesh3D';
@@ -79,7 +78,6 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     world,
     clientViewState,
     selectionOverlays,
-    constructionVisuals: {} as ConstructionVisualController3D,
     resourcePylonFlows: {} as ResourcePylonFlowController3D,
     turretHeadGeom,
     barrelGeom,

@@ -541,7 +541,14 @@
         }
       ],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7
+      "particleRadius": 1.7,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
     },
     "conversionRate": null,
     "allowedUnitBlueprintIds": [
@@ -660,9 +667,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 0.8
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorBuildingBeamMega",
         "mount": {
@@ -738,9 +743,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorBuildingCannon",
         "mount": {
@@ -824,9 +827,7 @@
               "accel": 26,
               "decel": 10
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorBuildingAntiAir",
         "mount": {
@@ -902,9 +903,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 1.8
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorBuildingSonar",
         "mount": {

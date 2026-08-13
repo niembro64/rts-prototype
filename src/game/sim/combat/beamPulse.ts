@@ -5,7 +5,6 @@ import {
   BEAM_PULSE_OFF_TIME_RANDOMNESS,
   BEAM_PULSE_ON_TIME_MS,
   BEAM_PULSE_ON_TIME_RANDOMNESS,
-  BEAM_PULSE_TRACKING_ERROR_BUDGET_RADIANS,
 } from '../../../config';
 import type { BeamPulsePlan } from '../types';
 import {
@@ -152,24 +151,17 @@ function closestRelativeApproachMs(plan: BeamPulsePlan): number {
   return Math.max(0, Math.min(plan.durationMs, closestSec * 1000));
 }
 
-/**
- * Gate a pulse against the same critically-damped servo used by ordinary
- * turrets. For a ramping target angle, steady tracking error is
- * `(2*sqrt(k)+drag)*omega/k`; solving that for the authored error budget gives
- * the maximum sustainable line-of-sight rate. For constant relative velocity,
- * `|r x v|` is constant and angular rate peaks at closest approach, so checking
- * start/closest/end is the exact maximum-rate test rather than a heuristic
- * per-tick solve.
- */
+/** Gate a pulse against the same hard angular-rate envelope used by ordinary
+ * stations. The pulse starts aligned, so the exact constant-relative-velocity
+ * requirement is that peak line-of-sight angular speed never exceed the
+ * slower authored yaw/pitch axis. */
 export function canTurretTrackBeamPulse(
   plan: BeamPulsePlan,
-  turnAccel: number,
-  drag: number,
+  maxYawSpeed: number,
+  maxPitchSpeed: number,
 ): boolean {
-  const stiffness = Math.max(0, turnAccel);
-  if (stiffness <= 1e-9) return false;
-  const damping = 2 * DMath.sqrt(stiffness) + Math.max(0, drag);
-  const maxAngularSpeed = BEAM_PULSE_TRACKING_ERROR_BUDGET_RADIANS * stiffness / damping;
+  const maxAngularSpeed = Math.min(maxYawSpeed, maxPitchSpeed);
+  if (!Number.isFinite(maxAngularSpeed) || maxAngularSpeed <= 0) return false;
   const closestTime = closestRelativeApproachMs(plan);
   return (
     lineOfSightAngularSpeedAt(plan, 0) <= maxAngularSpeed &&

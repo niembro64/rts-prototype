@@ -26,11 +26,6 @@ import {
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math';
-import {
-  buildConstructionEmitterRigFromPresentation,
-  type ConstructionEmitterRig,
-} from './ConstructionEmitterMesh3D';
-import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 import {
@@ -114,9 +109,6 @@ export type TurretMesh = {
    *  already-pitched firing axis — spin rotates the barrel cluster
    *  around the real pitched direction, not around world-X. */
   spinGroup?: THREE.Group;
-  /** Visual-only construction turret rig built from the host mount's
-   * presentation instead of the logical turret blueprint. */
-  constructionEmitter?: ConstructionEmitterRig;
   /** Per-mesh render caches used by the building/tower renderer to avoid
    *  repeating static scenegraph/material writes on active turret hosts. */
   cachedRootVisible?: boolean;
@@ -192,31 +184,6 @@ export function buildTurretMesh3D(
   const headRadius = getTurretHeadRadius(turret.presentation);
   const headOnly = turret.presentation.headOnly === true;
   const detailLevel = deps.detailLevel ?? 1;
-  if (turret.presentation.constructionEmitter !== null) {
-    // Resource-pylon turrets render only their own resource's pylon; a
-    // constructionEmitter with no resourcePylon falls back to the energy+metal
-    // pair. Read the resource off the blueprint registry (not the runtime
-    // TurretConfig, which doesn't carry pylon data).
-    const pylonResource =
-      TURRET_BLUEPRINTS[turret.config.turretBlueprintId]?.resourcePylon?.resource ?? null;
-    const constructionEmitter = buildConstructionEmitterRigFromPresentation(
-      turret.presentation.constructionEmitter,
-      turret.presentation.constructionEmitterSize ?? undefined,
-      deps.primaryMat,
-      pylonResource,
-      geometryTierForDetail(detailLevel),
-    );
-    yawGroup.add(constructionEmitter.group);
-    parent.add(root);
-    return {
-      root,
-      yawGroup,
-      headRadius,
-      barrels: [],
-      constructionEmitter,
-    };
-  }
-
   // Skip the head sphere entirely for:
   //  - turretStyle='none': no body, no barrels — chassis only.
   //  - shield turrets at any detail: the ShieldRenderer3D's glowing

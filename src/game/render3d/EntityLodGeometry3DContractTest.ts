@@ -141,32 +141,6 @@ const BEAM_TURRET_IDS: ReadonlySet<string> = new Set([
   'turretBeamLong',
 ]);
 
-const CONSTRUCTION_EMITTER_TEST_PRESENTATION: TurretPresentation = {
-  headRadius: 8,
-  headOnly: false,
-  barrel: { type: 'singleCylinderBarrel', barrelLength: 0 },
-  constructionEmitter: {
-    defaultSize: 'small',
-    particleTravelSpeed: 50,
-    particleRadius: 1.5,
-    sizes: {
-      small: {
-        towerSize: 'small',
-        pylonHeight: 10,
-        pylonOffset: 3,
-        innerPylonRadius: 1.5,
-      },
-      large: {
-        towerSize: 'large',
-        pylonHeight: 45,
-        pylonOffset: 110,
-        innerPylonRadius: 3.6,
-      },
-    },
-  },
-  constructionEmitterSize: null,
-};
-
 /**
  * Canonical side-by-side visual-regression roster. Keeping this sourced from
  * the wire-stable registries makes additions fail the contract until the new
@@ -388,10 +362,6 @@ function buildTurretForTier(
     pitch: mesh.pitchGroup ? transformTuple(mesh.pitchGroup) : null,
     spin: mesh.spinGroup ? transformTuple(mesh.spinGroup) : null,
     barrels: mesh.barrels.map(transformTuple),
-    pylonRoots: mesh.constructionEmitter?.pylons.map((pylon) => [
-      ...pylon.rootLocal.toArray().map(n),
-      ...pylon.topLocal.toArray().map(n),
-    ]) ?? [],
   };
   return { mesh, count: objectTriangleCount(mesh.root), signature };
 }
@@ -1400,52 +1370,6 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
     solarPose(solarSource.buildingDetails!),
   );
 
-  const head = createPrimitiveSphereGeometry('turret', 'close');
-  const barrel = createPrimitiveCylinderGeometry('turret', 'close');
-  const cone = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
-  try {
-    const high = buildTurretForTier(
-      'turretResourcePylonConstructionMetal', CONSTRUCTION_EMITTER_TEST_PRESENTATION,
-      0, material, head, barrel, cone,
-    ).mesh;
-    const low = buildTurretForTier(
-      'turretResourcePylonConstructionMetal', CONSTRUCTION_EMITTER_TEST_PRESENTATION,
-      2, material, head, barrel, cone,
-    ).mesh;
-    const emitter = high.constructionEmitter;
-    assertContract(emitter !== undefined, 'construction pylon exposes its visual-state rig');
-    emitter.smoothedRates.energy = 0.31;
-    emitter.smoothedRates.metal = 0.47;
-    emitter.displaySmoothedRates.energy = 0.59;
-    emitter.displaySmoothedRates.metal = 0.67;
-    emitter.lastPaidTargetId = 123;
-    emitter.lastPaid.energy = 4.5;
-    emitter.lastPaid.metal = 7.25;
-    emitter.towerSpinAmount = 0.38;
-    emitter.displayTowerSpinAmount = 0.52;
-    emitter.towerSpinPhase = 1.23;
-    for (let i = 0; i < emitter.pylons.length; i++) {
-      seedPylonVisualState(emitter.pylons[i], 0.04 * (i + 1));
-    }
-    for (let i = 0; i < emitter.towerOrbitParts.length; i++) {
-      const part = emitter.towerOrbitParts[i].mesh;
-      part.position.set(i + 1, i + 2, i + 3);
-      part.rotation.set(i * 0.1, i * 0.2, i * 0.3);
-    }
-    const source = visualStateMesh({ turrets: [high] });
-    const target = visualStateMesh({ turrets: [low] });
-    const state = captureEntityLodVisualState3D(source);
-    applyEntityLodVisualState3D(target, state);
-    assertSame(
-      'construction emitter state survives High-to-Low rebuild',
-      captureEntityLodVisualState3D(target),
-      state,
-    );
-  } finally {
-    head.dispose();
-    barrel.dispose();
-    cone.dispose();
-  }
 }
 
 function runEmissionRegistryContracts(): void {

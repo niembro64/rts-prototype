@@ -94,7 +94,7 @@ import {
   packTerrainForWire,
 } from '../network/snapshotStaticWirePack';
 
-const TURRET_SCRATCH_STRIDE = 11;
+const TURRET_SCRATCH_STRIDE = 13;
 const ACTION_SCRATCH_STRIDE = 19;
 
 const _utf8 = new TextEncoder();
@@ -140,6 +140,7 @@ type TurretFixture = {
     angular: {
       rot: number; vel: number;
       pitch: number; pitchVel: number;
+      hostYaw?: number; hostYawVel?: number;
     };
   };
   targetId?: number;
@@ -340,6 +341,8 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
   );
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
+    t.turret.angular.hostYaw ??= t.turret.angular.rot;
+    t.turret.angular.hostYawVel ??= 0;
     const base = i * TURRET_SCRATCH_STRIDE;
     view[base + 0] = t.turret.angular.rot;
     view[base + 1] = t.turret.angular.vel;
@@ -351,6 +354,8 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
     view[base + 7] = t.targetId ?? 0;
     view[base + 8] = t.currentShieldRange !== undefined ? 1 : 0;
     view[base + 9] = t.currentShieldRange ?? 0;
+    view[base + 11] = t.turret.angular.hostYaw ?? t.turret.angular.rot;
+    view[base + 12] = t.turret.angular.hostYawVel ?? 0;
   }
 }
 
@@ -839,7 +844,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
   let failed = 0;
   for (const f of fixtures) {
     const wireFixture = sparseUnitFixture(f);
-    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const typeTag = entityTypeToSnapshotTag(f.type);
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
@@ -874,6 +878,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     if (hasTurrets && turrets) {
       packTurretsIntoScratch(memory, turrets);
     }
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const build = f.unit.build;
     const hasBuild = build !== undefined ? 1 : 0;
     const buildComplete = build?.complete === true ? 1 : 0;
@@ -1197,7 +1202,6 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
   let failed = 0;
   for (const f of fixtures) {
     const wireFixture = sparseBuildingFixture(f);
-    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
     const stringList: string[] = [];
@@ -1213,6 +1217,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     if (hasTurrets && turrets) {
       packTurretsIntoScratch(memory, turrets);
     }
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const factory = f.building.factory;
     const hasFactory = factory !== undefined ? 1 : 0;
     if (factory) {

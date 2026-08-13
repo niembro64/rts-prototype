@@ -22,6 +22,7 @@ import {
 import {
   getProjectileLaunchSpeed,
   isShieldSubmunitionTurret,
+  resolveWeaponEmissionSocket,
   resolveWeaponWorldMount,
 } from './combat/combatUtils';
 import { turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
@@ -104,7 +105,6 @@ function assertLogicalTurretPresentationOwnership(): void {
     'barrel',
     'radius',
     'headOnly',
-    'constructionEmitter',
     'shieldPanels',
   ] as const;
   for (const [turretId, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
@@ -230,12 +230,32 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     if (rocket === null) {
       throw new Error('[turret host integration] fired rocket must have a projectile component');
     }
-    assertNear(rocketEntity.transform.x, badgerTurret.worldPos.x, 'shot launch x must be turret center x');
-    assertNear(rocketEntity.transform.y, badgerTurret.worldPos.y, 'shot launch y must be turret center y');
-    assertNear(rocketEntity.transform.z, badgerTurret.worldPos.z, 'shot launch z must be turret center z');
-    assertNear(rocketSpawn.pos.x, badgerTurret.worldPos.x, 'spawn event x must be turret center x');
-    assertNear(rocketSpawn.pos.y, badgerTurret.worldPos.y, 'spawn event y must be turret center y');
-    assertNear(rocketSpawn.pos.z, badgerTurret.worldPos.z, 'spawn event z must be turret center z');
+    const transformTrig = getTransformCosSin(badger.transform);
+    const expectedEmission = resolveWeaponEmissionSocket(
+      badger,
+      badgerTurret,
+      rocketSpawn.turretIndex,
+      rocketSpawn.barrelIndex,
+      transformTrig.cos,
+      transformTrig.sin,
+      {
+        currentTick: launchWorld.getTick(),
+        dtMs,
+        unitGroundZ: getUnitGroundZ(badger),
+        surfaceN: badger.unit.surfaceNormal,
+      },
+      {
+        position: { x: 0, y: 0, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        forward: { x: 0, y: 0, z: 0 },
+      },
+    );
+    assertNear(rocketEntity.transform.x, expectedEmission.position.x, 'shot launch x must be QueryWeapon x');
+    assertNear(rocketEntity.transform.y, expectedEmission.position.y, 'shot launch y must be QueryWeapon y');
+    assertNear(rocketEntity.transform.z, expectedEmission.position.z, 'shot launch z must be QueryWeapon z');
+    assertNear(rocketSpawn.pos.x, expectedEmission.position.x, 'spawn event x must be QueryWeapon x');
+    assertNear(rocketSpawn.pos.y, expectedEmission.position.y, 'spawn event y must be QueryWeapon y');
+    assertNear(rocketSpawn.pos.z, expectedEmission.position.z, 'spawn event z must be QueryWeapon z');
     assertContract(!rocket.isArmed, 'fresh physical shot must begin inert inside its host ARM volume');
     assertContract(
       hasPendingProjectileLaunchVelocityFinalization(rocketEntity.id),
@@ -404,15 +424,19 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
     'beam turret must publish ordinary full-barrel aim',
   );
 
-  // Prove there is no beam-only snap hidden ahead of the shared spring:
-  // with deliberately weak tuning, one update must leave a visible error
+  // Prove there is no beam-only snap hidden ahead of the shared actuator:
+  // with deliberately low rate/acceleration caps, one update leaves an error
   // and the ordinary aim gate must refuse to fire.
-  const authoredTurnAccel = beamTurret.turnAccel;
-  beamTurret.turnAccel = 1;
+  const authoredYawActuator = { ...beamTurret.config.angular.yaw };
+  const authoredPitchActuator = { ...beamTurret.config.angular.pitch };
+  beamTurret.config.angular.yaw.maxSpeed = 0.05;
+  beamTurret.config.angular.yaw.maxAcceleration = 0.1;
+  beamTurret.config.angular.pitch.maxSpeed = 0.05;
+  beamTurret.config.angular.pitch.maxAcceleration = 0.1;
   updateTurretRotation(world, dtMs, activeCombatUnits);
   assertContract(
     Math.abs(beamTurret.aimErrorYaw) > 0.1,
-    'beam aim must retain spring error when its shared servo is deliberately slowed',
+    'beam aim must retain error when its shared actuator is deliberately slowed',
   );
   const beamDamageSystem = new DamageSystem(world);
   const earlyFireResult = fireTurrets(
@@ -427,13 +451,15 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
     'beam must not bypass the shared aim-error firing gate',
   );
 
-  // Restore the authored extreme stiffness. The same integrator should now
-  // settle effectively within one tick and make the ray eligible.
-  beamTurret.turnAccel = authoredTurnAccel;
-  updateTurretRotation(world, dtMs, activeCombatUnits);
+  // Restore the authored actuator and let the same finite motor settle.
+  Object.assign(beamTurret.config.angular.yaw, authoredYawActuator);
+  Object.assign(beamTurret.config.angular.pitch, authoredPitchActuator);
+  for (let i = 0; i < 200 && Math.abs(beamTurret.aimErrorYaw) > 1e-6; i++) {
+    updateTurretRotation(world, dtMs, activeCombatUnits);
+  }
   const expectedYaw = Math.PI / 2;
-  assertNear(beamTurret.rotation, expectedYaw, 'beam shared servo must settle to target yaw in one tick');
-  assertNear(beamTurret.aimErrorYaw, 0, 'beam shared servo must leave negligible yaw error');
+  assertNear(beamTurret.rotation, expectedYaw, 'beam shared actuator must settle to target yaw');
+  assertNear(beamTurret.aimErrorYaw, 0, 'beam shared actuator must leave negligible yaw error');
 
   // The ordinary fixed angular tolerance alone is wider than a small target's
   // silhouette at range. Prove the new spawn trace rejects such a geometric

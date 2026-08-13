@@ -1,31 +1,15 @@
-// Turret rotation system — damped-spring integrator on both yaw and
-// pitch. The solver picks a target pose each tick (target bearing for
-// yaw, ballistic-arc angle for pitch); the damper converges the
-// weapon's current pose on that target along an overshoot-free curve,
-// so tick-to-tick jitter in the solver (e.g. a ballistic solution
-// that wobbles slightly as the target moves) doesn't propagate into
-// visible barrel oscillation. Every ordinary aiming turret, including
-// continuous beam emitters, uses this same integrator. Beam blueprints get
-// their near-instant response from a very high finite turretTurnAccel rather
-// than a simulation shortcut.
-//
-// Per-axis dynamics (rotation axis shown as θ):
-//
-//   accel = (targetθ − θ) · k  −  θ̇ · c
-//   θ̇   += accel · dt
-//   θ   += θ̇ · dt
-//
-// where k = turretTurnAccel (reused as stiffness so existing per-
-// turret tuning carries over — stiffer turret = snappier track) and
-// c = 2·√k gives critical damping. `turretDrag` from the old bang-
-// bang integrator no longer scales velocity directly; instead it's
-// applied as an EXTRA damping coefficient on top of critical. A drag
-// of 0 produces exactly critical damping; positive values overdamp
-// (slower, no-overshoot response).
+// Turret rotation system. World-space aim intent is converted into each
+// station's local parent frame; the Rust actuator applies hard authored
+// angular-speed, angular-acceleration, traverse, and restore limits.
 
 import type { WorldState } from '../WorldState';
-import type { CombatComponent, Entity, EntityId, Turret } from '../types';
-import { turretMaskIncludes } from './combatUtils';
+import type { CombatComponent, Entity, Turret } from '../types';
+import {
+  turretMaskIncludes,
+  writeTurretArticulationParentYaw,
+  type TurretArticulationParentYaw,
+} from './combatUtils';
+import { normalizeAngle } from '../../math';
 import {
   dropTurretLockMidTick,
   refreshSlabActivityMasksForUnit,
@@ -44,11 +28,6 @@ import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
 import { beamIndex } from '../BeamIndex';
 import { evaluateBeamPulsePlan, type BeamPulseEvaluation } from './beamPulse';
 
-/** Pitch is clamped to straight-down → straight-up. Matches the
- *  renderer's pitch range and keeps the ballistic solver from driving
- *  the barrel through the body. */
-const PITCH_MIN = -Math.PI / 2;
-const PITCH_MAX = Math.PI / 2;
 const _turretAimPose: CombatTargetingTurretAimOut = {
   hasSolution: true,
   yaw: 0,
@@ -79,16 +58,24 @@ const _turretTargetingContext: CombatTargetingEntityReadContext = {
 };
 const _turretRotationWeapons: Turret[] = [];
 const _turretRotationRefreshUnits: Entity[] = [];
-const _turretRotationUnitsWithPulseHosts: Entity[] = [];
-const _turretRotationUnitIds = new Set<EntityId>();
 let _turretCurrentYaw = new Float64Array(0);
 let _turretYawVelocity = new Float64Array(0);
 let _turretTargetYaw = new Float64Array(0);
+let _turretTargetWorldYaw = new Float64Array(0);
+let _turretParentYaw = new Float64Array(0);
+let _turretParentYawVelocity = new Float64Array(0);
+let _turretYawContinuous = new Uint8Array(0);
+let _turretYawMin = new Float64Array(0);
+let _turretYawMax = new Float64Array(0);
+let _turretYawMaxSpeed = new Float64Array(0);
+let _turretYawMaxAcceleration = new Float64Array(0);
 let _turretCurrentPitch = new Float64Array(0);
 let _turretPitchVelocity = new Float64Array(0);
 let _turretTargetPitch = new Float64Array(0);
-let _turretTurnAccel = new Float64Array(0);
-let _turretDrag = new Float64Array(0);
+let _turretPitchMin = new Float64Array(0);
+let _turretPitchMax = new Float64Array(0);
+let _turretPitchMaxSpeed = new Float64Array(0);
+let _turretPitchMaxAcceleration = new Float64Array(0);
 let _turretOutYaw = new Float64Array(0);
 let _turretOutYawVelocity = new Float64Array(0);
 let _turretOutYawAcceleration = new Float64Array(0);
@@ -97,6 +84,7 @@ let _turretOutPitchVelocity = new Float64Array(0);
 let _turretOutPitchAcceleration = new Float64Array(0);
 let _turretOutAimErrorYaw = new Float64Array(0);
 let _turretOutAimErrorPitch = new Float64Array(0);
+const _turretParentYawScratch: TurretArticulationParentYaw = { yaw: 0, velocity: 0 };
 
 function ensureTurretRotationCapacity(required: number): void {
   if (_turretCurrentYaw.length >= required) return;
@@ -104,11 +92,21 @@ function ensureTurretRotationCapacity(required: number): void {
   _turretCurrentYaw = new Float64Array(next);
   _turretYawVelocity = new Float64Array(next);
   _turretTargetYaw = new Float64Array(next);
+  _turretTargetWorldYaw = new Float64Array(next);
+  _turretParentYaw = new Float64Array(next);
+  _turretParentYawVelocity = new Float64Array(next);
+  _turretYawContinuous = new Uint8Array(next);
+  _turretYawMin = new Float64Array(next);
+  _turretYawMax = new Float64Array(next);
+  _turretYawMaxSpeed = new Float64Array(next);
+  _turretYawMaxAcceleration = new Float64Array(next);
   _turretCurrentPitch = new Float64Array(next);
   _turretPitchVelocity = new Float64Array(next);
   _turretTargetPitch = new Float64Array(next);
-  _turretTurnAccel = new Float64Array(next);
-  _turretDrag = new Float64Array(next);
+  _turretPitchMin = new Float64Array(next);
+  _turretPitchMax = new Float64Array(next);
+  _turretPitchMaxSpeed = new Float64Array(next);
+  _turretPitchMaxAcceleration = new Float64Array(next);
   _turretOutYaw = new Float64Array(next);
   _turretOutYawVelocity = new Float64Array(next);
   _turretOutYawAcceleration = new Float64Array(next);
@@ -119,18 +117,36 @@ function ensureTurretRotationCapacity(required: number): void {
   _turretOutAimErrorPitch = new Float64Array(next);
 }
 
-function queueTurretRotationStep(weapon: Turret, aimTargetYaw: number, aimTargetPitch: number): void {
+function queueTurretRotationStep(
+  weapon: Turret,
+  parentYaw: number,
+  parentYawVelocity: number,
+  aimTargetWorldYaw: number,
+  aimTargetPitch: number,
+): void {
   const index = _turretRotationWeapons.length;
   ensureTurretRotationCapacity(index + 1);
   _turretRotationWeapons.push(weapon);
-  _turretCurrentYaw[index] = weapon.rotation;
-  _turretYawVelocity[index] = weapon.angularVelocity;
-  _turretTargetYaw[index] = aimTargetYaw;
-  _turretCurrentPitch[index] = weapon.pitch;
-  _turretPitchVelocity[index] = weapon.pitchVelocity;
+  const articulation = weapon.config.articulation;
+  const actuator = weapon.config.angular;
+  _turretCurrentYaw[index] = weapon.localYaw;
+  _turretYawVelocity[index] = weapon.localYawVelocity;
+  _turretTargetYaw[index] = normalizeAngle(aimTargetWorldYaw - parentYaw);
+  _turretTargetWorldYaw[index] = aimTargetWorldYaw;
+  _turretParentYaw[index] = parentYaw;
+  _turretParentYawVelocity[index] = parentYawVelocity;
+  _turretYawContinuous[index] = articulation.yaw.continuous ? 1 : 0;
+  _turretYawMin[index] = articulation.yaw.minAngle;
+  _turretYawMax[index] = articulation.yaw.maxAngle;
+  _turretYawMaxSpeed[index] = actuator.yaw.maxSpeed;
+  _turretYawMaxAcceleration[index] = actuator.yaw.maxAcceleration;
+  _turretCurrentPitch[index] = weapon.localPitch;
+  _turretPitchVelocity[index] = weapon.localPitchVelocity;
   _turretTargetPitch[index] = aimTargetPitch;
-  _turretTurnAccel[index] = weapon.turnAccel;
-  _turretDrag[index] = weapon.drag;
+  _turretPitchMin[index] = articulation.pitch.minAngle;
+  _turretPitchMax[index] = articulation.pitch.maxAngle;
+  _turretPitchMaxSpeed[index] = actuator.pitch.maxSpeed;
+  _turretPitchMaxAcceleration[index] = actuator.pitch.maxAcceleration;
 }
 
 function flushTurretRotationBatch(dtSec: number): void {
@@ -142,15 +158,22 @@ function flushTurretRotationBatch(dtSec: number): void {
     throw new Error('updateTurretRotation: sim-wasm is not initialized');
   }
 
-  const updated = sim.turretRotationStepBatch(
+  const updated = sim.articulationJointStepBatch(
     _turretCurrentYaw,
     _turretYawVelocity,
     _turretTargetYaw,
+    _turretYawContinuous,
+    _turretYawMin,
+    _turretYawMax,
+    _turretYawMaxSpeed,
+    _turretYawMaxAcceleration,
     _turretCurrentPitch,
     _turretPitchVelocity,
     _turretTargetPitch,
-    _turretTurnAccel,
-    _turretDrag,
+    _turretPitchMin,
+    _turretPitchMax,
+    _turretPitchMaxSpeed,
+    _turretPitchMaxAcceleration,
     _turretOutYaw,
     _turretOutYawVelocity,
     _turretOutYawAcceleration,
@@ -161,24 +184,27 @@ function flushTurretRotationBatch(dtSec: number): void {
     _turretOutAimErrorPitch,
     count,
     dtSec,
-    PITCH_MIN,
-    PITCH_MAX,
   );
   if (updated !== count) {
-    throw new Error(`updateTurretRotation: turret_rotation_step_batch updated ${updated} of ${count} rows`);
+    throw new Error(`updateTurretRotation: articulation_joint_step_batch updated ${updated} of ${count} rows`);
   }
 
   for (let i = 0; i < count; i++) {
     const weapon = _turretRotationWeapons[i];
-    weapon.rotation = _turretOutYaw[i];
-    weapon.angularVelocity = _turretOutYawVelocity[i];
+    weapon.localYaw = _turretOutYaw[i];
+    weapon.localYawVelocity = _turretOutYawVelocity[i];
+    weapon.localPitch = _turretOutPitch[i];
+    weapon.localPitchVelocity = _turretOutPitchVelocity[i];
+    weapon.rotation = normalizeAngle(_turretParentYaw[i] + weapon.localYaw);
+    weapon.angularVelocity = _turretParentYawVelocity[i] + weapon.localYawVelocity;
     weapon.angularAcceleration = _turretOutYawAcceleration[i];
-    weapon.pitch = _turretOutPitch[i];
-    weapon.pitchVelocity = _turretOutPitchVelocity[i];
+    weapon.pitch = weapon.localPitch;
+    weapon.pitchVelocity = weapon.localPitchVelocity;
     weapon.pitchAcceleration = _turretOutPitchAcceleration[i];
-    weapon.aimTargetYaw = _turretTargetYaw[i];
+    weapon.articulationParentYaw = _turretParentYaw[i];
+    weapon.aimTargetYaw = _turretTargetWorldYaw[i];
     weapon.aimTargetPitch = _turretTargetPitch[i];
-    weapon.aimErrorYaw = _turretOutAimErrorYaw[i];
+    weapon.aimErrorYaw = normalizeAngle(_turretTargetWorldYaw[i] - weapon.rotation);
     weapon.aimErrorPitch = _turretOutAimErrorPitch[i];
   }
 }
@@ -203,38 +229,13 @@ function weaponUsesRotationAim(weapon: Turret): boolean {
  * owns the turret until the pulse expires. */
 export function collectTurretRotationUnits(
   world: WorldState,
-  activeTargetingUnits: readonly Entity[],
+  _activeTargetingUnits: readonly Entity[],
 ): readonly Entity[] {
-  const lineProjectiles = world.getLineProjectiles();
-  let hasCommittedPulse = false;
-  for (let i = 0; i < lineProjectiles.length; i++) {
-    const projectile = lineProjectiles[i].projectile;
-    if (projectile === null || projectile.beamPulsePlan === null) continue;
-    hasCommittedPulse = true;
-    break;
-  }
-  if (!hasCommittedPulse) return activeTargetingUnits;
-
-  const result = _turretRotationUnitsWithPulseHosts;
-  const ids = _turretRotationUnitIds;
-  result.length = 0;
-  ids.clear();
-  for (let i = 0; i < activeTargetingUnits.length; i++) {
-    const unit = activeTargetingUnits[i];
-    result.push(unit);
-    ids.add(unit.id);
-  }
-  for (let i = 0; i < lineProjectiles.length; i++) {
-    const projectile = lineProjectiles[i].projectile;
-    if (projectile?.beamPulsePlan === null || projectile?.beamPulsePlan === undefined) continue;
-    if (ids.has(projectile.sourceEntityId)) continue;
-    const source = world.getEntity(projectile.sourceEntityId);
-    if (source === undefined) continue;
-    ids.add(source.id);
-    result.push(source);
-  }
-  result.sort((a, b) => a.id - b.id);
-  return result;
+  // Local joints must follow a moving parent and complete delayed restoration
+  // even without a targeting probe. The Rust batch keeps the numeric work
+  // dense; skipping idle hosts here would reintroduce world-locked turrets as
+  // soon as a chassis turned between acquisition scans.
+  return world.getArmedEntities();
 }
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
@@ -270,20 +271,30 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       const activeBeam = activeBeamId === undefined ? undefined : world.getEntity(activeBeamId);
       const activeBeamProjectile = activeBeam?.projectile ?? null;
       const activeBeamPulsePlan = activeBeamProjectile?.beamPulsePlan ?? null;
-      if (!turretMaskIncludes(activeMask, weaponIndex) && activeBeamPulsePlan === null) continue;
       if (!isAttackEmitter(weapon)) continue;
+      const activeByTargeting = turretMaskIncludes(activeMask, weaponIndex);
+      const parent = writeTurretArticulationParentYaw(
+        unit,
+        weapon,
+        _turretParentYawScratch,
+      );
       // Vertical launchers skip normal yaw/pitch aim math. The turret
       // barrel itself is pinned straight up; projectile launch reads
       // this same barrel pose and applies the authored launch force.
       // Targeting still runs so the fired rocket can inherit a lock.
       if (weapon.config.verticalLauncher) {
-        weapon.rotation = 0;
-        weapon.angularVelocity = 0;
+        weapon.localYaw = weapon.config.articulation.restYaw;
+        weapon.localYawVelocity = 0;
+        weapon.localPitch = Math.PI / 2;
+        weapon.localPitchVelocity = 0;
+        weapon.rotation = normalizeAngle(parent.yaw + weapon.localYaw);
+        weapon.angularVelocity = parent.velocity;
         weapon.angularAcceleration = 0;
         weapon.pitch = Math.PI / 2;
         weapon.pitchVelocity = 0;
         weapon.pitchAcceleration = 0;
-        weapon.aimTargetYaw = 0;
+        weapon.articulationParentYaw = parent.yaw;
+        weapon.aimTargetYaw = weapon.rotation;
         weapon.aimTargetPitch = Math.PI / 2;
         weapon.aimErrorYaw = 0;
         weapon.aimErrorPitch = 0;
@@ -337,8 +348,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           if (!_turretAimPose.hasSolution) {
             // Drop the lock everywhere in one call (JS Turret target +
             // state, beam inverse index, slab FSM). The local
-            // activeMask bit stays set so we still run the damped-spring
-            // integrator below; the firing bit drops on its own when the
+            // activeMask bit stays set so we still run the bounded joint
+            // motor below; the firing bit drops on its own when the
             // end-of-pass refresh re-derives masks.
             dropTurretLockMidTick(unit, weaponIndex);
           } else {
@@ -364,8 +375,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           if (!_turretAimPose.hasSolution) {
             // Drop the lock everywhere in one call (JS Turret target +
             // state, beam inverse index, slab FSM). The local
-            // activeMask bit stays set so we still run the damped-spring
-            // integrator below; the firing bit drops on its own when the
+            // activeMask bit stays set so we still run the bounded joint
+            // motor below; the firing bit drops on its own when the
             // end-of-pass refresh re-derives masks.
             dropTurretLockMidTick(unit, weaponIndex);
           } else {
@@ -376,21 +387,42 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         }
       }
 
+      // A scheduled active bit can survive one tick around target transitions;
+      // only a real target/committed pulse owns the station mechanism.
+      if (hasTargetingContext && !activeByTargeting && activeBeamPulsePlan === null) {
+        hasActiveTarget = false;
+      }
+
       if (!hasActiveTarget) {
-        // No target means no authored default pose. Hold the current
-        // yaw/pitch as the spring target and let the normal derivative
-        // state decay through the same integrator used while tracking.
-        targetAngle = weapon.rotation;
-        targetPitch = weapon.pitch;
+        weapon.articulationIdleMs += dtMs;
+        const restore = weapon.articulationIdleMs >= weapon.config.articulation.restoreDelayMs;
+        // Before BAR-style restore delay expires, hold the current LOCAL pose.
+        // The world pose therefore follows a turning host instead of remaining
+        // nailed to the old compass bearing.
+        const targetLocalYaw = restore
+          ? weapon.config.articulation.restYaw
+          : weapon.localYaw;
+        targetAngle = normalizeAngle(parent.yaw + targetLocalYaw);
+        targetPitch = restore
+          ? weapon.config.articulation.restPitch
+          : weapon.localPitch;
+      } else {
+        weapon.articulationIdleMs = 0;
       }
 
       // --- 2) Move both axes toward targets. ---
       const aimTargetYaw = targetAngle!;
       const aimTargetPitch = targetPitch;
-      // Rust/WASM owns the damped-spring yaw/pitch integration for all
+      // Rust/WASM owns the bounded yaw/pitch joint integration for all
       // queued turrets in one batch. TypeScript only supplies target poses
       // after resolving target policy and ballistic aim.
-      queueTurretRotationStep(weapon, aimTargetYaw, aimTargetPitch);
+      queueTurretRotationStep(
+        weapon,
+        parent.yaw,
+        parent.velocity,
+        aimTargetYaw,
+        aimTargetPitch,
+      );
     }
   }
 

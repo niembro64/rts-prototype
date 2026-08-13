@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { getTurretHeadRadius } from '../math';
-import { getFactoryProductionPylonVisual } from '../sim/factoryProductionHold';
 import type { Entity, Turret } from '../sim/types';
-import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import {
   entityTeamColorHex,
   entityHeadOnlyTurretHeadColorHex,
@@ -11,7 +9,6 @@ import {
   entityShieldSphereTurretHeadColorHexForRange,
 } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretMesh } from './TurretMesh3D';
 import {
@@ -31,7 +28,6 @@ import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3
 import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 import {
-  resolveBotArmTurretAim,
   resolveBotArmTurretRoot,
 } from './BotRig3D';
 import {
@@ -73,7 +69,6 @@ export class UnitTurretPose3D {
   private readonly scratchZeroPosition = new THREE.Vector3();
   private readonly scratchIdentityQuaternion = new THREE.Quaternion();
   private readonly articulatedMount = new THREE.Vector3();
-  private readonly articulatedAim = { yaw: 0, pitch: 0 };
 
   private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
   private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
@@ -130,10 +125,8 @@ export class UnitTurretPose3D {
     parentQuaternion: THREE.Quaternion,
     barrelSpinEnabled: boolean,
     barrelSpinState: UnitBarrelSpinState3D,
-    currentDtMs: number,
     timeMs: number,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
-    constructionVisuals: ConstructionVisualController3D,
     teamTrim: TeamTrimRenderer3D | null,
     isBeamPilotLightVisible: (entityId: number, turretIndex: number) => boolean,
   ): void {
@@ -172,30 +165,22 @@ export class UnitTurretPose3D {
         }
       }
 
-      if (turretMesh.constructionEmitter && entity.factory !== null) {
-        const pylonVisual = getFactoryProductionPylonVisual(
-          entity,
-          entity.factory.selectedUnitBlueprintId,
-          turretIdx,
-        );
-        if (pylonVisual !== null) {
-          mountX = pylonVisual.localOffsetX;
-          mountY = pylonVisual.localOffsetY;
-          mountZ = pylonVisual.localBaseZ;
-        }
+      const hostAttachment = turret?.config.hostAttachment;
+      if (hostAttachment?.kind === 'botPiece' && entity.unit !== null) {
+        const radius = entity.unit.radius.other;
+        mountX += hostAttachment.socketOffset.x * radius;
+        mountY += hostAttachment.socketOffset.y * radius;
+        mountZ += hostAttachment.socketOffset.z * radius;
       }
-
       const turretHeadCenterY = Number.isFinite(mountZ)
         ? mountZ
         : supportPointOffsetZ;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
-      const hostAttachment = turret?.config.hostAttachment;
       const articulatedMount = mesh.locomotion?.type === 'bot' &&
         hostAttachment?.kind === 'botArm'
         ? resolveBotArmTurretRoot(
           mesh.locomotion,
-          hostAttachment.arm,
-          turret?.mountId ?? '',
+          hostAttachment,
           headRadius,
           this.articulatedMount,
         )
@@ -214,49 +199,6 @@ export class UnitTurretPose3D {
           turretMountY,
           mountY,
         );
-      }
-
-      if (turretMesh.constructionEmitter) {
-        setEulerZIfChanged(
-          turretMesh.constructionEmitter.group.rotation,
-          entity.unit?.unitBlueprintId === 'unitConstructionDrone' ? Math.PI : 0,
-        );
-        setObjectVisibleIfChanged(turretMesh.root, true);
-        applyTurretAimPose3D(
-          turretMesh,
-          entity.transform.rotation,
-          aimRotationFromState,
-          0,
-          parentQuaternion,
-        );
-        this.enqueueHeadMount(
-          entity,
-          turretIdx,
-          undefined,
-          undefined,
-          parentPosition,
-          parentQuaternion,
-          turretMesh.root,
-          turretMesh.yawGroup,
-          headRadius,
-        );
-        if (turretMesh.pitchGroup) setEulerZIfChanged(turretMesh.pitchGroup.rotation, 0);
-        if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
-        if (entity.factory !== null) {
-          constructionVisuals.updateFactoryConstructionEmitter(
-            turretMesh.constructionEmitter,
-            entity,
-            true,
-            currentDtMs,
-          );
-        } else {
-          constructionVisuals.updateBuilderConstructionEmitter(
-            turretMesh.constructionEmitter,
-            entity,
-            currentDtMs,
-          );
-        }
-        continue;
       }
 
       // Yaw belongs to the logical turret even when its host presentation is
@@ -301,27 +243,9 @@ export class UnitTurretPose3D {
               : entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
 
-      // STANDING HOSTS HOLD THEIR GUNS. A biped aims with its body — the torso
-      // carries the heading, the arm carries the elevation — and the weapon is
-      // rigid to the hand at the end of that chain. So its rendered pose comes
-      // from the arm, and the turret adds no articulation of its own; letting it
-      // also yaw and pitch would express one aim twice and visibly detach the
-      // barrel from the arm holding it. Nothing about the turret's authority
-      // changes: mount, aim solver, firing gate, and wire rows are untouched.
-      //
-      // The pose rides the ordinary aim record as a local override rather than
-      // being written here. Skipping the flush skips everything the flush also
-      // does for a turret — barrels, spin, team collar, instanced head — and a
-      // held gun needs all of it exactly as much as a hull mount does.
-      const armAim = articulatedMount !== null &&
-        hostAttachment?.kind === 'botArm' &&
-        mesh.locomotion?.type === 'bot'
-        ? resolveBotArmTurretAim(
-          mesh.locomotion,
-          hostAttachment.arm,
-          this.articulatedAim,
-        )
-        : null;
+      // Aim remains turret-owned. The host piece chain only supplies the
+      // authoritative parent/socket transform, so normal world-to-parent aim
+      // conversion keeps the visible barrel and gameplay forward identical.
       this.enqueueAim(
         entity,
         turretIdx,
@@ -334,8 +258,8 @@ export class UnitTurretPose3D {
         entity.transform.rotation,
         aimRotationFromState,
         aimPitchFromState,
-        armAim?.yaw ?? Number.NaN,
-        armAim?.pitch ?? Number.NaN,
+        Number.NaN,
+        Number.NaN,
         pilotLightVisible,
       );
     }
@@ -363,11 +287,9 @@ export class UnitTurretPose3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.aimTurretMeshes[i];
       const outputBase = i * outputStride;
-      // A held gun authored its own local pose from the arm carrying it (see
-      // the bot-host branch in poseTurrets). Everything below this —
-      // barrels, spin, team collar, instanced head — must still run for it,
-      // which is exactly why it rides this record rather than short-cutting
-      // past the flush.
+      // The finite local override remains available for host rigs that publish
+      // one explicitly. Bot weapon arms no longer use it: they supply only the
+      // parent socket and the logical turret retains yaw/pitch authority.
       const localYaw = this.aimLocalYaw[i];
       const held = Number.isFinite(localYaw);
       setEulerYIfChanged(
@@ -473,18 +395,33 @@ export class UnitTurretPose3D {
         this.barrelUsesCone[i],
         this.barrelPilotLightVisible[i],
       );
-      if (this.barrelLaneIndexes[i] !== 0) continue;
       const columnX = output[offset + 4];
       const columnY = output[offset + 5];
       const columnZ = output[offset + 6];
       const length = Math.hypot(columnX, columnY, columnZ);
       if (length <= 1e-9) continue;
+      const invLength = 1 / length;
+      const muzzleThreeX = output[offset + 12] + columnX * 0.5;
+      const muzzleThreeY = output[offset + 13] + columnY * 0.5;
+      const muzzleThreeZ = output[offset + 14] + columnZ * 0.5;
+      turretMountCache.writeEmission(
+        this.barrelEntityIds[i],
+        this.barrelTurretIndexes[i],
+        this.barrelLaneIndexes[i],
+        muzzleThreeX,
+        muzzleThreeZ,
+        muzzleThreeY,
+        columnX * invLength,
+        columnZ * invLength,
+        columnY * invLength,
+      );
+      if (this.barrelLaneIndexes[i] !== 0) continue;
       turretMountCache.writeForward(
         this.barrelEntityIds[i],
         this.barrelTurretIndexes[i],
-        columnX / length,
-        columnZ / length,
-        columnY / length,
+        columnX * invLength,
+        columnZ * invLength,
+        columnY * invLength,
       );
     }
   }

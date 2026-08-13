@@ -60,6 +60,16 @@ export function getTurretConfig(id: string): TurretConfig {
   const rangeOverrides = config.targeting.engagement.rangeOverrides;
   return {
     ...config,
+    angular: {
+      ...config.angular,
+      yaw: { ...config.angular.yaw },
+      pitch: { ...config.angular.pitch },
+    },
+    articulation: {
+      ...config.articulation,
+      yaw: { ...config.articulation.yaw },
+      pitch: { ...config.articulation.pitch },
+    },
     targeting: {
       ...config.targeting,
       engagement: {

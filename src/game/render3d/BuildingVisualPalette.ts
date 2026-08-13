@@ -11,7 +11,7 @@ export const BUILDING_PALETTE = {
   constructionAmber: COLORS.buildings.palette.constructionAmber.colorHex,
   constructionSpark: COLORS.buildings.palette.constructionSpark.colorHex,
   /** Metal-resource color — matches the metal coin/ball tint in
-   *  ConstructionEmitterMesh3D and the "metal" income bar. Used for the
+   *  ResourcePylonMesh3D and the "metal" income bar. Used for the
    *  metal extractor's spinning blades. */
   metalResource: RESOURCE_COLOR_HEX.metal,
 } as const;
@@ -22,4 +22,3 @@ export const SHINY_GRAY_METAL_MATERIAL = {
   roughness: COLORS.buildings.materials.shinyGrayMetal.roughness,
   envMapIntensity: COLORS.buildings.materials.shinyGrayMetal.envMapIntensity,
 } as const;
-

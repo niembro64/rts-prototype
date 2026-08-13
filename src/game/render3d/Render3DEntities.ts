@@ -38,7 +38,6 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import type { OverlayLineSystem } from './OverlayLineSystem';
-import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import { RexVisualKit3D } from './RexVisualKit3D';
@@ -128,10 +127,9 @@ import {
 import { unitTurretsAllowVisualBank3D } from './turretRenderHelpers3D';
 import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 
-// Turret head height is the one remaining shared vertical constant —
-// chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
-// The sim's projectile-spawn point is the turret world mount center;
-// barrel endpoint geometry is visual-only.
+// Chassis heights are per-unit (see getBodyTopY in BodyDimensions.ts).
+// Turret head centers remain AimFrom presentation anchors; the barrel pass
+// separately publishes per-lane QueryWeapon muzzles for live emissions.
 
 const EMPTY_PROJECTILES: readonly Entity[] = [];
 const DEFAULT_ENTITY_EMISSION_FAR_LOD = (): boolean => false;
@@ -219,7 +217,6 @@ export class Render3DEntities {
   private lastUnitEntitySetVersion = -1;
   private projectileRenderer: ProjectileRenderer3D;
   private selectionOverlays: SelectionOverlayRenderer3D;
-  private constructionVisuals: ConstructionVisualController3D;
   private resourcePylonFlows: ResourcePylonFlowController3D;
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
@@ -368,10 +365,6 @@ export class Render3DEntities {
       overlayLines,
     });
     this.resourcePylonFlows = new ResourcePylonFlowController3D();
-    this.constructionVisuals = new ConstructionVisualController3D(
-      this.clientViewState,
-      this.resourcePylonFlows,
-    );
     this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(
       this.world,
       this.clientViewState,
@@ -385,7 +378,6 @@ export class Render3DEntities {
       world: this.world,
       clientViewState: this.clientViewState,
       selectionOverlays: this.selectionOverlays,
-      constructionVisuals: this.constructionVisuals,
       resourcePylonFlows: this.resourcePylonFlows,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
@@ -906,39 +898,6 @@ export class Render3DEntities {
       const bodyOpacity = unitRows.bodyOpacity[row] * visionFadeIn;
       setObjectVisibleIfChanged(m.chassis, fullUnitDetail && bodyOpacity > 0);
 
-      // A production shell mirrors its factory's pylon orbit: the same
-      // EMA-smoothed phase, opposite direction, spun in place around its
-      // own origin. The shell association comes from the construction
-      // controller's resource-flow resolution (the hold relation never
-      // crosses the wire). Applied to the drawn pose only, via this
-      // frame-local packet mutation (the packet is rebuilt every frame)
-      // — the authoritative rotation stays the launch heading, so the
-      // whole posed assembly (chassis, turrets, legs) counter-rotates
-      // while the sim and the eventual launch are untouched. Units with
-      // a full body quaternion pose from it (the scalar yaw is ignored
-      // there), so the offset is applied to BOTH channels: the scalar,
-      // and a sim-vertical yaw pre-multiplied onto the quaternion.
-      if (unitRows.progress[row] < 1) {
-        const counterYaw = this.constructionVisuals.getHeldShellCounterSpinYaw(entityId);
-        if (counterYaw !== 0) {
-          unitRows.rotation[row] += counterYaw;
-          if (unitRows.hasFullOrientation[row] !== 0) {
-            const half = counterYaw * 0.5;
-            const sc = Math.sin(half);
-            const cc = Math.cos(half);
-            const ox = unitRows.orientationX[row];
-            const oy = unitRows.orientationY[row];
-            const oz = unitRows.orientationZ[row];
-            const ow = unitRows.orientationW[row];
-            // q' = qz(counterYaw) ⊗ q — world-frame yaw about sim +Z.
-            unitRows.orientationX[row] = cc * ox - sc * oy;
-            unitRows.orientationY[row] = cc * oy + sc * ox;
-            unitRows.orientationZ[row] = cc * oz + sc * ow;
-            unitRows.orientationW[row] = cc * ow - sc * oz;
-          }
-        }
-      }
-
       const liftPos = m.liftGroup?.position;
       // An upright host takes the hill in its legs, not in its spine: it poses
       // off world vertical, ignores its body quaternion, and gets no visual
@@ -1181,10 +1140,8 @@ export class Render3DEntities {
         this._smoothParentQuat,
         unitGfx.barrelSpin,
         this.barrelSpinState,
-        this._currentDtMs,
         this._currentTimeMs,
         this.unitDetailInstances,
-        this.constructionVisuals,
         this.teamTrim,
         this.isBeamPilotLightVisible,
       );
@@ -1428,8 +1385,14 @@ export class Render3DEntities {
     return this.locomotionSmokeEmitters;
   }
 
-  getTurretMountWorldState(entityId: EntityId, turretIdx: number): TurretMountEntry | null {
-    return this.turretMountCache.get(entityId, turretIdx);
+  getTurretMountWorldState(
+    entityId: EntityId,
+    turretIdx: number,
+    emissionLaneIdx?: number,
+  ): TurretMountEntry | null {
+    return emissionLaneIdx === undefined
+      ? this.turretMountCache.get(entityId, turretIdx)
+      : this.turretMountCache.getEmission(entityId, turretIdx, emissionLaneIdx);
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined
@@ -1476,7 +1439,6 @@ export class Render3DEntities {
     this.scopedMeshRetention.clear();
     this.unitRenderScopeToken = 0;
     this.lastUnitEntitySetVersion = -1;
-    this.constructionVisuals.destroy();
     this.resourcePylonFlows.destroy();
     this.unitDetailInstances.destroy();
     this.legRenderer.destroy();

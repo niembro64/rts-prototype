@@ -553,6 +553,8 @@ function packTurretsIntoScratch(
     view[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     view[base + 9] = src.currentShieldRange ?? 0;
     view[base + 10] = src.active === false ? 1 : 0;
+    view[base + 11] = angular.hostYaw ?? angular.rot;
+    view[base + 12] = angular.hostYawVel ?? 0;
   }
 }
 
@@ -599,6 +601,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.builderPriorityLow !== null && unit.builderPriorityLow !== undefined) ||
     (unit.carrierSpawnEnabled !== null && unit.carrierSpawnEnabled !== undefined) ||
     (unit.cloaked !== null && unit.cloaked !== undefined) ||
+    (unit.workStation !== null && unit.workStation !== undefined) ||
     hasGatherWaitAction(unit.actions) ||
     unit.isCommander === false ||
     unit.build?.interrupted === true
@@ -1058,6 +1061,8 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 8] = src[srcRow + 8];
     view[dstRow + 9] = src[srcRow + 9];
     view[dstRow + 10] = src[srcRow + 10];
+    view[dstRow + 11] = src[srcRow + 11];
+    view[dstRow + 12] = src[srcRow + 12];
   }
   return true;
 }

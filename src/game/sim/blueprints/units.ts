@@ -35,6 +35,7 @@ import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
+import { validateStationArticulation, validateWorkEmitter } from './stationArticulation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 
@@ -207,6 +208,15 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
           `Invalid work config for ${bp.unitBlueprintId}: workEmitter points must be finite`,
         );
       }
+    }
+    validateWorkEmitter(`work emitter ${bp.unitBlueprintId}`, workEmitter);
+    if (
+      workEmitter.attachment.kind === 'botArm' &&
+      bp.unitLocomotion.type !== 'bot'
+    ) {
+      throw new Error(
+        `Invalid work emitter ${bp.unitBlueprintId}: botArm attachment requires bot locomotion`,
+      );
     }
   } else if (workEmitter !== null) {
     throw new Error(
@@ -396,10 +406,8 @@ function validateBotLegs(unitBlueprintId: string, legs: BotLegs): void {
   }
 }
 
-/** A biped's arms hang off the same stride its legs walk with. None of this
- *  reaches the sim — arms are presentation — but a non-finite ratio poses the
- *  whole limb at NaN, which reads as a missing arm rather than as a bad
- *  blueprint. */
+/** Bot arm proportions drive both visible pieces and authoritative weapon
+ * sockets, so invalid geometry is a gameplay contract failure. */
 function validateBotArms(unitBlueprintId: string, arms: BotArms): void {
   const values = [
     ['shoulder.xUnitRadiusRatio', arms.shoulder.xUnitRadiusRatio],
@@ -505,6 +513,25 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   } else if (bp.unitLocomotion.type === 'bot') {
     validateBotLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
     validateBotArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
+    const upperBodyActuator = bp.unitLocomotion.config.upperBodyActuator;
+    if (
+      !Number.isFinite(upperBodyActuator.maxSpeed) || upperBodyActuator.maxSpeed <= 0 ||
+      !Number.isFinite(upperBodyActuator.maxAcceleration) ||
+      upperBodyActuator.maxAcceleration <= 0
+    ) {
+      throw new Error(
+        `Invalid bot upper-body actuator for ${bp.unitBlueprintId}: ` +
+        'maxSpeed and maxAcceleration must be finite positive radians-per-second limits',
+      );
+    }
+    if (
+      !Number.isFinite(bp.unitLocomotion.config.upperBodyRestoreDelayMs) ||
+      bp.unitLocomotion.config.upperBodyRestoreDelayMs < 0
+    ) {
+      throw new Error(
+        `Invalid bot upper-body restore delay for ${bp.unitBlueprintId}: expected finite non-negative milliseconds`,
+      );
+    }
   }
 
   // Mount-finiteness only — cross-blueprint turret-ID validation runs
@@ -512,6 +539,10 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   // TURRET_BLUEPRINTS are visible.
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
+    validateStationArticulation(
+      `turret station ${bp.unitBlueprintId}[${i}] ${turret.mountId}`,
+      turret.articulation,
+    );
     const mount = turret.mount;
     if (
       !Number.isFinite(mount.x) ||
@@ -534,6 +565,53 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
         `Invalid turret host attachment for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
         'bot attachments require bot locomotion',
       );
+    }
+    if (turret.hostAttachment?.kind === 'botArm') {
+      const offset = turret.hostAttachment.socketOffset;
+      if (
+        !Number.isFinite(offset.x) ||
+        !Number.isFinite(offset.y) ||
+        !Number.isFinite(offset.z)
+      ) {
+        throw new Error(
+          `Invalid bot arm socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+          'socketOffset x/y/z must be finite unit-radius ratios',
+        );
+      }
+    }
+    if (turret.hostAttachment?.kind === 'botPiece') {
+      const offset = turret.hostAttachment.socketOffset;
+      if (
+        !Number.isFinite(offset.x) ||
+        !Number.isFinite(offset.y) ||
+        !Number.isFinite(offset.z)
+      ) {
+        throw new Error(
+          `Invalid bot piece socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+          'socketOffset x/y/z must be finite unit-radius ratios',
+        );
+      }
+    }
+    if (turret.emissionSockets !== undefined) {
+      const laneCount = TURRET_BLUEPRINTS[turret.turretBlueprintId]?.emissionLaneCount;
+      if (turret.emissionSockets.length !== laneCount) {
+        throw new Error(
+          `Invalid emission sockets for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+          `expected exactly ${String(laneCount)} QueryWeapon lane(s)`,
+        );
+      }
+      for (const socket of turret.emissionSockets) {
+        if (
+          !Number.isFinite(socket.offset.x) ||
+          !Number.isFinite(socket.offset.y) ||
+          !Number.isFinite(socket.offset.z)
+        ) {
+          throw new Error(
+            `Invalid emission socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+            'offset x/y/z must be finite world units',
+          );
+        }
+      }
     }
     // Airborne mounts may use all three axes. Presentation banking is
     // disabled for a host with any off-axis combat mount, so visual-only

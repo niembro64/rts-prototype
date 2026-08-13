@@ -22,9 +22,8 @@ import {
   type EntityVolume,
 } from '../sim/entityVolumes';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
-import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
-import { getEntityBodyOrientation, getTurretMountHeight } from '../sim/combat/combatUtils';
+import { resolveWeaponWorldMount } from '../sim/combat/combatUtils';
 import {
   createWorldSupportSurface,
 } from '../sim/supportSurface';
@@ -489,12 +488,17 @@ export class SelectionOverlayRenderer3D {
               LAND_CELL_SIZE,
             )
           : FLAT_SURFACE_NORMAL;
-        const mount = getTurretWorldMount(
-          ux, uy, getUnitGroundZ(entity),
-          cos, sin,
-          weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
-          mountSurfaceNormal,
-          getEntityBodyOrientation(entity),
+        const mount = resolveWeaponWorldMount(
+          entity,
+          weapon,
+          i,
+          cos,
+          sin,
+          {
+            currentTick: undefined,
+            unitGroundZ: getUnitGroundZ(entity),
+            surfaceN: mountSurfaceNormal,
+          },
         );
         const mountX = mount.x;
         const mountY = mount.y;

@@ -463,12 +463,13 @@
         differently, and the asymmetry is deliberate.
       </p>
       <p>
-        Every sensor and weapon <strong>source</strong> is a mounted turret, and a turret is
-        strictly <strong>IN</strong> or <strong>OUT</strong> of the water, decided only by its
-        authoritative mount center: at or below the water level is <strong>underwater</strong>,
-        above it is <strong>above water</strong>. A turret is a discrete piece of hardware pointing
-        one way through one medium; a partially wet barrel is not half a sensor and not half a gun.
-        Mount radius, host hull extent, visual height, and wake never soften that classification.
+        Every sensor and weapon <strong>source</strong> is a mounted turret. A sensor classifies
+        from its authoritative AimFrom pivot; a physical shot or ray classifies from its selected
+        QueryWeapon socket. Either source point is strictly <strong>IN</strong> or
+        <strong>OUT</strong> of the water: at or below the water level is
+        <strong>underwater</strong>, above it is <strong>above water</strong>. A partially wet
+        barrel is not half a sensor and not half a gun. Mount radius, host hull extent, visual
+        height, and wake never soften that classification.
       </p>
       <p>
         A <strong>target</strong> is a body, and a body genuinely occupies whatever media its volume
@@ -728,13 +729,13 @@
       </p>
       <p>
         Projectile creation converts that solution into the authoritative
-        spawn event by adding the mount center's current world velocity:
-        <code>v_world = v_mount + v_launch_relative</code>. The same world
+        spawn event by adding the selected QueryWeapon socket&rsquo;s current world velocity:
+        <code>v_world = v_socket + v_launch_relative</code>. The same world
         velocity is written onto the projectile body and into the spawn
         event, so simulation and rendering both
         start from one physical initial condition. A projectile fired from a
         moving tank, aircraft, bobbing suspension mount, or recoil-shifted
-        turret therefore inherits that mount motion at launch.
+        turret therefore inherits that muzzle motion at launch.
       </p>
       <p>
         Launch inheritance is an explicit turret-blueprint policy through
@@ -1962,50 +1963,58 @@
         yaw/pitch servo, aim-error firing gate, snapshot, interpolation, and renderer
         pose path. An emission family does not get a private targeting path.
       </p>
-      <h3>Bot hosts hold their guns: the arm aims, the turret is static</h3>
+      <h3>Bot hosts expose authoritative piece sockets</h3>
       <p>
-        Every host on that shared aim expresses it the same way &mdash; the hull holds still
-        and the turret swivels on top of it &mdash; with one exception. A bot host is a
-        biped with articulated legs and arms, and it aims with its <em>body</em>: the torso
-        carries the weapon heading, the arm carries the elevation, and the weapon is bolted
-        to the hand at the end of that chain. The arm direction <em>is</em> the gun direction.
+        A bot is not one rigid transform. Its upper body, shoulders, forearms, hands, and
+        head mounts form a piece tree, and weapon geometry attached to that tree must use the
+        tree&rsquo;s current fixed-tick transform for gameplay as well as presentation. A
+        <code>botArm</code> mount resolves its AimFrom pivot from the named hand plus the
+        unit-blueprint <code>socketOffset</code>; a <code>botHead</code> mount resolves its
+        authored pivot below the moving upper-body piece. The ordinary authored
+        <code>mount</code> remains the rigid fallback for hosts with no piece attachment.
       </p>
       <p>
-        So a turret with a <code>botArm</code> host attachment renders as a
-        <strong>static gun held in a hand</strong>. Its rendered orientation comes from the
-        carrying arm&rsquo;s solved forearm direction, and the turret contributes no yaw or
-        pitch of its own. The alternative is not neutral: a held turret that also articulated
-        would express one aim twice and leave the barrel visibly disagreeing with the arm
-        holding it &mdash; a rifle rotating inside a closed fist.
+        This follows BAR/Recoil&rsquo;s separation of responsibilities. The turret owns targeting,
+        yaw/pitch, cooldown, and firing. The host owns named transforms. BAR scripts express
+        that split with <code>AimFromWeapon</code> (the aiming reference piece),
+        <code>AimWeapon</code> (turn the host pieces), and <code>QueryWeapon</code> (the actual
+        emission piece). This project expresses the same contract through an authoritative
+        AimFrom pivot and one QueryWeapon socket per emission lane. Keeping turret and host as
+        separate systems is deliberate; allowing either one to invent the other&rsquo;s transform
+        is forbidden.
       </p>
       <p>
-        <strong>None of this touches turret authority.</strong> Mount resolution, target
-        acquisition, the aim solver, the damped yaw/pitch servo, the aim-error firing gate,
-        and the presentation rows on the wire are byte-for-byte what they are on a tank; a
-        bot host&rsquo;s gun hits exactly what it would hit anywhere else. This is a
-        presentation swap of the same family as <strong>Locomotion Visuals Are Frontend</strong>:
-        the renderer chooses which body expresses an authoritative pose, never what that pose is.
+        The shared torso has one authoritative state row and many possible claimants. Weapon
+        and QueryWork stations request a world yaw through an authored claim group and priority;
+        equal priorities resolve by stable mount order. A fixed-tick bounded motor applies the
+        bot blueprint&rsquo;s maximum angular speed and acceleration, so a Human can turn briskly
+        while a Commander and especially a Rex visibly carry more rotational inertia without a
+        presentation-only spring. Current work intent and the preceding fixed sample&rsquo;s committed
+        weapon intent arbitrate the parent once per tick; weapon targeting then publishes the next
+        parent sample while its child joint tracks inside the achieved parent frame. Each attached
+        arm reads its own authoritative local yaw/pitch and never borrows the visual gait clock.
+        Sibling stations remain independently articulated inside the moving parent.
       </p>
       <ul class="rule-list">
-        <li>The renderer reads the arm&rsquo;s own solved elbow&rarr;hand direction, chassis-local, and applies it as the held turret&rsquo;s local yaw/pitch. One source, so the drawn gun can never drift off the hand it is drawn in.</li>
-        <li>Only <code>botArm</code> attachments are held. A <code>botHead</code> mount &mdash; the Commander&rsquo;s D-gun &mdash; is hull-fixed and keeps the ordinary self-articulating turret pose, as does every mount on every other locomotion type.</li>
-        <li>Gameplay keeps the authored blueprint mount as the shot origin. The hand is an articulated <em>presentation</em> mount, which is what stops a held gun from sitting in the torso while its arm walks away; it does not redefine where the emission comes from.</li>
-        <li>Torso heading and arm elevation are host presentation, smoothed on the client, so a held gun trails its authoritative aim by the same easing its body does. That lag is the feature: the weapon carries the weight of the thing carrying it.</li>
-        <li>Head instancing, barrel geometry, detail tiers, and team trim are untouched. It is still an ordinary turret mesh &mdash; only the rotation feeding it comes from somewhere else.</li>
+        <li>The simulation resolves attached AimFrom pivots before targeting, then resolves them again after the turret servo and overwrites the targeting slab before firing. Targeting sees the start-of-tick piece pose; emission and snapshots see the final pose.</li>
+        <li>The waist servo angle and angular velocity are authoritative turret-host state, participate in snapshot dirtiness, and travel through the turret wire row. The renderer uses that pose, the same bot-arm geometry function, and the same torso-owner rule. It may interpolate authoritative rows, but it may not maintain a private torso spring or weapon-arm easing that changes a combat socket.</li>
+        <li>Every runtime turret materializes exactly <code>emissionLaneCount</code> QueryWeapon offsets. A unit mount may author <code>emissionSockets</code> explicitly in world units; otherwise the offsets are derived from its host-authored head/barrel presentation, including multi-barrel orbit.</li>
+        <li>Projectile spawn, beam start, fire audio, pending post-physics launch finalization, and inherited launch velocity all query the selected lane. Sensors, target range, damage selection, and shields continue to use the AimFrom pivot because those systems address the mounted turret, not a muzzle.</li>
+        <li>The rendered barrel matrix publishes the matching lane muzzle for beam interpolation. Presentation may smooth between fixed ticks, but it may not snap a live ray back to the turret head center.</li>
       </ul>
-      <h3>Rocket turrets are spinning gatlings</h3>
+      <h3>Rocket turrets are multi-tube launchers</h3>
       <p>
         The three rocket turrets (<code>turretRocketSlow</code>,
         <code>turretRocketFast</code>, <code>turretAntiAir</code>) each carry a
-        three-barrel gatling cluster (<code>simpleMultiBarrel</code>) that spins up
-        while the turret is engaged &mdash; the same rig the Hippo&rsquo;s
-        <code>turretGatling</code> uses, as the visual reference. They aim like any
-        other shot turret, the cluster tracking its target in yaw and pitch. The
-        vertical launcher is the exception its own way: the sim pins its pose
-        straight up and lets the gatling spin run purely on engagement state, so the
-        barrels stay skyward and still wind up when it fires. Because a rocket
-        turret&rsquo;s aim is now a real visual, it rides the wire again &mdash; these
-        are ordinary aiming turrets, no longer head-only.
+        three-barrel cluster (<code>simpleMultiBarrel</code>) with one stable
+        QueryWeapon lane per tube. Spin is an authored presentation option, not
+        part of the authoritative socket pose: launchers such as the Rex shoulder
+        pods remain static, while gatling weapons may rotate their decorative drum.
+        They aim like any other shot turret, with the cluster tracking its target
+        in yaw and pitch. A vertical launcher is the exception its own way: the sim
+        pins its pose straight up while the launcher still follows its moving host
+        piece. Because a rocket turret&rsquo;s aim is a real visual, it rides the wire
+        again &mdash; these are ordinary aiming turrets, no longer head-only.
       </p>
       <h3>Beam turrets use the shared servo at extreme finite stiffness</h3>
       <p>
@@ -2019,7 +2028,7 @@
         directly into turret rotation.
       </p>
       <p>
-        A live beam is retraced from the turret mount along that authoritative
+        A live beam is retraced from its selected QueryWeapon muzzle along that authoritative
         yaw/pitch pose. It does not construct a second direction from the locked
         target&rsquo;s current center, and the renderer does not reconstruct turret
         orientation from the beam polyline. Once aligned, a ray still has no
@@ -2036,11 +2045,11 @@
         than a beam emerging from a still-visible cone.
       </p>
       <p>
-        The pilot light never moves the physical or rendered emission origin. Like every other
-        turret emission, a beam begins at the exact center of the authoritative turret mount
-        point. Barrel length, the tapered barrel mesh, and the pilot-light cone are presentation
-        geometry around that origin; none of them may offset the beam&rsquo;s first point toward a
-        muzzle or cone tip.
+        The pilot light never invents a separate origin. Like every other turret emission, a
+        beam begins at the selected authoritative QueryWeapon socket. By default that socket is
+        derived from the host-authored tapered barrel&rsquo;s muzzle; a mount may override it through
+        <code>emissionSockets</code>. The rendered cone and the physical ray therefore terminate
+        at the same muzzle rather than at the turret head center.
       </p>
       <p>
         Beam turrets are therefore ordinary full-barrel turrets rather than
@@ -2470,7 +2479,8 @@
       </p>
       <p>
         <strong>Shot arming is a host-centered safety volume, not source exclusion.</strong> Every
-        physical shot is emitted from the center of its turret and begins unarmed. The firing host's
+        physical shot is emitted from its selected authoritative QueryWeapon socket and begins
+        unarmed. The firing host's
         <strong>ARM</strong> volume is derived from its <strong>HIT</strong> volume: it has the exact
         same center and shape, with every extent enlarged by at least <strong>1.5 times</strong>.
         Where a unit's collision sphere is larger than its damage sphere, the derived uniform scale

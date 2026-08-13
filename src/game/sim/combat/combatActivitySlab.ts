@@ -13,7 +13,7 @@ import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 /** Slab-first activity-mask refresh used by sim hot paths.
  *
- *  Writes the final post-spring turret pose and angular/pitch velocity into
+ *  Writes the final post-actuator turret pose and angular/pitch velocity into
  *  the slab. Activity kernels consume the rates, and adjacent-tick render
  *  presentation captures all four values from this same authoritative row.
  *  then invokes the Rust mask kernel. Mid-tick FSM state mutations

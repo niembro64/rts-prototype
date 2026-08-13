@@ -404,7 +404,6 @@ export class UnitMeshBuilder3D {
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
       const isShield = turret.presentation.barrel?.type === 'complexSingleEmitter';
-      const isConstructionEmitter = turret.presentation.constructionEmitter !== null;
       const showShieldEmitterCore = isShield &&
         turret.config.shot?.type === 'shield' &&
         turret.config.shot.barrier !== undefined;
@@ -417,7 +416,6 @@ export class UnitMeshBuilder3D {
         turretOff ||
         unitGfx.turretStyle === 'simple' ||
         (isShield && !showShieldEmitterCore) ||
-        isConstructionEmitter ||
         hideBeamHead;
       let headSlot: number | undefined;
       if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit && !isRexUnit) {

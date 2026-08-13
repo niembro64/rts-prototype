@@ -180,14 +180,16 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit/building row layouts: see appendDirect*EntityWireRow for the exact slot
 // order. Unit slots 51+ and building factory-private slots carry command/build
 // state that used to force a RAW entity fallback.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 68;
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 77;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 50;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
-// targetId, hasShieldRange, shieldRange, inactive. Stride shrank from
+// targetId, hasShieldRange, shieldRange, inactive, hostPieceYaw,
+// hostPieceYawVelocity. Stride shrank from
 // 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
-// removed alongside movementAccel, then grew to 11 for the V11 inactive bit.
-export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
+// removed alongside movementAccel, grew to 11 for the V11 inactive bit, and
+// to 13 for the authoritative bot waist-servo pose.
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 13;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
@@ -231,6 +233,7 @@ type PooledEntry = {
   unitHp: NonNullable<UnitSub['hp']>;
   unitVelocity: NonNullable<UnitSub['velocity']>;
   unitBuild: NonNullable<UnitSub['build']>;
+  unitWorkStation: NonNullable<UnitSub['workStation']>;
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
@@ -505,14 +508,17 @@ function writeTurretsToPool(
     } else {
       t.angular.rot = qRot(src.rotation);
       t.angular.vel = qRot(src.angularVelocity);
-      // Acceleration intentionally omitted from the wire: it's the
-      // instantaneous damped-spring force at this tick (depends on
-      // error-to-target), not a constant, and integrating it across an
-      // arbitrary client-side dt overshoots. Clients predict turret
-      // motion from velocity alone.
+      // Acceleration intentionally omitted from the wire: it is the bounded
+      // motor command for this fixed tick, not a constant suitable for an
+      // arbitrary client-side dt. Clients interpolate authoritative poses and
+      // use velocity only for the existing short presentation prediction.
       t.angular.pitch = qRot(src.pitch);
       t.angular.pitchVel = qRot(src.pitchVelocity);
     }
+    t.angular.hostYaw = qRot(
+      Number.isFinite(src.hostPieceYaw) ? src.hostPieceYaw : 0,
+    );
+    t.angular.hostYawVel = qRot(src.hostPieceYawVelocity);
     const hasTargetingFsm = hasTargetingContext &&
       readCombatTargetingTurretFsmFromContextInto(_snapshotTargetingContext, i, _snapshotTurretFsm);
     const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : (src.target ?? -1);
@@ -546,6 +552,16 @@ function createPooledEntry(): PooledEntry {
     interrupted: false,
     paid: { energy: 0, metal: 0 },
   };
+  const unitWorkStation: NonNullable<UnitSub['workStation']> = {
+    localYaw: 0,
+    localPitch: 0,
+    localYawVelocity: 0,
+    localPitchVelocity: 0,
+    targetActive: false,
+    aligned: false,
+    targetWorldYaw: 0,
+    targetWorldPitch: 0,
+  };
   const buildingHp = { curr: 0, max: 0 };
   const buildingBuild = {
     complete: false,
@@ -568,6 +584,7 @@ function createPooledEntry(): PooledEntry {
     unitHp,
     unitVelocity,
     unitBuild,
+    unitWorkStation,
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -989,6 +1006,10 @@ function appendDirectTurretWireRows(
       values[base + 2] = qRot(src.pitch);
       values[base + 3] = qRot(src.pitchVelocity);
     }
+    values[base + 11] = qRot(
+      Number.isFinite(src.hostPieceYaw) ? src.hostPieceYaw : 0,
+    );
+    values[base + 12] = qRot(src.hostPieceYawVelocity);
     const hasTargetingFsm = hasTargetingContext &&
       readCombatTargetingTurretFsmFromContextInto(_directTargetingContext, i, _directTurretFsm);
     const targetId = hasTargetingFsm ? _directTurretFsm.targetId : (src.target ?? -1);
@@ -1115,6 +1136,9 @@ function appendDirectUnitEntityWireRow(
     entity.builder !== null &&
     (isFull || (changedMask & ENTITY_CHANGED_ACTIONS) !== 0);
   const hasBuilderPriority = hasBuildTarget;
+  const workStation = entity.builder?.workStation ?? null;
+  const hasWorkStation = workStation !== null &&
+    (isFull || (changedMask & ENTITY_CHANGED_TURRETS) !== 0);
   const buildTargetId = hasBuildTarget ? entity.builder!.currentBuildTarget : NO_ENTITY_ID;
   const canSendBuildTarget = hasBuildTarget &&
     buildTargetId !== NO_ENTITY_ID &&
@@ -1210,6 +1234,15 @@ function appendDirectUnitEntityWireRow(
   values[base + 65] = shouldEmitUnitFactory && entity.factory!.carrierSpawnEnabled !== false ? 1 : 0;
   values[base + 66] = hasBuilderPriority ? 1 : 0;
   values[base + 67] = hasBuilderPriority && entity.builder!.lowPriority === true ? 1 : 0;
+  values[base + 68] = hasWorkStation ? 1 : 0;
+  values[base + 69] = hasWorkStation ? qRot(workStation!.localYaw) : 0;
+  values[base + 70] = hasWorkStation ? qRot(workStation!.localPitch) : 0;
+  values[base + 71] = hasWorkStation ? qRot(workStation!.localYawVelocity) : 0;
+  values[base + 72] = hasWorkStation ? qRot(workStation!.localPitchVelocity) : 0;
+  values[base + 73] = hasWorkStation && workStation!.targetEntityId !== NO_ENTITY_ID ? 1 : 0;
+  values[base + 74] = hasWorkStation && workStation!.aligned ? 1 : 0;
+  values[base + 75] = hasWorkStation ? qRot(workStation!.targetWorldYaw) : 0;
+  values[base + 76] = hasWorkStation ? qRot(workStation!.targetWorldPitch) : 0;
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
@@ -1658,6 +1691,7 @@ export function serializeEntitySnapshot(
       u.carrierSpawnEnabled = null;
       u.factory = null;
       u.cloaked = null;
+      u.workStation = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -1795,6 +1829,20 @@ export function serializeEntitySnapshot(
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
         );
+      }
+
+      const workStation = entity.builder?.workStation ?? null;
+      if (workStation !== null && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
+        const pose = poolEntry.unitWorkStation;
+        pose.localYaw = qRot(workStation.localYaw);
+        pose.localPitch = qRot(workStation.localPitch);
+        pose.localYawVelocity = qRot(workStation.localYawVelocity);
+        pose.localPitchVelocity = qRot(workStation.localPitchVelocity);
+        pose.targetActive = workStation.targetEntityId !== NO_ENTITY_ID;
+        pose.aligned = workStation.aligned;
+        pose.targetWorldYaw = qRot(workStation.targetWorldYaw);
+        pose.targetWorldPitch = qRot(workStation.targetWorldPitch);
+        u.workStation = pose;
       }
 
       u.buildTargetId = null;

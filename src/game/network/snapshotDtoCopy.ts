@@ -284,7 +284,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
   return {
     turret: {
       turretBlueprintCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
-      angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 },
+      angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0, hostYaw: 0, hostYawVel: 0 },
     },
     targetId: null,
     state: 0,
@@ -302,6 +302,8 @@ export function copyTurretInto(
   dst.turret.angular.vel = src.turret.angular.vel;
   dst.turret.angular.pitch = src.turret.angular.pitch;
   dst.turret.angular.pitchVel = src.turret.angular.pitchVel;
+  dst.turret.angular.hostYaw = src.turret.angular.hostYaw ?? src.turret.angular.rot;
+  dst.turret.angular.hostYawVel = src.turret.angular.hostYawVel ?? 0;
   dst.targetId = src.targetId;
   dst.state = src.state;
   dst.active = src.active;

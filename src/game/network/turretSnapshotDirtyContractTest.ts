@@ -63,7 +63,7 @@ export function runTurretSnapshotDirtyContractTest(): void {
       Math.abs(views.pitch[turretRow] - turret.pitch) < 1e-6 &&
       Math.abs(views.angularVelocity[turretRow] - turret.angularVelocity) < 1e-6 &&
       Math.abs(views.pitchVelocity[turretRow] - turret.pitchVelocity) < 1e-6,
-    'post-spring turret pose and rates must be published to the live Rust slab',
+    'post-actuator turret pose and rates must be published to the live Rust slab',
   );
 
   assertContract(
@@ -89,6 +89,17 @@ export function runTurretSnapshotDirtyContractTest(): void {
   assertContract(
     !turretSnapshotRowsChangedSinceLastSample(unit),
     'unchanged row after quantized motion must settle cleanly',
+  );
+
+  turret.hostPieceYaw = 0.2;
+  turret.hostPieceYawVelocity = 0.15;
+  assertContract(
+    turretSnapshotRowsChangedSinceLastSample(unit),
+    'authoritative host-piece servo motion must mark the turret row dirty',
+  );
+  assertContract(
+    !turretSnapshotRowsChangedSinceLastSample(unit),
+    'unchanged host-piece servo state must settle cleanly',
   );
 
   writeSlabTurretState(unit, CT_TURRET_STATE_TRACKING, 1234);

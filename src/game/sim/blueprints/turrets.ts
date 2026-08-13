@@ -131,6 +131,19 @@ function validateTurretSubmunitions(label: string, value: unknown): void {
   }
 }
 
+function validateAngularActuator(label: string, value: TurretBlueprint['angularActuator']): void {
+  if (value === undefined) return;
+  for (const axis of ['yaw', 'pitch'] as const) {
+    const motor = value[axis];
+    if (!Number.isFinite(motor.maxSpeed) || motor.maxSpeed <= 0) {
+      throw new Error(`Invalid ${label}.angularActuator.${axis}.maxSpeed: expected finite positive radians/second`);
+    }
+    if (!Number.isFinite(motor.maxAcceleration) || motor.maxAcceleration <= 0) {
+      throw new Error(`Invalid ${label}.angularActuator.${axis}.maxAcceleration: expected finite positive radians/second squared`);
+    }
+  }
+}
+
 const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
 ) as unknown as Record<TurretBlueprintId, JsonTurretBlueprint>;
@@ -196,6 +209,11 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
       `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...TURRET_EMITTER_KIND_SET].join(', ')}]`,
     );
   }
+  if (blueprint.kind === 'attack' && blueprint.angularActuator === undefined) {
+    throw new Error(
+      `Invalid ${label}: attack turrets must author angularActuator motor limits`,
+    );
+  }
   if (!Number.isInteger(blueprint.emissionLaneCount) || blueprint.emissionLaneCount <= 0) {
     throw new Error(`Invalid ${label}.emissionLaneCount: expected positive integer`);
   }
@@ -203,6 +221,7 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     throw new Error(`Invalid ${label}.aimMotionSnapshotVisible: expected boolean`);
   }
   validateTurretCooldown(label, blueprint.cooldown);
+  validateAngularActuator(label, blueprint.angularActuator);
   validateSensorCapabilityConfig(
     `${label}.targeting.observation.sensors`,
     blueprint.targeting.observation.sensors,

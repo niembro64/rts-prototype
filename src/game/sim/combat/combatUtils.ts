@@ -1,7 +1,7 @@
 // Combat utility functions
 
 import type { Entity, ProjectileShot, Turret } from '../types';
-import { isProjectileShot } from '../types';
+import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import { isAttackEmitterConfig, isManualEmitterConfig } from '../emitterKinds';
 import { getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
@@ -14,12 +14,30 @@ import {
   entitySlotRegistry,
 } from '../EntitySlotRegistry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
+import { getUnitBlueprint } from '../blueprints';
+import { deterministicMath as DMath } from '../deterministicMath';
+import {
+  resolveBotWeaponArmSocketPose,
+  selectBotTorsoTurretIndex,
+  shortestBotSocketAngleDelta,
+  type BotArmSocketPose,
+} from '../../math/BotHostSocketGeometry';
 import { GRAVITY } from '../../../config';
+import { getSimWasm } from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretMountKinematicsFromContextInto,
   readCombatTargetingTurretMountKinematicsInto,
+  readCombatTargetingTurretAimInto,
+  readCombatTargetingTurretFsmInto,
+  writeCombatTargetingTurretHostPiecePoseInto,
+  writeCombatTargetingTurretMountKinematicsInto,
   type CombatTargetingEntityReadContext,
+  type CombatTargetingTurretAimOut,
 } from './targetingInputStamping';
+import {
+  CT_TURRET_STATE_ENGAGED,
+  CT_TURRET_STATE_TRACKING,
+} from '../../sim-wasm/init';
 
 /** True iff the entity carries the optional `commander` block — i.e.
  *  it's the player's commander unit. Centralized so a future tweak to
@@ -137,6 +155,64 @@ const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _mountKinematicsVelScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _sourceTurretMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _weaponMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _hostAttachmentLocalScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _hostAttachmentWorldScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const ZERO_EMISSION_SOCKET: Vec3 = { x: 0, y: 0, z: 0 };
+const _botArmPoseScratch: BotArmSocketPose = {
+  elbowX: 0,
+  elbowY: 0,
+  elbowZ: 0,
+  handX: 0,
+  handY: 0,
+  handZ: 0,
+  aimX: 1,
+  aimY: 0,
+  aimZ: 0,
+};
+const _botTorsoFsmScratch = { stateCode: 0, targetId: -1 };
+const _botTorsoAimScratch: CombatTargetingTurretAimOut = {
+  hasSolution: false,
+  yaw: 0,
+  pitch: 0,
+};
+const _botUpperBodyHosts: Entity[] = [];
+const _botUpperBodyOwners: Turret[] = [];
+const _botUpperBodyOwnerIndexes: number[] = [];
+let _botUpperBodyCurrentYaw = new Float64Array(0);
+let _botUpperBodyVelocity = new Float64Array(0);
+let _botUpperBodyTargetYaw = new Float64Array(0);
+let _botUpperBodyMaxSpeed = new Float64Array(0);
+let _botUpperBodyMaxAcceleration = new Float64Array(0);
+let _botUpperBodyOutYaw = new Float64Array(0);
+let _botUpperBodyOutVelocity = new Float64Array(0);
+let _botUpperBodyOutAcceleration = new Float64Array(0);
+let _botUpperBodyOutError = new Float64Array(0);
+
+export type TurretArticulationParentYaw = { yaw: number; velocity: number };
+
+/** Resolve the moving parent frame for a station's local yaw joint. Rigid
+ * mounts inherit chassis yaw; bot attachments inherit the authoritative upper
+ * body piece. Callers provide scratch storage so the per-turret path allocates
+ * nothing. */
+export function writeTurretArticulationParentYaw(
+  host: Entity,
+  turret: Turret,
+  out: TurretArticulationParentYaw,
+): TurretArticulationParentYaw {
+  const combat = host.combat;
+  if (turret.config.hostAttachment !== null && combat !== null) {
+    const ownerIndex = selectBotTorsoTurretIndex(combat.turrets);
+    const owner = ownerIndex >= 0 ? combat.turrets[ownerIndex] : undefined;
+    if (owner !== undefined && Number.isFinite(owner.hostPieceYaw)) {
+      out.yaw = owner.hostPieceYaw;
+      out.velocity = owner.hostPieceYawVelocity;
+      return out;
+    }
+  }
+  out.yaw = host.transform.rotation;
+  out.velocity = host.unit?.angularVelocity3?.z ?? 0;
+  return out;
+}
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
@@ -174,6 +250,101 @@ type WeaponWorldMountOptions = {
   surfaceN: SurfaceNormal | undefined;
   targetingContext?: CombatTargetingEntityReadContext | null;
 };
+
+function resolveAuthoritativeHostAttachmentLocal(
+  unit: Entity,
+  turret: Turret,
+  out: Vec3,
+): Vec3 | null {
+  const attachment = turret.config.hostAttachment;
+  const sourceUnit = unit.unit;
+  const combat = unit.combat;
+  if (attachment === null || sourceUnit === null || combat === null) return null;
+  const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
+  if (blueprint.unitLocomotion.type !== 'bot') return null;
+
+  const torsoTurretIndex = selectBotTorsoTurretIndex(combat.turrets);
+  const torsoOwner = torsoTurretIndex >= 0
+    ? combat.turrets[torsoTurretIndex]
+    : undefined;
+  const torsoWorldYaw = torsoOwner !== undefined && Number.isFinite(torsoOwner.hostPieceYaw)
+    ? torsoOwner.hostPieceYaw
+    : unit.transform.rotation;
+  const torsoFromHost = shortestBotSocketAngleDelta(
+    unit.transform.rotation,
+    torsoWorldYaw,
+  );
+  const torsoCos = DMath.cos(torsoFromHost);
+  const torsoSin = DMath.sin(torsoFromHost);
+  let localX: number;
+  let localY: number;
+  let localZ: number;
+
+  if (attachment.kind === 'botArm') {
+    const radius = sourceUnit.radius.other;
+    const arms = blueprint.unitLocomotion.config.arms;
+    const shoulderZ = radius * arms.shoulder.zUnitRadiusRatio;
+    resolveBotWeaponArmSocketPose(
+      arms,
+      radius,
+      attachment.arm,
+      shoulderZ,
+      turret.pitch,
+      shortestBotSocketAngleDelta(torsoWorldYaw, turret.rotation),
+      DMath,
+      _botArmPoseScratch,
+    );
+    localX = _botArmPoseScratch.handX + attachment.socketOffset.x * radius;
+    localY = _botArmPoseScratch.handY + attachment.socketOffset.y * radius;
+    localZ = _botArmPoseScratch.handZ + attachment.socketOffset.z * radius;
+  } else {
+    const mount = getRuntimeTurretMount(turret);
+    const radius = sourceUnit.radius.other;
+    const socketOffset = attachment.kind === 'botPiece'
+      ? attachment.socketOffset
+      : ZERO_EMISSION_SOCKET;
+    localX = mount.x + socketOffset.x * radius;
+    localY = mount.y + socketOffset.y * radius;
+    localZ = mount.z + socketOffset.z * radius;
+  }
+
+  out.x = torsoCos * localX - torsoSin * localY;
+  out.y = torsoSin * localX + torsoCos * localY;
+  out.z = localZ;
+  return out;
+}
+
+function resolveAuthoritativeHostAttachmentWorld(
+  unit: Entity,
+  turret: Turret,
+  cos: number,
+  sin: number,
+  unitGroundZ: number,
+  surfaceN: SurfaceNormal,
+  orientation: MountBodyOrientation | null,
+  out: Vec3,
+): Vec3 | null {
+  const local = resolveAuthoritativeHostAttachmentLocal(
+    unit,
+    turret,
+    _hostAttachmentLocalScratch,
+  );
+  if (local === null) return null;
+  const suspension = unit.unit?.suspension ?? null;
+  return getTurretWorldMount(
+    unit.transform.x,
+    unit.transform.y,
+    unitGroundZ,
+    cos,
+    sin,
+    local.x + (suspension?.offsetX ?? 0),
+    local.y + (suspension?.offsetY ?? 0),
+    local.z + (suspension?.offsetZ ?? 0),
+    surfaceN,
+    orientation,
+    out,
+  );
+}
 
 export function resolveWeaponWorldMount(
   unit: Entity,
@@ -218,6 +389,23 @@ export function resolveWeaponWorldMount(
     return out;
   }
 
+  // Client/presentation queries intentionally omit a simulation tick. For an
+  // articulated host, derive from its current interpolated turret rows instead
+  // of accepting a fixed-tick JS cache as if the hand had not moved.
+  if (currentTick === undefined && 'config' in turret) {
+    const attachedMount = resolveAuthoritativeHostAttachmentWorld(
+      unit,
+      turret as Turret,
+      cos,
+      sin,
+      optionUnitGroundZ ?? getUnitGroundZ(unit),
+      optionSurfaceN ?? FLAT_SURFACE_NORMAL,
+      getEntityBodyOrientation(unit),
+      out,
+    );
+    if (attachedMount !== null) return attachedMount;
+  }
+
   // JS Turret cache: valid only after at least one
   // updateWeaponWorldKinematics pass (worldPosTick >= 0). When a
   // currentTick is supplied we also require it to match — otherwise
@@ -233,6 +421,19 @@ export function resolveWeaponWorldMount(
   }
 
   const unitGroundZ = optionUnitGroundZ ?? getUnitGroundZ(unit);
+  if ('config' in turret) {
+    const attachedMount = resolveAuthoritativeHostAttachmentWorld(
+      unit,
+      turret as Turret,
+      cos,
+      sin,
+      unitGroundZ,
+      optionSurfaceN ?? FLAT_SURFACE_NORMAL,
+      getEntityBodyOrientation(unit),
+      out,
+    );
+    if (attachedMount !== null) return attachedMount;
+  }
   const localMount = getRuntimeTurretMount(turret);
   const sourceUnit = unit.unit;
   const suspension = sourceUnit !== null ? sourceUnit.suspension : null;
@@ -315,20 +516,33 @@ export function updateWeaponWorldKinematics(
   }
 
   const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
-  const localMount = getRuntimeTurretMount(turret);
   const sourceUnit = unit.unit;
   const suspension = sourceUnit !== null ? sourceUnit.suspension : null;
   const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
-  const mount = getTurretWorldMount(
-    unitPosition.x, unitPosition.y, unitGroundZ,
-    cos, sin,
-    localMount.x + (suspension !== null ? suspension.offsetX : 0),
-    localMount.y + (suspension !== null ? suspension.offsetY : 0),
-    localMount.z + (suspension !== null ? suspension.offsetZ : 0),
+  const attachedMount = resolveAuthoritativeHostAttachmentWorld(
+    unit,
+    turret,
+    cos,
+    sin,
+    unitGroundZ,
     options.surfaceN ?? FLAT_SURFACE_NORMAL,
     getEntityBodyOrientation(unit),
     _weaponMountScratch,
   );
+  let mount = attachedMount;
+  if (mount === null) {
+    const localMount = getRuntimeTurretMount(turret);
+    mount = getTurretWorldMount(
+      unitPosition.x, unitPosition.y, unitGroundZ,
+      cos, sin,
+      localMount.x + (suspension !== null ? suspension.offsetX : 0),
+      localMount.y + (suspension !== null ? suspension.offsetY : 0),
+      localMount.z + (suspension !== null ? suspension.offsetZ : 0),
+      options.surfaceN ?? FLAT_SURFACE_NORMAL,
+      getEntityBodyOrientation(unit),
+      _weaponMountScratch,
+    );
+  }
 
   const prevTick = turret.worldPosTick;
   const ticksElapsed = currentTick !== undefined && prevTick >= 0
@@ -360,6 +574,313 @@ export function updateWeaponWorldKinematics(
   out.y = mount.y;
   out.z = mount.z;
   return out;
+}
+
+/** BAR-style QueryWeapon result for one authoritative emission lane. */
+export type WeaponEmissionSocketWorldPose = {
+  position: Vec3;
+  velocity: Vec3;
+  forward: Vec3;
+};
+
+/** Resolve an emission socket from the current AimFrom pivot and turret aim.
+ * Socket offsets live in the turret frame: +X forward, +Y left, +Z up. */
+export function resolveWeaponEmissionSocket(
+  unit: Entity,
+  turret: Turret,
+  turretIndex: number,
+  laneIndex: number,
+  cos: number,
+  sin: number,
+  options: WeaponKinematicsOptions,
+  out: WeaponEmissionSocketWorldPose,
+): WeaponEmissionSocketWorldPose {
+  const pivot = updateWeaponWorldKinematics(
+    unit,
+    turret,
+    turretIndex,
+    cos,
+    sin,
+    options,
+    _hostAttachmentWorldScratch,
+  );
+  const sockets = turret.emissionSockets;
+  const lane = sockets.length > 0
+    ? ((laneIndex % sockets.length) + sockets.length) % sockets.length
+    : 0;
+  const socket = sockets[lane] ?? ZERO_EMISSION_SOCKET;
+  const yawCos = DMath.cos(turret.rotation);
+  const yawSin = DMath.sin(turret.rotation);
+  const pitchCos = DMath.cos(turret.pitch);
+  const pitchSin = DMath.sin(turret.pitch);
+  const forwardX = yawCos * pitchCos;
+  const forwardY = yawSin * pitchCos;
+  const forwardZ = pitchSin;
+  const leftX = -yawSin;
+  const leftY = yawCos;
+  const upX = -yawCos * pitchSin;
+  const upY = -yawSin * pitchSin;
+  const upZ = pitchCos;
+  const offsetX = forwardX * socket.x + leftX * socket.y + upX * socket.z;
+  const offsetY = forwardY * socket.x + leftY * socket.y + upY * socket.z;
+  const offsetZ = forwardZ * socket.x + upZ * socket.z;
+
+  out.position.x = pivot.x + offsetX;
+  out.position.y = pivot.y + offsetY;
+  out.position.z = pivot.z + offsetZ;
+  out.forward.x = forwardX;
+  out.forward.y = forwardY;
+  out.forward.z = forwardZ;
+
+  // Angular contribution at the socket: omega = yawRate*worldUp +
+  // pitchRate*turretLeft, then v_socket = v_pivot + omega × offset.
+  const omegaX = leftX * turret.pitchVelocity;
+  const omegaY = leftY * turret.pitchVelocity;
+  const omegaZ = turret.angularVelocity;
+  out.velocity.x = turret.worldVelocity.x + omegaY * offsetZ - omegaZ * offsetY;
+  out.velocity.y = turret.worldVelocity.y + omegaZ * offsetX - omegaX * offsetZ;
+  out.velocity.z = turret.worldVelocity.z + omegaX * offsetY - omegaY * offsetX;
+  return out;
+}
+
+function ensureBotUpperBodyCapacity(required: number): void {
+  if (_botUpperBodyCurrentYaw.length >= required) return;
+  const next = Math.max(16, required, _botUpperBodyCurrentYaw.length * 2);
+  _botUpperBodyCurrentYaw = new Float64Array(next);
+  _botUpperBodyVelocity = new Float64Array(next);
+  _botUpperBodyTargetYaw = new Float64Array(next);
+  _botUpperBodyMaxSpeed = new Float64Array(next);
+  _botUpperBodyMaxAcceleration = new Float64Array(next);
+  _botUpperBodyOutYaw = new Float64Array(next);
+  _botUpperBodyOutVelocity = new Float64Array(next);
+  _botUpperBodyOutAcceleration = new Float64Array(next);
+  _botUpperBodyOutError = new Float64Array(next);
+}
+
+/** One shared upper-body joint per bot. A stable turret row carries the joint
+ * state for snapshots, while the highest-priority active weapon or work
+ * station claims its target for this tick. The bounded motor is stepped as one
+ * Rust batch; sibling stations solve only their residual local traverse. */
+function updateBotUpperBodyArticulation(
+  units: readonly Entity[],
+  currentTick: number,
+  dtMs: number,
+): void {
+  _botUpperBodyHosts.length = 0;
+  _botUpperBodyOwners.length = 0;
+  _botUpperBodyOwnerIndexes.length = 0;
+  for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+    const unit = units[unitIndex];
+    const combat = unit.combat;
+    const sourceUnit = unit.unit;
+    if (combat === null || sourceUnit === null) continue;
+    const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
+    if (blueprint.unitLocomotion.type !== 'bot') continue;
+    const ownerIndex = selectBotTorsoTurretIndex(combat.turrets);
+    if (ownerIndex < 0) continue;
+    const owner = combat.turrets[ownerIndex];
+    if (!Number.isFinite(owner.hostPieceYaw)) {
+      owner.hostPieceYaw = unit.transform.rotation;
+      owner.hostPieceYawVelocity = 0;
+    }
+    let claimPriority = Number.NEGATIVE_INFINITY;
+    let claimOrder = Number.MAX_SAFE_INTEGER;
+    let claimedYaw = unit.transform.rotation;
+    for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
+      const claimant = combat.turrets[turretIndex];
+      const station = claimant.config.articulation;
+      if (station.claimGroup !== 'botUpperBody') continue;
+      const hasFsm = readCombatTargetingTurretFsmInto(
+        unit,
+        turretIndex,
+        _botTorsoFsmScratch,
+      );
+      const active = hasFsm
+        ? _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_ENGAGED ||
+          _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_TRACKING
+        : claimant.state === 'engaged' || claimant.state === 'tracking';
+      if (!active || !Number.isFinite(claimant.aimTargetYaw)) continue;
+      if (
+        station.claimPriority < claimPriority ||
+        (station.claimPriority === claimPriority && claimant.mountIndex >= claimOrder)
+      ) continue;
+      claimPriority = station.claimPriority;
+      claimOrder = claimant.mountIndex;
+      // Consume the just-solved targeting intent before stepping child joints.
+      // This gives parent motion real precedence instead of requiring a child
+      // to counter-rotate instantaneously after its torso has already moved.
+      // Committed beams and isolated fixtures can legitimately have no fresh
+      // solution, so retain the station's prior world intent as a fallback.
+      claimedYaw = readCombatTargetingTurretAimInto(
+        unit,
+        turretIndex,
+        _botTorsoAimScratch,
+      ) && _botTorsoAimScratch.hasSolution
+        ? _botTorsoAimScratch.yaw
+        : claimant.aimTargetYaw;
+    }
+    const workStation = unit.builder?.workStation ?? null;
+    const workEmitter = blueprint.workEmitter ?? null;
+    const workClaim = workEmitter?.articulation ?? null;
+    if (
+      workStation !== null &&
+      workClaim?.claimGroup === 'botUpperBody' &&
+      workStation.targetEntityId !== NO_ENTITY_ID &&
+      Number.isFinite(workStation.targetWorldYaw) &&
+      workClaim.claimPriority > claimPriority
+    ) {
+      claimPriority = workClaim.claimPriority;
+      claimedYaw = workStation.targetWorldYaw;
+    }
+    if (claimPriority > Number.NEGATIVE_INFINITY) {
+      owner.hostPieceIdleMs = 0;
+    } else {
+      owner.hostPieceIdleMs += dtMs;
+      if (owner.hostPieceIdleMs < blueprint.unitLocomotion.config.upperBodyRestoreDelayMs) {
+        claimedYaw = owner.hostPieceYaw;
+      }
+    }
+    const index = _botUpperBodyHosts.length;
+    ensureBotUpperBodyCapacity(index + 1);
+    _botUpperBodyHosts.push(unit);
+    _botUpperBodyOwners.push(owner);
+    _botUpperBodyOwnerIndexes.push(ownerIndex);
+    _botUpperBodyCurrentYaw[index] = owner.hostPieceYaw;
+    _botUpperBodyVelocity[index] = owner.hostPieceYawVelocity;
+    _botUpperBodyTargetYaw[index] = claimedYaw;
+    _botUpperBodyMaxSpeed[index] = blueprint.unitLocomotion.config.upperBodyActuator.maxSpeed;
+    _botUpperBodyMaxAcceleration[index] =
+      blueprint.unitLocomotion.config.upperBodyActuator.maxAcceleration;
+  }
+
+  const count = _botUpperBodyHosts.length;
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('updateBotUpperBodyArticulation: sim-wasm is not initialized');
+  }
+  const updated = sim.articulationYawStepBatch(
+    _botUpperBodyCurrentYaw,
+    _botUpperBodyVelocity,
+    _botUpperBodyTargetYaw,
+    _botUpperBodyMaxSpeed,
+    _botUpperBodyMaxAcceleration,
+    _botUpperBodyOutYaw,
+    _botUpperBodyOutVelocity,
+    _botUpperBodyOutAcceleration,
+    _botUpperBodyOutError,
+    count,
+    dtMs / 1000,
+  );
+  if (updated !== count) {
+    throw new Error(
+      `updateBotUpperBodyArticulation: articulation_yaw_step_batch updated ${updated} of ${count} rows`,
+    );
+  }
+  for (let i = 0; i < count; i++) {
+    const owner = _botUpperBodyOwners[i];
+    owner.hostPieceYaw = _botUpperBodyOutYaw[i];
+    owner.hostPieceYawVelocity = _botUpperBodyOutVelocity[i];
+    writeCombatTargetingTurretHostPiecePoseInto(
+      _botUpperBodyHosts[i],
+      _botUpperBodyOwnerIndexes[i],
+      currentTick,
+      owner.hostPieceYaw,
+      owner.hostPieceYawVelocity,
+    );
+  }
+}
+
+/**
+ * Resolve moving host pieces in three ordered phases. `tickStart` publishes
+ * AimFrom pivots for targeting, `hostAim` steps the shared parent, and
+ * `postAim` folds final child rotation into socket velocity and overwrites the
+ * targeting slab before firing.
+ */
+export function updateAuthoritativeHostAttachmentKinematics(
+  units: readonly Entity[],
+  currentTick: number,
+  dtMs: number,
+  phase: 'tickStart' | 'hostAim' | 'postAim',
+): void {
+  const invDtSec = dtMs > 0 ? 1000 / dtMs : 0;
+  if (phase === 'hostAim') {
+    updateBotUpperBodyArticulation(units, currentTick, dtMs);
+    return;
+  }
+  for (const unit of units) {
+    const combat = unit.combat;
+    const sourceUnit = unit.unit;
+    if (combat === null || sourceUnit === null) continue;
+    const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
+    if (blueprint.unitLocomotion.type !== 'bot') continue;
+    const torsoTurretIndex = selectBotTorsoTurretIndex(combat.turrets);
+    const torsoOwner = torsoTurretIndex >= 0
+      ? combat.turrets[torsoTurretIndex]
+      : undefined;
+    if (torsoOwner !== undefined) {
+      if (!Number.isFinite(torsoOwner.hostPieceYaw)) {
+        torsoOwner.hostPieceYaw = unit.transform.rotation;
+        torsoOwner.hostPieceYawVelocity = 0;
+      }
+    }
+    const { cos, sin } = getTransformCosSin(unit.transform);
+    const unitGroundZ = getUnitGroundZ(unit);
+    const surfaceN = sourceUnit.surfaceNormal ?? FLAT_SURFACE_NORMAL;
+    const orientation = getEntityBodyOrientation(unit);
+    for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
+      const turret = combat.turrets[turretIndex];
+      if (turret.config.hostAttachment === null) continue;
+      const resolved = resolveAuthoritativeHostAttachmentWorld(
+        unit,
+        turret,
+        cos,
+        sin,
+        unitGroundZ,
+        surfaceN,
+        orientation,
+        _hostAttachmentWorldScratch,
+      );
+      if (resolved === null) continue;
+
+      const oldX = turret.worldPos.x;
+      const oldY = turret.worldPos.y;
+      const oldZ = turret.worldPos.z;
+      if (phase === 'postAim' && turret.worldPosTick === currentTick) {
+        if (invDtSec > 0) {
+          turret.worldVelocity.x += (resolved.x - oldX) * invDtSec;
+          turret.worldVelocity.y += (resolved.y - oldY) * invDtSec;
+          turret.worldVelocity.z += (resolved.z - oldZ) * invDtSec;
+        }
+      } else if (
+        turret.worldPosTick === currentTick - 1 &&
+        invDtSec > 0
+      ) {
+        turret.worldVelocity.x = (resolved.x - oldX) * invDtSec;
+        turret.worldVelocity.y = (resolved.y - oldY) * invDtSec;
+        turret.worldVelocity.z = (resolved.z - oldZ) * invDtSec;
+      } else {
+        const velocity = getEntityVelocity3d(unit, _entityVelocityScratch);
+        turret.worldVelocity.x = velocity.x;
+        turret.worldVelocity.y = velocity.y;
+        turret.worldVelocity.z = velocity.z;
+      }
+      turret.worldPos.x = resolved.x;
+      turret.worldPos.y = resolved.y;
+      turret.worldPos.z = resolved.z;
+      turret.worldPosTick = currentTick;
+
+      if (phase === 'postAim') {
+        writeCombatTargetingTurretMountKinematicsInto(
+          unit,
+          turretIndex,
+          currentTick,
+          turret.worldPos,
+          turret.worldVelocity,
+        );
+      }
+    }
+  }
 }
 
 /** Per-turret mount height above the unit's ground footprint. Runtime

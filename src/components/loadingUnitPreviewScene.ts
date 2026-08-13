@@ -94,10 +94,8 @@ import {
   buildBotRig,
   poseBotRigAtPreviewCycle,
   poseBotRigAtRest,
-  resolveBotArmTurretAim,
   resolveBotArmTurretRoot,
-  type BotArmId,
-  type BotArmTurretAim,
+  type BotArmHostAttachment,
   type BotMesh,
 } from '@/game/render3d/BotRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
@@ -197,8 +195,7 @@ type PreviewLocomotionRig =
        *  from the carrying arm too, so the preview has to drive the yaw
        *  and pitch groups every frame alongside the mount position. */
       turretMesh: TurretMesh;
-      armId: BotArmId;
-      mountId: string;
+      attachment: BotArmHostAttachment;
       headRadius: number;
     }>;
   };
@@ -314,7 +311,6 @@ const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
 const turretCollarGeom = createTurretCollarGeometry();
-const _previewArmAim: BotArmTurretAim = { yaw: 0, pitch: 0 };
 /** The preview builds one kit per body shape it is asked to draw, keyed the
  *  same way the live renderer pools them, so the card shows exactly the kit
  *  the unit wears in the battle. */
@@ -647,7 +643,6 @@ function buildPreviewUnitModel(
     unitBlueprintId,
     chassisLift,
     materials,
-    productionRing,
     geometryTier,
     locomotion?.type === 'bot' ? locomotion : null,
   );
@@ -767,7 +762,6 @@ function buildPreviewTurrets(
   unitBlueprintId: UnitBlueprintId,
   chassisLift: number,
   materials: PreviewUnitMaterials,
-  productionRing: PreviewProductionRing | null,
   geometryTier: PrimitiveGeometryTier,
   botRig: Extract<PreviewLocomotionRig, { type: 'bot' }> | null,
 ): void {
@@ -776,7 +770,6 @@ function buildPreviewTurrets(
     (turret) => turret.config.shot?.type === 'shield' &&
       turret.config.shot.barrier !== undefined,
   );
-  let productionPylonOrdinal = 0;
   for (const turret of turrets) {
     const showShieldEmitterCore =
       (unitBlueprintId === 'unitAlbatros' || bodyIsShieldEmitter) &&
@@ -814,37 +807,25 @@ function buildPreviewTurrets(
     let mountX = turret.mount.x;
     let mountY = turret.mount.z - chassisLift;
     let mountZ = turret.mount.y;
-    if (productionRing !== null && turret.presentation.constructionEmitter !== null) {
-      const side = productionPylonOrdinal === 0 ? -1 : 1;
-      mountX = productionRing.centerX;
-      mountY = productionRing.centerY;
-      mountZ = productionRing.centerZ + productionRing.ringRadius * side;
-      productionPylonOrdinal++;
-    }
     const hostAttachment = turret.config.hostAttachment;
-    const articulatedArmId = hostAttachment?.kind === 'botArm'
-      ? hostAttachment.arm
+    const articulatedAttachment = hostAttachment?.kind === 'botArm'
+      ? hostAttachment
       : null;
-    const articulatedMount = botRig === null || articulatedArmId === null
+    const articulatedMount = botRig === null || articulatedAttachment === null
       ? null
       : resolveBotArmTurretRoot(
         botRig.mesh,
-        articulatedArmId,
-        turret.mountId,
+        articulatedAttachment,
         headRadius,
       );
-    if (articulatedMount !== null && articulatedArmId !== null) {
+    if (articulatedMount !== null && articulatedAttachment !== null) {
       turretMesh.root.position.copy(articulatedMount);
       botRig?.articulatedTurrets.push({
         turretMesh,
-        armId: articulatedArmId,
-        mountId: turret.mountId,
+        attachment: articulatedAttachment,
         headRadius,
       });
-      // A gun held in a hand is static relative to that hand — the arm poses
-      // it, here exactly as in the battle renderer. See "Bot hosts hold
-      // their guns" in budget_design_philosophy.html.
-      poseArticulatedPreviewTurret(botRig, articulatedArmId, turretMesh);
+      applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
     } else {
       turretMesh.root.position.set(
         mountX,
@@ -864,20 +845,6 @@ function buildPreviewTurrets(
       turretMesh.pitchGroup.add(anchorMesh);
     }
   }
-}
-
-/** Point a held gun down its carrying arm. Null rig or unknown arm leaves the
- *  turret alone, which is the same fallback the battle renderer takes. */
-function poseArticulatedPreviewTurret(
-  botRig: { mesh: BotMesh } | null | undefined,
-  armId: BotArmId,
-  turretMesh: TurretMesh,
-): void {
-  if (!botRig) return;
-  const aim = resolveBotArmTurretAim(botRig.mesh, armId, _previewArmAim);
-  if (aim === null) return;
-  turretMesh.yawGroup.rotation.y = aim.yaw;
-  if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = aim.pitch;
 }
 
 function buildPreviewLocomotion(
@@ -1149,12 +1116,10 @@ function animatePreviewLocomotion(
       for (const turret of rig.articulatedTurrets) {
         const mount = resolveBotArmTurretRoot(
           rig.mesh,
-          turret.armId,
-          turret.mountId,
+          turret.attachment,
           turret.headRadius,
         );
         if (mount !== null) turret.turretMesh.root.position.copy(mount);
-        poseArticulatedPreviewTurret(rig, turret.armId, turret.turretMesh);
       }
       return;
   }

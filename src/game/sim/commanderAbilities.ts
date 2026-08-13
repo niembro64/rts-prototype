@@ -23,6 +23,7 @@ import { getSimWasm } from '../sim-wasm/init';
 import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
+import { requestBuilderWorkStation } from './workStationSystem';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -52,6 +53,13 @@ function writeWorkEmitterWorldPosition(
   pointIndex: number,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
+  const station = source.builder?.workStation ?? null;
+  if (station !== null && pointIndex === 0 && station.worldPosTick >= 0) {
+    out.x = station.worldPosition.x;
+    out.y = station.worldPosition.y;
+    out.z = station.worldPosition.z;
+    return out;
+  }
   const spec = getWorkEmitterSpec(source);
   const point = spec?.points[pointIndex] ?? spec?.points[0];
   if (point === undefined) {
@@ -118,6 +126,7 @@ class CommanderAbilitiesSystem {
         if (
           reclaimTarget !== null &&
           isReclaimTargetInBuildRange(commander, reclaimTarget) &&
+          requestBuilderWorkStation(commander, reclaimTarget.id) &&
           this.reclaimTarget(world, playerId, commander, reclaimTarget, dtMs)
         ) {
           this.pushCompletedBuilding(commander.id, reclaimTarget.id);
@@ -134,6 +143,7 @@ class CommanderAbilitiesSystem {
       // Commander building progress is advanced there.
 
       if (currentAction !== undefined && currentAction.type === 'capture' && commander.commander !== null) {
+        if (!requestBuilderWorkStation(commander, currentTarget.id)) continue;
         if (
           this.captureTarget(
             world,
@@ -152,6 +162,7 @@ class CommanderAbilitiesSystem {
       }
 
       if (currentAction !== undefined && currentAction.type === 'resurrect' && entityCanIssueResurrectCommand(commander)) {
+        if (!requestBuilderWorkStation(commander, currentTarget.id)) continue;
         if (
           this.resurrectTarget(
             world,

@@ -13,7 +13,7 @@ import {
   turretShouldEncodeInactive,
 } from './turretSnapshotFields';
 
-const TURRET_SNAPSHOT_SIGNATURE_STRIDE = 10;
+const TURRET_SNAPSHOT_SIGNATURE_STRIDE = 12;
 const _turretSnapshotDirtyFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -62,6 +62,10 @@ function writeTurretSnapshotSignature(
   out[base + 7] = shield !== null ? 1 : 0;
   out[base + 8] = shield !== null ? shield.range : 0;
   out[base + 9] = turretShouldEncodeInactive(turret, targetId) ? 1 : 0;
+  out[base + 10] = qRot(
+    Number.isFinite(turret.hostPieceYaw) ? turret.hostPieceYaw : 0,
+  );
+  out[base + 11] = qRot(turret.hostPieceYawVelocity);
 }
 
 export function turretSnapshotRowsChangedSinceLastSample(entity: Entity): boolean {

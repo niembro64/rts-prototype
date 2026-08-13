@@ -697,11 +697,9 @@ export function attachSurfaceChartByVertex(
 
 // Charted per-Mesh surfaces.
 //
-// Not everything is instanced. Turret heads in particular are per-Mesh today
-// (every turret blueprint authors `constructionEmitter: null` rather than
-// omitting it, so the builder's `isConstructionEmitter` test is true and no
-// head ever takes an instanced slot). Rather than change turret semantics for
-// the whole game to suit texturing, a per-Mesh surface can adopt a chart by
+// Not everything is instanced. Building turret heads and overflow unit heads
+// still use per-Mesh rendering. Rather than change turret semantics for
+// texturing, a per-Mesh surface can adopt a chart by
 // swapping to a geometry that carries a constant label and a material that
 // carries the shading.
 //

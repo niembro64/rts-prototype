@@ -2518,17 +2518,14 @@ export class Input3DManager {
     return false;
   }
 
-  /** True iff the selection contains a unit that can actually attack (mounts
-   *  a real weapon turret, not just a construction emitter) — drives
-   *  attack-vs-reclaim cursor on an enemy, matching the command leader rule. */
+  /** True iff the selection contains a unit that can actually attack. Combat
+   *  turret rows are weapon/shield stations; construction belongs to the
+   *  host-owned work-station channel and never enters this collection. */
   private selectionHasAttacker(): boolean {
     const units = this.entitySource.getSelectedUnits();
     for (let i = 0; i < units.length; i++) {
       const turrets = units[i].combat?.turrets;
-      if (turrets === undefined) continue;
-      for (let j = 0; j < turrets.length; j++) {
-        if (turrets[j].presentation.constructionEmitter === null) return true;
-      }
+      if (turrets !== undefined && turrets.length > 0) return true;
     }
     return false;
   }

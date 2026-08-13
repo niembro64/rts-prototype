@@ -4,7 +4,7 @@ import type { SoundEntry } from './audio';
 import type { RayBlueprintId, ShieldBlueprintId, ShieldMaterialId, ShotBlueprintId, StructureBlueprintId, TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
 import type { TurretRangeOverrides } from './combatTypes';
 import type { BarrelShape } from './config';
-import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec, WorkEmitterSpec } from './constructionTypes';
+import type { WorkEmitterSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
 import type { EntityId, PlayerId } from './entityTypes';
 import type { UnitSuspensionConfig } from './unitLocomotionTypes';
@@ -423,6 +423,16 @@ export type TurretAudioConfig = {
   fireSound: SoundEntry;
 };
 
+export type TurretAngularActuatorAxis = {
+  maxSpeed: number;
+  maxAcceleration: number;
+};
+
+export type TurretAngularActuator = {
+  yaw: TurretAngularActuatorAxis;
+  pitch: TurretAngularActuatorAxis;
+};
+
 export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
   name: string;
@@ -430,8 +440,7 @@ export type TurretBlueprint = {
   targeting: TurretTargetingConfig;
   cooldown: TurretCooldownConfig | null;
   color: number;
-  turretTurnAccel: number;
-  turretDrag: number;
+  angularActuator?: TurretAngularActuator;
   emissionLaneCount: number;
   eventsSmooth: boolean;
   launchForce: number;
@@ -464,8 +473,6 @@ export type TurretPresentation = {
   headRadius: number | null;
   headOnly: boolean;
   barrel: BarrelShape | null;
-  constructionEmitter: ConstructionEmitterVisualSpec | null;
-  constructionEmitterSize: ConstructionEmitterSize | null;
 };
 
 export type MountOffset = {
@@ -482,13 +489,44 @@ export type UnitTurretMountZResolver = {
 export type BotArmTurretHostAttachment = {
   kind: 'botArm';
   arm: 'leftArm' | 'rightArm';
+  socketOffset: MountOffset;
 };
 
-export type BotHeadTurretHostAttachment = {
-  kind: 'botHead';
+export type BotPieceTurretHostAttachment = {
+  kind: 'botPiece';
+  piece: 'head' | 'leftShoulder' | 'rightShoulder' | 'backpackLeft' | 'backpackRight';
+  socketOffset: MountOffset;
 };
 
-export type UnitTurretHostAttachment = BotArmTurretHostAttachment | BotHeadTurretHostAttachment;
+export type UnitTurretHostAttachment = BotArmTurretHostAttachment | BotPieceTurretHostAttachment;
+
+export type TurretEmissionSocket = {
+  offset: MountOffset;
+};
+
+export type TurretYawTraverse = {
+  continuous: boolean;
+  minAngle: number;
+  maxAngle: number;
+};
+
+export type TurretPitchTraverse = {
+  minAngle: number;
+  maxAngle: number;
+};
+
+export type TurretHostAssistPolicy = 'none' | 'requestYaw';
+
+export type TurretStationArticulation = {
+  yaw: TurretYawTraverse;
+  pitch: TurretPitchTraverse;
+  restYaw: number;
+  restPitch: number;
+  restoreDelayMs: number;
+  hostAssist: TurretHostAssistPolicy;
+  claimGroup: string | null;
+  claimPriority: number;
+};
 
 export type TurretMount = {
   mountId: string;
@@ -502,6 +540,8 @@ export type TurretMount = {
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   hostAttachment?: UnitTurretHostAttachment;
+  emissionSockets?: TurretEmissionSocket[];
+  articulation?: TurretStationArticulation;
   producedBlueprintId?: UnitBlueprintId;
   allowedBuildBlueprintIds?: StructureBlueprintId[];
   productionHoldAnchor?: 'host';
@@ -517,6 +557,7 @@ export type BuildingTurretMount = {
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
   slavedToMountId?: string;
+  articulation?: TurretStationArticulation;
 };
 
 export type RoverConfig = {
@@ -603,6 +644,8 @@ export type BotLegs = {
 export type BotConfig = {
   legs: BotLegs;
   arms: BotArms;
+  upperBodyActuator: TurretAngularActuatorAxis;
+  upperBodyRestoreDelayMs: number;
 };
 
 export type AmphibianConfig = {

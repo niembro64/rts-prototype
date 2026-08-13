@@ -35,7 +35,6 @@ import { collectBuildingTeamOrnaments } from './BuildingTeamOrnament3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
-import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import {
@@ -76,7 +75,6 @@ import {
   visualFeatureVisibleAtDetail,
 } from './EntityDetailLevel3D';
 import {
-  CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER,
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
@@ -184,7 +182,6 @@ type BuildingTurretStateFields = {
   rotation: number;
   pitch: number;
   headOnly: boolean;
-  constructionEmitter: boolean;
 };
 
 function turretStateFields(
@@ -198,7 +195,6 @@ function turretStateFields(
     rotation: rows.views.rotation[row],
     pitch: rows.views.pitch[row],
     headOnly: (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0,
-    constructionEmitter: (flags & CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER) !== 0,
   };
 }
 
@@ -329,7 +325,6 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     geometryKey,
     buildingDetails: visibleDetails,
     buildingTeamOrnaments,
-    isFactoryConstructionHost: shape.isFactoryConstructionHost,
     windRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
       ? shape.windRig
       : undefined,
@@ -363,7 +358,6 @@ type BuildingEntityRenderer3DOptions = {
   world: THREE.Group;
   clientViewState: ClientViewState;
   selectionOverlays: SelectionOverlayRenderer3D;
-  constructionVisuals: ConstructionVisualController3D;
   resourcePylonFlows: ResourcePylonFlowController3D;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
@@ -385,7 +379,6 @@ export class BuildingEntityRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly selectionOverlays: SelectionOverlayRenderer3D;
-  private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
@@ -467,7 +460,6 @@ export class BuildingEntityRenderer3D {
     this.world = options.world;
     this.clientViewState = options.clientViewState;
     this.selectionOverlays = options.selectionOverlays;
-    this.constructionVisuals = options.constructionVisuals;
     this.resourcePylonFlows = options.resourcePylonFlows;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
@@ -483,7 +475,6 @@ export class BuildingEntityRenderer3D {
     this.lodProxyRenderer = options.lodProxyRenderer;
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
-      this.constructionVisuals,
       this.resourcePylonFlows,
       options.metalDeposits,
     );
@@ -1261,28 +1252,6 @@ export class BuildingEntityRenderer3D {
         for (let barrelIndex = 0; barrelIndex < turretMesh.barrels.length; barrelIndex++) {
           setObjectVisibleIfChanged(turretMesh.barrels[barrelIndex], pilotLightVisible);
         }
-      }
-      // Legacy construction-emitter geometry has no head sphere or barrels.
-      // No live builder/factory mounts it; this branch only preserves stable
-      // rendering for old captured fixtures.
-      if (turretState?.constructionEmitter === true || turret?.presentation.constructionEmitter) {
-        // Building construction pylons (the fabricator's) stand fused to
-        // the TOP of the torus ring, pointing straight up — the rig stays
-        // upright (no construction-drone flip).
-        if (turretMesh.constructionEmitter) {
-          setEulerZIfChanged(turretMesh.constructionEmitter.group.rotation, 0);
-        }
-        this.enqueueTurretAim(
-          turretMesh,
-          rows.rotation[row],
-          turretState?.rotation ?? turret.rotation,
-          0,
-          mesh,
-          teamColorHex,
-          entity.id,
-          turretIndex,
-        );
-        continue;
       }
       // Head-only utility turrets draw a bare body and skip barrel posing,
       // but their body still consumes the logical turret yaw. Treat that

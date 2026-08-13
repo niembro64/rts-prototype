@@ -124,7 +124,7 @@ try {
         ]);
         return error;
       } catch (e) {
-        return String(e && e.message ? e.message : e);
+        return String(e && e.stack ? e.stack : e && e.message ? e.message : e);
       } finally {
         clearTimeout(timer);
       }

@@ -6,7 +6,6 @@ import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
   createTransform,
-  NO_ENTITY_ID,
 } from './types';
 import type {
   Entity,
@@ -31,6 +30,7 @@ import {
   unitBlueprintBarDefaultFireState,
   unitBlueprintBarDefaultMoveState,
 } from './unitCommandCapabilities';
+import { createRuntimeBuilder } from './runtimeWorkStations';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -177,11 +177,7 @@ export function createUnitFromBlueprintEntity(
   );
 
   if (bp.builder) {
-    entity.builder = {
-      buildRange: bp.builder.buildRange,
-      lowPriority: false,
-      currentBuildTarget: NO_ENTITY_ID,
-    };
+    entity.builder = createRuntimeBuilder(unitBlueprintId);
   }
 
   // A unit with a host-owned production product is a mobile factory. Queens

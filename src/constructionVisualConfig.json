@@ -1,8 +1,4 @@
 {
-  "towerSpin": {
-    "radPerSec": 0.42,
-    "responseHalfLifeMultiplier": 1
-  },
   "nanoframe": {
     "ghostAlpha": 0.24,
     "ghostTeamMix": 0.5,

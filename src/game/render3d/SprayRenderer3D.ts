@@ -58,11 +58,8 @@ import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetai
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = RESOURCE_CONFIG.spray.trailY;
 const MIN_FLIGHT_SEC = RESOURCE_CONFIG.spray.minFlightSec;
-// Default construction-spray particle visuals. These were historically read
-// from the (now-removed) turretConstruction blueprint's constructionEmitter;
-// kept here as explicit constants (the exact former blueprint values) so the
-// legacy turret blueprint is no longer a render dependency. Factory tower
-// sprays still pass explicit per-spray overrides.
+// Fallback work-spray particle visuals for old network payloads that omit
+// explicit host-authored work-emitter values.
 const DEFAULT_BUILD_PARTICLE_SPEED = 50;
 const DEFAULT_BUILD_PARTICLE_RADIUS = 1.5;
 const HEAL_PARTICLE_SPEED = RESOURCE_CONFIG.spray.healParticleSpeed;

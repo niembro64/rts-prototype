@@ -34,6 +34,10 @@ export const deterministicMath = {
     return requireKernel('sqrt')(value);
   },
 
+  exp(value: number): number {
+    return requireKernel('exp')(value);
+  },
+
   hypot(...values: readonly number[]): number {
     if (values.length === 2) {
       return requireKernel('hypot2')(values[0], values[1]);

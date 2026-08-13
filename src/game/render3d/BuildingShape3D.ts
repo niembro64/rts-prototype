@@ -68,7 +68,7 @@ import {
 import {
   buildResourcePylonRig,
   type ResourcePylonRig,
-} from './ConstructionEmitterMesh3D';
+} from './ResourcePylonMesh3D';
 import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
 import {
@@ -121,7 +121,6 @@ export type BuildingShape = {
   /** The building's render height so the caller can position the
    *  primary body correctly on the ground plane. */
   height: number;
-  isFactoryConstructionHost?: boolean;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

@@ -4,11 +4,13 @@ import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type {
   TurretAimStyle,
+  TurretAngularActuator,
   TurretCooldownConfig,
   TurretEmitterKind,
   TurretIntelRequirement,
   TurretMountControlMode,
   TurretPresentation,
+  TurretStationArticulation,
   UnitTurretHostAttachment,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
@@ -490,11 +492,12 @@ export type TurretConfig = {
   launchForce: number;
   addTurretVelocityToEmissionLaunch: boolean;
   color: number;
-  /** Number of deterministic emission lanes used for barrel-index event
-   * cadence. This is gameplay/event routing, not a description of how a host
-   * chooses to draw those lanes. */
+  /** Number of deterministic QueryWeapon-style emission lanes. Every lane
+   * resolves to an authoritative socket; barrel-index events carry the same
+   * lane identity used to place the physical shot or ray. */
   emissionLaneCount: number;
-  angular: { turnAccel: number; drag: number };
+  /** Physical rate/acceleration limits for the two local station joints. */
+  angular: TurretAngularActuator;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
   spread: { pelletCount: number; angle: number } | null;
@@ -536,10 +539,12 @@ export type TurretConfig = {
   /** Unit-mount authored fight/patrol stop gate. If true, this turret must
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
-  /** Optional host-side presentation attachment. The turret always owns and
-   *  publishes its yaw/pitch; a compatible host may echo that pose through
-   *  the named body attachment without changing the turret's own aim. */
+  /** Optional authoritative host-side piece attachment. The turret owns
+   * yaw/pitch and firing policy; the host resolves the named piece chain into
+   * the turret's AimFrom pivot and QueryWeapon emission sockets. */
   hostAttachment: UnitTurretHostAttachment | null;
+  /** Mount-local traverse, rest, host-assist and shared-claim policy. */
+  articulation: TurretStationArticulation;
   spawn: SpawnTurretConfig | null;
   resourcePylon: ResourcePylonConfig | null;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
@@ -651,27 +656,32 @@ export type Turret = {
   /** Authoritative elevation. Like rotation, hosts may observe this value but
    *  never replace the turret's own aim through the attachment contract. */
   pitch: number;
+  /** Authoritative joint coordinates relative to the moving host piece.
+   * World yaw above is derived from parent yaw + localYaw. */
+  localYaw: number;
+  localPitch: number;
+  localYawVelocity: number;
+  localPitchVelocity: number;
+  /** Time without a live tracking/committed-fire claim. Once the station's
+   * restore delay expires, local joints return to their authored rest pose. */
+  articulationIdleMs: number;
+  /** Last moving-parent yaw used to derive world angular velocity. */
+  articulationParentYaw: number;
   angularVelocity: number;
-  /** Yaw angular acceleration (rad/s²) produced by this tick's
-   *  damped-spring step (`α = k·(aim − rot) − c·ω`). Sim-only turret
-   *  solver state: acceleration is not shipped on the wire and the
-   *  renderer consumes adjacent authoritative fixed-tick orientations. */
+  /** Yaw angular acceleration (rad/s²) produced by this tick's bounded
+   *  trapezoidal/triangular joint motor. Sim-only solver state: acceleration
+   *  is not shipped on the wire and the renderer consumes adjacent
+   *  authoritative fixed-tick orientations. */
   angularAcceleration: number;
-  /** Angular velocity of the pitch axis (rad/s). Driven by the
-   *  damped-spring integrator in turretSystem — the solver sets a
-   *  target pitch each tick and the damper converges on it without
-   *  overshoot, so tick-to-tick jitter in the ballistic solution
-   *  (e.g. from moving targets) doesn't propagate into visible
-   *  barrel oscillation. */
+  /** Angular velocity of the pitch axis (rad/s). Driven by the same bounded
+   *  joint motor as yaw, with authored speed, acceleration, and hard stops. */
   pitchVelocity: number;
   /** Pitch angular acceleration (rad/s²); same sim-only shape as
    *  angularAcceleration, only for the elevation axis. */
   pitchAcceleration: number;
-  turnAccel: number;
-  drag: number;
-  /** Chassis-local 3D weapon pivot in world units. Derived once from
-   *  the owning unit blueprint's `turrets[i].mount` and used as the
-   *  source of truth for sim targeting/firing and client rendering. */
+  /** Chassis-local fallback 3D weapon pivot in world units. Rigid mounts use
+   * it directly; an authoritative host attachment resolves its moving piece
+   * chain from the same blueprint and turret aim state. */
   mount: Vec3;
   /** Cached XY distance from host origin to `mount`. Immutable after
    *  construction; targeting stamping reads this every tick. */
@@ -698,6 +708,17 @@ export type Turret = {
    *  `worldPosTick >= 0` to know the cache is valid and
    *  `worldPosTick === currentTick` to know it's fresh this tick. */
   worldPosTick: number;
+  /** Authoritative world yaw of the shared host piece driven by this turret
+   * when it is selected as a bot's torso owner. NaN on non-owners and before
+   * the first host-piece tick. */
+  hostPieceYaw: number;
+  /** Angular velocity of hostPieceYaw's bounded waist actuator. */
+  hostPieceYawVelocity: number;
+  /** Time without a station claim on the shared host piece. */
+  hostPieceIdleMs: number;
+  /** QueryWeapon sockets in turret-aim-local world units: +X forward, +Y
+   * left, +Z up. One entry exists per emission lane. */
+  emissionSockets: Vec3[];
   /** Last solver target yaw and pitch (radians), and the signed
    *  miss vector between them and `rotation` / `pitch`. Default 0
    *  before the first aim solve — which passes the within-tolerance
@@ -719,8 +740,7 @@ export type Turret = {
    *  SHIELD_MIN_ON_TIME_MS, debouncing rapid on/off flicker. Not
    *  shipped on the wire — only `range` is. */
   shield: { transition: number; range: number; onTimeMs: number } | null;
-  /** Round-robin pointer across logical emission lanes. Hosts may map these
-   * lanes onto any physical presentation they choose. */
+  /** Round-robin pointer across authoritative QueryWeapon sockets. */
   emissionLaneIndex: number;
   /** One-time deterministic delay applied to the first eligible attack-beam
    * pulse. This spreads newly-engaged beam batteries across a few fixed ticks;
@@ -800,7 +820,7 @@ export type Projectile = {
   /** Finite runtime timeout for lasers and special projectile classes;
    *  Infinity for ordinary traveling shot bodies. */
   maxLifespan: number;
-  /** Beam/laser polyline. Index 0 = start (turret mount center), last = end
+  /** Beam/laser polyline. Index 0 = selected QueryWeapon muzzle, last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
    *  reflectorEntityId field plus reflectorKind/normal*. Null on
@@ -1017,6 +1037,26 @@ export type Builder = {
   lowPriority: boolean;
   /** Sentinel `NO_ENTITY_ID` means no direct construction target. */
   currentBuildTarget: EntityId;
+  /** Runtime state for an articulated QueryWork station. Fixed host emitters
+   * keep this null; articulated builders own their joint independently from
+   * weapon turrets even when both arbitrate for the same parent piece. */
+  workStation: BuilderWorkStationRuntime | null;
+};
+
+export type BuilderWorkStationRuntime = {
+  localYaw: number;
+  localPitch: number;
+  localYawVelocity: number;
+  localPitchVelocity: number;
+  idleMs: number;
+  /** World-space request presented to a shared parent such as a bot waist. */
+  targetWorldYaw: number;
+  targetWorldPitch: number;
+  targetEntityId: EntityId;
+  aligned: boolean;
+  worldPosition: Vec3;
+  worldVelocity: Vec3;
+  worldPosTick: number;
 };
 
 type WreckSource =

@@ -19,8 +19,12 @@ import {
   type UtilityMountCapability,
 } from './types';
 import type { TurretMountControlMode } from '../../types/blueprints';
-import type { UnitTurretHostAttachment } from '../../types/blueprints';
-import type { TurretPresentation } from '../../types/blueprints';
+import type {
+  TurretEmissionSocket,
+  TurretPresentation,
+  TurretStationArticulation,
+  UnitTurretHostAttachment,
+} from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
@@ -34,6 +38,12 @@ import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
 import { cloneSensorCapabilityConfig } from './sensorConfig';
 import { BEAM_PULSE_INITIAL_STAGGER_MAX_MS } from '../../config';
+import {
+  getConeBarrelTipOrbitRadius,
+  getSimpleMultiBarrelOrbitRadius,
+  getTurretBarrelCenterToTipLength,
+  getTurretHeadRadius,
+} from '../math/BarrelGeometry';
 
 function getBeamPulseInitialDelayMs(turretId: EntityId): number {
   if (turretId < 0 || BEAM_PULSE_INITIAL_STAGGER_MAX_MS <= 0) return 0;
@@ -57,16 +67,73 @@ function cloneTurretPresentation(presentation: TurretPresentation): TurretPresen
         : barrel.type === 'complexSingleEmitter'
           ? { ...barrel, grate: { ...barrel.grate } }
           : { ...barrel },
-    constructionEmitter: presentation.constructionEmitter === null
-      ? null
-      : {
-          ...presentation.constructionEmitter,
-          sizes: {
-            small: { ...presentation.constructionEmitter.sizes.small },
-            large: { ...presentation.constructionEmitter.sizes.large },
-          },
-        },
   };
+}
+
+function buildRuntimeEmissionSockets(
+  authored: readonly TurretEmissionSocket[] | null,
+  presentation: TurretPresentation,
+  laneCount: number,
+): { x: number; y: number; z: number }[] {
+  if (authored !== null) {
+    if (authored.length !== laneCount) {
+      throw new Error(
+        `Authoritative emissionSockets must contain exactly ${laneCount} lane(s)`,
+      );
+    }
+    return authored.map((socket) => {
+      const offset = socket.offset;
+      if (
+        !Number.isFinite(offset.x) ||
+        !Number.isFinite(offset.y) ||
+        !Number.isFinite(offset.z)
+      ) {
+        throw new Error('Authoritative emission socket offsets must be finite');
+      }
+      return { ...offset };
+    });
+  }
+
+  const length = getTurretBarrelCenterToTipLength(presentation);
+  const barrel = presentation.barrel;
+  const headRadius = getTurretHeadRadius(presentation);
+  if (
+    (barrel?.type === 'simpleMultiBarrel' || barrel?.type === 'coneMultiBarrel') &&
+    barrel.barrelCount !== laneCount
+  ) {
+    throw new Error(
+      `Host barrelCount ${barrel.barrelCount} must match emissionLaneCount ${laneCount}`,
+    );
+  }
+  const sockets: { x: number; y: number; z: number }[] = [];
+  for (let lane = 0; lane < laneCount; lane++) {
+    let lateral = 0;
+    let up = 0;
+    if (
+      barrel?.type === 'simpleMultiBarrel' &&
+      Number.isFinite(barrel.orbitRadius)
+    ) {
+      const radius = getSimpleMultiBarrelOrbitRadius(barrel, headRadius);
+      const angle = ((lane + 0.5) / laneCount) * Math.PI * 2;
+      lateral = DMath.sin(angle) * radius;
+      up = DMath.cos(angle) * radius;
+    } else if (
+      barrel?.type === 'coneMultiBarrel' &&
+      Number.isFinite(barrel.baseOrbit)
+    ) {
+      const radius = getConeBarrelTipOrbitRadius(
+        barrel,
+        headRadius,
+        length,
+        undefined,
+      );
+      const angle = ((lane + 0.5) / laneCount) * Math.PI * 2;
+      lateral = DMath.sin(angle) * radius;
+      up = DMath.cos(angle) * radius;
+    }
+    sockets.push({ x: length, y: lateral, z: up });
+  }
+  return sockets;
 }
 
 function makeRuntimeTurret(
@@ -78,6 +145,9 @@ function makeRuntimeTurret(
   sensorTurretBlueprintId: string | null,
   slavedToMountId: string | null,
   hostAttachment: UnitTurretHostAttachment | null,
+  emissionSockets: readonly TurretEmissionSocket[] | null,
+  authoredArticulation: TurretStationArticulation | null,
+  mobileHost: boolean,
   presentation: TurretPresentation | null,
   identity: {
     id: EntityId;
@@ -107,8 +177,13 @@ function makeRuntimeTurret(
     };
   }
   const ranges = computeTurretRanges(turretConfig);
-  const turnAccel = turretConfig.angular.turnAccel;
-  const drag = turretConfig.angular.drag;
+  const articulation = resolveStationArticulation(
+    authoredArticulation,
+    hostAttachment,
+    turretConfig.idlePitch,
+    turretConfig.verticalLauncher,
+    mobileHost && (controlMode === 'hostPreferred' || controlMode === 'hostOnly'),
+  );
   // Mount-authored flags live on the per-instance config, not the shared
   // turret blueprint config.
   const config = {
@@ -117,13 +192,14 @@ function makeRuntimeTurret(
     slavedToMountId,
     requiredEngagedForFightStop,
     hostAttachment,
+    articulation,
   };
   const mountOffset2d = DMath.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
   // turretShieldPanels rest pointing straight up at π/2). Once the aim
-  // solver runs, this is overwritten per-tick and the damper takes
-  // over — `idlePitch` only governs the spawn pose.
+  // solver runs, this is overwritten per-tick by the bounded motor —
+  // `idlePitch` only governs the spawn pose.
   return {
     id: identity.id,
     mountId,
@@ -138,18 +214,30 @@ function makeRuntimeTurret(
     state: 'idle',
     rotation: 0,
     pitch: turretConfig.idlePitch ?? 0,
+    localYaw: articulation.restYaw,
+    localPitch: articulation.restPitch,
+    localYawVelocity: 0,
+    localPitchVelocity: 0,
+    articulationIdleMs: 0,
+    articulationParentYaw: Number.NaN,
     angularVelocity: 0,
     angularAcceleration: 0,
     pitchVelocity: 0,
     pitchAcceleration: 0,
-    turnAccel,
-    drag,
     mount,
     mountOffset2d,
     sustainedDps,
     worldPos: { x: 0, y: 0, z: 0 },
     worldVelocity: { x: 0, y: 0, z: 0 },
     worldPosTick: -1,
+    hostPieceYaw: Number.NaN,
+    hostPieceYawVelocity: 0,
+    hostPieceIdleMs: 0,
+    emissionSockets: buildRuntimeEmissionSockets(
+      emissionSockets,
+      presentation,
+      config.emissionLaneCount,
+    ),
     aimTargetYaw: 0,
     aimTargetPitch: 0,
     aimErrorYaw: 0,
@@ -159,6 +247,40 @@ function makeRuntimeTurret(
     shield: null,
     emissionLaneIndex: 0,
     beamPulseInitialDelayMs: getBeamPulseInitialDelayMs(identity.id),
+  };
+}
+
+/** Compile every mount into the same station contract. Specialized authored
+ * envelopes win; ordinary rigid-host mounts receive a continuous two-axis
+ * chain so no runtime weapon bypasses local articulation. */
+function resolveStationArticulation(
+  authored: TurretStationArticulation | null,
+  hostAttachment: UnitTurretHostAttachment | null,
+  idlePitch: number,
+  verticalLauncher: boolean,
+  mayRequestHostYaw: boolean,
+): TurretStationArticulation {
+  if (authored !== null) {
+    return {
+      ...authored,
+      yaw: { ...authored.yaw },
+      pitch: { ...authored.pitch },
+    };
+  }
+  const armMounted = hostAttachment?.kind === 'botArm';
+  return {
+    yaw: armMounted
+      ? { continuous: false, minAngle: -Math.PI * 0.39, maxAngle: Math.PI * 0.39 }
+      : { continuous: true, minAngle: -Math.PI, maxAngle: Math.PI },
+    pitch: verticalLauncher
+      ? { minAngle: Math.PI / 2, maxAngle: Math.PI / 2 }
+      : { minAngle: -Math.PI * 0.47, maxAngle: Math.PI * 0.47 },
+    restYaw: 0,
+    restPitch: verticalLauncher ? Math.PI / 2 : idlePitch,
+    restoreDelayMs: 2200,
+    hostAssist: mayRequestHostYaw ? 'requestYaw' : 'none',
+    claimGroup: hostAttachment === null ? null : 'botUpperBody',
+    claimPriority: 0,
   };
 }
 
@@ -226,6 +348,9 @@ export function createUnitRuntimeTurrets(
       mount.sensorTurretBlueprintId ?? null,
       mount.slavedToMountId ?? null,
       mount.hostAttachment ?? null,
+      mount.emissionSockets ?? null,
+      mount.articulation ?? null,
+      true,
       mount.presentation,
       identity,
     ));
@@ -262,6 +387,9 @@ export function createBuildingRuntimeTurrets(
       m.sensorTurretBlueprintId ?? null,
       m.slavedToMountId ?? null,
       null,
+      null,
+      m.articulation ?? null,
+      false,
       m.presentation,
       identity,
     ));

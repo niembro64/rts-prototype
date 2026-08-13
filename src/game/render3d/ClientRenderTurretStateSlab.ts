@@ -17,7 +17,6 @@ export const CLIENT_RENDER_TURRET_STATE_ENGAGED = turretStateToCode('engaged');
 
 export const CLIENT_RENDER_TURRET_FLAG_ACTIVE = 1;
 export const CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY = 1 << 1;
-export const CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER = 1 << 2;
 export const CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER = 1 << 3;
 export const CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN = 1 << 4;
 export const CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD = 1 << 5;
@@ -32,6 +31,9 @@ export type ClientRenderTurretStateViews = {
   readonly rotation: Float32Array;
   /** The shared turret/host pitch channel; hosts may ignore it. */
   readonly pitch: Float32Array;
+  /** Authoritative moving-parent yaw for BAR-style host attachments. */
+  readonly hostPieceYaw: Float32Array;
+  readonly hostPieceYawVelocity: Float32Array;
   readonly mountX: Float32Array;
   readonly mountY: Float32Array;
   readonly mountZ: Float32Array;
@@ -73,9 +75,6 @@ function barrierShapeCode(shape: string | undefined): number {
 function turretFlags(turret: Turret): number {
   let flags = CLIENT_RENDER_TURRET_FLAG_ACTIVE;
   if (turret.presentation.headOnly) flags |= CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY;
-  if (turret.presentation.constructionEmitter !== null) {
-    flags |= CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER;
-  }
   if (!isAttackEmitter(turret)) flags |= CLIENT_RENDER_TURRET_FLAG_NON_ATTACK_EMITTER;
   const barrel = turret.presentation.barrel;
   if (
@@ -116,6 +115,8 @@ export class ClientRenderTurretStateSlab {
     stateCode: new Uint8Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
     rotation: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
     pitch: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
+    hostPieceYaw: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
+    hostPieceYawVelocity: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
     mountX: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
     mountY: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
     mountZ: new Float32Array(INITIAL_RENDER_TURRET_HOST_CAP * CLIENT_RENDER_TURRET_MAX_PER_HOST),
@@ -235,6 +236,12 @@ export class ClientRenderTurretStateSlab {
       assertNear(`turret id ${i}`, this.views.turretEntityIds[row], turret.id, 0);
       assertNear(`rotation ${i}`, this.views.rotation[row], turret.rotation);
       assertNear(`pitch ${i}`, this.views.pitch[row], turret.pitch);
+      assertNear(
+        `hostPieceYaw ${i}`,
+        this.views.hostPieceYaw[row],
+        Number.isFinite(turret.hostPieceYaw) ? turret.hostPieceYaw : entity.transform.rotation,
+      );
+      assertNear(`hostPieceYawVelocity ${i}`, this.views.hostPieceYawVelocity[row], turret.hostPieceYawVelocity);
       assertNear(`mountX ${i}`, this.views.mountX[row], turret.mount.x);
       assertNear(`mountY ${i}`, this.views.mountY[row], turret.mount.y);
       assertNear(`mountZ ${i}`, this.views.mountZ[row], turret.mount.z);
@@ -278,6 +285,10 @@ export class ClientRenderTurretStateSlab {
     views.stateCode[row] = turretStateToCode(turret.state);
     views.rotation[row] = turret.rotation;
     views.pitch[row] = turret.pitch;
+    views.hostPieceYaw[row] = Number.isFinite(turret.hostPieceYaw)
+      ? turret.hostPieceYaw
+      : entity.transform.rotation;
+    views.hostPieceYawVelocity[row] = turret.hostPieceYawVelocity;
     views.mountX[row] = turret.mount.x;
     views.mountY[row] = turret.mount.y;
     views.mountZ[row] = turret.mount.z;
@@ -303,6 +314,8 @@ export class ClientRenderTurretStateSlab {
     views.stateCode[row] = 0;
     views.rotation[row] = 0;
     views.pitch[row] = 0;
+    views.hostPieceYaw[row] = 0;
+    views.hostPieceYawVelocity[row] = 0;
     views.mountX[row] = 0;
     views.mountY[row] = 0;
     views.mountZ[row] = 0;
@@ -333,6 +346,8 @@ export class ClientRenderTurretStateSlab {
       stateCode: growTypedArray(views.stateCode, nextRowCapacity),
       rotation: growTypedArray(views.rotation, nextRowCapacity),
       pitch: growTypedArray(views.pitch, nextRowCapacity),
+      hostPieceYaw: growTypedArray(views.hostPieceYaw, nextRowCapacity),
+      hostPieceYawVelocity: growTypedArray(views.hostPieceYawVelocity, nextRowCapacity),
       mountX: growTypedArray(views.mountX, nextRowCapacity),
       mountY: growTypedArray(views.mountY, nextRowCapacity),
       mountZ: growTypedArray(views.mountZ, nextRowCapacity),

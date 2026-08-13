@@ -30,6 +30,7 @@ import type {
 } from '@/types/blueprintSchema.generated';
 import type { Entity, PlayerId, Turret } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
+import { deterministicMath as DMath } from '../sim/deterministicMath';
 import {
   getSharedPrimitiveCylinderGeometry,
   type PrimitiveGeometryTier,
@@ -44,7 +45,6 @@ import {
 } from './LocomotionRigShared3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import { COLORS } from '@/colorsConfig';
-import { UNIT_MASS_MULTIPLIER } from '@/config';
 import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 import type { ClientRenderTurretHostRows } from './ClientRenderTurretStateSlab';
@@ -53,18 +53,24 @@ import {
   type HostTurretAimSample3D,
 } from './HostTurretAim3D';
 import { clampUnit } from '../math';
+import {
+  resolveBotWeaponArmSocketPose,
+  selectBotTorsoTurretIndex,
+  shortestBotSocketAngleDelta,
+  type BotArmSocketPose,
+} from '../math/BotHostSocketGeometry';
 
 const SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const segmentMaterials = new Map<number, THREE.MeshLambertMaterial>();
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 unitBox.name = 'botRigBox';
-const constructionEmitterMaterial = new THREE.MeshBasicMaterial({
+const botAccentGlowMaterial = new THREE.MeshBasicMaterial({
   color: COLORS.units.unitCommander.lens.colorHex,
 });
 
 type BotVariant = 'commander' | 'human' | 'titan' | 'generic';
 type BotArmRole = 'weapon' | 'construction' | 'free';
-type BotArmHostAttachment = Extract<
+export type BotArmHostAttachment = Extract<
   UnitTurretHostAttachment,
   { kind: 'botArm' }
 >;
@@ -72,18 +78,6 @@ export type BotArmId = BotArmHostAttachment['arm'];
 
 /** Local yaw/pitch a held turret takes from the arm carrying it. */
 export type BotArmTurretAim = { yaw: number; pitch: number };
-
-type BotTurretAimMemory = {
-  initialized: boolean;
-  yaw: number;
-  pitch: number;
-  manualHoldMs: number;
-  /** Manual fire arrives as a pose discontinuity rather than a targeting FSM
-   *  lock. Client interpolation can expose that one discontinuity as many
-   *  small pose changes, so it may trigger one assist window and cannot
-   *  trigger another until the pose has actually settled. */
-  manualPoseArmed: boolean;
-};
 
 /** One rigid part drawn between two points in the leg's own plane. Boxes, not
  *  cylinders: a commander's limbs are plate and actuator housing, and a box
@@ -138,6 +132,8 @@ export type BotArm = {
    *  still pitches itself; this only makes the carrier arm help the motion. */
   turretAimActive: boolean;
   turretAimPitch: number;
+  /** Authoritative arm yaw relative to the shared upper-body piece. */
+  turretAimYaw: number;
   /** Visible articulated housing at the fixed upper-arm attachment. */
   shoulderJoint: THREE.Mesh;
   upper: Strut;
@@ -153,10 +149,9 @@ export type BotArm = {
   handX: number;
   handY: number;
   handZ: number;
-  /** Unit vector elbow -> hand, chassis-local: the direction this arm is
-   *  currently pointing. A gun held in the hand is rigid to it, so this is
-   *  the whole of that gun's rendered orientation — see
-   *  resolveBotArmTurretAim. */
+  /** Unit vector elbow -> hand, chassis-local. This is host-piece geometry;
+   * the turret still applies its authoritative world yaw/pitch inside the
+   * hand socket. */
   aimX: number;
   aimY: number;
   aimZ: number;
@@ -177,30 +172,22 @@ export type BotMesh = {
    * body and therefore turns with the legs, never with turret-assisted torso
    * yaw. */
   pelvis: THREE.Mesh;
-  /** Presentation-only local Three.js yaw applied by the host to its upper
-   *  body. This is derived each frame from the independently smoothed world
-   *  heading below and the locomotion-owned host heading. */
+  /** Local Three.js yaw applied to the upper-body host piece. Derived from the
+   *  authoritative waist-servo pose and the chassis heading. */
   upperBodyYaw: number;
-  /** Retained upper-body heading in simulation/world yaw coordinates. Keeping
-   *  the EMA here, rather than on the local waist twist, prevents a leg turn
-   *  from dragging a locked torso and lets an unlocked torso visibly follow
-   *  locomotion-forward instead of snapping to it. Null means the first live
-   *  pose should initialize from the host heading. */
+  /** Current upper-body heading in simulation/world yaw coordinates. Null is
+   *  the uninitialized render-state sentinel retained for capture compatibility. */
   upperBodyWorldYaw: number | null;
-  /** World-yaw angular velocity retained by the inertial torso controller.
-   * Keeping this beside the heading makes geometry-tier rebuilds continuous
-   * through both halves of the second-order response. */
+  /** Authoritative waist-servo velocity, retained across geometry rebuilds. */
   upperBodyYawVelocity: number;
-  /** Critically damped spring gain derived from the unit's physical mass,
-   * radius, and authored ground propulsive force. */
-  upperBodyYawSpringGain: number;
-  /** True whenever any attached turret owns the host presentation. This is a
-   *  host-wide animation gate: combat aim suppresses gait on both arms even
-   *  when only one arm receives the selected turret's pitch proposal. */
+  /** Diagnostic flag indicating that at least one authoritative weapon arm is
+   *  currently driven by an attached turret. Each arm still follows only its
+   *  own turret; this flag never changes the host piece-tree solution. */
   turretLockActive: boolean;
-  turretAimMemory: Map<string, BotTurretAimMemory>;
   legs: BotLeg[];
   arms: BotArm[];
+  /** Blueprint arm geometry shared with the authoritative socket resolver. */
+  armConfig: BotArms;
   /** Ground distance used to advance the shared biped gait. */
   contact: RollingContactState;
   /** Shared normalized right-leg phase; the left leg always adds exactly .5. */
@@ -244,22 +231,6 @@ const ELBOW_BEND_RAD = THREE.MathUtils.degToRad(52);
 const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 /** Arms ease from walk swing into a working pose rather than snapping. */
 const ARM_ACTION_EASE_SECONDS = 0.11;
-/** Match the authoritative chassis attitude servo: a factor of two keeps the
- * critically damped response inside the maximum acceleration implied by its
- * available edge force. Unlike chassis steering, a waist motor does not need
- * to cap its actuator force at one body-weight of ground traction. */
-const UPPER_BODY_RESPONSE_TIME_SCALE = 2;
-/** Dynamic unit bodies use solid-sphere inertia (I = 2/5 m r^2). With no
- * separately authored torso mass distribution, using that same conservative
- * envelope gives every bot unit a deterministic turn authority without
- * adding a per-blueprint animation-speed knob. */
-const UPPER_BODY_INERTIA_FACTOR = 2 / 5;
-const FORCE_TO_ACCELERATION_SCALE = 1_000_000;
-/** Manual emitters such as the Commander's D-gun have no tracking FSM lock.
- *  A changed authoritative pose therefore grants them a short host-assist
- *  window, long enough for the torso/arm echo to visibly follow the shot. */
-const MANUAL_TURRET_ASSIST_HOLD_MS = 420;
-const MANUAL_TURRET_POSE_EPSILON = 1e-4;
 const STANDING_PELVIS_CENTER_LIFT_RATIO = 0.26;
 const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
 /** Conventional authored shoe roll, based on the BAR Commander approach.
@@ -287,68 +258,18 @@ const _hostTurretAimSample: HostTurretAimSample3D = {
   pitch: 0,
   state: 'idle',
 };
+const _weaponArmSocketPose: BotArmSocketPose = {
+  elbowX: 0,
+  elbowY: 0,
+  elbowZ: 0,
+  handX: 0,
+  handY: 0,
+  handZ: 0,
+  aimX: 1,
+  aimY: 0,
+  aimZ: 0,
+};
 
-function shortestAngleDelta(from: number, to: number): number {
-  let delta = to - from;
-  while (delta > Math.PI) delta -= Math.PI * 2;
-  while (delta < -Math.PI) delta += Math.PI * 2;
-  return delta;
-}
-
-/** Convert the same physical quantities that govern chassis motion into a
- * presentation spring for the articulated upper body. A force applied at the
- * body's edge produces torque F*r; dividing by solid-body inertia makes a
- * broad, massive Rex turn materially slower than a Human without naming
- * either unit here. */
-export function botUpperBodyYawSpringGain(
-  authoredMass: number,
-  radius: number,
-  maxPropulsiveForce: number,
-): number {
-  const bodyMass = authoredMass * UNIT_MASS_MULTIPLIER;
-  const safeRadius = Math.max(1, radius);
-  if (
-    !Number.isFinite(bodyMass) || bodyMass <= 0 ||
-    !Number.isFinite(maxPropulsiveForce) || maxPropulsiveForce <= 0
-  ) return 0;
-  const inertia = bodyMass * safeRadius * safeRadius * UPPER_BODY_INERTIA_FACTOR;
-  const torque = maxPropulsiveForce * safeRadius;
-  const maxAngularAcceleration =
-    torque * FORCE_TO_ACCELERATION_SCALE / inertia;
-  return maxAngularAcceleration /
-    (Math.PI * UPPER_BODY_RESPONSE_TIME_SCALE * UPPER_BODY_RESPONSE_TIME_SCALE);
-}
-
-/** Exact critically damped step for a wrapped world-yaw axis. This is the
- * closed-form counterpart of the authoritative damped attitude solve, so the
- * result is stable across render frame rates and carries angular momentum
- * when a turret changes targets. */
-function stepBotUpperBodyYaw(
-  mesh: BotMesh,
-  targetWorldYaw: number,
-  dt: number,
-): void {
-  if (mesh.upperBodyWorldYaw === null || dt <= 0) return;
-  const k = mesh.upperBodyYawSpringGain;
-  if (!(k > 0) || !Number.isFinite(k)) {
-    mesh.upperBodyYawVelocity = 0;
-    return;
-  }
-  const rootK = Math.sqrt(k);
-  const relativeYaw = shortestAngleDelta(
-    targetWorldYaw,
-    mesh.upperBodyWorldYaw,
-  );
-  const safeVelocity = Number.isFinite(mesh.upperBodyYawVelocity)
-    ? mesh.upperBodyYawVelocity
-    : 0;
-  const b = safeVelocity + rootK * relativeYaw;
-  const decay = Math.exp(-rootK * dt);
-  const nextRelativeYaw = (relativeYaw + b * dt) * decay;
-  mesh.upperBodyYawVelocity =
-    (b - rootK * (relativeYaw + b * dt)) * decay;
-  mesh.upperBodyWorldYaw = targetWorldYaw + nextRelativeYaw;
-}
 
 function material(ownerId: PlayerId | undefined): THREE.MeshLambertMaterial {
   return getLocomotionMatByCache(segmentMaterials, SEGMENT_COLOR, ownerId);
@@ -372,7 +293,7 @@ function makeStrut(
   if (armor !== undefined) parent.add(armor);
   let accent: THREE.Mesh | undefined;
   if (accentSide !== 0) {
-    accent = new THREE.Mesh(unitBox, constructionEmitterMaterial);
+    accent = new THREE.Mesh(unitBox, botAccentGlowMaterial);
     parent.add(accent);
   }
   return { mesh, armor, accent, accentSide, width, depth };
@@ -477,7 +398,7 @@ function makeFoot(
   toe.rotation.z = THREE.MathUtils.degToRad(-4);
 
   if (variant === 'commander' && geometryTier === 'close') {
-    const toeAccent = new THREE.Mesh(unitBox, constructionEmitterMaterial);
+    const toeAccent = new THREE.Mesh(unitBox, botAccentGlowMaterial);
     toeAccent.position.set(
       length * 0.39,
       soleHeight + toeHeight * 0.82,
@@ -554,10 +475,10 @@ function addCommanderConstructionTool(
   // Two bright nano nozzles make the construction side readable even when
   // the hazard sleeve is edge-on. They are a tool, not a second weapon.
   if (geometryTier !== 'far') for (const side of [-1, 1] as const) {
-    const prong = new THREE.Mesh(unitBox, constructionEmitterMaterial);
+    const prong = new THREE.Mesh(unitBox, botAccentGlowMaterial);
     prong.position.set(0, unitRadius * 0.30, side * unitRadius * 0.105);
     prong.scale.set(unitRadius * 0.07, unitRadius * 0.30, unitRadius * 0.055);
-    prong.userData.botConstructionEmitter = true;
+    prong.userData.botWorkEmitter = true;
     attachment.add(prong);
   }
 }
@@ -826,8 +747,8 @@ function poseCoupledBotGait(
 export function buildBotRig(
   unitGroup: THREE.Group,
   unitRadius: number,
-  unitMass: number,
-  maxPropulsiveForce: number,
+  _unitMass: number,
+  _maxPropulsiveForce: number,
   cfgLegs: BotLegs,
   cfgArms: BotArms,
   chassisLiftY: number,
@@ -960,6 +881,7 @@ export function buildBotRig(
       actionBlend: 0,
       turretAimActive: false,
       turretAimPitch: 0,
+      turretAimYaw: 0,
       shoulderJoint,
       upper: makeStrut(
         group, armWidth, armWidth * 0.9, ownerId,
@@ -999,15 +921,10 @@ export function buildBotRig(
     upperBodyYaw: 0,
     upperBodyWorldYaw: null,
     upperBodyYawVelocity: 0,
-    upperBodyYawSpringGain: botUpperBodyYawSpringGain(
-      unitMass,
-      unitRadius,
-      maxPropulsiveForce,
-    ),
     turretLockActive: false,
-    turretAimMemory: new Map(),
     legs,
     arms,
+    armConfig: cfgArms,
     contact: rollingContact(0, 0),
     gaitPhase: 0,
     gaitDirection: 1,
@@ -1040,6 +957,18 @@ function poseArm(
   const handX = elbowX + Math.sin(forearmPitch) * forearmPlanar;
   const handY = elbowY - Math.cos(forearmPitch) * forearmPlanar;
   const handZ = elbowZ + arm.side * Math.sin(forearmOutward) * arm.forearmLength;
+  poseResolvedArm(arm, elbowX, elbowY, elbowZ, handX, handY, handZ);
+}
+
+function poseResolvedArm(
+  arm: BotArm,
+  elbowX: number,
+  elbowY: number,
+  elbowZ: number,
+  handX: number,
+  handY: number,
+  handZ: number,
+): void {
   const shoulderInset = boxJointSurfaceDistance(
     arm.shoulderJoint,
     elbowX - arm.shoulderX,
@@ -1083,44 +1012,50 @@ function poseArm(
   }
 }
 
-function botTurretAssistPriority(
-  turret: Turret,
-  state: HostTurretAimSample3D['state'],
-  manualHoldMs: number,
-): number {
-  // A manual pose change represents an explicit player ability and wins over
-  // ordinary tracking. Engaged beats tracking; the fight-stop mount is the
-  // host's authored primary weapon and wins ties between sibling weapons.
-  if (turret.config.controlMode === 'manual' && manualHoldMs > 0) return 400;
-  if (state === 'engaged') return 300 + (turret.config.requiredEngagedForFightStop ? 10 : 0);
-  if (state === 'tracking') return 200 + (turret.config.requiredEngagedForFightStop ? 10 : 0);
-  return 0;
-}
-
-/** Let a bot host echo the aim already solved by its arm-mounted
- * turrets. Every turret remains independently posed at its authoritative
- * world yaw/pitch; this host-side pass only selects optional secondary torso
- * and arm motion from the same values. */
+/** Resolve the renderer from the same deterministic host-piece contract used
+ * by simulation. The nominated primary turret owns the shared torso piece;
+ * every attached arm receives its own turret yaw/pitch. */
 export function updateBotHostTurretAim(
   mesh: BotMesh,
   hostYaw: number,
   turretRows: ClientRenderTurretHostRows | undefined,
   turrets: readonly Turret[],
-  dtMs: number,
+  _dtMs: number,
 ): number {
   for (const arm of mesh.arms) {
     arm.turretAimActive = false;
-    // Pitch is a proposal owned by the currently selected turret, not sticky
-    // arm state. poseArms still eases actionBlend back to the rest pose.
     arm.turretAimPitch = 0;
+    arm.turretAimYaw = 0;
   }
-  mesh.turretLockActive = false;
-
-  const elapsedMs = Math.max(0, dtMs);
-  let selectedPriority = 0;
-  let selectedYaw = 0;
-  let selectedPitch = 0;
-  let selectedArm: BotArmId | null = null;
+  const torsoTurretIndex = selectBotTorsoTurretIndex(turrets);
+  const torsoOwner = torsoTurretIndex >= 0 ? turrets[torsoTurretIndex] : undefined;
+  const torsoStateRow = torsoTurretIndex >= 0 && turretRows !== undefined &&
+      torsoTurretIndex < turretRows.count
+    ? turretRows.start + torsoTurretIndex
+    : -1;
+  const rowHostYaw = torsoStateRow >= 0
+    ? turretRows!.views.hostPieceYaw?.[torsoStateRow] ?? Number.NaN
+    : Number.NaN;
+  let torsoWorldYaw = Number.isFinite(rowHostYaw)
+    ? rowHostYaw
+    : torsoOwner !== undefined && Number.isFinite(torsoOwner.hostPieceYaw)
+      ? torsoOwner.hostPieceYaw
+    : hostYaw;
+  // Loading previews and legacy snapshots can precede the first authoritative
+  // host-piece tick. Preserve their useful direct-pose fallback; live bot
+  // entities receive a finite servo pose before combat emission.
+  if (
+    torsoOwner !== undefined &&
+    !Number.isFinite(torsoOwner.hostPieceYaw) &&
+    readHostTurretAimSample3D(
+      turretRows,
+      turrets,
+      torsoTurretIndex,
+      _hostTurretAimSample,
+    )
+  ) {
+    torsoWorldYaw = _hostTurretAimSample.yaw;
+  }
 
   for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
     const turret = turrets[turretIndex];
@@ -1133,81 +1068,24 @@ export function updateBotHostTurretAim(
       _hostTurretAimSample,
     )) continue;
 
-    let memory = mesh.turretAimMemory.get(turret.mountId);
-    if (memory === undefined) {
-      memory = {
-        initialized: false,
-        yaw: _hostTurretAimSample.yaw,
-        pitch: _hostTurretAimSample.pitch,
-        manualHoldMs: 0,
-        manualPoseArmed: true,
-      };
-      mesh.turretAimMemory.set(turret.mountId, memory);
-    }
-    memory.manualHoldMs = Math.max(0, memory.manualHoldMs - elapsedMs);
-    if (memory.initialized && turret.config.controlMode === 'manual') {
-      const yawChanged = Math.abs(shortestAngleDelta(
-        memory.yaw,
-        _hostTurretAimSample.yaw,
-      )) > MANUAL_TURRET_POSE_EPSILON;
-      const pitchChanged = Math.abs(memory.pitch - _hostTurretAimSample.pitch) >
-        MANUAL_TURRET_POSE_EPSILON;
-      const poseChanged = yawChanged || pitchChanged;
-      if (poseChanged && memory.manualPoseArmed) {
-        memory.manualHoldMs = MANUAL_TURRET_ASSIST_HOLD_MS;
-        memory.manualPoseArmed = false;
-      } else if (!poseChanged && memory.manualHoldMs <= 0) {
-        // A stable idle sample re-arms the next explicit manual-fire snap.
-        memory.manualPoseArmed = true;
-      }
-    }
-    memory.initialized = true;
-    memory.yaw = _hostTurretAimSample.yaw;
-    memory.pitch = _hostTurretAimSample.pitch;
-
-    const priority = botTurretAssistPriority(
-      turret,
-      _hostTurretAimSample.state,
-      memory.manualHoldMs,
+    if (attachment.kind !== 'botArm') continue;
+    const arm = mesh.arms.find((candidate) => candidate.id === attachment.arm);
+    if (arm === undefined || arm.turretAimActive) continue;
+    arm.turretAimActive = true;
+    arm.turretAimPitch = _hostTurretAimSample.pitch;
+    arm.turretAimYaw = shortestBotSocketAngleDelta(
+      torsoWorldYaw,
+      _hostTurretAimSample.yaw,
     );
-    if (priority <= selectedPriority) continue;
-    selectedPriority = priority;
-    selectedYaw = _hostTurretAimSample.yaw;
-    selectedPitch = _hostTurretAimSample.pitch;
-    selectedArm = attachment.kind === 'botArm' ? attachment.arm : null;
   }
 
-  mesh.turretLockActive = selectedPriority > 0;
-
-  if (mesh.upperBodyWorldYaw === null) {
-    // upperBodyYaw is Three-local and therefore the inverse of sim-local yaw:
-    // localThree = hostSim - torsoWorldSim.
-    mesh.upperBodyWorldYaw = hostYaw - mesh.upperBodyYaw;
-    mesh.upperBodyYawVelocity = 0;
-  }
-  const targetWorldYaw = selectedPriority > 0 ? selectedYaw : hostYaw;
-  const dt = elapsedMs / 1000;
-  if (dt <= 0 && selectedPriority > 0) {
-    // Zero-delta setup/preview passes have no elapsed time to animate. Keep
-    // their established direct-pose behavior without leaking momentum into
-    // the first live frame.
-    mesh.upperBodyWorldYaw = targetWorldYaw;
-    mesh.upperBodyYawVelocity = 0;
-  } else {
-    stepBotUpperBodyYaw(mesh, targetWorldYaw, dt);
-  }
-  // The lifted upper body is parented under the locomotion yaw. Derive only
-  // the local counter/assist twist here; the persistent inertial controller
-  // above never sees that moving parent frame.
-  mesh.upperBodyYaw = shortestAngleDelta(mesh.upperBodyWorldYaw, hostYaw);
-
-  if (selectedArm !== null) {
-    const arm = mesh.arms.find((candidate) => candidate.id === selectedArm);
-    if (arm !== undefined) {
-      arm.turretAimActive = true;
-      arm.turretAimPitch = selectedPitch;
-    }
-  }
+  mesh.turretLockActive = mesh.arms.some((arm) => arm.turretAimActive);
+  mesh.upperBodyWorldYaw = torsoWorldYaw;
+  mesh.upperBodyYawVelocity = torsoStateRow >= 0
+    ? turretRows!.views.hostPieceYawVelocity?.[torsoStateRow] ?? 0
+    : torsoOwner?.hostPieceYawVelocity ?? 0;
+  // Three's +Y rotation is the inverse sign of sim yaw in the x/z mapping.
+  mesh.upperBodyYaw = shortestBotSocketAngleDelta(torsoWorldYaw, hostYaw);
   return mesh.upperBodyYaw;
 }
 
@@ -1215,7 +1093,13 @@ function armActionActive(entity: Entity | undefined, arm: BotArm): boolean {
   if (arm.role === 'construction') {
     return entity !== undefined &&
       entity.builder !== null &&
-      entity.builder.currentBuildTarget !== NO_ENTITY_ID;
+      (
+        (
+          entity.builder.workStation !== null &&
+          entity.builder.workStation.targetEntityId !== NO_ENTITY_ID
+        ) ||
+        entity.builder.currentBuildTarget !== NO_ENTITY_ID
+      );
   }
   return arm.turretAimActive;
 }
@@ -1227,6 +1111,55 @@ function poseArms(
 ): void {
   const actionEase = dt <= 0 ? 1 : 1 - Math.exp(-dt / ARM_ACTION_EASE_SECONDS);
   for (const arm of mesh.arms) {
+    const workStation = arm.role === 'construction'
+      ? entity?.builder?.workStation ?? null
+      : null;
+    if (workStation !== null && workStation.targetEntityId !== NO_ENTITY_ID) {
+      resolveBotWeaponArmSocketPose(
+        mesh.armConfig,
+        mesh.unitRadius,
+        arm.id,
+        arm.shoulderY,
+        workStation.localPitch,
+        workStation.localYaw,
+        DMath,
+        _weaponArmSocketPose,
+      );
+      poseResolvedArm(
+        arm,
+        _weaponArmSocketPose.elbowX,
+        _weaponArmSocketPose.elbowZ,
+        _weaponArmSocketPose.elbowY,
+        _weaponArmSocketPose.handX,
+        _weaponArmSocketPose.handZ,
+        _weaponArmSocketPose.handY,
+      );
+      arm.actionBlend = 1;
+      continue;
+    }
+    if (arm.turretAimActive) {
+      resolveBotWeaponArmSocketPose(
+        mesh.armConfig,
+        mesh.unitRadius,
+        arm.id,
+        arm.shoulderY,
+        arm.turretAimPitch,
+        arm.turretAimYaw,
+        DMath,
+        _weaponArmSocketPose,
+      );
+      poseResolvedArm(
+        arm,
+        _weaponArmSocketPose.elbowX,
+        _weaponArmSocketPose.elbowZ,
+        _weaponArmSocketPose.elbowY,
+        _weaponArmSocketPose.handX,
+        _weaponArmSocketPose.handZ,
+        _weaponArmSocketPose.handY,
+      );
+      arm.actionBlend = 1;
+      continue;
+    }
     const sameSideLeg = mesh.legs.find((leg) => leg.side === arm.side);
     const legForward = sameSideLeg === undefined
       ? 0
@@ -1239,13 +1172,12 @@ function poseArms(
     // BAR's walk is contralateral: a forward same-side leg drives this arm
     // backward. Reading the actual solved foot pose keeps that relationship
     // true by construction instead of hoping a second clock stays synced.
-    const armWave = mesh.turretLockActive ? 0 : -legForward;
+    const armWave = -legForward;
     const actionTarget = armActionActive(entity, arm) ? 1 : 0;
     arm.actionBlend += (actionTarget - arm.actionBlend) * actionEase;
 
-    // Same-side arm opposes the leg and the forearm remains deeply folded.
-    // Any turret lock removes noisy gait from both arms. Only the arm named by
-    // the selected attachment receives pitch; the other settles at rest.
+    // Same-side free/construction arms oppose the leg and keep the forearm
+    // deeply folded. Weapon arms returned above and never enter this gait path.
     const walkShoulder = mesh.armRestRad + armWave * mesh.armSwingRad;
     const restForearmBend = ELBOW_BEND_RAD;
     const walkForearm = walkShoulder * ELBOW_FOLLOW
@@ -1280,51 +1212,28 @@ function poseArms(
   }
 }
 
-/** Resolve the visible root of a held turret from the animated weapon hand.
- *  Gameplay still owns its stable blueprint mount; this is the articulated
- *  presentation mount that prevents the gun from remaining in the torso while
- *  its arm walks away. */
+/** Resolve the visible AimFrom root from the same authoritative weapon-hand
+ * geometry used by simulation. The root is lowered by headRadius because a
+ * turret mesh root sits below its logical head-center pivot. */
 export function resolveBotArmTurretRoot(
   mesh: BotMesh,
-  armId: BotArmId,
-  mountId: string,
+  attachment: BotArmHostAttachment,
   headRadius: number,
   out: THREE.Vector3 = _turretMount,
 ): THREE.Vector3 | null {
-  const arm = mesh.arms.find((candidate) => candidate.id === armId);
+  const arm = mesh.arms.find((candidate) => candidate.id === attachment.arm);
   if (arm === undefined) return null;
-  let centerYOffset = 0;
-  let lateralOffset = 0;
-  if (mesh.variant === 'commander') {
-    if (mountId === 'beam') {
-      centerYOffset = mesh.unitRadius * 0.10;
-      lateralOffset = -arm.side * mesh.unitRadius * 0.10;
-    } else {
-      return null;
-    }
-  }
   out.set(
-    arm.handX + mesh.unitRadius * 0.02,
-    arm.handY + centerYOffset - headRadius,
-    arm.handZ + lateralOffset,
+    arm.handX + attachment.socketOffset.x * mesh.unitRadius,
+    arm.handY + attachment.socketOffset.z * mesh.unitRadius - headRadius,
+    arm.handZ + attachment.socketOffset.y * mesh.unitRadius,
   );
   return out;
 }
 
-/** Rendered orientation of a gun held by `armId`, as the local yaw/pitch a
- *  turret rig applies to its own yaw and pitch groups.
- *
- *  A bot host aims with its body: the torso carries the weapon heading
- *  and the arm carries the elevation, and the gun is bolted to the hand at
- *  the end of that chain. So the arm direction IS the gun direction, and a
- *  held turret must not also articulate on its own — that would express one
- *  aim twice and leave the barrel visibly disagreeing with the arm holding
- *  it. Every other host keeps the ordinary turret pose, where the mount is
- *  fixed to the hull and only the turret moves.
- *
- *  Returned in the same chassis-local frame `resolveBotArmTurretRoot`
- *  reports its position in, and using the same convention as
- *  applyTurretAimPose3D: barrel along local +X, yaw about Y, pitch about Z. */
+/** Diagnostic direction of the solved forearm for contract tests and visual
+ *  tooling. This is not the turret aim: the arm owns the moving parent socket,
+ *  while the attached logical turret still applies its own yaw and pitch. */
 export function resolveBotArmTurretAim(
   mesh: BotMesh,
   armId: BotArmId,
@@ -1414,5 +1323,5 @@ export function disposeBotRigGeometry(): void {
   unitBox.dispose();
   for (const mat of segmentMaterials.values()) mat.dispose();
   segmentMaterials.clear();
-  constructionEmitterMaterial.dispose();
+  botAccentGlowMaterial.dispose();
 }

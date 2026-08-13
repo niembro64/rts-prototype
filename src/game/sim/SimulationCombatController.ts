@@ -31,6 +31,7 @@ import {
   stampCombatTargetingPool,
   stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
+import { updateAuthoritativeHostAttachmentKinematics } from './combat/combatUtils';
 import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import type { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
@@ -89,6 +90,14 @@ export class SimulationCombatController {
     }
     sim.deathExplosionPlannerReset();
 
+    const armedUnits = this.world.getArmedEntities();
+    updateAuthoritativeHostAttachmentKinematics(
+      armedUnits,
+      this.world.getTick(),
+      dtMs,
+      'tickStart',
+    );
+
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
@@ -112,9 +121,18 @@ export class SimulationCombatController {
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.laserSounds');
 
-    // Update turret rotation (before firing, so weapons fire in turret direction)
+    // QueryWork already arbitrated and stepped shared moving parents once at
+    // the start of this fixed tick. Targeting above publishes weapon intent
+    // for the next parent tick; solve weapon children in the current parent
+    // frame without double-integrating a heavy torso.
     const turretRotationUnits = collectTurretRotationUnits(this.world, activeCombatUnits);
     updateTurretRotation(this.world, dtMs, turretRotationUnits);
+    updateAuthoritativeHostAttachmentKinematics(
+      armedUnits,
+      this.world.getTick(),
+      dtMs,
+      'postAim',
+    );
     SIM_TICK_INSTRUMENTATION.phase('combat.turretRotation');
 
     // Update shield state before projectile emission. Aimed tube shields
@@ -167,7 +185,10 @@ export class SimulationCombatController {
     // Emit fire audio events
     this.emitSimEvents(fireResult.events, onSimEvent);
 
-    for (const unit of turretRotationUnits) {
+    // Host-piece servos keep settling after their weapon FSM goes idle, so
+    // snapshot dirtiness must sample every armed host rather than only the
+    // subset whose logical turret aim was active this tick.
+    for (const unit of armedUnits) {
       if (turretSnapshotRowsChangedSinceLastSample(unit)) {
         this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
       }

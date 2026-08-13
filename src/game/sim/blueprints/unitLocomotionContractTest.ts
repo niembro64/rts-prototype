@@ -277,7 +277,12 @@ function checkBotTurretHostAttachments(): void {
       }
       const attachment = turret.hostAttachment;
       assertContract(
-        attachment?.kind === 'botHead' ||
+        (attachment?.kind === 'botPiece' &&
+            (attachment.piece === 'head' ||
+              attachment.piece === 'leftShoulder' ||
+              attachment.piece === 'rightShoulder' ||
+              attachment.piece === 'backpackLeft' ||
+              attachment.piece === 'backpackRight')) ||
           (attachment?.kind === 'botArm' &&
             (attachment.arm === 'leftArm' || attachment.arm === 'rightArm')),
         `${blueprint.unitBlueprintId}/${turret.mountId} must identify its bot host attachment`,
@@ -301,8 +306,25 @@ function checkBotTurretHostAttachments(): void {
     'Commander mounts its beam on the left arm',
   );
   assertContract(
-    dgun?.hostAttachment?.kind === 'botHead',
+    dgun?.hostAttachment?.kind === 'botPiece' && dgun.hostAttachment.piece === 'head',
     'Commander mounts its D-gun on the head',
+  );
+
+  const rex = getUnitBlueprint('unitRex');
+  const fastRocket = rex.turrets.find((turret) => turret.mountId === 'missileFast');
+  const rightSilo = rex.turrets.find((turret) => turret.mountId === 'siloRight');
+  const leftSilo = rex.turrets.find((turret) => turret.mountId === 'siloLeft');
+  assertContract(
+    fastRocket?.hostAttachment?.kind === 'botPiece' &&
+      fastRocket.hostAttachment.piece === 'rightShoulder',
+    'Rex fast rockets mount to the moving right shoulder',
+  );
+  assertContract(
+    rightSilo?.hostAttachment?.kind === 'botPiece' &&
+      rightSilo.hostAttachment.piece === 'backpackRight' &&
+      leftSilo?.hostAttachment?.kind === 'botPiece' &&
+      leftSilo.hostAttachment.piece === 'backpackLeft',
+    'Rex vertical rockets mount to their respective moving backpack sockets',
   );
 }
 

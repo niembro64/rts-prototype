@@ -4,7 +4,7 @@ import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   getBuildingBlueprint,
 } from '../sim/blueprints';
-import { disposeConstructionEmitterGeoms } from './ConstructionEmitterMesh3D';
+import { disposeResourcePylonGeometries } from './ResourcePylonMesh3D';
 import type { BuildingShape } from './BuildingShape3D';
 import {
   detail,
@@ -93,19 +93,16 @@ export function buildFactoryMesh(
   // The forming-unit ghost orbs that used to sit at the ground-level build
   // bay are retired: the real unit shell is held at the torus center during
   // construction, so the orbs were redundant. The
-  // flag below still marks this as a factory construction host so the
-  // animation controller registers it for the construction-emitter spray.
   return {
     primary,
     details,
     bodyless: true,
     height: blueprint.visualHeight ?? DEFAULT_BUILDING_VISUAL_HEIGHT,
-    isFactoryConstructionHost: true,
   };
 }
 
 export function disposeFactoryMeshGeoms(): void {
   disposeProductionHoldRingGeom();
-  disposeConstructionEmitterGeoms();
+  disposeResourcePylonGeometries();
   disposeConstructionHostMarkingGeometries();
 }

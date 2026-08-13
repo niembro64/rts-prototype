@@ -199,13 +199,15 @@ function createPackedTurretRow(): Uint8Array {
   writer.writeVarUint(1);
   writer.writeVarUint(1);
   writer.writeVarInt(505);
-  writer.writeVarUint(TURRET_FLAG_TARGET_ID | TURRET_FLAG_SHIELD_RANGE);
+  writer.writeVarUint(TURRET_FLAG_TARGET_ID | TURRET_FLAG_SHIELD_RANGE | (1 << 3));
   writer.writeVarUint(7);
   writer.writeVarUint(3);
   writer.writeVarInt(11);
   writer.writeVarInt(12);
   writer.writeVarInt(13);
   writer.writeVarInt(14);
+  writer.writeVarInt(15);
+  writer.writeVarInt(16);
   writer.writeVarUint(606);
   writer.writeFloat64(88);
   writer.setUint32LE(0, 1);
@@ -999,7 +1001,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     turretEntity?.id === 505 &&
       turretEntity.changedFields === ENTITY_CHANGED_TURRETS &&
-      turretEntity.unit?.turrets?.[0]?.targetId === 606,
+      turretEntity.unit?.turrets?.[0]?.targetId === 606 &&
+      turretEntity.unit.turrets[0].turret.angular.hostYaw === 15 &&
+      turretEntity.unit.turrets[0].turret.angular.hostYawVel === 16,
     'unit-turret row must decode from compact turret slab',
   );
   const turretSource = getEntitySnapshotWireSource(turretEntities);
@@ -1019,7 +1023,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
     turretSource.unitRows.values[turretUnitWireBase + 43] === 1 &&
       turretSource.unitRows.values[turretUnitWireBase + 44] === 1 &&
       turretSource.turretRows.values[turretWireBase + 7] === 606 &&
-      turretSource.turretRows.values[turretWireBase + 9] === 88,
+      turretSource.turretRows.values[turretWireBase + 9] === 88 &&
+      turretSource.turretRows.values[turretWireBase + 11] === 15 &&
+      turretSource.turretRows.values[turretWireBase + 12] === 16,
     'unit-turret typed row metadata must mirror compact decoded fields',
   );
   const metadataOnlyTurretEntities = unpackEntitiesFromWire(

@@ -5,23 +5,25 @@ import {
   type KinematicInterceptSolution,
   type KinematicState3,
 } from '../math';
-import { getTurretWorldMount } from '../math/MountGeometry';
 import { rayDistanceToMapEdge } from '../math/rayMapBounds';
 import type { Entity, ProjectileShot, Turret } from '../sim/types';
 import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { isAttackEmitter } from '../sim/emitterKinds';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import {
-  getEntityBodyOrientation,
-  getEntityPosition3d,
   getProjectileLaunchSpeed,
+  resolveWeaponEmissionSocket,
 } from '../sim/combat/combatUtils';
 import { getProjectileAirFrictionPer60HzFrame } from '../sim/shotLocomotionMotion';
 
 const SEARCH_ITERATIONS = 14;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+const _previewEmissionSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
 
 const _originState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
@@ -38,7 +40,6 @@ const _intercept: KinematicInterceptSolution = {
   aimPoint: { x: 0, y: 0, z: 0 },
   launchVelocity: { x: 0, y: 0, z: 0 },
 };
-const _entityPosition = { x: 0, y: 0, z: 0 };
 
 export type ProjectileGroundReach = 'reachable' | 'blocked' | null;
 
@@ -88,30 +89,32 @@ export function resolveProjectileWeaponMount(
   mapWidth: number,
   mapHeight: number,
 ): { x: number; y: number; z: number } {
-  const entityPosition = getEntityPosition3d(entity, _entityPosition);
   const { cos, sin } = getTransformCosSin(entity.transform);
   const surfaceN = entity.unit
-    ? entity.unit.surfaceNormal ?? getSurfaceNormal(
-        entityPosition.x,
-        entityPosition.y,
+      ? entity.unit.surfaceNormal ?? getSurfaceNormal(
+        entity.transform.x,
+        entity.transform.y,
         mapWidth,
         mapHeight,
         LAND_CELL_SIZE,
       )
     : FLAT_SURFACE_NORMAL;
-  const mount = getRuntimeTurretMount(weapon);
-  return getTurretWorldMount(
-    entityPosition.x,
-    entityPosition.y,
-    getUnitGroundZ(entity),
+  const turretIndex = entity.combat?.turrets.indexOf(weapon) ?? -1;
+  return resolveWeaponEmissionSocket(
+    entity,
+    weapon,
+    turretIndex,
+    weapon.emissionLaneIndex,
     cos,
     sin,
-    mount.x,
-    mount.y,
-    mount.z,
-    surfaceN,
-    getEntityBodyOrientation(entity),
-  );
+    {
+      currentTick: undefined,
+      dtMs: undefined,
+      unitGroundZ: getUnitGroundZ(entity),
+      surfaceN,
+    },
+    _previewEmissionSocket,
+  ).position;
 }
 
 function projectileWeaponCanReachGroundPoint(

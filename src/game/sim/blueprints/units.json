@@ -26,9 +26,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitJackal",
         "mount": {
@@ -176,9 +174,7 @@
               "accel": 80,
               "decel": 30
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitLynx",
         "mount": {
@@ -309,9 +305,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitDaddy",
         "mount": {
@@ -341,9 +335,7 @@
               "thickness": 1.5,
               "reversePhase": true
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "mount": {
           "x": 0,
@@ -497,9 +489,7 @@
               "accel": 18,
               "decel": 8
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitBadger",
         "mount": {
@@ -630,9 +620,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 0.75
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitMongoose",
         "mount": {
@@ -772,9 +760,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitTick",
         "mount": {
@@ -928,9 +914,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitHuman",
         "mount": {
@@ -941,9 +925,40 @@
         "requiredEngagedForFightStop": true,
         "mountId": "plasmaLight",
         "controlMode": "hostPreferred",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.8,
+            "maxAngle": 0.8
+          },
+          "pitch": {
+            "minAngle": -0.75,
+            "maxAngle": 1.3
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 100
+        },
+        "emissionSockets": [
+          {
+            "offset": {
+              "x": 9,
+              "y": 0,
+              "z": 0
+            }
+          }
+        ],
         "hostAttachment": {
           "kind": "botArm",
-          "arm": "rightArm"
+          "arm": "rightArm",
+          "socketOffset": {
+            "x": 0.02,
+            "y": 0,
+            "z": 0
+          }
         }
       }
     ],
@@ -1064,6 +1079,11 @@
         }
       },
       "config": {
+        "upperBodyActuator": {
+          "maxSpeed": 2.5,
+          "maxAcceleration": 6
+        },
+        "upperBodyRestoreDelayMs": 1800,
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.05,
@@ -1166,9 +1186,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.35
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1179,8 +1197,31 @@
         "requiredEngagedForFightStop": true,
         "mountId": "beamMega",
         "controlMode": "hostPreferred",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.26,
+            "maxAngle": 0.26
+          },
+          "pitch": {
+            "minAngle": -0.6,
+            "maxAngle": 1.1
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 3000,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 100
+        },
         "hostAttachment": {
-          "kind": "botHead"
+          "kind": "botPiece",
+          "piece": "head",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       },
       {
@@ -1190,10 +1231,16 @@
           "headOnly": false,
           "barrel": {
             "type": "simpleMultiBarrel",
-            "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+            "barrelCount": 5,
+            "barrelLength": 1.5,
+            "orbitRadius": 0.36,
+            "spin": {
+              "idle": 1,
+              "max": 18,
+              "accel": 30,
+              "decel": 18
+            }
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1204,9 +1251,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "gatlingRight",
         "controlMode": "hostPreferred",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -1.05,
+            "maxAngle": 1.05
+          },
+          "pitch": {
+            "minAngle": -0.75,
+            "maxAngle": 1.25
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 50
+        },
         "hostAttachment": {
           "kind": "botArm",
-          "arm": "rightArm"
+          "arm": "rightArm",
+          "socketOffset": {
+            "x": 0.02,
+            "y": 0,
+            "z": 0
+          }
         }
       },
       {
@@ -1216,10 +1285,16 @@
           "headOnly": false,
           "barrel": {
             "type": "simpleMultiBarrel",
-            "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+            "barrelCount": 5,
+            "barrelLength": 1.5,
+            "orbitRadius": 0.36,
+            "spin": {
+              "idle": 1,
+              "max": 18,
+              "accel": 30,
+              "decel": 18
+            }
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1230,9 +1305,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "gatlingLeft",
         "controlMode": "hostPreferred",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -1.05,
+            "maxAngle": 1.05
+          },
+          "pitch": {
+            "minAngle": -0.75,
+            "maxAngle": 1.25
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 50
+        },
         "hostAttachment": {
           "kind": "botArm",
-          "arm": "leftArm"
+          "arm": "leftArm",
+          "socketOffset": {
+            "x": 0.02,
+            "y": 0,
+            "z": 0
+          }
         }
       },
       {
@@ -1242,10 +1339,16 @@
           "headOnly": false,
           "barrel": {
             "type": "simpleMultiBarrel",
-            "barrelLength": 1.1
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+            "barrelCount": 3,
+            "barrelLength": 1.1,
+            "orbitRadius": 0.38,
+            "spin": {
+              "idle": 0,
+              "max": 0,
+              "accel": 0,
+              "decel": 0
+            }
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1256,8 +1359,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "missileFast",
         "controlMode": "autonomous",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.7,
+            "maxAngle": 0.7
+          },
+          "pitch": {
+            "minAngle": -0.2,
+            "maxAngle": 1.1
+          },
+          "restYaw": 0,
+          "restPitch": 0.12,
+          "restoreDelayMs": 1800,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 40
+        },
         "hostAttachment": {
-          "kind": "botHead"
+          "kind": "botPiece",
+          "piece": "rightShoulder",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       },
       {
@@ -1267,10 +1393,16 @@
           "headOnly": false,
           "barrel": {
             "type": "simpleMultiBarrel",
-            "barrelLength": 1.0
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+            "barrelCount": 3,
+            "barrelLength": 1.0,
+            "orbitRadius": 0.38,
+            "spin": {
+              "idle": 0,
+              "max": 0,
+              "accel": 0,
+              "decel": 0
+            }
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1281,8 +1413,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "siloRight",
         "controlMode": "autonomous",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": 1.5707963267948966,
+            "maxAngle": 1.5707963267948966
+          },
+          "restYaw": 0,
+          "restPitch": 1.5707963267948966,
+          "restoreDelayMs": 0,
+          "hostAssist": "none",
+          "claimGroup": null,
+          "claimPriority": 0
+        },
         "hostAttachment": {
-          "kind": "botHead"
+          "kind": "botPiece",
+          "piece": "backpackRight",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       },
       {
@@ -1292,10 +1447,16 @@
           "headOnly": false,
           "barrel": {
             "type": "simpleMultiBarrel",
-            "barrelLength": 1.0
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+            "barrelCount": 3,
+            "barrelLength": 1.0,
+            "orbitRadius": 0.38,
+            "spin": {
+              "idle": 0,
+              "max": 0,
+              "accel": 0,
+              "decel": 0
+            }
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
@@ -1306,8 +1467,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "siloLeft",
         "controlMode": "autonomous",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": 1.5707963267948966,
+            "maxAngle": 1.5707963267948966
+          },
+          "restYaw": 0,
+          "restPitch": 1.5707963267948966,
+          "restoreDelayMs": 0,
+          "hostAssist": "none",
+          "claimGroup": null,
+          "claimPriority": 0
+        },
         "hostAttachment": {
-          "kind": "botHead"
+          "kind": "botPiece",
+          "piece": "backpackLeft",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       }
     ],
@@ -1421,6 +1605,11 @@
         }
       },
       "config": {
+        "upperBodyActuator": {
+          "maxSpeed": 0.75,
+          "maxAcceleration": 1.2
+        },
+        "upperBodyRestoreDelayMs": 3000,
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.05,
@@ -1520,9 +1709,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 1.4
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitMammoth",
         "mount": {
@@ -1661,9 +1848,7 @@
               "accel": 5,
               "decel": 5
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitFormik",
         "mount": {
@@ -1841,9 +2026,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
@@ -1867,9 +2050,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
@@ -1893,9 +2074,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
@@ -1919,9 +2098,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
@@ -1945,9 +2122,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.1
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
@@ -1981,9 +2156,7 @@
               "thickness": 1.5,
               "reversePhase": true
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "mount": {
           "x": 0.3,
@@ -2157,9 +2330,7 @@
               "accel": 20,
               "decel": 10
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitHippo",
         "mount": {
@@ -2301,9 +2472,7 @@
               "accel": 80,
               "decel": 30
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
         "mount": {
@@ -2492,9 +2661,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 1.8
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitOrca",
         "mount": {
@@ -2667,9 +2834,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitTarantula",
         "mount": {
@@ -2844,9 +3009,7 @@
           "headOnly": false,
           "barrel": {
             "type": "shieldPanelEmitter"
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "mount": {
           "x": 0,
@@ -2980,9 +3143,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitBee",
         "mount": {
@@ -3108,9 +3269,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 0.55
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
@@ -3130,9 +3289,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
@@ -3287,7 +3444,14 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 1.3
+      "particleRadius": 1.3,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
     },
     "turrets": [
       {
@@ -3450,9 +3614,7 @@
               "accel": 30,
               "decel": 12
             }
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitEagle",
         "mount": {
@@ -3604,9 +3766,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.1
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitDuck",
         "mount": {
@@ -3763,9 +3923,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2.2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
@@ -3785,9 +3943,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2.2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
@@ -3807,9 +3963,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 2.2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
@@ -3956,7 +4110,14 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 1.5
+      "particleRadius": 1.5,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
     },
     "turrets": [
       {
@@ -3967,9 +4128,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 0.8
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
@@ -3989,9 +4148,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
@@ -4011,9 +4168,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
@@ -4033,9 +4188,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
@@ -4055,9 +4208,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
@@ -4211,7 +4362,14 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 1.5
+      "particleRadius": 1.5,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
     },
     "turrets": [
       {
@@ -4222,9 +4380,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 0.8
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
@@ -4244,9 +4400,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
@@ -4266,9 +4420,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
@@ -4288,9 +4440,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
@@ -4310,9 +4460,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.5
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
@@ -4631,13 +4779,51 @@
     "workEmitter": {
       "points": [
         {
-          "x": 0.55,
-          "y": -0.79,
-          "z": 1.05
+          "x": 0.04,
+          "y": 0,
+          "z": 0
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 1.95
+      "particleRadius": 1.95,
+      "attachment": {
+        "kind": "botArm",
+        "arm": "rightArm",
+        "socketOffset": {
+          "x": 0.02,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "angularActuator": {
+        "yaw": {
+          "maxSpeed": 1.4,
+          "maxAcceleration": 2.8
+        },
+        "pitch": {
+          "maxSpeed": 1.6,
+          "maxAcceleration": 3.2
+        }
+      },
+      "articulation": {
+        "yaw": {
+          "continuous": false,
+          "minAngle": -0.9,
+          "maxAngle": 0.9
+        },
+        "pitch": {
+          "minAngle": -1.55,
+          "maxAngle": 1.55
+        },
+        "restYaw": 0,
+        "restPitch": 0.25,
+        "restoreDelayMs": 3000,
+        "hostAssist": "requestYaw",
+        "claimGroup": "botUpperBody",
+        "claimPriority": 110
+      },
+      "requiresAlignmentForWork": true,
+      "alignmentToleranceRadians": 0.12
     },
     "turrets": [
       {
@@ -4648,9 +4834,7 @@
           "barrel": {
             "type": "singleConeBarrel",
             "barrelLength": 1.2
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
@@ -4661,9 +4845,40 @@
         "requiredEngagedForFightStop": true,
         "mountId": "beam",
         "controlMode": "hostPreferred",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.65,
+            "maxAngle": 0.65
+          },
+          "pitch": {
+            "minAngle": -0.75,
+            "maxAngle": 1.3
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 3000,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 100
+        },
+        "emissionSockets": [
+          {
+            "offset": {
+              "x": 17.16,
+              "y": 0,
+              "z": 0
+            }
+          }
+        ],
         "hostAttachment": {
           "kind": "botArm",
-          "arm": "leftArm"
+          "arm": "leftArm",
+          "socketOffset": {
+            "x": 0.02,
+            "y": -0.1,
+            "z": 0.1
+          }
         }
       },
       {
@@ -4674,9 +4889,7 @@
           "barrel": {
             "type": "singleCylinderBarrel",
             "barrelLength": 1
-          },
-          "constructionEmitter": null,
-          "constructionEmitterSize": null
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
@@ -4687,8 +4900,31 @@
         "requiredEngagedForFightStop": false,
         "mountId": "disruptor",
         "controlMode": "manual",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.35,
+            "maxAngle": 0.35
+          },
+          "pitch": {
+            "minAngle": -0.55,
+            "maxAngle": 1.1
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 3000,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 80
+        },
         "hostAttachment": {
-          "kind": "botHead"
+          "kind": "botPiece",
+          "piece": "head",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       }
     ],
@@ -4816,6 +5052,11 @@
         }
       },
       "config": {
+        "upperBodyActuator": {
+          "maxSpeed": 1.6,
+          "maxAcceleration": 3.2
+        },
+        "upperBodyRestoreDelayMs": 3000,
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.05,
@@ -4924,7 +5165,14 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 1.3
+      "particleRadius": 1.3,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
     },
     "turrets": [
       {

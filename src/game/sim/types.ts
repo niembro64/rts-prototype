@@ -86,6 +86,7 @@ export type {
   ResourceCost,
   Buildable,
   Builder,
+  BuilderWorkStationRuntime,
   
   Transport,
   EntityHold,

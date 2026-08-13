@@ -653,8 +653,8 @@ export type NetworkServerSnapshotProjectileSpawn = {
   spawnTick: number;
   parentShotEntityId: number | null;
   turretIndex: number;
-  /** Barrel selected for visual/audio cadence within the source turret's cluster.
-   *  Authoritative shots spawn from the turret mount center. */
+  /** Authoritative QueryWeapon lane selected within the source turret's
+   * cluster. This same identity places the shot and routes presentation. */
   barrelIndex: number;
   isDGun: boolean | null;
   /** True when this projectile came from a parent detonation (e.g.
@@ -713,7 +713,7 @@ export type NetworkServerSnapshotBeamPoint = {
 
 export type NetworkServerSnapshotBeamUpdate = {
   id: number;
-  /** Polyline vertices (≥ 2). Index 0 = start (turret mount center), last = end
+  /** Polyline vertices (≥ 2). Index 0 = selected QueryWeapon muzzle, last = end
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own position and velocity from the authoritative every-tick beam trace. */
   points: NetworkServerSnapshotBeamPoint[];
@@ -906,6 +906,10 @@ export type NetworkServerSnapshotTurret = {
       pitch: number;
       /** Pitch angular velocity (rad/s). */
       pitchVel: number;
+      /** Authoritative yaw of the moving host piece that carries this turret. */
+      hostYaw?: number;
+      /** Angular velocity of the host-piece yaw servo. */
+      hostYawVel?: number;
     };
   };
   targetId: number | null;
@@ -1065,6 +1069,18 @@ export type NetworkServerSnapshotEntity = {
     isCommander: boolean | null;
     buildTargetId: number | null;
     buildTargetIdPresent: boolean;
+    /** Public articulated QueryWork pose. Target identity remains private;
+     * targetActive is sufficient for deterministic piece presentation. */
+    workStation?: {
+      localYaw: number;
+      localPitch: number;
+      localYawVelocity: number;
+      localPitchVelocity: number;
+      targetActive: boolean;
+      aligned: boolean;
+      targetWorldYaw: number;
+      targetWorldPitch: number;
+    } | null;
     actions: NetworkServerSnapshotAction[] | null;
     turrets: NetworkServerSnapshotTurret[] | null;
     /** Unit shell construction state. Present while the unit is being

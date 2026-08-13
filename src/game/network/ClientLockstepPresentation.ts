@@ -151,6 +151,8 @@ export class ClientLockstepPresentation {
           turret.pitch = this.turretOutput[turretBase + 1];
           turret.angularVelocity = this.turretOutput[turretBase + 2];
           turret.pitchVelocity = this.turretOutput[turretBase + 3];
+          turret.hostPieceYaw = this.turretOutput[turretBase + 6];
+          turret.hostPieceYawVelocity = this.turretOutput[turretBase + 7];
         }
       }
 

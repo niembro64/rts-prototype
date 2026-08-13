@@ -93,26 +93,6 @@
         "turret-range-sphere"
       ]
     },
-    "ConstructionEmitterSize": {
-      "type": "string",
-      "x-codegen": {
-        "tsImport": {
-          "module": "./constructionTypes",
-          "name": "ConstructionEmitterSize"
-        },
-        "rustType": "String"
-      }
-    },
-    "ConstructionEmitterVisualSpec": {
-      "type": "object",
-      "x-codegen": {
-        "tsImport": {
-          "module": "./constructionTypes",
-          "name": "ConstructionEmitterVisualSpec"
-        },
-        "rustType": "BlueprintJsonValue"
-      }
-    },
     "WorkEmitterSpec": {
       "type": "object",
       "x-codegen": {
@@ -1714,6 +1694,40 @@
       },
       "additionalProperties": false
     },
+    "TurretAngularActuatorAxis": {
+      "type": "object",
+      "required": [
+        "maxSpeed",
+        "maxAcceleration"
+      ],
+      "properties": {
+        "maxSpeed": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxAcceleration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretAngularActuator": {
+      "type": "object",
+      "required": [
+        "yaw",
+        "pitch"
+      ],
+      "properties": {
+        "yaw": {
+          "$ref": "#/$defs/TurretAngularActuatorAxis"
+        },
+        "pitch": {
+          "$ref": "#/$defs/TurretAngularActuatorAxis"
+        }
+      },
+      "additionalProperties": false
+    },
     "TurretBlueprint": {
       "type": "object",
       "required": [
@@ -1725,8 +1739,6 @@
         "targeting",
         "cooldown",
         "color",
-        "turretTurnAccel",
-        "turretDrag",
         "emissionLaneCount",
         "eventsSmooth",
         "launchForce",
@@ -1775,11 +1787,8 @@
         "color": {
           "type": "number"
         },
-        "turretTurnAccel": {
-          "type": "number"
-        },
-        "turretDrag": {
-          "type": "number"
+        "angularActuator": {
+          "$ref": "#/$defs/TurretAngularActuator"
         },
         "emissionLaneCount": {
           "type": "integer",
@@ -1949,9 +1958,7 @@
       "required": [
         "headRadius",
         "headOnly",
-        "barrel",
-        "constructionEmitter",
-        "constructionEmitterSize"
+        "barrel"
       ],
       "properties": {
         "headRadius": {
@@ -1972,26 +1979,6 @@
           "oneOf": [
             {
               "$ref": "#/$defs/BarrelShape"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "constructionEmitter": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/ConstructionEmitterVisualSpec"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "constructionEmitterSize": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/ConstructionEmitterSize"
             },
             {
               "type": "null"
@@ -2041,7 +2028,8 @@
       "type": "object",
       "required": [
         "kind",
-        "arm"
+        "arm",
+        "socketOffset"
       ],
       "properties": {
         "kind": {
@@ -2052,18 +2040,36 @@
             "leftArm",
             "rightArm"
           ]
+        },
+        "socketOffset": {
+          "$ref": "#/$defs/MountOffset"
         }
       },
       "additionalProperties": false
     },
-    "BotHeadTurretHostAttachment": {
+    "BotPieceTurretHostAttachment": {
       "type": "object",
       "required": [
-        "kind"
+        "kind",
+        "piece",
+        "socketOffset"
       ],
       "properties": {
         "kind": {
-          "const": "botHead"
+          "const": "botPiece"
+        },
+        "piece": {
+          "type": "string",
+          "enum": [
+            "head",
+            "leftShoulder",
+            "rightShoulder",
+            "backpackLeft",
+            "backpackRight"
+          ]
+        },
+        "socketOffset": {
+          "$ref": "#/$defs/MountOffset"
         }
       },
       "additionalProperties": false
@@ -2074,9 +2080,113 @@
           "$ref": "#/$defs/BotArmTurretHostAttachment"
         },
         {
-          "$ref": "#/$defs/BotHeadTurretHostAttachment"
+          "$ref": "#/$defs/BotPieceTurretHostAttachment"
         }
       ]
+    },
+    "TurretEmissionSocket": {
+      "type": "object",
+      "required": [
+        "offset"
+      ],
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/MountOffset"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretYawTraverse": {
+      "type": "object",
+      "required": [
+        "continuous",
+        "minAngle",
+        "maxAngle"
+      ],
+      "properties": {
+        "continuous": {
+          "type": "boolean"
+        },
+        "minAngle": {
+          "type": "number"
+        },
+        "maxAngle": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretPitchTraverse": {
+      "type": "object",
+      "required": [
+        "minAngle",
+        "maxAngle"
+      ],
+      "properties": {
+        "minAngle": {
+          "type": "number"
+        },
+        "maxAngle": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TurretHostAssistPolicy": {
+      "type": "string",
+      "enum": [
+        "none",
+        "requestYaw"
+      ]
+    },
+    "TurretStationArticulation": {
+      "type": "object",
+      "required": [
+        "yaw",
+        "pitch",
+        "restYaw",
+        "restPitch",
+        "restoreDelayMs",
+        "hostAssist",
+        "claimGroup",
+        "claimPriority"
+      ],
+      "properties": {
+        "yaw": {
+          "$ref": "#/$defs/TurretYawTraverse"
+        },
+        "pitch": {
+          "$ref": "#/$defs/TurretPitchTraverse"
+        },
+        "restYaw": {
+          "type": "number"
+        },
+        "restPitch": {
+          "type": "number"
+        },
+        "restoreDelayMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "hostAssist": {
+          "$ref": "#/$defs/TurretHostAssistPolicy"
+        },
+        "claimGroup": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claimPriority": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
     },
     "TurretMount": {
       "type": "object",
@@ -2133,6 +2243,16 @@
         },
         "hostAttachment": {
           "$ref": "#/$defs/UnitTurretHostAttachment"
+        },
+        "emissionSockets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/TurretEmissionSocket"
+          }
+        },
+        "articulation": {
+          "$ref": "#/$defs/TurretStationArticulation"
         },
         "producedBlueprintId": {
           "$ref": "#/$defs/UnitBlueprintId"
@@ -2200,6 +2320,9 @@
         "slavedToMountId": {
           "type": "string",
           "minLength": 1
+        },
+        "articulation": {
+          "$ref": "#/$defs/TurretStationArticulation"
         }
       },
       "additionalProperties": false
@@ -2524,7 +2647,9 @@
       "type": "object",
       "required": [
         "legs",
-        "arms"
+        "arms",
+        "upperBodyActuator",
+        "upperBodyRestoreDelayMs"
       ],
       "properties": {
         "legs": {
@@ -2533,6 +2658,14 @@
         },
         "arms": {
           "$ref": "#/$defs/BotArms"
+        },
+        "upperBodyActuator": {
+          "$ref": "#/$defs/TurretAngularActuatorAxis"
+        },
+        "upperBodyRestoreDelayMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Delay after the last upper-body station claim before the torso returns toward lower-body forward, in milliseconds."
         }
       },
       "additionalProperties": false

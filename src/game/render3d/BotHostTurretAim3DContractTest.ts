@@ -701,7 +701,7 @@ function assertCoupledBotLegPhase(mesh: BotMesh, label: string): void {
   }
 }
 
-function assertAnyTurretLockSuppressesArmGait(mesh: BotMesh, label: string): void {
+function assertWeaponSocketNeverBorrowsGait(mesh: BotMesh, label: string): void {
   const carryingArm = mesh.arms.find((arm) => arm.role === 'weapon') ?? mesh.arms[0];
   const otherArm = mesh.arms.find((arm) => arm !== carryingArm);
   assertContract(carryingArm !== undefined && otherArm !== undefined, `${label} has both authored arms`);
@@ -716,12 +716,11 @@ function assertAnyTurretLockSuppressesArmGait(mesh: BotMesh, label: string): voi
   assertNear(
     carryingArm.handX,
     firstCarryingX,
-    `${label} turret lock suppresses gait on its carrying arm`,
+    `${label} authoritative carrying arm does not borrow locomotion gait`,
   );
-  assertNear(
-    otherArm.handX,
-    firstOtherX,
-    `${label} turret lock suppresses gait on the other arm too`,
+  assertContract(
+    Math.abs(otherArm.handX - firstOtherX) > 1e-4,
+    `${label} unrelated arm remains free to use presentation gait`,
   );
   for (const arm of mesh.arms) assertContract(
     botElbowAngle(arm) >= THREE.MathUtils.degToRad(27.5),
@@ -732,12 +731,14 @@ function assertAnyTurretLockSuppressesArmGait(mesh: BotMesh, label: string): voi
   poseBotRigAtRest(mesh);
 }
 
-function assertUnlockedTorsoTracksLegs(
+function assertTorsoOwnerIsIndependentOfHostTurn(
   mesh: BotMesh,
   turrets: readonly Turret[],
   label: string,
 ): void {
-  for (const turret of turrets) turret.state = 'idle';
+  const primary = turrets.find((turret) => turret.config.requiredEngagedForFightStop);
+  assertContract(primary !== undefined, `${label} has an authored torso-owner turret`);
+  primary.rotation = 0;
   mesh.upperBodyYaw = 0;
   mesh.upperBodyWorldYaw = null;
   updateBotHostTurretAim(mesh, 0, undefined, turrets, 0);
@@ -753,19 +754,20 @@ function assertUnlockedTorsoTracksLegs(
   assertNear(
     initialRelativeYaw,
     lowerBodyTurn,
-    `${label} leg turn does not instantly drag the unlocked torso in world space`,
+    `${label} lower-body turn does not change the authoritative torso world aim`,
   );
 
-  const easedRelativeYaw = updateBotHostTurretAim(
+  const repeatedRelativeYaw = updateBotHostTurretAim(
     mesh,
     lowerBodyTurn,
     undefined,
     turrets,
     100,
   );
-  assertContract(
-    easedRelativeYaw > 0 && easedRelativeYaw < initialRelativeYaw,
-    `${label} unlocked torso inertially follows the new locomotion-forward heading`,
+  assertNear(
+    repeatedRelativeYaw,
+    initialRelativeYaw,
+    `${label} torso piece resolution is independent of render delta time`,
   );
 
   mesh.upperBodyYaw = 0;
@@ -774,7 +776,7 @@ function assertUnlockedTorsoTracksLegs(
   poseBotRigAtRest(mesh);
 }
 
-function assertMassiveBotTorsoTurnsSlower(): void {
+function assertBotTorsoResolutionIsHostInvariant(): void {
   const human = buildBot('unitHuman');
   const rex = buildBot('unitRex');
   const targetYaw = Math.PI * 0.5;
@@ -789,7 +791,6 @@ function assertMassiveBotTorsoTurnsSlower(): void {
     primary.rotation = targetYaw;
     fixture.mesh.upperBodyYaw = 0;
     fixture.mesh.upperBodyWorldYaw = 0;
-    fixture.mesh.upperBodyYawVelocity = 0;
     updateBotHostTurretAim(
       fixture.mesh,
       0,
@@ -802,10 +803,38 @@ function assertMassiveBotTorsoTurnsSlower(): void {
 
   const humanTurn = turnFor(human);
   const rexTurn = turnFor(rex);
+  assertNear(humanTurn, targetYaw, 'Human torso resolves directly to its authoritative owner');
+  assertNear(rexTurn, targetYaw, 'Rex torso resolves directly to its authoritative owner');
+}
+
+function assertRendererUsesAuthoritativeWaistServo(): void {
+  const human = buildBot('unitHuman');
+  const owner = human.turrets.find((turret) => turret.config.requiredEngagedForFightStop);
+  assertContract(owner !== undefined, 'Human exposes a torso-owner turret');
+  owner.state = 'engaged';
+  owner.rotation = 1.4;
+  owner.hostPieceYaw = 0.18;
+  owner.hostPieceYawVelocity = 0.4;
+  const relativeYaw = updateBotHostTurretAim(
+    human.mesh,
+    0,
+    undefined,
+    human.turrets,
+    16,
+  );
+  assertNear(
+    relativeYaw,
+    -0.18,
+    'renderer displays the authoritative waist servo instead of snapping to turret yaw',
+  );
+  assertNear(
+    human.mesh.upperBodyYawVelocity,
+    0.4,
+    'renderer retains the authoritative waist angular velocity across rig rebuilds',
+  );
   assertContract(
-    rex.mesh.upperBodyYawSpringGain < human.mesh.upperBodyYawSpringGain &&
-      rexTurn < humanTurn * 0.05,
-    'mass/radius/force-derived inertia makes Rex torso acceleration materially slower than Human',
+    Math.abs(relativeYaw) < Math.abs(owner.rotation) * 0.25,
+    'abrupt logical turret aim does not make the visible upper body turn infinitely fast',
   );
 }
 
@@ -830,12 +859,21 @@ function assertRexRocketMountLayout(): void {
   assertNear(rightSilo.mount.y, -leftSilo.mount.y, 'Rex backpack silos mirror laterally');
   assertNear(rightSilo.mount.z, leftSilo.mount.z, 'Rex backpack silos share a launch deck');
 
-  for (const turret of [fast, rightSilo, leftSilo]) {
-    assertContract(
-      turret.hostAttachment?.kind === 'botHead',
-      `${turret.mountId} rides the Rex upper-body host rather than an animated hand`,
-    );
-  }
+  assertContract(
+    fast.hostAttachment?.kind === 'botPiece' &&
+      fast.hostAttachment.piece === 'rightShoulder',
+    'Rex fast rocket launcher rides the moving right shoulder',
+  );
+  assertContract(
+    rightSilo.hostAttachment?.kind === 'botPiece' &&
+      rightSilo.hostAttachment.piece === 'backpackRight',
+    'Rex right vertical launcher rides the moving right backpack socket',
+  );
+  assertContract(
+    leftSilo.hostAttachment?.kind === 'botPiece' &&
+      leftSilo.hostAttachment.piece === 'backpackLeft',
+    'Rex left vertical launcher rides the moving left backpack socket',
+  );
 }
 
 function assertTorsoAimSurvivesLodRebuild(
@@ -918,10 +956,8 @@ function assertCommanderScale(mesh: BotMesh): void {
   assertNear(mesh.arms[0].upper.width, 18.304, 'Commander arm thickness scales by 2.08x');
 }
 
-/** A gun held in a bot host's hand is rigid to that hand: its rendered
- *  direction IS the carrying arm's direction, and the turret contributes no
- *  articulation of its own. The turret's authority is untouched — this only
- *  pins which of the two bodies expresses the aim on screen. */
+/** The authoritative hand chain follows turret aim without owning it. The
+ * turret remains free to apply its exact world pose inside this parent. */
 function assertHeldGunTakesItsArmPose(
   human: ReturnType<typeof buildBot>,
   humanGun: Turret,
@@ -966,7 +1002,8 @@ function assertHeldGunTakesItsArmPose(
 export function runBotHostTurretAim3DContractTest(): void {
   assertRosterTurretsPublishAim();
   assertBotFootAnimationKeys();
-  assertMassiveBotTorsoTurnsSlower();
+  assertBotTorsoResolutionIsHostInvariant();
+  assertRendererUsesAuthoritativeWaistServo();
   assertRexRocketMountLayout();
   const human = buildBot('unitHuman');
   assertBotHipsCenteredUnderTorso(human.mesh, 'Human');
@@ -981,8 +1018,8 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertPlantedFootMatchesTravelSpeed(human.mesh, 'Human');
   assertRuntimeTravelClocksPlantedFoot(human.mesh, 'Human');
   assertContralateralBotGait(human.mesh, 'Human');
-  assertAnyTurretLockSuppressesArmGait(human.mesh, 'Human');
-  assertUnlockedTorsoTracksLegs(human.mesh, human.turrets, 'Human');
+  assertWeaponSocketNeverBorrowsGait(human.mesh, 'Human');
+  assertTorsoOwnerIsIndependentOfHostTurn(human.mesh, human.turrets, 'Human');
   assertTorsoAimSurvivesLodRebuild(human.mesh, 'Human');
   assertEveryTurretPublishesAim(human.turrets);
   const humanGun = human.turrets[0];
@@ -1094,9 +1131,10 @@ export function runBotHostTurretAim3DContractTest(): void {
     human.turrets,
     100,
   );
-  assertContract(
-    Math.abs(returningTorsoYaw) < Math.abs(aimedTorsoYaw),
-    'an unlocked bot torso inertially follows locomotion-forward',
+  assertNear(
+    returningTorsoYaw,
+    aimedTorsoYaw,
+    'turret FSM state cannot move an authoritative torso socket',
   );
 
   const commander = buildBot('unitCommander');
@@ -1113,8 +1151,8 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertPlantedFootMatchesTravelSpeed(commander.mesh, 'Commander');
   assertRuntimeTravelClocksPlantedFoot(commander.mesh, 'Commander');
   assertContralateralBotGait(commander.mesh, 'Commander');
-  assertAnyTurretLockSuppressesArmGait(commander.mesh, 'Commander');
-  assertUnlockedTorsoTracksLegs(commander.mesh, commander.turrets, 'Commander');
+  assertWeaponSocketNeverBorrowsGait(commander.mesh, 'Commander');
+  assertTorsoOwnerIsIndependentOfHostTurn(commander.mesh, commander.turrets, 'Commander');
   assertTorsoAimSurvivesLodRebuild(commander.mesh, 'Commander');
   assertCommanderEquipmentSides(commander.mesh);
   assertEveryTurretPublishesAim(commander.turrets);
@@ -1124,14 +1162,15 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertContract(
     beam.config.hostAttachment?.kind === 'botArm' &&
       beam.config.hostAttachment.arm === 'leftArm' &&
-      dgun.config.hostAttachment?.kind === 'botHead',
+      dgun.config.hostAttachment?.kind === 'botPiece' &&
+      dgun.config.hostAttachment.piece === 'head',
     'Commander beam uses its left arm while the D-gun uses the head',
   );
+  const beamAttachment = beam.config.hostAttachment;
   assertContract(
-    resolveBotArmTurretRoot(
+    beamAttachment?.kind === 'botArm' && resolveBotArmTurretRoot(
       commander.mesh,
-      'leftArm',
-      beam.mountId,
+      beamAttachment,
       beam.presentation.headRadius ?? 0,
     ) !== null,
     'Commander beam resolves from its authored bot-arm attachment',
@@ -1172,23 +1211,22 @@ export function runBotHostTurretAim3DContractTest(): void {
     'Commander left weapon arm follows beam pitch',
   );
 
-  // Initialize the manual-pose memory, then emulate the authoritative D-gun
-  // snap. Its changed yaw/pitch must temporarily override the engaged beam.
+  // A head-mounted manual weapon remains independently aimed inside the torso
+  // parent. It cannot steal ownership of the shared piece from the authored
+  // fight-stop mount.
   dgun.rotation = -0.9;
   dgun.pitch = -0.2;
   updateBotHostTurretAim(commander.mesh, 0, undefined, commander.turrets, 0);
-  assertNear(commander.mesh.upperBodyYaw, 0.9, 'changed manual D-gun yaw overrides beam assistance');
+  assertNear(commander.mesh.upperBodyYaw, -beam.rotation, 'Commander beam remains torso owner');
   assertContract(
     commander.mesh.turretLockActive &&
-      commander.mesh.arms.every((arm) => !arm.turretAimActive),
-    'head-mounted D-gun owns torso yaw and suppresses gait without pitching either arm',
+      commander.mesh.arms.find((arm) => arm.id === 'leftArm')?.turretAimActive === true,
+    'head-mounted D-gun does not detach or disable the authoritative beam arm socket',
   );
   assertNear(beam.rotation, 0.75, 'D-gun host priority does not rewrite beam yaw');
   assertNear(dgun.rotation, -0.9, 'host assistance does not rewrite D-gun yaw');
 
-  // Releasing every real lock must also release the host, even while client
-  // interpolation is still delivering small changes from the one D-gun snap.
-  // Those changes are presentation of the same event, not new manual shots.
+  // FSM state and interpolation do not participate in piece ownership.
   beam.state = 'idle';
   const dgunInterpolationStep = 0.01;
   for (let i = 0; i < 5; i++) {
@@ -1197,17 +1235,17 @@ export function runBotHostTurretAim3DContractTest(): void {
   }
   const commanderWeaponArm = commander.mesh.arms.find((arm) => arm.id === 'leftArm');
   assertContract(
-    !commander.mesh.turretLockActive &&
-      commander.mesh.arms.every((arm) => !arm.turretAimActive),
-    'one interpolated D-gun snap cannot perpetually renew Commander host ownership',
+    commander.mesh.turretLockActive && commanderWeaponArm?.turretAimActive === true,
+    'authoritative weapon attachment remains resolved independently of lock state',
   );
   assertNear(
     commanderWeaponArm?.turretAimPitch ?? NaN,
-    0,
-    'Commander clears the released weapon-arm pitch proposal',
+    beam.pitch,
+    'Commander weapon arm continues to read its turret pitch',
   );
-  assertContract(
-    Math.abs(commander.mesh.upperBodyYaw) < 0.9,
-    'Commander torso starts returning to locomotion-forward after all turret ownership releases',
+  assertNear(
+    commander.mesh.upperBodyYaw,
+    -beam.rotation,
+    'Commander torso stays on its authored owner after locks release',
   );
 }

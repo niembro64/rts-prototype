@@ -10,7 +10,7 @@ import type { Entity, EntityId } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 
 export class BuildingResourcePylonSources3D {
   private readonly extractorDepositSourceCache = new IndexedEntityIdMap<THREE.Vector3>();

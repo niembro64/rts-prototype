@@ -5,6 +5,7 @@ import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { magnitude } from '../math';
 import { executeCommand, SELF_DESTRUCT_COUNTDOWN_TICKS, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
+import { updateArticulatedWorkStations } from './workStationSystem';
 import { resourceMovementSystem } from './resourceMovement';
 import {
   type SimEvent,
@@ -512,6 +513,12 @@ export class Simulation {
     // recorded idle point when the repair finishes or becomes invalid.
     this.idleBuilderAutoRepair.update(tick);
     SIM_TICK_INSTRUMENTATION.phase('sim.idleBuilderRepair');
+
+    // QueryWork uses the same bounded local-joint contract as weapons. Run
+    // before resource distribution so build/repair power is admitted only
+    // after the visible mechanism is physically aligned.
+    updateArticulatedWorkStations(this.world, dtMs);
+    SIM_TICK_INSTRUMENTATION.phase('sim.workStations');
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);

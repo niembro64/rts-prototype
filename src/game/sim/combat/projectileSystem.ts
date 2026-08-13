@@ -37,8 +37,8 @@ import {
   isLiveHomingTarget,
   isShieldSubmunitionTurret,
   isWeaponAimedForFire,
+  resolveWeaponEmissionSocket,
   turretMaskIncludes,
-  updateWeaponWorldKinematics,
 } from './combatUtils';
 import { updateProjectileArming } from './shotArming';
 import { isBuildBlockingActivation } from '../buildableHelpers';
@@ -118,6 +118,7 @@ type PendingLaunchVelocityFinalization = {
   spawnEvent: ProjectileSpawnEvent;
   sourceEntityId: EntityId;
   turretIndex: number;
+  emissionLaneIndex: number;
   addTurretVelocityToEmissionLaunch: boolean;
   relativeVx: number;
   relativeVy: number;
@@ -333,8 +334,16 @@ function refreshPackedProjectileViews(): void {
     _packedProjectileViewsBound = true;
   }
 }
-const _fireWeaponMount = { x: 0, y: 0, z: 0 };
-const _beamWeaponMount = { x: 0, y: 0, z: 0 };
+const _fireEmissionSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
+const _beamEmissionSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
 const _beamTraceEnd = { x: 0, y: 0, z: 0 };
 const _beamRangeEnvelope: RayConfigRangeCylinder = {
   centerX: 0,
@@ -344,7 +353,11 @@ const _beamRangeEnvelope: RayConfigRangeCylinder = {
   rangeVolume: 'turret-range-sphere',
   hardRadius: 1,
 };
-const _pendingLaunchWeaponMount = { x: 0, y: 0, z: 0 };
+const _pendingLaunchEmissionSocket = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  forward: { x: 1, y: 0, z: 0 },
+};
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -690,6 +703,7 @@ function queueLaunchVelocityFinalization(
   spawnEvent: ProjectileSpawnEvent,
   sourceEntityId: EntityId,
   turretIndex: number,
+  emissionLaneIndex: number,
   addTurretVelocityToEmissionLaunch: boolean,
   relativeVx: number,
   relativeVy: number,
@@ -700,6 +714,7 @@ function queueLaunchVelocityFinalization(
     spawnEvent,
     sourceEntityId,
     turretIndex,
+    emissionLaneIndex,
     addTurretVelocityToEmissionLaunch,
     relativeVx,
     relativeVy,
@@ -771,10 +786,11 @@ export function finalizePendingProjectileLaunchVelocities(world: WorldState, dtM
     }
 
     const { cos, sin } = getTransformCosSin(source.transform);
-    const mount = updateWeaponWorldKinematics(
+    const emission = resolveWeaponEmissionSocket(
       source,
       turret,
       pending.turretIndex,
+      pending.emissionLaneIndex,
       cos,
       sin,
       {
@@ -783,17 +799,17 @@ export function finalizePendingProjectileLaunchVelocities(world: WorldState, dtM
         unitGroundZ: getUnitGroundZ(source),
         surfaceN: source.unit !== null ? source.unit.surfaceNormal : undefined,
       },
-      _pendingLaunchWeaponMount,
+      _pendingLaunchEmissionSocket,
     );
     writeProjectileLaunchState(
       projectileEntity,
       pending.spawnEvent,
-      mount.x,
-      mount.y,
-      mount.z,
-      pending.relativeVx + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.x : 0),
-      pending.relativeVy + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.y : 0),
-      pending.relativeVz + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.z : 0),
+      emission.position.x,
+      emission.position.y,
+      emission.position.z,
+      pending.relativeVx + (pending.addTurretVelocityToEmissionLaunch ? emission.velocity.x : 0),
+      pending.relativeVy + (pending.addTurretVelocityToEmissionLaunch ? emission.velocity.y : 0),
+      pending.relativeVz + (pending.addTurretVelocityToEmissionLaunch ? emission.velocity.z : 0),
     );
     registerPackedProjectile(projectileEntity);
   }
@@ -909,25 +925,6 @@ export function fireTurrets(
       }
       if (!isWeaponAimedForFire(weapon)) continue;
 
-      // Use the canonical 3D turret mount cache. Targeting normally
-      // wrote it earlier this tick; this call is an O(1) cache read in
-      // that case, and a full refresh only for first-frame/manual edges.
-      const weaponMount = updateWeaponWorldKinematics(
-        unit, weapon, weaponIndex,
-        unitCos, unitSin,
-        {
-          currentTick,
-          dtMs,
-          unitGroundZ,
-          surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
-          targetingContext: hasTargetingContext ? _fireTargetingContext : null,
-        },
-        _fireWeaponMount,
-      );
-      const weaponX = weaponMount.x;
-      const weaponY = weaponMount.y;
-      const mountZ = weaponMount.z;
-
       if (shot.type === 'shield') {
         const spec = shieldSubmunitions;
         if (spec === null || lockedTarget === undefined) continue;
@@ -960,6 +957,22 @@ export function fireTurrets(
 
         for (let i = 0; i < pellets; i++) {
           const barrelIndex = (fireBaseIndex + i) % emissionLaneCount;
+          const emission = resolveWeaponEmissionSocket(
+            unit,
+            weapon,
+            weaponIndex,
+            barrelIndex,
+            unitCos,
+            unitSin,
+            {
+              currentTick,
+              dtMs,
+              unitGroundZ,
+              surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+              targetingContext: hasTargetingContext ? _fireTargetingContext : null,
+            },
+            _fireEmissionSocket,
+          );
           const pitchCos = DMath.cos(weapon.pitch);
           let dirX = DMath.cos(weapon.rotation) * pitchCos;
           let dirY = DMath.sin(weapon.rotation) * pitchCos;
@@ -975,9 +988,9 @@ export function fireTurrets(
             dirY = _spreadConeDir.y;
             dirZ = _spreadConeDir.z;
           }
-          const spawnX = weaponX;
-          const spawnY = weaponY;
-          const spawnZ = mountZ;
+          const spawnX = emission.position.x;
+          const spawnY = emission.position.y;
+          const spawnZ = emission.position.z;
           if (i === 0) {
             audioEvents.push({
               type: 'fire',
@@ -988,9 +1001,9 @@ export function fireTurrets(
             });
           }
 
-          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.x : 0;
-          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.y : 0;
-          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.z : 0;
+          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? emission.velocity.x : 0;
+          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? emission.velocity.y : 0;
+          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? emission.velocity.z : 0;
           const projVx = dirX * speed + inheritedVx;
           const projVy = dirY * speed + inheritedVy;
           const projVz = dirZ * speed + inheritedVz;
@@ -1045,6 +1058,7 @@ export function fireTurrets(
             spawnEvent,
             unit.id,
             weaponIndex,
+            barrelIndex,
             config.addTurretVelocityToEmissionLaunch,
             dirX * speed,
             dirY * speed,
@@ -1127,18 +1141,39 @@ export function fireTurrets(
         }
       }
 
-      // Fire from the turret mount center along the solved yaw/pitch.
+      // Fire from the selected QueryWeapon socket along solved yaw/pitch.
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
+      const spreadConfig = config.spread;
+      const pellets = spreadConfig !== null ? spreadConfig.pelletCount : 1;
+      const spreadAngle = spreadConfig !== null ? spreadConfig.angle : 0;
+      const emissionLaneCount = config.emissionLaneCount;
+      const fireBaseIndex = weapon.emissionLaneIndex;
+      const firstEmission = resolveWeaponEmissionSocket(
+        unit,
+        weapon,
+        weaponIndex,
+        fireBaseIndex,
+        unitCos,
+        unitSin,
+        {
+          currentTick,
+          dtMs,
+          unitGroundZ,
+          surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+          targetingContext: hasTargetingContext ? _fireTargetingContext : null,
+        },
+        _fireEmissionSocket,
+      );
       let committedBeamPlan: BeamPulsePlan | null = null;
       if (shot.type === 'beam') {
         let pulseTargetVelocity = _beamPulseStationaryVelocity;
         if (lockedTarget !== undefined) {
           resolveTargetAimPoint(
             lockedTarget,
-            weaponX,
-            weaponY,
-            mountZ,
+            firstEmission.position.x,
+            firstEmission.position.y,
+            firstEmission.position.z,
             _beamPulseTargetPosition,
             {
               aimAtTargetTurret: false,
@@ -1147,7 +1182,7 @@ export function fireTurrets(
               currentTick,
             },
           );
-          const beamSourceMedium = emissionMediumAtZ(mountZ, WATER_LEVEL);
+          const beamSourceMedium = emissionMediumAtZ(firstEmission.position.z, WATER_LEVEL);
           if (!constrainAimPointToEmissionRoutes(
             shot.mediumTrajectory,
             beamSourceMedium,
@@ -1165,30 +1200,43 @@ export function fireTurrets(
           continue;
         }
         committedBeamPlan = createBeamPulsePlan(
-          { x: weaponX, y: weaponY, z: mountZ },
-          weapon.worldVelocity,
+          firstEmission.position,
+          firstEmission.velocity,
           _beamPulseTargetPosition,
           pulseTargetVelocity,
           getBeamTraceDistance(config),
           getMaximumBeamPulseOnTimeMs(),
         );
-        if (!canTurretTrackBeamPulse(committedBeamPlan, weapon.turnAccel, weapon.drag)) {
+        if (!canTurretTrackBeamPulse(
+          committedBeamPlan,
+          weapon.config.angular.yaw.maxSpeed,
+          weapon.config.angular.pitch.maxSpeed,
+        )) {
           continue;
         }
       }
 
-      // Turret mount point in world (full XYZ from the resolver above).
-      const spreadConfig = config.spread;
-      const pellets = spreadConfig !== null ? spreadConfig.pelletCount : 1;
-      const spreadAngle = spreadConfig !== null ? spreadConfig.angle : 0;
-      const emissionLaneCount = config.emissionLaneCount;
-      const fireBaseIndex = weapon.emissionLaneIndex;
-
       for (let i = 0; i < pellets; i++) {
         const barrelIndex = (fireBaseIndex + i) % emissionLaneCount;
-        const spawnX = weaponX;
-        const spawnY = weaponY;
-        const spawnZ = mountZ;
+        const emission = resolveWeaponEmissionSocket(
+          unit,
+          weapon,
+          weaponIndex,
+          barrelIndex,
+          unitCos,
+          unitSin,
+          {
+            currentTick,
+            dtMs,
+            unitGroundZ,
+            surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+            targetingContext: hasTargetingContext ? _fireTargetingContext : null,
+          },
+          _fireEmissionSocket,
+        );
+        const spawnX = emission.position.x;
+        const spawnY = emission.position.y;
+        const spawnZ = emission.position.z;
 
         // Firing direction is the turret's current solved aim. Vertical
         // launchers get no separate launch rule: turretSystem pins
@@ -1229,7 +1277,7 @@ export function fireTurrets(
         }
 
         if (isBeamWeapon) {
-          // Beam start is the turret mount center for simulation and rendering.
+          // Beam start is the selected QueryWeapon muzzle in sim and rendering.
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
@@ -1381,9 +1429,9 @@ export function fireTurrets(
           // Physical emissions can opt into inheriting the moving mount
           // center's current velocity; ray/shield/cosmetic turrets leave
           // that disabled in authored data.
-          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.x : 0;
-          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.y : 0;
-          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.z : 0;
+          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? emission.velocity.x : 0;
+          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? emission.velocity.y : 0;
+          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? emission.velocity.z : 0;
           const projVx = dirX * speed + inheritedVx;
           const projVy = dirY * speed + inheritedVy;
           const projVz = dirZ * speed + inheritedVz;
@@ -1449,6 +1497,7 @@ export function fireTurrets(
             spawnEvent,
             unit.id,
             weaponIndex,
+            barrelIndex,
             config.addTurretVelocityToEmissionLaunch,
             dirX * speed,
             dirY * speed,
@@ -1864,16 +1913,37 @@ function _updateTravelingProjectilesJS(
       maxHomingThrustAccel > 0 &&
       projectileGravity > 0;
     let guidedTargetCarriesGravity = false;
+    const previousHomingTargetId = proj.homingTargetId;
+    let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
+      ? world.getEntity(previousHomingTargetId)
+      : undefined;
+    // Lock validity is independent of whether guidance happens to be
+    // operational in the projectile's current medium this tick. A missile
+    // pushed underwater or delayed before motor ignition must still discard a
+    // dead/illegal inherited lock immediately; it never scans for a new one.
+    if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
+      homingTarget = undefined;
+    }
+    if (
+      homingTarget !== undefined &&
+      !emissionCanTargetEntity(
+        shotConfig.mediumTrajectory,
+        emissionSourceMedium,
+        homingTarget,
+      )
+    ) {
+      homingTarget = undefined;
+    }
+    const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
+    if (resolvedHomingTargetId !== previousHomingTargetId) {
+      proj.homingTargetId = resolvedHomingTargetId;
+    }
     if (
       mediumPhysicsActive &&
       !isDGunWave &&
       mediumPhysics.turnRate > 0 &&
       (homingEngagementScale > 0 || canCarryRocketCounterGravity)
     ) {
-      const previousHomingTargetId = proj.homingTargetId;
-      let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
-        ? world.getEntity(previousHomingTargetId)
-        : undefined;
       // Lock-on policy lives on turrets, not guided shots. A rocket/missile
       // homes only toward the exact entity it inherited at launch, and only
       // while that target is still live. It never runs its own acquisition
@@ -1882,23 +1952,6 @@ function _updateTravelingProjectilesJS(
       // current flight path under normal projectile physics (the steering
       // block below is skipped). See budget_design_philosophy.html
       // "Lock-on policy lives on turrets, not guided shots".
-      if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
-        homingTarget = undefined;
-      }
-      if (
-        homingTarget !== undefined &&
-        !emissionCanTargetEntity(
-          shotConfig.mediumTrajectory,
-          emissionSourceMedium,
-          homingTarget,
-        )
-      ) {
-        homingTarget = undefined;
-      }
-      const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
-      if (resolvedHomingTargetId !== previousHomingTargetId) {
-        proj.homingTargetId = resolvedHomingTargetId;
-      }
       if (homingTarget !== undefined) {
         guidedTargetCarriesGravity = true;
         aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
@@ -2221,8 +2274,9 @@ export function updateProjectiles(
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const currentTick = world.getTick();
         const unitGroundZ = getUnitGroundZ(source);
-        const beamMount = updateWeaponWorldKinematics(
+        const beamEmission = resolveWeaponEmissionSocket(
           source, weapon, weaponIndex,
+          proj.sourceBarrelIndex >= 0 ? proj.sourceBarrelIndex : 0,
           srcCos, srcSin,
           {
             currentTick,
@@ -2230,11 +2284,11 @@ export function updateProjectiles(
             unitGroundZ,
             surfaceN: source.unit !== null ? source.unit.surfaceNormal : undefined,
           },
-          _beamWeaponMount,
+          _beamEmissionSocket,
         );
-        const beamStartX = beamMount.x;
-        const beamStartY = beamMount.y;
-        const beamStartZ = beamMount.z;
+        const beamStartX = beamEmission.position.x;
+        const beamStartY = beamEmission.position.y;
+        const beamStartZ = beamEmission.position.z;
         // Ensure points polyline exists (createBeam seeds 2-point line at
         // spawn; defensive-init covers any path that forgot to).
         const points = proj.points ?? (proj.points = [

@@ -7,8 +7,7 @@
     "offTimeRandomness": 0.2,
     "collisionSampleIntervalTicks": 1,
     "activeOutputMultiplier": 3,
-    "initialStaggerMaxMs": 250,
-    "trackingErrorBudgetRadians": 0.16
+    "initialStaggerMaxMs": 250
   },
   "snapOriginToTurret": true,
   "outer": {
