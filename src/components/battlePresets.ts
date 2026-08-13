@@ -96,6 +96,9 @@ const SUBSYSTEM_DEFAULTS = {
   // Every stock preset ships the authored world; only METAL HELL flips these.
   terrainSurfaceMode: 'normal' as TerrainSurfaceMode,
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
+  // The BATTLE/SERVER/CLIENT bottom bar group starts hidden until the
+  // user expands it (their choice then persists via localStorage).
+  barsCollapsed: true,
 };
 
 // Every preset enables all buildings — there is no preset that ships with
@@ -126,7 +129,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
-      barsCollapsed: false,
     },
     {
       name: 'Angels Flat',
@@ -147,7 +149,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      barsCollapsed: false,
     },
     {
       name: 'Boulder Mountain',
@@ -168,7 +169,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
-      barsCollapsed: false,
     },
     {
       name: 'Spikey Lake',
@@ -189,7 +189,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
-      barsCollapsed: false,
     },
     {
       name: 'Nemo Island',
@@ -210,7 +209,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      barsCollapsed: false,
     },
     {
       name: 'Angels Playhouse',
@@ -231,7 +229,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      barsCollapsed: false,
     },
     {
       name: 'METAL HELL',
@@ -254,7 +251,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      barsCollapsed: false,
     },
     {
       name: 'METAL PLATE',
@@ -277,7 +273,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 1,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      barsCollapsed: false,
     },
   ];
 }
