@@ -315,10 +315,10 @@ export class RexVisualKit3D {
     hips.add(tail);
 
     const points = [
-      new THREE.Vector3(-unitRadius * 0.43, unitRadius * 2.2, 0),
-      new THREE.Vector3(-unitRadius * 1.18, unitRadius * 2.05, 0),
-      new THREE.Vector3(-unitRadius * 1.92, unitRadius * 1.72, 0),
-      new THREE.Vector3(-unitRadius * 2.72, unitRadius * 1.28, 0),
+      new THREE.Vector3(-unitRadius * 0.38, unitRadius * 1.86, 0),
+      new THREE.Vector3(-unitRadius * 1.14, unitRadius * 1.78, 0),
+      new THREE.Vector3(-unitRadius * 1.9, unitRadius * 1.5, 0),
+      new THREE.Vector3(-unitRadius * 2.72, unitRadius * 1.04, 0),
     ];
     const radii = [unitRadius * 0.42, unitRadius * 0.29, unitRadius * 0.145];
     const tipRatios = [0.69, 0.5, 0.08];
