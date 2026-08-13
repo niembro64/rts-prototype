@@ -1,11 +1,8 @@
 // DroneRig3D — ducted fan ring + downward smoke columns for drone
-// locomotion. A drone never contacts ground, so the visuals contract
-// (see "Locomotion Visuals Are Frontend" in budget_design_philosophy.html)
-// inverts: the rig tracks per-frame `clearance` (chassis world Y −
-// terrain Y) instead of a contact boolean, and the floor clamp is a
-// soft safety — the rendered rig group is lifted at minimum
-// DRONE_FLOOR_MARGIN above terrain so a stale snapshot can never park
-// fans inside the dirt.
+// locomotion. The complete rig is chassis-local presentation: its host's
+// one interpolated root pose owns every translation and rotation, even when
+// that root is below terrain or water. Fans may intersect a surface when the
+// physical unit does, but they must never detach from the host to avoid it.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
@@ -15,13 +12,12 @@ import {
   type ResolvedSmokeProfile,
 } from '@/smokeConfig';
 import type { DroneConfig, DroneFanMount } from '@/types/blueprints';
-import type { Entity, PlayerId } from '../sim/types';
+import type { PlayerId } from '../sim/types';
 import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
 } from './AirborneEmitterBatch3D';
-import type { LocomotionBase } from './LocomotionRigShared3D';
-import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
+import type { LocomotionBase, LocomotionRenderPose } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
 import { getLocomotionMatByCache } from './RenderUtils';
@@ -33,13 +29,6 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
-/** Minimum world-Y gap the rendered fan ring is allowed to have above
- *  terrain. The sim is supposed to keep drones above ground via the
- *  configured surface lift force, but a bad snapshot or a 1-tick
- *  interpolation glitch can briefly drop the rendered chassis below.
- *  The rig group lifts itself by enough to keep fans visible above
- *  the surface in that case. */
-const DRONE_FLOOR_MARGIN = 1;
 /** Presentation-only air gap between the top of the chassis and the lowest
  * point of an overhead drone fan. Authored mount offsets remain unchanged:
  * they still describe the locomotion layout used by the unit blueprint. */
@@ -406,13 +395,11 @@ export type DroneMesh = {
   type: 'drone';
   group: THREE.Group;
   fans: DroneFan[];
-  /** Chassis-local presentation height for the fan-array root. Terrain
-   * safety may add to this value, but must never replace it. */
+  /** Chassis-local presentation height for the fan-array root. This is the
+   * complete local offset: surfaces never add a second root translation. */
   visualBaseY: number;
-  /** Most recent world-Y gap between the chassis and terrain below
-   *  it. Updated every frame in updateDroneFans. Useful to other
-   *  client systems (smoke length, dust kick-up, altitude shading)
-   *  that key off the ground-clearance gap rather than absolute altitude. */
+  /** Most recent world-Y gap between the exact rendered chassis root and its
+   * terrain footprint. It is diagnostic state only and never moves hardware. */
   clearance: number;
   fanSpinRadPerSec: number;
 } & LocomotionBase;
@@ -691,30 +678,19 @@ export function buildDroneFans(
 
 export function updateDroneFans(
   mesh: DroneMesh,
-  entity: Entity,
+  pose: LocomotionRenderPose,
   _dtMs: number,
-  mapWidth: number,
-  mapHeight: number,
   smokeOut?: SmokePuffEmitter[],
   emitterBatch?: AirborneEmitterBatch3D,
   parentPose?: AirborneEmitterParentPose3D,
 ): boolean {
-  // Per-frame clearance + soft floor safety. The chassis world Y is
-  // sim altitude (entity.transform.z); the rendered rig group is a
-  // child of the unitGroup, so local-Y adjustments shift it relative
-  // to that chassis. Preserve the overhead presentation height, then
-  // add whatever emergency correction is needed when the authoritative
-  // chassis itself falls inside DRONE_FLOOR_MARGIN. On the common case
-  // (chassis floating cleanly above ground) the correction is zero.
-  const chassisWorldY = entity.transform.z;
-  const groundY = getLocomotionSurfaceHeight(
-    entity.transform.x, entity.transform.y, mapWidth, mapHeight, entity.id,
-  );
-  const rawClearance = chassisWorldY - groundY;
-  const floorDeficit = DRONE_FLOOR_MARGIN - rawClearance;
-  const groupY = mesh.visualBaseY + (floorDeficit > 0 ? floorDeficit : 0);
+  // There is deliberately no surface sampling here. A second terrain/water
+  // authority used to lift submerged fans back to the surface while the host
+  // kept sinking. The authored local offset stays rigidly under the same
+  // interpolated parent pose as the chassis and its batched smoke emitters.
+  const groupY = mesh.visualBaseY;
   if (mesh.group.position.y !== groupY) mesh.group.position.y = groupY;
-  mesh.clearance = Math.max(rawClearance, DRONE_FLOOR_MARGIN);
+  mesh.clearance = pose.rootY - pose.baseY;
 
   if (!smokeOut) return false;
 

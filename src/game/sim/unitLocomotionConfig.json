@@ -332,8 +332,7 @@
       "navigation": {
         "allowOnGround": false,
         "allowedFluidMedia": [
-          "air",
-          "water"
+          "air"
         ]
       }
     },

@@ -1,6 +1,18 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD } from './surfaceProbeSets';
 
+/** Air-authored surface lift ceases once the body's origin crosses the water
+ * plane. A partially immersed hull may still recover while its center remains
+ * in air; once submerged, only explicitly authored water lift can support it.
+ * This uses the same body-origin boundary as environmental water damage. */
+export function airSurfaceLiftMediumIsActive(
+  bodyZ: number,
+  waterFraction: number,
+  waterLevel: number,
+): boolean {
+  return bodyZ > waterLevel && waterFraction < 1;
+}
+
 /** Exact signed-altitude clamp used before the inverse-distance response. */
 export function getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ: number, surfaceZ: number): number {
   if (!Number.isFinite(bodyZ) || !Number.isFinite(surfaceZ)) {

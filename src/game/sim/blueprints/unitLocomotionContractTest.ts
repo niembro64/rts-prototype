@@ -65,16 +65,16 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitOrca: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
   unitTarantula: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitLoris: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitDragonfly: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitDragonfly: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
   unitEagle: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitDuck: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
   unitAlbatros: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitQueenBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitQueenBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitQueenTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitCommander: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitRex: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
 };
@@ -497,7 +497,7 @@ export function runUnitLocomotionContractTest(): void {
     queenBee.physics.air.maxPropulsiveForce / queenBeeMass >=
       bee.physics.air.maxPropulsiveForce / beeMass &&
       queenBee.physics.water.maxPropulsiveForce === queenBee.physics.air.maxPropulsiveForce,
-    'Queen Bee authors Bee-class acceleration in both supported fluid media',
+    'Queen Bee authors Bee-class air acceleration and matching emergency water propulsion',
   );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(

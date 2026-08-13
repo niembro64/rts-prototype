@@ -3,6 +3,7 @@
 // per-unit force decisions and writes BodyPool acceleration directly.
 
 import {
+  airSurfaceLiftMediumIsActive,
   getSurfaceLiftInverseDistanceResponse,
   getSurfaceLiftInverseDistanceToSurfaceWorld,
   getSurfaceLiftWaterDepthWorld,
@@ -588,7 +589,11 @@ export class UnitForceSystem {
         // overlay merely records the samples; every unit still needs its
         // occupied-medium support proposal during an ordinary simulation tick.
         const waterFraction = sim.unitForceWaterFraction(bodyZ, bodyRadius);
-        const airLiftMediumActive = waterFraction < 1 &&
+        const airLiftMediumActive = airSurfaceLiftMediumIsActive(
+          bodyZ,
+          waterFraction,
+          WATER_LEVEL,
+        ) &&
           (airGroundInverseLiftAuthored || airWaterInverseLiftAuthored);
         const waterLiftMediumActive = waterFraction > 0 &&
           (waterGroundInverseLiftAuthored || waterSurfaceProportionalLiftAuthored);

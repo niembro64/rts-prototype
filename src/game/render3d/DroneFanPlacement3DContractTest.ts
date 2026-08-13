@@ -1,11 +1,15 @@
+import * as THREE from 'three';
 import { getBodyTopY } from '../math/BodyDimensions';
 import { getAllUnitBlueprints } from '../sim/blueprints/units';
 import {
   fanRotorHandedness,
   getDroneFanVisualRootY,
   resolveDroneFanMounts,
+  updateDroneFans,
+  type DroneMesh,
 } from './DroneRig3D';
 import type { DroneFanMount } from '@/types/blueprints';
+import type { LocomotionRenderPose } from './LocomotionRigShared3D';
 
 type ExpectedDroneArray = {
   /** Authored mount height, which the render-only overhead lift must not move. */
@@ -27,6 +31,8 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runDroneFanPlacement3DContractTest(): void {
+  checkSubmergedFanHostLock();
+
   const droneUnits = getAllUnitBlueprints().filter(
     (blueprint) => blueprint.unitLocomotion.type === 'drone',
   );
@@ -69,6 +75,50 @@ export function runDroneFanPlacement3DContractTest(): void {
 
     checkCounterRotation(blueprint.unitBlueprintId, mounts);
   }
+}
+
+/** A locomotion assembly has one root authority. In particular, water or
+ * terrain may not push a drone's fans away from a submerged chassis. */
+function checkSubmergedFanHostLock(): void {
+  const group = new THREE.Group();
+  group.position.y = 500;
+  const mesh = {
+    type: 'drone',
+    group,
+    fans: [],
+    visualBaseY: 17,
+    clearance: 0,
+    fanSpinRadPerSec: 1,
+    geometryKey: 'contract',
+  } satisfies DroneMesh;
+  const submergedPose = {
+    baseX: 30,
+    baseY: -80,
+    baseZ: 40,
+    rootX: 30,
+    rootY: -110,
+    rootZ: 40,
+    quaternionX: 0,
+    quaternionY: 0,
+    quaternionZ: 0,
+    quaternionW: 1,
+    velocityX: 0,
+    velocityY: -10,
+    velocityZ: 0,
+    yawRate: 0,
+    waterFraction: 1,
+    maxContinuousDistance: 0,
+  } satisfies LocomotionRenderPose;
+
+  updateDroneFans(mesh, submergedPose, 0);
+  assertContract(
+    mesh.group.position.y === mesh.visualBaseY,
+    'submerged drone fans retain their authored chassis-local offset',
+  );
+  assertContract(
+    mesh.clearance === submergedPose.rootY - submergedPose.baseY,
+    'submerged clearance remains diagnostic and cannot displace fan hardware',
+  );
 }
 
 /** Everything about a duct except which flank it sits on. Two mounts agreeing

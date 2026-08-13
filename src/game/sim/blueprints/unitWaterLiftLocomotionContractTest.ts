@@ -3,12 +3,21 @@ import {
   UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS,
   getUnitLocomotionPreset,
 } from '../unitLocomotionPresetConfig';
+import { airSurfaceLiftMediumIsActive } from '../surfaceLiftDistanceResponse';
+import { WATER_LEVEL } from '../Terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[water lift locomotion contract] ${message}`);
 }
 
 export function runUnitWaterLiftLocomotionContractTest(): void {
+  assertContract(
+    airSurfaceLiftMediumIsActive(WATER_LEVEL + 1, 0.49, WATER_LEVEL) &&
+      !airSurfaceLiftMediumIsActive(WATER_LEVEL, 0.5, WATER_LEVEL) &&
+      !airSurfaceLiftMediumIsActive(WATER_LEVEL - 1, 0.51, WATER_LEVEL),
+    'air surface lift may recover a partly immersed body only while its origin remains above water',
+  );
+
   for (const presetId of ['amphibian', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(

@@ -3053,7 +3053,7 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 60
       }
     },
     "base": {
@@ -3218,7 +3218,7 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 230
       }
     },
     "base": {
@@ -3388,7 +3388,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 130
       }
     },
     "base": {
@@ -4155,7 +4155,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 4500
       }
     },
     "base": {
@@ -4571,7 +4571,7 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 280
       }
     },
     "base": {

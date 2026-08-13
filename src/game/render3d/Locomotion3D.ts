@@ -567,10 +567,8 @@ export function updateLocomotion(
     case 'drone':
       return updateDroneFans(
         mesh,
-        entity,
+        pose,
         dtMs,
-        mapWidth,
-        mapHeight,
         locomotionSmokeEmitters,
         airborneEmitters?.batch,
         airborneEmitters?.pose,
