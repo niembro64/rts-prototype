@@ -93,6 +93,10 @@ import {
 import { buildCrawler, freeLegSlots } from './CrawlerRig3D';
 import { LegInstancedRenderer } from './LegInstancedRenderer';
 import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
+import {
+  SHIELD_SPHERE_SPIN_RADIANS_PER_SECOND,
+  setShieldSphereVisualRotation3D,
+} from './ShieldSphereVisualRotation3D';
 import { buildSubmarineRig } from './SubmarineRig3D';
 import { buildTank } from './TankRig3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -1673,6 +1677,23 @@ function runReferenceGeometryCountContracts(): void {
     return count;
   });
   assertSame('finite shield sphere geometry ladder', shieldCounts, [288, 120, 36]);
+
+  const shieldSpinEuler = new THREE.Euler();
+  const shieldSpinQuaternion = new THREE.Quaternion();
+  setShieldSphereVisualRotation3D(5_000, shieldSpinEuler, shieldSpinQuaternion);
+  assertContract(
+    Math.abs(shieldSpinEuler.x) > 0.001 &&
+      Math.abs(shieldSpinEuler.y) > 0.001 &&
+      Math.abs(shieldSpinEuler.z) > 0.001,
+    'finite shield sphere visual rotation must advance on X, Y, and Z',
+  );
+  assertContract(
+    Math.abs(shieldSpinEuler.x - 5 * SHIELD_SPHERE_SPIN_RADIANS_PER_SECOND.x) < 1e-9 &&
+      Math.abs(shieldSpinEuler.y - 5 * SHIELD_SPHERE_SPIN_RADIANS_PER_SECOND.y) < 1e-9 &&
+      Math.abs(shieldSpinEuler.z - 5 * SHIELD_SPHERE_SPIN_RADIANS_PER_SECOND.z) < 1e-9 &&
+      Math.abs(shieldSpinQuaternion.length() - 1) < 1e-9,
+    'finite shield sphere visual rotation must remain a normalized XYZ orientation',
+  );
 }
 
 function runEnvironmentLodMaterialContracts(): void {

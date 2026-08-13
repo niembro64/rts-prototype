@@ -53,6 +53,7 @@ import {
   writeInstancedMatrix as writeMatrixAt,
 } from './instancedBufferUpdate';
 import { applyExposureToRawShader } from './RenderLighting3D';
+import { setShieldSphereVisualRotation3D } from './ShieldSphereVisualRotation3D';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -683,6 +684,8 @@ export class ShieldRenderer3D {
   private _cylinderQuat = new THREE.Quaternion();
   private _sphereParentQuat = new THREE.Quaternion();
   private _sphereYawQuat = new THREE.Quaternion();
+  private _sphereSpinEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+  private _sphereSpinQuat = new THREE.Quaternion();
   private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   /** Reused across frames to track which fields are still active this
@@ -810,12 +813,20 @@ export class ShieldRenderer3D {
   beginFrame(
     _graphicsConfig: GraphicsConfig = getGraphicsConfig(),
     view?: RenderViewState3D,
+    presentationTimeMs: number = performance.now(),
   ): void {
     this._seenFieldKeys.clear();
     this.currentView = view;
     for (const pool of this.spherePools.values()) pool.cursor = 0;
     for (const pool of this.finiteCylinderPools.values()) pool.cursor = 0;
     this._implicitFieldCursor = 0;
+    // One quaternion per frame, shared by every sphere instance. This keeps
+    // the three-axis motion effectively free even with many active shields.
+    setShieldSphereVisualRotation3D(
+      presentationTimeMs,
+      this._sphereSpinEuler,
+      this._sphereSpinQuat,
+    );
   }
 
   processPacket(packet: ShieldRenderPacket3D): void {
@@ -1109,7 +1120,7 @@ export class ShieldRenderer3D {
       this._sphereScratchScale.set(outer, outer, outer);
       this._sphereScratchMat.compose(
         this._sphereScratchPos,
-        ShieldRenderer3D._IDENTITY_QUAT,
+        this._sphereSpinQuat,
         this._sphereScratchScale,
       );
       const cursor = spherePool.cursor;

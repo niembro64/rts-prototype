@@ -711,7 +711,7 @@ export class RtsScene3DRenderPhase {
     }
 
     if (turretShieldSpheresEnabled && forceFieldsVisible) {
-      shieldRenderer.beginFrame(graphicsConfig, renderFrameState.view);
+      shieldRenderer.beginFrame(graphicsConfig, renderFrameState.view, renderStart);
       shieldRenderer.processPacket(entityLists.shields);
       shieldRenderer.endFrame();
     } else {

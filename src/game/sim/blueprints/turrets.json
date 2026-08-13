@@ -513,7 +513,7 @@
     "turretBlueprintId": "turretGatling",
     "name": "Gatling Gun",
     "cooldown": {
-      "duration": 180,
+      "duration": 70,
       "durationRandomness": 0.1
     },
     "launchForce": 4000,
