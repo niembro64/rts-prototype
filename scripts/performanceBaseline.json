@@ -1,39 +1,39 @@
 {
   "version": 1,
   "description": "p95 timing baselines per unit cap for the performance bottleneck harness. Machine-specific — refresh with --write-baseline on the gate machine after intentional perf changes, as its own commit.",
-  "recordedAt": "2026-08-12T22:18:44.381Z",
+  "recordedAt": "2026-08-13T02:47:50.713Z",
   "scenarios": [
     {
       "unitCap": 500,
-      "simOnlyUnits": 394,
-      "simOnlyStepMsP95": 18.79,
-      "simSnapshotStepMsP95": 19.04,
-      "snapshotMainThreadMsPerSecond": 19.39,
-      "fullStackFrameMsP95": 11.11
+      "simOnlyUnits": 366,
+      "simOnlyStepMsP95": 10.71,
+      "simSnapshotStepMsP95": 13.38,
+      "snapshotMainThreadMsPerSecond": 15.22,
+      "fullStackFrameMsP95": 8.64
     },
     {
       "unitCap": 1000,
-      "simOnlyUnits": 630,
-      "simOnlyStepMsP95": 37.59,
-      "simSnapshotStepMsP95": 43.28,
-      "snapshotMainThreadMsPerSecond": 29.11,
-      "fullStackFrameMsP95": 14.93
+      "simOnlyUnits": 658,
+      "simOnlyStepMsP95": 21.25,
+      "simSnapshotStepMsP95": 29.83,
+      "snapshotMainThreadMsPerSecond": 21.84,
+      "fullStackFrameMsP95": 14.45
     },
     {
       "unitCap": 2500,
-      "simOnlyUnits": 1509,
-      "simOnlyStepMsP95": 129.14,
-      "simSnapshotStepMsP95": 159.23,
-      "snapshotMainThreadMsPerSecond": 62.88,
-      "fullStackFrameMsP95": 19.11
+      "simOnlyUnits": 1179,
+      "simOnlyStepMsP95": 48.79,
+      "simSnapshotStepMsP95": 20.97,
+      "snapshotMainThreadMsPerSecond": 18.68,
+      "fullStackFrameMsP95": 17.96
     },
     {
       "unitCap": 5000,
-      "simOnlyUnits": 2692,
-      "simOnlyStepMsP95": 279.88,
-      "simSnapshotStepMsP95": 405.41,
-      "snapshotMainThreadMsPerSecond": 110.72,
-      "fullStackFrameMsP95": 26.16
+      "simOnlyUnits": 468,
+      "simOnlyStepMsP95": 18.39,
+      "simSnapshotStepMsP95": 205.39,
+      "snapshotMainThreadMsPerSecond": 76.66,
+      "fullStackFrameMsP95": 19.22
     }
   ]
 }

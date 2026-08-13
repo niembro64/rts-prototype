@@ -137,3 +137,30 @@ crowding), unitForces ~2.4.
     per-(owner, kind, medium) coverage counting so bits can be UNSET
     incrementally when sources or targets move — do it as its own design
     pass with checksum-gated rollout.
+    LANDED 2026-08-12 night (c08174a2): per-cell per-owner FACT SATURATION
+    made the per-tick remarking cheap without any persistence design —
+    in an army blob the first same-owner source marks a cell, the second
+    certifies every slot as marked-or-impossible, and all later same-owner
+    sources skip the cell on one mask test. Monotone ORs → masks provably
+    identical; replay hashes bit-identical. Measured: step avg cap 1000
+    21.6 -> 18.9 ms (-13%), cap 2500 63.8 -> 52.2 ms (-18%). Also landed
+    41042c94: support-surface index rebuilds gated on (tick, membership
+    version, positions epoch) — cap 2500 52.2 -> 50.0 ms. The mask
+    persistence design above is now LOW priority; the remaining
+    targetingFsm cost is candidate scans + mount kinematics for
+    live-target entities, and LOS (combat_has_line_of_sight).
+
+[36] NEW 2026-08-12 night — split the 51-arg targeting stamp into
+    statics/dynamics. stampCombatTargetingEntityInto pushes 51 args per
+    combat entity per tick (combat.targetingStamp now 1.8 ms/tick at cap
+    1000 / 4.2 at cap 2500 after the [35] saturation landed). ~17 args
+    are entity-static (entityFamily, blueprint code, the 7 hostLockOn
+    masks, 6 sensor radii, visibility padding, aabb halves) and the slab
+    already persists rows across same-entity restamps (see
+    entity_stamp_same_entity + the FSM tuple precedent). Design: JS keeps
+    lastStampedEntityId per slot; same entity → call a slim
+    setEntityDynamics (~30 args: pose/vel/normal/suspension/hp/flags/
+    viewMask/priority/probeTick), else the full setEntity. The real
+    saving is skipping the JS-side prep (hostLockOn resolution, blueprint
+    and sensor lookups) on restamps, not the scalar pushes. Verify with
+    bit-identical replay hashes.
