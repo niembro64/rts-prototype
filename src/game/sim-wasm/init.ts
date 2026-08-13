@@ -471,6 +471,15 @@ import __wbg_init, {
   projectile_terminal_consequence_batch,
   projectile_terminal_effect_plan_batch,
   projectile_hitbox_sweep_batch,
+  projectile_hitbox_sweep_staging_ensure,
+  projectile_hitbox_sweep_exclude_ids_ptr,
+  projectile_hitbox_sweep_removed_ids_ptr,
+  projectile_hitbox_sweep_out_kind_ptr,
+  projectile_hitbox_sweep_out_slot_ptr,
+  projectile_hitbox_sweep_out_entity_id_ptr,
+  projectile_hitbox_sweep_out_t_ptr,
+  projectile_hitbox_sweep_out_normal_ptr,
+  projectile_hitbox_sweep_single,
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
   snapshot_encode_entity_building,
@@ -1458,6 +1467,38 @@ export interface SimWasm {
     outNormalX: Float64Array,
     outNormalY: Float64Array,
     outNormalZ: Float64Array,
+  ) => number;
+  /** Grow (never shrink) the single-sweep staging id arrays; growth may
+   *  move them, so re-fetch the pointers afterwards. */
+  readonly projectileHitboxSweepStagingEnsure: (
+    excludeCapacity: number,
+    removedCapacity: number,
+  ) => void;
+  readonly projectileHitboxSweepExcludeIdsPtr: () => number;
+  readonly projectileHitboxSweepRemovedIdsPtr: () => number;
+  readonly projectileHitboxSweepOutKindPtr: () => number;
+  readonly projectileHitboxSweepOutSlotPtr: () => number;
+  readonly projectileHitboxSweepOutEntityIdPtr: () => number;
+  readonly projectileHitboxSweepOutTPtr: () => number;
+  /** (nx, ny, nz) at offsets 0..3. */
+  readonly projectileHitboxSweepOutNormalPtr: () => number;
+  /** projectileHitboxSweepBatch with count 1, scalar geometry, and
+   *  staged id lists / outputs — no per-call slice marshalling. The
+   *  collision handler calls the sweep once per projectile per tick,
+   *  which made the slice export's ~15 array copies the dominant cost. */
+  readonly projectileHitboxSweepSingle: (
+    sx: number,
+    sy: number,
+    sz: number,
+    ex: number,
+    ey: number,
+    ez: number,
+    projectileRadius: number,
+    excludeCount: number,
+    removedCount: number,
+    maxTargetableRadius: number,
+    queryExtra: number,
+    currentTick: number,
   ) => number;
   /** Per-tick ballistic integrator for slots 0..count of the
    *  projectile pool. Applies gravity with exact constant-acceleration
@@ -4334,6 +4375,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectileTerminalConsequenceBatch: projectile_terminal_consequence_batch,
         projectileTerminalEffectPlanBatch: projectile_terminal_effect_plan_batch,
         projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
+        projectileHitboxSweepStagingEnsure: projectile_hitbox_sweep_staging_ensure,
+        projectileHitboxSweepExcludeIdsPtr: projectile_hitbox_sweep_exclude_ids_ptr,
+        projectileHitboxSweepRemovedIdsPtr: projectile_hitbox_sweep_removed_ids_ptr,
+        projectileHitboxSweepOutKindPtr: projectile_hitbox_sweep_out_kind_ptr,
+        projectileHitboxSweepOutSlotPtr: projectile_hitbox_sweep_out_slot_ptr,
+        projectileHitboxSweepOutEntityIdPtr: projectile_hitbox_sweep_out_entity_id_ptr,
+        projectileHitboxSweepOutTPtr: projectile_hitbox_sweep_out_t_ptr,
+        projectileHitboxSweepOutNormalPtr: projectile_hitbox_sweep_out_normal_ptr,
+        projectileHitboxSweepSingle: projectile_hitbox_sweep_single,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,
         projectileHomingGuidanceBatch: projectile_homing_guidance_batch,

@@ -1710,6 +1710,188 @@ pub(crate) fn projectile_sweep_hit_normal(
     (nx * inv, ny * inv, nz * inv)
 }
 
+// ── Single-sweep staging (ledger [22] slice) ────────────────────────
+// The collision handler calls the sweep once PER PROJECTILE per tick
+// (count = 1), so the slice-taking batch export paid wasm-bindgen a
+// malloc + copy for ~15 arrays per call — ~30k calls/s at a 1k-
+// projectile battle. The staged variant takes the eight floats as
+// plain scalars (scalars never marshal) and reads exclude ids from /
+// writes the hit into WASM-resident staging that JS views directly.
+pub(crate) struct HitboxSweepStaging {
+    enabled: Vec<u8>,
+    start_x: Vec<f64>,
+    start_y: Vec<f64>,
+    start_z: Vec<f64>,
+    end_x: Vec<f64>,
+    end_y: Vec<f64>,
+    end_z: Vec<f64>,
+    projectile_radius: Vec<f64>,
+    exclude_offsets: Vec<u32>,
+    exclude_counts: Vec<u32>,
+    exclude_entity_ids: Vec<i32>,
+    removed_projectile_entity_ids: Vec<i32>,
+    out_kind: Vec<u8>,
+    out_slot: Vec<u32>,
+    out_entity_id: Vec<i32>,
+    out_t: Vec<f64>,
+    out_normal: Vec<f64>,
+}
+
+pub(crate) static HITBOX_SWEEP_STAGING: WasmLazy<HitboxSweepStaging> = WasmLazy::new();
+
+fn hitbox_sweep_staging() -> &'static mut HitboxSweepStaging {
+    HITBOX_SWEEP_STAGING.get_or_init(|| HitboxSweepStaging {
+        enabled: vec![1],
+        start_x: vec![0.0],
+        start_y: vec![0.0],
+        start_z: vec![0.0],
+        end_x: vec![0.0],
+        end_y: vec![0.0],
+        end_z: vec![0.0],
+        projectile_radius: vec![0.0],
+        exclude_offsets: vec![0],
+        exclude_counts: vec![0],
+        exclude_entity_ids: Vec::new(),
+        removed_projectile_entity_ids: Vec::new(),
+        out_kind: vec![0],
+        out_slot: vec![0],
+        out_entity_id: vec![0],
+        out_t: vec![0.0],
+        out_normal: vec![0.0; 3],
+    })
+}
+
+/// Grow (never shrink) the exclude-id staging arrays. Growth may move
+/// them — JS re-fetches the pointers afterwards.
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_staging_ensure(exclude_capacity: u32, removed_capacity: u32) {
+    let staging = hitbox_sweep_staging();
+    let exclude_capacity = exclude_capacity as usize;
+    if staging.exclude_entity_ids.len() < exclude_capacity {
+        staging.exclude_entity_ids.resize(exclude_capacity, 0);
+    }
+    let removed_capacity = removed_capacity as usize;
+    if staging.removed_projectile_entity_ids.len() < removed_capacity {
+        staging
+            .removed_projectile_entity_ids
+            .resize(removed_capacity, 0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_exclude_ids_ptr() -> *mut i32 {
+    hitbox_sweep_staging().exclude_entity_ids.as_mut_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_removed_ids_ptr() -> *mut i32 {
+    hitbox_sweep_staging().removed_projectile_entity_ids.as_mut_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_out_kind_ptr() -> *const u8 {
+    hitbox_sweep_staging().out_kind.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_out_slot_ptr() -> *const u32 {
+    hitbox_sweep_staging().out_slot.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_out_entity_id_ptr() -> *const i32 {
+    hitbox_sweep_staging().out_entity_id.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_out_t_ptr() -> *const f64 {
+    hitbox_sweep_staging().out_t.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_out_normal_ptr() -> *const f64 {
+    hitbox_sweep_staging().out_normal.as_ptr()
+}
+
+/// One swept-hitbox query with scalar geometry and staged id lists.
+/// Exactly `projectile_hitbox_sweep_batch` with count 1 — both call the
+/// same kernel — minus the per-call slice marshalling.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn projectile_hitbox_sweep_single(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    projectile_radius: f64,
+    exclude_count: u32,
+    removed_count: u32,
+    max_targetable_radius: f64,
+    query_extra: f64,
+    current_tick: i32,
+) -> u32 {
+    let staging = hitbox_sweep_staging();
+    let exclude_count = (exclude_count as usize).min(staging.exclude_entity_ids.len());
+    let removed_count =
+        (removed_count as usize).min(staging.removed_projectile_entity_ids.len());
+    staging.start_x[0] = sx;
+    staging.start_y[0] = sy;
+    staging.start_z[0] = sz;
+    staging.end_x[0] = ex;
+    staging.end_y[0] = ey;
+    staging.end_z[0] = ez;
+    staging.projectile_radius[0] = projectile_radius;
+    staging.exclude_counts[0] = exclude_count as u32;
+    let HitboxSweepStaging {
+        enabled,
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        projectile_radius: radius,
+        exclude_offsets,
+        exclude_counts,
+        exclude_entity_ids,
+        removed_projectile_entity_ids,
+        out_kind,
+        out_slot,
+        out_entity_id,
+        out_t,
+        out_normal,
+    } = staging;
+    let (normal_x, rest) = out_normal.split_at_mut(1);
+    let (normal_y, normal_z) = rest.split_at_mut(1);
+    projectile_hitbox_sweep_batch(
+        1,
+        enabled,
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        radius,
+        exclude_offsets,
+        exclude_counts,
+        &exclude_entity_ids[..exclude_count],
+        &removed_projectile_entity_ids[..removed_count],
+        max_targetable_radius,
+        query_extra,
+        current_tick,
+        out_kind,
+        out_slot,
+        out_entity_id,
+        out_t,
+        normal_x,
+        normal_y,
+        normal_z,
+    )
+}
+
 /// C1 projectile migration — nearest swept hitbox contact for traveling
 /// projectile bodies. The kernel reads the WASM spatial slab directly,
 /// includes current-tick turret sub-hitboxes from the combat-targeting

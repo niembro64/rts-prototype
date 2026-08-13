@@ -143,25 +143,40 @@ let _reflectorResponseOutVelocityZ = new Float64Array(0);
 let _reflectorResponseRotationChanged = new Uint8Array(0);
 let _reflectorResponseRotation = new Float64Array(0);
 
-const _hitboxSweepEnabled = new Uint8Array(1);
-const _hitboxSweepStartX = new Float64Array(1);
-const _hitboxSweepStartY = new Float64Array(1);
-const _hitboxSweepStartZ = new Float64Array(1);
-const _hitboxSweepEndX = new Float64Array(1);
-const _hitboxSweepEndY = new Float64Array(1);
-const _hitboxSweepEndZ = new Float64Array(1);
-const _hitboxSweepProjectileRadius = new Float64Array(1);
-const _hitboxSweepExcludeOffsets = new Uint32Array(1);
-const _hitboxSweepExcludeCounts = new Uint32Array(1);
-let _hitboxSweepExcludeIds = new Int32Array(16);
-let _hitboxSweepRemovedProjectileIds = new Int32Array(16);
-const _hitboxSweepOutKind = new Uint8Array(1);
-const _hitboxSweepOutSlot = new Uint32Array(1);
-const _hitboxSweepOutEntityId = new Int32Array(1);
-const _hitboxSweepOutT = new Float64Array(1);
-const _hitboxSweepOutNormalX = new Float64Array(1);
-const _hitboxSweepOutNormalY = new Float64Array(1);
-const _hitboxSweepOutNormalZ = new Float64Array(1);
+// Sweep id lists and outputs live in WASM staging (ledger [22]): the
+// sweep runs once per projectile per tick, so the old slice-marshalling
+// batch call paid ~15 array copies per projectile. Views follow the
+// [25] detach discipline — wasm memory growth replaces the backing
+// buffer (stale views silently no-op) but never moves data, so cached
+// pointers stay valid until the next staging growth; views re-derive on
+// buffer identity change, including AFTER the sweep call (its cell
+// collection can grow memory).
+let _hitboxSweepExcludeIds = new Int32Array(0);
+let _hitboxSweepRemovedProjectileIds = new Int32Array(0);
+let _hitboxSweepOutKind = new Uint8Array(0);
+let _hitboxSweepOutSlot = new Uint32Array(0);
+let _hitboxSweepOutT = new Float64Array(0);
+let _hitboxSweepOutNormals = new Float64Array(0);
+let _hitboxSweepStagingBuffer: ArrayBufferLike | null = null;
+let _hitboxSweepExcludeCapacity = 0;
+let _hitboxSweepRemovedCapacity = 0;
+let _hitboxSweepExcludeIdsPtr = 0;
+let _hitboxSweepRemovedIdsPtr = 0;
+
+function rebuildHitboxSweepViews(sim: NonNullable<ReturnType<typeof getSimWasm>>): void {
+  const buffer = sim.memory.buffer;
+  _hitboxSweepStagingBuffer = buffer;
+  _hitboxSweepExcludeIds = new Int32Array(buffer, _hitboxSweepExcludeIdsPtr, _hitboxSweepExcludeCapacity);
+  _hitboxSweepRemovedProjectileIds = new Int32Array(buffer, _hitboxSweepRemovedIdsPtr, _hitboxSweepRemovedCapacity);
+  _hitboxSweepOutKind = new Uint8Array(buffer, sim.projectileHitboxSweepOutKindPtr(), 1);
+  _hitboxSweepOutSlot = new Uint32Array(buffer, sim.projectileHitboxSweepOutSlotPtr(), 1);
+  _hitboxSweepOutT = new Float64Array(buffer, sim.projectileHitboxSweepOutTPtr(), 1);
+  _hitboxSweepOutNormals = new Float64Array(buffer, sim.projectileHitboxSweepOutNormalPtr(), 3);
+}
+
+function refreshHitboxSweepViews(sim: NonNullable<ReturnType<typeof getSimWasm>>): void {
+  if (sim.memory.buffer !== _hitboxSweepStagingBuffer) rebuildHitboxSweepViews(sim);
+}
 let _submunitionLaunchCapacity = 0;
 let _submunitionLaunchVelocityX = new Float64Array(0);
 let _submunitionLaunchVelocityY = new Float64Array(0);
@@ -284,18 +299,27 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorResponseRotation = new Float64Array(next);
 }
 
-function ensureHitboxSweepExcludeCapacity(count: number): void {
-  if (count <= _hitboxSweepExcludeIds.length) return;
-  let next = _hitboxSweepExcludeIds.length;
-  while (next < count) next *= 2;
-  _hitboxSweepExcludeIds = new Int32Array(next);
-}
-
-function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
-  if (count <= _hitboxSweepRemovedProjectileIds.length) return;
-  let next = _hitboxSweepRemovedProjectileIds.length;
-  while (next < count) next *= 2;
-  _hitboxSweepRemovedProjectileIds = new Int32Array(next);
+function ensureHitboxSweepCapacity(excludeCount: number, removedCount: number): void {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile hitbox sweep requires initialized sim-wasm');
+  }
+  if (
+    excludeCount > _hitboxSweepExcludeCapacity ||
+    removedCount > _hitboxSweepRemovedCapacity
+  ) {
+    const nextExclude = Math.max(excludeCount, _hitboxSweepExcludeCapacity * 2, 64);
+    const nextRemoved = Math.max(removedCount, _hitboxSweepRemovedCapacity * 2, 64);
+    sim.projectileHitboxSweepStagingEnsure(nextExclude, nextRemoved);
+    _hitboxSweepExcludeCapacity = nextExclude;
+    _hitboxSweepRemovedCapacity = nextRemoved;
+    // Growth may have moved the staging arrays — re-fetch the pointers.
+    _hitboxSweepExcludeIdsPtr = sim.projectileHitboxSweepExcludeIdsPtr();
+    _hitboxSweepRemovedIdsPtr = sim.projectileHitboxSweepRemovedIdsPtr();
+    rebuildHitboxSweepViews(sim);
+  } else {
+    refreshHitboxSweepViews(sim);
+  }
 }
 
 function ensureSubmunitionLaunchCapacity(count: number): void {
@@ -614,7 +638,10 @@ function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
     _collisionUnitsToRemove.size +
     _collisionBuildingsToRemove.size +
     _collisionProjectileRemoveIds.size;
-  ensureHitboxSweepExcludeCapacity(Math.max(1, required));
+  ensureHitboxSweepCapacity(
+    Math.max(1, required),
+    Math.max(1, _collisionProjectileRemoveIds.size),
+  );
   let count = 0;
   for (const id of excludeEntities) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionUnitsToRemove) _hitboxSweepExcludeIds[count++] = id;
@@ -625,7 +652,7 @@ function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
 }
 
 function packRemovedProjectileSweepExcludes(): number {
-  ensureHitboxSweepRemovedProjectileCapacity(Math.max(1, _collisionProjectileRemoveIds.size));
+  // Capacity already ensured by packProjectileSweepExcludes this call.
   let count = 0;
   for (const id of _collisionProjectileRemoveIds) {
     _hitboxSweepRemovedProjectileIds[count++] = id;
@@ -670,49 +697,31 @@ function findProjectileHitboxSweepHit(
 
   const excludeCount = packProjectileSweepExcludes(excludeEntities);
   const removedProjectileCount = packRemovedProjectileSweepExcludes();
-  _hitboxSweepEnabled[0] = 1;
-  _hitboxSweepStartX[0] = prevX;
-  _hitboxSweepStartY[0] = prevY;
-  _hitboxSweepStartZ[0] = prevZ;
-  _hitboxSweepEndX[0] = currentX;
-  _hitboxSweepEndY[0] = currentY;
-  _hitboxSweepEndZ[0] = currentZ;
-  _hitboxSweepProjectileRadius[0] = projectileHitboxRadius;
-  _hitboxSweepExcludeOffsets[0] = 0;
-  _hitboxSweepExcludeCounts[0] = excludeCount;
 
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Projectile hitbox sweep requires initialized sim-wasm');
   }
-  const processed = sim.projectileHitboxSweepBatch(
-    1,
-    _hitboxSweepEnabled,
-    _hitboxSweepStartX,
-    _hitboxSweepStartY,
-    _hitboxSweepStartZ,
-    _hitboxSweepEndX,
-    _hitboxSweepEndY,
-    _hitboxSweepEndZ,
-    _hitboxSweepProjectileRadius,
-    _hitboxSweepExcludeOffsets,
-    _hitboxSweepExcludeCounts,
-    _hitboxSweepExcludeIds.subarray(0, excludeCount),
-    _hitboxSweepRemovedProjectileIds.subarray(0, removedProjectileCount),
+  const processed = sim.projectileHitboxSweepSingle(
+    prevX,
+    prevY,
+    prevZ,
+    currentX,
+    currentY,
+    currentZ,
+    projectileHitboxRadius,
+    excludeCount,
+    removedProjectileCount,
     world.getMaxTargetableRadius(),
     PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
     world.getTick(),
-    _hitboxSweepOutKind,
-    _hitboxSweepOutSlot,
-    _hitboxSweepOutEntityId,
-    _hitboxSweepOutT,
-    _hitboxSweepOutNormalX,
-    _hitboxSweepOutNormalY,
-    _hitboxSweepOutNormalZ,
   );
   if (processed !== 1) {
     throw new Error(`Projectile hitbox sweep batch failed: ${processed}/1`);
   }
+  // The sweep's cell collection can grow wasm memory — re-derive the
+  // output views before reading (data is already in place either way).
+  refreshHitboxSweepViews(sim);
 
   const kind = _hitboxSweepOutKind[0];
   const slot = _hitboxSweepOutSlot[0];
@@ -725,9 +734,9 @@ function findProjectileHitboxSweepHit(
 
   _projectileHitboxSweepHit.entity = entity;
   _projectileHitboxSweepHit.t = _hitboxSweepOutT[0];
-  _projectileHitboxSweepHit.normalX = _hitboxSweepOutNormalX[0];
-  _projectileHitboxSweepHit.normalY = _hitboxSweepOutNormalY[0];
-  _projectileHitboxSweepHit.normalZ = _hitboxSweepOutNormalZ[0];
+  _projectileHitboxSweepHit.normalX = _hitboxSweepOutNormals[0];
+  _projectileHitboxSweepHit.normalY = _hitboxSweepOutNormals[1];
+  _projectileHitboxSweepHit.normalZ = _hitboxSweepOutNormals[2];
   return _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
 }
 
