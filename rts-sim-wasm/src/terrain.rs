@@ -2919,6 +2919,12 @@ pub(crate) struct TerrainGrid {
     neighbor_levels: Vec<i32>,
     cell_triangle_offsets: Vec<i32>,
     cell_triangle_indices: Vec<i32>,
+    /// Per-cell maximum vertex height over every triangle listed for the
+    /// cell (conservative — listed triangles may overhang the cell).
+    /// Built at install; terrain_has_line_of_sight uses it to fast-accept
+    /// sightlines whose minimum altitude clears every crossed cell's max,
+    /// skipping the per-step triangle march entirely.
+    cell_max_height: Vec<f64>,
 }
 
 impl TerrainGrid {
@@ -2939,6 +2945,7 @@ impl TerrainGrid {
             neighbor_levels: Vec::new(),
             cell_triangle_offsets: Vec::new(),
             cell_triangle_indices: Vec::new(),
+            cell_max_height: Vec::new(),
         }
     }
 }
@@ -2992,7 +2999,148 @@ pub fn terrain_install_mesh(
     t.subdiv = subdiv;
     t.cells_x = cells_x;
     t.cells_y = cells_y;
+    terrain_rebuild_cell_max_heights(t);
     t.installed = true;
+}
+
+/// Amanatides–Woo traversal of the 2D cell grid under the sightline,
+/// early-accepting when every crossed cell's conservative max height is
+/// at or below the segment's minimum altitude. Returns false whenever it
+/// cannot PROVE clearance (tall cell, endpoint outside the grid, empty
+/// table) — callers then run the exact march, so this can only shortcut
+/// to the same answer the march would produce.
+fn terrain_los_fast_accept(
+    t: &TerrainGrid,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+) -> bool {
+    if t.cell_max_height.is_empty() || t.cell_size <= 0.0 {
+        return false;
+    }
+    let cs = t.cell_size;
+    let cells_x = t.cells_x;
+    let cells_y = t.cells_y;
+    let max_x = cells_x as f64 * cs;
+    let max_y = cells_y as f64 * cs;
+    // Out-of-bounds endpoints clamp per-sample in the exact march; the
+    // traversal below has no clamping, so only in-bounds segments take
+    // the fast path.
+    if sx < 0.0 || sy < 0.0 || tx < 0.0 || ty < 0.0
+        || sx >= max_x || sy >= max_y || tx >= max_x || ty >= max_y
+    {
+        return false;
+    }
+    let mut cx = (sx / cs).floor() as i32;
+    let mut cy = (sy / cs).floor() as i32;
+    let end_cx = (tx / cs).floor() as i32;
+    let end_cy = (ty / cs).floor() as i32;
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let step_x: i32 = if dx > 0.0 { 1 } else { -1 };
+    let step_y: i32 = if dy > 0.0 { 1 } else { -1 };
+    // Parametric distance to the first x/y cell boundary and per-cell
+    // increments; f64::INFINITY legs never advance that axis.
+    let inv_dx = if dx != 0.0 { 1.0 / dx } else { f64::INFINITY };
+    let inv_dy = if dy != 0.0 { 1.0 / dy } else { f64::INFINITY };
+    let next_boundary_x = if dx > 0.0 { (cx + 1) as f64 * cs } else { cx as f64 * cs };
+    let next_boundary_y = if dy > 0.0 { (cy + 1) as f64 * cs } else { cy as f64 * cs };
+    let mut t_max_x = if dx != 0.0 { (next_boundary_x - sx) * inv_dx } else { f64::INFINITY };
+    let mut t_max_y = if dy != 0.0 { (next_boundary_y - sy) * inv_dy } else { f64::INFINITY };
+    let t_delta_x = if dx != 0.0 { (cs * inv_dx).abs() } else { f64::INFINITY };
+    let t_delta_y = if dy != 0.0 { (cs * inv_dy).abs() } else { f64::INFINITY };
+    // Per-cell altitude bound: the sightline's minimum z OVER THE CELL'S
+    // crossing interval [t_enter, t_exit], not the whole segment — a
+    // high-to-low sightline stays acceptable near its high end instead
+    // of bailing at the first cell taller than the far endpoint. ray z
+    // is linear in t, so the interval minimum sits at an endpoint.
+    let mut t_enter = 0.0_f64;
+    // Cell count along the traversal is bounded by the Manhattan cell
+    // distance + 1; guard against float-edge livelock all the same.
+    let max_steps = ((end_cx - cx).abs() + (end_cy - cy).abs() + 2) as u32;
+    for _ in 0..max_steps {
+        if cx < 0 || cy < 0 || cx >= cells_x || cy >= cells_y {
+            return false;
+        }
+        let at_end = cx == end_cx && cy == end_cy;
+        let t_exit = if at_end {
+            1.0
+        } else {
+            t_max_x.min(t_max_y).min(1.0)
+        };
+        let z_enter = sz + dz * t_enter;
+        let z_exit = sz + dz * t_exit;
+        let cell_min_ray_z = z_enter.min(z_exit);
+        let cell = (cy as usize) * (cells_x as usize) + cx as usize;
+        if t.cell_max_height[cell] > cell_min_ray_z {
+            return false;
+        }
+        if at_end {
+            return true;
+        }
+        t_enter = t_exit;
+        if t_max_x < t_max_y {
+            t_max_x += t_delta_x;
+            cx += step_x;
+        } else {
+            t_max_y += t_delta_y;
+            cy += step_y;
+        }
+    }
+    false
+}
+
+/// Rebuilds the per-cell max-height table from the installed mesh. Each
+/// cell's value is the EXACT height maximum over the intersection of the
+/// cell rectangle with its listed triangles (heights are linear inside a
+/// triangle, so extrema sit at clipped-polygon vertices) — an overhanging
+/// summit triangle no longer poisons every cell it merely touches. Cells
+/// with no overlapping geometry get NEG_INFINITY (never block).
+fn terrain_rebuild_cell_max_heights(t: &mut TerrainGrid) {
+    let cells_x = t.cells_x.max(0) as usize;
+    let cells_y = t.cells_y.max(0) as usize;
+    let cell_count = cells_x * cells_y;
+    t.cell_max_height.clear();
+    t.cell_max_height.resize(cell_count, f64::NEG_INFINITY);
+    let cs = t.cell_size;
+    let mut a = [(0.0_f64, 0.0_f64, 0.0_f64); TERRAIN_CLIP_VERTEX_CAPACITY];
+    let mut b = [(0.0_f64, 0.0_f64, 0.0_f64); TERRAIN_CLIP_VERTEX_CAPACITY];
+    for cell in 0..cell_count {
+        let cell_x = (cell % cells_x) as f64;
+        let cell_y = (cell / cells_x) as f64;
+        let rect_min_x = cell_x * cs;
+        let rect_max_x = rect_min_x + cs;
+        let rect_min_y = cell_y * cs;
+        let rect_max_y = rect_min_y + cs;
+        let start = t.cell_triangle_offsets[cell] as usize;
+        let end = t.cell_triangle_offsets[cell + 1] as usize;
+        let mut max_h = f64::NEG_INFINITY;
+        for &tri in &t.cell_triangle_indices[start..end] {
+            let base = tri as usize * 3;
+            for k in 0..3 {
+                let v = t.triangle_indices[base + k] as usize;
+                a[k] = (
+                    t.vertex_coords[v * 2],
+                    t.vertex_coords[v * 2 + 1],
+                    t.vertex_heights[v],
+                );
+            }
+            let mut len = terrain_clip_polygon_axis(&a, 3, &mut b, 0, rect_min_x, true);
+            len = terrain_clip_polygon_axis(&b, len, &mut a, 0, rect_max_x, false);
+            len = terrain_clip_polygon_axis(&a, len, &mut b, 1, rect_min_y, true);
+            len = terrain_clip_polygon_axis(&b, len, &mut a, 1, rect_max_y, false);
+            for vertex in a.iter().take(len) {
+                if vertex.2 > max_h {
+                    max_h = vertex.2;
+                }
+            }
+        }
+        t.cell_max_height[cell] = max_h;
+    }
 }
 
 #[wasm_bindgen]
@@ -3009,6 +3157,7 @@ pub fn terrain_clear() {
     t.neighbor_levels.clear();
     t.cell_triangle_offsets.clear();
     t.cell_triangle_indices.clear();
+    t.cell_max_height.clear();
 }
 
 #[wasm_bindgen]
@@ -3552,6 +3701,16 @@ pub fn terrain_has_line_of_sight(
     let dz = tz - sz;
     let horiz_dist = (dx * dx + dy * dy).sqrt();
     if horiz_dist < step_len {
+        return 1;
+    }
+    // Conservative fast-accept: if every grid cell the 2D segment crosses
+    // has a max terrain height at or below the sightline's minimum
+    // altitude, no sample of the exact march below could exceed its
+    // ray_z — the answer is provably "clear" without marching. Anything
+    // else (a tall cell, an out-of-bounds endpoint whose samples would
+    // clamp) falls through to the exact march unchanged, so results are
+    // bit-identical either way.
+    if terrain_los_fast_accept(t, sx, sy, sz, tx, ty, tz) {
         return 1;
     }
     let step_count = (horiz_dist / step_len).ceil() as i32;

@@ -165,19 +165,28 @@ pub(crate) fn spatial_get_or_create_cell<'a>(
     state: &'a mut SpatialGridState,
     key: u64,
 ) -> &'a mut SpatialCellBucket {
-    if !state.cells.contains_key(&key) {
-        let bucket = state.cell_pool.pop().unwrap_or_default();
-        state.cells.insert(key, bucket);
-    }
-    state.cells.get_mut(&key).expect("just inserted")
+    // Single probe: contains_key + insert + get_mut was three hash
+    // lookups on a path that runs for every cross-cell move of every
+    // unit and projectile, every tick. Field destructuring lets the
+    // pool recycle inside the entry closure without a double borrow.
+    let SpatialGridState {
+        cells, cell_pool, ..
+    } = state;
+    cells
+        .entry(key)
+        .or_insert_with(|| cell_pool.pop().unwrap_or_default())
 }
 
 pub(crate) fn spatial_prune_cell_if_empty(state: &mut SpatialGridState, key: u64) {
-    if let Some(bucket) = state.cells.get(&key) {
-        if bucket.is_empty() {
-            let mut bucket = state.cells.remove(&key).unwrap();
+    // Same single-probe treatment as spatial_get_or_create_cell.
+    let SpatialGridState {
+        cells, cell_pool, ..
+    } = state;
+    if let std::collections::hash_map::Entry::Occupied(entry) = cells.entry(key) {
+        if entry.get().is_empty() {
+            let mut bucket = entry.remove();
             bucket.clear();
-            state.cell_pool.push(bucket);
+            cell_pool.push(bucket);
         }
     }
 }
