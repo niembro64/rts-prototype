@@ -42,6 +42,13 @@ crowding), unitForces ~2.4.
         2026-08-12, be1a54bd — the DTO walk itself remains), economy DTOs
         are built then discarded by sharesAuthoritativeState clients (small;
         needs NetworkServerSnapshot.economy to become optional).
+    MEASURED 2026-08-12 evening: (a) is minor at every cap — the DTO
+    fallback carries only 2.0/3.2/3.8/3.9% of entity rows at caps
+    500/1000/2500/5000 and snapshotApply p95 is 2.1/2.8/6.2/10.3 ms (the
+    ~100 ms clientApply spikes in the 07-31 data were the doubled-unit +
+    recovery-packet era). Widening TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS
+    needs the "generic factory side table" wire format for sub-ms gain —
+    deliberately not built; revisit only if factory/builder counts grow.
 
 [24][25][26][27] Finish slot-native hot loops (existing item text stands):
     Simulation.updateUnits action loop to Rust batches [24]; UnitForceSystem
@@ -95,6 +102,21 @@ crowding), unitForces ~2.4.
     per-object rig meshes (~4 small direct boxes/unit) and HUD sprites —
     that is exactly (b)/[31]. lod.json animation shedding re-enabled
     (unitAnimationMinRung mid, stride 3) — far rigs animate at 1/3 cadence.
+    PROGRESS 2026-08-12 evening (8fe8d7f9): AUTO icon flip raised to 10px
+    projected radius (lod.json screenRadiusPx.glyph 4 -> 10, BAR-comparable;
+    VERIFY IN-APP) — distance 3500: 28.8 -> 19.2 ms p95, draws 9.7k -> 5.2k.
+    lod.json healthBar/nameLabel feature rungs are now actually consumed by
+    the HUD packet fill (they were authored but dead; both set 'mid', hover
+    exempt). Workload collector attributes sprites/points/lines and sorts by
+    draw calls; rig boxes carry geometry names (botRigBox = 62% of far-view
+    direct mesh draws). Draw-call counts multiply by the water render
+    passes, so every direct mesh cut pays ~3x. THE REMAINING [31] TARGET is
+    the mid-zoom band (distance ~1600: whole army visible at MED rung, 30.7
+    ms p95, GPU-bound, 8.4k draws) — needs per-rig animated instancing
+    (LegInstancedRenderer is the in-repo template; bot struts, drone tori,
+    tank shells at MED) plus HUD sprite batching. LOD contract tests now
+    derive fixture distances from the configured thresholds (they hardcoded
+    the glyph=4-era values and broke on tuning).
 
 [35] NEW 2026-08-12 — Vision observation marking is the top remaining sim
     function: combat_targeting_mark_observation_cell 8.2% self (symbolicated
@@ -105,3 +127,13 @@ crowding), unitForces ~2.4.
     at unit sight radii). Related cheap follow-ups: slow the candidate
     re-scan cadence for turrets whose target stays valid (BAR parity), and
     shrink the targeting stamp per [24]-[27] note above.
+    CHECKED 2026-08-12 evening: the re-scan cadence ALREADY EXISTS —
+    targetingSchedulerBridge.ts assigns idle entities a phased 16-tick
+    reacquire (TARGETING_REACQUIRE_PERIOD_TICKS, per-entity phase), the
+    Rust batch skips entities whose scheduled_probe_tick is in the future,
+    and only entities with active work probe every tick (they are tracking
+    live targets — that per-tick FSM/kinematics work is by design). What
+    remains of [35] is exactly the observation-mask persistence design:
+    per-(owner, kind, medium) coverage counting so bits can be UNSET
+    incrementally when sources or targets move — do it as its own design
+    pass with checksum-gated rollout.
