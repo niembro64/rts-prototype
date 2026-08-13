@@ -342,6 +342,12 @@ type ClientViewRenderPacketOptions3D = {
   getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
   isEntityFarLod?: (entity: Entity) => boolean;
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
+  /** lod.json featureMinRung gates for HUD sprites: healthBar / nameLabel
+   *  visibility at the entity's latched detail rung. Undefined = no gate
+   *  (contract-test fixtures, fallback paths). Hover bypasses the bar
+   *  gate at the call site. */
+  isEntityHudRungVisible?: (entity: Entity) => boolean;
+  isEntityNameRungVisible?: (entity: Entity) => boolean;
 };
 
 /** Conservative bounding sphere for the render-packet cone cull. The
@@ -4352,6 +4358,16 @@ export class ClientViewState {
     const building = entity.building;
     if (unit === null && building === null) return;
     if (this.entityEmissionUsesFarLod3D(entity, options)) return;
+    // The lod.json healthBar feature rung: bars shed below their authored
+    // rung like any other part of the detail ladder. Hover always wins so
+    // inspecting a distant unit still shows its bar.
+    if (
+      !forceVisible &&
+      options.isEntityHudRungVisible !== undefined &&
+      !options.isEntityHudRungVisible(entity)
+    ) {
+      return;
+    }
 
     const type = this.hudTypeOf3D(entity);
     let views = this.renderEntityState.getViews();
@@ -4472,6 +4488,13 @@ export class ClientViewState {
     knownSlot = -1,
   ): void {
     if (this.entityEmissionUsesFarLod3D(entity, options)) return;
+    // lod.json nameLabel feature rung — same ladder semantics as bars.
+    if (
+      options.isEntityNameRungVisible !== undefined &&
+      !options.isEntityNameRungVisible(entity)
+    ) {
+      return;
+    }
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
     let views = this.renderEntityState.getViews();

@@ -7,7 +7,7 @@
     "enabled": true,
     "referenceViewportHeightPx": 1080,
     "screenRadiusPx": {
-      "glyph": 4,
+      "glyph": 10,
       "full": 26
     },
     "rungMinLevel": {
@@ -27,12 +27,12 @@
     "featureMinRung": {
       "comment": "Rung at/above which each named feature is built: far=1, mid=2, close=3. 'far' features survive until the glyph flip; 'close' features shed first when zooming out.",
       "body": "far",
-      "healthBar": "far",
+      "healthBar": "mid",
       "turret": "far",
       "turretHead": "far",
       "barrelPrimary": "far",
       "locomotion": "far",
-      "nameLabel": "far",
+      "nameLabel": "mid",
       "projectileTrail": "far",
       "shieldPanels": "far",
       "beamGlow": "mid",

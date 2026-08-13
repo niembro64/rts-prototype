@@ -19,7 +19,23 @@ import {
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
+  detailRungMinLevel,
+  FULL_SCREEN_RADIUS_PX,
+  GLYPH_SCREEN_RADIUS_PX,
+  ICON_FADE_START_SCREEN_RADIUS_PX,
 } from './EntityDetailLevel3D';
+
+// Camera distances for a target detail level, derived from the CONFIGURED
+// thresholds so lod.json tuning (glyph/full radii, rung boundaries) cannot
+// invalidate these fixtures. The projection matches viewAt(): fovY π/4,
+// normalized to the LOD's 1080px reference height.
+const LOD_TEST_PX_SCALE = 1080 / (2 * Math.tan(Math.PI / 8));
+function pxForDetailLevel(level: number): number {
+  return GLYPH_SCREEN_RADIUS_PX + level * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+}
+function distanceForScreenRadiusPx(radiusWorld: number, px: number): number {
+  return (radiusWorld * LOD_TEST_PX_SCALE) / px;
+}
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -143,14 +159,19 @@ export function runEntityLod3DContractTest(): void {
         bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
       'AUTO mode draws near units as full models with no icon overlay',
     );
-    groundUnit.transform.y = -2000;
+    const midBandLevel =
+      (detailRungMinLevel(DETAIL_RUNG_MID) + detailRungMinLevel(DETAIL_RUNG_CLOSE)) / 2;
+    groundUnit.transform.y = -distanceForScreenRadiusPx(20, pxForDetailLevel(midBandLevel));
     bodyLod.beginFrame();
     assertContract(
       bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID &&
         bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
       'AUTO Medium resolves to the exact manual MED rung with no icon covering it',
     );
-    groundUnit.transform.y = -4000;
+    groundUnit.transform.y = -distanceForScreenRadiusPx(
+      20,
+      (GLYPH_SCREEN_RADIUS_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+    );
     bodyLod.beginFrame();
     const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
     assertContract(
@@ -173,6 +194,10 @@ export function runEntityLod3DContractTest(): void {
     // visibility policy. At a strategic zoom the model is sub-pixel, so every
     // mode must still hand the entity to its strategic glyph — otherwise
     // clicking HIGH makes the whole battlefield vanish.
+    const fadeBandY = -distanceForScreenRadiusPx(
+      20,
+      (GLYPH_SCREEN_RADIUS_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+    );
     for (const mode of ['high', 'medium', 'low'] as const) {
       groundUnit.transform.y = -10000;
       setLodMode(mode);
@@ -183,7 +208,7 @@ export function runEntityLod3DContractTest(): void {
         `${mode} mode drew a sub-pixel model instead of the strategic glyph`,
       );
       // ...and the icon cross-fades in beforehand exactly as it does in AUTO.
-      groundUnit.transform.y = -4000;
+      groundUnit.transform.y = fadeBandY;
       bodyLod.beginFrame();
       const pinnedBandAlpha =
         bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
@@ -194,7 +219,7 @@ export function runEntityLod3DContractTest(): void {
       );
     }
     // The pin still governs the geometry of everything that IS drawn.
-    groundUnit.transform.y = -4000;
+    groundUnit.transform.y = fadeBandY;
     setLodMode('high');
     bodyLod.beginFrame();
     assertContract(

@@ -17,6 +17,7 @@ import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ClientProjectileRenderLists } from '../../network/ClientProjectileStore';
 import type { ContactBlipRenderer3D } from '../../render3d/ContactBlipRenderer3D';
+import { featureVisibleAtRung } from '../../render3d/EntityDetailLevel3D';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -227,6 +228,22 @@ export class RtsScene3DRenderPhase {
     this.currentLodView !== null && this.entityUsesFarLod(entity, this.currentLodView);
   private readonly entityDetailRungRef = (entity: Entity) =>
     this.entityLod.entityDetailRungForView(this.currentLodView!, entity);
+  private readonly isEntityHudRungVisibleRef = (entity: Entity): boolean => {
+    const view = this.currentLodView;
+    if (view === null) return true;
+    return featureVisibleAtRung(
+      'healthBar',
+      this.entityLod.entityDetailRungForView(view, entity),
+    );
+  };
+  private readonly isEntityNameRungVisibleRef = (entity: Entity): boolean => {
+    const view = this.currentLodView;
+    if (view === null) return true;
+    return featureVisibleAtRung(
+      'nameLabel',
+      this.entityLod.entityDetailRungForView(view, entity),
+    );
+  };
   private readonly entityLodProxyFadeAlphaRef = (entity: Entity) =>
     this.entityLod.entityLodProxyFadeAlphaForView(this.currentLodView!, entity);
   /** Reused argument packet for entityRenderer.update; consumed
@@ -787,6 +804,8 @@ export class RtsScene3DRenderPhase {
     getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
     isEntityFarLod: this.isEntityFarLodRef,
     isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
+    isEntityHudRungVisible: this.isEntityHudRungVisibleRef,
+    isEntityNameRungVisible: this.isEntityNameRungVisibleRef,
   };
 
   private prepareEntityLists(

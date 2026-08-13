@@ -636,11 +636,25 @@ function collectRenderSceneWorkload(scene: GameInstance['app']['scene']): Render
         visible?: boolean;
       }[];
     };
-    if (
-      !renderSceneObjectHierarchyVisible(renderable, scene) ||
-      renderable.isMesh !== true ||
-      renderable.geometry === undefined
-    ) {
+    if (!renderSceneObjectHierarchyVisible(renderable, scene)) return;
+    // Sprites/points/lines are one draw each and were invisible to this
+    // report — at far camera they can dominate renderer.info drawCalls.
+    const nonMesh = renderable as typeof renderable & {
+      isSprite?: boolean;
+      isPoints?: boolean;
+      isLine?: boolean;
+      name?: string;
+    };
+    if (nonMesh.isSprite === true || nonMesh.isPoints === true || nonMesh.isLine === true) {
+      const kind = nonMesh.isSprite === true ? 'sprite' : nonMesh.isPoints === true ? 'points' : 'line';
+      const key = `${kind}:${nonMesh.name || 'unnamed'}`;
+      const row = rows.get(key) ?? { calls: 0, instances: 0, triangles: 0 };
+      row.calls += 1;
+      row.instances += 1;
+      rows.set(key, row);
+      return;
+    }
+    if (renderable.isMesh !== true || renderable.geometry === undefined) {
       return;
     }
     const geometry = renderable.geometry;
@@ -701,7 +715,10 @@ function collectRenderSceneWorkload(scene: GameInstance['app']['scene']): Render
   });
   return [...rows.entries()]
     .map(([key, row]) => ({ key, ...row }))
-    .sort((a, b) => b.triangles - a.triangles)
+    // Draw-call count first: the report exists to attribute drawCalls,
+    // and a triangle sort buried high-call/low-triangle rows (sprites,
+    // tiny per-object boxes) below the fold.
+    .sort((a, b) => b.calls - a.calls || b.triangles - a.triangles)
     .slice(0, 20);
 }
 

@@ -98,8 +98,8 @@ const detailConfig = ENTITY_DETAIL_CONFIG;
 export const ENTITY_DETAIL_ENABLED: boolean = detailConfig.enabled === true;
 const REFERENCE_VIEWPORT_HEIGHT_PX = finitePositiveOr(
   detailConfig.referenceViewportHeightPx, 1080);
-const GLYPH_SCREEN_RADIUS_PX = finitePositiveOr(detailConfig.screenRadiusPx?.glyph, 4);
-const FULL_SCREEN_RADIUS_PX = Math.max(
+export const GLYPH_SCREEN_RADIUS_PX = finitePositiveOr(detailConfig.screenRadiusPx?.glyph, 4);
+export const FULL_SCREEN_RADIUS_PX = Math.max(
   GLYPH_SCREEN_RADIUS_PX + 1,
   finitePositiveOr(detailConfig.screenRadiusPx?.full, 26),
 );

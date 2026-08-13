@@ -11,7 +11,13 @@ import {
 const COMMANDER_LENS_COLOR = COLORS.units.unitCommander.lens.colorHex;
 
 export class CommanderVisualKit3D {
-  private readonly boxGeom = new THREE.BoxGeometry(1, 1, 1);
+  private readonly boxGeom = CommanderVisualKit3D.namedBoxGeom();
+
+  private static namedBoxGeom(): THREE.BoxGeometry {
+    const geom = new THREE.BoxGeometry(1, 1, 1);
+    geom.name = 'commanderKitBox';
+    return geom;
+  }
   private readonly cylinderGeoms = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
   private readonly domeGeoms = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
   private readonly lensMat = new THREE.MeshBasicMaterial({

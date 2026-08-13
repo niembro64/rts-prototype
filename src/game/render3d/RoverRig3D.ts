@@ -63,7 +63,9 @@ function getWheelGeom(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
     if (tier === 'far') {
       // A square-prism tire is cheap, but its cross-section must retain the
       // cylinder's pi*r^2 area. Unit BoxGeometry would lose ~68% of volume.
-      return new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI));
+      const geom = new THREE.BoxGeometry(Math.sqrt(Math.PI), 1, Math.sqrt(Math.PI));
+      geom.name = 'roverWheelBox';
+      return geom;
     }
     const geometry = createPrimitiveCylinderGeometry('locomotion', tier);
     // A wheel's two flat faces are its SIDEWALL AND HUB, and on a wheel lying

@@ -22,6 +22,7 @@ import {
   legStyleForDetail,
   lodProxyFadeAlphaForScreenRadius,
   projectileStyleForDetail,
+  GLYPH_SCREEN_RADIUS_PX,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
   unitDetailBand,
@@ -211,7 +212,9 @@ export function runEntityDetailLevel3DContractTest(): void {
     lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX - 0.01) < 0.01,
     'the icon fade begins smoothly from alpha 0 (no pop-in)',
   );
-  const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + 4) / 2;
+  // Midway between the CONFIGURED glyph radius and the fade onset — a
+  // hardcoded glyph value here breaks the moment lod.json is tuned.
+  const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + GLYPH_SCREEN_RADIUS_PX) / 2;
   const bandAlpha = lodProxyFadeAlphaForScreenRadius(bandPx);
   assertContract(
     bandPx >= ICON_FADE_START_SCREEN_RADIUS_PX ||

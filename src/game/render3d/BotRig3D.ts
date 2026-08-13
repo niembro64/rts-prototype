@@ -57,6 +57,7 @@ import { clampUnit } from '../math';
 const SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const segmentMaterials = new Map<number, THREE.MeshLambertMaterial>();
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
+unitBox.name = 'botRigBox';
 const constructionEmitterMaterial = new THREE.MeshBasicMaterial({
   color: COLORS.units.unitCommander.lens.colorHex,
 });

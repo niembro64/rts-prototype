@@ -102,6 +102,7 @@ const TREAD_LIFT_SETTLED_EPSILON = 0.02;
 const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
+treadBoxGeom.name = 'tankTreadBox';
 
 // One watertight stadium (rounded-rectangle) prism for the belt shell, cached
 // per (dimensions, tier). A single extruded solid — not a slab box with
