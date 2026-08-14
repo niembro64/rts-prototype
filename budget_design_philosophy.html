@@ -1969,9 +1969,17 @@
         head mounts form a piece tree, and weapon geometry attached to that tree must use the
         tree&rsquo;s current fixed-tick transform for gameplay as well as presentation. A
         <code>botArm</code> mount resolves its AimFrom pivot from the named hand plus the
-        unit-blueprint <code>socketOffset</code>; a <code>botHead</code> mount resolves its
+        unit-blueprint <code>socketOffset</code>; a named head-piece mount resolves its
         authored pivot below the moving upper-body piece. The ordinary authored
         <code>mount</code> remains the rigid fallback for hosts with no piece attachment.
+      </p>
+      <p>
+        The bot contract requires one ordinary arm pair and permits a blueprint to add one
+        <code>upperArms</code> pair. That second pair uses the same authoritative hand-socket
+        and aiming path as the first; it is not Rex-specific renderer decoration. Each pair
+        authors its own proportions, shoulder position, gait swing, and elbow bend direction,
+        allowing Rex&rsquo;s higher weapon arms to bend backward while its primary arms retain
+        the conventional forward elbow.
       </p>
       <p>
         This follows BAR/Recoil&rsquo;s separation of responsibilities. The turret owns targeting,
@@ -2004,12 +2012,14 @@
       </ul>
       <h3>Rocket turrets are multi-tube launchers</h3>
       <p>
-        The three rocket turrets (<code>turretRocketSlow</code>,
-        <code>turretRocketFast</code>, <code>turretAntiAir</code>) each carry a
-        three-barrel cluster (<code>simpleMultiBarrel</code>) with one stable
-        QueryWeapon lane per tube. Spin is an authored presentation option, not
-        part of the authoritative socket pose: launchers such as the Rex shoulder
-        pods remain static, while gatling weapons may rotate their decorative drum.
+        Rocket-family turrets use a role-readable multi-tube cluster
+        (<code>simpleMultiBarrel</code>) with one stable QueryWeapon lane per tube.
+        The slow and fast general-purpose launchers carry three broad tubes; the
+        dedicated anti-air launcher carries six slimmer tubes and a rotating rack.
+        Spin is an authored presentation option, not part of the authoritative
+        socket pose. The Rex preserves those standard silhouettes: six-tube
+        anti-air launchers are carried at the hands of its optional upper arm pair, while its
+        three-tube vertical rockets remain on the moving backpack.
         They aim like any other shot turret, with the cluster tracking its target
         in yaw and pitch. A vertical launcher is the exception its own way: the sim
         pins its pose straight up while the launcher still follows its moving host
@@ -2647,6 +2657,39 @@
         <code>requiredEngagedForFightStop</code>; every marked mount must be engaged before the unit
         stops. Utility emitters never participate in combat halt logic.
       </p>
+      <h3>Shield-aware targeting is an earned, per-player upgrade</h3>
+      <p>
+        The battlefield has two targeting brains, and which one a player&rsquo;s entities use is
+        earned, not toggled. <strong>NAIVE</strong> is the default: turrets ignore force material
+        when choosing targets, lock straight through shield spheres and mirror panels, and spend
+        their fire on shots the field will absorb or reflect. <strong>SHIELD-AWARE</strong> is
+        granted to a player while they own at least one <em>completed</em> Shield-Aware Targeting
+        Tech building and is lost the tick the last one dies or is captured away. The BATTLE bar&rsquo;s
+        <code>TARGETING:</code> readout displays this per-player status; it is not a setting, and
+        there is no global battle flag behind it.
+      </p>
+      <p>
+        &ldquo;Obstructs direct sight&rdquo; has one exact meaning. After the ordinary
+        line-of-sight and ballistic gates pass, a shield-aware turret tests the <em>straight
+        segment</em> from its mount aim pivot to the raw aim point against every active force
+        surface &mdash; one material, two shapes, so spheres and panels answer through a single
+        clearance query. This shield gate is deliberately <em>not</em> folded into the authored
+        <code>requiresNonObstructedLineOfSight</code> flag: that flag is per-weapon terrain policy,
+        and the arcing weapons that author it off (mortars, artillery, vertical launchers) are
+        exactly the ones whose shells a shield dome eats &mdash; they must still respect the shield
+        gate. Nor is it a sampled-trajectory test: a shield sphere is a closed surface, so
+        <em>every</em> path from outside to a target inside it crosses the material and the straight
+        segment already gives the physically correct answer at slab cost. Refining the rare
+        mid-field-dome and panel-edge geometries with a descending-leg test for high-arc weapons is
+        an allowed future refinement, not the baseline contract.
+      </p>
+      <ul class="rule-list">
+        <li>A shield-blocked pair is treated exactly like a sight-blocked pair. Autonomous acquisition never admits a candidate whose shield gate fails; an existing autonomous lock holds fire immediately and is dropped after the shared sight-drop grace, and re-acquisition then runs over candidates that can actually be hit. A shield-aware unit therefore never parks on an unhittable target &mdash; if every candidate is shielded it goes idle and keeps re-scanning as fields move, drop, or die.</li>
+        <li>Player-ordered priority targets are the one exception, per the host-retention rule above: an explicit Attack on a shielded enemy keeps the commanded target in the non-firing tracking state and waits for the field to drop rather than wandering to a different enemy.</li>
+        <li>NAIVE players skip the shield gate entirely &mdash; their locks and fire are shield-blind, and reflector panels punish them for it.</li>
+        <li>Shield-only emitters keep their authored exemption: a turret whose emission is pure shield material must hold its own barrier and never treats force material as obstruction. Shield emitters with offensive submunitions obey the same gate as every other attacking turret.</li>
+        <li>Fog, sensors, and intelligence are untouched. Force material never hides information; terrain remains the only fog occluder. Shield-awareness changes what a turret is willing to <em>attack</em>, never what a player <em>knows</em>.</li>
+      </ul>
       <p>
         Lock-on eligibility is authored as an additive <em>inclusion object</em>. A
         <strong>turret</strong> carries one for its own acquisition, while

@@ -16,16 +16,22 @@ import {
   fireTurrets,
   hasPendingProjectileLaunchVelocityFinalization,
   updateProjectiles,
+  updateShieldState,
   updateTargetingAndFiringState,
   updateTurretRotation,
 } from './combat';
+import { getActiveShields } from './combat/shieldTurret';
 import {
   getProjectileLaunchSpeed,
   isShieldSubmunitionTurret,
   resolveWeaponEmissionSocket,
   resolveWeaponWorldMount,
 } from './combat/combatUtils';
-import { turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
+import {
+  SIGHT_DROP_GRACE_TICKS,
+  turretIgnoresForceMaterialSightObstruction,
+} from './combat/lineOfSight';
+import { buildFreeForAllRoster } from './teamRoster';
 import { resetProjectileBuffers } from './combat/projectileSystem';
 import {
   readTurretCooldownForFire,
@@ -33,6 +39,7 @@ import {
 import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
+  stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
 import { isAttackEmitter, isPassiveShieldFieldConfig } from './emitterKinds';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
@@ -972,6 +979,126 @@ function assertSeaTurtleTargetMediumEligibility(
   resetTurretHostIntegrationState();
 }
 
+/** SHIELD-AWARE targeting is an earned per-player upgrade (see
+ *  budget_design_philosophy.html, "Shield-aware targeting is an earned,
+ *  per-player upgrade"). This contract encodes the whole behavioral
+ *  arc for an AUTONOMOUS mount:
+ *    1. NAIVE (no tech building): the mortar — which authors
+ *       requiresNonObstructedLineOfSight OFF, proving the shield gate
+ *       is independent of the terrain-LOS flag — locks an enemy
+ *       straight through its shield dome.
+ *    2. Completing a Shield-Aware Targeting Tech building flips the
+ *       owner's mask bit; the existing shield-blocked lock drops
+ *       within the shared sight-drop grace instead of parking in a
+ *       locked-not-firing state.
+ *    3. While the field holds, the blocked enemy is never re-acquired;
+ *       when a hittable enemy appears, acquisition chooses it.
+ *    4. Losing the last tech building revokes the upgrade the same
+ *       tick (derived state, no stored flag). */
+function assertShieldAwareTargetingUpgradeContract(): void {
+  resetTurretHostIntegrationState();
+  const world = createIsolatedTestWorld(9241, 2048, 2048);
+  world.playerCount = 2;
+  world.setTeamRoster(buildFreeForAllRoster([1 as PlayerId, 2 as PlayerId]));
+
+  const attacker = world.createUnitFromBlueprint(300, 300, 1 as PlayerId, TEST_UNIT_BLUEPRINT_ID);
+  // The Widow's shieldSphere (range 700, outerRatio 0.8) raises a dome of
+  // roughly 560 world units: the attacker at distance 1000 sits outside
+  // the field while its mortar (range 2000) can reach the body inside.
+  const shieldedEnemy = world.createUnitFromBlueprint(1300, 300, 2 as PlayerId, 'unitWidow');
+  world.addEntity(attacker);
+  world.addEntity(shieldedEnemy);
+  spatialGrid.updateUnit(attacker);
+  spatialGrid.updateUnit(shieldedEnemy);
+  const { turretIndex } = getFirstAttackTurret(attacker);
+  const dtMs = 50;
+  const fsm = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 as EntityId };
+
+  // One combat tick in the SimulationCombatController's stamping order.
+  const tickCombat = (): void => {
+    world.incrementTick();
+    updateShieldState(world, dtMs);
+    stampShieldSurfacePool(world);
+    stampCombatTargetingPool(world);
+    updateTargetingAndFiringState(world, dtMs);
+  };
+
+  // Raise the dome before any targeting runs (500 ms transition ramp).
+  for (let i = 0; i < 24; i++) updateShieldState(world, dtMs);
+  assertContract(
+    getActiveShields().length > 0,
+    'Widow must hold an active shield field before the targeting phases run',
+  );
+
+  // Phase 1 — NAIVE: no tech building, mask empty, gate skipped.
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 0,
+    'a player with no completed targeting tech building must carry no mask bit',
+  );
+  let lockedThroughShield = false;
+  for (let i = 0; i < 40 && !lockedThroughShield; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(attacker, turretIndex, fsm);
+    lockedThroughShield = fsm.targetId === shieldedEnemy.id;
+  }
+  assertContract(
+    lockedThroughShield,
+    'a NAIVE attacker must lock the enemy straight through its shield dome',
+  );
+
+  // Phase 2 — the upgrade arrives: one completed tech building.
+  const techBuilding = world.createBuilding(600, 1600, 60, 60, 120, 1 as PlayerId);
+  techBuilding.buildingBlueprintId = 'buildingShieldTargetingTech';
+  world.addEntity(techBuilding);
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 1,
+    'a completed targeting tech building must set the owner\'s mask bit the same tick',
+  );
+  let dropped = false;
+  for (let i = 0; i < SIGHT_DROP_GRACE_TICKS + 4 && !dropped; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(attacker, turretIndex, fsm);
+    dropped = fsm.targetId !== shieldedEnemy.id;
+  }
+  assertContract(
+    dropped,
+    'a shield-aware attacker must drop a shield-blocked autonomous lock within the sight-drop grace',
+  );
+
+  // Phase 3a — while the field holds, the blocked enemy stays untargeted.
+  for (let i = 0; i < 24; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(attacker, turretIndex, fsm);
+    assertContract(
+      fsm.targetId !== shieldedEnemy.id,
+      'a shield-aware attacker must not re-acquire a shield-blocked enemy',
+    );
+  }
+
+  // Phase 3b — a hittable enemy appears; acquisition must choose it.
+  const openEnemy = world.createUnitFromBlueprint(300, 1100, 2 as PlayerId, 'unitJackal');
+  world.addEntity(openEnemy);
+  spatialGrid.updateUnit(openEnemy);
+  let lockedOpenEnemy = false;
+  for (let i = 0; i < 40 && !lockedOpenEnemy; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(attacker, turretIndex, fsm);
+    lockedOpenEnemy = fsm.targetId === openEnemy.id;
+  }
+  assertContract(
+    lockedOpenEnemy,
+    'a shield-aware attacker must reacquire the unshielded enemy instead of parking',
+  );
+
+  // Phase 4 — losing the last tech building revokes the upgrade.
+  world.removeEntity(techBuilding.id);
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 0,
+    'destroying the last targeting tech building must clear the mask the same tick',
+  );
+  resetTurretHostIntegrationState();
+}
+
 export function runOrcaTargetingContractTest(): void {
   assertOrcaTargetsEnemyOrca(true);
   assertOrcaTargetsEnemyOrca(false);
@@ -1097,6 +1224,7 @@ export function runTurretHostIntegrationContractTest(): void {
     assertSlowRocketDropsLockAfterLosingTarget();
     assertBeamUsesSharedSnappyTurretAim();
     assertLorisReflectorRemainsAutonomousFromHostTask();
+    assertShieldAwareTargetingUpgradeContract();
   } finally {
     resetTurretHostIntegrationState();
   }
