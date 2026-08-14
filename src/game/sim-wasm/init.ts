@@ -2679,6 +2679,7 @@ export interface CombatTargetingApi {
     localMountZ: number,
     worldPosTick: number,
     configFlags: number,
+    targetRescorePeriodTicks: number,
     dps: number,
     projectileSpeed: number,
     projectileMass: number,
@@ -2852,6 +2853,7 @@ export interface CombatTargetingApi {
    *  needs a batched enemy query. */
   readonly prepareAutoScan: (
     entitySlot: number,
+    currentTick: number,
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
     cachedFireRanks: Uint8Array,
@@ -3044,6 +3046,7 @@ export interface CombatTargetingApi {
   readonly existingLockAndAutoScanTick: (
     entitySlot: number,
     sourceEntityId: number,
+    currentTick: number,
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
     shieldObstructionActive: number,
@@ -3108,6 +3111,7 @@ export interface CombatTargetingApi {
   readonly autoModeSpatialCandidateTickBatch: (
     entitySlots: Uint32Array,
     sourceEntityIds: Int32Array,
+    currentTick: number,
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
     shieldObstructionActive: number,
@@ -3129,6 +3133,7 @@ export interface CombatTargetingApi {
   readonly tickBatch: (
     entitySlots: Uint32Array,
     sourceEntityIds: Int32Array,
+    currentTick: number,
     modes: Uint8Array,
     priorityTargetIds: Int32Array,
     priorityPointX: Float64Array,
@@ -3158,7 +3163,9 @@ export interface CombatTargetingApi {
     dtMs: number,
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
-    shieldObstructionActive: number,
+    /** Per-player shield-aware targeting upgrade bits
+     *  (`combat_targeting_player_bit` convention: bit `playerId - 1`). */
+    shieldObstructionPlayerMask: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -3500,8 +3507,10 @@ export interface SnapshotEncodeApi {
     turretShieldSpheresEnabled: number,
     hasForceFieldsVisible: number,
     forceFieldsVisible: number,
-    hasShieldsObstructSight: number,
-    shieldsObstructSight: number,
+    hasShieldAwareTargetingPlayerMask: number,
+    shieldAwareTargetingPlayerMask: number,
+    hasShieldTechPlayerMask: number,
+    shieldTechPlayerMask: number,
     hasShieldReflectionMode: number,
     shieldReflectionModeSlot: number,
     hasFogOfWarEnabled: number,

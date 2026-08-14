@@ -91,7 +91,8 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       maxTotalUnits: world.maxTotalUnits,
       turretShieldPanelsEnabled: world.turretShieldPanelsEnabled,
       turretShieldSpheresEnabled: world.turretShieldSpheresEnabled,
-      shieldsObstructSight: world.shieldsObstructSight,
+      // Shield-aware targeting is derived per player from building
+      // ownership; the buildings themselves are already hashed.
       shieldReflectionMode: world.shieldReflectionMode,
       fogOfWarEnabled: world.fogOfWarEnabled,
       slowDownAtFinalWaypoint: world.slowDownAtFinalWaypoint,

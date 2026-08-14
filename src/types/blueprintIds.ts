@@ -16,6 +16,7 @@ export const BUILDING_BLUEPRINT_IDS = [
   'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor',
   'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
   'towerAntiAir', 'buildingExtractorT2', 'buildingSonar', 'towerTorpedo',
+  'buildingShieldTargetingTech', 'buildingShieldTech',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
@@ -127,6 +128,8 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretSensorUnitHuman',
   'turretGatlingHeavy',
   'turretSensorUnitRex',
+  'turretSensorBuildingShieldTargetingTech',
+  'turretSensorBuildingShieldTech',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

@@ -937,5 +937,141 @@
         "sonarStealth": false
       }
     }
+  },
+  "buildingShieldTargetingTech": {
+    "buildingBlueprintId": "buildingShieldTargetingTech",
+    "name": "Shield-Aware Targeting Tech",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 6,
+    "hp": 700,
+    "cost": {
+      "energy": 1100,
+      "metal": 700
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingShieldTargetingTech",
+    "visualHeight": 150,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 40,
+      "width": 40,
+      "height": 40
+    },
+    "placementType": "ground",
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingShieldTargetingTech",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 1100,
+        "metal": 700
+      },
+      "mass": 900,
+      "health": 700,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 30000,
+        "damage": 250
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "buildingShieldTech": {
+    "buildingBlueprintId": "buildingShieldTech",
+    "name": "Shield Tech",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
+    "gridDepth": 5,
+    "hp": 800,
+    "cost": {
+      "energy": 900,
+      "metal": 900
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingShieldTech",
+    "visualHeight": 120,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 36,
+      "width": 44,
+      "height": 44
+    },
+    "placementType": "ground",
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingShieldTech",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 900,
+        "metal": 900
+      },
+      "mass": 1000,
+      "health": 800,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 30000,
+        "damage": 250
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
   }
 }

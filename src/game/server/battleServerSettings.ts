@@ -2,7 +2,6 @@ import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredConverterTax,
   loadStoredShieldReflectionMode,
-  loadStoredShieldsObstructSight,
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredSlowDownAtFinalWaypoint,
@@ -74,11 +73,6 @@ export function buildStoredBattleServerSettingCommands(
       type: 'setTurretShieldSpheresEnabled',
       tick: 0,
       enabled: loadStoredTurretShieldSpheresEnabled(mode),
-    },
-    {
-      type: 'setShieldsObstructSight',
-      tick: 0,
-      enabled: loadStoredShieldsObstructSight(mode),
     },
     {
       type: 'setShieldReflectionMode',

@@ -4143,8 +4143,10 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     turret_shield_spheres_enabled: u8,
     has_force_fields_visible: u8,
     force_fields_visible: u8,
-    has_shields_obstruct_sight: u8,
-    shields_obstruct_sight: u8,
+    has_shield_aware_targeting_player_mask: u8,
+    shield_aware_targeting_player_mask: u32,
+    has_shield_tech_player_mask: u8,
+    shield_tech_player_mask: u32,
     has_shield_reflection_mode: u8,
     shield_reflection_mode_slot: u32,
     has_fog_of_war_enabled: u8,
@@ -4170,7 +4172,10 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     if has_force_fields_visible != 0 {
         field_count += 1;
     }
-    if has_shields_obstruct_sight != 0 {
+    if has_shield_aware_targeting_player_mask != 0 {
+        field_count += 1;
+    }
+    if has_shield_tech_player_mask != 0 {
         field_count += 1;
     }
     if has_shield_reflection_mode != 0 {
@@ -4249,9 +4254,13 @@ pub fn snapshot_encode_envelope_emit_server_meta(
         w.write_str("forceFieldsVisible");
         w.write_bool(force_fields_visible != 0);
     }
-    if has_shields_obstruct_sight != 0 {
-        w.write_str("shieldsObstructSight");
-        w.write_bool(shields_obstruct_sight != 0);
+    if has_shield_aware_targeting_player_mask != 0 {
+        w.write_str("shieldAwareTargetingPlayerMask");
+        w.write_uint(shield_aware_targeting_player_mask as u64);
+    }
+    if has_shield_tech_player_mask != 0 {
+        w.write_str("shieldTechPlayerMask");
+        w.write_uint(shield_tech_player_mask as u64);
     }
     if has_shield_reflection_mode != 0 {
         w.write_str("shieldReflectionMode");
@@ -8771,6 +8780,7 @@ mod lock_on_inclusion_tests {
         state: u8,
         target_id: i32,
         flags: u32,
+        target_rescore_period_ticks: u16,
         dps: f32,
         blueprint_code: u8,
         relationship_mask: u8,
@@ -8789,6 +8799,7 @@ mod lock_on_inclusion_tests {
                 state: CT_TURRET_STATE_IDLE,
                 target_id: -1,
                 flags: CT_TURRET_CFG_HOST_CONTROLLED,
+                target_rescore_period_ticks: 0,
                 dps: 10.0,
                 blueprint_code: TURRET_CODE_A,
                 relationship_mask: REL_ALL,
@@ -9269,6 +9280,7 @@ mod lock_on_inclusion_tests {
             0.0,
             -1,
             fixture_flags,
+            spec.target_rescore_period_ticks,
             spec.dps,
             0.0,
             0.0,
@@ -9304,7 +9316,10 @@ mod lock_on_inclusion_tests {
         1_000_000 + parent_id.max(0) * 16 + turret_idx as i32
     }
 
-    pub(crate) fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
+    pub(crate) fn run_schedule_tick_at(
+        turret_shield_panels_enabled: u8,
+        current_tick: i32,
+    ) -> (i32, u8, u8) {
         combat_targeting_rebuild_observation_masks();
         let source_slots = [SOURCE_SLOT];
         let mut cached_fire_ranks = [0u8; MAX];
@@ -9314,7 +9329,7 @@ mod lock_on_inclusion_tests {
         let mut out_has_active_work = [0u8; 1];
         combat_targeting_schedule_and_tick_batch(
             &source_slots,
-            10,
+            current_tick,
             16.0,
             turret_shield_panels_enabled,
             1,
@@ -9338,6 +9353,10 @@ mod lock_on_inclusion_tests {
             pool.turret_state[idx],
             out_modes[0],
         )
+    }
+
+    pub(crate) fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
+        run_schedule_tick_at(turret_shield_panels_enabled, 10)
     }
 
     pub(crate) fn read_turret_lock(turret_idx: u32) -> (i32, u8) {
@@ -10500,6 +10519,85 @@ mod lock_on_inclusion_tests {
             "a leading sensor mount must not steal the Loris panel's threat lock",
         );
         assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    pub(crate) fn mirror_periodically_retargets_to_a_stronger_reciprocal_threat() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
+                target_rescore_period_ticks: 16,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], SOURCE_ID);
+        stamp_turret_target_with_target_id(2, 202, PLAYER_2, 30.0, &[TURRET_CODE_A], SOURCE_ID);
+        {
+            let pool = combat_targeting_pool();
+            pool.turret_dps[combat_targeting_turret_global_idx(1, 0)] = 10.0;
+            pool.turret_dps[combat_targeting_turret_global_idx(2, 0)] = 40.0;
+        }
+
+        // SOURCE_ID 100 has phase 4 on a 16-tick cadence.
+        let before_refresh = run_schedule_tick_at(1, 3);
+        assert_eq!(
+            before_refresh.0, 201,
+            "a still-valid lock must remain stable between profile refreshes",
+        );
+        let on_refresh = run_schedule_tick_at(1, 4);
+        assert_eq!(
+            on_refresh.0, 202,
+            "the reflector must switch to the highest-DPS valid turret threatening it",
+        );
+        assert_eq!(on_refresh.1, CT_TURRET_STATE_ENGAGED);
+    }
+
+    #[test]
+    pub(crate) fn mirror_refresh_holds_equal_power_and_ignores_excluded_turrets() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
+                target_rescore_period_ticks: 16,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                turret_mask: 1u32 << TURRET_CODE_A,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 40.0, &[TURRET_CODE_A], SOURCE_ID);
+        stamp_turret_target_with_target_id(2, 202, PLAYER_2, 20.0, &[TURRET_CODE_A], SOURCE_ID);
+        stamp_turret_target_with_target_id(3, 203, PLAYER_2, 10.0, &[TURRET_CODE_B], SOURCE_ID);
+        {
+            let pool = combat_targeting_pool();
+            pool.turret_dps[combat_targeting_turret_global_idx(1, 0)] = 20.0;
+            pool.turret_dps[combat_targeting_turret_global_idx(2, 0)] = 20.0;
+            pool.turret_dps[combat_targeting_turret_global_idx(3, 0)] = 100.0;
+        }
+
+        let on_refresh = run_schedule_tick_at(1, 4);
+        assert_eq!(
+            on_refresh.0, 201,
+            "equal-DPS valid threats must not churn the lock, and excluded turret blueprints must remain ineligible",
+        );
+        assert_eq!(on_refresh.1, CT_TURRET_STATE_ENGAGED);
     }
 
     #[test]

@@ -713,7 +713,7 @@ export type NetworkServerSnapshotBeamPoint = {
 
 export type NetworkServerSnapshotBeamUpdate = {
   id: number;
-  /** Polyline vertices (≥ 2). Index 0 = selected QueryWeapon muzzle, last = end
+  /** Polyline vertices (≥ 2). Index 0 = selected QueryWeapon origin, last = end
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own position and velocity from the authoritative every-tick beam trace. */
   points: NetworkServerSnapshotBeamPoint[];
@@ -741,7 +741,12 @@ export type NetworkServerSnapshotMeta = {
   turretShieldPanelsEnabled: boolean | undefined;
   turretShieldSpheresEnabled: boolean | undefined;
   forceFieldsVisible: boolean | undefined;
-  shieldsObstructSight: boolean | undefined;
+  /** Per-player upgrade bits (bit `playerId - 1`): shield-aware
+   *  targeting from a completed Shield-Aware Targeting Tech building. */
+  shieldAwareTargetingPlayerMask: number | undefined;
+  /** Per-player unlock bits (bit `playerId - 1`): shield production
+   *  from a completed Shield Tech building. */
+  shieldTechPlayerMask: number | undefined;
   shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   /** Tax (fraction in [0, 1)) applied to each resource converter's

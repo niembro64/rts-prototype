@@ -8,7 +8,6 @@
 // sight obstruction is a separate targeting gate.
 
 import { LAND_CELL_SIZE } from '../../../config';
-import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
 import type { Turret } from '../../../types/sim';
 import { maxUnitCollisionRadius } from '../blueprints/buildings';
@@ -53,85 +52,16 @@ export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): bool
   return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === null;
 }
 
-type ShieldClearanceOptions = {
-  /** Number of shields a turret may "see through." 0 = any
-   *  intervening field blocks lock-on (default). Future targeting
-   *  brain upgrades raise this per-player to pierce N shields. */
-  maxCrossings: number | undefined;
-};
-
-/** AIM-08.2 — Sentinel passed to the Rust kernel so no shield owner is
- *  excluded. -1 cannot collide with a real entityId because entity ids
- *  are non-negative. */
-const NO_EXCLUDED_OWNER = -1;
-
-/** True if no active shield sphere stands between the segment's
- *  endpoints. Shields are physical, team-agnostic barriers — the
- *  same rule applies to every turret in either direction. A field is
- *  "in the way" when the line from source to target crosses its
- *  boundary at any point strictly inside the segment.
- *
- *  Use this for straight visibility checks against shield spheres.
- *  The targeting gate kernels in Rust layer shield-panel clearance
- *  on top via the shield-panel slab for shield-aware targeting.
- *
- *  Implementation: dispatches to the Rust `shield_clearance_segment`
- *  kernel, which reads the FF pool slab stamped each tick by
- *  stampShieldPool. Endpoint grazes (within SHIELD_GRAZE_EPS)
- *  don't count, matching the projectile-collision behaviour so lock-on
- *  agrees with what the simulator will actually let through. */
-/** Which shield shapes a clearance query considers. Materials Are
- *  Independent Of Shape: spheres and flat panels are one material, so a
- *  single query answers both — the flags only exist so a caller can
- *  restrict to shapes currently enabled by battle-bar toggles. */
-type ShieldShapeMask = {
-  includeSpheres: boolean;
-  includePanels: boolean;
-};
-
-function hasShieldClearance(
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-  shapes: ShieldShapeMask,
-  options: ShieldClearanceOptions = { maxCrossings: undefined },
-): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return true;
-  const maxCrossings = options.maxCrossings ?? 0;
-  return (
-    sim.shieldSurfacePool.clearanceSegment(
-      sx, sy, sz,
-      tx, ty, tz,
-      NO_EXCLUDED_OWNER,
-      maxCrossings,
-      shapes.includeSpheres ? 1 : 0,
-      shapes.includePanels ? 1 : 0,
-    ) === 1
-  );
-}
-
 /** Fog/entity-visibility sightline policy. This intentionally does not
  *  use hasCombatLineOfSight because ordinary unit/building bodies do
- *  not hide fog-of-war information. Shape-independent force material
- *  does: when shield-aware targeting is active, shield spheres and
- *  mirror panels block the same visibility ray after terrain has
- *  cleared. */
+ *  not hide fog-of-war information, and force material no longer does
+ *  either: shield-aware behaviour is a per-player TARGETING upgrade
+ *  (see WorldState.playerHasShieldAwareTargeting), not a vision rule.
+ *  Terrain is the only fog occluder. */
 export function hasFogOfWarLineOfSight(
   world: WorldState,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
 ): boolean {
-  if (!hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz)) return false;
-  if (!world.shieldsObstructSight) return true;
-  // One material, two shapes: a single clearance query answers both the
-  // sphere and the flat-panel surface, each gated by its battle-bar toggle.
-  if (
-    !hasShieldClearance(sx, sy, sz, tx, ty, tz, {
-      includeSpheres: world.turretShieldSpheresEnabled,
-      includePanels: world.turretShieldPanelsEnabled,
-    })
-  ) {
-    return false;
-  }
-  return true;
+  return hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz);
 }

@@ -411,6 +411,10 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_blueprint_code: Vec<u8>,
     pub(crate) turret_los_blocked_ticks: Vec<u16>,
     pub(crate) turret_config_flags: Vec<u32>,
+    // Optional deterministic cadence for a specialist profile to compare a
+    // still-valid current target against newly eligible candidates. Zero
+    // means ordinary sticky targeting with no periodic rescore.
+    pub(crate) turret_target_rescore_period_ticks: Vec<u16>,
     // LOCK-ON-03 — Per-turret lock-on inclusion masks compiled from
     // each turret blueprint's authored inclusion arrays. Lock-on is off
     // by default: an empty level-0 mask includes nothing.
@@ -582,6 +586,7 @@ impl CombatTargetingPool {
             turret_blueprint_code: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_config_flags: Vec::new(),
+            turret_target_rescore_period_ticks: Vec::new(),
             turret_lockon_relationship_mask: Vec::new(),
             turret_lockon_entity_family_mask: Vec::new(),
             turret_lockon_building_mask: Vec::new(),
@@ -752,6 +757,8 @@ impl CombatTargetingPool {
                 .resize(turret_needed, CT_BLUEPRINT_CODE_NONE);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
             self.turret_config_flags.resize(turret_needed, 0);
+            self.turret_target_rescore_period_ticks
+                .resize(turret_needed, 0);
             self.turret_lockon_relationship_mask
                 .resize(turret_needed, 0);
             self.turret_lockon_entity_family_mask
@@ -809,6 +816,7 @@ impl CombatTargetingPool {
                 self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
                 self.turret_committed_target_id[idx] = -1;
                 self.turret_lockon_reciprocal_mode[idx] = CT_LOCK_ON_RECIPROCAL_IGNORE;
+                self.turret_target_rescore_period_ticks[idx] = 0;
                 self.turret_ballistic_has_solution[idx] = 0;
             }
         }
@@ -860,6 +868,7 @@ impl CombatTargetingPool {
             self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
             self.turret_committed_target_id[idx] = -1;
             self.turret_lockon_reciprocal_mode[idx] = CT_LOCK_ON_RECIPROCAL_IGNORE;
+            self.turret_target_rescore_period_ticks[idx] = 0;
         }
     }
 }
@@ -1305,6 +1314,7 @@ pub fn combat_targeting_set_turret(
     local_mount_z: f64,
     world_pos_tick: i32,
     config_flags: u32,
+    target_rescore_period_ticks: u16,
     dps: f32,
     projectile_speed: f64,
     projectile_mass: f64,
@@ -1383,6 +1393,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_local_mount_z[global_idx] = local_mount_z;
     pool.turret_world_pos_tick[global_idx] = world_pos_tick;
     pool.turret_config_flags[global_idx] = config_flags;
+    pool.turret_target_rescore_period_ticks[global_idx] = target_rescore_period_ticks;
     pool.turret_dps[global_idx] = dps;
     pool.turret_projectile_speed[global_idx] = projectile_speed;
     pool.turret_projectile_mass[global_idx] = projectile_mass;
@@ -5025,9 +5036,27 @@ pub(crate) fn combat_targeting_decrement_entity_cooldowns(
 ///   - the maximum mount offset used to widen that query,
 ///   - and the per-turret current-fire rank cache for min-range
 ///     fallback promotion.
+/// Specialist turrets with a nonzero `target_rescore_period_ticks` also
+/// request a query on their entity-id-staggered cadence while engaged, so
+/// they can compare a still-valid lock with newly eligible candidates.
+#[inline]
+pub(crate) fn combat_targeting_periodic_rescore_due(
+    pool: &CombatTargetingPool,
+    entity_idx: usize,
+    turret_idx: usize,
+    current_tick: i32,
+) -> bool {
+    let period = pool.turret_target_rescore_period_ticks[turret_idx] as i32;
+    period > 0
+        && current_tick >= 0
+        && pool.entity_id[entity_idx] >= 0
+        && current_tick.rem_euclid(period) == pool.entity_id[entity_idx].rem_euclid(period)
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_prepare_auto_scan(
     entity_slot: u32,
+    current_tick: i32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     cached_fire_ranks: &mut [u8],
@@ -5096,8 +5125,10 @@ pub fn combat_targeting_prepare_auto_scan(
         }
 
         let mut cached_rank = CT_TARGET_RANK_NONE;
+        let periodic_rescore_due =
+            combat_targeting_periodic_rescore_due(pool, entity_idx, idx, current_tick);
         if pool.turret_state[idx] == CT_TURRET_STATE_ENGAGED
-            && pool.turret_fire_min_release_sq[idx] > 0.0
+            && (pool.turret_fire_min_release_sq[idx] > 0.0 || periodic_rescore_due)
         {
             let (rank, dist_sq) = combat_targeting_current_fire_target_rank_sq(pool, idx);
             cached_rank = rank;
@@ -5117,6 +5148,7 @@ pub fn combat_targeting_prepare_auto_scan(
             || pool.turret_state[idx] == CT_TURRET_STATE_TRACKING
             || cached_rank == CT_TARGET_RANK_FIRE_FALLBACK
             || prefer_non_threat_current_target
+            || periodic_rescore_due
         {
             needs_any_query = true;
         }
@@ -5244,9 +5276,12 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
                 source_entity_id,
                 idx,
             );
+        let periodic_rescore =
+            pool.turret_target_rescore_period_ticks[idx] > 0 && cached_rank != CT_TARGET_RANK_NONE;
         if pool.turret_state[idx] != CT_TURRET_STATE_TRACKING
             && cached_rank != CT_TARGET_RANK_FIRE_FALLBACK
             && !prefer_non_threat_current_target
+            && !periodic_rescore
         {
             continue;
         }
@@ -5495,6 +5530,7 @@ fn combat_targeting_apply_slaved_mount_targets(
 pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     entity_slot: u32,
     source_entity_id: i32,
+    current_tick: i32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
@@ -5525,6 +5561,7 @@ pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     );
     combat_targeting_prepare_auto_scan(
         entity_slot,
+        current_tick,
         turret_shield_panels_enabled,
         turret_shield_spheres_enabled,
         cached_fire_ranks,
@@ -6150,6 +6187,7 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
 pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
     entity_slots: &[u32],
     source_entity_ids: &[i32],
+    current_tick: i32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
@@ -6182,6 +6220,7 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
         let needs_spatial_query = combat_targeting_existing_lock_and_auto_scan_tick(
             entity_slots[entity_i],
             source_entity_ids[entity_i],
+            current_tick,
             turret_shield_panels_enabled,
             turret_shield_spheres_enabled,
             shield_obstruction_active,
@@ -6219,6 +6258,7 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
 pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
     entity_slot: u32,
     source_entity_id: i32,
+    current_tick: i32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
@@ -6248,6 +6288,7 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
     combat_targeting_auto_scan_from_slab(
         entity_slot,
         source_entity_id,
+        current_tick,
         turret_shield_panels_enabled,
         turret_shield_spheres_enabled,
         shield_obstruction_active,
@@ -6264,6 +6305,7 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
 pub(crate) fn combat_targeting_auto_scan_from_slab(
     entity_slot: u32,
     source_entity_id: i32,
+    current_tick: i32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
@@ -6277,6 +6319,7 @@ pub(crate) fn combat_targeting_auto_scan_from_slab(
     let mut out_f64 = [0.0f64; 2];
     let needs_spatial_query = combat_targeting_prepare_auto_scan(
         entity_slot,
+        current_tick,
         turret_shield_panels_enabled,
         turret_shield_spheres_enabled,
         cached_fire_ranks,
@@ -6320,6 +6363,7 @@ pub(crate) fn combat_targeting_auto_scan_from_slab(
 pub fn combat_targeting_tick_batch(
     entity_slots: &[u32],
     source_entity_ids: &[i32],
+    current_tick: i32,
     modes: &[u8],
     priority_target_ids: &[i32],
     priority_point_x: &[f64],
@@ -6400,6 +6444,7 @@ pub fn combat_targeting_tick_batch(
                 combat_targeting_auto_mode_tick_from_slab(
                     entity_slot,
                     source_entity_id,
+                    current_tick,
                     turret_shield_panels_enabled,
                     turret_shield_spheres_enabled,
                     shield_obstruction_active,
@@ -6443,6 +6488,12 @@ pub fn combat_targeting_tick_batch(
 /// SKIP-mode entities are intentionally not refreshed because nothing
 /// they could have changed (FSM, rotation, config) was touched this
 /// tick; the previous tick's masks remain authoritative.
+///
+/// `shield_obstruction_player_mask` carries the per-player shield-aware
+/// targeting upgrade (`combat_targeting_player_bit` convention: bit
+/// `player_id - 1`). An entity's turrets reject shield-blocked locks only
+/// while its owner's bit is set; every downstream helper still receives
+/// the resolved per-entity `shield_obstruction_active` scalar.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
     source_slots: &[u32],
@@ -6450,7 +6501,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
     dt_ms: f64,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
-    shield_obstruction_active: u8,
+    shield_obstruction_player_mask: u32,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -6493,6 +6544,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             priority_point_y,
             priority_point_z,
             scheduled_probe_tick,
+            entity_owner_bit,
         ) = {
             let pool = combat_targeting_pool();
             let entity_slot = source_slots[entity_i];
@@ -6511,6 +6563,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
                     0.0,
                     0.0,
                     -1i32,
+                    0u32,
                 )
             } else {
                 let source_entity_id = pool.entity_id[entity_idx];
@@ -6528,6 +6581,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
                         0.0,
                         0.0,
                         -1i32,
+                        0u32,
                     )
                 } else {
                     let flags = pool.entity_flags[entity_idx];
@@ -6554,6 +6608,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
                         pool.entity_priority_point_y[entity_idx],
                         pool.entity_priority_point_z[entity_idx],
                         pool.entity_scheduled_probe_tick[entity_idx],
+                        pool.entity_owner_bit[entity_idx],
                     )
                 }
             }
@@ -6562,6 +6617,17 @@ pub fn combat_targeting_schedule_and_tick_batch(
         if !entity_ready {
             continue;
         }
+
+        // Per-player shield-aware targeting: this entity's turrets treat
+        // force material as sight-obstructing only while its owner holds
+        // the upgrade bit. The rest of the tick consumes the resolved
+        // scalar exactly as the old global flag did.
+        let shield_obstruction_active: u8 =
+            if (shield_obstruction_player_mask & entity_owner_bit) != 0 {
+                1
+            } else {
+                0
+            };
 
         {
             let pool = combat_targeting_pool();
@@ -6610,6 +6676,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_auto_mode_tick_from_slab(
                 entity_slot,
                 source_entity_id,
+                current_tick,
                 turret_shield_panels_enabled,
                 turret_shield_spheres_enabled,
                 shield_obstruction_active,
@@ -6654,6 +6721,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_auto_scan_from_slab(
                 entity_slot,
                 source_entity_id,
+                current_tick,
                 turret_shield_panels_enabled,
                 turret_shield_spheres_enabled,
                 shield_obstruction_active,
@@ -6716,6 +6784,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_auto_mode_tick_from_slab(
                 entity_slot,
                 source_entity_id,
+                current_tick,
                 turret_shield_panels_enabled,
                 turret_shield_spheres_enabled,
                 shield_obstruction_active,
@@ -6749,6 +6818,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
         combat_targeting_auto_mode_tick_from_slab(
             entity_slot,
             source_entity_id,
+            current_tick,
             turret_shield_panels_enabled,
             turret_shield_spheres_enabled,
             shield_obstruction_active,
@@ -6998,6 +7068,18 @@ pub(crate) fn targeting_candidate_beats_seed(
     seed_shield_panel_score: f64,
 ) -> bool {
     if is_passive != 0 {
+        // A live reflector lock is deliberately sticky across equal-power
+        // threats. Initial acquisition still uses range/distance to break
+        // ties (seed score is zero), but a periodic refresh may replace its
+        // seed only with a strictly higher sustained-DPS score. Reciprocal
+        // tier remains the primary ordering for any future preference-style
+        // passive profile.
+        if seed_shield_panel_score > 0.0 {
+            if reciprocal_tier != seed_reciprocal_tier {
+                return reciprocal_tier > seed_reciprocal_tier;
+            }
+            return shield_panel_score > seed_shield_panel_score;
+        }
         targeting_is_better_mirror_candidate(
             reciprocal_tier,
             shield_panel_score,

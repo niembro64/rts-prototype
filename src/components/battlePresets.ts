@@ -25,7 +25,6 @@ export type BattlePreset = {
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
   readonly forceFieldsVisible: boolean;
-  readonly shieldsObstructSight: boolean;
   readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
   /** Apply velocity-aware braking near the last point of the last action. */
@@ -111,7 +110,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -131,7 +129,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -151,7 +148,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 1600,
@@ -171,7 +167,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: -400,
@@ -191,7 +186,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 200,
@@ -211,7 +205,6 @@ function buildPresets(): readonly BattlePreset[] {
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 6400,
@@ -233,7 +226,6 @@ function buildPresets(): readonly BattlePreset[] {
       ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
       liquidSurfaceMode: 'lava',
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -255,7 +247,6 @@ function buildPresets(): readonly BattlePreset[] {
       ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
       liquidSurfaceMode: 'water',
-      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -313,7 +304,6 @@ function presetMatchesCurrent(
     p.cap === c.cap &&
     p.terrainSurfaceMode === c.terrainSurfaceMode &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
-    p.shieldsObstructSight === c.shieldsObstructSight &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
     p.slopePathMode === c.slopePathMode &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&

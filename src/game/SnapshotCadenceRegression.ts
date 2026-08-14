@@ -115,7 +115,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':
     case 'setForceFieldsVisible':
-    case 'setShieldsObstructSight':
     case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':
     case 'setSlowDownAtFinalWaypoint':

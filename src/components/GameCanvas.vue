@@ -1531,7 +1531,8 @@ const {
   currentAllowedBuildings,
   currentAllowedBuildingsSet,
   allDemoBuildingsActive,
-  currentShieldsObstructSight,
+  localPlayerShieldAwareTargeting,
+  localPlayerShieldTechUnlocked,
   currentFogOfWarEnabled,
   currentSlowDownAtFinalWaypoint,
   currentSlopePathMode,
@@ -1543,7 +1544,6 @@ const {
   toggleDemoBuildingBlueprintId,
   toggleAllDemoBuildings,
   changeMaxTotalUnits,
-  setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
@@ -1554,6 +1554,7 @@ const {
   applyPreset,
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
+  localPlayerId,
   currentBattleMode,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
@@ -1783,7 +1784,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   displayUnitCount: displayUnitCount.value,
-  currentShieldsObstructSight: currentShieldsObstructSight.value,
+  localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
   currentSlopePathMode: currentSlopePathMode.value,
@@ -1808,7 +1809,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  setShieldsObstructSight,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
@@ -1842,7 +1842,7 @@ watchEffect(() => {
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.displayUnitCount = displayUnitCount.value;
-  m.currentShieldsObstructSight = currentShieldsObstructSight.value;
+  m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
@@ -1854,7 +1854,6 @@ watchEffect(() => {
     units: currentAllowedUnits.value,
     buildings: currentAllowedBuildings.value,
     cap: displayUnitCap.value,
-    shieldsObstructSight: currentShieldsObstructSight.value,
     slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
     terrainSurfaceMode: currentTerrainSurfaceMode.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
@@ -2411,6 +2410,7 @@ watchEffect(() => {
           :hotkey-preset="commandHotkeyPreset"
           :hotkey-revision="commandHotkeyRevision"
           :playable-bottom-inset-px="playableBottomInsetPx"
+          :shield-tech-unlocked="localPlayerShieldTechUnlocked"
         />
 
         <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->
@@ -2735,7 +2735,6 @@ watchEffect(() => {
       :building-blueprint-ids="demoBuildingBlueprintIds"
       :allowed-buildings="currentAllowedBuildings"
       :unit-cap="displayUnitCap"
-      :shields-obstruct-sight="currentShieldsObstructSight"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
@@ -2764,7 +2763,6 @@ watchEffect(() => {
       @toggle-all-buildings="toggleAllDemoBuildings"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @cycle-player-ally-team="cyclePlayerAllyTeam"
-      @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"

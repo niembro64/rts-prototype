@@ -253,12 +253,11 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>TARGETING:</BarLabel>
-        <BarButton
-          :active="model.currentShieldsObstructSight"
-          title="Shield-aware targeting rejects locks when a straight line-of-sight crosses an active force field"
-          @click="model.setShieldsObstructSight(!model.currentShieldsObstructSight)"
-        >{{ model.currentShieldsObstructSight ? 'SHIELD-AWARE' : 'NAIVE' }}</BarButton>
+        <BarLabel
+          :title="model.localPlayerShieldAwareTargeting
+            ? 'SHIELD-AWARE: your Shield-Aware Targeting Tech building upgrades every one of your entities to reject locks whose line of sight crosses an active force field'
+            : 'NAIVE: your turrets lock straight through force fields. Build a Shield-Aware Targeting Tech building to upgrade all of your entities.'"
+        >TARGETING: {{ model.localPlayerShieldAwareTargeting ? 'SHIELD-AWARE' : 'NAIVE' }}</BarLabel>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

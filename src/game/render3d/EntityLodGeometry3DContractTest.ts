@@ -28,6 +28,7 @@ import {
 } from '../sim/blueprints';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
+  getMultiBarrelFiringOrbitRadius,
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
   getTurretHeadRadius,
@@ -191,6 +192,8 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerCannon: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
+  buildingShieldTargetingTech: { close: 1800, mid: 850, far: 320 },
+  buildingShieldTech: { close: 1500, mid: 800, far: 320 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
@@ -227,10 +230,10 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitQueenTick: { close: 2290, mid: 780, far: 340 },
   unitTransport: { close: 2150, mid: 1050, far: 410 },
   unitCommander: { close: 4200, mid: 1900, far: 700 },
-  // Re-baselined for the authored Tyrannosaur skull/neck and the lower-body
-  // counterbalance tail. Current measured composite is 2168/1128/598; these
-  // ceilings retain roughly 5-9% regression headroom at each rung.
-  unitRex: { close: 2300, mid: 1200, far: 650 },
+  // Rex's unified skull/neck and upper-body cylindrical midsection are included
+  // here. Measured after tail/facial-detail removal at 1708/908/490; each
+  // ceiling retains roughly 5-6% regression headroom.
+  unitRex: { close: 1800, mid: 960, far: 520 },
 };
 
 const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
@@ -1061,6 +1064,69 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
     );
     assertSame(`${turretId} High/Medium functional layout`, builds[0].signature, builds[1].signature);
     assertSame(`${turretId} Medium/Low functional layout`, builds[1].signature, builds[2].signature);
+    const presentedBarrel = presentation.barrel;
+    if (
+      presentedBarrel?.type === 'simpleMultiBarrel' ||
+      presentedBarrel?.type === 'coneMultiBarrel'
+    ) {
+      const turretConfig = getTurretConfig(turretId);
+      const headRadius = getTurretHeadRadius(presentation);
+      const barrelLength = getTurretBarrelCenterToTipLength(presentation);
+      const firingOrbit = getMultiBarrelFiringOrbitRadius(
+        presentedBarrel,
+        headRadius,
+        barrelLength,
+        turretConfig.spread?.angle,
+      );
+      for (const build of builds) {
+        const fixedMuzzle = build.mesh.fixedMultiBarrelMuzzle;
+        const spinGroup = build.mesh.spinGroup;
+        assertContract(
+          fixedMuzzle !== undefined && spinGroup !== undefined,
+          `${mountKey} exposes one fixed multi-barrel firing socket`,
+        );
+        const teamCollar = build.mesh.teamCollar;
+        assertContract(
+          teamCollar !== undefined,
+          `${mountKey} retains its team-coloured barrel collar`,
+        );
+        assertRelativeNear(`${mountKey} lowered spin axis`, spinGroup.position.y, -firingOrbit);
+        assertRelativeNear(
+          `${mountKey} collar follows lowered barrel axis`,
+          teamCollar.centerY,
+          spinGroup.position.y,
+        );
+        assertRelativeNear(
+          `${mountKey} collar stays centered laterally around barrels`,
+          teamCollar.centerZ,
+          spinGroup.position.z,
+        );
+        if (presentedBarrel.barrelCount === 2) {
+          const barrelRadius = getTurretBarrelDiameter(presentation, turretConfig.shot) * 0.5;
+          assertContract(
+            teamCollar.radius > firingOrbit + barrelRadius,
+            `${mountKey} two-barrel collar fully contains both tube envelopes`,
+          );
+        }
+        assertRelativeNear(`${mountKey} centered muzzle x`, fixedMuzzle.x, barrelLength);
+        assertRelativeNear(`${mountKey} centered muzzle y`, fixedMuzzle.y, 0);
+        assertRelativeNear(`${mountKey} centered muzzle z`, fixedMuzzle.z, 0);
+        assertContract(
+          fixedMuzzle.laneCount === turretConfig.emissionLaneCount,
+          `${mountKey} routes every logical lane through the fixed firing socket`,
+        );
+        if (build.mesh.barrels.length === presentedBarrel.barrelCount) {
+          const topBarrel = build.mesh.barrels[0];
+          const topTip = new THREE.Vector3(0, topBarrel.scale.y * 0.5, 0)
+            .applyQuaternion(topBarrel.quaternion)
+            .add(topBarrel.position)
+            .add(spinGroup.position);
+          assertRelativeNear(`${mountKey} top barrel/fixed muzzle x`, topTip.x, fixedMuzzle.x);
+          assertRelativeNear(`${mountKey} top barrel/fixed muzzle y`, topTip.y, fixedMuzzle.y);
+          assertRelativeNear(`${mountKey} top barrel/fixed muzzle z`, topTip.z, fixedMuzzle.z);
+        }
+      }
+    }
     if (turretId === 'turretGatling') {
       assertContract(
         builds.every((build) => build.mesh.spinGroup !== undefined && build.mesh.barrels.length === 5),
@@ -1091,7 +1157,14 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
       const headRadius = getTurretHeadRadius(presentation);
       const barrelDiameter = getTurretBarrelDiameter(presentation, config.shot);
       const centerToTipLength = getTurretBarrelCenterToTipLength(presentation);
+      const pilotBarrel = builds[0].mesh.barrels[0];
+      const pilotBase = new THREE.Vector3(0, -pilotBarrel.scale.y * 0.5, 0)
+        .applyQuaternion(pilotBarrel.quaternion)
+        .add(pilotBarrel.position);
       assertRelativeNear(`${turretId} barrel/beam width`, barrelDiameter, config.shot.width);
+      assertRelativeNear(`${turretId} pilot-light origin x`, pilotBase.x, 0);
+      assertRelativeNear(`${turretId} pilot-light origin y`, pilotBase.y, 0);
+      assertRelativeNear(`${turretId} pilot-light origin z`, pilotBase.z, 0);
       assertContract(
         barrelDiameter <= headRadius * 2,
         `${turretId} barrel base fits within its turret head silhouette`,
@@ -1124,13 +1197,37 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
           TIERS[i],
         );
         builds[i].count = objectTriangleCount(builds[i].mesh.root);
+        const fixedMuzzle = builds[i].mesh.fixedMultiBarrelMuzzle;
+        const spinner = builds[i].mesh.spinGroup;
+        if (fixedMuzzle !== undefined) {
+          assertContract(
+            builds[i].mesh.teamCollar !== undefined,
+            `${mountKey} custom Rex barrels retain their shared team-coloured collar`,
+          );
+        }
+        const topCustomTube = spinner?.children.find(
+          (child) => child.userData.rexMultiBarrelTube === 0,
+        );
+        if (
+          fixedMuzzle !== undefined &&
+          spinner !== undefined &&
+          topCustomTube instanceof THREE.Mesh
+        ) {
+          const customTip = new THREE.Vector3(0, topCustomTube.scale.y * 0.5, 0)
+            .applyQuaternion(topCustomTube.quaternion)
+            .add(topCustomTube.position)
+            .add(spinner.position);
+          assertRelativeNear(`${mountKey} custom top tube/muzzle x`, customTip.x, fixedMuzzle.x);
+          assertRelativeNear(`${mountKey} custom top tube/muzzle y`, customTip.y, fixedMuzzle.y);
+          assertRelativeNear(`${mountKey} custom top tube/muzzle z`, customTip.z, fixedMuzzle.z);
+        }
       }
       if (mount.mountId === 'beamMega') {
         assertContract(
           builds.every((build) => (
             build.mesh.barrelUsesCone === true && build.mesh.barrels.length === 1
           )),
-          `${mountKey} retains the ordinary beam cone as its authoritative mouth muzzle`,
+          `${mountKey} retains the ordinary beam cone as its pilot light`,
         );
         for (const build of builds) {
           const pitch = build.mesh.pitchGroup;
@@ -1142,15 +1239,34 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
             (child) => child.userData.rexThickNeck === true,
           );
           assertContract(neck !== undefined, `${mountKey} presents a yaw-owned thick neck`);
-          const mouth = head.children.find((child) => child.userData.rexBeamMouth === true);
-          assertContract(mouth !== undefined, `${mountKey} publishes a visible mouth marker`);
+          const visibleHeadSolids = head.children.filter(
+            (child) => child instanceof THREE.Mesh && child.visible,
+          );
+          assertContract(
+            visibleHeadSolids.length === 1 &&
+              visibleHeadSolids[0].userData.rexUnifiedCanidHead === true,
+            `${mountKey} head is one unified canid shell with no separate bill or facial pieces`,
+          );
+          const aperture = head.children.find(
+            (child) => child.userData.rexBeamAperture === true,
+          );
+          assertContract(
+            aperture !== undefined,
+            `${mountKey} publishes its non-visual beam-aperture marker`,
+          );
           const barrel = build.mesh.barrels[0];
-          const expectedMouth = new THREE.Vector3(0, barrel.scale.y * 0.5, 0)
+          const expectedAperture = new THREE.Vector3(0, barrel.scale.y * 0.5, 0)
             .applyQuaternion(barrel.quaternion)
             .add(barrel.position);
-          assertRelativeNear(`${mountKey} mouth/muzzle x`, mouth.position.x, expectedMouth.x);
-          assertRelativeNear(`${mountKey} mouth/muzzle y`, mouth.position.y, expectedMouth.y);
-          assertRelativeNear(`${mountKey} mouth/muzzle z`, mouth.position.z, expectedMouth.z);
+          assertRelativeNear(
+            `${mountKey} head/aperture x`, aperture.position.x, expectedAperture.x,
+          );
+          assertRelativeNear(
+            `${mountKey} head/aperture y`, aperture.position.y, expectedAperture.y,
+          );
+          assertRelativeNear(
+            `${mountKey} head/aperture z`, aperture.position.z, expectedAperture.z,
+          );
         }
       } else {
         assertContract(
@@ -1176,23 +1292,40 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
   return countsByMount;
 }
 
-function runRexTailContracts(material: THREE.Material): TierCounts {
+function runRexUpperBodyMidsectionContracts(material: THREE.Material): TierCounts {
   const rexKit = new RexVisualKit3D();
   const counts = TIERS.map((tier) => {
-    const hips = new THREE.Group();
-    const tail = rexKit.decorateTail(hips, material, tier, 110);
-    assertContract(tail.parent === hips, `Rex ${tier} tail belongs to its lower-body hip piece`);
-    const segments = tail.children.filter(
-      (child) => typeof child.userData.rexTailSegment === 'number',
-    );
-    assertContract(segments.length === 3, `Rex ${tier} tail retains its three-part silhouette`);
+    const upperBody = new THREE.Group();
+    const midsection = rexKit.decorateUpperBodyMidsection(upperBody, material, tier, 110);
     assertContract(
-      segments[2].position.x < segments[0].position.x,
-      `Rex ${tier} tail tapers rearward from the pelvis`,
+      midsection.parent === upperBody && midsection.userData.rexUpperBodyMidsection === true,
+      `Rex ${tier} center ring belongs to its independently yawing upper body`,
     );
-    return objectTriangleCount(tail);
+    const belly = midsection.children.find((child) => child.userData.rexBellyCore === true);
+    assertContract(belly !== undefined, `Rex ${tier} upper body retains its center ring`);
+    assertContract(
+      belly instanceof THREE.Mesh && belly.geometry instanceof THREE.CylinderGeometry,
+      `Rex ${tier} midsection is an up-down cylinder`,
+    );
+    assertContract(
+      belly.userData.rexMidsectionAxis === 'vertical' &&
+        belly.rotation.x === 0 && belly.rotation.y === 0 && belly.rotation.z === 0,
+      `Rex ${tier} midsection cylinder remains vertical`,
+    );
+    let hasTail = false;
+    midsection.traverse((child) => {
+      if (
+        child.userData.rexTyrannosaurTail === true ||
+        typeof child.userData.rexTailSegment === 'number'
+      ) hasTail = true;
+    });
+    assertContract(
+      !hasTail,
+      `Rex ${tier} center ring contains no tail geometry`,
+    );
+    return objectTriangleCount(midsection);
   });
-  assertDescending('Rex lower-body tail', counts);
+  assertDescending('Rex upper-body cylindrical midsection', counts);
   rexKit.dispose();
   return { close: counts[0], mid: counts[1], far: counts[2] };
 }
@@ -1203,7 +1336,7 @@ export function runHostTurretPresentationGeometry3DContractTest(): void {
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runTurretContracts(material);
-    runRexTailContracts(material);
+    runRexUpperBodyMidsectionContracts(material);
   } finally {
     material.dispose();
   }
@@ -1249,7 +1382,7 @@ function runUnitCompositeContracts(
   locomotionCounts: ReadonlyMap<UnitBlueprintId, TierCounts>,
   turretCounts: ReadonlyMap<string, TierCounts>,
   shieldPanelCounts: TierCounts,
-  rexTailCounts: TierCounts,
+  rexUpperBodyMidsectionCounts: TierCounts,
 ): void {
   const violations: string[] = [];
   for (const unitId of UNIT_BLUEPRINT_IDS) {
@@ -1266,7 +1399,7 @@ function runUnitCompositeContracts(
         count += turret[tier];
       }
       if (unitId === 'unitLoris') count += shieldPanelCounts[tier];
-      if (unitId === 'unitRex') count += rexTailCounts[tier];
+      if (unitId === 'unitRex') count += rexUpperBodyMidsectionCounts[tier];
       return count;
     });
     assertDescending(`${unitId} full composite`, composite);
@@ -2012,7 +2145,7 @@ export function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 12, 'visual roster covers all 12 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 14, 'visual roster covers all 14 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();
@@ -2022,13 +2155,13 @@ export function runEntityLodGeometry3DContractTest(): void {
     const locomotionCounts = runLocomotionContracts();
     const turretCounts = runTurretContracts(material);
     const shieldPanelCounts = runShieldPanelContract(material);
-    const rexTailCounts = runRexTailContracts(material);
+    const rexUpperBodyMidsectionCounts = runRexUpperBodyMidsectionContracts(material);
     runUnitCompositeContracts(
       bodyCounts,
       locomotionCounts,
       turretCounts,
       shieldPanelCounts,
-      rexTailCounts,
+      rexUpperBodyMidsectionCounts,
     );
     runStructureContracts(material, turretCounts);
     runVisualStateTransferContracts(material);

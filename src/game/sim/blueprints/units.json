@@ -1500,23 +1500,6 @@
       "parts": [
         {
           "kind": "box",
-          "offsetForward": 0.03,
-          "lengthFrac": 0.78,
-          "widthFrac": 0.86,
-          "heightFrac": 0.72,
-          "centerYFrac": 2.1
-        },
-        {
-          "kind": "box",
-          "offsetForward": 0.42,
-          "lengthFrac": 0.2,
-          "widthFrac": 0.7,
-          "heightFrac": 0.5,
-          "centerYFrac": 2.16,
-          "pitchRad": -0.16
-        },
-        {
-          "kind": "box",
           "offsetForward": -0.04,
           "lengthFrac": 0.66,
           "widthFrac": 1.42,
@@ -1536,8 +1519,8 @@
           "offsetForward": -0.46,
           "lengthFrac": 0.34,
           "widthFrac": 0.94,
-          "heightFrac": 0.78,
-          "centerYFrac": 2.24
+          "heightFrac": 0.42,
+          "centerYFrac": 2.45
         },
         {
           "kind": "box",
@@ -1545,8 +1528,8 @@
           "offsetLateral": -0.32,
           "lengthFrac": 0.12,
           "widthFrac": 0.14,
-          "heightFrac": 0.52,
-          "centerYFrac": 2.26
+          "heightFrac": 0.3,
+          "centerYFrac": 2.47
         },
         {
           "kind": "box",
@@ -1554,8 +1537,8 @@
           "offsetLateral": 0.32,
           "lengthFrac": 0.12,
           "widthFrac": 0.14,
-          "heightFrac": 0.52,
-          "centerYFrac": 2.26
+          "heightFrac": 0.3,
+          "centerYFrac": 2.47
         },
         {
           "kind": "box",
@@ -3433,7 +3416,9 @@
       "towerFabricator",
       "towerCannon",
       "towerBeamMega",
-      "towerAntiAir"
+      "towerAntiAir",
+      "buildingShieldTargetingTech",
+      "buildingShieldTech"
     ],
     "workEmitter": {
       "points": [
@@ -4774,7 +4759,9 @@
       "buildingResourceConverter",
       "towerFabricator",
       "towerCannon",
-      "towerAntiAir"
+      "towerAntiAir",
+      "buildingShieldTargetingTech",
+      "buildingShieldTech"
     ],
     "workEmitter": {
       "points": [
@@ -4865,7 +4852,7 @@
         "emissionSockets": [
           {
             "offset": {
-              "x": 17.16,
+              "x": 0,
               "y": 0,
               "z": 0
             }

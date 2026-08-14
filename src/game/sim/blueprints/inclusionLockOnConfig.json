@@ -149,6 +149,7 @@
       "candidateRelationship": "enemy_entities",
       "candidateFamily": "turrets",
       "rankBy": "threat_turret_sustained_dps",
+      "rescorePeriodTicks": 16,
       "aim": "bisect_threat_turret_origin_and_threat_host_origin",
       "intent": "Reflect incoming enemy turret fire back toward the enemy turret's host."
     }
@@ -759,6 +760,12 @@
     },
     "turretSensorBuildingAntiAir": {
       "targets": "none"
+    },
+    "turretSensorBuildingShieldTargetingTech": {
+      "targets": "none"
+    },
+    "turretSensorBuildingShieldTech": {
+      "targets": "none"
     }
   },
   "buildings": {
@@ -836,6 +843,12 @@
           "units": "all"
         }
       }
+    },
+    "buildingShieldTargetingTech": {
+      "targets": "none"
+    },
+    "buildingShieldTech": {
+      "targets": "none"
     }
   }
 }

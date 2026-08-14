@@ -124,6 +124,14 @@ export const DEMO_CONFIG = {
   /** Number of resource converters per player on the converter arc. */
   buildingResourceConverterCount: demoConfig.buildingResourceConverterCount,
 
+  /** Number of Shield-Aware Targeting Tech spires per player — grants the
+   *  seat the shield-aware targeting upgrade from the opening layout. */
+  buildingShieldTargetingTechCount: demoConfig.buildingShieldTargetingTechCount,
+
+  /** Number of Shield Tech forges per player — unlocks the seat's shielded
+   *  production lines from the opening layout. */
+  buildingShieldTechCount: demoConfig.buildingShieldTechCount,
+
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
    * 360°/N angular cycle) actually used for placing buildings

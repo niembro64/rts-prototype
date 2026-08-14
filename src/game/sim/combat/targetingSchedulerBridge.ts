@@ -98,7 +98,7 @@ function flushTargetingBatch(
   maxTurrets: number,
   turretShieldPanelsEnabledFlag: number,
   turretShieldSpheresEnabledFlag: number,
-  forceMaterialSightObstructionActiveFlag: number,
+  forceMaterialSightObstructionPlayerMask: number,
 ): void {
   if (count === 0) return;
   ensureTargetingBatchCapacity(count, maxTurrets);
@@ -110,7 +110,7 @@ function flushTargetingBatch(
     dtMs,
     turretShieldPanelsEnabledFlag,
     turretShieldSpheresEnabledFlag,
-    forceMaterialSightObstructionActiveFlag,
+    forceMaterialSightObstructionPlayerMask,
     COMBAT_LOS_TERRAIN_STEP_LEN,
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     GRAVITY,
@@ -177,16 +177,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const turretShieldPanelsEnabledFlag = world.turretShieldPanelsEnabled ? 1 : 0;
   const turretShieldSpheresEnabledFlag = world.turretShieldSpheresEnabled ? 1 : 0;
   // Force-material gate fast-path. Sphere boundaries and shield-panel
-  // blockers are stamped into Rust slabs before the FSM. This flag
-  // lets common ticks skip blocker walks when shield-aware targeting is
-  // off or no force material is active.
-  const forceMaterialSightObstructionActive = world.shieldsObstructSight
-    && (
-      (world.turretShieldSpheresEnabled && getActiveShields().length > 0) ||
-      (world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0)
-    );
-  const forceMaterialSightObstructionActiveFlag =
-    forceMaterialSightObstructionActive ? 1 : 0;
+  // blockers are stamped into Rust slabs before the FSM. Shield-aware
+  // targeting is a per-player upgrade (a completed Shield-Aware
+  // Targeting Tech building), carried as a player bitmask; ticks with no
+  // active force material skip blocker walks entirely with a zero mask.
+  const anyForceMaterialActive =
+    (world.turretShieldSpheresEnabled && getActiveShields().length > 0) ||
+    (world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0);
+  const forceMaterialSightObstructionPlayerMask = anyForceMaterialActive
+    ? world.getShieldAwareTargetingPlayerMask()
+    : 0;
 
   flushTargetingBatch(
     world,
@@ -198,7 +198,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     maxTurrets,
     turretShieldPanelsEnabledFlag,
     turretShieldSpheresEnabledFlag,
-    forceMaterialSightObstructionActiveFlag,
+    forceMaterialSightObstructionPlayerMask,
   );
   return _activeCombatUnits;
 }

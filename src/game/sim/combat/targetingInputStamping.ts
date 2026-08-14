@@ -57,6 +57,7 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 import { compileEmissionMediumTrajectoryMask } from '../emissionMedium';
+import { getSecondaryLockOnProfile } from '../blueprints/lockOnConfig';
 import {
   CT_BLUEPRINT_CODE_NONE,
   CT_ENTITY_FAMILY_BUILDING,
@@ -1203,6 +1204,7 @@ function stampCombatTargetingEntityInto(
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
       encodeTurretConfigFlags(t, ranges),
+      getSecondaryLockOnProfile(t.config.turretBlueprintId)?.rescorePeriodTicks ?? 0,
       t.sustainedDps,
       projectileSpeed,
       projectileMass,
@@ -1292,10 +1294,10 @@ const _shieldMountOptions: {
  *  the next tick's FSM clearance gates read it one tick stale.
  *
  *  The pool always carries the PHYSICAL surfaces. Whether they
- *  obstruct targeting/fog sightlines is decided by the consumers
- *  (shield_obstruction_active flag in the scheduler, the
- *  world.shieldsObstructSight gate in fog checks), never by stamping
- *  an emptied pool.
+ *  obstruct targeting sightlines is decided by the consumers (the
+ *  per-player shield_obstruction_player_mask in the scheduler; fog
+ *  sightlines ignore force material entirely), never by stamping an
+ *  emptied pool.
  *
  *  Materials Are Independent Of Shape: one pool holds both shapes.
  *   - Field surfaces come from getActiveShields(), gated by

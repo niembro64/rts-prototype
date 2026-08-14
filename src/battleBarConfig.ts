@@ -110,7 +110,6 @@ export const BATTLE_CONFIG = {
   turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
   turretShieldSpheresEnabled: { default: _demoPreset.turretShieldSpheresEnabled },
   forceFieldsVisible: { default: _demoPreset.forceFieldsVisible },
-  shieldsObstructSight: { default: _demoPreset.shieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
   slowDownAtFinalWaypoint: { default: _demoPreset.slowDownAtFinalWaypoint },
   shieldReflectionMode: {
@@ -206,7 +205,7 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
-const CURRENT_DEMO_CONTENT_REVISION = 'unified-buildings-v2';
+const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v1';
 const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
@@ -215,8 +214,6 @@ const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
-const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
-const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
 const STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.demoSlowDownAtFinalWaypoint;
@@ -517,24 +514,6 @@ export function saveForceFieldsVisible(enabled: boolean, mode: BattleMode): void
     mode === 'real'
       ? STORAGE_REAL_FORCE_FIELDS_VISIBLE
       : STORAGE_DEMO_FORCE_FIELDS_VISIBLE,
-    String(enabled),
-  );
-}
-
-export function loadStoredShieldsObstructSight(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode,
-    STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT,
-    STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT,
-    BATTLE_CONFIG.shieldsObstructSight.default,
-  );
-}
-
-export function saveShieldsObstructSight(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT
-      : STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT,
     String(enabled),
   );
 }

@@ -18,8 +18,14 @@
     "buildingRadar": {
       "radiusFraction": 0.65
     },
+    "buildingShieldTargetingTech": {
+      "radiusFraction": 0.63
+    },
     "towerAntiAir": {
       "radiusFraction": 0.6
+    },
+    "buildingShieldTech": {
+      "radiusFraction": 0.58
     },
     "buildingResourceConverter": {
       "radiusFraction": 0.55
@@ -57,5 +63,7 @@
   "towerAntiAirCount": 1,
   "buildingRadarCount": 1,
   "buildingSonarCount": 1,
-  "buildingResourceConverterCount": 1
+  "buildingResourceConverterCount": 1,
+  "buildingShieldTargetingTechCount": 1,
+  "buildingShieldTechCount": 1
 }

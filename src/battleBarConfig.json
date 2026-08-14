@@ -49,8 +49,6 @@
     "realTurretShieldSpheresEnabled": "real-battle-turret-shield-spheres-enabled",
     "demoForceFieldsVisible": "demo-battle-force-fields-visible",
     "realForceFieldsVisible": "real-battle-force-fields-visible",
-    "demoShieldsObstructSight": "demo-battle-shields-obstruct-sight",
-    "realShieldsObstructSight": "real-battle-shields-obstruct-sight",
     "demoFogOfWarEnabled": "demo-battle-fog-of-war-enabled",
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
     "demoSlowDownAtFinalWaypoint": "demo-battle-slow-down-at-final-waypoint",
@@ -103,15 +101,6 @@
     ["rts-real-cap", "real-battle-cap"],
     ["rts-mirrors-enabled", "demo-battle-turret-shield-panels-enabled"],
     ["rts-shields-enabled", "demo-battle-turret-shield-spheres-enabled"],
-    ["rts-shields-block-targeting", "demo-battle-shields-obstruct-sight"],
-    [
-      "demo-battle-shields-block-targeting",
-      "demo-battle-shields-obstruct-sight"
-    ],
-    [
-      "real-battle-shields-block-targeting",
-      "real-battle-shields-obstruct-sight"
-    ],
     ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
     ["rts-map-land-cells", "demo-battle-map-width-land-cells"]
   ]

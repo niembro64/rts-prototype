@@ -729,6 +729,14 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingResourceConverter.radiusFraction,
   );
+  const shieldTargetingTechRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.buildingShieldTargetingTech.radiusFraction,
+  );
+  const shieldTechRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.buildingShieldTech.radiusFraction,
+  );
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
@@ -781,6 +789,24 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
         oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
+
+    // Tech structures — the targeting-tech spire grants the seat
+    // shield-aware targeting, and the shield forge unlocks its shielded
+    // production lines, so the demo exercises both upgrades live.
+    if (isBuildingEnabled('buildingShieldTargetingTech')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingShieldTargetingTech',
+        DEMO_CONFIG.buildingShieldTargetingTechCount,
+        oval, shieldTargetingTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
+    if (isBuildingEnabled('buildingShieldTech')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingShieldTech',
+        DEMO_CONFIG.buildingShieldTechCount,
+        oval, shieldTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
       ));
     }
 

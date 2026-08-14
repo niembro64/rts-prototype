@@ -431,6 +431,12 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 130100;
     case 'towerTorpedo':
       return 130110;
+    // Prototype-only tech structures sort after the BAR-analogue intel
+    // pair on the utility page.
+    case 'buildingShieldTargetingTech':
+      return 103200;
+    case 'buildingShieldTech':
+      return 103210;
     default:
       return Number.MAX_SAFE_INTEGER;
   }
@@ -491,6 +497,8 @@ const BAR_HOME_BUILD_ORDER = [
   [
     'buildingRadar',
     'buildingSonar',
+    'buildingShieldTargetingTech',
+    'buildingShieldTech',
   ],
   [
     'towerFabricator',
@@ -558,11 +566,16 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 4;
     case 'buildingExtractorT2':
       return 6;
-    // BAR utility page: radar and sonar occupy the first two slots.
+    // BAR utility page: radar and sonar occupy the first two slots; the
+    // prototype-only tech structures take the next two.
     case 'buildingRadar':
       return 0;
     case 'buildingSonar':
       return 1;
+    case 'buildingShieldTargetingTech':
+      return 2;
+    case 'buildingShieldTech':
+      return 3;
     // Local towerFabricator is the ARM air-plant analogue (armap), so
     // keep the armlab/armvp production slots empty and place it in the
     // bottom-row third cell like BAR's unitGrids["armcom"]["armap"].

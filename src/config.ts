@@ -101,8 +101,6 @@ export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =
   BATTLE_CONFIG.turretShieldSpheresEnabled.default;
 export const DEFAULT_FORCE_FIELDS_VISIBLE =
   BATTLE_CONFIG.forceFieldsVisible.default;
-export const DEFAULT_SHIELDS_OBSTRUCT_SIGHT =
-  BATTLE_CONFIG.shieldsObstructSight.default;
 export const DEFAULT_SHIELD_REFLECTION_MODE =
   BATTLE_CONFIG.shieldReflectionMode.default;
 export const DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT =

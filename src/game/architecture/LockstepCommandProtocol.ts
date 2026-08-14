@@ -88,7 +88,6 @@ export const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type'
   'setTurretShieldPanelsEnabled',
   'setTurretShieldSpheresEnabled',
   'setForceFieldsVisible',
-  'setShieldsObstructSight',
   'setShieldReflectionMode',
   'setFogOfWarEnabled',
   'setSlowDownAtFinalWaypoint',

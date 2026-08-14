@@ -219,7 +219,6 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return typeof command.enabled === 'boolean'
         ? { ...command, tick, enabled: command.enabled }
         : null;
-    case 'setShieldsObstructSight':
     case 'setFogOfWarEnabled':
     case 'setSlowDownAtFinalWaypoint':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;

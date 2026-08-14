@@ -12,7 +12,6 @@ import {
   loadStoredDemoBuildings,
   getDefaultDemoBuildings,
   saveForceFieldsVisible,
-  saveShieldsObstructSight,
   saveFogOfWarEnabled,
   saveSlowDownAtFinalWaypoint,
   loadStoredSlopePathMode,
@@ -47,7 +46,13 @@ type GameCanvasBattleSettings = {
   currentAllowedBuildingsSet: ComputedRef<ReadonlySet<string>>;
   allDemoBuildingsActive: ComputedRef<boolean>;
   currentForceFieldsVisible: ComputedRef<boolean>;
-  currentShieldsObstructSight: ComputedRef<boolean>;
+  /** Live per-player upgrade status: true while the LOCAL player owns a
+   *  completed Shield-Aware Targeting Tech building. Read-only — the
+   *  TARGETING readout is earned by building, not toggled. */
+  localPlayerShieldAwareTargeting: ComputedRef<boolean>;
+  /** Live per-player unlock status: true while the LOCAL player owns a
+   *  completed Shield Tech building (shielded production allowed). */
+  localPlayerShieldTechUnlocked: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentSlowDownAtFinalWaypoint: ComputedRef<boolean>;
   currentSlopePathMode: ComputedRef<SlopePathMode>;
@@ -60,7 +65,6 @@ type GameCanvasBattleSettings = {
   toggleAllDemoBuildings(): void;
   changeMaxTotalUnits(value: number): void;
   setForceFieldsVisible(enabled: boolean): void;
-  setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean, broadcast?: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
@@ -73,6 +77,9 @@ type GameCanvasBattleSettings = {
 
 type GameCanvasBattleSettingsOptions = {
   serverMetaFromSnapshot: Ref<NetworkServerSnapshotMeta | null>;
+  /** The seat this client controls; selects its bit in the per-player
+   *  upgrade masks mirrored through snapshot meta. */
+  localPlayerId: Ref<number>;
   currentBattleMode: ComputedRef<BattleMode>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
   worldSurfaceStoreVersion: Ref<number>;
@@ -97,6 +104,7 @@ type GameCanvasBattleSettingsOptions = {
 
 export function useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
+  localPlayerId,
   currentBattleMode,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
@@ -182,11 +190,17 @@ export function useGameCanvasBattleSettings({
   function toggleAllDemoBuildings(): void {
     applyBuildingSelection(allDemoBuildingsActive.value ? [] : demoBuildingBlueprintIds);
   }
-  const currentShieldsObstructSight = computed(
-    () =>
-      serverMetaFromSnapshot.value?.shieldsObstructSight ??
-      BATTLE_CONFIG.shieldsObstructSight.default,
-  );
+  function localPlayerHoldsMaskBit(mask: number | undefined): boolean {
+    const playerId = localPlayerId.value;
+    if (mask === undefined || playerId < 1 || playerId > 31) return false;
+    return (mask & (1 << (playerId - 1))) !== 0;
+  }
+  const localPlayerShieldAwareTargeting = computed(() =>
+    localPlayerHoldsMaskBit(
+      serverMetaFromSnapshot.value?.shieldAwareTargetingPlayerMask,
+    ));
+  const localPlayerShieldTechUnlocked = computed(() =>
+    localPlayerHoldsMaskBit(serverMetaFromSnapshot.value?.shieldTechPlayerMask));
   const currentForceFieldsVisible = computed(
     () =>
       serverMetaFromSnapshot.value?.forceFieldsVisible ??
@@ -272,14 +286,6 @@ export function useGameCanvasBattleSettings({
     }
     saveStoredCap(mode, value);
     if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
-  }
-
-  function setShieldsObstructSight(enabled: boolean): void {
-    const authoritative = serverMetaFromSnapshot.value?.shieldsObstructSight;
-    if (authoritative === undefined || authoritative !== enabled) {
-      getActiveConnection()?.sendCommand({ type: 'setShieldsObstructSight', tick: 0, enabled });
-    }
-    saveShieldsObstructSight(enabled, currentBattleMode.value);
   }
 
   function setForceFieldsVisible(enabled: boolean, broadcast = true): void {
@@ -375,7 +381,6 @@ export function useGameCanvasBattleSettings({
     saveDemoUnits([...preset.units]);
     applyBuildingSelection([...preset.buildings]);
     changeMaxTotalUnits(preset.cap, false);
-    setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setSlopePathMode(preset.slopePathMode);
@@ -416,7 +421,8 @@ export function useGameCanvasBattleSettings({
     currentAllowedBuildingsSet,
     allDemoBuildingsActive,
     currentForceFieldsVisible,
-    currentShieldsObstructSight,
+    localPlayerShieldAwareTargeting,
+    localPlayerShieldTechUnlocked,
     currentFogOfWarEnabled,
     currentSlowDownAtFinalWaypoint,
     currentSlopePathMode,
@@ -429,7 +435,6 @@ export function useGameCanvasBattleSettings({
     toggleAllDemoBuildings,
     changeMaxTotalUnits,
     setForceFieldsVisible,
-    setShieldsObstructSight,
     setFogOfWarEnabled,
     setSlowDownAtFinalWaypoint,
     setSlopePathMode,

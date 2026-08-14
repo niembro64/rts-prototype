@@ -67,7 +67,6 @@ type CommandType =
   | 'setTurretShieldPanelsEnabled'
   | 'setTurretShieldSpheresEnabled'
   | 'setForceFieldsVisible'
-  | 'setShieldsObstructSight'
   | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
   | 'setSlowDownAtFinalWaypoint'
@@ -594,11 +593,6 @@ export type SetTurretShieldSpheresEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetShieldsObstructSightCommand = BaseCommand & {
-  type: 'setShieldsObstructSight';
-  enabled: boolean;
-};
-
 export type SetForceFieldsVisibleCommand = BaseCommand & {
   type: 'setForceFieldsVisible';
   enabled: boolean;
@@ -699,7 +693,6 @@ export type Command =
   | SetTurretShieldPanelsEnabledCommand
   | SetTurretShieldSpheresEnabledCommand
   | SetForceFieldsVisibleCommand
-  | SetShieldsObstructSightCommand
   | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
   | SetSlowDownAtFinalWaypointCommand

@@ -23,7 +23,9 @@ export type BuildingTeamOrnamentKind =
   | 'beamEmitterCrown'
   | 'cannonYoke'
   | 'antiAirPedestalBrace'
-  | 'torpedoWaterlineBand';
+  | 'torpedoWaterlineBand'
+  | 'targetingSpireHalo'
+  | 'shieldForgeCrest';
 
 const BUILDING_TEAM_ORNAMENT_KIND = 'buildingTeamOrnamentKind';
 

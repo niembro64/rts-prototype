@@ -66,6 +66,11 @@ import {
   disposeFactoryMeshGeoms,
 } from './FactoryMesh3D';
 import {
+  buildShieldTargetingTechMesh,
+  buildShieldTechMesh,
+  disposeTechBuildingsMeshGeoms,
+} from './TechBuildingsMesh3D';
+import {
   buildResourcePylonRig,
   type ResourcePylonRig,
 } from './ResourcePylonMesh3D';
@@ -218,6 +223,10 @@ export function buildBuildingShape(
         return buildAntiAirTowerMesh(primaryMat);
       case 'buildingResourceConverter':
         return buildResourceConverterMesh(width, depth, primaryMat);
+      case 'buildingShieldTargetingTech':
+        return buildShieldTargetingTechMesh(width, depth, primaryMat);
+      case 'buildingShieldTech':
+        return buildShieldTechMesh(width, depth, primaryMat);
       case 'unknown':
         return buildUnknown(primaryMat);
       case 'bodyless':
@@ -654,6 +663,7 @@ export function disposeBuildingGeoms(): void {
   disposeMetalExtractorMeshGeoms();
   disposeFactoryMeshGeoms();
   disposeSolarCollectorGeoms();
+  disposeTechBuildingsMeshGeoms();
   radarTowerGeom.dispose();
   for (const geometry of radarDishGeomByTier.values()) geometry.dispose();
   for (const geometry of radarRingGeomByTier.values()) geometry.dispose();

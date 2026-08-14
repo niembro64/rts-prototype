@@ -32,11 +32,12 @@ import {
   MAX_TOTAL_UNITS,
   DEFAULT_TURRET_SHIELD_PANELS_ENABLED,
   DEFAULT_TURRET_SHIELD_SPHERES_ENABLED,
-  DEFAULT_SHIELDS_OBSTRUCT_SIGHT,
   DEFAULT_SHIELD_REFLECTION_MODE,
   DEFAULT_FORCE_FIELDS_VISIBLE,
   DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT,
 } from '../../config';
+import { isEntityActive } from './buildableHelpers';
+import type { BuildingBlueprintId } from '../../types/blueprintIds';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { DEFAULT_SLOPE_PATH_MODE, type SlopePathMode } from '../../types/slopePathMode';
 import {
@@ -216,11 +217,9 @@ export class WorldState {
   // Whether force-field shield/panel material is rendered for players.
   // Rendering only; physical reflection/blocking stays active.
   public forceFieldsVisible: boolean = DEFAULT_FORCE_FIELDS_VISIBLE;
-  // Whether force material between a turret and its target obstructs
-  // sight. Symmetric: active shield sphere boundaries and force
-  // shield panels apply to every turret in either direction, regardless
-  // of team.
-  public shieldsObstructSight: boolean = DEFAULT_SHIELDS_OBSTRUCT_SIGHT;
+  // Per-player shield-aware targeting is NOT a stored flag: it derives
+  // deterministically from building ownership every time it is read.
+  // See playerHasShieldAwareTargeting / getShieldAwareTargetingPlayerMask.
   // Which shield boundary crossings reflect shots/beams.
   public shieldReflectionMode: ShieldReflectionMode = DEFAULT_SHIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
@@ -1033,6 +1032,68 @@ export class WorldState {
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildingsByPlayer(playerId);
+  }
+
+  /** True while the player owns at least one COMPLETED, alive building of
+   *  the given blueprint. Derived state: recomputed from the per-player
+   *  building cache on every read so completion, destruction, and capture
+   *  all take effect the same tick without extra bookkeeping. */
+  playerHasCompletedBuilding(
+    playerId: PlayerId,
+    buildingBlueprintId: BuildingBlueprintId,
+  ): boolean {
+    const buildings = this.getBuildingsByPlayer(playerId);
+    for (const building of buildings) {
+      if (
+        building.buildingBlueprintId === buildingBlueprintId
+        && isEntityActive(building)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The shield-aware targeting upgrade: granted while the player owns a
+   *  completed Shield-Aware Targeting Tech building. Their turrets then
+   *  reject locks whose line of sight crosses active force material. */
+  playerHasShieldAwareTargeting(playerId: PlayerId): boolean {
+    return this.playerHasCompletedBuilding(playerId, 'buildingShieldTargetingTech');
+  }
+
+  /** The shield production unlock: granted while the player owns a
+   *  completed Shield Tech building. Gates producing/placing blueprints
+   *  that mount shield-emitting turrets. */
+  playerHasShieldTech(playerId: PlayerId): boolean {
+    return this.playerHasCompletedBuilding(playerId, 'buildingShieldTech');
+  }
+
+  /** Bitmask of players holding a completed building of the given
+   *  blueprint, using the Rust targeting pool's player-bit convention
+   *  (`combat_targeting_player_bit`): bit `playerId - 1`; ids outside
+   *  [1, 31] carry no bit. */
+  getCompletedBuildingPlayerMask(buildingBlueprintId: BuildingBlueprintId): number {
+    let mask = 0;
+    const playerIds = this.teamRoster.playerIds;
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      if (playerId < 1 || playerId > 31) continue;
+      if (this.playerHasCompletedBuilding(playerId, buildingBlueprintId)) {
+        mask |= 1 << (playerId - 1);
+      }
+    }
+    return mask >>> 0;
+  }
+
+  /** Per-player shield-aware targeting bits for the Rust batch kernel and
+   *  snapshot meta. */
+  getShieldAwareTargetingPlayerMask(): number {
+    return this.getCompletedBuildingPlayerMask('buildingShieldTargetingTech');
+  }
+
+  /** Per-player shield production unlock bits for snapshot meta / UI. */
+  getShieldTechPlayerMask(): number {
+    return this.getCompletedBuildingPlayerMask('buildingShieldTech');
   }
 
   /** Install the roster and rebuild the alliance sets from it. This is the

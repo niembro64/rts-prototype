@@ -17,7 +17,6 @@ export type BattleBarConfig = {
   readonly turretShieldPanelsEnabled: BooleanSetting;
   readonly turretShieldSpheresEnabled: BooleanSetting;
   readonly forceFieldsVisible: BooleanSetting;
-  readonly shieldsObstructSight: BooleanSetting;
   readonly shieldReflectionMode: {
     readonly default: ShieldReflectionMode;
   };

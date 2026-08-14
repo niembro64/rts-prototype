@@ -46,7 +46,6 @@ const props = defineProps<{
   buildingBlueprintIds: readonly string[];
   allowedBuildings: readonly string[];
   unitCap: number;
-  shieldsObstructSight: boolean;
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
@@ -78,7 +77,6 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   /** Host moves a seat to the next side (the lobby's TEAM N). */
   (e: 'cyclePlayerAllyTeam', playerId: PlayerId): void;
-  (e: 'setShieldsObstructSight', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -198,11 +196,6 @@ function pickToggleAllBuildings(): void {
 function pickUnitCap(cap: number): void {
   if (!props.isHost) return;
   emit('setUnitCap', cap);
-}
-
-function pickShieldsObstructSight(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setShieldsObstructSight', enabled);
 }
 
 function pickConverterTax(value: number): void {
@@ -804,15 +797,6 @@ const terrainSectionVars = computed(() =>
                     @click="pickUnitCap(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
-              </BarControlGroup>
-              <BarControlGroup>
-                <BarDivider />
-                <BarLabel>TARGETING:</BarLabel>
-                <BarButton
-                  :active="shieldsObstructSight"
-                  :title="isHost ? 'Shield-aware targeting rejects locks when a straight line-of-sight crosses an active force field' : 'Only the host can change battle settings'"
-                  @click="pickShieldsObstructSight(!shieldsObstructSight)"
-                >{{ shieldsObstructSight ? 'SHIELD-AWARE' : 'NAIVE' }}</BarButton>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />

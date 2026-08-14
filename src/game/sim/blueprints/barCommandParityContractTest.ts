@@ -98,6 +98,7 @@ const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
   'unitMammoth', 'unitDaddy', 'unitWidow', 'unitFormik', 'unitHippo', 'unitLoris',
   'unitSeaTurtle', 'unitOrca', 'unitDuck', 'unitConstructionSubmarine',
   'unitQueenBee', 'unitQueenTick', 'unitHuman', 'unitRex',
+  'buildingShieldTargetingTech', 'buildingShieldTech',
 ]);
 
 /** Categories a host can expose. Same vocabulary as the audit's matrix and the

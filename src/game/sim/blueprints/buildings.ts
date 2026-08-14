@@ -159,6 +159,10 @@ export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.vi
 export const SONAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSonar.visualHeight;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
+export const SHIELD_TARGETING_TECH_BUILDING_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.buildingShieldTargetingTech.visualHeight;
+export const SHIELD_TECH_BUILDING_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.buildingShieldTech.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerCannon.visualHeight;
 export const ANTI_AIR_TOWER_VISUAL_HEIGHT =
