@@ -1,11 +1,5 @@
 import { ref, watch, type Ref } from 'vue';
-import {
-  loadStoredDemoBarsCollapsed,
-  loadStoredRealBarsCollapsed,
-  saveDemoBarsCollapsed,
-  saveRealBarsCollapsed,
-  type BattleMode,
-} from '../battleBarConfig';
+import { type BattleMode } from '../battleBarConfig';
 import {
   getStoredLobbyVisible,
   setLobbyVisible,
@@ -141,18 +135,14 @@ export function useGameCanvasChromeState(
 } {
   const mobileBarsVisible = ref(false);
   const spectateMode = ref(!getStoredLobbyVisible(currentBattleMode.value));
-  const bottomBarsCollapsed = ref(
-    currentBattleMode.value === 'real'
-      ? loadStoredRealBarsCollapsed()
-      : loadStoredDemoBarsCollapsed(),
-  );
+  // Deliberately session-only: the BATTLE/SERVER/CLIENT group always starts
+  // hidden — no localStorage read or write, and mode switches re-hide it.
+  const bottomBarsCollapsed = ref(true);
   const playerClientEnabled = ref(loadStoredClientEnabled(currentBattleMode.value));
 
   watch(currentBattleMode, (mode) => {
     spectateMode.value = !getStoredLobbyVisible(mode);
-    bottomBarsCollapsed.value = mode === 'real'
-      ? loadStoredRealBarsCollapsed()
-      : loadStoredDemoBarsCollapsed();
+    bottomBarsCollapsed.value = true;
     playerClientEnabled.value = loadStoredClientEnabled(mode);
   });
 
@@ -162,10 +152,7 @@ export function useGameCanvasChromeState(
   });
 
   function toggleBottomBars(): void {
-    const next = !bottomBarsCollapsed.value;
-    bottomBarsCollapsed.value = next;
-    if (currentBattleMode.value === 'real') saveRealBarsCollapsed(next);
-    else saveDemoBarsCollapsed(next);
+    bottomBarsCollapsed.value = !bottomBarsCollapsed.value;
   }
 
   function togglePlayerClientEnabled(): void {

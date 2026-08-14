@@ -94,9 +94,7 @@
     "demoMapWidthLandCells": "demo-battle-map-width-land-cells",
     "realMapWidthLandCells": "real-battle-map-width-land-cells",
     "demoMapLengthLandCells": "demo-battle-map-length-land-cells",
-    "realMapLengthLandCells": "real-battle-map-length-land-cells",
-    "demoBarsCollapsed": "demo-battle-bottom-bars-collapsed",
-    "realBarsCollapsed": "real-battle-bottom-bars-collapsed"
+    "realMapLengthLandCells": "real-battle-map-length-land-cells"
   },
 
   "storageMigrations": [

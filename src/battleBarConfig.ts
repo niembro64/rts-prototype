@@ -265,8 +265,6 @@ const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = sk.demoMapWidthLandCells;
 const STORAGE_REAL_MAP_WIDTH_LAND_CELLS = sk.realMapWidthLandCells;
 const STORAGE_DEMO_MAP_LENGTH_LAND_CELLS = sk.demoMapLengthLandCells;
 const STORAGE_REAL_MAP_LENGTH_LAND_CELLS = sk.realMapLengthLandCells;
-const STORAGE_DEMO_BARS_COLLAPSED = sk.demoBarsCollapsed;
-const STORAGE_REAL_BARS_COLLAPSED = sk.realBarsCollapsed;
 
 const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
   battleBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
@@ -437,28 +435,6 @@ export function loadStoredRealCap(): number {
 
 function saveRealCap(value: number): void {
   persist(STORAGE_REAL_CAP, String(value));
-}
-
-export function loadStoredDemoBarsCollapsed(): boolean {
-  return (
-    loadBool(STORAGE_DEMO_BARS_COLLAPSED) ??
-    getModeDefaultPreset('demo').barsCollapsed
-  );
-}
-
-export function saveDemoBarsCollapsed(collapsed: boolean): void {
-  persist(STORAGE_DEMO_BARS_COLLAPSED, String(collapsed));
-}
-
-export function loadStoredRealBarsCollapsed(): boolean {
-  return (
-    loadBool(STORAGE_REAL_BARS_COLLAPSED) ??
-    getModeDefaultPreset('real').barsCollapsed
-  );
-}
-
-export function saveRealBarsCollapsed(collapsed: boolean): void {
-  persist(STORAGE_REAL_BARS_COLLAPSED, String(collapsed));
 }
 
 /** Identifies which battle context a setting belongs to.

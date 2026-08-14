@@ -52,8 +52,6 @@ export type BattlePreset = {
   readonly terrainDetail: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
-  /** Whether the bottom control bars are collapsed by default. */
-  readonly barsCollapsed: boolean;
 };
 
 export type BattlePresetSnapshot = Omit<
@@ -65,7 +63,6 @@ export type BattlePresetSnapshot = Omit<
   | 'forceFieldsVisible'
   | 'shieldReflectionMode'
   | 'fogOfWarEnabled'
-  | 'barsCollapsed'
 >;
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
@@ -96,9 +93,6 @@ const SUBSYSTEM_DEFAULTS = {
   // Every stock preset ships the authored world; only METAL HELL flips these.
   terrainSurfaceMode: 'normal' as TerrainSurfaceMode,
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
-  // The BATTLE/SERVER/CLIENT bottom bar group starts hidden until the
-  // user expands it (their choice then persists via localStorage).
-  barsCollapsed: true,
 };
 
 // Every preset enables all buildings — there is no preset that ships with
@@ -310,9 +304,9 @@ function presetMatchesCurrent(
   c: BattlePresetSnapshot,
 ): boolean {
   // Fog of war is intentionally excluded: the lobby forces it off and the
-  // real battle forces it on. Client presentation (`barsCollapsed`) and the
-  // shield panel/reflection defaults that have no live preset control are
-  // excluded too. Every user-controllable map/gameplay field is compared.
+  // real battle forces it on. The shield panel/reflection defaults that have
+  // no live preset control are excluded too. Every user-controllable
+  // map/gameplay field is compared.
   return (
     sameUnits(p.units, c.units) &&
     sameUnits(p.buildings, c.buildings) &&
