@@ -44,8 +44,11 @@ export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
  *  Producer buildings (solar/wind/extractor) gate resource income on
  *  state.open; radar/sonar gate powered contact coverage on state.open while
  *  ordinary sight remains available; converter gates the energy↔metal swap
- *  on state.open. Every active-state structure fortifies
- *  identically while OFF (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
+ *  on state.open; the tech structures gate their per-player upgrade
+ *  channel (shield-aware targeting / shield production) on state.open,
+ *  following BAR's on/offable Targeting Facility (armtarg). Every
+ *  active-state structure fortifies identically while OFF
+ *  (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
 export function buildingBlueprintHasActiveState(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): boolean {
@@ -54,7 +57,9 @@ export function buildingBlueprintHasActiveState(
     || isMetalExtractorBlueprintId(buildingBlueprintId)
     || buildingBlueprintId === 'buildingRadar'
     || buildingBlueprintId === 'buildingSonar'
-    || buildingBlueprintId === 'buildingResourceConverter';
+    || buildingBlueprintId === 'buildingResourceConverter'
+    || buildingBlueprintId === 'buildingShieldTargetingTech'
+    || buildingBlueprintId === 'buildingShieldTech';
 }
 
 function createInitialBuildingActiveState(): BuildingActiveState {

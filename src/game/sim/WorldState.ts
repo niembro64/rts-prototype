@@ -1034,10 +1034,14 @@ export class WorldState {
     return this.cache.getBuildingsByPlayer(playerId);
   }
 
-  /** True while the player owns at least one COMPLETED, alive building of
-   *  the given blueprint. Derived state: recomputed from the per-player
-   *  building cache on every read so completion, destruction, and capture
-   *  all take effect the same tick without extra bookkeeping. */
+  /** True while the player owns at least one COMPLETED, alive, and OPEN
+   *  building of the given blueprint. Derived state: recomputed from the
+   *  per-player building cache on every read so completion, destruction,
+   *  capture, and ON/OFF toggling all take effect the same tick without
+   *  extra bookkeeping. The open requirement follows the powered-channel
+   *  rule (BAR's on/offable Targeting Facility): a fortified or
+   *  switched-off building grants nothing; buildings without an
+   *  active-state mechanic count whenever completed. */
   playerHasCompletedBuilding(
     playerId: PlayerId,
     buildingBlueprintId: BuildingBlueprintId,
@@ -1045,11 +1049,14 @@ export class WorldState {
     const buildings = this.getBuildingsByPlayer(playerId);
     for (const building of buildings) {
       if (
-        building.buildingBlueprintId === buildingBlueprintId
-        && isEntityActive(building)
+        building.buildingBlueprintId !== buildingBlueprintId
+        || !isEntityActive(building)
       ) {
-        return true;
+        continue;
       }
+      const activeState = building.building?.activeState ?? null;
+      if (activeState !== null && !activeState.open) continue;
+      return true;
     }
     return false;
   }

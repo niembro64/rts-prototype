@@ -1978,8 +1978,8 @@
         <code>upperArms</code> pair. That second pair uses the same authoritative hand-socket
         and aiming path as the first; it is not Rex-specific renderer decoration. Each pair
         authors its own proportions, shoulder position, gait swing, and elbow bend direction,
-        allowing Rex&rsquo;s higher weapon arms to bend backward while its primary arms retain
-        the conventional forward elbow.
+        allowing Rex&rsquo;s extra weapon arms to rise from the very top/outside of its shoulders
+        and turn downward like antennae while its primary arms retain their conventional hang.
       </p>
       <p>
         This follows BAR/Recoil&rsquo;s separation of responsibilities. The turret owns targeting,
@@ -2663,10 +2663,15 @@
         earned, not toggled. <strong>NAIVE</strong> is the default: turrets ignore force material
         when choosing targets, lock straight through shield spheres and mirror panels, and spend
         their fire on shots the field will absorb or reflect. <strong>SHIELD-AWARE</strong> is
-        granted to a player while they own at least one <em>completed</em> Shield-Aware Targeting
-        Tech building and is lost the tick the last one dies or is captured away. The BATTLE bar&rsquo;s
-        <code>TARGETING:</code> readout displays this per-player status; it is not a setting, and
-        there is no global battle flag behind it.
+        granted to a player while they own at least one <em>completed, switched-ON</em>
+        Shield-Aware Targeting Tech building and is lost the tick the last one dies, closes, or is
+        captured away. Both tech structures are ordinary ON/OFF active-state buildings &mdash; the
+        upgrade is a powered channel exactly like radar&rsquo;s contact coverage, following BAR&rsquo;s
+        on/offable Targeting Facility (<code>armtarg</code>): a fortified or switched-off tech
+        building keeps its local sight and its 10&times; damage resistance but grants nothing, and
+        sustained damage force-closing it suppresses the upgrade until the building reopens. The
+        BATTLE bar&rsquo;s <code>TARGETING:</code> readout displays this per-player status; it is not
+        a setting, and there is no global battle flag behind it.
       </p>
       <p>
         &ldquo;Obstructs direct sight&rdquo; has one exact meaning. After the ordinary

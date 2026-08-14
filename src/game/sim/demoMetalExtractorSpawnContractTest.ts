@@ -317,6 +317,31 @@ function assertCompactAuthoredRosterFactoryCoverage(): void {
         `${expectedUnitBlueprintIds.length} repeat Fabricator lines`,
     );
   }
+
+  // The tech structures flank the radar on the sensor ring. Placement is
+  // best-effort by design, so a silent collision (the bug this guards
+  // against: same-angle rings 0.02 of spawn radius apart) would remove
+  // them without failing startup — assert every seat actually got both.
+  const expectedTechCounts: ReadonlyArray<readonly [string, number]> = [
+    ['buildingShieldTargetingTech', DEMO_CONFIG.buildingShieldTargetingTechCount],
+    ['buildingShieldTech', DEMO_CONFIG.buildingShieldTechCount],
+  ];
+  for (const [techBlueprintId, expectedCount] of expectedTechCounts) {
+    const countByPlayer = new Map<PlayerId, number>();
+    for (const entity of entities) {
+      if (entity.buildingBlueprintId !== techBlueprintId) continue;
+      const playerId = entity.ownership?.playerId;
+      assertContract(playerId !== undefined, `demo ${techBlueprintId} must have an owner`);
+      countByPlayer.set(playerId, (countByPlayer.get(playerId) ?? 0) + 1);
+    }
+    for (const playerId of playerIds) {
+      assertContract(
+        (countByPlayer.get(playerId) ?? 0) === expectedCount,
+        `${compactPreset.name} player ${playerId} must spawn ${expectedCount} ` +
+          `${techBlueprintId} (got ${countByPlayer.get(playerId) ?? 0})`,
+      );
+    }
+  }
 }
 
 /** A user-authored map can be physically too small for every requested demo

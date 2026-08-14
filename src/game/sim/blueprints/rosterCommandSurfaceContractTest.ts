@@ -925,6 +925,10 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingRadar',
     'buildingSonar',
     'buildingResourceConverter',
+    // Tech structures follow BAR's on/offable Targeting Facility
+    // (armtarg): the per-player upgrade channel runs only while ON.
+    'buildingShieldTargetingTech',
+    'buildingShieldTech',
   ]);
   // ON/OFF is capability-gated on the local active-state mechanic, not on BAR's
   // onoffable unitDef flag: BAR's armwin/armrad/armsonar analogues carry the

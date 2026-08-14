@@ -1054,6 +1054,20 @@ function assertShieldAwareTargetingUpgradeContract(): void {
     world.getShieldAwareTargetingPlayerMask() === 1,
     'a completed targeting tech building must set the owner\'s mask bit the same tick',
   );
+
+  // ON/OFF powered channel (BAR armtarg): a switched-off tech building
+  // grants nothing; reopening restores the upgrade the same tick.
+  assertContract(techBuilding.building !== null, 'tech building entity must carry a building component');
+  techBuilding.building.activeState = { open: false, damageDelayMs: 0, reopenDelayMs: 0 };
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 0,
+    'a closed (fortified/OFF) targeting tech building must not grant the upgrade',
+  );
+  techBuilding.building.activeState.open = true;
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 1,
+    'reopening the targeting tech building must restore the upgrade the same tick',
+  );
   let dropped = false;
   for (let i = 0; i < SIGHT_DROP_GRACE_TICKS + 4 && !dropped; i++) {
     tickCombat();

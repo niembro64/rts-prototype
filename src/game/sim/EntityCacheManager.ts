@@ -304,7 +304,9 @@ export class EntityCacheManager {
           addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
         } else if (
           entity.buildingBlueprintId === 'buildingRadar' ||
-          entity.buildingBlueprintId === 'buildingSonar'
+          entity.buildingBlueprintId === 'buildingSonar' ||
+          entity.buildingBlueprintId === 'buildingShieldTargetingTech' ||
+          entity.buildingBlueprintId === 'buildingShieldTech'
         ) {
           addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
         }
