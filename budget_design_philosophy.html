@@ -1998,9 +1998,9 @@
       <ul class="rule-list">
         <li>The simulation resolves attached AimFrom pivots before targeting, then resolves them again after the turret servo and overwrites the targeting slab before firing. Targeting sees the start-of-tick piece pose; emission and snapshots see the final pose.</li>
         <li>The waist servo angle and angular velocity are authoritative turret-host state, participate in snapshot dirtiness, and travel through the turret wire row. The renderer uses that pose, the same bot-arm geometry function, and the same torso-owner rule. It may interpolate authoritative rows, but it may not maintain a private torso spring or weapon-arm easing that changes a combat socket.</li>
-        <li>Every runtime turret materializes exactly <code>emissionLaneCount</code> QueryWeapon offsets. A unit mount may author <code>emissionSockets</code> explicitly in world units; otherwise the offsets are derived from its host-authored head/barrel presentation, including multi-barrel orbit.</li>
-        <li>Projectile spawn, beam start, fire audio, pending post-physics launch finalization, and inherited launch velocity all query the selected lane. Sensors, target range, damage selection, and shields continue to use the AimFrom pivot because those systems address the mounted turret, not a muzzle.</li>
-        <li>The rendered barrel matrix publishes the matching lane muzzle for beam interpolation. Presentation may smooth between fixed ticks, but it may not snap a live ray back to the turret head center.</li>
+        <li>Every runtime turret materializes exactly <code>emissionLaneCount</code> QueryWeapon offsets. A unit mount may author <code>emissionSockets</code> explicitly in world units. Ordinary single-barrel projectiles use the barrel tip, rotating clusters share their fixed top firing station, and beam-family weapons use the broad base of their pilot-light cone at the AimFrom origin.</li>
+        <li>Projectile spawn, beam start, fire audio, pending post-physics launch finalization, and inherited launch velocity all query the selected lane. Sensors, target range, damage selection, and shields continue to use the AimFrom pivot because those systems address the mounted turret, not a projectile muzzle or beam origin.</li>
+        <li>The rendered barrel matrix publishes the matching QueryWeapon point for beam interpolation. For a beam this is the pilot-light base, so presentation may smooth between fixed ticks without pushing a live ray ahead to the cone tip.</li>
       </ul>
       <h3>Rocket turrets are multi-tube launchers</h3>
       <p>
@@ -2028,7 +2028,7 @@
         directly into turret rotation.
       </p>
       <p>
-        A live beam is retraced from its selected QueryWeapon muzzle along that authoritative
+        A live beam is retraced from its selected QueryWeapon origin along that authoritative
         yaw/pitch pose. It does not construct a second direction from the locked
         target&rsquo;s current center, and the renderer does not reconstruct turret
         orientation from the beam polyline. Once aligned, a ray still has no
@@ -2036,20 +2036,20 @@
         immediately; what is removed is the ability to hit a target independently of
         where the shared turret servo is actually pointing.
       </p>
-      <h3>The beam cone is an idle pilot light, not the emission origin</h3>
+      <h3>The beam cone is the beam pilot light and shares the live beam&rsquo;s origin</h3>
       <p>
         The cone centered in a beam turret&rsquo;s barrel assembly is its
-        <strong>pilot light</strong>. It is an idle-state visual: show the pilot-light cone while
-        the beam is not firing, and hide it for the entire time a live beam is being drawn. The
-        two visuals are mutually exclusive, so a firing turret presents the beam itself rather
-        than a beam emerging from a still-visible cone.
+        <strong>beam pilot light</strong>. It stays lit between beam shots, then hides for the
+        entire time a live beam is being drawn. The two visuals are mutually exclusive: the live
+        beam replaces the pilot light along the same centerline instead of appearing in front of it.
       </p>
       <p>
-        The pilot light never invents a separate origin. Like every other turret emission, a
-        beam begins at the selected authoritative QueryWeapon socket. By default that socket is
-        derived from the host-authored tapered barrel&rsquo;s muzzle; a mount may override it through
-        <code>emissionSockets</code>. The rendered cone and the physical ray therefore terminate
-        at the same muzzle rather than at the turret head center.
+        The pilot light and live beam have one origin: the broad base of the tapered cone at the
+        turret&rsquo;s authoritative AimFrom pivot. Beam QueryWeapon offsets therefore remain zero in
+        turret-local space. The cone&rsquo;s pointed tip is only the end of the idle visual; it is not
+        a muzzle and must never push the live ray forward. Simulation tracing and rendered beam
+        interpolation both use the cone base, so firing fills the pilot-light span continuously
+        from the turret outward.
       </p>
       <p>
         Beam turrets are therefore ordinary full-barrel turrets rather than
@@ -2672,7 +2672,7 @@
         <li><code>includeLockOnLevel1Buildings</code> narrows an already-included building family to only the named building blueprints.</li>
         <li><code>includeLockOnLevel1Turrets</code> narrows an already-included turret family to only the named turret blueprints.</li>
         <li><code>includeLockOnLevel1Shots</code> narrows an already-included shot family to only the named shot blueprints &mdash; e.g. a point-defense turret that should pop only heavy rockets, not every plasma bolt.</li>
-        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a four-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"preferReacquire"</code> ranks such threats above every other candidate and rescans when the current target stops reciprocating; <code>"preferHold"</code> applies the same threat ranking during normal scans but does not rescan solely because the current target stops reciprocating. Every shipped blueprint stays on <code>"ignore"</code>; the non-default modes exist for future retaliation-style specialist weapons. See <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
+        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a four-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"preferReacquire"</code> ranks such threats above every other candidate and rescans when the current target stops reciprocating; <code>"preferHold"</code> applies the same threat ranking during normal scans but does not rescan solely because the current target stops reciprocating. The shield panel reflector ships on <code>"require"</code>; every other blueprint stays on <code>"ignore"</code>. See <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
       </ul>
       <p>
         The hierarchy should be evaluated in order: ownership, aliveness, and visibility decide
@@ -2720,9 +2720,11 @@
         candidate, no matter how close or how otherwise valid it is. The two preference modes treat
         enemies locked onto us as a strictly higher priority tier without making them mandatory: if
         any are aiming at us during a scan, the locker engages those alone, and only when none are
-        does it fall back to the ordinary candidate pool. Today no blueprint leaves the default &mdash;
-        every turret, unit, and building stays on <code>"ignore"</code>; the non-default modes are
-        reserved for future retaliation-style specialist weapons.
+        does it fall back to the ordinary candidate pool. One shipped blueprint leaves the default:
+        the shield panel reflector uses <code>"require"</code>, so it tracks exactly the enemy
+        turrets currently locked onto it or its host. Every other turret, unit, and building stays
+        on <code>"ignore"</code>; the preference modes remain reserved for future retaliation-style
+        specialist weapons.
       </p>
       <p>
         <code>"require"</code> and <code>"preferReacquire"</code> are both evaluated in real time, not just at
@@ -2774,6 +2776,41 @@
         special case buried in the shared targeting kernel. Large targeting regularization passes
         must preserve any such profile, its validation, and its tests instead of simplifying the
         turret into an ordinary scanner.
+      </p>
+      <h3>The reflector panel aims by the threat&rsquo;s own trajectory</h3>
+      <p>
+        The shipped <code>secondaryLockOnProfiles</code> entry is the shield panel reflector
+        (the Loris&rsquo;s mirror). It locks, via reciprocal <code>"require"</code>, exactly the
+        enemy turret currently locked onto it or its host, and its aim rule exists to send that
+        turret&rsquo;s fire back at the attacker&rsquo;s own body. Because reflection off the panel
+        is specular &mdash; one shared mirror formula for beams and travelling shots &mdash; the aim
+        rule is entirely a question of choosing the panel normal, and the correct normal depends on
+        how the incoming fire travels:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Line-of-flight weapons</strong> (beams, lasers, and any other threat whose fire
+        travels the straight ray from its barrel) use the <strong>straight-line bisector</strong>:
+        the panel faces the bisector of the ray to the threat turret&rsquo;s mount and the ray to the
+        threat host&rsquo;s body, so the specular bounce returns the beam from the turret onto its
+        own host.</li>
+        <li><strong>Ballistic threats</strong> (any turret whose own aim requires a ballistic
+        solution &mdash; plasma guns, cannons) arrive on an arc, not on the barrel ray, so the
+        straight bisector throws the bounce off-target. The panel instead mirrors <em>the
+        threat&rsquo;s own ballistics equation</em>: it runs the threat&rsquo;s authored shot
+        parameters (muzzle speed, gravity, drag, arc preference) from the threat&rsquo;s mount to the
+        panel to predict the incoming arc&rsquo;s <em>arrival direction and speed</em>, then solves
+        the return arc from the panel &mdash; at the reflected (arrival) speed, with the same
+        parameters &mdash; to the 3D midpoint between the threat turret&rsquo;s center and its
+        host&rsquo;s body, and faces the panel along the bisector of the reversed arrival direction
+        and the return launch direction. The specular bounce therefore leaves exactly along the
+        return arc and lands the shot back on that midpoint. The rule is abstracted, never
+        per-weapon: whatever ballistic shot is being fired is reflected back by its own equation.</li>
+      </ul>
+      <p>
+        When either ballistic solve has no solution (the panel sits outside the arc&rsquo;s reach),
+        the panel falls back to the straight-line bisector rather than going idle &mdash; a
+        best-effort mirror is still a mirror. Constant-speed guided munitions and vertical
+        launchers are not ballistic threats under this rule; they keep the straight bisector.
       </p>
     </section>
 

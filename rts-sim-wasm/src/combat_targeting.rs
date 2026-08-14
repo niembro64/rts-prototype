@@ -3925,6 +3925,190 @@ pub(crate) fn combat_targeting_resolve_body_aim_point_from_slot(
     }
 }
 
+/// Pure static-endpoint ballistic solve (no slab writes): flight time
+/// and world launch velocity for a shot from `from` to `to` with the
+/// given shot parameters, under pool wind. None = no arc reaches.
+fn combat_targeting_solve_static_arc(
+    pool: &CombatTargetingPool,
+    from: (f64, f64, f64),
+    to: (f64, f64, f64),
+    projectile_speed: f64,
+    projectile_mass: f64,
+    projectile_air_friction_per_60hz_frame: f64,
+    gravity: f64,
+    prefer_late_solution: u8,
+    max_time_sec_or_zero: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    let input = [
+        from.0,
+        from.1,
+        from.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        to.0,
+        to.1,
+        to.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -gravity,
+        projectile_speed,
+    ];
+    let mut solution = [0.0_f64; 7];
+    let found = solve_damped_kinematic_intercept_inline(
+        &input,
+        &mut solution,
+        prefer_late_solution,
+        max_time_sec_or_zero,
+        projectile_air_friction_per_60hz_frame,
+        projectile_mass,
+        pool.wind_x,
+        pool.wind_y,
+        pool.wind_z,
+    );
+    if !found {
+        return None;
+    }
+    Some((solution[0], solution[4], solution[5], solution[6]))
+}
+
+/// Closed-form world velocity of a shot `t` seconds after launch,
+/// matching solve_damped_kinematic_intercept_inline's flight model:
+/// exponential drag toward wind, constant gravity (undamped shots
+/// ignore wind, exactly like the solver's zero-friction path).
+fn combat_targeting_arc_velocity_at_time(
+    pool: &CombatTargetingPool,
+    launch_vx: f64,
+    launch_vy: f64,
+    launch_vz: f64,
+    t: f64,
+    projectile_mass: f64,
+    projectile_air_friction_per_60hz_frame: f64,
+    gravity: f64,
+) -> (f64, f64, f64) {
+    let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
+        projectile_air_friction_per_60hz_frame,
+        projectile_mass,
+    );
+    if !drag_k.is_finite() || drag_k <= 1e-9 {
+        return (launch_vx, launch_vy, launch_vz - gravity * t);
+    }
+    let damp = (-drag_k * t).exp();
+    let terminal_z = -gravity / drag_k;
+    (
+        pool.wind_x + (launch_vx - pool.wind_x) * damp,
+        pool.wind_y + (launch_vy - pool.wind_y) * damp,
+        pool.wind_z + terminal_z + (launch_vz - pool.wind_z - terminal_z) * damp,
+    )
+}
+
+/// Ballistic-mirror panel normal for the incoming-threat reflector.
+///
+/// A ballistic threat's shot arrives along the descending leg of its
+/// arc, not along the straight ray from its barrel, so the straight
+/// turret/body bisector points the specular bounce far off the
+/// attacker. This mirrors the threat's own ballistics equation instead:
+///   1. run the threat turret's authored shot parameters from its mount
+///      to this panel to predict the incoming arrival velocity;
+///   2. solve the return arc from the panel to the midpoint between the
+///      threat turret and its host body, at the reflected (arrival)
+///      speed — the panel material's reflectivity is 1, so the bounce
+///      leaves at arrival speed, not at the authored muzzle speed;
+///   3. face the panel along the bisector of the reversed arrival
+///      direction and the return launch direction, so the shared
+///      specular formula maps the arriving velocity exactly onto the
+///      return launch velocity.
+/// None = either arc has no solution; the caller keeps the straight
+/// bisector — a best-effort mirror is still a mirror.
+fn combat_targeting_ballistic_mirror_panel_dir(
+    pool: &CombatTargetingPool,
+    threat_idx: usize,
+    turret_point: (f64, f64, f64),
+    body_point: (f64, f64, f64),
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+    gravity: f64,
+) -> Option<(f64, f64, f64)> {
+    const MIRROR_EPSILON: f64 = 1e-6;
+    let projectile_speed = pool.turret_projectile_speed[threat_idx];
+    let projectile_mass = pool.turret_projectile_mass[threat_idx];
+    let air_friction = pool.turret_projectile_air_friction_per_60hz_frame[threat_idx];
+    let prefer_late: u8 = if pool.turret_arc_preference[threat_idx] == CT_BALLISTIC_ARC_HIGH {
+        1
+    } else {
+        0
+    };
+    let max_time = pool.turret_max_time_sec[threat_idx];
+
+    let (incoming_time, in_vx, in_vy, in_vz) = combat_targeting_solve_static_arc(
+        pool,
+        turret_point,
+        (mount_x, mount_y, mount_z),
+        projectile_speed,
+        projectile_mass,
+        air_friction,
+        gravity,
+        prefer_late,
+        max_time,
+    )?;
+    let (arr_vx, arr_vy, arr_vz) = combat_targeting_arc_velocity_at_time(
+        pool,
+        in_vx,
+        in_vy,
+        in_vz,
+        incoming_time,
+        projectile_mass,
+        air_friction,
+        gravity,
+    );
+    let arrival_speed = (arr_vx * arr_vx + arr_vy * arr_vy + arr_vz * arr_vz).sqrt();
+    if !arrival_speed.is_finite() || arrival_speed <= MIRROR_EPSILON {
+        return None;
+    }
+
+    let return_target = (
+        (turret_point.0 + body_point.0) * 0.5,
+        (turret_point.1 + body_point.1) * 0.5,
+        (turret_point.2 + body_point.2) * 0.5,
+    );
+    let (_return_time, out_vx, out_vy, out_vz) = combat_targeting_solve_static_arc(
+        pool,
+        (mount_x, mount_y, mount_z),
+        return_target,
+        arrival_speed,
+        projectile_mass,
+        air_friction,
+        gravity,
+        prefer_late,
+        max_time,
+    )?;
+    let out_speed = (out_vx * out_vx + out_vy * out_vy + out_vz * out_vz).sqrt();
+    if !out_speed.is_finite() || out_speed <= MIRROR_EPSILON {
+        return None;
+    }
+
+    let inv_in = 1.0 / arrival_speed;
+    let inv_out = 1.0 / out_speed;
+    let dir_x = out_vx * inv_out - arr_vx * inv_in;
+    let dir_y = out_vy * inv_out - arr_vy * inv_in;
+    let dir_z = out_vz * inv_out - arr_vz * inv_in;
+    let dir_len = (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z).sqrt();
+    if !dir_len.is_finite() || dir_len <= MIRROR_EPSILON {
+        return None;
+    }
+    Some((dir_x / dir_len, dir_y / dir_len, dir_z / dir_len))
+}
+
 #[inline]
 pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     pool: &CombatTargetingPool,
@@ -3935,6 +4119,7 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     mount_x: f64,
     mount_y: f64,
     mount_z: f64,
+    gravity: f64,
 ) -> (f64, f64, f64) {
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     let flags = pool.turret_config_flags[idx];
@@ -4028,6 +4213,36 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     }
     if body_len <= BISECT_EPSILON {
         return turret_point;
+    }
+
+    // A ballistic threat (its own aim solves an arc) does not arrive on
+    // the straight barrel ray; mirror its ballistics equation instead of
+    // the straight bisector. Constant-speed guided and vertical-launch
+    // threats fly straight or are guided — they keep the bisector.
+    let threat_global =
+        combat_targeting_turret_global_idx(target_entity_slot as u32, target_turret_idx as u32);
+    let threat_flags = pool.turret_config_flags[threat_global];
+    if (threat_flags & CT_TURRET_CFG_NEEDS_BALLISTIC) != 0
+        && (threat_flags & (CT_TURRET_CFG_VERTICAL_LAUNCHER | CT_TURRET_CFG_CONSTANT_SPEED_LEAD))
+            == 0
+    {
+        if let Some((dir_x, dir_y, dir_z)) = combat_targeting_ballistic_mirror_panel_dir(
+            pool,
+            threat_global,
+            turret_point,
+            body_point,
+            mount_x,
+            mount_y,
+            mount_z,
+            gravity,
+        ) {
+            let aim_distance = turret_len.min(body_len).max(1.0);
+            return (
+                mount_x + dir_x * aim_distance,
+                mount_y + dir_y * aim_distance,
+                mount_z + dir_z * aim_distance,
+            );
+        }
     }
 
     let turret_inv = 1.0 / turret_len;
@@ -7026,6 +7241,7 @@ pub(crate) fn combat_targeting_candidate_slot_gate_passes(
         mount_x,
         mount_y,
         mount_z,
+        gravity,
     );
 
     let target_vx = pool
@@ -11070,6 +11286,137 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    /// The mirror contract: reflecting the predicted incoming arrival
+    /// velocity about the ballistic-mirror panel normal must yield
+    /// exactly the return-arc launch velocity, and that launch velocity
+    /// must land the shot on the turret/host midpoint under the same
+    /// flight model. Checked with and without drag.
+    fn assert_ballistic_mirror_round_trip(air_friction: f64, projectile_mass: f64) {
+        let mut pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(0);
+        let threat_idx = combat_targeting_turret_global_idx(0, 0);
+        pool.turret_projectile_speed[threat_idx] = 600.0;
+        pool.turret_projectile_mass[threat_idx] = projectile_mass;
+        pool.turret_projectile_air_friction_per_60hz_frame[threat_idx] = air_friction;
+        pool.turret_arc_preference[threat_idx] = 0;
+        pool.turret_max_time_sec[threat_idx] = 0.0;
+
+        let gravity = 400.0;
+        let turret_point = (600.0, 100.0, 120.0);
+        let body_point = (600.0, 100.0, 60.0);
+        let (mount_x, mount_y, mount_z) = (0.0, 0.0, 50.0);
+
+        let (normal_x, normal_y, normal_z) = combat_targeting_ballistic_mirror_panel_dir(
+            &pool,
+            threat_idx,
+            turret_point,
+            body_point,
+            mount_x,
+            mount_y,
+            mount_z,
+            gravity,
+        )
+        .expect("ballistic mirror must solve for an in-range threat");
+        let normal_len =
+            (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
+        assert!((normal_len - 1.0).abs() <= 1e-9, "panel normal must be unit");
+
+        // Re-derive the two arcs with the same pure pieces the mirror used.
+        let (incoming_time, in_vx, in_vy, in_vz) = combat_targeting_solve_static_arc(
+            &pool,
+            turret_point,
+            (mount_x, mount_y, mount_z),
+            600.0,
+            projectile_mass,
+            air_friction,
+            gravity,
+            0,
+            0.0,
+        )
+        .expect("incoming arc must solve");
+        let (arr_vx, arr_vy, arr_vz) = combat_targeting_arc_velocity_at_time(
+            &pool,
+            in_vx,
+            in_vy,
+            in_vz,
+            incoming_time,
+            projectile_mass,
+            air_friction,
+            gravity,
+        );
+        let arrival_speed = (arr_vx * arr_vx + arr_vy * arr_vy + arr_vz * arr_vz).sqrt();
+        let mid = (
+            (turret_point.0 + body_point.0) * 0.5,
+            (turret_point.1 + body_point.1) * 0.5,
+            (turret_point.2 + body_point.2) * 0.5,
+        );
+        let (return_time, out_vx, out_vy, out_vz) = combat_targeting_solve_static_arc(
+            &pool,
+            (mount_x, mount_y, mount_z),
+            mid,
+            arrival_speed,
+            projectile_mass,
+            air_friction,
+            gravity,
+            0,
+            0.0,
+        )
+        .expect("return arc must solve");
+
+        // Specular bounce of the arriving velocity = return launch
+        // velocity. The bounce preserves |arrival| exactly while the
+        // solver's launch speed matches it only to root-finding
+        // tolerance, so compare to that tolerance, not to 1e-9.
+        let (r_vx, r_vy, r_vz) =
+            reflect_about_normal(arr_vx, arr_vy, arr_vz, normal_x, normal_y, normal_z)
+                .expect("arrival velocity must reflect");
+        assert!(
+            (r_vx - out_vx).abs() <= 1e-4 * arrival_speed
+                && (r_vy - out_vy).abs() <= 1e-4 * arrival_speed
+                && (r_vz - out_vz).abs() <= 1e-4 * arrival_speed,
+            "reflected arrival {r_vx},{r_vy},{r_vz} must equal return launch {out_vx},{out_vy},{out_vz}"
+        );
+
+        // The return launch velocity really lands on the midpoint under
+        // the same flight model the solver assumes.
+        let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
+            air_friction,
+            projectile_mass,
+        );
+        let (land_x, land_y, land_z) = if drag_k.is_finite() && drag_k > 1e-9 {
+            let retention = (1.0 - (-drag_k * return_time).exp()) / drag_k;
+            let terminal_z = -gravity / drag_k;
+            (
+                mount_x + out_vx * retention,
+                mount_y + out_vy * retention,
+                mount_z + terminal_z * return_time + (out_vz - terminal_z) * retention,
+            )
+        } else {
+            (
+                mount_x + out_vx * return_time,
+                mount_y + out_vy * return_time,
+                mount_z + out_vz * return_time - 0.5 * gravity * return_time * return_time,
+            )
+        };
+        assert!(
+            (land_x - mid.0).abs() <= 1e-3
+                && (land_y - mid.1).abs() <= 1e-3
+                && (land_z - mid.2).abs() <= 1e-3,
+            "return arc lands at {land_x},{land_y},{land_z}, expected midpoint {:?}",
+            mid
+        );
+    }
+
+    #[test]
+    fn ballistic_mirror_reflects_arrival_onto_return_arc() {
+        assert_ballistic_mirror_round_trip(0.0, 1.0);
+    }
+
+    #[test]
+    fn ballistic_mirror_reflects_arrival_onto_return_arc_with_drag() {
+        assert_ballistic_mirror_round_trip(0.002, 2.0);
     }
 
     #[test]

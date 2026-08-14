@@ -880,6 +880,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
                             mount_x,
                             mount_y,
                             mount_z,
+                            gravity,
                         ),
                         None => (0.0, 0.0, 0.0),
                     }
@@ -1115,6 +1116,7 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
                         mount_x,
                         mount_y,
                         mount_z,
+                        gravity,
                     ),
                     None => (0.0, 0.0, 0.0),
                 }
