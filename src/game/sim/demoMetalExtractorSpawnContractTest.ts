@@ -245,7 +245,12 @@ function assertNegativeMetalDepositStepDemoSpawn(
 
 /** The smallest stock map with the authored [1,2,0,3] roster is the packing
  * stress case. It must retain exact coverage even though genuinely constrained
- * custom maps use best-effort placement. */
+ * custom maps use best-effort placement. The MODE DEFAULT preset is asserted
+ * too: it is the map the demo actually boots, so a base row that only fits in
+ * an idealized world is caught here. Both runs install the generated metal
+ * deposits BEFORE the base spawn, mirroring ServerBootstrap — deposit pads
+ * block non-extractor placement, and a deposit-free test world quietly passes
+ * layouts that fail in the real demo. */
 function assertCompactAuthoredRosterFactoryCoverage(): void {
   let compactPreset = BATTLE_PRESETS[0];
   for (let i = 1; i < BATTLE_PRESETS.length; i++) {
@@ -257,6 +262,14 @@ function assertCompactAuthoredRosterFactoryCoverage(): void {
       compactPreset = candidate;
     }
   }
+  assertAuthoredRosterCoverageForPreset(getModeDefaultPreset('demo'), 1240);
+  assertAuthoredRosterCoverageForPreset(compactPreset, 1241);
+}
+
+function assertAuthoredRosterCoverageForPreset(
+  compactPreset: BattlePreset,
+  seed: number,
+): void {
   setTerrainRuntimeConfig({
     centerMagnitude: compactPreset.centerMagnitude,
     dividersMagnitude: compactPreset.dividersMagnitude,
@@ -272,11 +285,13 @@ function assertCompactAuthoredRosterFactoryCoverage(): void {
   for (let i = 0; i < DEMO_CONFIG.playerCount; i++) {
     playerIds.push((i + 1) as PlayerId);
   }
-  const world = new WorldState(1241, mapWidth, mapHeight);
+  const world = new WorldState(seed, mapWidth, mapHeight);
   world.setTeamRoster(buildTeamRosterFromSeatCounts(
     playerIds,
     DEMO_CONFIG.allyTeamSeats,
   ));
+  // Real boot order: deposits exist before any base row places.
+  world.metalDeposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const construction = new ConstructionSystem(mapWidth, mapHeight, null);
   const entities = spawnInitialBases(world, construction, playerIds, 'demo');
   const expectedUnitBlueprintIds =
@@ -318,27 +333,35 @@ function assertCompactAuthoredRosterFactoryCoverage(): void {
     );
   }
 
-  // The tech structures flank the radar on the sensor ring. Placement is
-  // best-effort by design, so a silent collision (the bug this guards
-  // against: same-angle rings 0.02 of spawn radius apart) would remove
-  // them without failing startup — assert every seat actually got both.
-  const expectedTechCounts: ReadonlyArray<readonly [string, number]> = [
+  // The radar↔beam band packs six evenly spaced rows (tech pair,
+  // anti-air, converter, solar, cannon) between its fixed endpoints.
+  // Placement is best-effort by design, so a footprint collision on the
+  // tightened spacing would silently remove or displace a row without
+  // failing startup — assert every seat actually received every band
+  // building at its configured count, endpoints included.
+  const expectedBandCounts: ReadonlyArray<readonly [string, number]> = [
+    ['buildingRadar', DEMO_CONFIG.buildingRadarCount],
     ['buildingShieldTargetingTech', DEMO_CONFIG.buildingShieldTargetingTechCount],
     ['buildingShieldTech', DEMO_CONFIG.buildingShieldTechCount],
+    ['towerAntiAir', DEMO_CONFIG.towerAntiAirCount],
+    ['buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount],
+    ['buildingSolar', DEMO_CONFIG.buildingSolarCount],
+    ['towerCannon', DEMO_CONFIG.towerCannonCount],
+    ['towerBeamMega', DEMO_CONFIG.towerBeamMegaCount],
   ];
-  for (const [techBlueprintId, expectedCount] of expectedTechCounts) {
+  for (const [bandBlueprintId, expectedCount] of expectedBandCounts) {
     const countByPlayer = new Map<PlayerId, number>();
     for (const entity of entities) {
-      if (entity.buildingBlueprintId !== techBlueprintId) continue;
+      if (entity.buildingBlueprintId !== bandBlueprintId) continue;
       const playerId = entity.ownership?.playerId;
-      assertContract(playerId !== undefined, `demo ${techBlueprintId} must have an owner`);
+      assertContract(playerId !== undefined, `demo ${bandBlueprintId} must have an owner`);
       countByPlayer.set(playerId, (countByPlayer.get(playerId) ?? 0) + 1);
     }
     for (const playerId of playerIds) {
       assertContract(
         (countByPlayer.get(playerId) ?? 0) === expectedCount,
         `${compactPreset.name} player ${playerId} must spawn ${expectedCount} ` +
-          `${techBlueprintId} (got ${countByPlayer.get(playerId) ?? 0})`,
+          `${bandBlueprintId} (got ${countByPlayer.get(playerId) ?? 0})`,
       );
     }
   }

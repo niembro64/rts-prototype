@@ -18,26 +18,26 @@
     "buildingRadar": {
       "radiusFraction": 0.65
     },
+    "buildingShieldTargetingTech": {
+      "radiusFraction": 0.6143
+    },
+    "buildingShieldTech": {
+      "radiusFraction": 0.5786
+    },
     "towerAntiAir": {
-      "radiusFraction": 0.6
+      "radiusFraction": 0.5429
     },
     "buildingResourceConverter": {
-      "radiusFraction": 0.55
+      "radiusFraction": 0.5071
     },
     "buildingSolar": {
-      "radiusFraction": 0.5
+      "radiusFraction": 0.4714
     },
     "towerCannon": {
-      "radiusFraction": 0.45
+      "radiusFraction": 0.4357
     },
     "towerBeamMega": {
       "radiusFraction": 0.4
-    },
-    "buildingShieldTargetingTech": {
-      "radiusFraction": 0.35
-    },
-    "buildingShieldTech": {
-      "radiusFraction": 0.35
     }
   },
   "waterFabricators": {

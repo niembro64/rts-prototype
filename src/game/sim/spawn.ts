@@ -767,14 +767,6 @@ export function spawnInitialBases(
     );
     entities.push(commander);
 
-    // Solar collector arc.
-    if (isBuildingEnabled('buildingSolar')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
-        oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
-    }
-
     // Wind turbine arc — independent radius so its silhouette reads on
     // its own ring, not interleaved with the solars.
     if (isBuildingEnabled('buildingWind')) {
@@ -784,29 +776,32 @@ export function spawnInitialBases(
       ));
     }
 
-    // Radar arc — long sensor coverage without adding more weapons.
+    // ── The radar↔beam band ─────────────────────────────────────────
+    // The radar (0.65) and beam-tower (0.40) rings are fixed endpoints;
+    // between them six rows — targeting-tech spire, shield forge,
+    // anti-air, converter, solar, cannon — sit on evenly spaced rings
+    // (steps of 0.25/7). The tech pair grants the seat shield-aware
+    // targeting and shielded production, so the demo exercises both
+    // upgrades live. Two rules keep the tightened band stable:
+    //   1. Rows place in STRICT outer→inner radial order, so a row's
+    //      preferred cells are claimed before its inner neighbour's
+    //      search can squat on them.
+    //   2. Every band row uses the wide factory search offsets, so a
+    //      cell lost to a deposit pad or cramped terrain slides to the
+    //      nearest free cells instead of silently failing best-effort
+    //      placement.
     if (isBuildingEnabled('buildingRadar')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
         oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
-
-    // Tech structures — the targeting-tech spire grants the seat
-    // shield-aware targeting, and the shield forge unlocks its shielded
-    // production lines, so the demo exercises both upgrades live. They
-    // share their OWN ring at the standard 0.05 spacing (0.35, one step
-    // inside the beam-tower ring), the spire on the + flank and the
-    // forge on the −. A same-angle row wedged 0.02–0.03 from another
-    // ring collides with that row's footprints and silently fails
-    // best-effort placement, so the pair spreads angularly instead; the
-    // wide factory search offsets rescue cramped presets.
     if (isBuildingEnabled('buildingShieldTargetingTech')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTargetingTech',
         DEMO_CONFIG.buildingShieldTargetingTechCount,
-        oval, shieldTargetingTechRadius, baseAngle + sectorAngle * 0.22,
-        sectorAngle * 0.16, playerId, factoryWaypoint,
+        oval, shieldTargetingTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
@@ -814,8 +809,42 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTech',
         DEMO_CONFIG.buildingShieldTechCount,
-        oval, shieldTechRadius, baseAngle - sectorAngle * 0.22,
-        sectorAngle * 0.16, playerId, factoryWaypoint,
+        oval, shieldTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('towerAntiAir')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
+        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('buildingResourceConverter')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
+        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('buildingSolar')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
+        oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('towerCannon')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
+        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('towerBeamMega')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
+        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
@@ -923,40 +952,6 @@ export function spawnInitialBases(
       ));
     }
 
-    // Mega-beam defense-building arc — covers the approach to the base from the
-    // map center.
-    if (isBuildingEnabled('towerBeamMega')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
-        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
-    }
-
-    // Cannon defense-building arc — companion ring for long-range
-    // heavy shots.
-    if (isBuildingEnabled('towerCannon')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
-        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
-    }
-
-    // Anti-air defense-building arc — static missile cover for flying units.
-    if (isBuildingEnabled('towerAntiAir')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
-        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
-    }
-
-    // Resource converter arc — economy buildings on their own ring
-    // between fabricators and the static-defense rings.
-    if (isBuildingEnabled('buildingResourceConverter')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
-        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-      ));
-    }
   }
 
 
