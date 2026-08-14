@@ -21,6 +21,7 @@ import {
   getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,
+  getMultiBarrelFiringOrbitRadius,
   getSimpleMultiBarrelOrbitRadius,
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
@@ -79,6 +80,11 @@ export type TurretMesh = {
    *  slot. `tier` is the detail tier the turret was built at, so the collar
    *  allocates out of the matching LOD pool. */
   teamCollar?: TurretCollarProfile & {
+    /** Pitch-group-local centre of the barrel axis. Multi-barrel clusters
+     *  lower this axis beneath the fixed firing station, so their stationary
+     *  housing collar must move by the same amount without inheriting spin. */
+    centerY: number;
+    centerZ: number;
     tier: PrimitiveGeometryTier;
     slot?: number;
   };
@@ -109,6 +115,15 @@ export type TurretMesh = {
    *  already-pitched firing axis — spin rotates the barrel cluster
    *  around the real pitched direction, not around world-X. */
   spinGroup?: THREE.Group;
+  /** One fixed QueryWeapon muzzle shared by every logical lane of a
+   * multi-barrel cluster. Coordinates are pitchGroup-local; the visual spin
+   * axis sits below this centerline by the cluster's firing orbit radius. */
+  fixedMultiBarrelMuzzle?: {
+    x: number;
+    y: number;
+    z: number;
+    laneCount: number;
+  };
   /** Per-mesh render caches used by the building/tower renderer to avoid
    *  repeating static scenegraph/material writes on active turret hosts. */
   cachedRootVisible?: boolean;
@@ -345,12 +360,50 @@ export function buildTurretMesh3D(
       headOnly,
     };
   }
+  let fixedMultiBarrelMuzzle: TurretMesh['fixedMultiBarrelMuzzle'];
+  let multiBarrelFiringOrbitR = 0;
+  if (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel') {
+    const firingOrbitR = getMultiBarrelFiringOrbitRadius(
+      barrel,
+      barrelScale,
+      length,
+      turret.config.spread?.angle,
+    );
+    multiBarrelFiringOrbitR = firingOrbitR;
+    // The QueryWeapon muzzle remains on the turret's aimed centerline. Lower
+    // the cluster axis so a barrel reaches that socket only at the top of its
+    // orbit, matching a rotary gun's fixed firing station.
+    spinGroup.position.y = -firingOrbitR;
+    fixedMultiBarrelMuzzle = {
+      x: length,
+      y: 0,
+      z: 0,
+      laneCount: turret.config.emissionLaneCount,
+    };
+  }
+
   // EVERY turret gets a collar, sized from its own head. The kit is one
   // design worn by the whole roster (see TeamOrnament3D); a turret that
   // opted out would be the one place on a unit where alliance stops being
-  // readable, which is the opposite of what the ornament is for.
+  // readable, which is the opposite of what the ornament is for. Its centre
+  // follows the barrel axis's positional offset, but not its rotation: the
+  // collar is the stationary housing around the spinning cluster.
+  const collarProfile = getTurretCollarProfile(headRadius);
+  // A two-barrel ring has its full barrel diameter concentrated across one
+  // axis. The stock head-sized collar is just shy of that envelope on the
+  // Burst Gun, so grow only two-barrel collars from the actual orbit + tube
+  // radius and leave a small amount of visible housing around the tubes.
+  const twoBarrelCollarRadius = (
+    (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel') &&
+    barrel.barrelCount === 2
+  )
+    ? (multiBarrelFiringOrbitR + cylRadius) * 1.04
+    : 0;
   const teamCollar = {
-    ...getTurretCollarProfile(headRadius),
+    ...collarProfile,
+    radius: Math.max(collarProfile.radius, twoBarrelCollarRadius),
+    centerY: spinGroup.position.y,
+    centerZ: spinGroup.position.z,
     tier: geometryTierForDetail(detailLevel),
   };
 
@@ -400,5 +453,6 @@ export function buildTurretMesh3D(
     root, yawGroup, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly,
     teamCollar,
+    fixedMultiBarrelMuzzle,
   };
 }

@@ -876,6 +876,31 @@ function assertRexRocketMountLayout(): void {
   );
 }
 
+function assertRexWeaponArmsDampRapidAimCorrections(): void {
+  const rex = buildBot('unitRex');
+  const gatling = rex.turrets.find((turret) => turret.mountId === 'gatlingRight');
+  const arm = rex.mesh.arms.find((candidate) => candidate.id === 'rightArm');
+  assertContract(gatling !== undefined && arm !== undefined, 'Rex exposes its right weapon arm');
+
+  gatling.rotation = 0;
+  gatling.pitch = 0;
+  updateBotHostTurretAim(rex.mesh, 0, undefined, rex.turrets, 0);
+  gatling.rotation = 0.8;
+  gatling.pitch = 0.6;
+  updateBotHostTurretAim(rex.mesh, 0, undefined, rex.turrets, 16);
+  assertContract(
+    arm.turretAimYaw > 0 && arm.turretAimYaw < gatling.rotation &&
+      arm.turretAimPitch > 0 && arm.turretAimPitch < gatling.pitch,
+    'Rex heavy arms damp one-frame aim corrections instead of visibly shaking',
+  );
+
+  for (let i = 0; i < 150; i++) {
+    updateBotHostTurretAim(rex.mesh, 0, undefined, rex.turrets, 16);
+  }
+  assertNear(arm.turretAimYaw, gatling.rotation, 'Rex right arm converges to turret yaw');
+  assertNear(arm.turretAimPitch, gatling.pitch, 'Rex right arm converges to turret pitch');
+}
+
 function assertTorsoAimSurvivesLodRebuild(
   mesh: BotMesh,
   label: string,
@@ -1005,6 +1030,7 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertBotTorsoResolutionIsHostInvariant();
   assertRendererUsesAuthoritativeWaistServo();
   assertRexRocketMountLayout();
+  assertRexWeaponArmsDampRapidAimCorrections();
   const human = buildBot('unitHuman');
   assertBotHipsCenteredUnderTorso(human.mesh, 'Human');
   assertBotLegExtension(human.mesh, 'Human');

@@ -438,6 +438,9 @@ export class BuildingEntityRenderer3D {
   private readonly turretAimEntityIds: EntityId[] = [];
   private readonly turretAimIndexes: number[] = [];
   private readonly turretMountWorld = new THREE_TRIM.Vector3();
+  private readonly fixedMuzzleWorld = new THREE_TRIM.Vector3();
+  private readonly fixedMuzzleForward = new THREE_TRIM.Vector3();
+  private readonly fixedMuzzleQuaternion = new THREE_TRIM.Quaternion();
   private readonly collarPosition = new THREE_TRIM.Vector3();
   private readonly collarQuaternion = new THREE_TRIM.Quaternion();
   private readonly collarIdentity = new THREE_TRIM.Quaternion();
@@ -1491,18 +1494,52 @@ export class BuildingEntityRenderer3D {
       const mountCache = this.turretMountCache;
       const host = this.turretAimHosts[i];
       const head = turretMesh.head;
-      if (mountCache !== null && host !== undefined && head !== undefined) {
+      if (mountCache !== null && host !== undefined) {
         host.group.updateMatrixWorld(true);
-        head.getWorldPosition(this.turretMountWorld);
-        mountCache.write(
-          this.turretAimEntityIds[i],
-          this.turretAimIndexes[i],
-          this.turretMountWorld.x,
-          this.turretMountWorld.z,
-          this.turretMountWorld.y,
-        );
-        const barrel = turretMesh.barrels[0];
-        if (barrel !== undefined) {
+        if (head !== undefined) {
+          head.getWorldPosition(this.turretMountWorld);
+          mountCache.write(
+            this.turretAimEntityIds[i],
+            this.turretAimIndexes[i],
+            this.turretMountWorld.x,
+            this.turretMountWorld.z,
+            this.turretMountWorld.y,
+          );
+        }
+        const fixedMuzzle = turretMesh.fixedMultiBarrelMuzzle;
+        const pitchGroup = turretMesh.pitchGroup;
+        if (fixedMuzzle !== undefined && pitchGroup !== undefined) {
+          this.fixedMuzzleWorld
+            .set(fixedMuzzle.x, fixedMuzzle.y, fixedMuzzle.z);
+          pitchGroup.localToWorld(this.fixedMuzzleWorld);
+          pitchGroup.getWorldQuaternion(this.fixedMuzzleQuaternion);
+          this.fixedMuzzleForward
+            .set(1, 0, 0)
+            .applyQuaternion(this.fixedMuzzleQuaternion)
+            .normalize();
+          for (let lane = 0; lane < fixedMuzzle.laneCount; lane++) {
+            mountCache.writeEmission(
+              this.turretAimEntityIds[i],
+              this.turretAimIndexes[i],
+              lane,
+              this.fixedMuzzleWorld.x,
+              this.fixedMuzzleWorld.z,
+              this.fixedMuzzleWorld.y,
+              this.fixedMuzzleForward.x,
+              this.fixedMuzzleForward.z,
+              this.fixedMuzzleForward.y,
+            );
+          }
+          mountCache.writeForward(
+            this.turretAimEntityIds[i],
+            this.turretAimIndexes[i],
+            this.fixedMuzzleForward.x,
+            this.fixedMuzzleForward.z,
+            this.fixedMuzzleForward.y,
+          );
+        } else {
+          const barrel = turretMesh.barrels[0];
+          if (barrel === undefined) continue;
           barrel.updateWorldMatrix(true, false);
           const elements = barrel.matrixWorld.elements;
           const columnX = elements[4];
@@ -1510,6 +1547,20 @@ export class BuildingEntityRenderer3D {
           const columnZ = elements[6];
           const length = Math.hypot(columnX, columnY, columnZ);
           if (length > 1e-9) {
+            // Beam pilot-light cones publish their broad base at the turret
+            // origin; normal building barrels publish their forward tip.
+            const emissionEndFactor = turretMesh.barrelUsesCone === true ? -0.5 : 0.5;
+            mountCache.writeEmission(
+              this.turretAimEntityIds[i],
+              this.turretAimIndexes[i],
+              0,
+              elements[12] + columnX * emissionEndFactor,
+              elements[14] + columnZ * emissionEndFactor,
+              elements[13] + columnY * emissionEndFactor,
+              columnX / length,
+              columnZ / length,
+              columnY / length,
+            );
             mountCache.writeForward(
               this.turretAimEntityIds[i],
               this.turretAimIndexes[i],
@@ -1548,7 +1599,7 @@ export class BuildingEntityRenderer3D {
     const pitchPosition = turretMesh.pitchGroup?.position;
     const pitchQuaternion = turretMesh.pitchGroup?.quaternion;
     this.collarPosition
-      .set(collar.centerX, 0, 0)
+      .set(collar.centerX, collar.centerY, collar.centerZ)
       .applyQuaternion(pitchQuaternion ?? this.collarIdentity)
       .add(pitchPosition ?? this.collarZero)
       .applyQuaternion(turretMesh.yawGroup.quaternion)

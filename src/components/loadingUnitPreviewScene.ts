@@ -649,8 +649,8 @@ function buildPreviewUnitModel(
     locomotion?.type === 'bot' ? locomotion : null,
   );
   if (unitBlueprintId === 'unitRex' && locomotion?.type === 'bot') {
-    previewRexVisualKit.decorateTail(
-      locomotion.mesh.hips,
+    previewRexVisualKit.decorateUpperBodyMidsection(
+      locomotion.mesh.group,
       materials.primary,
       geometryTier,
       radius,

@@ -36,6 +36,7 @@ export {
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,
   getSimpleMultiBarrelOrbitRadius,
+  getMultiBarrelFiringOrbitRadius,
   getTurretBarrelDiameter,
   getTurretBarrelCenterToTipLength,
   getTurretHeadRadius,

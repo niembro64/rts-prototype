@@ -131,6 +131,9 @@ export type BotArm = {
   /** Host-selected echo of an attached turret's current pitch. The turret
    *  still pitches itself; this only makes the carrier arm help the motion. */
   turretAimActive: boolean;
+  /** Previous-frame activity used to initialize heavy-arm presentation
+   * damping without easing in from an unrelated idle pose. */
+  turretAimActiveLastFrame: boolean;
   turretAimPitch: number;
   /** Authoritative arm yaw relative to the shared upper-body piece. */
   turretAimYaw: number;
@@ -231,6 +234,10 @@ const ELBOW_BEND_RAD = THREE.MathUtils.degToRad(52);
 const MIN_ELBOW_BEND_RAD = THREE.MathUtils.degToRad(28);
 /** Arms ease from walk swing into a working pose rather than snapping. */
 const ARM_ACTION_EASE_SECONDS = 0.11;
+/** Rex carries far more weapon mass than the ordinary bots. Damping only its
+ * visible arm response prevents tiny consecutive targeting corrections from
+ * reading as firing vibration while the logical turret remains exact. */
+const REX_WEAPON_ARM_AIM_EASE_SECONDS = 0.12;
 const STANDING_PELVIS_CENTER_LIFT_RATIO = 0.26;
 const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
 /** Conventional authored shoe roll, based on the BAR Commander approach.
@@ -880,6 +887,7 @@ export function buildBotRig(
       outwardRad: THREE.MathUtils.degToRad(cfgArms.outwardDeg),
       actionBlend: 0,
       turretAimActive: false,
+      turretAimActiveLastFrame: false,
       turretAimPitch: 0,
       turretAimYaw: 0,
       shoulderJoint,
@@ -1020,12 +1028,11 @@ export function updateBotHostTurretAim(
   hostYaw: number,
   turretRows: ClientRenderTurretHostRows | undefined,
   turrets: readonly Turret[],
-  _dtMs: number,
+  dtMs: number,
 ): number {
   for (const arm of mesh.arms) {
+    arm.turretAimActiveLastFrame = arm.turretAimActive;
     arm.turretAimActive = false;
-    arm.turretAimPitch = 0;
-    arm.turretAimYaw = 0;
   }
   const torsoTurretIndex = selectBotTorsoTurretIndex(turrets);
   const torsoOwner = torsoTurretIndex >= 0 ? turrets[torsoTurretIndex] : undefined;
@@ -1072,11 +1079,34 @@ export function updateBotHostTurretAim(
     const arm = mesh.arms.find((candidate) => candidate.id === attachment.arm);
     if (arm === undefined || arm.turretAimActive) continue;
     arm.turretAimActive = true;
-    arm.turretAimPitch = _hostTurretAimSample.pitch;
-    arm.turretAimYaw = shortestBotSocketAngleDelta(
+    const desiredPitch = _hostTurretAimSample.pitch;
+    const desiredYaw = shortestBotSocketAngleDelta(
       torsoWorldYaw,
       _hostTurretAimSample.yaw,
     );
+    if (
+      mesh.variant === 'titan' &&
+      arm.turretAimActiveLastFrame &&
+      dtMs > 0
+    ) {
+      const alpha = 1 - Math.exp(
+        -Math.max(0, dtMs) / 1000 / REX_WEAPON_ARM_AIM_EASE_SECONDS,
+      );
+      arm.turretAimPitch += (desiredPitch - arm.turretAimPitch) * alpha;
+      arm.turretAimYaw += shortestBotSocketAngleDelta(
+        arm.turretAimYaw,
+        desiredYaw,
+      ) * alpha;
+    } else {
+      arm.turretAimPitch = desiredPitch;
+      arm.turretAimYaw = desiredYaw;
+    }
+  }
+
+  for (const arm of mesh.arms) {
+    if (arm.turretAimActive) continue;
+    arm.turretAimPitch = 0;
+    arm.turretAimYaw = 0;
   }
 
   mesh.turretLockActive = mesh.arms.some((arm) => arm.turretAimActive);

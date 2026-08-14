@@ -13,6 +13,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 import {
   isProjectileShot,
+  isRayConfig,
   type Turret,
   type TurretConfig,
   type BuildingBlueprintId,
@@ -38,12 +39,7 @@ import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
 import { cloneSensorCapabilityConfig } from './sensorConfig';
 import { BEAM_PULSE_INITIAL_STAGGER_MAX_MS } from '../../config';
-import {
-  getConeBarrelTipOrbitRadius,
-  getSimpleMultiBarrelOrbitRadius,
-  getTurretBarrelCenterToTipLength,
-  getTurretHeadRadius,
-} from '../math/BarrelGeometry';
+import { getTurretBarrelCenterToTipLength } from '../math/BarrelGeometry';
 
 function getBeamPulseInitialDelayMs(turretId: EntityId): number {
   if (turretId < 0 || BEAM_PULSE_INITIAL_STAGGER_MAX_MS <= 0) return 0;
@@ -74,7 +70,57 @@ function buildRuntimeEmissionSockets(
   authored: readonly TurretEmissionSocket[] | null,
   presentation: TurretPresentation,
   laneCount: number,
+  emissionAtTurretOrigin: boolean,
 ): { x: number; y: number; z: number }[] {
+  const length = getTurretBarrelCenterToTipLength(presentation);
+  const barrel = presentation.barrel;
+  if (emissionAtTurretOrigin) {
+    if (authored !== null) {
+      if (authored.length !== laneCount) {
+        throw new Error(
+          `Authoritative emissionSockets must contain exactly ${laneCount} lane(s)`,
+        );
+      }
+      for (const socket of authored) {
+        const offset = socket.offset;
+        if (
+          !Number.isFinite(offset.x) ||
+          !Number.isFinite(offset.y) ||
+          !Number.isFinite(offset.z)
+        ) {
+          throw new Error('Authoritative emission socket offsets must be finite');
+        }
+        if (offset.x !== 0 || offset.y !== 0 || offset.z !== 0) {
+          throw new Error(
+            'Beam pilot-light emission sockets must remain at the turret origin',
+          );
+        }
+      }
+    }
+    // A live beam replaces the idle pilot-light cone from its broad base,
+    // rather than beginning at the cone tip and leaving a visible gap.
+    return Array.from({ length: laneCount }, () => ({ x: 0, y: 0, z: 0 }));
+  }
+  const multiBarrel =
+    barrel?.type === 'simpleMultiBarrel' || barrel?.type === 'coneMultiBarrel';
+  if (multiBarrel) {
+    if (barrel.barrelCount !== laneCount) {
+      throw new Error(
+        `Host barrelCount ${barrel.barrelCount} must match emissionLaneCount ${laneCount}`,
+      );
+    }
+    if (authored !== null && authored.length !== laneCount) {
+      throw new Error(
+        `Authoritative emissionSockets must contain exactly ${laneCount} lane(s)`,
+      );
+    }
+    // Lane identity still drives burst sequencing and effects, but rotary and
+    // other clustered weapons have one mechanical firing station. Their spin
+    // axis is a render concern; every physical emission leaves the same
+    // centered top-of-cluster socket.
+    return Array.from({ length: laneCount }, () => ({ x: length, y: 0, z: 0 }));
+  }
+
   if (authored !== null) {
     if (authored.length !== laneCount) {
       throw new Error(
@@ -94,44 +140,9 @@ function buildRuntimeEmissionSockets(
     });
   }
 
-  const length = getTurretBarrelCenterToTipLength(presentation);
-  const barrel = presentation.barrel;
-  const headRadius = getTurretHeadRadius(presentation);
-  if (
-    (barrel?.type === 'simpleMultiBarrel' || barrel?.type === 'coneMultiBarrel') &&
-    barrel.barrelCount !== laneCount
-  ) {
-    throw new Error(
-      `Host barrelCount ${barrel.barrelCount} must match emissionLaneCount ${laneCount}`,
-    );
-  }
   const sockets: { x: number; y: number; z: number }[] = [];
   for (let lane = 0; lane < laneCount; lane++) {
-    let lateral = 0;
-    let up = 0;
-    if (
-      barrel?.type === 'simpleMultiBarrel' &&
-      Number.isFinite(barrel.orbitRadius)
-    ) {
-      const radius = getSimpleMultiBarrelOrbitRadius(barrel, headRadius);
-      const angle = ((lane + 0.5) / laneCount) * Math.PI * 2;
-      lateral = DMath.sin(angle) * radius;
-      up = DMath.cos(angle) * radius;
-    } else if (
-      barrel?.type === 'coneMultiBarrel' &&
-      Number.isFinite(barrel.baseOrbit)
-    ) {
-      const radius = getConeBarrelTipOrbitRadius(
-        barrel,
-        headRadius,
-        length,
-        undefined,
-      );
-      const angle = ((lane + 0.5) / laneCount) * Math.PI * 2;
-      lateral = DMath.sin(angle) * radius;
-      up = DMath.cos(angle) * radius;
-    }
-    sockets.push({ x: length, y: lateral, z: up });
+    sockets.push({ x: length, y: 0, z: 0 });
   }
   return sockets;
 }
@@ -237,6 +248,7 @@ function makeRuntimeTurret(
       emissionSockets,
       presentation,
       config.emissionLaneCount,
+      config.shot !== null && isRayConfig(config.shot),
     ),
     aimTargetYaw: 0,
     aimTargetPitch: 0,

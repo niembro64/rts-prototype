@@ -123,9 +123,10 @@ export class TurretMountCache3D {
     entry.hasForward = true;
   }
 
-  /** Write one rendered QueryWeapon muzzle. Barrel matrices are resolved after
+  /** Write one rendered QueryWeapon origin. Barrel matrices are resolved after
    * the host piece chain, so this cache is the presentation counterpart of the
-   * sim's per-lane authoritative socket query. */
+   * sim's per-lane authoritative socket query. Projectile weapons normally use
+   * a muzzle tip; beam pilot lights use their broad base at the turret origin. */
   writeEmission(
     entityId: EntityId,
     turretIdx: number,

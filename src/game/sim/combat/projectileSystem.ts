@@ -1277,7 +1277,8 @@ export function fireTurrets(
         }
 
         if (isBeamWeapon) {
-          // Beam start is the selected QueryWeapon muzzle in sim and rendering.
+          // Beam start is the selected QueryWeapon origin — the broad base of
+          // its pilot-light cone — in both simulation and rendering.
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;

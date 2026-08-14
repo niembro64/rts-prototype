@@ -129,7 +129,7 @@ import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 
 // Chassis heights are per-unit (see getBodyTopY in BodyDimensions.ts).
 // Turret head centers remain AimFrom presentation anchors; the barrel pass
-// separately publishes per-lane QueryWeapon muzzles for live emissions.
+// separately publishes per-lane QueryWeapon points for live emissions.
 
 const EMPTY_PROJECTILES: readonly Entity[] = [];
 const DEFAULT_ENTITY_EMISSION_FAR_LOD = (): boolean => false;

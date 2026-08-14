@@ -14,6 +14,7 @@ type SecondaryLockOnProfile = {
   candidateRelationship: 'enemy_entities';
   candidateFamily: 'turrets';
   rankBy: 'threat_turret_sustained_dps';
+  rescorePeriodTicks: number;
   aim: 'bisect_threat_turret_origin_and_threat_host_origin';
   intent: string;
 };
@@ -32,6 +33,7 @@ const SECONDARY_LOCK_ON_PROFILE_FIELDS = [
   'candidateRelationship',
   'candidateFamily',
   'rankBy',
+  'rescorePeriodTicks',
   'aim',
   'intent',
 ] as const;
@@ -54,6 +56,16 @@ function validateSecondaryLockOnProfile(
   }
   if (value.rankBy !== 'threat_turret_sustained_dps') {
     throw new Error(`Invalid ${label}: rankBy must be "threat_turret_sustained_dps"`);
+  }
+  if (
+    typeof value.rescorePeriodTicks !== 'number' ||
+    !Number.isSafeInteger(value.rescorePeriodTicks) ||
+    value.rescorePeriodTicks <= 0 ||
+    value.rescorePeriodTicks > 0xffff
+  ) {
+    throw new Error(
+      `Invalid ${label}: rescorePeriodTicks must be an integer from 1 through 65535`,
+    );
   }
   if (value.aim !== 'bisect_threat_turret_origin_and_threat_host_origin') {
     throw new Error(

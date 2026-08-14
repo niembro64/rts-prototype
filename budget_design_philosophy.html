@@ -2781,8 +2781,21 @@
       <p>
         The shipped <code>secondaryLockOnProfiles</code> entry is the shield panel reflector
         (the Loris&rsquo;s mirror). It locks, via reciprocal <code>"require"</code>, exactly the
-        enemy turret currently locked onto it or its host, and its aim rule exists to send that
-        turret&rsquo;s fire back at the attacker&rsquo;s own body. Because reflection off the panel
+        enemy turret currently locked onto it or its host. Its
+        <code>rankBy: "threat_turret_sustained_dps"</code> rule makes the strongest admitted
+        incoming weapon the preferred threat, while
+        <code>rescorePeriodTicks: 16</code> makes an already-engaged panel periodically compare its
+        still-valid lock against newly reciprocal threats. Refreshes are deterministically
+        phase-staggered by host entity id, so every Loris does not query on the same tick. The
+        inclusion object remains the hard eligibility gate: an omitted turret blueprint, a turret
+        that is not currently locked onto the panel or host, an unseen target, or a target outside
+        the authored range cannot win regardless of DPS. A refresh replaces the current lock only
+        for a strictly higher sustained-DPS score; equal-power threats keep the existing lock and
+        cannot cause churn.
+      </p>
+      <p>
+        The reflector&rsquo;s aim rule exists to send the selected turret&rsquo;s fire back at the
+        attacker&rsquo;s own body. Because reflection off the panel
         is specular &mdash; one shared mirror formula for beams and travelling shots &mdash; the aim
         rule is entirely a question of choosing the panel normal, and the correct normal depends on
         how the incoming fire travels:

@@ -321,6 +321,18 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     50,
     'postAim',
   );
+  const primaryBeam = rexTurrets[primaryIndex];
+  const beamOrigin = resolveLane(rexWorld, rex, primaryIndex, 0, _emission);
+  assertContract(
+    primaryBeam.emissionSockets.length === 1 &&
+      primaryBeam.emissionSockets[0].x === 0 &&
+      primaryBeam.emissionSockets[0].y === 0 &&
+      primaryBeam.emissionSockets[0].z === 0,
+    'beam QueryWeapon stays at the broad base of its pilot light',
+  );
+  assertNear(beamOrigin.position.x, primaryBeam.worldPos.x, 'beam origin shares AimFrom x');
+  assertNear(beamOrigin.position.y, primaryBeam.worldPos.y, 'beam origin shares AimFrom y');
+  assertNear(beamOrigin.position.z, primaryBeam.worldPos.z, 'beam origin shares AimFrom z');
   const lane0 = resolveLane(rexWorld, rex, gatlingIndex, 0, _emission);
   const lane1 = resolveLane(rexWorld, rex, gatlingIndex, 1, _secondEmission);
   assertContract(
@@ -328,8 +340,14 @@ export function runAuthoritativeTurretSocketContractTest(): void {
       lane0.position.x - lane1.position.x,
       lane0.position.y - lane1.position.y,
       lane0.position.z - lane1.position.z,
-    ) > 1,
-    'different gatling lane identities resolve to different physical muzzles',
+    ) < 1e-5,
+    'all gatling lane identities resolve through one fixed firing socket',
+  );
+  assertContract(
+    gatling.emissionSockets.every((socket) => (
+      socket.x === gatling.emissionSockets[0].x && socket.y === 0 && socket.z === 0
+    )),
+    'gatling QueryWeapon sockets remain centered while the barrel cluster rotates below them',
   );
 
   const fastRocket = rexTurrets[fastRocketIndex];

@@ -326,14 +326,14 @@ export class UnitMeshBuilder3D {
     if (locomotionState !== undefined) applyLocomotionState(mesh.locomotion, locomotionState);
 
     if (blueprint?.unitBlueprintId === 'unitRex' && mesh.locomotion?.type === 'bot') {
-      const tail = this.rexVisualKit.decorateTail(
-        mesh.locomotion.hips,
+      const upperBodyMidsection = this.rexVisualKit.decorateUpperBodyMidsection(
+        mesh.locomotion.group,
         primaryMat,
         geometryTier,
         radius,
       );
-      tail.userData.entityId = entity.id;
-      tail.traverse((object) => {
+      upperBodyMidsection.userData.entityId = entity.id;
+      upperBodyMidsection.traverse((object) => {
         object.userData.entityId = entity.id;
         if (object instanceof THREE.Mesh && object.material === primaryMat) {
           chassisMeshes.push(object);

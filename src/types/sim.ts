@@ -820,7 +820,7 @@ export type Projectile = {
   /** Finite runtime timeout for lasers and special projectile classes;
    *  Infinity for ordinary traveling shot bodies. */
   maxLifespan: number;
-  /** Beam/laser polyline. Index 0 = selected QueryWeapon muzzle, last = end
+  /** Beam/laser polyline. Index 0 = selected QueryWeapon origin, last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
    *  reflectorEntityId field plus reflectorKind/normal*. Null on

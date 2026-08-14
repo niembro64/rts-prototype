@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { TurretMesh } from './TurretMesh3D';
+import { getBarrelOrbitAngle } from '../math/BarrelGeometry';
 import {
-  createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
   getOrCreate,
@@ -26,7 +26,6 @@ export class RexVisualKit3D {
   private readonly boxGeom = RexVisualKit3D.namedBoxGeom();
   private readonly cylinderGeoms = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
   private readonly sphereGeoms = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
-  private readonly toothGeoms = new Map<PrimitiveGeometryTier, THREE.ConeGeometry>();
   private readonly frustumGeoms = new Map<string, THREE.CylinderGeometry>();
   private readonly armorMat = new THREE.MeshLambertMaterial({ color: REX_ARMOR_COLOR });
   private readonly apertureMat = new THREE.MeshBasicMaterial({
@@ -50,11 +49,6 @@ export class RexVisualKit3D {
   private sphereGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
     return getOrCreate(this.sphereGeoms, tier, () =>
       createPrimitiveSphereGeometry('unitDetail', tier));
-  }
-
-  private toothGeom(tier: PrimitiveGeometryTier): THREE.ConeGeometry {
-    return getOrCreate(this.toothGeoms, tier, () =>
-      createPrimitiveConeGeometry('unitDetail', tier));
   }
 
   private frustumGeom(
@@ -144,32 +138,17 @@ export class RexVisualKit3D {
     return mesh;
   }
 
-  private addTooth(
-    parent: THREE.Object3D,
-    material: THREE.Material,
-    tier: PrimitiveGeometryTier,
-    x: number,
-    y: number,
-    z: number,
-    radius: number,
-    height: number,
-    pointsDown: boolean,
-  ): THREE.Mesh {
-    const tooth = new THREE.Mesh(this.toothGeom(tier), material);
-    tooth.position.set(x, y, z);
-    tooth.scale.set(radius, height, radius);
-    if (pointsDown) tooth.rotation.z = Math.PI;
-    parent.add(tooth);
-    return tooth;
-  }
-
   private hideGenericHead(tm: TurretMesh): void {
     if (tm.head !== undefined) tm.head.visible = false;
     tm.teamCollar = undefined;
   }
 
   private clearGenericHardware(tm: TurretMesh): void {
-    this.hideGenericHead(tm);
+    // Keep the shared team-colour collar anchor. Rex replaces the generic
+    // head and tubes, not the stationary ornamented housing those tubes pass
+    // through. The collar is rendered outside this scenegraph by the shared
+    // trim pool and must survive the visual swap.
+    if (tm.head !== undefined) tm.head.visible = false;
     for (const barrel of tm.barrels) barrel.removeFromParent();
     tm.barrels.length = 0;
   }
@@ -177,7 +156,6 @@ export class RexVisualKit3D {
   private decorateBeam(
     tm: TurretMesh,
     primaryMat: THREE.Material,
-    barrelMat: THREE.Material,
     tier: PrimitiveGeometryTier,
   ): void {
     const pivot = tm.pitchGroup;
@@ -185,11 +163,11 @@ export class RexVisualKit3D {
     if (pivot === undefined || tm.barrels.length === 0) return;
     const r = tm.headRadius ?? 26;
 
-    // The beam's existing cone is retained as the ordinary turret data
-    // carrier. Its exact tip is QueryWeapon's muzzle, so placing the mouth at
-    // that tip makes the laser leave the visible jaws without a second socket.
+    // The beam's existing cone remains the ordinary pilot light. Its broad
+    // base is QueryWeapon's origin; its tip remains the head's visual aperture
+    // so the fused snout terminates where the ray becomes externally visible.
     const pilot = tm.barrels[0];
-    const mouthPosition = new THREE.Vector3(0, pilot.scale.y * 0.5, 0)
+    const aperturePosition = new THREE.Vector3(0, pilot.scale.y * 0.5, 0)
       .applyQuaternion(pilot.quaternion)
       .add(pilot.position);
 
@@ -211,130 +189,49 @@ export class RexVisualKit3D {
     );
     upperNeck.userData.rexNeckSegment = true;
 
-    // Every visible skull and jaw part is below the ordinary pitch pivot. The
-    // dinosaur head therefore IS the beam turret rather than decorative art
-    // trying to follow a hidden turret after the fact.
+    // The deliberately abstract head is one contiguous canid-like shell: no
+    // separate bill/snout block, jaw, mouth plate, teeth, eyes, nostrils, or
+    // face decals. An elongated spheroid naturally narrows toward the muzzle
+    // without producing the two-piece duck silhouette of a sphere plus box.
     const head = new THREE.Group();
     head.userData.rexTyrannosaurHead = true;
     pivot.add(head);
-    this.addSphere(
-      head, this.armorMat, tier,
-      -r * 0.3, r * 0.08, 0,
-      r * 1.08, r * 0.86, r * 0.82,
+    const headBackX = -r * 1.05;
+    const headFrontX = Math.max(r * 1.12, aperturePosition.x + r * 0.04);
+    const headShell = this.addSphere(
+      head, primaryMat, tier,
+      (headBackX + headFrontX) * 0.5, r * 0.04, 0,
+      (headFrontX - headBackX) * 0.5, r * 0.8, r * 0.74,
     );
+    headShell.userData.rexUnifiedCanidHead = true;
 
-    const snoutStartX = r * 0.02;
-    const snoutEndX = mouthPosition.x - r * 0.08;
-    const snoutLength = Math.max(r * 1.2, snoutEndX - snoutStartX);
-    const snoutCenterX = snoutStartX + snoutLength * 0.5;
-    this.addBox(
-      head, primaryMat,
-      snoutCenterX, r * 0.06, 0,
-      snoutLength, r * 0.52, r * 1.15,
-    );
-    this.addBox(
-      head, this.armorMat,
-      snoutCenterX - r * 0.04, -r * 0.56, 0,
-      snoutLength * 0.92, r * 0.24, r * 0.94,
-    );
-    // The narrow lit throat is visible between the separated jaws and reads
-    // as the beam charging in the mouth, while the retained pilot cone owns
-    // the actual emitter line from throat to muzzle.
-    this.addBox(
-      head, this.apertureMat,
-      snoutCenterX, -r * 0.31, 0,
-      snoutLength * 0.92, r * 0.055, r * 0.74,
-    );
-    this.addBox(
-      head, primaryMat,
-      -r * 0.18, r * 0.5, 0,
-      r * 0.82, r * 0.18, r * 1.42,
-    );
-
-    for (const side of [-1, 1]) {
-      this.addBox(
-        head, this.apertureMat,
-        -r * 0.02, r * 0.48, side * r * 0.72,
-        r * 0.2, r * 0.16, r * 0.1,
-      );
-    }
-
-    if (tier !== 'far') {
-      // Jaw hinge and nostrils survive through Mid; individual teeth are
-      // reduced at Mid and omitted at Far while the jaw silhouette remains.
-      const hinge = new THREE.Mesh(this.cylinderGeom(tier), this.armorMat);
-      hinge.position.set(-r * 0.38, -r * 0.35, 0);
-      hinge.rotation.x = Math.PI / 2;
-      hinge.scale.set(r * 0.17, r * 1.5, r * 0.17);
-      head.add(hinge);
-      for (const side of [-1, 1]) {
-        this.addBox(
-          head, this.apertureMat,
-          snoutEndX - r * 0.18, r * 0.24, side * r * 0.42,
-          r * 0.12, r * 0.08, r * 0.07,
-        );
-      }
-
-      const stations = tier === 'close'
-        ? [0.25, 0.47, 0.69, 0.88]
-        : [0.4, 0.74];
-      for (const station of stations) {
-        const toothX = snoutStartX + snoutLength * station;
-        for (const side of [-1, 1]) {
-          this.addTooth(
-            head, barrelMat, tier,
-            toothX, -r * 0.32, side * r * 0.46,
-            r * 0.07, r * 0.25, true,
-          );
-          this.addTooth(
-            head, barrelMat, tier,
-            toothX + r * 0.07, -r * 0.35, side * r * 0.42,
-            r * 0.055, r * 0.2, false,
-          );
-        }
-      }
-    }
-
-    const mouth = new THREE.Group();
-    mouth.position.copy(mouthPosition);
-    mouth.userData.rexBeamMouth = true;
-    head.add(mouth);
+    // Non-visual marker used only to contract-test the fused head against the
+    // pilot-light tip. It is not a separate rendered mouth component.
+    const aperture = new THREE.Group();
+    aperture.position.copy(aperturePosition);
+    aperture.userData.rexBeamAperture = true;
+    head.add(aperture);
   }
 
-  /** Attach Rex's counterbalancing tail to the lower-body/hip piece. This is
-   * deliberately not a chassis child: the bot torso can assist turret yaw,
-   * while the tail must remain aligned with the pelvis and walking legs. */
-  decorateTail(
-    hips: THREE.Group,
+  /** Build the cylindrical center ring as part of the independently yawing
+   * upper body. The hips and legs counter-yaw beneath it. */
+  decorateUpperBodyMidsection(
+    upperBody: THREE.Group,
     primaryMat: THREE.Material,
     tier: PrimitiveGeometryTier,
     unitRadius: number,
   ): THREE.Group {
-    const tail = new THREE.Group();
-    tail.userData.rexTyrannosaurTail = true;
-    hips.add(tail);
+    const midsection = new THREE.Group();
+    midsection.userData.rexUpperBodyMidsection = true;
+    upperBody.add(midsection);
 
-    const points = [
-      new THREE.Vector3(-unitRadius * 0.38, unitRadius * 1.86, 0),
-      new THREE.Vector3(-unitRadius * 1.14, unitRadius * 1.78, 0),
-      new THREE.Vector3(-unitRadius * 1.9, unitRadius * 1.5, 0),
-      new THREE.Vector3(-unitRadius * 2.72, unitRadius * 1.04, 0),
-    ];
-    const radii = [unitRadius * 0.42, unitRadius * 0.29, unitRadius * 0.145];
-    const tipRatios = [0.69, 0.5, 0.08];
-    for (let i = 0; i < points.length - 1; i++) {
-      const segment = this.addFrustumBetween(
-        tail,
-        i === 0 ? primaryMat : this.armorMat,
-        tier,
-        points[i],
-        points[i + 1],
-        radii[i],
-        tipRatios[i],
-      );
-      segment.userData.rexTailSegment = i;
-    }
-    return tail;
+    const belly = new THREE.Mesh(this.cylinderGeom(tier), primaryMat);
+    belly.position.set(unitRadius * 0.02, unitRadius * 1.94, 0);
+    belly.scale.set(unitRadius * 0.43, unitRadius * 0.58, unitRadius * 0.43);
+    midsection.add(belly);
+    belly.userData.rexBellyCore = true;
+    belly.userData.rexMidsectionAxis = 'vertical';
+    return midsection;
   }
 
   private decorateGatling(
@@ -356,17 +253,30 @@ export class RexVisualKit3D {
     this.addBox(pivot, primaryMat, -r * 0.24, 0, 0, r * 0.24, r * 1.02, r * 1.12);
     this.addTube(pivot, primaryMat, tier, r * 0.72, 0, 0, r * 0.48, r * 0.2);
 
-    const orbit = r * 0.28;
+    const orbit = Math.max(0, -spinner.position.y);
+    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2.5;
+    const barrelStartX = r * 0.345;
+    const barrelLength = muzzleX - barrelStartX;
     const tubeCount = tier === 'mid' ? 1 : 3;
     for (let i = 0; i < tubeCount; i++) {
-      const angle = ((i + 0.5) / 3) * Math.PI * 2;
-      const y = tubeCount === 1 ? 0 : Math.cos(angle) * orbit;
-      const z = tubeCount === 1 ? 0 : Math.sin(angle) * orbit;
-      this.addTube(spinner, barrelMat, tier, r * 1.42, y, z, r * 0.12, r * 2.15);
+      const angle = getBarrelOrbitAngle(i, tubeCount);
+      const y = Math.cos(angle) * orbit;
+      const z = Math.sin(angle) * orbit;
+      const tube = this.addTube(
+        spinner,
+        barrelMat,
+        tier,
+        barrelStartX + barrelLength * 0.5,
+        y,
+        z,
+        r * 0.12,
+        barrelLength,
+      );
+      tube.userData.rexMultiBarrelTube = i;
       this.addBox(
         spinner,
         this.apertureMat,
-        r * 2.49,
+        muzzleX,
         y,
         z,
         r * 0.08,
@@ -392,17 +302,30 @@ export class RexVisualKit3D {
     this.addBox(pivot, this.armorMat, r * 0.34, 0, 0, r * 1.52, r * 1.55, r * 1.82);
     if (tier === 'far') return;
     this.addBox(pivot, primaryMat, -r * 0.4, 0, 0, r * 0.22, r * 1.7, r * 1.96);
-    const orbit = r * 0.34;
+    const orbit = Math.max(0, -spinner.position.y);
+    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2.1;
+    const barrelStartX = r * 0.16;
+    const barrelLength = muzzleX - barrelStartX;
     const tubeCount = tier === 'mid' ? 1 : 3;
     for (let i = 0; i < tubeCount; i++) {
-      const angle = ((i + 0.5) / 3) * Math.PI * 2;
-      const y = tubeCount === 1 ? 0 : Math.cos(angle) * orbit;
-      const z = tubeCount === 1 ? 0 : Math.sin(angle) * orbit;
-      this.addTube(spinner, barrelMat, tier, r * 1.12, y, z, r * 0.22, r * 1.92);
+      const angle = getBarrelOrbitAngle(i, tubeCount);
+      const y = Math.cos(angle) * orbit;
+      const z = Math.sin(angle) * orbit;
+      const tube = this.addTube(
+        spinner,
+        barrelMat,
+        tier,
+        barrelStartX + barrelLength * 0.5,
+        y,
+        z,
+        r * 0.22,
+        barrelLength,
+      );
+      tube.userData.rexMultiBarrelTube = i;
       this.addBox(
         spinner,
         this.apertureMat,
-        r * 2.15,
+        muzzleX,
         y,
         z,
         r * 0.09,
@@ -429,17 +352,30 @@ export class RexVisualKit3D {
     this.addBox(pivot, this.armorMat, r * 0.22, 0, 0, r * 1.48, r * 1.68, r * 1.68);
     if (tier === 'far') return;
     this.addBox(pivot, primaryMat, -r * 0.46, 0, 0, r * 0.2, r * 1.82, r * 1.82);
-    const orbit = r * 0.32;
+    const orbit = Math.max(0, -spinner.position.y);
+    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2;
+    const barrelStartX = r * 0.09;
+    const barrelLength = muzzleX - barrelStartX;
     const tubeCount = tier === 'mid' ? 1 : 3;
     for (let i = 0; i < tubeCount; i++) {
-      const angle = ((i + 0.5) / 3) * Math.PI * 2;
-      const y = tubeCount === 1 ? 0 : Math.cos(angle) * orbit;
-      const z = tubeCount === 1 ? 0 : Math.sin(angle) * orbit;
-      this.addTube(spinner, barrelMat, tier, r * 1.02, y, z, r * 0.22, r * 1.86);
+      const angle = getBarrelOrbitAngle(i, tubeCount);
+      const y = Math.cos(angle) * orbit;
+      const z = Math.sin(angle) * orbit;
+      const tube = this.addTube(
+        spinner,
+        barrelMat,
+        tier,
+        barrelStartX + barrelLength * 0.5,
+        y,
+        z,
+        r * 0.22,
+        barrelLength,
+      );
+      tube.userData.rexMultiBarrelTube = i;
       this.addBox(
         spinner,
         this.apertureMat,
-        r * 2.02,
+        muzzleX,
         y,
         z,
         r * 0.09,
@@ -458,10 +394,10 @@ export class RexVisualKit3D {
   ): void {
     switch (mountId) {
       case 'beamMega':
-        // Keep the ordinary beam cone as the authoritative muzzle data
-        // carrier; the dinosaur mouth is authored around its exact tip.
+        // Keep the ordinary beam cone as the pilot-light/origin data carrier;
+        // the dinosaur head's forward aperture is authored around its tip.
         this.hideGenericHead(tm);
-        this.decorateBeam(tm, primaryMat, barrelMat, tier);
+        this.decorateBeam(tm, primaryMat, tier);
         break;
       case 'gatlingRight':
       case 'gatlingLeft':
@@ -486,8 +422,6 @@ export class RexVisualKit3D {
     this.cylinderGeoms.clear();
     for (const geometry of this.sphereGeoms.values()) geometry.dispose();
     this.sphereGeoms.clear();
-    for (const geometry of this.toothGeoms.values()) geometry.dispose();
-    this.toothGeoms.clear();
     for (const geometry of this.frustumGeoms.values()) geometry.dispose();
     this.frustumGeoms.clear();
     this.armorMat.dispose();

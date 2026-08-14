@@ -66,6 +66,9 @@ export class UnitTurretPose3D {
   private readonly deferredParentQuaternion = new THREE.Quaternion();
   private readonly anchorPosition = new THREE.Vector3();
   private readonly anchorQuaternion = new THREE.Quaternion();
+  private readonly fixedMuzzlePosition = new THREE.Vector3();
+  private readonly fixedMuzzleForward = new THREE.Vector3();
+  private readonly fixedMuzzleQuaternion = new THREE.Quaternion();
   private readonly scratchZeroPosition = new THREE.Vector3();
   private readonly scratchIdentityQuaternion = new THREE.Quaternion();
   private readonly articulatedMount = new THREE.Vector3();
@@ -79,6 +82,7 @@ export class UnitTurretPose3D {
   private readonly barrelTurretIndexes: number[] = [];
   private readonly barrelLaneIndexes: number[] = [];
   private readonly barrelPilotLightVisible: boolean[] = [];
+  private readonly barrelPublishesEmission: boolean[] = [];
   private readonly headBatch = new UnitTurretHeadMatrixBatch3D();
   private headInput = new Float32Array(TURRET_HEAD_INPUT_STRIDE * 2048);
   private headCount = 0;
@@ -106,6 +110,7 @@ export class UnitTurretPose3D {
     this.barrelTurretIndexes.length = 0;
     this.barrelLaneIndexes.length = 0;
     this.barrelPilotLightVisible.length = 0;
+    this.barrelPublishesEmission.length = 0;
     this.headCount = 0;
     this.headSlots.length = 0;
     this.headEntities.length = 0;
@@ -270,12 +275,15 @@ export class UnitTurretPose3D {
     turretMountCache: TurretMountCache3D,
     teamTrim: TeamTrimRenderer3D | null,
   ): void {
-    this.flushAimRecords(teamTrim);
+    this.flushAimRecords(teamTrim, turretMountCache);
     this.flushHeadMounts(unitDetailInstances, turretMountCache);
     this.flushBarrels(unitDetailInstances, turretMountCache);
   }
 
-  private flushAimRecords(teamTrim: TeamTrimRenderer3D | null): void {
+  private flushAimRecords(
+    teamTrim: TeamTrimRenderer3D | null,
+    turretMountCache: TurretMountCache3D,
+  ): void {
     const count = this.aimCount;
     if (count <= 0) return;
 
@@ -325,6 +333,14 @@ export class UnitTurretPose3D {
         turretMesh.root,
         turretMesh.yawGroup,
         this.aimHeadRadii[i],
+      );
+      this.writeFixedMultiBarrelMuzzle(
+        turretMesh,
+        this.deferredParentPosition,
+        this.deferredParentQuaternion,
+        this.aimEntities[i].id,
+        this.aimTurretIndexes[i],
+        turretMountCache,
       );
       this.writeBarrelInstances(
         turretMesh,
@@ -401,20 +417,26 @@ export class UnitTurretPose3D {
       const length = Math.hypot(columnX, columnY, columnZ);
       if (length <= 1e-9) continue;
       const invLength = 1 / length;
-      const muzzleThreeX = output[offset + 12] + columnX * 0.5;
-      const muzzleThreeY = output[offset + 13] + columnY * 0.5;
-      const muzzleThreeZ = output[offset + 14] + columnZ * 0.5;
-      turretMountCache.writeEmission(
-        this.barrelEntityIds[i],
-        this.barrelTurretIndexes[i],
-        this.barrelLaneIndexes[i],
-        muzzleThreeX,
-        muzzleThreeZ,
-        muzzleThreeY,
-        columnX * invLength,
-        columnZ * invLength,
-        columnY * invLength,
-      );
+      // A beam's tapered barrel is its idle pilot light. The live ray replaces
+      // that cone from the broad base (the turret origin); ordinary barrels
+      // continue publishing their forward muzzle tip.
+      const emissionEndFactor = this.barrelUsesCone[i] ? -0.5 : 0.5;
+      const muzzleThreeX = output[offset + 12] + columnX * emissionEndFactor;
+      const muzzleThreeY = output[offset + 13] + columnY * emissionEndFactor;
+      const muzzleThreeZ = output[offset + 14] + columnZ * emissionEndFactor;
+      if (this.barrelPublishesEmission[i]) {
+        turretMountCache.writeEmission(
+          this.barrelEntityIds[i],
+          this.barrelTurretIndexes[i],
+          this.barrelLaneIndexes[i],
+          muzzleThreeX,
+          muzzleThreeZ,
+          muzzleThreeY,
+          columnX * invLength,
+          columnZ * invLength,
+          columnY * invLength,
+        );
+      }
       if (this.barrelLaneIndexes[i] !== 0) continue;
       turretMountCache.writeForward(
         this.barrelEntityIds[i],
@@ -552,8 +574,66 @@ export class UnitTurretPose3D {
         turretIdx,
         barrelIdx,
         pilotLightVisible,
+        turretMesh.fixedMultiBarrelMuzzle === undefined,
       );
     }
+  }
+
+  /** Publish the one stationary firing socket of a rotating barrel cluster.
+   * The spin group is deliberately absent from this transform chain: barrels
+   * move through the socket, while bullets and muzzle effects do not orbit. */
+  private writeFixedMultiBarrelMuzzle(
+    turretMesh: TurretMesh,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    entityId: number,
+    turretIdx: number,
+    turretMountCache: TurretMountCache3D,
+  ): void {
+    const muzzle = turretMesh.fixedMultiBarrelMuzzle;
+    const pitchGroup = turretMesh.pitchGroup;
+    if (muzzle === undefined || pitchGroup === undefined) return;
+
+    this.fixedMuzzlePosition
+      .set(muzzle.x, muzzle.y, muzzle.z)
+      .applyQuaternion(pitchGroup.quaternion)
+      .add(pitchGroup.position)
+      .applyQuaternion(turretMesh.yawGroup.quaternion)
+      .add(turretMesh.yawGroup.position)
+      .applyQuaternion(turretMesh.root.quaternion)
+      .add(turretMesh.root.position)
+      .applyQuaternion(parentQuaternion)
+      .add(parentPosition);
+    this.fixedMuzzleQuaternion
+      .copy(parentQuaternion)
+      .multiply(turretMesh.root.quaternion)
+      .multiply(turretMesh.yawGroup.quaternion)
+      .multiply(pitchGroup.quaternion);
+    this.fixedMuzzleForward
+      .set(1, 0, 0)
+      .applyQuaternion(this.fixedMuzzleQuaternion)
+      .normalize();
+
+    for (let lane = 0; lane < muzzle.laneCount; lane++) {
+      turretMountCache.writeEmission(
+        entityId,
+        turretIdx,
+        lane,
+        this.fixedMuzzlePosition.x,
+        this.fixedMuzzlePosition.z,
+        this.fixedMuzzlePosition.y,
+        this.fixedMuzzleForward.x,
+        this.fixedMuzzleForward.z,
+        this.fixedMuzzleForward.y,
+      );
+    }
+    turretMountCache.writeForward(
+      entityId,
+      turretIdx,
+      this.fixedMuzzleForward.x,
+      this.fixedMuzzleForward.z,
+      this.fixedMuzzleForward.y,
+    );
   }
 
   private writeTurretTeamCollar(
@@ -574,7 +654,7 @@ export class UnitTurretPose3D {
     const pitchPosition = turretMesh.pitchGroup?.position;
     const pitchQuaternion = turretMesh.pitchGroup?.quaternion;
     this.anchorPosition
-      .set(anchor.centerX, 0, 0)
+      .set(anchor.centerX, anchor.centerY, anchor.centerZ)
       .applyQuaternion(pitchQuaternion ?? this.scratchIdentityQuaternion)
       .add(pitchPosition ?? this.scratchZeroPosition)
       .applyQuaternion(turretMesh.yawGroup.quaternion)
@@ -614,6 +694,7 @@ export class UnitTurretPose3D {
     turretIdx: number,
     laneIdx: number,
     pilotLightVisible: boolean,
+    publishesEmission: boolean,
   ): void {
     const index = this.barrelCount;
     this.barrelCount++;
@@ -667,6 +748,7 @@ export class UnitTurretPose3D {
     this.barrelTurretIndexes[index] = turretIdx;
     this.barrelLaneIndexes[index] = laneIdx;
     this.barrelPilotLightVisible[index] = pilotLightVisible;
+    this.barrelPublishesEmission[index] = publishesEmission;
   }
 
   private ensureBarrelInputCapacity(count: number): void {

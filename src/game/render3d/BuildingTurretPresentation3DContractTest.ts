@@ -14,6 +14,7 @@ import { createRenderFrameState } from './RenderFrameState3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ScopedRenderMeshRetention3D } from './ScopedRenderMeshRetention3D';
+import { TurretMountCache3D } from './TurretMountCache3D';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
@@ -74,6 +75,7 @@ export function runBuildingTurretPresentation3DContractTest(): void {
   const turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
   const barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
   const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 1, 0.5);
+  const turretMountCache = new TurretMountCache3D();
   const renderer = new BuildingEntityRenderer3D({
     world,
     clientViewState,
@@ -90,11 +92,13 @@ export function runBuildingTurretPresentation3DContractTest(): void {
     scopedMeshRetention: new ScopedRenderMeshRetention3D(),
     lodProxyRenderer: { pushBuildingProxy: () => undefined } as unknown as EntityLodProxyRenderer3D,
     isBeamPilotLightVisible: () => beamPilotLightVisible,
+    turretMountCache,
   });
   const rows = new BuildingRenderPacket3D();
   const frameState = createRenderFrameState();
 
   try {
+    turretMountCache.reset(16);
     rows.pushEntity(tower, false, true, true);
     rows.pushEntity(beamTower, false, true, true);
     renderer.update(
@@ -117,10 +121,22 @@ export function runBuildingTurretPresentation3DContractTest(): void {
       beamMesh.turrets[0].barrels[0].visible,
       'an idle building beam turret shows its pilot-light cone',
     );
+    world.updateMatrixWorld(true);
+    const expectedPilotOrigin = new THREE.Vector3();
+    beamMesh.turrets[0].pitchGroup?.getWorldPosition(expectedPilotOrigin);
+    const renderedBeamOrigin = turretMountCache.getEmission(beamTower.id, 0, 0);
+    assertContract(
+      renderedBeamOrigin !== null &&
+        Math.abs(renderedBeamOrigin.x - expectedPilotOrigin.x) < 1e-5 &&
+        Math.abs(renderedBeamOrigin.y - expectedPilotOrigin.z) < 1e-5 &&
+        Math.abs(renderedBeamOrigin.z - expectedPilotOrigin.y) < 1e-5,
+      'building beam QueryWeapon begins at the pilot-light base, not its pointed tip',
+    );
 
     tower.combat.turrets[0].rotation = Math.PI / 2;
     beamPilotLightVisible = false;
     rows.reset();
+    turretMountCache.reset(16);
     rows.pushEntity(tower, false, false, false);
     rows.pushEntity(beamTower, false, false, false);
     renderer.update(

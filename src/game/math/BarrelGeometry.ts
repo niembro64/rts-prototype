@@ -69,14 +69,12 @@ export function getTurretBarrelCenterToTipLength(
   return getTurretHeadRadius(config) * (1 + barrel.barrelLength);
 }
 
-/** Per-barrel orbit angle around the firing axis: barrels are evenly
- *  spaced on a circle, half-step offset so the i=0 barrel is NOT on
- *  any cardinal axis (which would visually align with the chassis edge
- *  at one orientation). Same convention used by the renderer's
- *  YZ-plane multi-barrel layout; centralizing keeps a future change
- *  to the spacing rule atomic across visual systems. */
+/** Per-barrel orbit angle around the firing axis. Lane zero begins at the
+ * fixed top firing position; as the cluster rotates, every following barrel
+ * passes through that same position. Weapon cadence is intentionally not
+ * phase-locked to this presentation angle. */
 export function getBarrelOrbitAngle(idx: number, n: number): number {
-  return ((idx + 0.5) / n) * Math.PI * 2;
+  return (idx / n) * Math.PI * 2;
 }
 
 function clampBarrelOrbitRadius(
@@ -126,6 +124,20 @@ export function getConeBarrelTipOrbitRadius(
       + barrelLen * Math.tan((spreadAngle ?? Math.PI / 5) / 2),
     turretBodyRadius * BARREL_ORBIT_CLAMP_FRAC.coneTip,
   );
+}
+
+/** Distance between a multi-barrel cluster's rotating axis and its one fixed
+ * firing socket. The renderer lowers the spin axis by this amount, leaving
+ * the top barrel at the turret's centered QueryWeapon muzzle. */
+export function getMultiBarrelFiringOrbitRadius(
+  barrel: Extract<BarrelShape, { type: 'simpleMultiBarrel' | 'coneMultiBarrel' }>,
+  turretBodyRadius: number,
+  barrelLen: number,
+  spreadAngle: number | undefined,
+): number {
+  return barrel.type === 'simpleMultiBarrel'
+    ? getSimpleMultiBarrelOrbitRadius(barrel, turretBodyRadius)
+    : getConeBarrelTipOrbitRadius(barrel, turretBodyRadius, barrelLen, spreadAngle);
 }
 
 export function getTurretBarrelDiameter(

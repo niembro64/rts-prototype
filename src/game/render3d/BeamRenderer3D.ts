@@ -49,7 +49,8 @@ import {
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
 // edit those files to retune how beams look. Beam cylinders originate at
-// the selected rendered QueryWeapon muzzle, matching the authoritative path.
+// the selected rendered QueryWeapon origin — the base of the idle pilot-light
+// cone — matching the authoritative path.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_SMOKE_EMITTER_CAP = 4096;
 const BEAM_IMPOSTER_SEGMENT_CAP = BEAM_SEGMENT_CAP;
@@ -589,7 +590,7 @@ export class BeamRenderer3D {
         if (mount.hasForward && sourcePoints.length === 2) {
           // A direct beam is one constrained turret ray. Re-project the
           // authoritative terminal distance onto the rendered barrel forward
-          // from the selected muzzle. Reflected paths retain their surface vertices.
+          // from the selected beam origin. Reflected paths retain their surface vertices.
           const end = path.points[1];
           if (end !== undefined) constrainDirectBeamEndpointToMountRay(
             end,
