@@ -795,19 +795,17 @@ export function spawnInitialBases(
     // Tech structures — the targeting-tech spire grants the seat
     // shield-aware targeting, and the shield forge unlocks its shielded
     // production lines, so the demo exercises both upgrades live. They
-    // FLANK the radar on the sensor ring (radar keeps the center angle)
-    // rather than taking rings of their own: a same-angle row 0.02–0.03
-    // of spawn radius away from the radar/anti-air rows would collide
-    // with those footprints and silently fail best-effort placement.
-    // The ±0.24 flank keeps clear of both the radar footprint at the
-    // center angle and the divider-slice terrain near the seat's edges;
-    // the wide factory search offsets rescue cramped presets where even
-    // the flank cell is taken.
+    // share their OWN ring at the standard 0.05 spacing (0.35, one step
+    // inside the beam-tower ring), the spire on the + flank and the
+    // forge on the −. A same-angle row wedged 0.02–0.03 from another
+    // ring collides with that row's footprints and silently fails
+    // best-effort placement, so the pair spreads angularly instead; the
+    // wide factory search offsets rescue cramped presets.
     if (isBuildingEnabled('buildingShieldTargetingTech')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTargetingTech',
         DEMO_CONFIG.buildingShieldTargetingTechCount,
-        oval, shieldTargetingTechRadius, baseAngle + sectorAngle * 0.24,
+        oval, shieldTargetingTechRadius, baseAngle + sectorAngle * 0.22,
         sectorAngle * 0.16, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
@@ -816,7 +814,7 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTech',
         DEMO_CONFIG.buildingShieldTechCount,
-        oval, shieldTechRadius, baseAngle - sectorAngle * 0.24,
+        oval, shieldTechRadius, baseAngle - sectorAngle * 0.22,
         sectorAngle * 0.16, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));

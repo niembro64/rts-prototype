@@ -18,12 +18,6 @@
     "buildingRadar": {
       "radiusFraction": 0.65
     },
-    "buildingShieldTargetingTech": {
-      "radiusFraction": 0.65
-    },
-    "buildingShieldTech": {
-      "radiusFraction": 0.65
-    },
     "towerAntiAir": {
       "radiusFraction": 0.6
     },
@@ -38,6 +32,12 @@
     },
     "towerBeamMega": {
       "radiusFraction": 0.4
+    },
+    "buildingShieldTargetingTech": {
+      "radiusFraction": 0.35
+    },
+    "buildingShieldTech": {
+      "radiusFraction": 0.35
     }
   },
   "waterFabricators": {

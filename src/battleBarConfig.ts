@@ -205,7 +205,7 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
-const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v1';
+const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v2';
 const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
@@ -314,6 +314,12 @@ function migrateDemoContent(): void {
     storedTowerIds ??
     BUILDING_BLUEPRINT_IDS.filter((id) => legacyTowerBlueprintIds.has(id));
   for (const id of selectedLegacyTowers) selected.add(id);
+  // Newly-introduced blueprints default ON in a stored roster, the same
+  // way unitOrca is pushed into stored unit lists below. Without this a
+  // pre-existing roster silently excludes every building added after it
+  // was saved — the demo would never spawn them.
+  selected.add('buildingShieldTargetingTech');
+  selected.add('buildingShieldTech');
   persistJson(
     STORAGE_DEMO_BUILDINGS,
     BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
