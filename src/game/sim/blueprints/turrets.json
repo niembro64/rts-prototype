@@ -662,12 +662,12 @@
     "addTurretVelocityToEmissionLaunch": true,
     "angularActuator": {
       "yaw": {
-        "maxSpeed": 4.5,
-        "maxAcceleration": 14
+        "maxSpeed": 2.4,
+        "maxAcceleration": 6
       },
       "pitch": {
-        "maxSpeed": 3.5,
-        "maxAcceleration": 11
+        "maxSpeed": 2,
+        "maxAcceleration": 5
       }
     },
     "emissionLaneCount": 5,
