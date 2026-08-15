@@ -131,6 +131,70 @@ function assertDryPerimeterFactoryFallback(
   }
 }
 
+/** LIQUID = LAVA turns off everything that belongs in or on the water: the
+ * offshore water-unit Fabricator arc and its Sonar ring must not spawn, and
+ * every Fabricator that does spawn must be a land production line placed
+ * over land. The baseline assertions above prove LIQUID = WATER keeps the
+ * authored offshore installation on this same terrain. */
+function assertLavaWorldSpawnExcludesWaterRoster(
+  mapWidth: number,
+  mapHeight: number,
+  playerIds: readonly PlayerId[],
+): void {
+  const world = new WorldState(1245, mapWidth, mapHeight);
+  world.liquidSurfaceMode = 'lava';
+  const construction = new ConstructionSystem(mapWidth, mapHeight, null);
+  const entities = spawnInitialBases(
+    world,
+    construction,
+    [...playerIds],
+    'demo',
+  );
+  const waterUnitBlueprintIds = new Set<string>(
+    DEMO_CONFIG.waterFabricators.unitBlueprintIds,
+  );
+  const expectedLandUnitBlueprintIds =
+    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').filter(
+      (unitBlueprintId) => !waterUnitBlueprintIds.has(unitBlueprintId),
+    );
+  const selectionsByPlayer = new Map<PlayerId, Set<string>>();
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    assertContract(
+      entity.buildingBlueprintId !== 'buildingSonar',
+      'LIQUID = LAVA demo must not spawn the water-surface Sonar ring',
+    );
+    if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+    const playerId = entity.ownership?.playerId;
+    const selected = entity.factory?.selectedUnitBlueprintId;
+    assertContract(playerId !== undefined, 'lava demo Fabricator must have an owner');
+    assertContract(
+      selected !== null && selected !== undefined &&
+        !waterUnitBlueprintIds.has(selected),
+      `LIQUID = LAVA demo must not seed water production line ${selected}`,
+    );
+    assertContract(
+      !isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight),
+      `LIQUID = LAVA demo Fabricator ${entity.id} must be placed over land`,
+    );
+    let selections = selectionsByPlayer.get(playerId);
+    if (selections === undefined) {
+      selections = new Set<string>();
+      selectionsByPlayer.set(playerId, selections);
+    }
+    selections.add(selected);
+  }
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    const selections = selectionsByPlayer.get(playerId);
+    assertContract(
+      selections?.size === expectedLandUnitBlueprintIds.length,
+      `LIQUID = LAVA player ${playerId} must keep every land repeat line; ` +
+        `expected ${expectedLandUnitBlueprintIds.length}, got ${selections?.size ?? 0}`,
+    );
+  }
+}
+
 function assertNegativeMetalDepositStepDemoSpawn(
   mapWidth: number,
   mapHeight: number,
@@ -506,6 +570,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     );
   }
   assertDryPerimeterFactoryFallback(mapWidth, mapHeight, playerIds);
+  assertLavaWorldSpawnExcludesWaterRoster(mapWidth, mapHeight, playerIds);
   assertNegativeMetalDepositStepDemoSpawn(mapWidth, mapHeight, playerIds);
 
   const deposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);

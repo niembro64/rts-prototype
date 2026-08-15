@@ -247,6 +247,13 @@ export function spawnBackgroundUnitsStandalone(
     if (DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(unitBlueprintId)) continue;
     centerBattleAllowedUnitBlueprintIds.add(unitBlueprintId);
   }
+  // LIQUID = LAVA turns the demo's water roster off entirely: the opening
+  // wave must not drop sea units into molten rock. Reinforcements already
+  // draw from the water-excluded center-battle set in every world.
+  const lavaLiquid = world.liquidSurfaceMode === 'lava';
+  const initialWaveAllowedUnitBlueprintIds = lavaLiquid
+    ? centerBattleAllowedUnitBlueprintIds
+    : allowedUnitBlueprintIds;
   let playersSource: readonly PlayerId[];
   if (playerIds && playerIds.length > 0) {
     playersSource = playerIds;
@@ -276,7 +283,8 @@ export function spawnBackgroundUnitsStandalone(
     // Every opening unit draws from the enabled roster with probability
     // proportional to 1 / (metal + energy cost), then drops into the same
     // center disk. This intentionally performs no terrain, water, path, or
-    // factory-roster suitability checks.
+    // factory-roster suitability checks — except on a lava world, where the
+    // water roster is off (see initialWaveAllowedUnitBlueprintIds above).
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
 
     for (let p = 0; p < numPlayers; p++) {
@@ -289,7 +297,7 @@ export function spawnBackgroundUnitsStandalone(
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
         const unitBlueprintId = selectWeightedUnitBlueprintId(
           () => world.nextRandom(playerId),
-          allowedUnitBlueprintIds,
+          initialWaveAllowedUnitBlueprintIds,
         );
         if (unitBlueprintId === null) continue;
 

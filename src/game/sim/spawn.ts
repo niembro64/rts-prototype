@@ -30,7 +30,10 @@ import {
 import { angleDeltaAbs } from '../math';
 import { isWaterAt } from './Terrain';
 import { fabricatorTorusOuterRadius } from './blueprints';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+} from './buildGrid';
 
 export { getSeatBaseAngle } from './playerLayout';
 
@@ -101,7 +104,7 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // found no free cell for its last Fabricator. The ring is deterministic and
 // ordered nearest-first, so a wider radius only lets a crowded seat reach one
 // ring further out; it never moves a placement that already succeeded.
-// A Fabricator reserves a 14x14-cell placement square. Half-footprint search
+// A Fabricator reserves a 14x14-cell pixel-circle. Half-footprint search
 // steps cover dense packing while avoiding tens of thousands of near-identical
 // probes whose rectangles overlap the same occupied cells.
 const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
@@ -290,6 +293,10 @@ function placeCompleteBuilding(
   ignoreTerrainForPlacement = false,
 ): Entity | null {
   const config = getBuildingConfig(buildingBlueprintId);
+  const placementFootprint = getRotatedBuildingPlacementFootprint(
+    config.placementFootprint,
+    0,
+  );
   const grid = construction.getGrid();
   const snapped = grid.snapToGrid(worldX, worldY, config.placementGridWidth, config.placementGridHeight);
   const baseGrid = grid.worldToGrid(snapped.x, snapped.y);
@@ -304,11 +311,10 @@ function placeCompleteBuilding(
     // metal diagnostic packet. This is an exact preflight, not a second
     // placement rule: every candidate that passes is still validated by the
     // normal ConstructionSystem path below.
-    if (!grid.canPlace(
+    if (!grid.canPlaceFootprint(
       candidateGridX,
       candidateGridY,
-      config.placementGridWidth,
-      config.placementGridHeight,
+      placementFootprint,
     )) continue;
     if (acceptCandidate !== null) {
       const candidate = grid.getBuildingCenter(
@@ -592,6 +598,27 @@ function isFabricatorFootprintOverWater(
   return isWaterAt(x, y, world.mapWidth, world.mapHeight);
 }
 
+/** Fully-dry counterpart of isFabricatorFootprintOverWater: the center AND
+ *  every torus sample must be dry. Used by the lava-world land factory arc,
+ *  where a Fabricator straddling the shoreline would hover over molten rock
+ *  and drop its produced land units straight into it. */
+function isFabricatorFootprintOverLand(
+  world: WorldState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const sampleRadius = fabricatorTorusOuterRadius(width, height) * 0.72;
+  for (let i = 0; i < 8; i++) {
+    const angle = i * Math.PI / 4;
+    const sampleX = x + DMath.cos(angle) * sampleRadius;
+    const sampleY = y + DMath.sin(angle) * sampleRadius;
+    if (isWaterAt(sampleX, sampleY, world.mapWidth, world.mapHeight)) return false;
+  }
+  return !isWaterAt(x, y, world.mapWidth, world.mapHeight);
+}
+
 function isRectFootprintOverWater(
   world: WorldState,
   x: number,
@@ -674,9 +701,17 @@ export function spawnInitialBases(
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
-  const waterFactoryUnitBlueprintIds = DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
-    (id) => availableUnitBlueprintIds === undefined || availableUnitBlueprintIds.has(id),
-  );
+  // LIQUID = LAVA: the sea is molten rock, so the demo spawns nothing that
+  // belongs in or on the water. The offshore Fabricator arc (the water-unit
+  // production lines) and its Sonar ring are omitted entirely; every
+  // Fabricator the demo still places is a land line on the land factory
+  // ring. LIQUID = WATER keeps the authored offshore installation.
+  const lavaLiquid = world.liquidSurfaceMode === 'lava';
+  const waterFactoryUnitBlueprintIds = lavaLiquid
+    ? []
+    : DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
+      (id) => availableUnitBlueprintIds === undefined || availableUnitBlueprintIds.has(id),
+    );
   const waterFactoryUnitBlueprintIdSet = new Set<string>(DEMO_CONFIG.waterFabricators.unitBlueprintIds);
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
     availableUnitBlueprintIds,
@@ -902,7 +937,20 @@ export function spawnInitialBases(
         oval, factoryRadius, baseAngle, factorySectorAngle, playerId, factoryWaypoint,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
         null,
-        null,
+        // On a lava world every Fabricator must sit fully over land: a line
+        // whose authored arc cell is flooded slides to the nearest dry cells
+        // instead. The authored-arc fallback below still runs if the whole
+        // search patch is molten, because a missing production line is worse
+        // for the demo than a scorched one.
+        lavaLiquid
+          ? (x, y) => isFabricatorFootprintOverLand(
+            world,
+            x,
+            y,
+            fabricatorWidth,
+            fabricatorHeight,
+          )
+          : null,
         true,
       );
       // Placement remains best-effort: unusually small maps or dense custom
@@ -918,7 +966,8 @@ export function spawnInitialBases(
     // One Sonar sits immediately outside the offshore Fabricator arc.
     // Use their actual post-grid-snap radius, then add both collision radii
     // plus one grid cell so the installation remains visually separated.
-    if (isBuildingEnabled('buildingSonar')) {
+    // Sonar is a water-surface building, so a lava world places none.
+    if (!lavaLiquid && isBuildingEnabled('buildingSonar')) {
       let outermostWaterFactoryRadius = waterFactoryRadius;
       for (let j = 0; j < waterFactories.length; j++) {
         const factory = waterFactories[j];
